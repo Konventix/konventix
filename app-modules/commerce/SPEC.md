@@ -34,6 +34,15 @@ licensing.
   false by design; reporting on free registrations (counts, quotas,
   conversion) is Registration's job, not a zero-total order kept in sync here
   for symmetry.
+
+  **"One order per registration" is equally false (ADR-0036).** A registration
+  maps to N orders over its lifetime — the initial settlement plus one per
+  priced amendment — so idempotency is keyed on `request_key` (the ULID of
+  whatever requested settlement), unique per `settles_type, settles_id,
+  request_key`, not on `settles_id` alone. A replayed request still finds its
+  existing order; a genuinely new request against the same registration gets
+  its own. "What did this exhibitor pay" is therefore a sum over orders, and
+  the orders index groups by `settles_id`.
 - **Pricing and tax calculation** — line totals, tax rates, and the net-vs-gross
   *display* decision, which Commerce applies from the flag declared on the
   `RegistrationType` (ADR-0006).

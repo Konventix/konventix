@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Konventix\Admission\Providers;
 
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Slots\SlotRegistry;
+use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationConfirmed;
 
 /**
@@ -43,6 +45,13 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(
             RegistrationConfirmed::class,
             IssueAdmissionsOnRegistrationConfirmed::class,
+        );
+
+        // The delta counterpart (ADR-0036): grants added to an already-
+        // confirmed registration issue exactly those, keyed on the amendment.
+        Event::listen(
+            RegistrationAmended::class,
+            IssueAdmissionsOnRegistrationAmended::class,
         );
     }
 

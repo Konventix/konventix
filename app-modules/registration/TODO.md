@@ -23,19 +23,38 @@
       real quota-composition/waiting-list question below should settle
       whether a type with multiple quotas needs a per-quota breakdown
       instead of one summed number.
-- [ ] Amendment as delta orders (ADR-0036, the remaining Slice 4 piece):
-      `AmendRegistration` adding grants to a confirmed registration → new
-      settlement request with its own request key (Commerce idempotency must
-      become per-key, not per-settles_id), `RegistrationAmended` event, and
-      Admission issuing exactly the delta idempotently. Post-invoice
-      *transfer* (credit note + re-issue) lands with Slice 7's credit notes;
-      the pre-invoice edit + freeze are done (see Done).
+- [ ] Amendment admin UI: `AmendRegistration` is domain-only — adding grants
+      currently means tinker. Needs a screen on the registration detail page
+      (add grants, declare the delta lines when it is priced) behind a new
+      `registration.amend-registrations` capability. Same shape as the token
+      management gap below; fold both into the same admin pass.
+- [ ] Amendment pricing source (ADR-0036 follow-up): `AmendRegistration` takes
+      explicit delta lines because `GrantData` carries no price and a type's
+      `price_declaration` prices the *type*. If per-grant pricing ever lands
+      on `RegistrationType`, the priced path should derive lines instead of
+      trusting the caller.
 - [ ] Token management UI: `InvitationToken` has model/guards/burn logic but
       no operator screen yet — issue/revoke currently means tinker. Fold
       into a registration-type admin screen when one exists.
 
 ## Done
 
+- [x] Amendment as delta orders (ADR-0036 — completes Slice 4).
+      `RegistrationAmendment` records the delta; `AmendRegistration` guards
+      that the registration is Confirmed and the delta non-empty, consumes one
+      quota unit per added admission all-or-nothing (rejecting rather than
+      overbooking), and always emits `RegistrationAmended`. Money is
+      conditional: only a delta carrying explicit lines requests settlement,
+      keyed on the amendment's own ULID, so Commerce writes a *second* order
+      and invoice while the original stays untouched (ADR-0031). Commerce's
+      idempotency moved from `settles_id` to `request_key` (unique on
+      `settles_type, settles_id, request_key`, backfilled to `settles_id`);
+      Admission's moved from "any admissions?" to per-`amendment_id`, which
+      is what stopped deltas being silently swallowed. `ReleasesQuotas` now
+      gives back the amended units too — releasing only the submission's one
+      unit leaked capacity permanently on every amended registration.
+      Post-invoice *transfer* (credit note + re-issue) still lands with
+      Slice 7's credit notes.
 - [x] Slice 4 — Registration completion (minus amendment, see Backlog).
       Waitlist (D-REG-12): `WaitlistEntry` with billing snapshot, states
       queued → offered → converted/expired/withdrawn; `JoinWaitlist` from

@@ -141,10 +141,50 @@ it('replays a settlement request without creating a second order', function (): 
         lines: [['label' => 'Booth', 'quantity' => 1, 'unit_amount_net' => '250.00', 'tax_class' => 'standard']],
         priceDisplay: 'net',
         termsDays: 30,
+        requestKey: $registration->id,
     );
 
     expect(Order::query()->where('settles_id', $registration->id)->count())->toBe(1)
         ->and(Invoice::query()->where('order_id', $order->id)->count())->toBe(1);
+});
+
+it('creates a second order for a different request key on the same registration', function (): void {
+    attachOperator($this->withBrand());
+    Queue::fake();
+
+    $registration = settleExhibitorRegistration(exhibitorSubmission());
+
+    // What an amendment delivers (ADR-0036): same registration, its own
+    // request key. The old settles_id guard would have swallowed this.
+    $amendmentKey = (string) Str::ulid();
+
+    app(PlaceOrderFromSettlementRequest::class)->handle(
+        registrationId: $registration->id,
+        brandId: $registration->brand_id,
+        settlement: 'invoice',
+        billingParty: [
+            'organization_name' => 'Musterfirma GmbH',
+            'recipient_name' => 'Erika Musterfrau',
+            'email' => 'rechnung@musterfirma.example',
+            'address_line' => 'Musterstraße 1',
+            'postal_code' => '18439',
+            'city' => 'Stralsund',
+            'country_code' => 'DE',
+            'vat_id' => null,
+        ],
+        lines: [['label' => 'Extra booth space', 'quantity' => 1, 'unit_amount_net' => '120.00', 'tax_class' => 'standard']],
+        priceDisplay: 'net',
+        termsDays: 30,
+        requestKey: $amendmentKey,
+    );
+
+    $orders = Order::query()->where('settles_id', $registration->id)->get();
+
+    // Two orders, two invoices — and the original invoice keeps its own
+    // number rather than being reissued (ADR-0031 immutability).
+    expect($orders)->toHaveCount(2)
+        ->and($orders->pluck('request_key')->all())->toContain($registration->id, $amendmentKey)
+        ->and(Invoice::query()->count())->toBe(2);
 });
 
 it('applies reverse charge through the chain for an EU billing party with a VAT ID', function (): void {

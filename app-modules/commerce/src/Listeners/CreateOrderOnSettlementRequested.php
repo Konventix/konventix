@@ -37,6 +37,7 @@ final class CreateOrderOnSettlementRequested
             lines: $event->lines,
             priceDisplay: $event->priceDisplay,
             termsDays: $event->termsDays,
+            requestKey: $event->requestKey,
         );
     }
 }

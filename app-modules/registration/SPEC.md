@@ -47,9 +47,20 @@ is entitled to what*; other modules materialize those entitlements.
   confirmed on approval while its payment is still open and monitored through
   due dates and dunning; a `free` crew registration has no payment story at
   all.
+- **`RegistrationAmendment`** — one delta applied to an already-confirmed
+  registration (ADR-0036): the grants that were added and, when the addition
+  costs money, the lines charged for them. Amendments **add grants only** — a
+  type change re-opens settlement, approval and gate at once, so that stays
+  cancel-and-recreate. The row's ULID is load-bearing outside this module: it
+  is Commerce's order idempotency key and Admission's delta issuance key, which
+  is what lets one registration carry N orders without a replay creating an
+  N+1st. Money is conditional — added crew badges come with an exhibitor's
+  package, so a free amendment materializes admissions without an order, an
+  invoice, or any disturbance to the immutable original (ADR-0031).
 - **`Quota`** — a standalone entity, not a column on a type. Quotas are
   consumed and released by registrations and may be referenced by more than one
-  `RegistrationType`.
+  `RegistrationType`. An amendment consumes one unit per added admission, and
+  cancellation releases the submission's unit *plus* every amended one.
 - **The approval workflow** — submission, review, approval, rejection, and the
   record of who decided what and when.
 - **Grant definitions** — how many admissions of which role, and which resource
@@ -89,7 +100,8 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 | `RegistrationApproved` | A reviewer approves a registration on an `approval: required` type | `registration_id`, `approved_by_user_id`, `approved_at` |
 | `RegistrationRejected` | A reviewer rejects it | `registration_id`, `rejected_by_user_id`, `reason_code`, `rejected_at` |
 | `RegistrationConfirmed` | The type's `confirmation_gate` has been passed — the one event that materializes entitlements | `registration_id`, `registration_type_id`, `event_id`, `brand_id`, `confirmed_at`, `grants` (list of `{kind, role, quantity, resource_type_id}` scalars) |
-| `RegistrationSettlementRequested` | A registration on a `settlement` of `instant` or `invoice` needs an order. **Gate-dependent emission:** `on_payment` types emit at submission (paying must precede confirming), all other gates emit at confirmation — the two points partition, no double emission. `external` never emits: money moves off-platform, and door payment is a Commerce POS concern (ADR-0018) | `registration_id`, `registration_type_id`, `event_id`, `brand_id`, `settlement`, `billing_party` (scalars incl. address, `country_code`, `vat_id`), `lines` (list of `{label, quantity, unit_amount_net, tax_class}` — the declared tax *class*, never a rate: Commerce resolves the rate and treatment, ADR-0017/ADR-0030), `price_display` (`net` / `gross`), `terms_days`, `requested_at` |
+| `RegistrationSettlementRequested` | A registration on a `settlement` of `instant` or `invoice` needs an order. **Gate-dependent emission:** `on_payment` types emit at submission (paying must precede confirming), all other gates emit at confirmation — the two points partition, no double emission. A priced amendment emits a third time, keyed on itself. `external` never emits: money moves off-platform, and door payment is a Commerce POS concern (ADR-0018) | `registration_id`, `registration_type_id`, `event_id`, `brand_id`, `settlement`, `billing_party` (scalars incl. address, `country_code`, `vat_id`), `lines` (list of `{label, quantity, unit_amount_net, tax_class}` — the declared tax *class*, never a rate: Commerce resolves the rate and treatment, ADR-0017/ADR-0030), `price_display` (`net` / `gross`), `terms_days`, `requested_at`, `request_key` (the ULID of whatever requested settlement — the registration for the initial request, the amendment for a delta; Commerce's order idempotency key, ADR-0036) |
+| `RegistrationAmended` | Grants are added to an already-confirmed registration (ADR-0036). Always emitted; the money side is separate and conditional, so a free amendment — crew that comes with an exhibitor's package — emits only this | `registration_id`, `amendment_id`, `registration_type_id`, `event_id`, `brand_id`, `grants` (**only the added** grants, same scalar shape as `RegistrationConfirmed`), `amended_at` |
 | `RegistrationCancelled` | The contractual act is cancelled by organizer or registrant | `registration_id`, `cancelled_by_user_id`, `reason_code`, `cancelled_at` |
 | `RegistrationPaymentStatusChanged` | The independent payment status field moves | `registration_id`, `brand_id`, `previous_status`, `status`, `changed_at` |
 | `QuotaExhausted` | The last unit of a quota is consumed | `quota_id`, `event_id`, `brand_id`, `exhausted_at` |

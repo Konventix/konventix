@@ -89,6 +89,7 @@ maintains from them.
 | Event | Owning module | Why |
 |---|---|---|
 | `RegistrationConfirmed` (proposed) | Registration | The trigger: issue one admission per granted admission in the payload, with the granted role |
+| `RegistrationAmended` | Registration | Grants were added to an already-confirmed registration (ADR-0036): issue **exactly the delta**. Idempotency is keyed on `amendment_id` (null for the original confirmation) rather than "does this registration have any admissions?", which would swallow every amendment |
 | `RegistrationCancelled` (proposed) | Registration | Revoke the admissions that registration produced |
 | `UserProfileUpdated` (proposed) | Identity | Maintain the holder read model (badge name, photo reference) |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler; check-in records are attendance data and need an explicit answer |

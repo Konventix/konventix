@@ -34,6 +34,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $brand_id
  * @property string $settles_type
  * @property string $settles_id
+ * @property string $request_key
  * @property OrderStatus $status
  * @property string $currency
  * @property string $total_net
@@ -55,6 +56,7 @@ class Order extends Model
     protected $fillable = [
         'settles_type',
         'settles_id',
+        'request_key',
         'status',
         'currency',
         'total_net',

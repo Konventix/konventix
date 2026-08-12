@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Konventix\Registration\Actions\AmendRegistration;
 use Konventix\Registration\Actions\CancelRegistration;
 use Konventix\Registration\Actions\SubmitRegistration;
+use Konventix\Registration\Data\GrantData;
 use Konventix\Registration\Data\SubmitRegistrationData;
+use Konventix\Registration\Enums\ConfirmationGate;
+use Konventix\Registration\Enums\GrantKind;
+use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Events\QuotaReleased;
 use Konventix\Registration\Events\RegistrationCancelled;
@@ -40,4 +45,36 @@ it('cancels a confirmed registration, releasing the quota it held', function ():
 
     Event::assertDispatched(RegistrationCancelled::class, fn (RegistrationCancelled $event): bool => $event->registrationId === $registration->id);
     Event::assertDispatched(QuotaReleased::class);
+});
+
+it('releases the units an amendment consumed as well, not just the submission', function (): void {
+    $this->withBrand();
+
+    $quota = Quota::factory()->withCapacity(10)->create();
+    $type = RegistrationType::factory()->create([
+        'settlement' => RegistrationSettlement::Free,
+        'confirmation_gate' => ConfirmationGate::OnSubmit,
+        'price_declaration' => null,
+    ]);
+    $type->quotas()->attach($quota);
+
+    $registration = (app(SubmitRegistration::class))->handle(
+        $type,
+        (string) Str::ulid(),
+        new SubmitRegistrationData(organizationName: null, billingRecipientName: null, billingEmail: null),
+    );
+
+    (app(AmendRegistration::class))->handle(
+        registration: $registration,
+        grants: [new GrantData(kind: GrantKind::Admission, role: 'exhibitor_crew', quantity: 3)],
+    );
+
+    // 1 submission + 3 added admissions.
+    expect($quota->fresh()->consumed)->toBe(4);
+
+    (new CancelRegistration)->handle($registration, (string) Str::ulid(), 'registrant-withdrew');
+
+    // Releasing only the submission's single unit would leak 3 seats
+    // permanently — they would stay counted as sold forever (ADR-0036).
+    expect($quota->fresh()->consumed)->toBe(0);
 });

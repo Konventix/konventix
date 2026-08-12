@@ -21,13 +21,16 @@ use Konventix\Admission\Models\Admission;
  * know the event class exists. That is what makes "uses only the event
  * payload" a structural property instead of a convention.
  *
- * Idempotent and replayable (TODO.md): guarded by "does this registration
- * already have any admissions at all?" rather than a per-grant key, which is
- * sufficient because a registration is confirmed — and so this Action
- * called — exactly once per confirmation. `withoutBrandScope()` is the named
- * escape hatch (ADR-0010): the check must hold regardless of which brand is
- * ambient when a replay happens, so it is scoped explicitly from the
- * payload's own `brandId` instead.
+ * Idempotent and replayable (TODO.md), keyed on the *issuing occasion*
+ * rather than the registration: `$amendmentId` is null for the original
+ * confirmation and the amendment's ULID for each delta (ADR-0036). A plain
+ * "does this registration have any admissions?" guard was sufficient while a
+ * registration received grants exactly once, but it silently swallows every
+ * amendment — so the guard is now per occasion, and each admission records
+ * which one issued it. `withoutBrandScope()` is the named escape hatch
+ * (ADR-0010): the check must hold regardless of which brand is ambient when
+ * a replay happens, so it is scoped explicitly from the payload's own
+ * `brandId` instead.
  *
  * `'admission'` is written as a literal rather than importing
  * `Konventix\Registration\Enums\GrantKind`: this module does not import
@@ -43,18 +46,24 @@ final class IssueAdmissionsForRegistration
      * @param  list<array{kind: string, role: string, quantity: int, resource_type_id: string|null}>  $grants
      * @return list<Admission>
      */
-    public function handle(string $registrationId, string $eventId, string $brandId, array $grants): array
-    {
+    public function handle(
+        string $registrationId,
+        string $eventId,
+        string $brandId,
+        array $grants,
+        ?string $amendmentId = null,
+    ): array {
         $alreadyIssued = Admission::withoutBrandScope()
             ->where('brand_id', $brandId)
             ->where('registration_id', $registrationId)
+            ->where('amendment_id', $amendmentId)
             ->exists();
 
         if ($alreadyIssued) {
             return [];
         }
 
-        return DB::transaction(function () use ($registrationId, $eventId, $brandId, $grants): array {
+        return DB::transaction(function () use ($registrationId, $eventId, $brandId, $grants, $amendmentId): array {
             $issued = [];
 
             foreach ($grants as $grant) {
@@ -65,7 +74,7 @@ final class IssueAdmissionsForRegistration
                 $quantity = $grant['quantity'];
 
                 for ($unit = 0; $unit < $quantity; $unit++) {
-                    $issued[] = $this->issueOne($brandId, $registrationId, $eventId, $grant['role']);
+                    $issued[] = $this->issueOne($brandId, $registrationId, $eventId, $grant['role'], $amendmentId);
                 }
             }
 
@@ -73,14 +82,20 @@ final class IssueAdmissionsForRegistration
         });
     }
 
-    private function issueOne(string $brandId, string $registrationId, string $eventId, string $role): Admission
-    {
+    private function issueOne(
+        string $brandId,
+        string $registrationId,
+        string $eventId,
+        string $role,
+        ?string $amendmentId,
+    ): Admission {
         // brand_id comes from the event payload rather than the resolved
         // context, so a replay outside any brand context issues into the
         // right brand. It is deliberately not fillable — forceFill states the
         // exception explicitly instead of widening mass assignment.
         $admission = new Admission([
             'registration_id' => $registrationId,
+            'amendment_id' => $amendmentId,
             'event_id' => $eventId,
             'holder_user_id' => null,
             'role' => $role,

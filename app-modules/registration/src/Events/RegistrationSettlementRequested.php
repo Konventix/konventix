@@ -21,6 +21,14 @@ namespace Konventix\Registration\Events;
  * Scalars only (ADR-0004). `lines` carry the declared tax *class*, not a
  * rate: Commerce resolves the rate and the treatment — reverse charge, §19
  * UStG — at settlement time (ADR-0017, ADR-0030).
+ *
+ * `requestKey` is what makes Commerce idempotent, and it is deliberately not
+ * the registration ULID: ADR-0036 lets one registration map to N orders over
+ * its lifetime (the initial settlement plus one per priced amendment), so
+ * "one order per registration" is no longer the invariant. The key is always
+ * the ULID of the domain object that requested settlement — the registration
+ * itself for the initial request, the `RegistrationAmendment` for an
+ * amendment. That makes it deterministic across replays without a sequence.
  */
 final readonly class RegistrationSettlementRequested
 {
@@ -48,5 +56,6 @@ final readonly class RegistrationSettlementRequested
         public string $priceDisplay,
         public int $termsDays,
         public string $requestedAt,
+        public string $requestKey,
     ) {}
 }

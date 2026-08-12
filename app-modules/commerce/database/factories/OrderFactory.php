@@ -27,9 +27,15 @@ class OrderFactory extends Factory
      */
     public function definition(): array
     {
+        $settlesId = (string) Str::ulid();
+
         return [
             'settles_type' => 'registration',
-            'settles_id' => (string) Str::ulid(),
+            'settles_id' => $settlesId,
+            // Mirrors an initial settlement request, whose key is the
+            // settled thing's own ULID (ADR-0036). An amendment's order
+            // carries the amendment's ULID instead — use forRequest().
+            'request_key' => $settlesId,
             'status' => OrderStatus::Pending,
             'currency' => 'EUR',
             'total_net' => fake()->randomFloat(2, 10, 500),
@@ -43,6 +49,20 @@ class OrderFactory extends Factory
         return $this->state(fn (array $attributes): array => [
             'settles_type' => $type,
             'settles_id' => $id,
+            'request_key' => $id,
+        ]);
+    }
+
+    /**
+     * A second order against the same settled thing — what an amendment
+     * produces (ADR-0036). Needed whenever a test wants two orders on one
+     * registration, since ['settles_type','settles_id','request_key'] is
+     * unique.
+     */
+    public function forRequest(string $requestKey): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'request_key' => $requestKey,
         ]);
     }
 

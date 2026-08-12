@@ -21,9 +21,13 @@ use Konventix\Platform\Operators\OperatorSettings;
  * `CreateOrderOnSettlementRequested` listener unpacks it, mirroring
  * Admission's issuance pattern.
  *
- * Idempotent: one order per settled thing — a replayed request finds the
- * existing order (via `withoutBrandScope` scoped to the payload's own
- * `brandId`, ADR-0010's escape hatch) and creates nothing.
+ * Idempotent per settlement *request*, not per settled thing: a replayed
+ * request finds the existing order (via `withoutBrandScope` scoped to the
+ * payload's own `brandId`, ADR-0010's escape hatch) and creates nothing,
+ * while a genuinely new request against the same registration creates a
+ * second order. ADR-0036 made that distinction load-bearing — an amendment
+ * is a delta order against a registration that already has one, and
+ * "`settles_id` exists" would have swallowed it.
  *
  * Currency comes from the brand (fixed per brand — decision log Round 6,
  * D-BATCH); tax treatment from the operator's election and the billing
@@ -61,18 +65,20 @@ final class PlaceOrderFromSettlementRequest
         array $lines,
         string $priceDisplay,
         int $termsDays,
+        string $requestKey,
     ): Order {
         $existing = Order::withoutBrandScope()
             ->where('brand_id', $brandId)
             ->where('settles_type', self::SETTLES_REGISTRATION)
             ->where('settles_id', $registrationId)
+            ->where('request_key', $requestKey)
             ->first();
 
         if ($existing !== null) {
             return $existing;
         }
 
-        return DB::transaction(function () use ($registrationId, $brandId, $settlement, $billingParty, $lines, $priceDisplay, $termsDays): Order {
+        return DB::transaction(function () use ($registrationId, $brandId, $settlement, $billingParty, $lines, $priceDisplay, $termsDays, $requestKey): Order {
             $seller = $this->operatorSettings->sellerForBrand($brandId);
             $party = BillingPartyData::ofEventPayload($billingParty);
 
@@ -86,6 +92,7 @@ final class PlaceOrderFromSettlementRequest
             $order = new Order([
                 'settles_type' => self::SETTLES_REGISTRATION,
                 'settles_id' => $registrationId,
+                'request_key' => $requestKey,
                 'status' => OrderStatus::Pending,
                 'currency' => $this->operatorSettings->currencyForBrand($brandId),
                 'total_net' => $calculation->totalNet,

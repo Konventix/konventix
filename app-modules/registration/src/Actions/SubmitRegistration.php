@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Actions;
 
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Registration\Actions\Concerns\ConsumesQuotas;
 use Konventix\Registration\Data\SubmitRegistrationData;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\PaymentStatus;
@@ -15,12 +15,9 @@ use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Enums\WaitlistState;
-use Konventix\Registration\Events\QuotaExhausted;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Events\WaitlistEntryConverted;
-use Konventix\Registration\Exceptions\QuotaExhaustedException;
 use Konventix\Registration\Models\InvitationToken;
-use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
 use Konventix\Registration\Models\WaitlistEntry;
@@ -44,6 +41,8 @@ use RuntimeException;
  */
 final class SubmitRegistration
 {
+    use ConsumesQuotas;
+
     public function __construct(
         private readonly ConfirmRegistration $confirmRegistration,
         private readonly RequestSettlement $requestSettlement,
@@ -210,31 +209,6 @@ final class SubmitRegistration
                 $missing,
                 __('This field is required for invoice-settled registrations.'),
             ));
-        }
-    }
-
-    private function consumeQuotas(RegistrationType $registrationType): void
-    {
-        /** @var Collection<int, Quota> $quotas */
-        $quotas = $registrationType->quotas()->lockForUpdate()->get();
-
-        foreach ($quotas as $quota) {
-            if (! $quota->hasCapacityFor(1)) {
-                throw QuotaExhaustedException::forQuota($quota);
-            }
-        }
-
-        foreach ($quotas as $quota) {
-            $quota->consume(1);
-
-            if ($quota->remaining() === 0) {
-                event(new QuotaExhausted(
-                    quotaId: $quota->id,
-                    eventId: $registrationType->event_id,
-                    brandId: $quota->brand_id,
-                    exhaustedAt: now()->toIso8601String(),
-                ));
-            }
         }
     }
 }

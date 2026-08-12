@@ -17,12 +17,30 @@ use RuntimeException;
  *
  * Not transactional itself: it always runs inside the calling Action's
  * `DB::transaction` (SubmitRegistration for `on_payment` gates,
- * ConfirmRegistration for every other gate).
+ * ConfirmRegistration for every other gate, AmendRegistration for a priced
+ * amendment).
+ *
+ * `$requestKey` defaults to the registration's own ULID, which is what the
+ * two original call sites want and what makes existing orders backfill
+ * cleanly. An amendment passes its own ULID instead so Commerce treats it as
+ * a separate order rather than a replay (ADR-0036).
+ *
+ * `$lines` defaults to the type's price declaration. An amendment overrides
+ * it with the delta's own lines: the added grants are priced independently of
+ * what the type costs — crew that comes with an exhibitor package is free,
+ * while a second booth is not — and `GrantData` carries no price of its own.
  */
 final class RequestSettlement
 {
-    public function handle(Registration $registration, RegistrationType $registrationType): void
-    {
+    /**
+     * @param  list<array{label: string, quantity: int, unit_amount_net: numeric-string, tax_class: string}>|null  $lines
+     */
+    public function handle(
+        Registration $registration,
+        RegistrationType $registrationType,
+        ?string $requestKey = null,
+        ?array $lines = null,
+    ): void {
         $price = $registrationType->price_declaration;
 
         if ($price === null) {
@@ -50,7 +68,7 @@ final class RequestSettlement
                 'country_code' => $registration->billing_country_code,
                 'vat_id' => $registration->billing_vat_id,
             ],
-            lines: [
+            lines: $lines ?? [
                 [
                     'label' => $registrationType->name,
                     'quantity' => 1,
@@ -61,6 +79,7 @@ final class RequestSettlement
             priceDisplay: $price->display->value,
             termsDays: $registrationType->terms_days,
             requestedAt: now()->toIso8601String(),
+            requestKey: $requestKey ?? $registration->id,
         ));
     }
 }
