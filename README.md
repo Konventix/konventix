@@ -90,16 +90,48 @@ content is brand-controlled.
 
 ## Development
 
+First run on the Docker stack — **the order matters, see the warning below**:
+
 ```bash
-composer setup     # install, key, migrate, npm install, build
+cp .env.example .env                      # MUST precede `sail up`
+composer install                          # host-side, only to get vendor/bin/sail
+./vendor/bin/sail up -d
+./vendor/bin/sail artisan key:generate
+./vendor/bin/sail artisan migrate --seed
+./vendor/bin/sail npm install && ./vendor/bin/sail npm run build
+```
+
+> **Copy `.env` before the first `sail up`.** compose.yaml feeds `${DB_USERNAME}` and
+> `${DB_DATABASE}` to the pgsql container, and Postgres only reads them during first-time
+> `initdb`. Start the stack without a `.env` and those interpolate to empty strings, so the
+> cluster initializes as the default `postgres` role — after which every boot logs
+> `Skipping initialization` and ignores the correct credentials forever. Migrations then fail
+> with `SQLSTATE[08006] … role "konventix" does not exist`, which reads like a connection
+> fault but is a permanently mis-seeded volume. Recovery is
+> `docker compose down && docker volume rm konventix-poc_sail-pgsql`, then start over.
+> Note `composer setup` is what *creates* `.env`, so running it first does not help — on
+> Docker it also needs the containers to already be up.
+
+Without PHP on the host, bootstrap `vendor/` in a container instead of `composer install`:
+
+```bash
+docker run --rm -v "$(pwd)":/opt -w /opt laravelsail/php85-composer:latest composer install
+```
+
+Day to day:
+
+```bash
+composer setup     # install, key, migrate, npm install, build — native/Herd, not Sail
 composer dev       # serve + queue + vite
 composer check     # pint --test, phpstan, pest — what CI runs
 php artisan make:module <name>          # scaffold a module from stubs/app-modules/
 php artisan make:<thing> --module=<name>  # generate into a module, not app/
 ```
 
-Requires PostgreSQL (see `.env.example`); tests run against in-memory SQLite. Module feature
-tests live in the module's own `tests/` directory (`phpunit.xml` testsuite `Modules`).
+Requires PostgreSQL (see `.env.example`). Tests run against a separate `testing` database on
+the same Postgres server — `phpunit.xml` overrides `DB_DATABASE` only, so the connection stays
+`pgsql`; Sail's `create-testing-database.sql` creates it during `initdb`. Module feature tests
+live in the module's own `tests/` directory (`phpunit.xml` testsuite `Modules`).
 
 ## Conventions
 

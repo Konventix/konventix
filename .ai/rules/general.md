@@ -2,6 +2,8 @@
 paths:
   - phpstan.neon
   - compose.yaml
+  - .env.example
+  - README.md
 ---
 
 # General
@@ -10,6 +12,9 @@ paths:
 Run it as `composer types:check` — plain `phpstan analyse` dies at PHP's default 128M with a misleading "Unable to load dynamic library phpstan_turbo" warning. The turbo extension is a red herring; the memory limit is the actual cause.
 
 `tests/` is deliberately not in `paths`. Pest's higher-order `TestCall` chain is invisible to PHPStan without `pestphp/pest-plugin-phpstan`, so scanning tests yields only false positives. Add the plugin first if you want the coverage.
+
+## `.env` must exist before the first `sail up`, or the pgsql volume is poisoned
+compose.yaml passes `${DB_USERNAME}`/`${DB_DATABASE}` to the pgsql service, and Postgres only honours `POSTGRES_USER`/`POSTGRES_DB` during first-time `initdb`. Bring the stack up with no `.env` and they interpolate to empty strings: the cluster initializes as the default `postgres` role, and every later boot logs `Skipping initialization` and ignores the now-correct `.env` permanently. The symptom is `SQLSTATE[08006] … FATAL: password authentication failed … Role "konventix" does not exist` on `sail artisan migrate` — an authentication failure wearing a connection error's clothing, because 08006 is the connection-exception SQLSTATE class. Do not debug the network or `DB_HOST`; check `docker logs <pgsql> | head -1` for the skip line, and confirm with `psql -U postgres -l` that the role is absent. The only fix is re-running `initdb`: `docker compose down && docker volume rm konventix-poc_sail-pgsql && sail up -d`. Recreating the volume also re-runs `create-testing-database.sql`, which matters because a `testing` database left owned by `postgres` instead of the app role breaks the suite on table creation. Note this ordering trap is not obvious from `composer setup`: that script is what *creates* `.env`, so it cannot be the first thing you run on Docker.
 
 ## Dev stack mirrors production roles: one image, one container per role
 compose.yaml runs each deployment role (web, queue, scheduler, reverb) as a separate service from the same Sail image via command override — mirroring ADR-0002/ADR-0025 production topology. Never mount docker.sock or spawn containers from the application; that is root-equivalent host access. Reverb is ONE shared server (browser: localhost:${FORWARD_REVERB_PORT}; backend: http://reverb:8080); brands become app entries in config/reverb.php, not extra processes. Host ports 8080–8083 clash with other local stacks on this machine — FORWARD_REVERB_PORT dodges that.

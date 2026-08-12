@@ -1,12 +1,8 @@
 {
     "mcpServers": {
         "laravel-boost": {
-            "command": "wsl.exe",
-            "args": [
-                "/home/mkohn/.config/herd-lite/bin/php",
-                "/home/mkohn/git/konventix/konventix/artisan",
-                "boost:mcp"
-            ]
+            "command": "php",
+            "args": ["artisan", "boost:mcp"]
         }
     }
 }
