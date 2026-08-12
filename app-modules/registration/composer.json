@@ -1,0 +1,26 @@
+{
+    "name": "konventix/registration",
+    "description": "Konventix Registration module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "konventix/platform": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Registration\\": "src/",
+            "Konventix\\Registration\\Tests\\": "tests/",
+            "Konventix\\Registration\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Registration\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Registration\\Providers\\RegistrationServiceProvider"
+            ]
+        }
+    }
+}

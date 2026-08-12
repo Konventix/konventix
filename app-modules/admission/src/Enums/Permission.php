@@ -1,0 +1,30 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Konventix\Admission\Enums;
+
+/**
+ * The capability catalogue this module owns (ADR-0013, SPEC.md
+ * "Capabilities"). This is the source of truth for what Admission can grant;
+ * role → permission assignment is per-brand data, not code.
+ *
+ * Door staff need a narrow set — `ScanCheckIn` and `PrintBadge` — and
+ * nothing else, which is why those two are separate cases from the
+ * management capabilities rather than folded into a single "manage
+ * admissions" grant (SPEC.md "Capabilities").
+ *
+ * Not wired to `permissions:sync`, Policies, or Actions yet — see TODO.md.
+ */
+enum Permission: string
+{
+    case ViewAdmissions = 'admission.view-admissions';
+    case IssueAdmissions = 'admission.issue-admissions';
+    case RevokeAdmissions = 'admission.revoke-admissions';
+    case AssignHolder = 'admission.assign-holder';
+    case ReassignHolder = 'admission.reassign-holder';
+    case ManageCheckpoints = 'admission.manage-checkpoints';
+    case ViewCheckInLog = 'admission.view-check-in-log';
+    case ScanCheckIn = 'admission.scan-check-in';
+    case PrintBadge = 'admission.print-badge';
+}

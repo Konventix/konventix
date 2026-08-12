@@ -1,0 +1,31 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - vendor/nesbot/carbon/extension.neon
+
+parameters:
+    paths:
+        - app/
+        - app-modules/
+        - bootstrap/app.php
+        - bootstrap/providers.php
+        - config/
+        - database/
+        - routes/
+
+    # Test directories are deliberately out of scope — both the root tests/ and
+    # each module's own tests/. Pest's higher-order `TestCall` chain is invisible
+    # to PHPStan without pestphp/pest-plugin-phpstan, so scanning tests produces
+    # only false positives. Add the plugin, then drop these exclusions.
+    excludePaths:
+        - app-modules/*/tests/*
+
+    level: 7
+
+    ignoreErrors:
+        # The listener short-circuit trait (ADR-0003's fourth gating point) is
+        # consumed by gateable modules' listeners, none of which exist before
+        # Phase 3; until then its only user is a test's anonymous class, which
+        # PHPStan does not count. Drop this once a real listener uses it.
+        -
+            identifier: trait.unused
+            path: app-modules/platform/src/Modules/Concerns/ShortCircuitsInactiveModule.php

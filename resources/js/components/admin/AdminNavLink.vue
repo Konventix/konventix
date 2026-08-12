@@ -1,0 +1,50 @@
+<script setup lang="ts">
+// A single nav row that pairs a link with a pin/favorite toggle (ADR-0029),
+// ported concept from LanCore's SidebarLink.
+import { Link } from '@inertiajs/vue3';
+import { Pin, PinOff } from '@lucide/vue';
+import type { Component } from 'vue';
+import { computed } from 'vue';
+import {
+    SidebarMenuAction,
+    SidebarMenuButton,
+    SidebarMenuItem,
+} from '@/components/ui/sidebar';
+import { useCurrentUrl } from '@/composables/useCurrentUrl';
+
+const props = defineProps<{
+    label: string;
+    url: string;
+    icon: Component;
+    pinned: boolean;
+}>();
+
+const emit = defineEmits<{
+    (e: 'togglePin'): void;
+}>();
+
+const { isCurrentUrl } = useCurrentUrl();
+
+const isActive = computed(() => isCurrentUrl(props.url));
+</script>
+
+<template>
+    <SidebarMenuItem>
+        <SidebarMenuButton as-child :is-active="isActive" :tooltip="label">
+            <Link :href="url">
+                <component :is="icon" />
+                <span>{{ label }}</span>
+            </Link>
+        </SidebarMenuButton>
+        <SidebarMenuAction
+            show-on-hover
+            @click.stop.prevent="emit('togglePin')"
+        >
+            <PinOff v-if="pinned" class="size-4" />
+            <Pin v-else class="size-4" />
+            <span class="sr-only"
+                >{{ pinned ? 'Unpin' : 'Pin' }} {{ label }}</span
+            >
+        </SidebarMenuAction>
+    </SidebarMenuItem>
+</template>

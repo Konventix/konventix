@@ -1,0 +1,174 @@
+{
+    "$schema": "https://getcomposer.org/schema.json",
+    "name": "konventix/konventix",
+    "type": "project",
+    "description": "Konventix — event-agnostic event management platform, built as a modular monolith.",
+    "keywords": [
+        "konventix",
+        "event-management",
+        "modular-monolith",
+        "ddd"
+    ],
+    "license": "AGPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Markus Kohn",
+            "email": "post@markus-kohn.com",
+            "role": "Author and copyright holder"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "barryvdh/laravel-dompdf": "^3.1",
+        "horstoeko/zugferd": "^1.0",
+        "inertiajs/inertia-laravel": "^3.0",
+        "internachi/modular": "^3.0",
+        "konventix/admission": "*",
+        "konventix/agenda": "*",
+        "konventix/commerce": "*",
+        "konventix/community": "*",
+        "konventix/competition": "*",
+        "konventix/compliance": "*",
+        "konventix/content": "*",
+        "konventix/event": "*",
+        "konventix/extensibility": "*",
+        "konventix/game-ops": "*",
+        "konventix/identity": "*",
+        "konventix/messaging": "*",
+        "konventix/newsletter": "*",
+        "konventix/platform": "*",
+        "konventix/registration": "*",
+        "konventix/resources": "*",
+        "konventix/sponsoring": "*",
+        "konventix/staffing": "*",
+        "konventix/support": "*",
+        "laravel/chisel": "^0.1.0",
+        "laravel/fortify": "^1.37.2",
+        "laravel/framework": "^13.17",
+        "laravel/octane": "^2.18",
+        "laravel/pennant": "^1.24",
+        "laravel/reverb": "^1.11",
+        "laravel/tinker": "^3.0",
+        "laravel/wayfinder": "^0.1.14",
+        "spatie/laravel-data": "^4.23",
+        "spatie/laravel-permission": "^8.3",
+        "spatie/laravel-typescript-transformer": "^3.3"
+    },
+    "require-dev": {
+        "fakerphp/faker": "^1.24",
+        "larastan/larastan": "^3.9",
+        "laravel/boost": "^2.2",
+        "laravel/pail": "^1.2.5",
+        "laravel/pao": "^1.0.6",
+        "laravel/pint": "^1.27",
+        "laravel/sail": "^1.65",
+        "mockery/mockery": "^1.6",
+        "nunomaduro/collision": "^8.9.3",
+        "pestphp/pest": "^5.0",
+        "pestphp/pest-plugin-laravel": "^5.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/",
+            "Database\\Factories\\": "database/factories/",
+            "Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "setup": [
+            "composer install",
+            "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+            "@php artisan key:generate",
+            "@php artisan migrate --force",
+            "npm install",
+            "npm run build"
+        ],
+        "dev": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php artisan dev"
+        ],
+        "lint": [
+            "pint --parallel"
+        ],
+        "lint:check": [
+            "pint --parallel --test"
+        ],
+        "check": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php artisan config:clear --ansi",
+            "@lint:check",
+            "@types:check",
+            "@php artisan test --compact"
+        ],
+        "ci:check": [
+            "Composer\\Config::disableProcessTimeout",
+            "npm run lint:check",
+            "npm run format:check",
+            "npm run types:check",
+            "@test"
+        ],
+        "types:check": [
+            "phpstan analyse --memory-limit=1G"
+        ],
+        "types:generate": [
+            "@php artisan typescript:transform"
+        ],
+        "test": [
+            "@php artisan config:clear --ansi",
+            "@lint:check",
+            "@types:check",
+            "@php artisan test"
+        ],
+        "post-autoload-dump": [
+            "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+            "@php artisan package:discover --ansi"
+        ],
+        "post-update-cmd": [
+            "@php artisan vendor:publish --tag=laravel-assets --ansi --force",
+            "@php artisan boost:update --ansi"
+        ],
+        "post-root-package-install": [
+            "@php -r \"file_exists('.env') || copy('.env.example', '.env');\""
+        ],
+        "post-create-project-cmd": [
+            "@php artisan key:generate --ansi",
+            "@php artisan migrate --graceful --ansi"
+        ],
+        "pre-package-uninstall": [
+            "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ]
+    },
+    "extra": {
+        "laravel": {
+            "dont-discover": [],
+            "installer": {
+                "post-create-project": []
+            }
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "php-http/discovery": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "repositories": [
+        {
+            "type": "path",
+            "url": "app-modules/*",
+            "options": {
+                "symlink": true
+            }
+        }
+    ]
+}

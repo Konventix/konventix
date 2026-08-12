@@ -1,0 +1,253 @@
+@import 'tailwindcss';
+
+@import 'tw-animate-css';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  ---------------------------------------------------------------------------
+  Konventix design tokens
+  ---------------------------------------------------------------------------
+  Two layers, on purpose:
+
+  1. Raw values live in `:root` / `.dark` below as plain custom properties
+     (`--surface`, `--text`, `--accent`, ...). This is the ONLY layer a brand
+     may override — the server injects a `<style>` block that redeclares a
+     subset of these on `:root` (see resources/views/app.blade.php).
+
+  2. `@theme inline` turns those into Tailwind utilities (`bg-surface`,
+     `text-text-muted`, `border-border`, ...). Because the mapping is `inline`,
+     a runtime override of layer 1 immediately re-colors every utility.
+
+  Rules for anyone touching markup:
+  - Never write a palette utility (`bg-zinc-800`, `text-gray-500`) or an
+    arbitrary color (`bg-[#1b1b18]`). Use a semantic token. The
+    `konventix/no-palette-colors` ESLint rule enforces this (ADR-0008).
+  - The `--color-background` / `--color-foreground` / `--color-destructive`
+    names further down are shadcn-vue compatibility aliases so that
+    `shadcn-vue add` keeps producing working components. Prefer the Konventix
+    names in code you write yourself.
+  - `accent` means ADR-0008's BRAND accent (`--color-accent` /
+    `--color-on-accent`). shadcn-vue uses "accent" for something else entirely —
+    the subtle hover/focus fill — so that meaning was renamed to `subtle`
+    (`--color-subtle` / `--color-subtle-foreground`, and
+    `--color-sidebar-subtle` / `--color-sidebar-subtle-foreground`). After
+    `shadcn-vue add`, rewrite the generated `accent` classes to `subtle`.
+    shadcn's brand color is `primary`, which is aliased onto `--accent`.
+*/
+
+@theme inline {
+    --font-sans:
+        Instrument Sans, ui-sans-serif, system-ui, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+        'Noto Color Emoji';
+
+    --radius-lg: var(--radius);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-sm: calc(var(--radius) - 4px);
+
+    /* Surfaces */
+    --color-surface: var(--surface);
+    --color-surface-raised: var(--surface-raised);
+    --color-surface-muted: var(--surface-muted);
+    --color-surface-inverted: var(--surface-inverted);
+
+    /* Text */
+    --color-text: var(--text);
+    --color-text-muted: var(--text-muted);
+    --color-text-inverted: var(--text-inverted);
+
+    /* Brand */
+    --color-accent: var(--accent);
+    --color-on-accent: var(--on-accent);
+
+    /* Lines, fields, focus */
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    /* Status */
+    --color-danger: var(--danger);
+    --color-danger-contrast: var(--danger-contrast);
+    --color-danger-surface: var(--danger-surface);
+    --color-success: var(--success);
+    --color-success-contrast: var(--success-contrast);
+    --color-warning: var(--warning);
+    --color-warning-contrast: var(--warning-contrast);
+
+    /* Scrims */
+    --color-overlay: var(--overlay);
+
+    /* Navigation chrome */
+    --color-sidebar: var(--sidebar-surface);
+    --color-sidebar-foreground: var(--sidebar-text);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-on-accent: var(--sidebar-on-accent);
+    --color-sidebar-subtle: var(--sidebar-subtle);
+    --color-sidebar-subtle-foreground: var(--sidebar-subtle-text);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+
+    /* Data visualisation */
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+
+    /*
+      shadcn-vue compatibility aliases. Do not use these in new markup; they
+      exist so vendored components keep resolving to Konventix tokens.
+
+      `primary` is shadcn's brand color and therefore aliases ADR-0008's
+      `accent`. shadcn's own `accent` (a subtle hover/focus fill, NOT a brand
+      color) would collide with `--color-accent`, so it lives on as `subtle`.
+    */
+    --color-background: var(--surface);
+    --color-foreground: var(--text);
+    --color-card: var(--surface-raised);
+    --color-card-foreground: var(--text);
+    --color-popover: var(--surface-raised);
+    --color-popover-foreground: var(--text);
+    --color-primary: var(--accent);
+    --color-primary-foreground: var(--on-accent);
+    --color-secondary: var(--surface-muted);
+    --color-secondary-foreground: var(--text);
+    --color-muted: var(--surface-muted);
+    --color-muted-foreground: var(--text-muted);
+    --color-subtle: var(--surface-muted);
+    --color-subtle-foreground: var(--text);
+    --color-destructive: var(--danger);
+    --color-destructive-foreground: var(--danger-contrast);
+    --color-sidebar-primary: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-on-accent);
+}
+
+/*
+  TODO(brand): these are still the neutral starter-kit values. Decide on the
+  Konventix house palette and make it the default; per-tenant brands then
+  override the same properties at runtime.
+*/
+:root {
+    --surface: hsl(0 0% 100%);
+    --surface-raised: hsl(0 0% 100%);
+    --surface-muted: hsl(0 0% 96.1%);
+    --surface-inverted: hsl(0 0% 9%);
+
+    --text: hsl(0 0% 3.9%);
+    --text-muted: hsl(0 0% 45.1%);
+    --text-inverted: hsl(0 0% 98%);
+
+    --accent: hsl(0 0% 9%);
+    --on-accent: hsl(0 0% 98%);
+
+    --border: hsl(0 0% 92.8%);
+    --input: hsl(0 0% 89.8%);
+    --ring: hsl(0 0% 3.9%);
+
+    --danger: hsl(0 72% 42%);
+    --danger-contrast: hsl(0 0% 98%);
+    --danger-surface: hsl(0 86% 97%);
+    --success: hsl(142 72% 26%);
+    --success-contrast: hsl(0 0% 98%);
+    --warning: hsl(30 92% 34%);
+    --warning-contrast: hsl(0 0% 98%);
+
+    --overlay: hsl(0 0% 0% / 0.8);
+
+    --sidebar-surface: hsl(0 0% 98%);
+    --sidebar-text: hsl(240 5.3% 26.1%);
+    --sidebar-accent: hsl(0 0% 10%);
+    --sidebar-on-accent: hsl(0 0% 98%);
+    --sidebar-subtle: hsl(0 0% 94%);
+    --sidebar-subtle-text: hsl(0 0% 30%);
+    --sidebar-border: hsl(0 0% 91%);
+    --sidebar-ring: hsl(217.2 91.2% 59.8%);
+
+    --chart-1: hsl(12 76% 61%);
+    --chart-2: hsl(173 58% 39%);
+    --chart-3: hsl(197 37% 24%);
+    --chart-4: hsl(43 74% 66%);
+    --chart-5: hsl(27 87% 67%);
+
+    --radius: 0.5rem;
+}
+
+.dark {
+    --surface: hsl(0 0% 3.9%);
+    --surface-raised: hsl(0 0% 3.9%);
+    --surface-muted: hsl(0 0% 16.08%);
+    --surface-inverted: hsl(0 0% 98%);
+
+    --text: hsl(0 0% 98%);
+    --text-muted: hsl(0 0% 63.9%);
+    --text-inverted: hsl(0 0% 9%);
+
+    --accent: hsl(0 0% 98%);
+    --on-accent: hsl(0 0% 9%);
+
+    --border: hsl(0 0% 14.9%);
+    --input: hsl(0 0% 14.9%);
+    --ring: hsl(0 0% 83.1%);
+
+    --danger: hsl(0 84% 60%);
+    --danger-contrast: hsl(0 0% 98%);
+    --danger-surface: hsl(0 60% 12%);
+    --success: hsl(142 60% 45%);
+    --success-contrast: hsl(0 0% 9%);
+    --warning: hsl(38 92% 55%);
+    --warning-contrast: hsl(0 0% 9%);
+
+    --overlay: hsl(0 0% 0% / 0.8);
+
+    --sidebar-surface: hsl(0 0% 7%);
+    --sidebar-text: hsl(0 0% 95.9%);
+    --sidebar-accent: hsl(0 0% 100%);
+    --sidebar-on-accent: hsl(0 0% 9%);
+    --sidebar-subtle: hsl(0 0% 15.9%);
+    --sidebar-subtle-text: hsl(240 4.8% 95.9%);
+    --sidebar-border: hsl(0 0% 15.9%);
+    --sidebar-ring: hsl(217.2 91.2% 59.8%);
+
+    --chart-1: hsl(220 70% 50%);
+    --chart-2: hsl(160 60% 45%);
+    --chart-3: hsl(30 80% 55%);
+    --chart-4: hsl(280 65% 60%);
+    --chart-5: hsl(340 75% 55%);
+}
+
+/*
+  Tailwind v4 defaults the border color to `currentColor`; pin it to the
+  semantic border token so an unstyled element never leaks a text color.
+*/
+@layer base {
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--color-border, currentColor);
+    }
+}
+
+@layer utilities {
+    body,
+    html {
+        --font-sans:
+            'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+            'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+            'Noto Color Emoji';
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+    body {
+        @apply bg-surface text-text;
+    }
+}

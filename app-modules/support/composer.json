@@ -1,0 +1,26 @@
+{
+    "name": "konventix/support",
+    "description": "Konventix Support module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "konventix/platform": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Support\\": "src/",
+            "Konventix\\Support\\Tests\\": "tests/",
+            "Konventix\\Support\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Support\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Support\\Providers\\SupportServiceProvider"
+            ]
+        }
+    }
+}

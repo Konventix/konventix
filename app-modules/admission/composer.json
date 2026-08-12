@@ -1,0 +1,26 @@
+{
+    "name": "konventix/admission",
+    "description": "Konventix Admission module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "konventix/platform": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Admission\\": "src/",
+            "Konventix\\Admission\\Tests\\": "tests/",
+            "Konventix\\Admission\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Admission\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Admission\\Providers\\AdmissionServiceProvider"
+            ]
+        }
+    }
+}

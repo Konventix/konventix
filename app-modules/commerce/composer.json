@@ -1,0 +1,26 @@
+{
+    "name": "konventix/commerce",
+    "description": "Konventix Commerce module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "konventix/platform": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Commerce\\": "src/",
+            "Konventix\\Commerce\\Tests\\": "tests/",
+            "Konventix\\Commerce\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Commerce\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Commerce\\Providers\\CommerceServiceProvider"
+            ]
+        }
+    }
+}

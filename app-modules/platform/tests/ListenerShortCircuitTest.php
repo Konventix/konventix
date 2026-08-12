@@ -1,0 +1,59 @@
+<?php
+
+declare(strict_types=1);
+
+use Konventix\Platform\Modules\Concerns\ShortCircuitsInactiveModule;
+
+/**
+ * The fourth ADR-0003 enforcement point: a gateable module's listener does
+ * nothing while the module is off for the brand in context.
+ */
+function gatedProbe(): object
+{
+    return new class
+    {
+        use ShortCircuitsInactiveModule;
+
+        public bool $ran = false;
+
+        public function handle(): void
+        {
+            if ($this->moduleIsInactive()) {
+                return;
+            }
+
+            $this->ran = true;
+        }
+
+        protected function moduleName(): string
+        {
+            return 'competition';
+        }
+    };
+}
+
+it('short-circuits while the module is inactive for the brand', function (): void {
+    $this->withBrand();
+
+    $listener = gatedProbe();
+    $listener->handle();
+
+    expect($listener->ran)->toBeFalse();
+});
+
+it('runs once the brand activates the module', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    $listener = gatedProbe();
+    $listener->handle();
+
+    expect($listener->ran)->toBeTrue();
+});
+
+it('short-circuits with no brand in context at all', function (): void {
+    $listener = gatedProbe();
+    $listener->handle();
+
+    expect($listener->ran)->toBeFalse();
+});

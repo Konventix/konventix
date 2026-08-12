@@ -1,0 +1,170 @@
+# Commerce — Specification
+
+> Stable document. Describes what this module *is*. Task tracking lives in
+> `TODO.md`.
+
+## Purpose
+
+Commerce owns **money**: what was ordered, what it costs, what was invoiced,
+what was paid, and what still is not. Its `Order` and `Invoice` entities are
+the **source of truth**, not a mirror of a payment provider's state (ADR-0006).
+Stripe, Mollie, PayPal, and bank transfer are **settlement adapters behind one
+contract** — replaceable, non-authoritative, and never the place where order
+truth lives. Invoice-settled exhibitor business has no checkout session to hang
+state on, and the association's bookkeeping needs proper invoices; both
+requirements point at the same answer, which is that the domain model leads and
+the provider follows.
+
+The platform **never holds funds** (ADR-0007). Money flows directly from the
+participant to the organizer through the organizer's own connected PSP account.
+Anything else would make Konventix a payment service and trigger BaFin/ZAG
+licensing.
+
+## Owns
+
+- **`Cart`** — the pre-order assembly of what someone intends to buy.
+- **`Order` and order lines** — the authoritative record of what was ordered,
+  at what price, with which tax treatment, in which currency. Orders reference
+  what they settle (a registration, a resource booking, a shop item) by ULID.
+  **Settled (ADR-0026): a `settlement: free` registration produces no
+  `Order` at all** — no row, no order lines, no events. Commerce participates
+  exactly when a registration type declares a settlement that moves money
+  (`instant`, `invoice`, `external`), which is when Registration emits
+  `RegistrationSettlementRequested`. "Every registration has an order" is
+  false by design; reporting on free registrations (counts, quotas,
+  conversion) is Registration's job, not a zero-total order kept in sync here
+  for symmetry.
+- **Pricing and tax calculation** — line totals, tax rates, and the net-vs-gross
+  *display* decision, which Commerce applies from the flag declared on the
+  `RegistrationType` (ADR-0006).
+- **`Invoice`, credit notes, and cancellations** — including **per-brand
+  invoice number ranges**, which are legally cleaner when brands appear as
+  separate identities (ADR-0001).
+- **Payment terms, due dates, and dunning levels** as domain concepts, not as
+  provider callbacks.
+- **Payment records**, including **first-class manual payment booking** — an
+  organizer marking a bank transfer as received is a normal, supported flow,
+  not a workaround.
+- **Refunds and partial credit notes** as domain flows, with PSP calls as side
+  effects.
+- **Settlement adapters** behind a single contract, **account-scoped from day
+  one** (ADR-0007): each brand or operator connects its own Stripe Connect
+  Standard or Mollie account, and every adapter call carries that account.
+- **`SettlementAccount`** — the per-brand record of which PSP account settles
+  that brand's money, and its connection state.
+- **Vouchers and discount codes**, their rules and their redemption records.
+- **Bookkeeping exports** for the tax advisor.
+
+## Does not own
+
+| Nearby concept | Owned by |
+|---|---|
+| Registration status, confirmation, approval, quotas | **Registration**. Commerce **never touches Registration models** — it emits `OrderPaid` and Registration decides what that means for its own status (ADR-0006) |
+| The rule that payment confirms a registration | **Registration** — `confirmation_gate` decides that, and for `on_approval` or `on_submit` types payment is irrelevant to confirmation (ADR-0005) |
+| Admissions, badges, ticket tokens, check-in | **Admission** — paying grants no access; a confirmed registration does |
+| The net-vs-gross flag itself, and the price declaration | **Registration** — it hangs on the `RegistrationType`, never on a global Commerce setting. Commerce applies it |
+| Custody of participants' money | **Nobody here.** The platform never sits in the flow of funds; the organizer's own PSP account receives it (ADR-0007) |
+| Platform SaaS fees and their billing | **Out of scope for this module** — platform monetization is billed separately and is never deducted from ticket revenue (ADR-0007) |
+| The customer's account, profile, and address of record | **Identity** — Commerce keeps a billing-party read model populated from Identity's events (ADR-0004) |
+| The brand itself, its domains, and its onboarding UI shell | **Platform** — Commerce owns the settlement account behind that onboarding step |
+| Sending invoices, payment reminders, and receipts | **Messaging** |
+| The resource, seat, or booth being paid for | **Resources** |
+| Sponsorship contracts and their billing terms | **Sponsoring** |
+| GDPR export and deletion orchestration | **Compliance** — Commerce contributes its own `src/Gdpr/` exporter, constrained by statutory retention for invoices |
+
+## Public contract (events)
+
+Events are the only way other modules may react to this one (ADR-0004).
+Payloads carry ULIDs and scalars — never Eloquent models.
+
+Rows still marked **(proposed)** have no code yet; the unmarked rows are
+implemented and their payloads are the contract.
+
+| Event | Emitted when | Payload |
+|---|---|---|
+| `OrderPlaced` | An order is created from a settlement request (carts do not exist yet) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `total_net`, `total_gross`, `currency`, `placed_at` |
+| `OrderPaid` | An order is fully settled, by any adapter or by manual booking. **The event Registration consumes** (ADR-0006) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_paid`, `currency`, `paid_at`, `settlement_method` |
+| `OrderPartiallyPaid` (proposed) | A payment lands that does not cover the balance | `order_id`, `amount_paid`, `balance_due`, `currency`, `received_at` |
+| `OrderCancelled` (proposed) | An order is cancelled before or after settlement | `order_id`, `cancelled_by_user_id`, `reason_code`, `cancelled_at` |
+| `OrderRefunded` (proposed) | A refund completes, fully or partially | `order_id`, `refund_id`, `amount`, `currency`, `refunded_at`, `partial` |
+| `PaymentReceived` (proposed) | Any payment is recorded, including a manually booked bank transfer | `payment_id`, `order_id`, `amount`, `currency`, `settlement_method`, `external_reference`, `received_at` |
+| `PaymentFailed` (proposed) | An adapter reports a failed or expired attempt | `payment_id`, `order_id`, `settlement_method`, `reason_code`, `failed_at` |
+| `InvoiceIssued` | An invoice number is drawn from the brand's range and the invoice is finalized — immutable from this moment (ADR-0031) | `invoice_id`, `order_id`, `brand_id`, `invoice_number`, `issued_on`, `due_on`, `total_gross`, `currency` |
+| `InvoiceOverdue` (proposed) | An invoice passes its due date unpaid | `invoice_id`, `order_id`, `due_on`, `days_overdue` |
+| `DunningLevelRaised` (proposed) | A dunning step is applied | `invoice_id`, `previous_level`, `level`, `raised_at` |
+| `CreditNoteIssued` (proposed) | A credit note is finalized | `credit_note_id`, `invoice_id`, `credit_note_number`, `amount`, `currency`, `issued_on` |
+| `VoucherRedeemed` (proposed) | A voucher is applied to an order | `voucher_id`, `order_id`, `discount_amount`, `currency`, `redeemed_at` |
+| `SettlementAccountConnected` (proposed) | A brand finishes connecting its own PSP account | `settlement_account_id`, `brand_id`, `provider`, `connected_at` |
+
+## Consumes
+
+Events from other modules that this module listens to, and the read models it
+maintains from them.
+
+| Event | Owning module | Why |
+|---|---|---|
+| `RegistrationSettlementRequested` | Registration | Create the order (and, for `settlement: invoice`, the invoice) from the lines and billing party in the payload — without reading a single Registration model. Lines carry the declared tax *class*; the rate and treatment (reverse charge, §19 UStG) are resolved here at settlement time (ADR-0017, ADR-0030) and snapshotted onto the order lines |
+| `RegistrationCancelled` (proposed) | Registration | Cancel the open order, or issue a credit note if an invoice was already issued |
+| `UserProfileUpdated` (proposed) | Identity | Maintain the billing-party read model (name, billing address, VAT ID) |
+| `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler, which must reconcile deletion with statutory invoice retention |
+| `BrandCreated` (proposed) | Platform | Initialize the brand's invoice number range and its (unconnected) settlement account |
+| `EventPublished` (proposed) | Event | Maintain the event read model used to group and report revenue |
+
+## Capabilities
+
+Declared in `src/Enums/Permission.php`. Roles that grant them are per-brand
+data, not code (ADR-0013).
+
+The catalog covers: viewing orders and invoices, issuing and cancelling
+invoices, booking payments manually, issuing refunds and credit notes, running
+dunning, managing vouchers, connecting and managing the brand's settlement
+account, and exporting bookkeeping data. Manual payment booking and settlement
+account management are deliberately separate capabilities — one is day-to-day
+treasury work, the other changes where a brand's money goes.
+
+## Activation
+
+**Core tier: always active.** Every brand needs Commerce and no Pennant feature
+gates it. The module self-registers through `CommerceServiceProvider` at boot
+(ADR-0003).
+
+Always active does not mean always used: a brand running only `settlement:
+free` registration types — which is exactly the Phase 1 PoC scope — never
+causes an order to exist. Commerce stays dormant until a registration type
+declares a settlement that needs money to move.
+
+## Open questions
+
+Zero-value orders are no longer open — see ADR-0026 and the settled note
+under "Owns" — `Order`.
+
+1. ~~**Where the price lives.**~~ **Settled by ADR-0017:** the type keeps the
+   declaration (value object), Commerce computes line totals, tax and rounding
+   and snapshots them onto the order. The catalogue alternative was rejected
+   for release; the value object keeps that path open.
+2. ~~**Tax model scope.** Which German VAT cases must be supported at release —
+   standard and reduced rates, reverse charge for B2B exhibitors, the small
+   business exemption, and whether cross-border sales need OSS handling.~~
+   **Settled by ADR-0030 (decision log Round 6, D-COM-13):** standard +
+   reduced rates, reverse charge for B2B exhibitors holding a VAT ID, §19 UStG
+   as an operator flag. OSS is out of release scope.
+3. ~~**Invoice document integrity.** PDF rendering, immutability, archival, and
+   GoBD-compliant retention — including whether e-invoicing formats (ZUGFeRD /
+   XRechnung) are release scope or later.~~ **Settled by ADR-0031 (decision log
+   Round 6, D-COM-14):** GoBD-compliant immutable PDF plus archival, issued as
+   hybrid ZUGFeRD. XRechnung deferred.
+4. ~~**Bank reconciliation.** Whether CAMT.053 / MT940 import is built, or
+   manual booking remains the only path for bank transfers until after
+   release.~~ **Decision log Round 6 (D-BATCH):** manual booking only at
+   release — no CAMT.053 / MT940 import.
+5. **Refund policy interaction.** What a refund means when the associated
+   admissions have already been checked in — and whether Commerce may express
+   any opinion about that, or only report the refund and let Registration
+   decide. **The remaining open Commerce question** after the Round 6 gate
+   review — every other item on this list is now settled.
+6. ~~**Instalments.** Whether exhibitor invoices support partial payment plans,
+   and how dunning behaves against a plan rather than a single due date.~~
+   **Decision log Round 6 (D-BATCH):** not at release.
+7. ~~**Multi-currency.** Whether a brand may sell in more than one currency, or
+   currency is fixed per brand.~~ **Decision log Round 6 (D-BATCH):** fixed
+   per brand.

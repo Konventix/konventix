@@ -1,0 +1,161 @@
+# Identity — Specification
+
+> Stable document. Describes what this module *is*. Task tracking lives in
+> `TODO.md`.
+
+## Purpose
+
+Identity owns who a person is *to the platform*: an account, how it proves
+itself, and the handful of attributes that belong to the account rather than to
+any domain process. It absorbs LanCore's Auth, Profile and Steam-auth domains,
+with Steam demoted from a special case to one social login driver among several.
+The defining constraint is negative: the User model stays slim. LanCore's User
+imported models from thirteen domains and carried thirty methods, which is the
+single reason that codebase could not be modularized (lessons-from-lancore #2).
+Everything a module wants to know about a person beyond identity, the module
+keeps as its own read model.
+
+## Owns
+
+- **User**, deliberately narrow: ULID, display name, email, password hash,
+  locale, timezone, account state, and typed preference values. Nothing else.
+  Account state is `AccountState::Active`/`Locked` today; `pending` is
+  covered by `email_verified_at` instead of its own state, and `anonymized`
+  is deferred to the `Gdpr/` handler (TODO.md Backlog).
+- **Authentication**: registration of accounts, login and logout, password
+  reset, email verification, remember-me, and lockout after failed attempts.
+- **Social login** behind a `SocialProvider` driver contract. A linked identity
+  is a row (`provider`, `provider_user_id`, linked-at) referencing the user —
+  never a column on User. Steam is a driver, so are Discord, Google, and
+  whatever comes next.
+- **Two-factor authentication**: enrolment, confirmation, recovery codes, reset
+  by an administrator.
+- **Sessions**: the list of a user's active sessions and their revocation.
+  Sessions are brand-scoped, but the scoping mechanism belongs to Platform:
+  `ResolveBrand` gives each brand its own session cookie name, so a browser
+  only ever carries one brand's session id. The `sessions` table itself has
+  no `brand_id` column (it is Laravel's own table, not one this module
+  defines), so `Queries\ActiveSessionsQuery` lists every session for the
+  account operator-wide rather than filtering server-side — see TODO.md.
+- **Account lifecycle**: locking, unlocking, and the anonymization of the
+  account's own data when Compliance requests it.
+- **The minimal shared Inertia props for the authenticated user**: ULID, display
+  name, avatar URL, locale. LanCore serialized `$user->toArray()` — address,
+  phone, Steam data — plus every computed permission on every request
+  (lessons-from-lancore #5). Anything beyond the four fields is a deferred or
+  optional prop supplied by the module that needs it.
+
+### What explicitly does not go on User
+
+This list exists so the god object cannot grow back. None of these are relations
+on User; each is a read model in the owning module, keyed by the user's ULID:
+
+- registrations, orders, invoices, carts, payment state — Registration, Commerce
+- admissions, badges, check-ins — Admission
+- shift assignments, team membership, staffer profile — Staffing
+- resource bookings, seat claims — Resources
+- tournament participation, match history, game accounts — Competition, GameOps
+- achievements, presence, chat state — Community
+- billing addresses, phone numbers, VAT identifiers — Commerce, as invoice
+  recipient data on the Registration that needed them
+- consent records, audit trail, retention state — Compliance
+- role and permission grants — per-brand data (ADR-0013)
+- notification delivery history and inbox — Messaging
+
+## Does not own
+
+| Nearby concept | Owned by |
+|---|---|
+| Brands, brand resolution, brand-scoped session configuration | Platform |
+| Roles, permission grants, `permissions:sync` | Platform for the per-brand data, each module for its own capability enum (ADR-0013) |
+| A participant's access right to an event | Admission — an Admission is a person's access right and may exist without a user account (ADR-0005) |
+| The commercial act a person performed | Registration |
+| Invoice recipient identity, which may be an organization rather than a person | Commerce |
+| Consent, policy acceptance, GDPR orchestration, audit | Compliance — Identity supplies a `Gdpr/` handler for its own tables and nothing more |
+| Notification channels, delivery, inbox | Messaging — Identity owns the user's stated *preferences*, Messaging owns what happens with them |
+| Volunteer profile, skills, availability | Staffing |
+| Public profile pages, activity feeds, follower graphs | Community |
+
+## Public contract (events)
+
+Events are the only way other modules may react to this one (ADR-0004).
+Payloads carry ULIDs and scalars — never Eloquent models.
+
+No code exists yet. Every row below is a proposal and becomes binding when the
+event class lands.
+
+| Event | Emitted when | Payload | Status |
+|---|---|---|---|
+| `UserRegistered` | An account is created | `user_id`, `brand_id`, `locale`, `registered_at` | proposed |
+| `UserEmailVerified` | The email address is confirmed | `user_id`, `verified_at` | proposed |
+| `UserProfileUpdated` | Display name, locale or timezone changes | `user_id`, `display_name`, `locale`, `timezone` | proposed |
+| `UserPreferencesUpdated` | Typed preference values change | `user_id`, `preference_key`, `value` | proposed |
+| `UserAuthenticated` | A login succeeds | `user_id`, `brand_id`, `authenticated_at` | proposed |
+| `UserAuthenticationFailed` | A login attempt is rejected | `user_id` or `null`, `brand_id`, `reason_code` | proposed |
+| `UserAccountLocked` | The account is locked, manually or by policy | `user_id`, `reason_code`, `locked_at` | proposed |
+| `UserAccountUnlocked` | The lock is lifted | `user_id`, `unlocked_at` | proposed |
+| `SocialIdentityLinked` | A social provider identity is attached | `user_id`, `provider`, `provider_user_id` | proposed |
+| `SocialIdentityUnlinked` | A social provider identity is detached | `user_id`, `provider` | proposed |
+| `TwoFactorEnabled` | 2FA enrolment is confirmed | `user_id`, `enabled_at` | proposed |
+| `TwoFactorDisabled` | 2FA is switched off or reset | `user_id`, `disabled_at` | proposed |
+| `UserAnonymized` | Identity's own records for a subject are scrubbed | `user_id`, `anonymized_at` | proposed |
+
+`UserAnonymized` reports completion of Identity's part of a deletion. It is not
+a signal for other modules to delete their data — that fan-out is Compliance's
+(ADR-0004).
+
+## Consumes
+
+Events from other modules that this module listens to, and the read models it
+maintains from them.
+
+| Event | Owning module | Why |
+|---|---|---|
+| `DataExportRequested` | Compliance | Identity's `Gdpr/` handler contributes the account, social identities and session history to the export |
+| `UserDeletionRequested` | Compliance | Anonymize or erase the account per the requested mode, then emit `UserAnonymized` |
+| `BrandArchived` | Platform | Revoke sessions bound to the archived brand |
+
+Identity maintains no read models of other modules' data. If it ever needs one,
+that is a signal the User model is being asked to grow again.
+
+## Capabilities
+
+Declared in `src/Enums/Permission.php`. Roles that grant them are per-brand
+data, not code (ADR-0013).
+
+Proposed catalogue: `ViewUsers`, `ManageUsers`, `LockUser`, `UnlockUser`,
+`ResetUserTwoFactor`, `ViewUserSessions`, `RevokeUserSessions`,
+`ManageSocialProviders`, `ImpersonateUser`. Acting on one's own account is a
+policy question, not a capability.
+
+## Activation
+
+Kernel module. Always active for every brand and not gateable: its provider sets
+`$gateable = false` and its routes carry no `ensure-module` middleware. There is
+no configuration of the system in which authentication is optional. Which social
+login drivers a brand offers is per-brand configuration, not module activation.
+
+## Open questions
+
+- ~~Is an account global across the operator's brands, or per brand?~~
+  **Settled by ADR-0016:** one `users` row per human across the operator
+  (global unique email); per-brand first-seen, roles and preferences live in
+  `brand_memberships`. `UserRegistered.brand_id` names the brand the account
+  was created through, not an owner.
+- Can a person exist as a registrant without ever holding an account (guest
+  registration)? ADR-0005 separates Registration from Admission, which suggests
+  yes — and then Compliance needs a subject identity that is not a user ULID.
+  **Decision log Round 5 (D-REG-08): deferred — Phase 1 registrants must hold
+  an account. Reopen with its own ADR when guest registration is scheduled.**
+- ~~Does anonymization keep a tombstone row so foreign ULID references stay
+  resolvable, or delete the row and leave dangling references that modules
+  must tolerate?~~ **Decision log Round 6 (D-BATCH):** anonymize with a
+  tombstone row surviving, so foreign ULID references (an `Admission.holder_
+  user_id`, a `StafferProfile`'s user reference, and so on) stay resolvable.
+  Mirrors Compliance's own settled deletion-default question.
+- Which social drivers ship at release, and does a non-gaming brand ever need
+  Steam at all? **Still open** — untouched by the Round 6 gate review.
+- ~~Where the role-assignment screen lives, since it touches both a Platform
+  role and an Identity user (mirrored in Platform's open questions).~~
+  **Decision log Round 6 (D-BATCH):** Platform owns the role-assignment
+  screen; it references the Identity user by ULID.

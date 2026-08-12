@@ -1,0 +1,26 @@
+{
+    "name": "konventix/newsletter",
+    "description": "Konventix Newsletter module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "konventix/platform": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Newsletter\\": "src/",
+            "Konventix\\Newsletter\\Tests\\": "tests/",
+            "Konventix\\Newsletter\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Newsletter\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Newsletter\\Providers\\NewsletterServiceProvider"
+            ]
+        }
+    }
+}

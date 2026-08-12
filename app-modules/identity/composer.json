@@ -1,0 +1,26 @@
+{
+    "name": "konventix/identity",
+    "description": "Konventix Identity module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "konventix/platform": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Identity\\": "src/",
+            "Konventix\\Identity\\Tests\\": "tests/",
+            "Konventix\\Identity\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Identity\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Identity\\Providers\\IdentityServiceProvider"
+            ]
+        }
+    }
+}

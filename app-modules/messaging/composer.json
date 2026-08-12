@@ -1,0 +1,26 @@
+{
+    "name": "konventix/messaging",
+    "description": "Konventix Messaging module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "konventix/platform": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Messaging\\": "src/",
+            "Konventix\\Messaging\\Tests\\": "tests/",
+            "Konventix\\Messaging\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Messaging\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Messaging\\Providers\\MessagingServiceProvider"
+            ]
+        }
+    }
+}

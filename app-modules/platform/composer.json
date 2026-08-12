@@ -1,0 +1,24 @@
+{
+    "name": "konventix/platform",
+    "description": "Konventix Platform module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Platform\\": "src/",
+            "Konventix\\Platform\\Tests\\": "tests/",
+            "Konventix\\Platform\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Platform\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Platform\\Providers\\PlatformServiceProvider"
+            ]
+        }
+    }
+}

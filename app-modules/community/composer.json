@@ -1,0 +1,26 @@
+{
+    "name": "konventix/community",
+    "description": "Konventix Community module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "konventix/platform": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Community\\": "src/",
+            "Konventix\\Community\\Tests\\": "tests/",
+            "Konventix\\Community\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Community\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Community\\Providers\\CommunityServiceProvider"
+            ]
+        }
+    }
+}

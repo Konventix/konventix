@@ -1,0 +1,26 @@
+{
+    "name": "konventix/extensibility",
+    "description": "Konventix Extensibility module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "konventix/platform": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Extensibility\\": "src/",
+            "Konventix\\Extensibility\\Tests\\": "tests/",
+            "Konventix\\Extensibility\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Extensibility\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Extensibility\\Providers\\ExtensibilityServiceProvider"
+            ]
+        }
+    }
+}

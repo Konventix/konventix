@@ -1,0 +1,189 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
+use Konventix\Registration\Actions\SubmitRegistration;
+use Konventix\Registration\Data\SubmitRegistrationData;
+use Konventix\Registration\Enums\ConfirmationGate;
+use Konventix\Registration\Enums\PaymentStatus;
+use Konventix\Registration\Enums\RegistrationSettlement;
+use Konventix\Registration\Enums\RegistrationStatus;
+use Konventix\Registration\Events\QuotaExhausted;
+use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationSettlementRequested;
+use Konventix\Registration\Events\RegistrationSubmitted;
+use Konventix\Registration\Exceptions\QuotaExhaustedException;
+use Konventix\Registration\Models\Quota;
+use Konventix\Registration\Models\Registration;
+use Konventix\Registration\Models\RegistrationType;
+
+function submitRegistrationAction(): SubmitRegistration
+{
+    return app(SubmitRegistration::class);
+}
+
+function emptySubmission(): SubmitRegistrationData
+{
+    return new SubmitRegistrationData(
+        organizationName: null,
+        billingRecipientName: null,
+        billingEmail: null,
+    );
+}
+
+it('submits and immediately confirms an on_submit / free registration, emitting both events', function (): void {
+    $brand = $this->withBrand();
+
+    $type = RegistrationType::factory()
+        ->confirmationGate(ConfirmationGate::OnSubmit)
+        ->settlement(RegistrationSettlement::Free)
+        ->create();
+
+    Event::fake([RegistrationSubmitted::class, RegistrationConfirmed::class]);
+
+    $registrantId = (string) Str::ulid();
+
+    $registration = submitRegistrationAction()->handle($type, $registrantId, emptySubmission());
+
+    expect($registration->status)->toBe(RegistrationStatus::Confirmed)
+        ->and($registration->payment_status)->toBe(PaymentStatus::None)
+        ->and($registration->confirmed_at)->not->toBeNull()
+        ->and($registration->registrant_user_id)->toBe($registrantId)
+        ->and($registration->brand_id)->toBe($brand->id);
+
+    Event::assertDispatched(RegistrationSubmitted::class, fn (RegistrationSubmitted $event): bool => $event->registrationId === $registration->id
+        && $event->settlement === 'free'
+        && $event->confirmationGate === 'on_submit');
+
+    Event::assertDispatched(RegistrationConfirmed::class, function (RegistrationConfirmed $event) use ($registration, $type): bool {
+        expect($event->registrationId)->toBe($registration->id)
+            ->and($event->registrationTypeId)->toBe($type->id)
+            ->and($event->eventId)->toBe($type->event_id)
+            ->and($event->grants)->toHaveCount(1)
+            ->and($event->grants[0])->toBe([
+                'kind' => 'admission',
+                'role' => 'visitor',
+                'quantity' => 1,
+                'resource_type_id' => null,
+            ]);
+
+        return true;
+    });
+});
+
+it('leaves an on_approval registration Submitted after SubmitRegistration, without confirming', function (): void {
+    $this->withBrand();
+
+    $type = RegistrationType::factory()
+        ->requiringApproval()
+        ->confirmationGate(ConfirmationGate::OnApproval)
+        ->settlement(RegistrationSettlement::Free)
+        ->create();
+
+    Event::fake([RegistrationSubmitted::class, RegistrationConfirmed::class]);
+
+    $registration = submitRegistrationAction()->handle($type, (string) Str::ulid(), emptySubmission());
+
+    expect($registration->status)->toBe(RegistrationStatus::Submitted)
+        ->and($registration->confirmed_at)->toBeNull();
+
+    Event::assertDispatched(RegistrationSubmitted::class);
+    Event::assertNotDispatched(RegistrationConfirmed::class);
+});
+
+it('rejects submission without an authenticated account (D-REG-08)', function (): void {
+    $this->withBrand();
+
+    $type = RegistrationType::factory()->create();
+
+    submitRegistrationAction()->handle($type, null, emptySubmission());
+})->throws(RuntimeException::class);
+
+it('rejects submission to a non-public registration type', function (): void {
+    $this->withBrand();
+
+    $type = RegistrationType::factory()->inviteOnly()->create();
+
+    submitRegistrationAction()->handle($type, (string) Str::ulid(), emptySubmission());
+})->throws(RuntimeException::class);
+
+it('does not create a registration when the account guard fails', function (): void {
+    $this->withBrand();
+
+    $type = RegistrationType::factory()->create();
+
+    try {
+        submitRegistrationAction()->handle($type, null, emptySubmission());
+    } catch (RuntimeException) {
+        // expected
+    }
+
+    expect(Registration::count())->toBe(0);
+});
+
+it('consumes one unit from every quota the type references', function (): void {
+    $this->withBrand();
+
+    $quota = Quota::factory()->withCapacity(10)->create();
+    $type = RegistrationType::factory()->create();
+    $type->quotas()->attach($quota);
+
+    submitRegistrationAction()->handle($type, (string) Str::ulid(), emptySubmission());
+
+    expect($quota->fresh()->consumed)->toBe(1);
+});
+
+it('emits QuotaExhausted when the last unit of a quota is consumed', function (): void {
+    $this->withBrand();
+
+    $quota = Quota::factory()->withCapacity(1)->create();
+    $type = RegistrationType::factory()->create();
+    $type->quotas()->attach($quota);
+
+    Event::fake([QuotaExhausted::class]);
+
+    submitRegistrationAction()->handle($type, (string) Str::ulid(), emptySubmission());
+
+    expect($quota->fresh()->consumed)->toBe(1);
+
+    Event::assertDispatched(QuotaExhausted::class, fn (QuotaExhausted $event): bool => $event->quotaId === $quota->id
+        && $event->eventId === $type->event_id);
+});
+
+it('refuses to submit against an exhausted quota and creates no registration', function (): void {
+    $this->withBrand();
+
+    $quota = Quota::factory()->exhausted()->create();
+    $type = RegistrationType::factory()->create();
+    $type->quotas()->attach($quota);
+
+    expect(fn () => submitRegistrationAction()->handle($type, (string) Str::ulid(), emptySubmission()))
+        ->toThrow(QuotaExhaustedException::class);
+
+    expect(Registration::count())->toBe(0)
+        ->and($quota->fresh()->consumed)->toBe($quota->capacity);
+});
+
+it('confirms an on_submit registration regardless of settlement, requesting settlement at confirmation', function (): void {
+    // The gate says confirmation does not wait for payment (ADR-0005): an
+    // instant / on_submit type confirms at submission and the settlement
+    // request goes out with the confirmation, not before.
+    $this->withBrand();
+
+    $type = RegistrationType::factory()
+        ->confirmationGate(ConfirmationGate::OnSubmit)
+        ->settlement(RegistrationSettlement::Instant)
+        ->priced()
+        ->create();
+
+    Event::fake([RegistrationSubmitted::class, RegistrationConfirmed::class, RegistrationSettlementRequested::class]);
+
+    $registration = submitRegistrationAction()->handle($type, (string) Str::ulid(), emptySubmission());
+
+    expect($registration->status)->toBe(RegistrationStatus::Confirmed)
+        ->and($registration->payment_status)->toBe(PaymentStatus::Pending);
+    Event::assertDispatched(RegistrationConfirmed::class);
+    Event::assertDispatchedTimes(RegistrationSettlementRequested::class, 1);
+});

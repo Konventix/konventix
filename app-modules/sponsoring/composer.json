@@ -1,0 +1,26 @@
+{
+    "name": "konventix/sponsoring",
+    "description": "Konventix Sponsoring module.",
+    "type": "library",
+    "version": "1.0",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "konventix/platform": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Konventix\\Sponsoring\\": "src/",
+            "Konventix\\Sponsoring\\Tests\\": "tests/",
+            "Konventix\\Sponsoring\\Database\\Factories\\": "database/factories/",
+            "Konventix\\Sponsoring\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "minimum-stability": "stable",
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Konventix\\Sponsoring\\Providers\\SponsoringServiceProvider"
+            ]
+        }
+    }
+}
