@@ -17,38 +17,50 @@
       gate-dependent settlement emission (promotion happens long after
       submission — an `on_payment` type's settlement request emitted at
       original submission may price differently by then).
-- [ ] Invitation and link tokens for `invite_only` and `link` visibility. Until
-      these exist, the public routes and `SubmitRegistration` both reject any
-      non-`public` type with a 403 — see `RegistrationController::guardReachable()`
-      and `SubmitRegistration::guardVisibility()`.
-- [ ] Registrant read model fed by Identity events; the GDPR exporter in
-      `src/Gdpr/`.
-- [ ] Organizer-side registration list with filters, bulk approval, and export.
-- [ ] Register navigation entries with Platform (brand-area entries — the
-      operator-console `event.admin.dashboard` slot contribution below is a
-      different registration, not a substitute).
 - [ ] `RegistrationStatsController`'s per-type "sold" figure sums capacity
       across every quota a type references and treats Submitted/Approved/
       Confirmed as equally "sold" — fine for the dashboard skeleton, but the
       real quota-composition/waiting-list question below should settle
       whether a type with multiple quotas needs a per-quota breakdown
       instead of one summed number.
-- [ ] Resolve the open questions in `SPEC.md` that block Phase 2 — where the
-      price lives, quota composition, and deferred attendee data — and promote
-      the answers to ADRs.
-- [ ] Quota composition/waiting lists (`SPEC.md` open questions 3–4):
-      `SubmitRegistration::consumeQuotas()` currently treats every quota a
-      type references as required-and-atomic (all-or-nothing check before any
-      consumption) with no waiting-list fallback.
-- [ ] Registration-owned waitlist (decision log Round 6, D-REG-04, user
-      override — new release scope): when `consumeQuotas()` finds a quota
-      exhausted, create a waitlist entry instead of failing the submission
-      outright; model the entry's own state (queued, offered, expired,
-      converted) and the promotion path when a unit frees up via
-      `QuotaReleased`. Resources has no queue of its own — this is the only
-      waitlist in the system.
+- [ ] Amendment as delta orders (ADR-0036, the remaining Slice 4 piece):
+      `AmendRegistration` adding grants to a confirmed registration → new
+      settlement request with its own request key (Commerce idempotency must
+      become per-key, not per-settles_id), `RegistrationAmended` event, and
+      Admission issuing exactly the delta idempotently. Post-invoice
+      *transfer* (credit note + re-issue) lands with Slice 7's credit notes;
+      the pre-invoice edit + freeze are done (see Done).
+- [ ] Token management UI: `InvitationToken` has model/guards/burn logic but
+      no operator screen yet — issue/revoke currently means tinker. Fold
+      into a registration-type admin screen when one exists.
 
 ## Done
+
+- [x] Slice 4 — Registration completion (minus amendment, see Backlog).
+      Waitlist (D-REG-12): `WaitlistEntry` with billing snapshot, states
+      queued → offered → converted/expired/withdrawn; `JoinWaitlist` from
+      the public form on quota exhaustion (all-or-nothing, one live
+      position per registrant+type); FIFO `PromoteFromWaitlist` on
+      `QuotaReleased` with a quota HOLD (consumed at offer, released at
+      expiry — un-snipeable), 48h offers, signed claim links mailed via
+      Messaging (`registration.waitlist-offer`, de/en); conversion through
+      `SubmitRegistration(fromWaitlist:)` without double-consuming;
+      `registration:expire-waitlist-offers` every 15 min — expiry releases
+      units, which re-promotes, so the queue drains itself.
+      Invitation/link tokens (D-COM-02): `InvitationToken` (max_uses null =
+      shareable link, 1 = personal invite; expiry, revocation), reachability
+      guard in the controller + use burned under lock in the Action.
+      Organizer list: `admin/registrations` (data-table, status filter,
+      read-model search), bulk approval through `ApproveRegistration` per
+      row (with the BrandScope-hardening relation pre-load), streaming CSV
+      export, nav entry. Registrant read model (`registration_registrants`)
+      from Identity's events; `RegistrationGdprHandler` (export + anonymize
+      with tombstones) registered via `registerGdprExporters` — the root
+      architecture test now sanctions Compliance's `Gdpr`/`Enums` contract
+      surface. Transfer, pre-invoice half (ADR-0036): `invoiced_at` stamped
+      by Commerce's `InvoiceIssued` (payload gained settles_type/id),
+      `UpdateBillingParty` edits freely before and refuses after.
+      `tests/{WaitlistTest,InvitationTokenTest,RegistrationAdminTest}.php`.
 
 - [x] ADR-0017 price declaration: `PriceDeclarationData` value object
       (`unit_amount_net` numeric-string, `TaxClass` standard/reduced,

@@ -40,9 +40,9 @@ it('seeds a pending response row for every registered module when a request open
 
     $request = (new OpenSubjectRequest($registry))((string) Str::ulid(), DataSubjectRequestType::Export);
 
-    expect($request->responses()->count())->toBe(1);
+    expect($request->responses()->where('module', 'staffing')->count())->toBe(1);
 
-    $response = $request->responses()->first();
+    $response = $request->responses()->where('module', 'staffing')->first();
 
     expect($response->module)->toBe('staffing')
         ->and($response->state)->toBe(ModuleResponseState::Pending)
@@ -58,9 +58,9 @@ it('records a module response idempotently — recording twice does not duplicat
     (new RecordModuleResponse)($request, 'staffing', ModuleResponseState::Completed);
     (new RecordModuleResponse)($request, 'staffing', ModuleResponseState::Completed);
 
-    expect($request->responses()->count())->toBe(1);
+    expect($request->responses()->where('module', 'staffing')->count())->toBe(1);
 
-    $response = $request->responses()->first();
+    $response = $request->responses()->where('module', 'staffing')->first();
 
     expect($response->state)->toBe(ModuleResponseState::Completed)
         ->and($response->responded_at)->not->toBeNull();
@@ -80,8 +80,8 @@ it('re-dispatches the export fan-out event without duplicating or losing respons
 
     Event::assertDispatchedTimes(DataExportRequested::class, 2);
 
-    expect($request->responses()->count())->toBe(1)
-        ->and($request->responses()->first()->state)->toBe(ModuleResponseState::Failed);
+    expect($request->responses()->where('module', 'staffing')->count())->toBe(1)
+        ->and($request->responses()->where('module', 'staffing')->first()->state)->toBe(ModuleResponseState::Failed);
 });
 
 it('lets a module overwrite its failed response after re-dispatch, still without duplicating the row', function (): void {
@@ -94,6 +94,6 @@ it('lets a module overwrite its failed response after re-dispatch, still without
     (new RedispatchSubjectRequest)($request);
     (new RecordModuleResponse)($request, 'staffing', ModuleResponseState::Completed);
 
-    expect($request->responses()->count())->toBe(1)
-        ->and($request->responses()->first()->state)->toBe(ModuleResponseState::Completed);
+    expect($request->responses()->where('module', 'staffing')->count())->toBe(1)
+        ->and($request->responses()->where('module', 'staffing')->first()->state)->toBe(ModuleResponseState::Completed);
 });

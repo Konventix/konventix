@@ -17,6 +17,8 @@ final readonly class InvoiceIssued
         public string $invoiceId,
         public string $orderId,
         public string $brandId,
+        public string $settlesType,
+        public string $settlesId,
         public string $invoiceNumber,
         public string $issuedOn,
         public string $dueOn,

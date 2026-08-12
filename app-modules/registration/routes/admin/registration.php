@@ -10,7 +10,13 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Registration\Http\Controllers\Admin\RegistrationAdminController;
 use Konventix\Registration\Http\Controllers\Admin\RegistrationStatsController;
 
 Route::get('/events/{event}/registration-stats', RegistrationStatsController::class)
     ->name('admin.events.registration-stats');
+
+// The organizer-side registration list (filters, bulk approval, export).
+Route::get('/registrations', [RegistrationAdminController::class, 'index'])->name('admin.registrations.index');
+Route::post('/registrations/bulk-approve', [RegistrationAdminController::class, 'bulkApprove'])->name('admin.registrations.bulk-approve');
+Route::get('/registrations/export', [RegistrationAdminController::class, 'export'])->name('admin.registrations.export');

@@ -65,6 +65,13 @@ it('is a boot-time singleton, so a module registering twice does not create two 
     (new FakeExportingModuleServiceProvider(app()))->boot();
     (new FakeExportingModuleServiceProvider(app()))->boot();
 
-    expect($registry->moduleNames())->toHaveCount(1)
-        ->and($registry->moduleNames())->toBe(['fake-exporting-module']);
+    // Real modules (Registration, ...) register their handlers at boot,
+    // so assert on the fake's presence and non-duplication rather than an
+    // absolute registry size.
+    $names = array_values(array_filter(
+        $registry->moduleNames(),
+        fn (string $name): bool => $name === 'fake-exporting-module',
+    ));
+
+    expect($names)->toBe(['fake-exporting-module']);
 });

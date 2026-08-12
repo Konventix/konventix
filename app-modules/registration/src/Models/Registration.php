@@ -48,6 +48,7 @@ use Konventix\Registration\Enums\RegistrationStatus;
  * @property Carbon|null $rejected_at
  * @property string|null $rejected_by_user_id
  * @property string|null $reason_code
+ * @property Carbon|null $invoiced_at
  * @property Carbon|null $confirmed_at
  * @property Carbon|null $cancelled_at
  * @property string|null $cancelled_by_user_id
@@ -108,6 +109,7 @@ class Registration extends Model
             'submitted_at' => 'datetime',
             'approved_at' => 'datetime',
             'rejected_at' => 'datetime',
+            'invoiced_at' => 'datetime',
             'confirmed_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];

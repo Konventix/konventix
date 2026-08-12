@@ -14,12 +14,16 @@ use Konventix\Registration\Enums\RegistrationApproval;
 use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Enums\RegistrationVisibility;
+use Konventix\Registration\Enums\WaitlistState;
 use Konventix\Registration\Events\QuotaExhausted;
 use Konventix\Registration\Events\RegistrationSubmitted;
+use Konventix\Registration\Events\WaitlistEntryConverted;
 use Konventix\Registration\Exceptions\QuotaExhaustedException;
+use Konventix\Registration\Models\InvitationToken;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
+use Konventix\Registration\Models\WaitlistEntry;
 use RuntimeException;
 
 /**
@@ -49,13 +53,21 @@ final class SubmitRegistration
         RegistrationType $registrationType,
         ?string $registrantUserId,
         SubmitRegistrationData $data,
+        ?string $invitationToken = null,
+        ?WaitlistEntry $fromWaitlist = null,
     ): Registration {
-        return DB::transaction(function () use ($registrationType, $registrantUserId, $data): Registration {
-            $this->guardVisibility($registrationType);
+        return DB::transaction(function () use ($registrationType, $registrantUserId, $data, $invitationToken, $fromWaitlist): Registration {
+            if ($fromWaitlist === null) {
+                $this->guardVisibility($registrationType, $invitationToken);
+            }
             $this->guardAccount($registrantUserId);
             $this->guardBillingParty($registrationType, $data);
 
-            $this->consumeQuotas($registrationType);
+            // A waitlist conversion consumed its quota units at offer time
+            // (the hold — D-REG-12); consuming again would double-book.
+            if ($fromWaitlist === null) {
+                $this->consumeQuotas($registrationType);
+            }
 
             $registration = Registration::create([
                 'registration_type_id' => $registrationType->id,
@@ -91,6 +103,20 @@ final class SubmitRegistration
                 submittedAt: $registration->submitted_at->toIso8601String(),
             ));
 
+            if ($fromWaitlist !== null) {
+                $fromWaitlist->forceFill([
+                    'state' => WaitlistState::Converted,
+                    'converted_registration_id' => $registration->id,
+                ])->save();
+
+                event(new WaitlistEntryConverted(
+                    waitlistEntryId: $fromWaitlist->id,
+                    registrationId: $registration->id,
+                    brandId: $registration->brand_id,
+                    convertedAt: now()->toIso8601String(),
+                ));
+            }
+
             // An on_payment gate needs an order before anything can confirm:
             // the settlement request goes out at submission. Every other
             // gate requests settlement at confirmation instead (the two
@@ -117,17 +143,33 @@ final class SubmitRegistration
         });
     }
 
-    private function guardVisibility(RegistrationType $registrationType): void
+    /**
+     * `public` types need nothing; `link` and `invite_only` types need a
+     * usable invitation token belonging to the type (Round 6 D-COM-02).
+     * A consumed use is burned inside this transaction under lock, so a
+     * single-use invitation cannot be double-spent by concurrent submits.
+     */
+    private function guardVisibility(RegistrationType $registrationType, ?string $invitationToken): void
     {
-        // Link and invite-only tokens are not built yet (TODO.md Phase 2
-        // backlog): only Public types can be submitted to in Phase 1.
-        if ($registrationType->visibility !== RegistrationVisibility::Public) {
+        if ($registrationType->visibility === RegistrationVisibility::Public) {
+            return;
+        }
+
+        $token = $invitationToken === null ? null : InvitationToken::query()
+            ->where('registration_type_id', $registrationType->id)
+            ->where('token', $invitationToken)
+            ->lockForUpdate()
+            ->first();
+
+        if ($token === null || ! $token->isUsable()) {
             throw new RuntimeException(sprintf(
-                'RegistrationType [%s] is not publicly submittable (visibility: %s).',
+                'RegistrationType [%s] requires a valid invitation token (visibility: %s).',
                 $registrationType->id,
                 $registrationType->visibility->value,
             ));
         }
+
+        $token->increment('uses');
     }
 
     private function guardAccount(?string $registrantUserId): void

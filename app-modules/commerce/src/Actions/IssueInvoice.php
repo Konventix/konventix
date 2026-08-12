@@ -59,6 +59,8 @@ final class IssueInvoice
                 invoiceId: $invoice->id,
                 orderId: $order->id,
                 brandId: $order->brand_id,
+                settlesType: $order->settles_type,
+                settlesId: $order->settles_id,
                 invoiceNumber: $invoice->invoice_number,
                 issuedOn: $invoice->issued_on->toDateString(),
                 dueOn: $invoice->due_on->toDateString(),

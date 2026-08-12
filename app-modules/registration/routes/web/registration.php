@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Registration\Http\Controllers\RegistrationController;
+use Konventix\Registration\Http\Controllers\WaitlistController;
 
 // The public registration flow (SPEC.md, TODO.md). Both routes require an
 // authenticated account — D-REG-08 (`docs/inventory/decision-log.md` Round
@@ -29,4 +30,11 @@ Route::middleware(['auth'])->group(function (): void {
 
     Route::post('/events/{event_ulid}/register/{type}', [RegistrationController::class, 'store'])
         ->name('registration.store');
+
+    // Waitlist offer claim (D-REG-12): the offer mail's temporary signed
+    // link — signature expiry equals the offer's own; the controller
+    // additionally checks the claimant IS the queued registrant.
+    Route::post('/waitlist/{entry}/claim', [WaitlistController::class, 'claim'])
+        ->middleware('signed')
+        ->name('registration.waitlist.claim');
 });

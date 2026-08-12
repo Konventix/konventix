@@ -33,6 +33,15 @@ Completed slices, one commit each, all pushed to
   `commerce.invoice-issued` template + `SendInvoiceMail` — the exhibitor
   definition-of-done flow is complete end to end including the mail with
   the sealed PDF attached.
+- **Slice 4** (`1b0bdde`): Registration completion minus amendment —
+  D-REG-12 waitlist (billing-snapshot entries, FIFO promotion with quota
+  HOLDS at offer time, 48h signed claim links via Messaging, 15-min expiry
+  schedule that re-promotes), D-COM-02 invitation/link tokens (use burned
+  under lock), organizer list with bulk approval + streaming CSV,
+  registrant read model, GDPR handler (tombstone anonymize), ADR-0036
+  pre-invoice transfer freeze (`invoiced_at` from Commerce's InvoiceIssued,
+  whose payload gained settles_type/settles_id). Architecture test now
+  sanctions Compliance's Gdpr/Enums contract surface.
 - **Slice 3** (`fd17b51`): Event completion — multi-venue pivot with
   primary flag (D-EVT-15), `EventDay` entity with stable ULIDs across
   re-syncs + `EventDaysChanged` (D-ADM-04), `ReentryPolicy` (D-ADM-03),
@@ -41,22 +50,20 @@ Completed slices, one commit each, all pushed to
   per-state lifecycle buttons, Venues admin, Inertia landing page. The
   SPEC contract table carries 15 implemented events.
 
-Verification state at handoff: **365 tests passing, PHPStan clean,
-`npm run build` green.** Working tree clean apart from this file.
+Verification state at handoff: **378 tests passing, PHPStan clean,
+`npm run build` green.**
 
 ## Next up (in build order)
 
-1. **Slice 4 — Registration completion**: waitlists per D-REG-12
-   (all-or-nothing across quotas, whole submission waitlists, FIFO
-   promotion on `QuotaReleased` with 48h offers, states
-   queued → offered → converted/expired/withdrawn), invitation + link
-   tokens (D-COM-02), organizer registration list with bulk approval,
-   amendment as delta orders + transfer freeze at invoicing (ADR-0036),
-   registrant read model + GDPR exporter.
-2. **Slice 5 — Admission entrance chain** (now unblocked — event days
-   exist): ADR-0033 signed tokens + entrance API + PII-free delta feed,
-   check-in records **emitting `registration_id`** (ADR-0037 needs this
-   before refunds can build), day-scoped validity, ADR-0032 claim links,
+1. **Amendment as delta orders** (the one remaining Slice 4 piece,
+   ADR-0036 — Registration's TODO backlog carries the full shape):
+   `AmendRegistration` → settlement request with its own request key,
+   Commerce per-key idempotency, `RegistrationAmended` → Admission delta
+   issuance.
+2. **Slice 5 — Admission entrance chain** (unblocked — event days exist):
+   ADR-0033 signed tokens + entrance API + PII-free delta feed, check-in
+   records **emitting `registration_id`** (ADR-0037 needs this before
+   refunds can build), day-scoped validity, ADR-0032 claim links,
    `BadgeTemplate` + PDF rendering (D-ADM-05, assets via media library).
 3. Slices 6–16 as listed in `docs/ROADMAP.md`.
 
@@ -96,6 +103,11 @@ Working conventions that matter mid-stream:
 - Registration's public form posts `days`-less; the invoice-settled path
   requires billing address fields (enforced in `SubmitRegistration::
   guardBillingParty()` for `settlement: invoice` only).
+- Invitation tokens have no operator UI yet (issue/revoke via tinker) —
+  Registration TODO backlog.
+- A waitlisted-then-promoted `on_payment` registration re-emits its
+  settlement request at conversion time with then-current prices —
+  Registration TODO backlog notes the pricing-drift question.
 - Messaging recipients: accounts created before the projection existed
   have no read-model row — a backfill command is a Messaging TODO before
   relying on id-only sends for old accounts.

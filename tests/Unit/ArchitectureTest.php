@@ -94,6 +94,15 @@ it('never imports another module internals across a boundary', function (): void
                 continue;
             }
 
+            // Compliance's GDPR contract surface: the GdprHandler contract's
+            // own docblock instructs every module to implement it and
+            // register via registerGdprExporters() (ADR-0003) — the
+            // interface, registry, and DeletionMode enum ARE the API.
+            // Compliance's models stay forbidden.
+            if ($importedModule === 'Compliance' && in_array($segments[2] ?? null, ['Gdpr', 'Enums'], true)) {
+                continue;
+            }
+
             $violations[] = "{$file['path']} imports {$import}";
         }
     }
