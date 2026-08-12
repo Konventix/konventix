@@ -33,7 +33,7 @@ Completed slices, one commit each, all pushed to
   `commerce.invoice-issued` template + `SendInvoiceMail` — the exhibitor
   definition-of-done flow is complete end to end including the mail with
   the sealed PDF attached.
-- **Slice 4** (`1b0bdde`): Registration completion minus amendment —
+- **Slice 4** (`8ed25bb`): Registration completion minus amendment —
   D-REG-12 waitlist (billing-snapshot entries, FIFO promotion with quota
   HOLDS at offer time, 48h signed claim links via Messaging, 15-min expiry
   schedule that re-promotes), D-COM-02 invitation/link tokens (use burned
