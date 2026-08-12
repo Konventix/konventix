@@ -42,6 +42,22 @@ Completed slices, one commit each, all pushed to
   pre-invoice transfer freeze (`invoiced_at` from Commerce's InvoiceIssued,
   whose payload gained settles_type/settles_id). Architecture test now
   sanctions Compliance's Gdpr/Enums contract surface.
+- **Slice 4 completion — amendment** (`cd08512`): `AmendRegistration` adds
+  grants to a confirmed registration as a delta (ADR-0036), never touching
+  the original order or its immutable invoice. **Money is conditional**:
+  the action always emits `RegistrationAmended` so the added admissions
+  materialize, but requests settlement only when the delta carries explicit
+  lines — crew badges come with an exhibitor's package, so the common
+  amendment produces no order and no invoice at all. Lines are passed in
+  rather than derived, because `GrantData` carries no price and a type's
+  `price_declaration` prices the *type* (ADR-0017). Unblocking it meant
+  re-keying idempotency in two other modules: Commerce moved from
+  `settles_id` to `request_key` (the ULID of whatever requested settlement;
+  unique on `settles_type, settles_id, request_key`, backfilled), Admission
+  from "any admissions?" to per-`amendment_id`. Amendments consume quota
+  all-or-nothing, one unit per added admission, and `ReleasesQuotas` now
+  gives those units back — it released exactly one before, which would have
+  stranded amended seats as sold forever.
 - **Slice 3** (`fd17b51`): Event completion — multi-venue pivot with
   primary flag (D-EVT-15), `EventDay` entity with stable ULIDs across
   re-syncs + `EventDaysChanged` (D-ADM-04), `ReentryPolicy` (D-ADM-03),
@@ -50,33 +66,47 @@ Completed slices, one commit each, all pushed to
   per-state lifecycle buttons, Venues admin, Inertia landing page. The
   SPEC contract table carries 15 implemented events.
 
-Verification state at handoff: **378 tests passing, PHPStan clean,
-`npm run build` green.**
+Verification state at handoff: **392 tests passing, PHPStan clean, pint
+clean, `npm run build` green.**
 
 ## Next up (in build order)
 
-1. **Amendment as delta orders** (the one remaining Slice 4 piece,
-   ADR-0036 — Registration's TODO backlog carries the full shape):
-   `AmendRegistration` → settlement request with its own request key,
-   Commerce per-key idempotency, `RegistrationAmended` → Admission delta
-   issuance.
-2. **Slice 5 — Admission entrance chain** (unblocked — event days exist):
+Slice 4 is now complete — the next slice is the first unstarted one.
+
+1. **Slice 5 — Admission entrance chain** (unblocked — event days exist):
    ADR-0033 signed tokens + entrance API + PII-free delta feed, check-in
    records **emitting `registration_id`** (ADR-0037 needs this before
    refunds can build), day-scoped validity, ADR-0032 claim links,
    `BadgeTemplate` + PDF rendering (D-ADM-05, assets via media library).
-3. Slices 6–16 as listed in `docs/ROADMAP.md`.
+   Note `admissions` gained a nullable `amendment_id` — an amendment's
+   admissions are ordinary admissions and the entrance chain should not
+   treat them specially.
+2. Slices 6–16 as listed in `docs/ROADMAP.md`.
 
 ## Resuming on another machine
 
 ```bash
 git clone git@github.com:Konventix/konventix-poc.git konventix && cd konventix
-cp .env.example .env            # then set APP_KEY via sail artisan key:generate
+cp .env.example .env            # MUST precede `sail up` — see below
 ./vendor/bin/sail up -d         # needs an existing vendor/ — see below
-./vendor/bin/sail artisan migrate
+./vendor/bin/sail artisan key:generate
+./vendor/bin/sail artisan migrate --seed
 ./vendor/bin/sail npm ci && ./vendor/bin/sail npm run build
 ./vendor/bin/sail artisan test --compact
 ```
+
+**The `.env` copy is load-bearing, not cosmetic.** compose.yaml feeds
+`${DB_USERNAME}`/`${DB_DATABASE}` to the pgsql service, and Postgres honours
+them only during first-time `initdb`. Start the stack without a `.env` and
+they interpolate to empty strings — the cluster initializes as the default
+`postgres` role and every later boot logs `Skipping initialization`, ignoring
+the now-correct `.env` forever. Migrations then fail with
+`SQLSTATE[08006] … role "konventix" does not exist`, which reads like a
+connection fault but is a poisoned volume; the only fix is
+`docker compose down && docker volume rm konventix-poc_sail-pgsql`. Note
+`composer setup` cannot be the first step on Docker — it is what *creates*
+`.env`, and it needs the containers already up. Full detail in
+`.ai/rules/general.md`.
 
 First-time bootstrap without `vendor/`: run composer through a throwaway
 container (`docker run --rm -v $(pwd):/app -w /app laravelsail/php85-composer
@@ -97,6 +127,19 @@ Working conventions that matter mid-stream:
 - `composer types:generate` after touching `#[TypeScript]` Data classes.
 - The Boost `database-schema` MCP tool cannot reach pgsql from outside
   the containers — read migrations instead.
+- `.mcp.json` now runs `php artisan boost:mcp` from the project root, so it
+  works on any machine with `php` on `PATH`. It previously hard-coded
+  `wsl.exe` and `/home/mkohn/...` paths pointing at a *different* repo
+  (`konventix/konventix`), so Boost's MCP tools — including `record-rule` —
+  silently failed to start anywhere but that one WSL setup. Machine-specific
+  overrides belong in local settings, not this committed file.
+- Tests run against a `testing` **Postgres** database, not SQLite:
+  `phpunit.xml` overrides `DB_DATABASE` only, never `DB_CONNECTION`. Sail's
+  `create-testing-database.sql` creates it during `initdb`, which is why
+  that database's ownership matters after a volume rebuild.
+- `QUEUE_CONNECTION=sync` in `phpunit.xml` runs jobs inline. A test that
+  settles money for real must `Queue::fake()`, or `GenerateInvoiceDocument`
+  executes and fails resolving its own brand context.
 
 ## Loose threads worth knowing about
 
@@ -105,6 +148,14 @@ Working conventions that matter mid-stream:
   guardBillingParty()` for `settlement: invoice` only).
 - Invitation tokens have no operator UI yet (issue/revoke via tinker) —
   Registration TODO backlog.
+- Amendment is domain-only for the same reason: `AmendRegistration` has no
+  operator screen, so amending means tinker. It also needs a capability
+  (`registration.amend-registrations` is not in `Permission` yet). Both are
+  in Registration's backlog — fold them into one admin pass with the token UI.
+- Amendment pricing is caller-supplied by design: `AmendRegistration` takes
+  explicit delta lines because grants carry no price. If per-grant pricing
+  ever lands on `RegistrationType`, the priced path should derive the lines
+  instead of trusting the caller — Registration TODO backlog.
 - A waitlisted-then-promoted `on_payment` registration re-emits its
   settlement request at conversion time with then-current prices —
   Registration TODO backlog notes the pricing-drift question.
