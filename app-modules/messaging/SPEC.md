@@ -150,12 +150,18 @@ configured, and whether an individual template key is enabled for it.
   emitting module's?~~ **Decision log Round 6 (D-MSG-03, user override):**
   Messaging's concern — it owns digest windows and quiet hours as
   infrastructure. Modules keep sending per-change; Messaging coalesces.
-- How template payloads are versioned when the emitting module changes shape —
-  a queued message may render after a deploy that changed its payload type.
-- How long the delivery log is kept, and whether that retention is Messaging's
-  own decision or a rule published by Compliance. **Still open** after the
-  Round 6 gate review — pairs with Compliance's own open audit-retention
-  question, since both are "how long do we keep an infrastructure record"
-  questions that likely want the same answer.
-- Whether an in-app notification for a module that is inactive for a brand is
-  suppressed at send time or filtered at render time.
+- ~~How template payloads are versioned when the emitting module changes
+  shape — a queued message may render after a deploy that changed its payload
+  type.~~ **Decision log Round 7 (D-BATCH-7):** template payload Data classes
+  change additively only; a breaking shape change requires a new template
+  key, protecting queued messages across deploys.
+- ~~How long the delivery log is kept, and whether that retention is
+  Messaging's own decision or a rule published by Compliance. **Still open**
+  after the Round 6 gate review — pairs with Compliance's own open
+  audit-retention question, since both are "how long do we keep an
+  infrastructure record" questions that likely want the same answer.~~
+  **Decision log Round 7 (D-CPL-01):** retention is a Compliance-published
+  rule — delivery log 12 months, audit trail 36 months.
+- ~~Whether an in-app notification for a module that is inactive for a brand
+  is suppressed at send time or filtered at render time.~~ **Decision log
+  Round 7 (D-BATCH-7):** filtered at render time, not suppressed at send.

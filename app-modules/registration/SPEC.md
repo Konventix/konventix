@@ -148,9 +148,13 @@ exist before Admission, Commerce, or Resources have anything to work on.
 3. **Quota composition — partially settled.** Multiple quotas per
    `RegistrationType` via the `registration_type_quota` pivot is shipped
    (`SubmitRegistration::consumeQuotas()`); **shared pools referenced by
-   several types are the model** — a quota is not scoped to one type. Still
+   several types are the model** — a quota is not scoped to one type. ~~Still
    open: how a registration consuming several quotas behaves when only one of
-   them is exhausted (all-or-nothing today, see `TODO.md`).
+   them is exhausted (all-or-nothing today, see `TODO.md`).~~ **Decision log
+   Round 7 (D-REG-12):** all-or-nothing across a type's quotas — any
+   exhaustion waitlists the whole submission. FIFO promotion on
+   `QuotaReleased` with time-limited offers (48h default); entry states
+   queued → offered → converted/expired/withdrawn.
 4. ~~**Waiting lists.** Whether an exhausted quota produces a waiting-list
    entry in this module, or whether waiting lists are a separate concept.~~
    **Decision log Round 6 (D-REG-04, user override):** a Registration-owned
@@ -164,8 +168,12 @@ exist before Admission, Commerce, or Resources have anything to work on.
    Registration still owns the grant count that produces them.
 6. ~~**Amendment.** Adding admissions to an already-confirmed registration, or
    changing its type, without cancelling and re-creating it, including the
-   effect on an invoice that has already been issued.~~ **Decision log Round 6
-   (D-BATCH):** deferred — decided during the paid-flow build, not before.
+   effect on an invoice that has already been issued.~~ **Settled by ADR-0036
+   (decision log Round 7, D-REG-10):** delta orders — added grants create a
+   new order/invoice against the same registration; the original invoice is
+   never touched. Type changes stay cancel-and-recreate.
 7. ~~**Transfer.** Whether a Registration may change its invoice recipient
-   after confirmation.~~ **Decision log Round 6 (D-BATCH):** deferred —
-   decided during the paid-flow build, not before.
+   after confirmation.~~ **Settled by ADR-0036 (decision log Round 7,
+   D-REG-11):** the billing party is editable until the first invoice is
+   issued and frozen after; a post-invoice change is a capability-gated
+   credit-note + re-issue flow.

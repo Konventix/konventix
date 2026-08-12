@@ -104,6 +104,40 @@ still earns its cost for seats and booths, which is where the money is. But
 conflicts between programme and crew are undetected by design. If room contention
 turns out to matter, revisiting D-EVT-11 is cheaper than revisiting D-EVT-02.
 
+## Round 7 — Phase 2 build-out interview (2026-08-12)
+
+Settles everything the Round 6 gate review left open or deferred "until the
+paid-flow build" (which shipped in the settlement-chain iteration), plus the
+per-module modelling questions that gate the remaining Phase 2 slices.
+
+| ID | Decision | Chosen | Status |
+|---|---|---|---|
+| D-REG-10 | Amendment of confirmed registrations | **Delta orders: added grants create a new order/invoice against the same registration; the original invoice is never touched. Type changes stay cancel-and-recreate.** | adr → ADR-0036 |
+| D-REG-11 | Transfer of invoice recipient | **Editable until the first invoice is issued, frozen after; post-invoice change is a capability-gated credit-note + re-issue flow.** | adr → ADR-0036 |
+| D-COM-15 | Refunds vs checked-in admissions | **A checked-in admission blocks the refund** (user override of the report-only recommendation). Commerce answers via its own check-in read model fed by Admission events carrying `registration_id` — never by reading Admission tables. | adr → ADR-0037 |
+| D-REG-12 | Quota composition + waitlist semantics | **All-or-nothing across a type's quotas; any exhaustion waitlists the whole submission. FIFO promotion on `QuotaReleased` with time-limited offers (48h default); states queued → offered → converted/expired/withdrawn.** | spec (Registration) |
+| D-ADM-05 | Badge layout ownership | **Admission owns per-event `BadgeTemplate` entities** (typed layout, media by ULID per ADR-0035, server-rendered PDF via the existing dompdf pipeline). | spec (Admission) |
+| D-STF-02 | Team structure | **Flat team list per event with an area tag; no nesting at release.** | spec (Staffing) |
+| D-STF-03 | Lead notes | **No free-form person-notes entity at release.** GDPR export = profile, availability, qualifications, assignment history. | spec (Staffing) |
+| D-CMP-14 | Team lifetime | **Teams are per event.** Cross-event identity stays Community territory; `predecessor_event_id` enables later roster-import UX. | spec (Competition) |
+| D-CNT-08 | Announcement contract | **Content declares intent only** — urgency (`normal`/`urgent`) + audience (`everyone`/`logged-in`) on `AnnouncementPublished`; Messaging alone maps intent to channels/timing (urgent bypasses digests and quiet hours). | spec (Content, Messaging) |
+| D-CPL-01 | Infrastructure-record retention | **Compliance-published rules: delivery log 12 months, audit trail 36 months**, enforced by the retention machinery — one place to adjust. | spec (Compliance, Messaging) |
+| D-CNT-09 | Content revisions | **No revision history at release.** The audit trail records who published what when. | spec (Content) |
+| D-IDN-01 | Social drivers at release | **Steam + Google + Discord** (user chose broadest option over the recommended two), all via Socialite behind the `SocialProvider` contract. | spec (Identity) |
+| D-BATCH-7 | Accepted defaults | **Comments require an account · deactivated-module blocks silently omitted at render, editor shows a warning badge · canonical domain = `is_primary` row · brand tokens standalone, no operator inheritance · in-app notifications filtered at render for inactive modules · GameOps credentials as encrypted per-brand rows (ADR-0028 pattern), provisioning jobs on a dedicated queue with idempotency keys per `MatchScheduled` · resource bookings minute-precision half-open ranges, whole-event as degenerate case · template payload Data changes additive-only, breaking shape ⇒ new template key · ranking/points as typed per-discipline config Data objects.** | spec (various) |
+
+### Consequences already known
+
+- **D-COM-15 orders the build**: refunds cannot ship before Admission's
+  check-in chain emits `registration_id`-bearing events (ADR-0037).
+- **D-REG-10/D-REG-12 share machinery**: waitlist promotion and amendment
+  both materialize additional grants later, each with its own settlement
+  request.
+- With Round 7, **no inventory decision blocking Phase 2 remains open**.
+  Still deliberately deferred: guest registration (D-REG-08), anonymous
+  subject identity (follows guest registration), per-event Pennant scoping,
+  and everything Phase 3.
+
 ## Round 6 — the Phase 2 gate review (full-tier interview)
 
 | ID | Decision | Chosen | Status |

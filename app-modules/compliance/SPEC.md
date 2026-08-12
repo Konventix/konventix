@@ -146,7 +146,9 @@ not a question.
   emitting reminders through Messaging, or an operator-facing queue only?~~
   **Decision log Round 6 (D-BATCH):** a Compliance scheduler watches the DSR
   deadline and escalates through Messaging.
-- How far back the audit trail is retained, given that the audit trail is
+- ~~How far back the audit trail is retained, given that the audit trail is
   itself personal data subject to retention rules. **Still open** after the
   Round 6 gate review — pairs with Messaging's own open delivery-log
-  retention question.
+  retention question.~~ **Decision log Round 7 (D-CPL-01):**
+  Compliance-published rules — audit trail 36 months, delivery log 12 months,
+  enforced through the retention machinery.

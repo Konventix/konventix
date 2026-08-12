@@ -157,11 +157,16 @@ under "Owns" — `Order`.
    manual booking remains the only path for bank transfers until after
    release.~~ **Decision log Round 6 (D-BATCH):** manual booking only at
    release — no CAMT.053 / MT940 import.
-5. **Refund policy interaction.** What a refund means when the associated
+5. ~~**Refund policy interaction.** What a refund means when the associated
    admissions have already been checked in — and whether Commerce may express
    any opinion about that, or only report the refund and let Registration
    decide. **The remaining open Commerce question** after the Round 6 gate
-   review — every other item on this list is now settled.
+   review — every other item on this list is now settled.~~ **Settled by
+   ADR-0037 (decision log Round 7, D-COM-15):** a checked-in admission blocks
+   the refund. Commerce answers from its own check-in read model, fed by
+   Admission events carrying `registration_id` — never by reading Admission
+   tables. This was the last open Commerce question; nothing on this list
+   remains open.
 6. ~~**Instalments.** Whether exhibitor invoices support partial payment plans,
    and how dunning behaves against a plan rather than a single due date.~~
    **Decision log Round 6 (D-BATCH):** not at release.

@@ -138,13 +138,20 @@ no bearing on which listeners and routes exist.
    by accident.~~ **Decision log Round 6 (D-CNT-07):** entries are public or
    login-required at release; participant-gating is deferred, deliberately —
    it would couple Content to Registration state.
-4. **Announcement urgency and delivery.** How much Content declares about how
-   an announcement should reach people versus how much Messaging decides from
-   its own rules.
-5. **Revisions.** Whether published entries keep an edit history, and whether
-   editors need diff and rollback.
-6. **Comment identity.** Whether comments require an account or allow
-   pseudonymous posting, which changes both the moderation and the GDPR story.
+4. ~~**Announcement urgency and delivery.** How much Content declares about
+   how an announcement should reach people versus how much Messaging decides
+   from its own rules.~~ **Decision log Round 7 (D-CNT-08):** Content declares
+   intent only — urgency (`normal`/`urgent`) and audience
+   (`everyone`/`logged-in`) on `AnnouncementPublished`; Messaging alone maps
+   intent to channels and timing (urgent bypasses digests and quiet hours).
+5. ~~**Revisions.** Whether published entries keep an edit history, and
+   whether editors need diff and rollback.~~ **Decision log Round 7
+   (D-CNT-09):** no revision history at release; the audit trail records who
+   published what when.
+6. ~~**Comment identity.** Whether comments require an account or allow
+   pseudonymous posting, which changes both the moderation and the GDPR
+   story.~~ **Decision log Round 7 (D-BATCH-7):** comments require an
+   account; no pseudonymous posting.
 7. **Block type surface.** Which block types Content contributes to Platform's
    page CMS at release, and how a block declares its data contract to the page
    editor.

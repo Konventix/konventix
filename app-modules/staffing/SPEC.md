@@ -119,8 +119,10 @@ events.
 
 ## Open questions
 
-- Do teams nest (a "Tech" team with "Network" and "Stage" below it), or is a
-  flat list per event with tags enough for our own events?
+- ~~Do teams nest (a "Tech" team with "Network" and "Stage" below it), or is
+  a flat list per event with tags enough for our own events?~~ **Decision log
+  Round 7 (D-STF-02):** a flat team list per event with an area tag; no
+  nesting at release.
 - ~~Is self-service sign-up the default with an opt-in approval step per team,
   or the reverse? This decides whether `AssignmentOffered` or
   `AssignmentAccepted` is the usual entry point into the assignment state
@@ -140,6 +142,8 @@ events.
 - Do availability and qualifications carry across events of the same brand, or
   across brands? Cross-event participant identity is Community territory
   (post-release), so Staffing must not quietly become the cross-event store.
-- What is exported for a staffer under GDPR: assignment history alone, or also
-  notes written by leads? The answer decides whether such notes are a
-  first-class entity or must not exist at all.
+- ~~What is exported for a staffer under GDPR: assignment history alone, or
+  also notes written by leads? The answer decides whether such notes are a
+  first-class entity or must not exist at all.~~ **Decision log Round 7
+  (D-STF-03):** no free-form lead-notes entity at release; the export is
+  profile, availability, qualifications, and assignment history.

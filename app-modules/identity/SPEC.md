@@ -153,8 +153,10 @@ login drivers a brand offers is per-brand configuration, not module activation.
   tombstone row surviving, so foreign ULID references (an `Admission.holder_
   user_id`, a `StafferProfile`'s user reference, and so on) stay resolvable.
   Mirrors Compliance's own settled deletion-default question.
-- Which social drivers ship at release, and does a non-gaming brand ever need
-  Steam at all? **Still open** — untouched by the Round 6 gate review.
+- ~~Which social drivers ship at release, and does a non-gaming brand ever
+  need Steam at all? **Still open** — untouched by the Round 6 gate review.~~
+  **Decision log Round 7 (D-IDN-01):** Steam + Google + Discord at release,
+  all via Socialite behind the `SocialProvider` contract.
 - ~~Where the role-assignment screen lives, since it touches both a Platform
   role and an Identity user (mirrored in Platform's open questions).~~
   **Decision log Round 6 (D-BATCH):** Platform owns the role-assignment

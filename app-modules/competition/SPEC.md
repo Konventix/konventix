@@ -135,14 +135,18 @@ enabling `game-ops` without `competition` gives a brand nothing.
   is simpler; two avoid awkward single-member rosters in the UI.~~ **Decision
   log Round 6 (D-CMP-13):** a team of size one; the roster UI hides itself for
   size-1 teams.
-- Do teams persist across events of the same brand? Cross-event identity is
+- ~~Do teams persist across events of the same brand? Cross-event identity is
   Community territory (post-release), so Competition should not become the
-  long-lived team registry by accident.
+  long-lived team registry by accident.~~ **Decision log Round 7 (D-CMP-14):**
+  teams are per event; cross-event identity stays Community territory, and
+  `predecessor_event_id` enables a later roster-import UX.
 - ~~Does entering a competition require a confirmed Admission, or only a
   Registration? The strict answer blocks signups until check-in-capable
   admissions exist, which may be too late for a schedule built in advance.~~
   **Decision log Round 6 (D-CMP-05):** confirmed Registration suffices to
   enter; admission possession is verified at check-in / match start, not at
   signup.
-- How are ranking and points systems configured per brand without reintroducing
-  free-form settings blobs (ADR-0009)?
+- ~~How are ranking and points systems configured per brand without
+  reintroducing free-form settings blobs (ADR-0009)?~~ **Decision log Round 7
+  (D-BATCH-7):** typed per-discipline config Data objects (ADR-0009) — no
+  free-form settings blobs.

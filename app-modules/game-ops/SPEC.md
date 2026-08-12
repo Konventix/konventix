@@ -165,11 +165,15 @@ implementation against that amendment, not further decision-making:
 
 Further, beyond ADR-0012:
 
-- Provisioning runs long and calls external systems. Which queue does it use,
-  with what timeout, and how are the jobs made idempotent so a retried listener
-  never provisions twice for one `MatchScheduled`?
-- Where do provider and handler credentials live, given they are per brand and
-  must not sit in a free-form settings blob (ADR-0009)?
+- ~~Provisioning runs long and calls external systems. Which queue does it
+  use, with what timeout, and how are the jobs made idempotent so a retried
+  listener never provisions twice for one `MatchScheduled`?~~ **Decision log
+  Round 7 (D-BATCH-7):** a dedicated queue with idempotency keys per
+  `MatchScheduled`, so a retried listener never provisions twice.
+- ~~Where do provider and handler credentials live, given they are per brand
+  and must not sit in a free-form settings blob (ADR-0009)?~~ **Decision log
+  Round 7 (D-BATCH-7):** encrypted per-brand rows — the ADR-0028
+  messaging-transport pattern.
 - ~~Competition needs a game's name for display. Does GameOps expose it
   through an event that Competition projects into a read model, and what
   happens to that display data when the module is off for a brand?~~

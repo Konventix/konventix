@@ -151,8 +151,12 @@ entrance API, and the API lives inside the monolith like everything else.
    concept; see the paired decision in Event's SPEC.
 6. **Badge rendering — partially settled.** **Settled by ADR-0035:** badge
    assets (logos, backgrounds) come from Platform's media library, referenced
-   by ULID. **Still open:** where the badge *layout* itself lives — Admission
-   templates, Platform's block/theming layer, or a print service.
+   by ULID. ~~**Still open:** where the badge *layout* itself lives —
+   Admission templates, Platform's block/theming layer, or a print service.~~
+   **Decision log Round 7 (D-ADM-05):** Admission owns per-event
+   `BadgeTemplate` entities — a typed layout definition, assets referenced
+   from Platform's media library by ULID (ADR-0035), server-rendered to PDF
+   via the same dompdf pipeline Commerce uses.
 7. ~~**Unassigned admissions.** Whether the placeholder for a not-yet-named
    group attendee is created here on confirmation or held in Registration
    until a person exists (paired with the same question in Registration's

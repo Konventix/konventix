@@ -138,11 +138,16 @@ mechanism from activation.
   mapping from a request to that scope?~~ **Decision log Round 6 (D-BATCH):**
   per-event Pennant scoping is deferred — brand remains the only scope object
   at release. Mirrored in Event's SPEC.
-- What renders on an existing static page when the module that registered one of
-  its block types is deactivated for that brand — a placeholder, silent
-  omission, or a publish-time rule that prevents the situation arising?
-- A brand with several domains needs a canonical one for URL generation, mail
-  links, and redirects. Is canonicality a property of the brand or of the
-  environment?
-- Do brands inherit token defaults from the operator, or is every brand's token
-  set standalone?
+- ~~What renders on an existing static page when the module that registered
+  one of its block types is deactivated for that brand — a placeholder,
+  silent omission, or a publish-time rule that prevents the situation
+  arising?~~ **Decision log Round 7 (D-BATCH-7):** silently omitted at
+  render, matching the renderer's existing unknown/inactive-type behavior;
+  the page editor shows a warning badge.
+- ~~A brand with several domains needs a canonical one for URL generation,
+  mail links, and redirects. Is canonicality a property of the brand or of
+  the environment?~~ **Decision log Round 7 (D-BATCH-7):** canonicality is a
+  property of the brand — the `is_primary` domain row already in the schema.
+- ~~Do brands inherit token defaults from the operator, or is every brand's
+  token set standalone?~~ **Decision log Round 7 (D-BATCH-7):** standalone
+  per brand; no operator-level token inheritance.

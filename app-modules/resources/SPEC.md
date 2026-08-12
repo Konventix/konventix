@@ -140,14 +140,20 @@ on later can fulfil them retroactively instead of stranding the registration.
   **Decision log Round 6 (D-REG-04, user override):** the waitlist belongs to
   **Registration** — quota exhaustion produces a waitlist entry there.
   Resources has no queue of its own and points at Registration's.
-- Interval granularity: minutes, or slots defined per resource type? Whole-event
-  bookings must stay a degenerate case of the same model, never a separate path.
-- Who may transfer a booking to another holder, and does a transfer need
+- ~~Interval granularity: minutes, or slots defined per resource type?
+  Whole-event bookings must stay a degenerate case of the same model, never a
+  separate path.~~ **Decision log Round 7 (D-BATCH-7):** minute-precision
+  half-open timestamp ranges (ADR-0020); whole-event booking is the
+  degenerate case, never a separate path.
+- ~~Who may transfer a booking to another holder, and does a transfer need
   Registration's consent when the booking came from a claim? **Still open** —
   follows Registration's paid-flow amendment/transfer decision (decision log
   Round 6, D-BATCH: "amendment/transfer decided during the paid-flow build"),
   since a resource-booking transfer is downstream of whether the registration
-  itself may be amended or transferred.
+  itself may be amended or transferred.~~ **Settled by ADR-0036 (decision log
+  Round 7):** a resource-booking transfer follows the registration's
+  amendment/transfer rules — it is downstream of the registration act,
+  exactly as this question suspected.
 - ~~Do resources exist per event only, or does a venue-level catalogue get
   reused across a brand's events? The second saves setup work and complicates
   brand scoping.~~ **Decision log Round 6 (D-EVT-13, user override of the
