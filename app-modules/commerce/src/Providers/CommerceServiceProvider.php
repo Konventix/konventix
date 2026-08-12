@@ -7,6 +7,8 @@ namespace Konventix\Commerce\Providers;
 use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
+use Konventix\Messaging\Templates\MessageTemplate;
+use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -42,6 +44,42 @@ class CommerceServiceProvider extends ModuleServiceProvider
     protected function registerListeners(): void
     {
         Event::listen(RegistrationSettlementRequested::class, CreateOrderOnSettlementRequested::class);
+    }
+
+    /**
+     * The invoice mail (SPEC.md "Does not own" — sending is Messaging's;
+     * this module only declares what its mail says). German default: the
+     * release targets domestic DACH events (ADR-0030's framing), and the
+     * billing party's locale is unknown for account-less recipients.
+     */
+    protected function registerMessageTemplates(): void
+    {
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'commerce.invoice-issued',
+            subjects: [
+                'de' => 'Rechnung {{ $invoiceNumber }} von {{ $sellerName }}',
+                'en' => 'Invoice {{ $invoiceNumber }} from {{ $sellerName }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag {{ $recipientName }},</p>
+                    <p>anbei erhalten Sie die Rechnung <strong>{{ $invoiceNumber }}</strong>
+                    über <strong>{{ $totalGross }} {{ $currency }}</strong>.</p>
+                    <p>Bitte begleichen Sie den Betrag bis zum <strong>{{ $dueOn }}</strong>
+                    unter Angabe der Rechnungsnummer.</p>
+                    <p>Mit freundlichen Grüßen<br>{{ $sellerName }}</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Dear {{ $recipientName }},</p>
+                    <p>please find attached invoice <strong>{{ $invoiceNumber }}</strong>
+                    for <strong>{{ $totalGross }} {{ $currency }}</strong>.</p>
+                    <p>Payment is due by <strong>{{ $dueOn }}</strong>, quoting the
+                    invoice number.</p>
+                    <p>Kind regards<br>{{ $sellerName }}</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
     }
 
     protected function registerNavigation(): void

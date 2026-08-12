@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Konventix\Commerce\Actions\SendInvoiceMail;
 use Konventix\Commerce\Documents\InvoiceDocumentRenderer;
 use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Jobs\GenerateInvoiceDocument;
@@ -40,11 +42,12 @@ function issuedInvoice(TaxTreatment $treatment = TaxTreatment::Standard): Invoic
 it('renders, archives and seals a hybrid ZUGFeRD document exactly once', function (): void {
     $brand = $this->withBrand();
     Storage::fake('invoices');
+    Mail::fake();
 
     $invoice = issuedInvoice();
 
     $job = new GenerateInvoiceDocument($invoice->id, $brand->id);
-    $job->handle(app(InvoiceDocumentRenderer::class));
+    $job->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));
 
     $invoice->refresh();
 
@@ -64,7 +67,7 @@ it('renders, archives and seals a hybrid ZUGFeRD document exactly once', functio
 
     // Replay must not rewrite the archived document (GoBD).
     $sealedHash = $invoice->document_sha256;
-    $job->handle(app(InvoiceDocumentRenderer::class));
+    $job->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));
 
     expect($invoice->refresh()->document_sha256)->toBe($sealedHash);
 });
@@ -72,11 +75,12 @@ it('renders, archives and seals a hybrid ZUGFeRD document exactly once', functio
 it('renders the §19 UStG variant without a VAT line', function (): void {
     $brand = $this->withBrand();
     Storage::fake('invoices');
+    Mail::fake();
 
     $invoice = issuedInvoice(TaxTreatment::SmallBusiness);
 
     (new GenerateInvoiceDocument($invoice->id, $brand->id))
-        ->handle(app(InvoiceDocumentRenderer::class));
+        ->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));
 
     expect($invoice->refresh()->document_path)->not->toBeNull();
 });

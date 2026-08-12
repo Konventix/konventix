@@ -85,6 +85,15 @@ it('never imports another module internals across a boundary', function (): void
                 continue;
             }
 
+            // Messaging's declared send API (its SPEC: "The send API modules
+            // consume is SendMessage::handle(SendMessageRequest)") — the
+            // kernel-tier service every module addresses messages through,
+            // plus the template registration surface. Models stay forbidden:
+            // no module may touch Messaging's log/settings tables.
+            if ($importedModule === 'Messaging' && in_array($segments[2] ?? null, ['Actions', 'Data', 'Templates'], true)) {
+                continue;
+            }
+
             $violations[] = "{$file['path']} imports {$import}";
         }
     }

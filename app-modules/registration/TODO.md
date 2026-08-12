@@ -21,10 +21,6 @@
       these exist, the public routes and `SubmitRegistration` both reject any
       non-`public` type with a 403 — see `RegistrationController::guardReachable()`
       and `SubmitRegistration::guardVisibility()`.
-- [ ] Send the issued invoice document to the billing party through
-      Messaging (consume Commerce's `InvoiceIssued`, template + attachment)
-      — the last missing hop of the exhibitor flow; everything up to the
-      archived PDF is built (see Done).
 - [ ] Registrant read model fed by Identity events; the GDPR exporter in
       `src/Gdpr/`.
 - [ ] Organizer-side registration list with filters, bulk approval, and export.
@@ -87,9 +83,11 @@
       `tests/OrderPaidConsumptionTest.php`, `tests/SettlementRequestTest.php`.
 - [x] Invoice-settled exhibitor registrations end to end (Phase 2 definition
       of done): submit → approve → confirm → `RegistrationSettlementRequested`
-      → Commerce order + gapless invoice + archived ZUGFeRD PDF → manual
-      payment booking in the operator console → `OrderPaid` → payment status
-      paid. Only the Messaging delivery hop remains (see Backlog).
+      → Commerce order + gapless invoice + archived ZUGFeRD PDF → **invoice
+      mail to the billing party with the sealed document attached (Slice 2,
+      Commerce's `SendInvoiceMail` through Messaging)** → manual payment
+      booking in the operator console → `OrderPaid` → payment status paid.
+      The flow is complete.
 
 - [x] Write `SPEC.md` — purpose, ownership boundary, event contract.
 - [x] Model `RegistrationType` with the five axes from ADR-0005 as enum-backed

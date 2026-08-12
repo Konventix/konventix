@@ -5,30 +5,39 @@ declare(strict_types=1);
 namespace Konventix\Messaging\Data;
 
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\DataCollection;
 
 /**
- * The send API every other module consumes (SPEC.md "Owns" / TODO.md Next
- * item 1): a recipient ULID, a template key, and a typed payload — never a
- * free-form array (ADR-0009), never an Eloquent model (ADR-0004).
+ * The send API every other module consumes (SPEC.md "Owns"): a recipient, a
+ * template key, and a typed payload — never a free-form array (ADR-0009),
+ * never an Eloquent model (ADR-0004).
  *
- * `recipientEmail` and `recipientLocale` are a deliberate, temporary widening
- * of that contract: Messaging's own recipient read model (email/locale keyed
- * by recipient ULID, fed from Identity's `UserRegistered` /
- * `UserProfileUpdated` events) is still a Backlog item in TODO.md, so until it
- * lands, the calling module — which already holds this data — passes it
- * alongside the ULID. `recipientId` is still carried through in full: it is
- * what suppression checks and the delivery log (both Backlog) will key on.
- * Once the read model exists, these two fields are dropped and resolved
- * internally from `recipientId`; see the TODO.md follow-up added alongside
- * this class.
+ * Recipient resolution: `recipientId` alone is enough for any account-backed
+ * recipient — email/locale resolve from the recipient read model. The
+ * explicit fields exist for two legitimate cases, not as a workaround:
+ * a recipient with no account behind the address (`recipientId: null`,
+ * e.g. an exhibitor's billing contact — suppression will key on the email),
+ * and an address that deliberately differs from the account's (billing
+ * email ≠ login email). `recipientLocale` overrides the read model the same
+ * way.
+ *
+ * `brandId` overrides the ambient BrandContext for sends triggered outside
+ * a brand request — operator-console actions, queued jobs keyed by an
+ * entity that knows its own brand. Null keeps the Phase 1 behavior:
+ * resolve from context.
  */
 final class SendMessageRequest extends Data
 {
+    /**
+     * @param  DataCollection<int, AttachmentData>|null  $attachments
+     */
     public function __construct(
-        public readonly string $recipientId,
-        public readonly string $recipientEmail,
-        public readonly string $recipientLocale,
+        public readonly ?string $recipientId,
         public readonly string $templateKey,
         public readonly Data $payload,
+        public readonly ?string $recipientEmail = null,
+        public readonly ?string $recipientLocale = null,
+        public readonly ?string $brandId = null,
+        public readonly ?DataCollection $attachments = null,
     ) {}
 }

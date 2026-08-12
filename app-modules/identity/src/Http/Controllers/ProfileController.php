@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Identity\Data\ProfileUpdateData;
+use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Http\Requests\ProfileDeleteRequest;
 
 class ProfileController
@@ -38,6 +39,16 @@ class ProfileController
         }
 
         $request->user()->save();
+
+        // Contract event for read-model consumers (SPEC.md, ADR-0004) —
+        // carries the current values, so replays project idempotently.
+        event(new UserProfileUpdated(
+            userId: $request->user()->id,
+            email: $request->user()->email,
+            displayName: $request->user()->name,
+            locale: $request->user()->locale,
+            updatedAt: now()->toIso8601String(),
+        ));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Profile updated.')]);
 

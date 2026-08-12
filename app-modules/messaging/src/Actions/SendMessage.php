@@ -10,21 +10,24 @@ use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Events\MessageQueued;
 use Konventix\Messaging\Jobs\SendQueuedMessage;
+use Konventix\Messaging\Models\Recipient;
 use Konventix\Platform\Brands\BrandContext;
+use RuntimeException;
 
 /**
- * The send API every other module calls (SPEC.md "Owns"; TODO.md Next item
- * 1): hand it a recipient ULID, a template key and a typed payload, get
- * delivery semantics back. Nothing about *why* a message is sent lives here.
+ * The send API every other module calls (SPEC.md "Owns"): hand it a
+ * recipient, a template key and a typed payload, get delivery semantics
+ * back. Nothing about *why* a message is sent lives here.
  *
- * No database write happens in this Action, so there is no `DB::transaction`
- * to wrap — accepting a message means generating its id, dispatching the
- * queued job, and emitting `MessageQueued`. Persisting an attempt is the
- * delivery log's job (SPEC.md Backlog).
+ * Resolution happens at accept time, not in the queue: the brand comes from
+ * the request's explicit `brandId` or the ambient BrandContext; email and
+ * locale come from explicit overrides or the recipient read model. A
+ * request that resolves to no address at all is refused loudly — silence
+ * is the one failure mode a messaging pipeline must not have.
  *
- * Channel selection is not implemented: every message sends on Channel::Mail
- * today, because mail is the only driver that exists (TODO.md Next item 1).
- * `SendMessageRequest` gains a channel parameter once in-app/push land.
+ * No database write happens in this Action, so there is no
+ * `DB::transaction` to wrap. Channel selection is not implemented: every
+ * message sends on Channel::Mail today (the only bound driver).
  */
 final class SendMessage
 {
@@ -32,18 +35,37 @@ final class SendMessage
 
     public function handle(SendMessageRequest $request): SendMessageData
     {
-        $brand = $this->brandContext->currentOrFail();
+        $brandId = $request->brandId ?? $this->brandContext->currentOrFail()->getKey();
         $channel = Channel::Mail;
+
+        $recipient = $request->recipientId === null
+            ? null
+            : Recipient::query()->find($request->recipientId);
+
+        $email = $request->recipientEmail ?? $recipient?->email;
+        $locale = $request->recipientLocale
+            ?? ($recipient === null ? (string) config('app.locale') : $recipient->locale);
+
+        if ($email === null) {
+            throw new RuntimeException(sprintf(
+                'Message [%s] has no resolvable recipient address: no explicit email, and %s.',
+                $request->templateKey,
+                $request->recipientId === null
+                    ? 'no recipient id was given'
+                    : "recipient [{$request->recipientId}] is not in the read model (registered before the projection existed?)",
+            ));
+        }
 
         $message = new SendMessageData(
             messageId: (string) Str::ulid(),
-            brandId: $brand->getKey(),
+            brandId: $brandId,
             recipientId: $request->recipientId,
-            recipientEmail: $request->recipientEmail,
-            recipientLocale: $request->recipientLocale,
+            recipientEmail: $email,
+            recipientLocale: $locale,
             templateKey: $request->templateKey,
             payload: $request->payload,
             channel: $channel->value,
+            attachments: $request->attachments,
         );
 
         SendQueuedMessage::dispatch($message);

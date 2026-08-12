@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Konventix\Messaging\Providers;
 
+use Illuminate\Support\Facades\Event;
+use Konventix\Identity\Events\UserProfileUpdated;
+use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Channels\MailChannel;
 use Konventix\Messaging\Contracts\MessageChannel;
+use Konventix\Messaging\Listeners\ProjectRecipient;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 
@@ -41,5 +45,15 @@ class MessagingServiceProvider extends ModuleServiceProvider
         // Mail is the only channel today (TODO.md Next item 1); channel
         // selection between drivers is Backlog.
         $this->app->bind(MessageChannel::class, MailChannel::class);
+    }
+
+    /**
+     * The recipient read model projects from Identity's account events
+     * (SPEC.md "Consumes", ADR-0004).
+     */
+    protected function registerListeners(): void
+    {
+        Event::listen(UserRegistered::class, ProjectRecipient::class);
+        Event::listen(UserProfileUpdated::class, ProjectRecipient::class);
     }
 }

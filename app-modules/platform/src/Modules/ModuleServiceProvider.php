@@ -56,6 +56,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerFeatures();
         $this->registerBlockTypes();
         $this->registerSlots();
+        $this->registerMessageTemplates();
         $this->registerGdprExporters();
     }
 
@@ -196,6 +197,13 @@ abstract class ModuleServiceProvider extends ServiceProvider
     /**
      * Per-module GDPR export/anonymization handlers, registered with Compliance.
      */
+    /**
+     * Message templates this module registers with Messaging's
+     * TemplateRegistry (same unconditional boot-time pattern as
+     * registerBlockTypes/registerSlots).
+     */
+    protected function registerMessageTemplates(): void {}
+
     protected function registerGdprExporters(): void {}
 
     /**

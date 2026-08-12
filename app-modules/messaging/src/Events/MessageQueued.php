@@ -17,7 +17,9 @@ final class MessageQueued
     public function __construct(
         public readonly string $messageId,
         public readonly string $brandId,
-        public readonly string $recipientId,
+        // Null when no account stands behind the address (e.g. a billing
+        // contact) — suppression and log keying fall back to the email.
+        public readonly ?string $recipientId,
         public readonly string $channel,
         public readonly string $templateKey,
     ) {}

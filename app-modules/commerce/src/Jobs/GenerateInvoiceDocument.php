@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Storage;
+use Konventix\Commerce\Actions\SendInvoiceMail;
 use Konventix\Commerce\Documents\InvoiceDocumentRenderer;
 use Konventix\Commerce\Models\Invoice;
 
@@ -36,7 +37,7 @@ final class GenerateInvoiceDocument implements ShouldQueue
         public readonly string $brandId,
     ) {}
 
-    public function handle(InvoiceDocumentRenderer $renderer): void
+    public function handle(InvoiceDocumentRenderer $renderer, SendInvoiceMail $sendInvoiceMail): void
     {
         /** @var Invoice|null $invoice */
         $invoice = Invoice::withoutBrandScope()
@@ -64,5 +65,10 @@ final class GenerateInvoiceDocument implements ShouldQueue
             'document_sha256' => hash('sha256', $bytes),
             'document_generated_at' => now(),
         ])->save();
+
+        // The sealed archive exists — deliver it (the last hop of the
+        // exhibitor flow). Behind the document_path guard above, so a job
+        // replay never double-sends.
+        $sendInvoiceMail->handle($invoice);
     }
 }

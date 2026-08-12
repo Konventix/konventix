@@ -10,12 +10,11 @@ Phase 3 candidate: wire a real caller. Nothing in the platform calls
 `SendMessage` yet — Identity's password reset / registration confirmation is
 the natural first consumer and would register the first real template.
 
-- [ ] Recipient read model (ULID -> email, locale, display name) fed from
-      Identity's `UserRegistered` / `UserProfileUpdated` / `UserAnonymized`
-      events (see Backlog). Once it exists, drop `recipientEmail` and
-      `recipientLocale` from `SendMessageRequest` and resolve them internally
-      from `recipientId` inside `SendMessage::handle()` — see the "recipient
-      contact resolution" note in `src/Data/SendMessageRequest.php`.
+- [ ] Backfill for accounts created before the recipient projection existed:
+      the read model only sees events from now on; a `messaging:rebuild-recipients`
+      path (or an Identity replay) is needed before relying on
+      id-only sends for old accounts. `UserAnonymized` is also still
+      unconsumed — it lands with Identity's GDPR handler.
 - [ ] Channel selection: `SendMessageRequest`/`SendMessage` hardcode
       `Channel::Mail` because it is the only driver bound. Needs a `channel`
       parameter (or preference-based selection) once in-app/push exist.
@@ -84,6 +83,34 @@ the natural first consumer and would register the first real template.
       query-ergonomics question, not a correctness one.
 
 ## Done
+
+- [x] Recipient read model (Slice 2): `messaging_recipients` keyed by the
+      user's own ULID (a projection, not an entity — no generated key, not
+      brand-scoped per ADR-0016), projected idempotently by
+      `Listeners\ProjectRecipient` from Identity's new `UserRegistered` /
+      `UserProfileUpdated` contract events. `SendMessage` now resolves
+      email/locale from `recipientId` alone; the explicit
+      `recipientEmail`/`recipientLocale` fields stayed by design (no longer
+      temporary) for account-less recipients (billing contacts,
+      `recipientId: null`) and deliberate address overrides. A send that
+      resolves to no address is refused loudly.
+- [x] Attachments + explicit brand (Slice 2): `AttachmentData`
+      (disk/path/as/mime — referenced, not inlined, so job payloads stay
+      small) carried through `SendMessageRequest` → envelope →
+      `TemplatedMail::attachments()`. `SendMessageRequest.brandId` overrides
+      ambient BrandContext for operator/queue-triggered sends; `MailChannel`
+      and `TemplateRenderer` now key transport, sender identity and brand
+      overrides off the envelope's own `brandId` instead of ambient context
+      (the old context-guarded lookup silently fell back to the default
+      mailer on brand-less workers).
+- [x] First real consumer (Slice 2, closes the exhibitor DoD item):
+      Commerce registers `commerce.invoice-issued` (de default + en) via the
+      new `ModuleServiceProvider::registerMessageTemplates()` hook and mails
+      the sealed ZUGFeRD archive to the billing party from
+      `GenerateInvoiceDocument` (`SendInvoiceMail`, replay-safe behind the
+      document seal). The root architecture test now sanctions Messaging's
+      declared send API surface (`Actions`/`Data`/`Templates`) for other
+      modules — models stay forbidden.
 
 - [x] `MessageChannel` driver contract (`src/Contracts/MessageChannel.php`)
       with a mail driver (`src/Channels/MailChannel.php`) as first

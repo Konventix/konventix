@@ -6,7 +6,9 @@ namespace Konventix\Identity\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Konventix\Identity\Data\RegisterData;
+use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Brands\BrandContext;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 
 /**
@@ -35,12 +37,30 @@ final class CreateNewUser implements CreatesNewUsers
     {
         $data = RegisterData::validateAndCreate($input);
 
-        return DB::transaction(fn (): User => User::create([
-            'name' => $data->name,
-            'email' => $data->email,
-            'password' => $data->password,
-            'locale' => $this->resolveLocale(),
-        ]));
+        return DB::transaction(function () use ($data): User {
+            $user = User::create([
+                'name' => $data->name,
+                'email' => $data->email,
+                'password' => $data->password,
+                'locale' => $this->resolveLocale(),
+            ]);
+
+            // Identity's own contract event (SPEC.md), distinct from
+            // Fortify's framework `Registered`: consumers project read
+            // models from this scalar payload (ADR-0004). Registration
+            // always runs inside a resolved brand (ResolveBrand fronts the
+            // web group), so currentOrFail is safe here.
+            event(new UserRegistered(
+                userId: $user->id,
+                brandId: app(BrandContext::class)->currentOrFail()->getKey(),
+                email: $user->email,
+                displayName: $user->name,
+                locale: $user->locale,
+                registeredAt: now()->toIso8601String(),
+            ));
+
+            return $user;
+        });
     }
 
     /**

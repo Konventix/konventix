@@ -26,7 +26,11 @@ final class TemplateRenderer
         $template = $this->registry->get($message->templateKey);
         $locale = $template->resolveLocale($message->recipientLocale);
 
-        $override = TemplateOverride::query()
+        // Keyed by the envelope's own brand, not ambient context — a
+        // brand-less worker must still apply the right brand's override
+        // (ADR-0010's named escape hatch, same reasoning as MailChannel).
+        $override = TemplateOverride::withoutBrandScope()
+            ->where('brand_id', $message->brandId)
             ->where('template_key', $message->templateKey)
             ->where('locale', $locale)
             ->first();

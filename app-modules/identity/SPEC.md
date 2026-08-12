@@ -86,9 +86,9 @@ event class lands.
 
 | Event | Emitted when | Payload | Status |
 |---|---|---|---|
-| `UserRegistered` | An account is created | `user_id`, `brand_id`, `locale`, `registered_at` | proposed |
+| `UserRegistered` | An account is created | `user_id`, `brand_id` (the brand it was created *through*, ADR-0016), `email`, `display_name`, `locale`, `registered_at` | implemented |
 | `UserEmailVerified` | The email address is confirmed | `user_id`, `verified_at` | proposed |
-| `UserProfileUpdated` | Display name, locale or timezone changes | `user_id`, `display_name`, `locale`, `timezone` | proposed |
+| `UserProfileUpdated` | Account contact/profile data changes | `user_id`, `email`, `display_name`, `locale`, `updated_at` | implemented |
 | `UserPreferencesUpdated` | Typed preference values change | `user_id`, `preference_key`, `value` | proposed |
 | `UserAuthenticated` | A login succeeds | `user_id`, `brand_id`, `authenticated_at` | proposed |
 | `UserAuthenticationFailed` | A login attempt is rejected | `user_id` or `null`, `brand_id`, `reason_code` | proposed |

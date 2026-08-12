@@ -10,13 +10,12 @@ use Konventix\Messaging\Data\SendMessageData;
 use Konventix\Messaging\Mail\TemplatedMail;
 use Konventix\Messaging\Models\BrandMailSettings;
 use Konventix\Messaging\Templates\RenderedMessage;
-use Konventix\Platform\Brands\BrandContext;
 
 /**
- * Messaging's first channel implementation (TODO.md Next item 1). Resolves
- * the sending brand's transport and sender identity from BrandContext at send
- * time (ADR-0028): brand context has already been restored by
- * PropagatesBrandContextToQueue by the time a queued job reaches this class.
+ * Messaging's first channel implementation. Resolves the sending brand's
+ * transport and sender identity from the envelope's own `brandId` at send
+ * time (ADR-0028) — never from ambient context, so a brand-less worker or
+ * operator retry still sends through the right transport.
  *
  * A brand with no `BrandMailSettings` row falls back to the application's
  * default mailer (`config('mail.default')` — Mailpit in dev) rather than
@@ -36,7 +35,6 @@ final class MailChannel implements MessageChannel
 {
     public function __construct(
         private readonly MailFactory $mail,
-        private readonly BrandContext $brandContext,
     ) {}
 
     public function send(SendMessageData $message, RenderedMessage $rendered): void
@@ -48,6 +46,9 @@ final class MailChannel implements MessageChannel
             fromAddress: $settings === null ? (string) config('mail.from.address') : $settings->from_address,
             fromName: $settings === null ? config('mail.from.name') : $settings->from_name,
             replyToAddress: $settings?->reply_to,
+            fileAttachments: $message->attachments === null
+                ? []
+                : array_values($message->attachments->toCollection()->all()),
         );
 
         $this->mail->mailer($this->resolveMailerName($settings))
@@ -57,18 +58,15 @@ final class MailChannel implements MessageChannel
 
     private function settingsFor(string $brandId): ?BrandMailSettings
     {
-        $brand = $this->brandContext->current();
-
-        // BrandMailSettings is BelongsToBrand-scoped to whatever brand is
-        // currently in context. It should already be the message's brand by
-        // the time this runs, but a job can in principle be worked with no
-        // brand restored (e.g. an operator manually retrying); guard rather
-        // than trust the scope silently returning nothing.
-        if ($brand === null || $brand->getKey() !== $brandId) {
-            return null;
-        }
-
-        return BrandMailSettings::query()->first();
+        // Keyed by the message's own brand, not ambient context (ADR-0010's
+        // named escape hatch): the envelope already knows which brand
+        // accepted it, and a job can legitimately run with no brand restored
+        // (operator retry, brand-less admin trigger) — the earlier
+        // context-guarded version silently fell back to the default mailer
+        // in exactly those cases.
+        return BrandMailSettings::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->first();
     }
 
     /**

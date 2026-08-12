@@ -6,8 +6,10 @@ namespace Konventix\Messaging\Mail;
 
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Address;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
+use Konventix\Messaging\Data\AttachmentData;
 use Konventix\Messaging\Templates\RenderedMessage;
 
 /**
@@ -26,6 +28,8 @@ final class TemplatedMail extends Mailable
         // `$replyTo` property (an address array built by the fluent
         // `replyTo()` method) — this is a single scalar input to envelope().
         private readonly ?string $replyToAddress,
+        /** @var list<AttachmentData> Named to dodge Mailable's own `$attachments`. */
+        private readonly array $fileAttachments = [],
     ) {}
 
     public function envelope(): Envelope
@@ -40,5 +44,21 @@ final class TemplatedMail extends Mailable
     public function content(): Content
     {
         return new Content(htmlString: $this->rendered->body);
+    }
+
+    /**
+     * @return list<Attachment>
+     */
+    public function attachments(): array
+    {
+        return array_map(
+            function (AttachmentData $attachment): Attachment {
+                $built = Attachment::fromStorageDisk($attachment->disk, $attachment->path)
+                    ->as($attachment->as);
+
+                return $attachment->mime === null ? $built : $built->withMime($attachment->mime);
+            },
+            $this->fileAttachments,
+        );
     }
 }
