@@ -11,14 +11,17 @@ use Konventix\Platform\Models\Brand;
  * link regardless of lifecycle state, and 404s for anything else — draft
  * events with public visibility, and any event resolved on the wrong brand.
  */
-it('returns the event for a published event on its own brand', function (): void {
+it('renders the landing page for a published event on its own brand', function (): void {
     $this->withBrand();
 
     $event = Event::factory()->published()->create();
 
     $this->get('/events/'.$event->slug)
         ->assertOk()
-        ->assertJson(['slug' => $event->slug, 'name' => $event->name]);
+        ->assertInertia(fn ($page) => $page
+            ->component('event/Landing')
+            ->where('event.name', $event->name)
+            ->where('event.timezone', $event->timezone));
 });
 
 it('404s a draft event with public visibility', function (): void {

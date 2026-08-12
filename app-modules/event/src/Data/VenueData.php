@@ -56,4 +56,26 @@ final class VenueData extends Data
         #[DataCollectionOf(OpeningPeriodData::class)]
         public readonly array $openingTimes = [],
     ) {}
+
+    /**
+     * The model-column shape for `CreateVenue`/`UpdateVenue` — one place
+     * for the camelCase→snake_case mapping.
+     *
+     * @return array<string, mixed>
+     */
+    public function toModelAttributes(): array
+    {
+        return [
+            'name' => $this->name,
+            'address_line1' => $this->addressLine1,
+            'address_line2' => $this->addressLine2,
+            'postal_code' => $this->postalCode,
+            'city' => $this->city,
+            'country_code' => $this->countryCode,
+            'latitude' => $this->latitude,
+            'longitude' => $this->longitude,
+            'access_notes' => $this->accessNotes,
+            'opening_times' => $this->openingTimes,
+        ];
+    }
 }

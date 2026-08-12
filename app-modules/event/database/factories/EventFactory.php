@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 use Konventix\Event\Enums\EventLifecycleState;
 use Konventix\Event\Enums\EventVisibility;
+use Konventix\Event\Enums\ReentryPolicy;
 use Konventix\Event\Models\Event;
 use Konventix\Event\Models\Venue;
 
@@ -34,7 +35,6 @@ class EventFactory extends Factory
         $endsAt = (clone $startsAt)->modify('+2 hours');
 
         return [
-            'venue_id' => null,
             'name' => Str::title($name),
             'slug' => Str::slug($name),
             'description' => fake()->sentence(),
@@ -42,6 +42,8 @@ class EventFactory extends Factory
             'ends_at' => $endsAt->format('Y-m-d H:i:s'),
             'timezone' => fake()->timezone(),
             'state' => EventLifecycleState::Draft,
+            'reentry_policy' => ReentryPolicy::Unlimited,
+            'predecessor_event_id' => null,
             'visibility' => EventVisibility::Public,
             'published_at' => null,
             'cancelled_at' => null,
@@ -51,11 +53,19 @@ class EventFactory extends Factory
         ];
     }
 
+    /**
+     * Attach a (primary) venue through the D-EVT-15 pivot.
+     */
     public function forVenue(?Venue $venue = null): static
     {
-        return $this->state(fn (array $attributes): array => [
-            'venue_id' => ($venue ?? Venue::factory()->create())->id,
-        ]);
+        return $this->afterCreating(function (Event $event) use ($venue): void {
+            $venue ??= Venue::factory()->create();
+
+            $event->venues()->attach($venue->id, [
+                'is_primary' => true,
+                'brand_id' => $event->brand_id,
+            ]);
+        });
     }
 
     public function unlisted(): static

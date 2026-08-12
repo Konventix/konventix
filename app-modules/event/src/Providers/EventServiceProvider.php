@@ -70,6 +70,15 @@ class EventServiceProvider extends ModuleServiceProvider
                 permission: Permission::ViewEvents->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
+            new NavigationItem(
+                module: 'event',
+                label: 'Venues',
+                url: '/admin/venues',
+                icon: 'map-pin',
+                order: 16,
+                permission: Permission::ViewVenues->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
         );
     }
 }

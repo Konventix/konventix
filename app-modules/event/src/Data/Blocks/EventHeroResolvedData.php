@@ -51,7 +51,7 @@ final class EventHeroResolvedData extends Data
             startsAt: $event->starts_at->format('Y-m-d H:i:s'),
             endsAt: $event->ends_at->format('Y-m-d H:i:s'),
             timezone: $event->timezone,
-            venueCity: $event->venue?->city,
+            venueCity: $event->primaryVenue()?->city,
         );
     }
 }

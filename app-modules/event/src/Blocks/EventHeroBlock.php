@@ -53,7 +53,7 @@ final class EventHeroBlock implements BlockType, ResolvesBlockProps
         // BelongsToBrand's global scope already restricts this to the
         // current brand's events, so a stale or cross-brand event ULID
         // resolves to null rather than another brand's event.
-        $event = Event::query()->with('venue')->find($payload->eventId);
+        $event = Event::query()->with('venues')->find($payload->eventId);
 
         return EventHeroResolvedData::forEvent($event)->toArray();
     }

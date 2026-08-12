@@ -59,6 +59,19 @@ declare namespace Konventix {
         }
     }
     namespace Event {
+        namespace Data {
+            export type EventData = {
+                readonly name: string;
+                readonly slug: string;
+                readonly description: string | null;
+                readonly startsAt: string;
+                readonly endsAt: string;
+                readonly timezone: string;
+                readonly visibility: Konventix.Event.Enums.EventVisibility;
+                readonly reentryPolicy: Konventix.Event.Enums.ReentryPolicy;
+                readonly predecessorEventId: string | null;
+            };
+        }
         namespace Enums {
             export type EventLifecycleState =
                 | 'draft'
@@ -79,6 +92,8 @@ declare namespace Konventix {
                 | 'event.archive-event'
                 | 'event.view-venues'
                 | 'event.manage-venues';
+            export type ReentryPolicy =
+                'once_only' | 'once_per_day' | 'unlimited';
         }
     }
     namespace Identity {

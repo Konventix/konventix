@@ -57,15 +57,15 @@ it('allows an event to be assigned a venue from the same brand', function (): vo
     $venue = Venue::factory()->create();
     $event = Event::factory()->forVenue($venue)->create();
 
-    expect($event->venue_id)->toBe($venue->id)
-        ->and($event->venue->id)->toBe($venue->id);
+    expect($event->venues)->toHaveCount(1)
+        ->and($event->primaryVenue()?->id)->toBe($venue->id);
 });
 
-it('leaves venue_id null when no venue is assigned, since a venue is optional', function (): void {
+it('leaves the venue list empty when no venue is assigned, since venues are optional (D-EVT-15)', function (): void {
     $this->withBrand();
 
     $event = Event::factory()->create();
 
-    expect($event->venue_id)->toBeNull()
-        ->and($event->venue)->toBeNull();
+    expect($event->venues)->toHaveCount(0)
+        ->and($event->primaryVenue())->toBeNull();
 });

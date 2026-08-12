@@ -18,10 +18,10 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
 /**
  * A brand-owned, reusable sub-concept of Event (SPEC.md "Owns" — Venue):
  * postal address, geo coordinates, access and arrival notes, opening times of
- * the site. Assignable to an event via `Event::$venue_id`, which is nullable
- * — multi-venue and purely online events stay an open question (SPEC.md
- * "Open questions"), so a venue is optional rather than mandatory.
+ * the site. Assignable to events via the `event_venues` pivot (D-EVT-15:
+ * many venues per event, one primary; zero venues = online-only event).
  *
+ * @property-read EventVenue|null $pivot When loaded through Event::venues()
  * @property string $id
  * @property string $brand_id
  * @property string $name

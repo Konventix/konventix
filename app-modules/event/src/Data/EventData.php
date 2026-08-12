@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Event\Data;
 
+use Konventix\Event\Enums\EventVisibility;
+use Konventix\Event\Enums\ReentryPolicy;
 use Konventix\Event\Models\Event;
 use Spatie\LaravelData\Attributes\Validation\Date;
 use Spatie\LaravelData\Attributes\Validation\Max;
@@ -14,16 +16,17 @@ use Spatie\LaravelData\Attributes\Validation\StringType;
 use Spatie\LaravelData\Attributes\Validation\Timezone;
 use Spatie\LaravelData\Attributes\Validation\Ulid;
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
- * Single source of validation rules, Inertia props shape, and (eventually)
- * generated TypeScript for the event form (ADR-0009). No TypeScript
- * generation is wired yet — see TODO.md.
+ * Single source of validation rules, Inertia props shape, and generated
+ * TypeScript for the event form (ADR-0009).
  *
  * `startsAt`/`endsAt` are wall-clock strings (`Y-m-d H:i:s`), not instants —
  * ADR-0027. They are stored on the model verbatim; the model's
  * `startsAtInstant()`/`endsAtInstant()` accessors do the timezone conversion.
  */
+#[TypeScript]
 final class EventData extends Data
 {
     public function __construct(
@@ -45,8 +48,14 @@ final class EventData extends Data
         #[Required, Timezone]
         public readonly string $timezone,
 
+        #[Required]
+        public readonly EventVisibility $visibility,
+
+        #[Required]
+        public readonly ReentryPolicy $reentryPolicy,
+
         #[Nullable, Ulid]
-        public readonly ?string $venueId,
+        public readonly ?string $predecessorEventId = null,
     ) {}
 
     /**
@@ -76,7 +85,9 @@ final class EventData extends Data
             startsAt: $event->starts_at->format('Y-m-d H:i:s'),
             endsAt: $event->ends_at->format('Y-m-d H:i:s'),
             timezone: $event->timezone,
-            venueId: $event->venue_id,
+            visibility: $event->visibility,
+            reentryPolicy: $event->reentry_policy,
+            predecessorEventId: $event->predecessor_event_id,
         );
     }
 }

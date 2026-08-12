@@ -84,7 +84,7 @@ it('lists events across every brand on the index', function (): void {
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('admin/events/Index')
-            ->has('events', 2));
+            ->has('events.data', 2));
 });
 
 it('shows the dashboard header and every core module\'s slot contribution', function (): void {

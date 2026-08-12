@@ -58,22 +58,23 @@ is a Resources concern, and the two answer different questions.
 Events are the only way other modules may react to this one (ADR-0004).
 Payloads carry ULIDs and scalars — never Eloquent models.
 
-No code exists yet. Every row below is a proposal and becomes binding when the
-event class lands.
-
 | Event | Emitted when | Payload | Status |
 |---|---|---|---|
-| `EventCreated` | An event is created under a brand | `event_id`, `brand_id`, `slug`, `name`, `starts_at`, `ends_at`, `timezone` | proposed |
-| `EventDetailsUpdated` | Name, slug or description changes | `event_id`, `brand_id`, `slug`, `name` | proposed |
-| `EventPublished` | The event becomes publicly visible | `event_id`, `brand_id`, `published_at` | proposed |
-| `EventUnpublished` | The event is withdrawn from public view | `event_id`, `brand_id` | proposed |
-| `EventRescheduled` | Start, end or timezone changes | `event_id`, `starts_at`, `ends_at`, `timezone` | proposed |
-| `EventCancelled` | The event will not take place | `event_id`, `brand_id`, `reason_code`, `cancelled_at` | proposed |
-| `EventConcluded` | The event has ended | `event_id`, `brand_id`, `concluded_at` | proposed |
-| `EventArchived` | The event is closed for all operations | `event_id`, `brand_id`, `archived_at` | proposed |
-| `VenueCreated` | A venue is created for a brand | `venue_id`, `brand_id`, `name`, `city`, `country_code` | proposed |
-| `VenueUpdated` | Venue address or access details change | `venue_id`, `name`, `city`, `country_code` | proposed |
-| `VenueAssigned` | A venue is attached to an event | `event_id`, `venue_id`, `name`, `city` | proposed |
+| `EventCreated` | An event is created under a brand | `event_id`, `brand_id`, `slug`, `name`, `starts_at`, `ends_at`, `timezone`, `predecessor_event_id` | implemented |
+| `EventDetailsUpdated` | Name, slug or description changes | `event_id`, `brand_id`, `slug`, `name` | implemented |
+| `EventAnnounced` | Draft → Announced: teased, not yet fully published | `event_id`, `brand_id`, `announced_at` | implemented |
+| `EventPublished` | The event becomes publicly visible | `event_id`, `brand_id`, `published_at` | implemented |
+| `EventUnpublished` | The event is withdrawn from public view | `event_id`, `brand_id` | implemented |
+| `EventStarted` | Published → Running — doors open, an explicit operator transition (never clock-derived) | `event_id`, `brand_id`, `started_at` | implemented |
+| `EventRescheduled` | Start, end or timezone changes | `event_id`, `starts_at`, `ends_at`, `timezone` | implemented |
+| `EventCancelled` | The event will not take place | `event_id`, `brand_id`, `reason_code`, `cancelled_at` | implemented |
+| `EventConcluded` | The event has ended | `event_id`, `brand_id`, `concluded_at` | implemented |
+| `EventArchived` | The event is closed for all operations | `event_id`, `brand_id`, `archived_at` | implemented |
+| `EventDaysChanged` | The event's day set changed (D-ADM-04). Always carries the COMPLETE current set — consumers replace, never patch | `event_id`, `brand_id`, `days` (list of `{day_id, date, sequence, label}`) | implemented |
+| `VenueCreated` | A venue is created for a brand | `venue_id`, `brand_id`, `name`, `city`, `country_code` | implemented |
+| `VenueUpdated` | Venue address or access details change | `venue_id`, `brand_id`, `name`, `city`, `country_code` | implemented |
+| `VenueAssigned` | A venue is attached to an event (D-EVT-15: says whether it is the primary) | `event_id`, `venue_id`, `brand_id`, `name`, `city`, `is_primary` | implemented |
+| `VenueUnassigned` | A venue is detached from an event | `event_id`, `venue_id`, `brand_id` | implemented |
 
 `EventRescheduled` and `EventCancelled` are the two consumers care about most:
 they invalidate schedules, shift plans, bookings and admissions across half the

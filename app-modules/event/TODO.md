@@ -6,76 +6,45 @@
 
 ## Next
 
-- [ ] `AnnounceEvent` (Draft → Announced) and `StartEvent` (Published →
-      Running) Actions. Neither exists yet: `PublishEvent` currently accepts
-      `Draft` directly, and `Running` is only reachable today via the
-      factory's `running()` state or a direct write. `ConcludeEvent` guards
-      on `Running`, so nothing can legally reach it through the Action layer
-      alone until `StartEvent` lands — worth checking whether `Running` should
-      instead be a computed/derived state (now between `starts_at`/`ends_at`)
-      rather than a stored, manually-triggered transition.
-- [ ] `CreateEvent` action and the `EventCreated`/`EventDetailsUpdated`
-      contract events from SPEC.md's table — out of scope for this change,
-      which only covers the six lifecycle-transition Actions
-      (publish/unpublish/reschedule/cancel/conclude/archive).
-- [ ] `AssignVenue` action and the `VenueCreated`/`VenueUpdated`/
-      `VenueAssigned` contract events from SPEC.md's table — Venue and Event
-      models/factories exist and `Event::venue_id` is assignable directly,
-      but no Action emits these yet.
-- [ ] Render the public landing route (`GET /events/{event:slug}`) as an
-      Inertia page instead of JSON — module-local page resolution is now
-      wired (Slice 1: host + `app-modules/*/resources/js/pages` merge, see
-      Platform's TODO Done entry), so the blocker is gone; the page itself
-      is Slice 3 scope.
-- [ ] TypeScript generation for `EventData`/`VenueData`/`OpeningPeriodData`
-      (spatie/typescript-transformer, ADR-0009) — another workstream owns the
-      generation pipeline; the Data classes exist and are ready for it.
-- [ ] `EventData::rules()`/`VenueData` do not yet validate `slug` uniqueness
-      per brand (`Rule::unique('events','slug')->where('brand_id', ...)`) —
-      needs the current brand from `BrandContext`, which a static `rules()`
-      method can resolve via the container, but wasn't added since no
-      controller consumes these Data objects for writes yet.
+(nothing outstanding — Slice 3 closed this section; see Done)
 
 ## Backlog
 
-- [ ] Multi-venue events (decision log Round 6, D-EVT-15, user override — new
-      release scope): replace the nullable `Event::venue_id` with a
-      many-to-many `event_venues` link carrying a "primary" flag, per the
-      inventory's D-EVT-04 recommendation B. Zero venues (online-only) is the
-      empty-list case; `VenueAssigned`'s payload needs to say whether it is
-      the primary venue.
-- [ ] `predecessor_event_id` ULID reference (decision log Round 6, D-EVT-14,
-      user override — new release scope): nullable column on `events`, no DB
-      foreign key (ADR-0014), populated at creation and editable afterward.
-      Registration and Community are the modules expected to read it first.
-- [ ] Event-day concept (decision log Round 6, D-ADM-04, user override — new
-      release scope, paired with Admission's day-scoped validity): model
-      per-event days as a first-class entity Event owns (date, sequence,
-      label), so Admission can validate an admission against a specific day
-      rather than only a `valid_from`/`valid_until` pair. Emit an event when
-      an event's day set changes so Admission's validity evaluation can react.
-- [ ] Re-entry policy knob (decision log Round 6, D-ADM-03): add the
-      once-only / once-per-day / unlimited setting to the Event model — the
-      event carries this policy, checkpoints stay policy-free. Default
-      unlimited.
-- [ ] Policies wiring for `src/Enums/Permission.php` (the enum itself is
-      done — see Done below) — no Action or controller checks it yet, and
-      `permissions:sync` does not exist in the codebase yet either.
-- [ ] `EventAdminController::index()` lists every event across every brand
-      with no pagination/search/sort — fine for the dashboard skeleton, but
-      will not scale; `identity`'s `UserAdminController` and `platform`'s
-      `BrandAdminController` already grew server-side data-table support
-      (search/sort/dir/per_page) that this index should probably adopt once
-      the event list needs it.
-- [ ] Settle the edition/series question from `SPEC.md` — the timezone
-      storage question is now settled by ADR-0027 (see SPEC.md's "Open
-      questions", updated in this change).
+- [ ] Reschedule flow in the admin UI calls `UpdateEventDetails`, which
+      emits `EventRescheduled` on any schedule change regardless of
+      lifecycle state — `RescheduleEvent` (which guards on Published) is now
+      only reachable programmatically. Decide whether post-publish schedule
+      edits should be forced through `RescheduleEvent`'s guard in the
+      controller.
 - [ ] `src/Gdpr/` handler for organiser contact details — implemented even when
       it reports no subject data, so Compliance's fan-out is complete by
       construction.
 
 ## Done
 
+- [x] Slice 3 — Event completion. Multi-venue (D-EVT-15): `event_venues`
+      M:N with primary flag via the `EventVenue` ULID pivot replaces
+      `events.venue_id` (existing assignments migrated as primary);
+      `AssignVenue`/`UnassignVenue` emit `VenueAssigned` (with `isPrimary`)
+      / `VenueUnassigned`, exactly one primary enforced by demotion. Event
+      days (D-ADM-04): `EventDay` entity (date, 1-based sequence, label),
+      managed only through `SyncEventDays` — day ULIDs stay stable for kept
+      dates (Admission references them), full-set `EventDaysChanged` on
+      every change. Re-entry knob (D-ADM-03, `ReentryPolicy`, default
+      unlimited) and `predecessor_event_id` (D-EVT-14) on the event.
+      New Actions + events: `CreateEvent` (explicit brand, per-brand slug
+      guard) → `EventCreated`; `UpdateEventDetails` → `EventDetailsUpdated`
+      (+ `EventRescheduled` when the schedule moved); `AnnounceEvent` →
+      `EventAnnounced`; `StartEvent` → `EventStarted` (Running stays an
+      explicit operator transition, not clock-derived — settled). Admin
+      CRUD: events index on the data-table pattern + create dialog, Edit
+      page (details, day editor, venue assignment), per-state lifecycle
+      buttons on the dashboard (server sends only legal transitions),
+      Venues index/create/edit + nav entry. Public landing route now
+      renders `event/Landing` via Inertia (module-local pages, Slice 1)
+      with days and venues. `EventData` gained visibility/reentry/
+      predecessor and `#[TypeScript]`; slug uniqueness enforced per brand
+      in the Actions. `tests/EventManagementTest.php`.
 - [x] Event model and migration: ULID primary key (ADR-0014), `BelongsToBrand`
       (ADR-0010), wall-clock `starts_at`/`ends_at` plus IANA `timezone`
       (ADR-0027), slug unique per brand, lifecycle `state` enum, `visibility`,

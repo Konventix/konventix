@@ -7,16 +7,19 @@ namespace Konventix\Event\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Konventix\Event\Database\Factories\EventFactory;
 use Konventix\Event\Enums\EventLifecycleState;
 use Konventix\Event\Enums\EventVisibility;
+use Konventix\Event\Enums\ReentryPolicy;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
  * The concrete occurrence a brand puts on (SPEC.md "Owns" — Event): identity,
- * dates, lifecycle state, and the venue it happens at. Almost everything else
+ * dates, lifecycle state, its days, and the venues it happens at
+ * (many, with one primary — D-EVT-15). Almost everything else
  * hangs off this via a plain `event_id` ULID (ADR-0014) — Event imports no
  * other module's models (SPEC.md "Purpose").
  *
@@ -27,7 +30,6 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  *
  * @property string $id
  * @property string $brand_id
- * @property string|null $venue_id
  * @property string $name
  * @property string $slug
  * @property string|null $description
@@ -36,6 +38,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $timezone
  * @property EventLifecycleState $state
  * @property EventVisibility $visibility
+ * @property ReentryPolicy $reentry_policy
+ * @property string|null $predecessor_event_id
  * @property Carbon|null $published_at
  * @property Carbon|null $cancelled_at
  * @property Carbon|null $concluded_at
@@ -52,7 +56,6 @@ class Event extends Model
     use HasFactory, HasUlids;
 
     protected $fillable = [
-        'venue_id',
         'name',
         'slug',
         'description',
@@ -61,6 +64,8 @@ class Event extends Model
         'timezone',
         'state',
         'visibility',
+        'reentry_policy',
+        'predecessor_event_id',
         'published_at',
         'cancelled_at',
         'concluded_at',
@@ -69,11 +74,32 @@ class Event extends Model
     ];
 
     /**
-     * @return BelongsTo<Venue, $this>
+     * The venues this event happens at (D-EVT-15: many, with one primary;
+     * zero venues = online-only). Managed through `Actions\AssignVenue` /
+     * `Actions\UnassignVenue`, never raw attach — assignment emits the
+     * contract event consumers rely on.
+     *
+     * @return BelongsToMany<Venue, $this, EventVenue>
      */
-    public function venue(): BelongsTo
+    public function venues(): BelongsToMany
     {
-        return $this->belongsTo(Venue::class);
+        return $this->belongsToMany(Venue::class, 'event_venues')
+            ->using(EventVenue::class)
+            ->withPivot('is_primary')
+            ->withTimestamps();
+    }
+
+    public function primaryVenue(): ?Venue
+    {
+        return $this->venues->firstWhere(fn (Venue $venue): bool => (bool) $venue->pivot?->getAttribute('is_primary'));
+    }
+
+    /**
+     * @return HasMany<EventDay, $this>
+     */
+    public function days(): HasMany
+    {
+        return $this->hasMany(EventDay::class)->orderBy('sequence');
     }
 
     /**
@@ -128,6 +154,7 @@ class Event extends Model
             'ends_at' => 'datetime',
             'state' => EventLifecycleState::class,
             'visibility' => EventVisibility::class,
+            'reentry_policy' => ReentryPolicy::class,
             'published_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'concluded_at' => 'datetime',

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
-import { RefreshCw } from '@lucide/vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { Pencil, RefreshCw } from '@lucide/vue';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
@@ -34,10 +34,42 @@ type EventHeader = {
     timezone: string;
 };
 
-defineProps<{
+const props = defineProps<{
     event: EventHeader;
+    transitions: string[];
     slots: SlotContribution[];
 }>();
+
+/**
+ * The server sends exactly the transitions legal from the current state;
+ * each maps to one lifecycle endpoint (one Action each — the guards live
+ * there). Cancel additionally asks for a reason code.
+ */
+const transitionLabels: Record<string, string> = {
+    announce: 'Announce',
+    publish: 'Publish',
+    unpublish: 'Unpublish',
+    start: 'Start',
+    conclude: 'Conclude',
+    cancel: 'Cancel event',
+    archive: 'Archive',
+};
+
+function runTransition(transition: string): void {
+    const payload: Record<string, string> = {};
+
+    if (transition === 'cancel') {
+        const reason = window.prompt('Reason code for the cancellation:');
+        if (!reason) {
+            return;
+        }
+        payload.reason_code = reason;
+    }
+
+    router.post(`/admin/events/${props.event.id}/${transition}`, payload, {
+        preserveScroll: true,
+    });
+}
 
 const stateBadgeClass: Record<string, string> = {
     draft: 'bg-surface-muted text-text-muted',
@@ -91,15 +123,32 @@ function refresh(): void {
                 </p>
             </div>
 
-            <Button
-                variant="outline"
-                size="sm"
-                :disabled="refreshing"
-                @click="refresh"
-            >
-                <RefreshCw class="size-4" :class="{ 'animate-spin': refreshing }" />
-                Refresh
-            </Button>
+            <div class="flex items-center gap-2">
+                <Button
+                    v-for="transition in props.transitions"
+                    :key="transition"
+                    :variant="transition === 'cancel' ? 'destructive' : 'secondary'"
+                    size="sm"
+                    @click="runTransition(transition)"
+                >
+                    {{ transitionLabels[transition] ?? transition }}
+                </Button>
+                <Link :href="`/admin/events/${props.event.id}/edit`">
+                    <Button variant="outline" size="sm">
+                        <Pencil class="size-4" />
+                        Edit
+                    </Button>
+                </Link>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    :disabled="refreshing"
+                    @click="refresh"
+                >
+                    <RefreshCw class="size-4" :class="{ 'animate-spin': refreshing }" />
+                    Refresh
+                </Button>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">

@@ -4,29 +4,48 @@ declare(strict_types=1);
 
 namespace Konventix\Event\Http\Controllers;
 
-use Illuminate\Http\JsonResponse;
-use Konventix\Event\Data\EventData;
+use Inertia\Inertia;
+use Inertia\Response;
 use Konventix\Event\Models\Event;
+use Konventix\Event\Models\EventDay;
+use Konventix\Event\Models\Venue;
 
 /**
  * The public event landing route (SPEC.md "Event visibility" — "the public
- * landing route resolved on the brand's own domain").
+ * landing route resolved on the brand's own domain"), rendered as an
+ * Inertia page from the module's own pages directory — the Slice 1
+ * resolution made `.ai/rules/resources.md`'s convention real.
  *
- * Renders JSON rather than an Inertia page for now: module-local
- * `resources/js/pages` are not wired into page resolution — `vite.config.js`
- * configures `@inertiajs/vite` with no `directory` option, so it only globs
- * the host's `resources/js/pages`, not `app-modules/*\/resources/js/pages`
- * (see `.ai/rules/resources.md`, which documents the intended convention,
- * against the actual, unwired build config). Wiring that glob is a frontend
- * build-pipeline change outside this module's `app-modules/event/` scope —
- * see TODO.md.
+ * Wall-clock schedule prints as promised (ADR-0027): the props carry the
+ * organizer's local times plus the zone, never `new Date()`-parsed instants.
  */
 final class EventLandingController
 {
-    public function show(Event $event): JsonResponse
+    public function show(Event $event): Response
     {
         abort_unless($event->isVisibleOnLanding(), 404);
 
-        return response()->json(EventData::fromModel($event));
+        return Inertia::render('event/Landing', [
+            'event' => [
+                'name' => $event->name,
+                'description' => $event->description,
+                'state' => $event->state->value,
+                'startsAt' => $event->starts_at->format('Y-m-d H:i'),
+                'endsAt' => $event->ends_at->format('Y-m-d H:i'),
+                'timezone' => $event->timezone,
+            ],
+            'days' => $event->days->map(fn (EventDay $day): array => [
+                'date' => $day->date->toDateString(),
+                'sequence' => $day->sequence,
+                'label' => $day->label,
+            ])->all(),
+            'venues' => $event->venues->map(fn (Venue $venue): array => [
+                'name' => $venue->name,
+                'addressLine1' => $venue->address_line1,
+                'postalCode' => $venue->postal_code,
+                'city' => $venue->city,
+                'isPrimary' => (bool) $venue->pivot?->getAttribute('is_primary'),
+            ])->all(),
+        ]);
     }
 }

@@ -97,10 +97,12 @@ createInertiaApp({
 
         const page = await loader();
 
-        // A page that sets its own `layout` keeps it; everything else gets
-        // the name-based default (moved here from the `layout` option, which
-        // only applies to the plugin's generated resolver).
-        page.default.layout = page.default.layout ?? layoutFor(name);
+        // A page that sets its own `layout` keeps it — including an explicit
+        // `null` (no layout, e.g. public pages via defineOptions); only a
+        // page saying nothing gets the name-based default.
+        if (page.default.layout === undefined) {
+            page.default.layout = layoutFor(name);
+        }
 
         return page;
     },
