@@ -13,9 +13,6 @@ depends on brand resolution and gating working.
       ADR-0014) and factories; operator data as rows, not config (ADR-0001).
 - [ ] Tighten `brands.operator_id` to non-null once brand creation goes
       through an Operator provisioning flow.
-- [ ] Module-local Inertia page resolution (vite/inertia globs over
-      `app-modules/*/resources/js/pages`), so block components and module pages
-      stop living in the host `resources/js/`.
 - [ ] `BelongsToBrand` trait: global scope, automatic `brand_id` on create, and
       the `withoutBrandScope()` escape hatch behind `UseCrossBrandScope`
       (ADR-0010). Brand context serialized into queued jobs and restored in the
@@ -24,13 +21,14 @@ depends on brand resolution and gating working.
 
 ## Backlog
 
-- [ ] Media library per ADR-0035 (decision log Round 6, D-CNT-05): a
-      Platform-owned, brand-scoped media library — models, upload handling,
-      and the reference-by-ULID contract other modules (Content, Admission
-      badge assets, Sponsoring) build against.
-- [ ] Role-assignment screen per decision log Round 6 (D-BATCH): Platform
-      owns it outright — brand role plus a user referenced by ULID, no
-      Identity model import.
+- [ ] Orphan media cleanup job (ADR-0035 defers it): usage references exist,
+      the job that garbage-collects unreferenced items after a grace period
+      does not.
+- [ ] Identity read model for the role-assignment and media screens: member
+      rows and uploader columns show bare user ULIDs until a
+      Platform-maintained read model (display name/email, fed by Identity's
+      events per ADR-0004) exists. The screens are usable — ULIDs copy from
+      the Users page — but this is the planned UX completion.
 - [ ] Per-brand dark-mode token overrides. `Brand.theme_tokens` is one map
       applied to `:root` only; the theme editor built for the light map does
       not yet let a brand override `.dark` separately. Same mechanism
@@ -55,6 +53,40 @@ depends on brand resolution and gating working.
 ## Done
 
 <!-- Move completed items here with the PR that finished them. -->
+
+- [x] Module-local Inertia page resolution (Slice 1): a custom `resolve`
+      callback in `resources/js/app.ts` merges the host's
+      `resources/js/pages` with every module's
+      `app-modules/*/resources/js/pages` by identical relative page name
+      (dev-time duplicate detection); `Modules\InertiaPageChunk` mirrors the
+      mapping server-side for the root template's eager `@vite` page-chunk
+      preload; `config/inertia.php` `pages.paths` globs module dirs for
+      testing assertions. Companion convention for backend-named components
+      (blocks, UI slots): `resources/js/lib/moduleComponents.ts` resolves
+      `<module>/<path>` names over `app-modules/*/resources/js/components`,
+      replacing the hardcoded maps in `StaticPage.vue` and Event's admin
+      dashboard — block component names are now module-prefixed
+      (`platform/blocks/TextBlock`, `event/blocks/CountdownBlock`).
+      Module-owned pages/components moved home: Registration's form page +
+      stats card, Admission's stats card, Event's admin pages + block
+      components, Commerce's orders page, Platform's block components.
+      `StatCard` stayed host-level — other modules' cards import it, so it
+      is shared shell UI.
+- [x] Media library per ADR-0035 (decision log Round 6, D-CNT-05):
+      `MediaItem` + `MediaUsage` models on the new public `media` disk,
+      `Media\MediaLibrary` as the sanctioned ULID→URL read/reference API
+      (`urlFor`, idempotent `recordUsage`/`releaseUsage`),
+      GD-based `thumb` variant (no imaging dependency), upload/delete
+      Actions (delete refused while referenced), operator-console screen
+      (`admin/media`, nav icon `image`, `platform.view-media`/`manage-media`
+      capabilities). `tests/MediaLibraryTest.php`.
+- [x] Role-assignment screen per decision log Round 6 (D-BATCH):
+      `RoleAssignmentController` + `admin/roles` page (brand picker, roles
+      with capability chips and member ULIDs, assign/revoke by user ULID);
+      `Actions\AssignRoleToUser`/`RevokeRoleFromUser` write spatie's morph
+      pivot with the explicit `brand_id` team column — no Identity model
+      import anywhere in `src/` (the model class behind the pivot comes
+      from the auth provider config). `tests/RoleAssignmentTest.php`.
 
 - [x] `permissions:sync` command (`Console\Commands\SyncPermissionsCommand`,
       ADR-0013): walks every registered module's `Permission` enum, upserts

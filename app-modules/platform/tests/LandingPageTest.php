@@ -34,7 +34,7 @@ it('renders the brand\'s home page through the block pipeline', function (): voi
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('StaticPage')
             ->where('title', 'Welcome Home')
-            ->where('blocks.0.component', 'blocks/HeroBlock')
+            ->where('blocks.0.component', 'platform/blocks/HeroBlock')
             ->where('blocks.0.props.heading', 'Hello'));
 });
 

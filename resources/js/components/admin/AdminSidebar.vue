@@ -4,7 +4,7 @@
 // `admin.navigation` prop Platform's NavigationRegistry contributes — plus a
 // live client-side search filter and pinned favorites.
 import { Link, usePage } from '@inertiajs/vue3';
-import { Calendar, LayoutGrid, Puzzle, Receipt, Store, Users } from '@lucide/vue';
+import { Calendar, Image, LayoutGrid, Puzzle, Receipt, Shield, Store, Users } from '@lucide/vue';
 import type { Component } from 'vue';
 import { computed, ref } from 'vue';
 import AdminFavoritesNav from '@/components/admin/AdminFavoritesNav.vue';
@@ -37,7 +37,9 @@ type AdminNavItem = {
 const iconMap: Record<string, Component> = {
     'layout-grid': LayoutGrid,
     calendar: Calendar,
+    image: Image,
     receipt: Receipt,
+    shield: Shield,
     store: Store,
     users: Users,
 };

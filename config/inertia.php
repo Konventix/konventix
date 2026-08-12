@@ -37,8 +37,14 @@ return [
 
     'pages' => [
 
+        // Pages resolve from the host AND every module's pages directory
+        // (.ai/rules/resources.md; client-side mirror in resources/js/app.ts,
+        // server-side chunk preload in Platform's InertiaPageChunk). glob()
+        // is evaluated once per config build — a new module lands with a
+        // deploy, which rebuilds the config cache anyway.
         'paths' => [
             resource_path('js/pages'),
+            ...glob(base_path('app-modules/*/resources/js/pages'), GLOB_ONLYDIR) ?: [],
         ],
 
         'extensions' => [

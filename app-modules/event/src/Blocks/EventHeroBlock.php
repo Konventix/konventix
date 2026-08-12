@@ -34,7 +34,7 @@ final class EventHeroBlock implements BlockType, ResolvesBlockProps
 
     public function component(): string
     {
-        return 'blocks/EventHeroBlock';
+        return 'event/blocks/EventHeroBlock';
     }
 
     public function dataClass(): string

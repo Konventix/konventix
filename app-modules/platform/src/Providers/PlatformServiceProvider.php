@@ -139,6 +139,24 @@ class PlatformServiceProvider extends ModuleServiceProvider
                 permission: Permission::ViewBrands->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
+            new NavigationItem(
+                module: 'platform',
+                label: 'Media',
+                url: '/admin/media',
+                icon: 'image',
+                order: 12,
+                permission: Permission::ViewMedia->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'platform',
+                label: 'Roles',
+                url: '/admin/roles',
+                icon: 'shield',
+                order: 14,
+                permission: Permission::ManageRoles->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
         );
     }
 

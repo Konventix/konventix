@@ -4,6 +4,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 
 | Applies to | Rule file |
 | --- | --- |
+| app-modules/*/src/** | .ai/rules/app-modules-src.md |
 | app-modules/*/src/Data/** | .ai/rules/data.md |
 | phpstan.neon, compose.yaml | .ai/rules/general.md |
 | app-modules/*/src/Models/**, app-modules/*/database/** | .ai/rules/models.md |

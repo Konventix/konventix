@@ -65,7 +65,12 @@
 
         @fonts
 
-        @vite(['resources/css/app.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
+        {{-- Page chunk may live in the host or any module's pages dir (.ai/rules/resources.md). --}}
+        @vite(array_values(array_filter([
+            'resources/css/app.css',
+            'resources/js/app.ts',
+            \Konventix\Platform\Modules\InertiaPageChunk::path($page['component']),
+        ])))
         <x-inertia::head>
             <title>{{ config('app.name', 'Konventix') }}</title>
         </x-inertia::head>

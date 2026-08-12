@@ -23,4 +23,6 @@ enum Permission: string
     case ManageStaticPages = 'platform.manage-static-pages';
     case ManageRoles = 'platform.manage-roles';
     case ViewCrossBrand = 'platform.view-cross-brand';
+    case ViewMedia = 'platform.view-media';
+    case ManageMedia = 'platform.manage-media';
 }

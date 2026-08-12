@@ -118,8 +118,8 @@ it('renders event-hero and countdown blocks through the full static-page pipelin
     $this->get('/pages/home')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('blocks.0.component', 'blocks/EventHeroBlock')
+            ->where('blocks.0.component', 'event/blocks/EventHeroBlock')
             ->where('blocks.0.props.name', 'Xpertise Con')
-            ->where('blocks.1.component', 'blocks/CountdownBlock')
+            ->where('blocks.1.component', 'event/blocks/CountdownBlock')
             ->where('blocks.1.props.targetIso', $event->startsAtInstant()->toIso8601String()));
 });

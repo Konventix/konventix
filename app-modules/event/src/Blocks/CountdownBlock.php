@@ -31,7 +31,7 @@ final class CountdownBlock implements BlockType, ResolvesBlockProps
 
     public function component(): string
     {
-        return 'blocks/CountdownBlock';
+        return 'event/blocks/CountdownBlock';
     }
 
     public function dataClass(): string

@@ -26,7 +26,7 @@ class HeroBlock implements BlockType
 
     public function component(): string
     {
-        return 'blocks/HeroBlock';
+        return 'platform/blocks/HeroBlock';
     }
 
     public function dataClass(): string

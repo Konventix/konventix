@@ -153,6 +153,18 @@ declare namespace Konventix {
             export type BrandThemeData = {
                 tokens: Record<string, string>;
             };
+            export type MediaItemData = {
+                id: string;
+                brandId: string;
+                originalFilename: string;
+                mimeType: string;
+                sizeBytes: number;
+                altText: string | null;
+                url: string | null;
+                thumbUrl: string | null;
+                usageCount: number;
+                uploadedAt: string | null;
+            };
             export type ThemeCatalogData = {
                 groups: Konventix.Platform.Data.ThemeTokenGroupData[];
                 contrastPairs: Konventix.Platform.Data.ThemeContrastPairData[];
@@ -204,7 +216,9 @@ declare namespace Konventix {
                 | 'platform.manage-module-activation'
                 | 'platform.manage-static-pages'
                 | 'platform.manage-roles'
-                | 'platform.view-cross-brand';
+                | 'platform.view-cross-brand'
+                | 'platform.view-media'
+                | 'platform.manage-media';
         }
     }
     namespace Registration {

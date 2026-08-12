@@ -15,9 +15,9 @@ it('registers the hero and cards block types at boot', function (): void {
     $types = app(BlockRegistry::class)->all();
 
     expect($types)->toHaveKeys(['hero', 'cards']);
-    expect($types['hero']->component())->toBe('blocks/HeroBlock');
+    expect($types['hero']->component())->toBe('platform/blocks/HeroBlock');
     expect($types['hero']->module())->toBe('platform');
-    expect($types['cards']->component())->toBe('blocks/CardsBlock');
+    expect($types['cards']->component())->toBe('platform/blocks/CardsBlock');
     expect($types['cards']->module())->toBe('platform');
 });
 
@@ -41,7 +41,7 @@ it('renders a hero block\'s props through the registry', function (): void {
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('StaticPage')
-            ->where('blocks.0.component', 'blocks/HeroBlock')
+            ->where('blocks.0.component', 'platform/blocks/HeroBlock')
             ->where('blocks.0.props.heading', 'Welcome')
             ->where('blocks.0.props.ctaUrl', '/register'));
 });
@@ -62,7 +62,7 @@ it('renders a cards block\'s items through the registry', function (): void {
     $this->get('/pages/cards-page')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('blocks.0.component', 'blocks/CardsBlock')
+            ->where('blocks.0.component', 'platform/blocks/CardsBlock')
             ->where('blocks.0.props.cards.0.title', 'One')
             ->where('blocks.0.props.cards.0.icon', 'ticket')
             ->where('blocks.0.props.cards.1.icon', null));

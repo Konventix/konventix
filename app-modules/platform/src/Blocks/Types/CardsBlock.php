@@ -25,7 +25,7 @@ class CardsBlock implements BlockType
 
     public function component(): string
     {
-        return 'blocks/CardsBlock';
+        return 'platform/blocks/CardsBlock';
     }
 
     public function dataClass(): string

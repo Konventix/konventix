@@ -63,6 +63,22 @@ return [
         ],
 
         /*
+         * Platform's brand-scoped media library (ADR-0035): public web
+         * assets (block images, sponsor logos, badge assets) served through
+         * the storage symlink. Production may point this at S3/CDN — every
+         * consumer resolves URLs through MediaLibrary::urlFor(), never a
+         * hardcoded path.
+         */
+        'media' => [
+            'driver' => 'local',
+            'root' => storage_path('app/public/media'),
+            'url' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/storage/media',
+            'visibility' => 'public',
+            'throw' => true,
+            'report' => false,
+        ],
+
+        /*
          * GoBD archive for issued invoice documents (ADR-0031): written once
          * by Commerce's GenerateInvoiceDocument job, never modified. Must
          * survive brand deletion and storage migrations for the statutory

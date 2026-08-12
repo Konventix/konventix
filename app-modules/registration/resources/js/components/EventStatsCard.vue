@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
-import StatCard from '@/components/admin/events/StatCard.vue';
+import StatCard from '@/components/admin/StatCard.vue';
 import { Skeleton } from '@/components/ui/skeleton';
 
 /**

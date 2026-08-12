@@ -22,14 +22,11 @@
       `VenueAssigned` contract events from SPEC.md's table — Venue and Event
       models/factories exist and `Event::venue_id` is assignable directly,
       but no Action emits these yet.
-- [ ] Wire module-local Inertia page resolution. `vite.config.js` calls
-      `inertia()` with no `directory` option, so `@inertiajs/vite` only globs
-      the host's `resources/js/pages`, not
-      `app-modules/*/resources/js/pages` — despite `.ai/rules/resources.md`
-      describing the latter as where module-owned pages live. Until that's
-      wired (a build-pipeline change outside `app-modules/event/`), the public
-      landing route (`GET /events/{event:slug}`) returns `EventData` as JSON
-      instead of an Inertia render.
+- [ ] Render the public landing route (`GET /events/{event:slug}`) as an
+      Inertia page instead of JSON — module-local page resolution is now
+      wired (Slice 1: host + `app-modules/*/resources/js/pages` merge, see
+      Platform's TODO Done entry), so the blocker is gone; the page itself
+      is Slice 3 scope.
 - [ ] TypeScript generation for `EventData`/`VenueData`/`OpeningPeriodData`
       (spatie/typescript-transformer, ADR-0009) — another workstream owns the
       generation pipeline; the Data classes exist and are ready for it.
@@ -70,10 +67,6 @@
       `BrandAdminController` already grew server-side data-table support
       (search/sort/dir/per_page) that this index should probably adopt once
       the event list needs it.
-- [ ] `AdminLayout`'s `iconMap` does not know the `'calendar'` key the
-      Events nav entry declares (`EventServiceProvider::registerNavigation()`)
-      — out of scope here since `AdminLayout.vue` is off-limits for this
-      change; the nav item renders with no icon until that map is extended.
 - [ ] Settle the edition/series question from `SPEC.md` — the timezone
       storage question is now settled by ADR-0027 (see SPEC.md's "Open
       questions", updated in this change).

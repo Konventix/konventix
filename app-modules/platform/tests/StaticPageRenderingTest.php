@@ -27,7 +27,7 @@ it('renders a published page\'s blocks through the registry', function (): void 
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('StaticPage')
             ->where('title', 'Imprint')
-            ->where('blocks.0.component', 'blocks/TextBlock')
+            ->where('blocks.0.component', 'platform/blocks/TextBlock')
             ->where('blocks.0.props.heading', 'Kontakt')
             ->where('blocks.0.props.body', 'Konventix Dev Operator'));
 });

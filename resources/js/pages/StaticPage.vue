@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import CardsBlock from '@/components/blocks/CardsBlock.vue';
-import CountdownBlock from '@/components/blocks/CountdownBlock.vue';
-import EventHeroBlock from '@/components/blocks/EventHeroBlock.vue';
-import HeroBlock from '@/components/blocks/HeroBlock.vue';
-import TextBlock from '@/components/blocks/TextBlock.vue';
 import PublicTopbar from '@/components/PublicTopbar.vue';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 
 /**
  * Renders a brand static page from its resolved block list. The component map
- * is the frontend half of Platform's block registry; modules contributing
- * block types (e.g. Event's `event-hero`/`countdown`) extend this map.
+ * resolves through the registered-component convention
+ * (`<module>/<path>` — see lib/moduleComponents.ts), so a module
+ * contributing a block type ships its own Vue component and no host-side
+ * map exists to edit (ADR-0003).
  */
 type RenderableBlock = {
     key: string;
@@ -23,13 +21,6 @@ const props = defineProps<{
     blocks: RenderableBlock[];
 }>();
 
-const componentMap: Record<string, unknown> = {
-    'blocks/TextBlock': TextBlock,
-    'blocks/HeroBlock': HeroBlock,
-    'blocks/CardsBlock': CardsBlock,
-    'blocks/EventHeroBlock': EventHeroBlock,
-    'blocks/CountdownBlock': CountdownBlock,
-};
 </script>
 
 <template>
@@ -58,8 +49,8 @@ const componentMap: Record<string, unknown> = {
                 :key="`${block.key}-${index}`"
             >
                 <component
-                    :is="componentMap[block.component]"
-                    v-if="componentMap[block.component]"
+                    :is="resolveRegisteredComponent(block.component)"
+                    v-if="resolveRegisteredComponent(block.component)"
                     v-bind="block.props"
                 />
             </template>

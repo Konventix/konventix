@@ -2,18 +2,17 @@
 import { Head } from '@inertiajs/vue3';
 import { RefreshCw } from '@lucide/vue';
 import { ref } from 'vue';
-import AdmissionEventStatsCard from '@/components/admission/EventStatsCard.vue';
-import RegistrationEventStatsCard from '@/components/registration/EventStatsCard.vue';
 import { Button } from '@/components/ui/button';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 
 /**
  * Composes Event's own header with contributions from other modules'
  * `SlotRegistry` entries for the `event.admin.dashboard` slot (ADR-0003
  * enforcement point 3, docs/decisions/0003 "slots are an activation gate
- * point"). The component map below is the frontend half of that registry —
- * same pattern as `StaticPage.vue`'s block component map — so this page
- * never imports a module's card by guessing a path; it only resolves the
- * string contract each module's ServiceProvider declares in its own
+ * point"). Contributions resolve through the registered-component
+ * convention (`<module>/<path>` — see lib/moduleComponents.ts), so this
+ * page never imports a module's card by guessing a path; it only resolves
+ * the string contract each module's ServiceProvider declares in its own
  * `registerSlots()`.
  *
  * "Manual refresh" (LanCore's `Dashboard.vue` pattern) bumps `refreshToken`,
@@ -39,11 +38,6 @@ defineProps<{
     event: EventHeader;
     slots: SlotContribution[];
 }>();
-
-const componentMap: Record<string, unknown> = {
-    'registration/EventStatsCard': RegistrationEventStatsCard,
-    'admission/EventStatsCard': AdmissionEventStatsCard,
-};
 
 const stateBadgeClass: Record<string, string> = {
     draft: 'bg-surface-muted text-text-muted',
@@ -114,8 +108,8 @@ function refresh(): void {
                 :key="`${slot.module}-${slot.component}`"
             >
                 <component
-                    :is="componentMap[slot.component]"
-                    v-if="componentMap[slot.component]"
+                    :is="resolveRegisteredComponent(slot.component)"
+                    v-if="resolveRegisteredComponent(slot.component)"
                     :event-id="event.id"
                     :refresh-token="refreshToken"
                     v-bind="slot.props"

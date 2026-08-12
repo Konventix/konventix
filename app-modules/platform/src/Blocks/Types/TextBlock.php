@@ -25,7 +25,7 @@ class TextBlock implements BlockType
 
     public function component(): string
     {
-        return 'blocks/TextBlock';
+        return 'platform/blocks/TextBlock';
     }
 
     public function dataClass(): string

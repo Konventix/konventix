@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import CountdownTimer from '@/components/countdown/CountdownTimer.vue';
+import CountdownTimer from '../countdown/CountdownTimer.vue';
 
 /**
  * Props are resolved server-side by
