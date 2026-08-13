@@ -20,13 +20,12 @@
 
 ## Backlog
 
-- [ ] Slice 10b — absorb LanBrackets' bracket engine (ADR-0019): 5 format
-      engines (~3,185 LOC), the 4 contracts, the progression graph and 21 Pest
-      files, renamed into `Konventix\Competition`. Dropping the REST API,
-      `ApiToken` auth, webhooks, the duplicate `User` table and the
-      `(source_system, external_reference_id)` mapping as the ADR directs.
-      Until it lands, matches and slots must be created by hand — there is no
-      seeding, no progression and no standings.
+- [ ] Swiss pairing: decide whether to replace greedy first-fit with a
+      minimum-weight perfect matching (Edmonds' blossom, 1965) as `SPEC.md`'s
+      "Known limitations" describes. Not a refactor — it pairs some rounds
+      differently from the absorbed engine for identical input, so it needs a
+      decision. The greedy failure mode is already pinned by a test, so the
+      swap has a target to beat.
 - [ ] GameOps catalogue read model (blocked on Slice 11). `Discipline.game_id`
       holds the reference today but nothing projects the catalogue fields
       D-GOP-04 names (avg match/stage minutes, signup rules, team size).
@@ -64,6 +63,33 @@
 
 ## Done
 
+- [x] Slice 10b — bracket engine absorbed from LanBrackets (ADR-0019). Five
+      formats behind one `FormatGenerator` contract, plus `Stage` and the
+      `match_connections` progression graph. Dropped the REST API, `ApiToken`
+      auth, webhooks, the duplicate `User` table and the
+      `(source_system, external_reference_id)` mapping as the ADR directs.
+      **Generators are pure functions** — `list<string>` seed order in, a
+      `BracketPlan` value object out — where the predecessor's took a stage and
+      mutated the database. That is what lets `BracketMathematicsTest` prove
+      every correctness property without a database, and it leaves
+      `GenerateBracket` as the only writer.
+      Each construction is a published one and `SPEC.md` names it: standard
+      recursive seeding, the circle method as a 1-factorization of `K_n`
+      (Kirkman 1847), serpentine partition, the `2(k-1)` losers structure, and
+      Swiss as minimum-weight perfect matching.
+      **Two deliberate deviations, both documented in `SPEC.md`:** the
+      predecessor's single-elimination seeding is mathematically wrong (seed 1
+      versus seed 5 in an eight-bracket; its tests only ever asserted that
+      seeds 1 and 2 were separated, never the pairing), so the standard
+      construction replaced it; and its double elimination has no crossover at
+      all, so drop-in order is now reversed on alternate rounds. Swiss pairing
+      was *not* corrected — greedy first-fit is kept, its forced-rematch
+      failure mode pinned by a test rather than hidden, because swapping in a
+      blossom matching changes tournament behaviour and needs a decision.
+      Also fixed a 10a bug this slice exposed: `competition_matches` was unique
+      on `(competition_id, round, position)`, which a winners *and* losers
+      round 1 position 1 both violate. Now scoped to the bracket, with
+      `COALESCE` so the stage-less matches 10a created stay constrained.
 - [x] Slice 10a — Competition domain (bracket engine deferred to 10b).
       `Discipline` per ADR-0024: a video game is one *kind*, and duration,
       team size and scoring hang off the discipline uniformly so no consumer

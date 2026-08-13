@@ -27,7 +27,9 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $id
  * @property string $brand_id
  * @property string $competition_id
+ * @property string|null $stage_id
  * @property int $round
+ * @property string|null $bracket
  * @property int $position
  * @property MatchState $state
  * @property string|null $winner_entrant_id
@@ -47,7 +49,7 @@ class CompetitionMatch extends Model
     protected $table = 'competition_matches';
 
     protected $fillable = [
-        'competition_id', 'round', 'position', 'state',
+        'competition_id', 'stage_id', 'round', 'position', 'bracket', 'state',
         'winner_entrant_id', 'scheduled_at', 'finished_at', 'finished_event_emitted_at',
     ];
 

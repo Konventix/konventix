@@ -35,7 +35,11 @@ who entered, who played whom, when, and what the score was.
 - **Schedule** — when matches happen across rounds and days.
 - **Standings** — the ranking derived from recorded results.
 - **Brackets** — structure, seeding and pairing, absorbed from LanBrackets
-  (ADR-0019). Module-internal: no external service, no webhook endpoint.
+  (ADR-0019). Module-internal: no external service, no webhook endpoint. A
+  **Stage** is one phase of a competition (a group stage feeding a playoff is
+  two stages), and `match_connections` is the progression graph between
+  matches. The constructions and their guarantees are documented under
+  "Bracket mathematics" below.
 
 ## Does not own
 
@@ -51,6 +55,145 @@ who entered, who played whom, when, and what the score was.
 | The public programme entry announcing the tournament | **Agenda**; brand pages and news around it, **Content** |
 | Delivery of "your match starts in 10 minutes" | **Messaging** |
 | Which roles may edit a result per brand | **Platform** (per-brand role data, ADR-0013) |
+
+## Bracket mathematics
+
+Absorbed from LanBrackets per ADR-0019. Every format here is a named,
+published construction rather than an in-house heuristic, and this section
+records **which** one, what it provably guarantees, and — where the shipped
+code falls short of the proven algorithm — exactly where the gap is. The
+guarantees below are asserted as properties in
+`tests/BracketMathematicsTest.php`, which runs without a database because the
+generators are pure functions from a seed-ordered `list<string>` to a
+`BracketPlan`.
+
+### Single elimination — standard (recursive) seeding
+
+A bracket of `2^k` slots is filled by the recursively-defined permutation
+
+```
+S(1)  = [1]
+S(2n) = for each s in S(n): s, then (2n + 1 - s)
+```
+
+giving `S(4) = [1,4,2,3]` and `S(8) = [1,8,4,5,2,7,3,6]`. It is the
+bit-reversal permutation: slot `i` holds the seed you get by reversing the bits
+of `i`. Two properties follow from the construction, which is why this is the
+universal choice rather than one option among several:
+
+1. **Every round-one pairing sums to `bracketSize + 1`.** 1 plays 16, 2 plays
+   15. Each first match is as lopsided as the field allows, which is what a
+   seeding is for.
+2. **Seeds meet as late as the structure permits.** Seeds `i` and `j` cannot
+   meet before round `k - floor(log2(max(i,j) - 1))`; 1 and 2 only in the
+   final. No other arrangement delays *every* top pairing simultaneously.
+
+**Byes fall out of the same construction.** A field of `n` plays in a bracket
+of `2^ceil(log2 n)`; the absent opponents are precisely the highest seed
+numbers, so byes land on the top seeds with no separate bye rule to get wrong.
+
+### Round robin — the circle method (Kirkman, 1847)
+
+Scheduling a round robin *is* the problem of decomposing the complete graph
+`K_n` into perfect matchings — a **1-factorization**. Each round is one perfect
+matching; the schedule is complete when every edge of `K_n` is used exactly
+once. `K_{2m}` is 1-factorable and the circle method is the constructive proof:
+fix one vertex, arrange the remaining `2m-1` in a circle, rotate.
+
+It produces `2m-1` rounds of `m` matches, and that is **optimal** — a round can
+retire at most `m` of the `C(2m,2) = m(2m-1)` edges. Odd `n` gets a virtual
+entrant; whoever draws it sits out, and each real entrant takes exactly one bye
+across `n` rounds.
+
+Completeness here is structural, not tested into existence. The test asserts it
+exhaustively anyway (n ∈ {2,3,4,5,6,7,8,12,15}), which is how a port earns
+trust.
+
+### Group stage — serpentine (boustrophedon) distribution
+
+Splitting a seeded field into `g` groups fairly is a **balanced partition**.
+Serpentine dealing — left-to-right, then right-to-left — gives every group one
+seed from each band of `g`, so group seed-sums differ by at most `g-1`.
+Sequential dealing would put seeds 1–4 in one group and 5–8 in another, which
+is a sort, not a draw. Each group then plays the circle method, so within a
+group every pair still meets exactly once.
+
+### Double elimination — the `2(k-1)` losers structure
+
+With `2^k` entrants the winners bracket is the single-elimination tree above.
+The losers bracket must absorb a stream of arrivals while halving its own
+field, which forces its shape: **`2(k-1)` rounds**, alternating *minor* rounds
+(losers-bracket survivors halve each other) and *major* rounds (survivors meet
+the fresh drop-ins). Losers from winners round `r > 1` drop into losers round
+`2(r-1)`. The event needs `2n - 2` decisive matches — each of `n-1`
+non-winners must lose twice — plus one if the grand final is reset.
+
+Grand-final slot 1 is always the winners-bracket representative. The reset rule
+depends on that invariant: if slot 1 wins, they have never lost and the event
+is over.
+
+### Swiss — pairing, and the honest gap
+
+The correct formulation of a Swiss round is a **minimum-weight perfect
+matching** on a graph whose edge weights punish score differences and forbid
+rematches. **Edmonds' blossom algorithm (1965)** solves it exactly in
+polynomial time, so an optimal pairing is computable rather than merely
+approachable; FIDE's Dutch system is a rule-based specialisation of the same
+idea. Round count is `ceil(log2 n)` — the rounds needed for exactly one
+entrant to be able to finish undefeated.
+
+**The shipped implementation is not that.** As absorbed, it is a *greedy
+first-fit*: walk the standings-sorted list and pair each entrant with the first
+later entrant they have not yet played. See "Known limitations" below.
+
+### Deviations from the absorbed engine
+
+ADR-0019 says absorb LanBrackets. It is not a mandate to absorb a defect, so
+two behaviours differ deliberately. Both are visible in the seeding of every
+event rather than hidden, and both are recorded here because they change
+tournament outcomes relative to the predecessor.
+
+| Deviation | Predecessor | Here | Why |
+|---|---|---|---|
+| **Single-elimination seeding** | Produces seed 1 v 5, 7 v 3, 4 v 8, 6 v 2 in an eight-bracket — pairing sums 6, 10, 12, 8 | The standard construction above — sums always `bracketSize + 1` | The predecessor's variant is simply wrong: it puts the 5 seed against the 1 seed in round one and can meet the 3 seed in a quarter-final. Its tests only assert that seeds 1 and 2 are separated, never the pairing, so the defect never surfaced. |
+| **Double-elimination crossover** | None — drop-in `i` is wired to losers match `i` verbatim | Drop-in order is reversed on alternate rounds | Without a crossover, two entrants who just met in the winners bracket can be paired again immediately in the losers bracket. Every mature generator applies some reversal or rotation. |
+
+### Known limitations
+
+- **Swiss pairing is greedy, not optimal.** Greedy first-fit can paint itself
+  into a corner: the last two entrants are a forced rematch even when a
+  rematch-free pairing of the whole field existed. The code accepts the
+  rematch rather than backtracking. This is asserted as a *deliberate* test
+  case, not left to be discovered. Replacing it with a blossom matching is a
+  change of tournament behaviour, not a refactor — it would pair some rounds
+  differently from the predecessor for identical input — so it needs a
+  decision, not a commit.
+- **The double-elimination crossover reduces immediate rematches; it does not
+  eliminate them.** Guaranteeing a rematch-free losers bracket at every field
+  size is not achievable by reordering drop-ins alone.
+- **The group-stage serpentine repeats a seed at each direction change**
+  (A, B, B, A, A… for two groups). That is the predecessor's fill, preserved
+  on purpose: a tidier loop would silently redraw every existing group.
+- **Swiss plans one round at a time.** Only round one is generated up front;
+  later rounds depend on results that do not exist yet. `pairNextRound()` is
+  called per round, so a Swiss stage has matches but no progression graph.
+
+### How a plan becomes a bracket
+
+Generators are pure and never touch the database. `GenerateBracket` is the only
+writer: it resolves the stage's entrants into seed order, asks the registry for
+the format, and persists the returned plan as matches, slots, and
+`match_connections` edges. It refuses to regenerate a stage rather than
+orphaning recorded results.
+
+`AdvanceBracket` walks those edges: given a finished match it moves the winner
+(and, in double elimination, the loser) into the slot the graph names. It is
+idempotent — re-advancing after a correction returns an empty list rather than
+duplicating anyone.
+
+Round-robin and Swiss stages carry **zero** edges. They are decided by
+standings, not by progression, and the absence of a graph is the encoding of
+that.
 
 ## Public contract (events)
 

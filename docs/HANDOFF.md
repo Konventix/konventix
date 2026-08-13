@@ -145,9 +145,34 @@ PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
   event even as proposed and contradicts D-GOP-04 on the fields. ADR-0024
   sanctions shipping the table and reference now.
 
+- **Slice 10b — bracket engine** (`PENDING`): five formats behind one
+  `FormatGenerator` contract, plus `Stage` and the `match_connections`
+  progression graph. The absorbed engine took a stage and mutated the
+  database; **here the generators are pure functions** — seed-ordered
+  `list<string>` in, a `BracketPlan` value object out — which is what lets
+  `BracketMathematicsTest` prove every correctness property with no database
+  at all, and leaves `GenerateBracket` as the only writer.
+  Each construction is a published one and Competition's `SPEC.md` names it
+  under "Bracket mathematics": standard recursive seeding, the circle method
+  as a 1-factorization of `K_n` (Kirkman 1847), serpentine partition, the
+  `2(k-1)` losers structure, and Swiss as minimum-weight perfect matching.
+  **Two deliberate deviations from LanBrackets, both in the SPEC**: its
+  single-elimination seeding is wrong (seed 1 versus seed 5 in an
+  eight-bracket — its tests only ever asserted that seeds 1 and 2 were
+  separated, never the pairing), replaced by the standard construction; and
+  its double elimination has no crossover at all, so drop-in order is now
+  reversed on alternate rounds. Swiss was **not** corrected: greedy first-fit
+  stays, with its forced-rematch failure mode pinned by a test rather than
+  hidden, because a blossom matching changes tournament behaviour and is a
+  decision, not a commit.
+  Also fixed a 10a bug this exposed — `competition_matches` was unique on
+  `(competition_id, round, position)`, which a winners *and* a losers round 1
+  position 1 both violate. Now scoped to the bracket, with `COALESCE` so 10a's
+  stage-less matches stay constrained rather than silently unconstrained.
+
 ## Next up (in build order)
 
-Slices 4, 5, 6, 8, 9, 10a and 12 are complete; 7 and 10 are half done.
+Slices 4, 5, 6, 8, 9, 10 and 12 are complete; 7 is half done.
 
 1. **Slice 7b — payment providers.** Stripe Connect Standard and Mollie
    adapters, public checkout for `instant` settlement, and the
@@ -159,18 +184,10 @@ Slices 4, 5, 6, 8, 9, 10a and 12 are complete; 7 and 10 are half done.
 2. **Slice 7c — bookkeeping export.** Deliberately not started: **no format is
    decided anywhere in the docs** — no DATEV/EXTF structure, no account
    mapping. Write the ADR first.
-3. **Slice 10b — absorb LanBrackets' bracket engine** (ADR-0019). The source
-   is checked out at `~/git/lan-software/LanBrackets`: 5 format engines
-   (~3,185 LOC), 4 contracts, the progression graph and 21 Pest files, to be
-   renamed into `Konventix\Competition` with the REST API, `ApiToken` auth,
-   webhooks, duplicate `User` table and `(source_system,
-   external_reference_id)` mapping dropped as the ADR directs. Until it lands
-   there is no seeding, no progression and no standings — matches and slots
-   must be created by hand.
-4. **Slice 11 — GameOps**: deliberately on hold until there is infrastructure
+3. **Slice 11 — GameOps**: deliberately on hold until there is infrastructure
    to test provisioning against. It also owes the catalogue event contract
    that Competition's `Discipline` read model is blocked on.
-5. Slices 13–16 as listed in `docs/ROADMAP.md`.
+4. Slices 13–16 as listed in `docs/ROADMAP.md`.
 
 Gaps deliberately left, all recorded in the owning module's `TODO.md`:
 
@@ -193,10 +210,13 @@ Gaps deliberately left, all recorded in the owning module's `TODO.md`:
 - **Content**: no editor, no public listing/detail routes, and the
   `PublishScheduledEntries` sweep has no scheduled command yet — it exists and
   is tested but nothing calls it on a timer.
-- **Competition**: no bracket engine yet (10b), so no seeding, progression or
-  standings; `Entrant::$checked_in_at` exists but nothing writes it, which is
-  where D-CMP-05's admission check will be recorded; no tournament-desk or
-  public surfaces.
+- **Competition**: brackets generate and advance, but **standings are not
+  persisted** — the ranking a round robin, group stage or Swiss is decided by
+  has no model yet, and Swiss cannot pair round 2 without one.
+  `Entrant::$checked_in_at` exists but nothing writes it, which is where
+  D-CMP-05's admission check will be recorded. No tournament-desk or public
+  surfaces. Swiss pairing is greedy first-fit, a documented limitation with
+  the proven alternative (Edmonds' blossom) named in `SPEC.md`.
 - **Repo-wide**: `npm run lint` reports 23 pre-existing ADR-0008 violations in
   other modules' Vue files. They predate this work and are untouched.
 
