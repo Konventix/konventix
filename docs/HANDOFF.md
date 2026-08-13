@@ -145,7 +145,7 @@ PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
   event even as proposed and contradicts D-GOP-04 on the fields. ADR-0024
   sanctions shipping the table and reference now.
 
-- **Slice 10b — bracket engine** (`PENDING`): five formats behind one
+- **Slice 10b — bracket engine** (`59c27cb`): five formats behind one
   `FormatGenerator` contract, plus `Stage` and the `match_connections`
   progression graph. The absorbed engine took a stage and mutated the
   database; **here the generators are pure functions** — seed-ordered
