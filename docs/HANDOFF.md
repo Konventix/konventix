@@ -87,6 +87,20 @@ Completed slices, one commit each, all pushed to
   all-or-nothing, one unit per added admission, and `ReleasesQuotas` now
   gives those units back — it released exactly one before, which would have
   stranded amended seats as sold forever.
+- **Slice 6** (`7954517`): the offline entrance client, as an installable PWA
+  at `/entrance` from its own Vite entry. No document named an artifact — a
+  PWA was chosen because it keeps module-map's "not a second application"
+  promise while adding no deployment target. Ed25519 verification is
+  reimplemented in TypeScript (PHP's sodium cannot run in a browser); the
+  check order mirrors `RecordScan` exactly so door and server return identical
+  reason codes, pinned by tests on both sides. IndexedDB holds keys, delta and
+  the scan buffer, all PII-free. New deps: `vite-plugin-pwa`, `@noble/curves`,
+  and `vitest` — the repo had no JS test runner at all.
+- **Slice 7a** (`cfd94d2`): internal money flows, no new dependencies.
+  ADR-0037's refund block via Commerce's own `CheckedInAdmission` read model;
+  credit notes on their own gapless `GS-` series; `SettlementAccount` plus the
+  `SettlementAdapterRegistry` seam Stripe/Mollie plug into; the daily
+  `commerce:dunning` sweep on the new `registerSchedule()` module hook.
 - **Slice 3** (`fd17b51`): Event completion — multi-venue pivot with
   primary flag (D-EVT-15), `EventDay` entity with stable ULIDs across
   re-syncs + `EventDaysChanged` (D-ADM-04), `ReentryPolicy` (D-ADM-03),
@@ -101,21 +115,6 @@ PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
 ## Next up (in build order)
 
 Slices 4, 5 and 6 are complete, and Slice 7 is half done.
-
-- **Slice 6** (`7954517`): the offline entrance client, as an installable PWA
-  at `/entrance` from its own Vite entry. No document named an artifact — a
-  PWA was chosen because it keeps module-map's "not a second application"
-  promise while adding no deployment target. Ed25519 verification is
-  reimplemented in TypeScript (PHP's sodium cannot run in a browser); the
-  check order mirrors `RecordScan` exactly so door and server return identical
-  reason codes, pinned by tests on both sides. IndexedDB holds keys, delta and
-  the scan buffer, all PII-free. New deps: `vite-plugin-pwa`, `@noble/curves`,
-  and `vitest` — the repo had no JS test runner at all.
-- **Slice 7a** (`<pending>`): internal money flows, no new dependencies.
-  ADR-0037's refund block via Commerce's own `CheckedInAdmission` read model;
-  credit notes on their own gapless `GS-` series; `SettlementAccount` plus the
-  `SettlementAdapterRegistry` seam Stripe/Mollie plug into; the daily
-  `commerce:dunning` sweep on the new `registerSchedule()` module hook.
 
 1. **Slice 7b — payment providers.** Stripe Connect Standard and Mollie
    adapters, public checkout for `instant` settlement, and the
