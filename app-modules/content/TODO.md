@@ -46,6 +46,30 @@
 
 ## Done
 
+- [x] Slice 12 (domain) — entries, publishing, announcements, comments.
+      `ContentEntry` with a typed discriminator rather than a table per kind:
+      news, a page and an announcement differ in presentation, not in
+      substance. Three decisions are visible in what is *absent* — no revision
+      table (D-CNT-09), no locale column (D-CNT-06), and an `audience` of only
+      public/login-required (D-CNT-07, since participant-gating would couple
+      Content to Registration).
+      `Scheduled` is a distinct state, not a published row with a future date,
+      so "is this live" needs no arithmetic and an entry unpublished before
+      its date cannot silently appear when the date arrives — there is a test
+      for exactly that.
+      Announcements emit `AnnouncementPublished` **alongside**
+      `ContentEntryPublished`: an announcement is still an entry, and a
+      consumer listing content should not need notification semantics to see
+      it. The payload carries urgency and audience only — intent, never a
+      channel or a time (D-CNT-08) — asserted by reflecting over the payload.
+      Comments require an account (D-BATCH-7), so `author_user_id` is not
+      nullable; that is the decision, not an oversight. Rejecting and hiding
+      stay distinct because a moderator needs to know which they did.
+      `LatestNewsBlock` contributes to **Platform's** block registry, the same
+      way Event contributes its hero block — there is no second block system.
+      It resolves entries at render time, or a page would freeze whichever
+      articles were newest the day an editor dropped it in.
+
 - [x] Write `SPEC.md` — purpose, ownership boundary, event contract.
 
 <!-- Move completed items here with the PR that finished them. -->
