@@ -6,6 +6,20 @@
 
 ## Next
 
+- [ ] Resource + resource-type admin UI, and the seat-plan surface (Vue plan
+      component + Platform CMS block type). The domain is complete and
+      testable; there is no screen, so resources are created via factories or
+      tinker today.
+- [ ] Scheduled hold-expiry sweep: holds carry `hold_expires_at` and
+      confirmation refuses an expired one, but nothing yet moves them to
+      `expired` in the background, so a lapsed hold keeps its slot until
+      someone tries to confirm it.
+- [ ] Allocation beyond first-fit: a claim takes the first free resource of
+      its type, which is honest and reversible but not what an organizer
+      means by "put Musterfirma near the entrance".
+- [ ] `EventRescheduled` must also *shift* existing whole-event bookings
+      (ADR-0020 assigns Resources that job); today it only re-projects the
+      window, so bookings made before a reschedule keep the old interval.
 - [ ] Decide how the no-overlap invariant is enforced (PostgreSQL exclusion
       constraint over a range type versus an application-level guard that also
       works on the SQLite test database) and record the outcome — it shapes both
@@ -42,6 +56,32 @@
       registration, including a concurrent double-booking test.
 
 ## Done
+
+- [x] Slice 8 (domain) — bookings, capacity modes and claim fulfilment.
+      `resource_types` / `resources` / `resource_bookings` with ADR-0020's
+      half-open `[starts_at, ends_at)` invariant as a **PostgreSQL exclusion
+      constraint**, not a check in an Action — a read-then-write check loses
+      to a race it cannot see, which is the ADR's whole argument. First
+      `CREATE EXTENSION` in the repo (`btree_gist`); the project is now
+      PostgreSQL-specific, which ADR-0020 names and accepts. The test suite
+      already ran on PostgreSQL, so that half of the cost was paid earlier.
+      The constraint is partial over `state IN (held, confirmed) AND
+      is_exclusive`: releasing frees the slot without deleting who held it,
+      and quantity-mode bookings are excluded because their invariant is a
+      *sum* no constraint can express (ADR-0034) — they are guarded by a
+      locked, summed check in the Action instead. `is_exclusive` is
+      denormalized from the type's mode because a constraint sees only its
+      own row.
+      Hold → confirm → release Actions emitting `ResourceBookingHeld` /
+      `Confirmed` / `Released`; only `Confirmed` is the contract event, since
+      "a hold is provisional and must never reach a badge".
+      `resource_claim` grants are finally materialized: before this they were
+      silently dropped, because Admission skips any grant that is not an
+      admission and nothing else listened. Fulfilment fails soft by design —
+      an unbookable claim leaves the registration intact.
+      `ResourceEventWindow` projects event times from `EventCreated` /
+      `EventRescheduled`, because a whole-event claim needs an interval and
+      Resources may not read Event's models (ADR-0004).
 
 <!-- Move completed items here with the PR that finished them. -->
 

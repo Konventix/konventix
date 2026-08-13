@@ -22,10 +22,3 @@ parameters:
     level: 7
 
     ignoreErrors:
-        # The listener short-circuit trait (ADR-0003's fourth gating point) is
-        # consumed by gateable modules' listeners, none of which exist before
-        # Phase 3; until then its only user is a test's anonymous class, which
-        # PHPStan does not count. Drop this once a real listener uses it.
-        -
-            identifier: trait.unused
-            path: app-modules/platform/src/Modules/Concerns/ShortCircuitsInactiveModule.php
