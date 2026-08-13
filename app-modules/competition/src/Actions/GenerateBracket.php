@@ -7,12 +7,9 @@ namespace Konventix\Competition\Actions;
 use Illuminate\Support\Facades\DB;
 use Konventix\Competition\Brackets\FormatRegistry;
 use Konventix\Competition\Brackets\Plan\BracketPlan;
+use Konventix\Competition\Brackets\PlanWriter;
 use Konventix\Competition\Enums\EntrantState;
-use Konventix\Competition\Enums\MatchState;
-use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Entrant;
-use Konventix\Competition\Models\MatchConnection;
-use Konventix\Competition\Models\MatchSlot;
 use Konventix\Competition\Models\Stage;
 use RuntimeException;
 
@@ -34,6 +31,7 @@ final class GenerateBracket
 {
     public function __construct(
         private readonly FormatRegistry $formats,
+        private readonly PlanWriter $writer,
     ) {}
 
     public function handle(Stage $stage): BracketPlan
@@ -67,51 +65,11 @@ final class GenerateBracket
                 array_merge($generator->defaults(), $stage->settings ?? []),
             );
 
-            $this->persist($stage, $plan);
+            $this->writer->write($stage, $plan);
 
             $stage->forceFill(['generated_at' => now()])->save();
 
             return $plan;
         });
-    }
-
-    private function persist(Stage $stage, BracketPlan $plan): void
-    {
-        /** @var array<string, string> $idByRef */
-        $idByRef = [];
-
-        foreach ($plan->matches as $planned) {
-            $match = new CompetitionMatch([
-                'competition_id' => $stage->competition_id,
-                'stage_id' => $stage->id,
-                'round' => $planned->round,
-                'position' => $planned->position,
-                'bracket' => $planned->bracket,
-                'state' => MatchState::Pending,
-            ]);
-            // brand_id from the stage, not ambient context (ADR-0010).
-            $match->forceFill(['brand_id' => $stage->brand_id])->save();
-
-            $idByRef[$planned->ref] = $match->id;
-
-            foreach ($planned->entrantIds as $position => $entrantId) {
-                $slot = new MatchSlot([
-                    'competition_match_id' => $match->id,
-                    'entrant_id' => $entrantId,
-                    'position' => $position,
-                ]);
-                $slot->forceFill(['brand_id' => $stage->brand_id])->save();
-            }
-        }
-
-        foreach ($plan->connections as $connection) {
-            $edge = new MatchConnection([
-                'source_match_id' => $idByRef[$connection->sourceRef],
-                'target_match_id' => $idByRef[$connection->targetRef],
-                'source_outcome' => $connection->sourceOutcome,
-                'target_slot' => $connection->targetSlot,
-            ]);
-            $edge->forceFill(['brand_id' => $stage->brand_id])->save();
-        }
     }
 }

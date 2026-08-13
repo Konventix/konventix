@@ -33,7 +33,9 @@ who entered, who played whom, when, and what the score was.
   and the recorded finish. Match status here is sporting status — scheduled,
   live, finished, cancelled — never infrastructure status.
 - **Schedule** — when matches happen across rounds and days.
-- **Standings** — the ranking derived from recorded results.
+- **Standings** — the ranking derived from recorded results, persisted per
+  stage as a projection that `CalculateStandings` recomputes wholesale. See
+  "Standings" under "Bracket mathematics" below.
 - **Brackets** — structure, seeding and pairing, absorbed from LanBrackets
   (ADR-0019). Module-internal: no external service, no webhook endpoint. A
   **Stage** is one phase of a competition (a group stage feeding a playoff is
@@ -178,6 +180,65 @@ tournament outcomes relative to the predecessor.
   later rounds depend on results that do not exist yet. `pairNextRound()` is
   called per round, so a Swiss stage has matches but no progression graph.
 
+### Standings
+
+A bracket decides itself; a league does not. Round robin, group stage and
+Swiss carry no progression graph, so their result *is* their standings table —
+and Swiss cannot even pair its next round without one.
+
+Calculators are pure, exactly like the generators: entrants and finished
+outcomes in, ordered entries out, no database. `CalculateStandings` is the
+only writer, and it recomputes the whole stage rather than adjusting rows as
+results land — a correction to a match played three rounds ago changes
+Buchholz for everyone who faced anyone involved, and an incremental update
+chasing that would be a second, subtly different implementation of the same
+rules.
+
+| Format | Ranked on | Then by |
+|---|---|---|
+| Round robin | Points (`points_win` / `points_draw` / `points_loss`) | Score difference |
+| Group stage | The same, once per group | Score difference |
+| Swiss | Score, a draw counting a half | **Buchholz** |
+| Single elimination | The round you were knocked out in | — |
+| Double elimination | The **losers**-bracket round you were knocked out in | — |
+
+**Buchholz** (1932) is the sum of an entrant's opponents' final scores. A Swiss
+event never pairs everyone against everyone, so no head-to-head table exists to
+consult; strength of schedule is the only information the format actually
+contains. It is meaningful once the stage is complete — mid-stage it moves as
+opponents keep playing, which is inherent to the measure rather than a defect
+here.
+
+**Placement uses standard competition ranking** ("1224"): entrants who cannot
+be separated share a placement and the next one skips the ties. Two semifinal
+losers with no third-place match are both 3rd, and nobody is 4th.
+
+### Deviations from the absorbed engine — standings
+
+| Deviation | Predecessor | Here | Why |
+|---|---|---|---|
+| **Tied placements** | Strictly increasing; every tie broken by seed, so semifinal losers were reported 3rd and 4th | Ties share a placement; seed orders the rows for display only | A seeding is a prediction made before play. Using it to award a *final* placement lets a pre-tournament guess outrank the games. A brand wanting a decided 3rd plays a third-place match, which ranks like the real match it is. |
+| **Buchholz and byes** | Summed real opponents only | A bye contributes a **virtual opponent** worth the entrant's own score | Counted naively, whoever took the bye has one fewer opponent contributing and drops a place — punished for the organiser's arithmetic rather than for anything played. FIDE's virtual opponent is the standard answer. |
+| **Bracket identification** | Losers and grand-final matches encoded as round numbers 100, 200 and 202 | The `bracket` column the generator already writes | Sentinel values in an integer column are swept up by any query filtering "rounds 1..n". |
+| **Persistence** | Computed at query time, stored nothing | A `competition_standings` projection with `computed_at` | Defensible for a live table, wrong for a finished one: a correction months later would silently rewrite the ranking a prize was awarded on, with no record that it had changed. |
+
+### Known limitations — standings
+
+- **Calculators see finished matches only**, so a half-played bracket and a
+  finished one are indistinguishable from the results alone. `final_round` is
+  passed in settings to close that gap; a pure call that omits it falls back to
+  the deepest round played, which is right only for a completed stage.
+- **Elimination standings report nothing until the deciding match is played.**
+  Placement in a knockout means "where you were knocked out", and until the
+  final resolves, nobody's is known.
+- **All calculators are head-to-head** and skip any outcome without exactly two
+  sides — a bye counts for the entrant who took it but ranks nothing else. The
+  `MatchOutcome` shape carries a list of sides so a race heat or free-for-all
+  needs no reshaping, but no calculator ranks one yet.
+- **Group standings do not rank across groups.** Which winners advance, and how
+  best runners-up compare, is a qualification question belonging to the playoff
+  stage.
+
 ### How a plan becomes a bracket
 
 Generators are pure and never touch the database. `GenerateBracket` is the only
@@ -193,7 +254,9 @@ duplicating anyone.
 
 Round-robin and Swiss stages carry **zero** edges. They are decided by
 standings, not by progression, and the absence of a graph is the encoding of
-that.
+that. `PairNextSwissRound` is the consequence: a Swiss round only becomes
+knowable when the previous one finishes, so each round after the first is
+paired from the recomputed standings rather than implied by a graph.
 
 ## Public contract (events)
 

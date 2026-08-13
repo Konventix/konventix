@@ -12,6 +12,12 @@ use Konventix\Competition\Brackets\Formats\RoundRobinGenerator;
 use Konventix\Competition\Brackets\Formats\SingleEliminationGenerator;
 use Konventix\Competition\Brackets\Formats\SwissGenerator;
 use Konventix\Competition\Listeners\ProjectEligibilityOnRegistrationEvents;
+use Konventix\Competition\Standings\Calculators\DoubleEliminationStandingsCalculator;
+use Konventix\Competition\Standings\Calculators\GroupStandingsCalculator;
+use Konventix\Competition\Standings\Calculators\PointsStandingsCalculator;
+use Konventix\Competition\Standings\Calculators\SingleEliminationStandingsCalculator;
+use Konventix\Competition\Standings\Calculators\SwissStandingsCalculator;
+use Konventix\Competition\Standings\StandingsCalculatorRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationSubmitted;
@@ -48,6 +54,18 @@ class CompetitionServiceProvider extends ModuleServiceProvider
             $registry->register(new RoundRobinGenerator);
             $registry->register(new SwissGenerator);
             $registry->register(new GroupStageGenerator);
+
+            return $registry;
+        });
+
+        $this->app->singleton(StandingsCalculatorRegistry::class, function (): StandingsCalculatorRegistry {
+            $registry = new StandingsCalculatorRegistry;
+
+            $registry->register(new SingleEliminationStandingsCalculator);
+            $registry->register(new DoubleEliminationStandingsCalculator);
+            $registry->register(new PointsStandingsCalculator);
+            $registry->register(new SwissStandingsCalculator);
+            $registry->register(new GroupStandingsCalculator);
 
             return $registry;
         });

@@ -170,6 +170,33 @@ PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
   position 1 both violate. Now scoped to the bracket, with `COALESCE` so 10a's
   stage-less matches stay constrained rather than silently unconstrained.
 
+- **Slice 10c — standings** (`PENDING`): the inventory's "absorb, then
+  persist". Five calculators behind one contract, pure like the generators
+  (`StandingsMathematicsTest` runs with no database), plus a
+  `competition_standings` projection with `CalculateStandings` as the only
+  writer. It recomputes a whole stage rather than adjusting rows as results
+  land — a late correction moves Buchholz for everyone who faced anyone
+  involved, and an incremental update chasing that would be a second, subtly
+  different copy of the ranking rules.
+  `PairNextSwissRound` closes the loop 10b left open: a Swiss round only
+  becomes knowable when the previous one finishes, so rounds after the first
+  are paired off the recomputed table, refusing a non-Swiss stage, an
+  unfinished previous round, or pairing past the round count.
+  **Four deviations from the absorbed engine, all in `SPEC.md`.** Tied
+  entrants now share a placement (standard competition ranking) rather than
+  being separated by seed — the predecessor reported a 3rd *and* a 4th that no
+  match had decided, letting a pre-tournament guess outrank the games.
+  Buchholz gives a bye a FIDE-style virtual opponent instead of counting real
+  opponents only, which was costing the bye taker a place for the organiser's
+  arithmetic. Brackets are identified by the `bracket` column rather than
+  sentinel round numbers 100/200/202. And the table is persisted rather than
+  recomputed at query time, so the ranking a prize was awarded on still exists
+  after a later correction.
+  One design gap found and closed: a calculator sees *finished* matches only,
+  so a half-played bracket looked identical to a finished one and would have
+  crowned whoever won the deepest match so far. The stage's `final_round` is
+  passed in settings.
+
 ## Next up (in build order)
 
 Slices 4, 5, 6, 8, 9, 10 and 12 are complete; 7 is half done.
@@ -210,13 +237,13 @@ Gaps deliberately left, all recorded in the owning module's `TODO.md`:
 - **Content**: no editor, no public listing/detail routes, and the
   `PublishScheduledEntries` sweep has no scheduled command yet — it exists and
   is tested but nothing calls it on a timer.
-- **Competition**: brackets generate and advance, but **standings are not
-  persisted** — the ranking a round robin, group stage or Swiss is decided by
-  has no model yet, and Swiss cannot pair round 2 without one.
-  `Entrant::$checked_in_at` exists but nothing writes it, which is where
-  D-CMP-05's admission check will be recorded. No tournament-desk or public
-  surfaces. Swiss pairing is greedy first-fit, a documented limitation with
-  the proven alternative (Edmonds' blossom) named in `SPEC.md`.
+- **Competition**: brackets generate, advance and rank, but nothing *calls*
+  `CalculateStandings` on a result yet — it is an Action a surface or listener
+  has to invoke, not a subscriber. `Entrant::$checked_in_at` exists but nothing
+  writes it, which is where D-CMP-05's admission check will be recorded. No
+  tournament-desk or public surfaces. Swiss pairing is greedy first-fit, a
+  documented limitation with the proven alternative (Edmonds' blossom) named
+  in `SPEC.md`.
 - **Repo-wide**: `npm run lint` reports 23 pre-existing ADR-0008 violations in
   other modules' Vue files. They predate this work and are untouched.
 

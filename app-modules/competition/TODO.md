@@ -31,8 +31,6 @@
       D-GOP-04 names (avg match/stage minutes, signup rules, team size).
       **The contract needs settling first**: GameOps' SPEC lists no catalogue
       event at all, not even as proposed, and contradicts D-GOP-04 on scope.
-- [ ] Standings. The inventory's verdict is "absorb, then persist" — the
-      calculators come with 10b, the persisted model does not exist yet.
 - [ ] Check-in as an Action: `Entrant::$checked_in_at` exists but nothing
       writes it. D-CMP-05 puts the admission check at check-in/match start,
       so this is where Competition records that the door verified someone.
@@ -62,6 +60,28 @@
       listener short-circuits when the `competition` feature is off.
 
 ## Done
+
+- [x] Slice 10c — standings (the inventory's "absorb, then persist"). Five
+      calculators behind one contract, pure like the generators, plus a
+      `competition_standings` projection and `CalculateStandings` as the only
+      writer — a full recompute per stage, never a row at a time, because a
+      late correction moves Buchholz for everyone who faced anyone involved.
+      `PairNextSwissRound` closes the loop 10b left open: Swiss rounds after
+      the first are paired off the recomputed table, with refusals for a
+      non-Swiss stage, an unfinished previous round, and pairing past the
+      round count.
+      **Four deviations from the absorbed engine, all in `SPEC.md`:** tied
+      entrants now share a placement (standard competition ranking) instead of
+      being separated by seed, which was reporting a 3rd and a 4th that no
+      match decided; Buchholz gives a bye a FIDE-style virtual opponent rather
+      than counting real opponents only, which was quietly costing the bye
+      taker a place; brackets are identified by the `bracket` column rather
+      than sentinel round numbers 100/200/202; and the table is persisted
+      rather than computed at query time.
+      One design gap found and closed: a calculator sees finished matches
+      only, so a half-played bracket looked exactly like a finished one and
+      would have crowned whoever won the deepest match so far. The stage's
+      `final_round` is passed in settings.
 
 - [x] Slice 10b — bracket engine absorbed from LanBrackets (ADR-0019). Five
       formats behind one `FormatGenerator` contract, plus `Stage` and the
