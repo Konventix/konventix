@@ -42,6 +42,35 @@ Completed slices, one commit each, all pushed to
   pre-invoice transfer freeze (`invoiced_at` from Commerce's InvoiceIssued,
   whose payload gained settles_type/settles_id). Architecture test now
   sanctions Compliance's Gdpr/Enums contract surface.
+- **Slice 5 — Admission entrance chain**, split into three commits because
+  the roadmap's single "slice 5" bundled nine areas:
+  - **5a** (`eaead8b`): ADR-0033's offline trust model. KVX1 Ed25519 tokens
+    (`KVX1.<kid>.<body>.<sig>`, body `{tid, nonce, iat, exp, evt, days}`) with
+    keys that retire without expiring, so rotation never invalidates a QR
+    already issued. Per-device bearer credentials (`Checkpoint` +
+    `EntranceDevice`) replacing LanCore's one shared token. `routes/api/` —
+    a new stateless third route group — serving signing keys, the PII-free
+    delta feed (opaque IDs, monotonic-sequence cursor) and batch scan
+    submission idempotent per `client_scan_id`. Check-in ledger emitting
+    **`AdmissionCheckedIn` with `registration_id`**, the ADR-0037
+    prerequisite that unblocks Slice 7's refunds. Day-scoped validity and the
+    re-entry knob both decide from `EntranceEventProfile`, Admission's read
+    model of Event. Cadence settled where ADR-0033 required it before build:
+    30s poll, 15min stale, per-event overridable.
+    *Found and fixed in Event:* `reentry_policy` was stored but published in
+    no payload, so Admission had no lawful way to learn it — hence the new
+    `EventReentryPolicyChanged`, emitted at creation as well as on change.
+  - **5b** (`6fcf874`): `BadgeTemplate` + dompdf rendering (D-ADM-05).
+    Everything inlines as `data:` URIs because dompdf ships with remote
+    fetching off — which needed `MediaLibrary::dataUriFor()`, widening
+    ADR-0035's sanctioned doorway rather than reaching around it.
+    `bacon/bacon-qr-code` promoted to a declared dependency (lock unchanged).
+    `BadgeIssuance` makes `reprint` a fact; the PDF is deliberately not
+    stored, unlike a GoBD-archived invoice.
+  - **5c** (`ba805cb`): claim links (ADR-0032). Temporary signed route whose
+    signature expiry *is* the row's, mirroring the waitlist offer; the claim
+    burns the link **under a row lock**, closing the two-people-race the ADR
+    named as unbuilt. `AdmissionState::Assigned` finally has a producer.
 - **Slice 4 completion — amendment** (`cd08512`): `AmendRegistration` adds
   grants to a confirmed registration as a delta (ADR-0036), never touching
   the original order or its immutable invoice. **Money is conditional**:
@@ -66,22 +95,33 @@ Completed slices, one commit each, all pushed to
   per-state lifecycle buttons, Venues admin, Inertia landing page. The
   SPEC contract table carries 15 implemented events.
 
-Verification state at handoff: **392 tests passing, PHPStan clean, pint
+Verification state at handoff: **453 tests passing, PHPStan clean, pint
 clean, `npm run build` green.**
 
 ## Next up (in build order)
 
-Slice 4 is now complete — the next slice is the first unstarted one.
+Slices 4 and 5 are complete.
 
-1. **Slice 5 — Admission entrance chain** (unblocked — event days exist):
-   ADR-0033 signed tokens + entrance API + PII-free delta feed, check-in
-   records **emitting `registration_id`** (ADR-0037 needs this before
-   refunds can build), day-scoped validity, ADR-0032 claim links,
-   `BadgeTemplate` + PDF rendering (D-ADM-05, assets via media library).
-   Note `admissions` gained a nullable `amendment_id` — an amendment's
-   admissions are ordinary admissions and the entrance chain should not
-   treat them specially.
-2. Slices 6–16 as listed in `docs/ROADMAP.md`.
+1. **Slice 6 — the offline entrance client** (ADR-0002's one sanctioned
+   runtime-separation carve-out; new work, not a port). 5a was built to make
+   this straightforward: `AdmissionTokenCodec` never touches the database, so
+   the client reuses it verbatim, and `RecordScan` orders its checks to match
+   what the client can decide locally — signature, expiry, event, day-scope,
+   validity, re-entry — so both sides produce the same `CheckInRejectionReason`
+   codes. The client consumes `GET /api/entrance/signing-keys`, polls
+   `GET /api/entrance/delta?since=<seq>` every 30s, and posts buffered scans
+   to `POST /api/entrance/scans` with its own `client_scan_id` per scan.
+2. **Slice 7 — Commerce completion**, now unblocked: `AdmissionCheckedIn`
+   carries `registration_id`, so ADR-0037's refund block can build its read
+   model. Credit notes also serve ADR-0036's post-invoice transfer.
+3. Slices 8–16 as listed in `docs/ROADMAP.md`.
+
+Gaps deliberately left inside Slice 5, all in Admission's `TODO.md`: the
+delta feed's `revoked` kind is defined and served but nothing writes it
+(revocation has no Action yet, so only `checked_in` entries appear); no
+operator screens for checkpoint/device enrolment, badge templates, or claim
+links; and nothing emails a claim link — `urlFor()` builds it but an
+organizer must copy it by hand.
 
 ## Resuming on another machine
 
