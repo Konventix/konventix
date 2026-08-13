@@ -10,13 +10,18 @@
 
 ## Backlog (Phase 2 — release scope, entrance scanning is a definition-of-done item)
 
-- [ ] The offline-capable entrance client — the one case where runtime
-      separation is permitted (ADR-0002) — built against ADR-0033's
-      zero-PII-by-default model, plus conflict handling for duplicate scans
-      across devices per the event's re-entry policy (D-ADM-03). Slice 6.
-      `AdmissionTokenCodec` is deliberately database-free so the client can
-      reuse it verbatim; `RecordScan` orders its checks to match what the
-      client can decide locally, so both sides give the same reason codes.
+- [ ] Camera scanning in the entrance client: it accepts a token by keyboard
+      wedge or paste today, which covers USB/Bluetooth scanners but not a
+      tablet's camera. `BarcodeDetector` covers Android/Chrome without a
+      dependency; iOS Safari would need a decode library.
+- [ ] The ADR-0018 POS screen in the entrance client: separately authorized,
+      online-only, calling Commerce to book a door payment. Explicitly not
+      part of scan-only capabilities, and there is deliberately no combined
+      "collect and admit" operation.
+- [ ] Device enrolment UX: the client takes a device token and event id typed
+      in by hand. A QR-based enrolment handoff from the operator console would
+      remove the copy-paste step, and pairs with the checkpoint/device admin
+      screens already in this backlog.
 - [ ] Operator surface for the entrance chain: checkpoint/device CRUD, showing
       a device token once at enrolment, revoking a lost scanner, and the
       check-in log behind `admission.view-check-in-log`. The domain and API
@@ -55,6 +60,22 @@
 
 ## Done
 
+- [x] Slice 6 — the offline entrance client (ADR-0002's one sanctioned runtime
+      carve-out). An installable PWA served at `/entrance` from its own Vite
+      entry: a plain Vue app rather than an Inertia page, because Inertia needs
+      a server response before it can render and this client exists for when
+      there is no server. Ed25519 verification reimplemented in TypeScript
+      (`lib/token.ts`) — `AdmissionTokenCodec` is database-free so the *logic*
+      ports, but it calls PHP's libsodium and cannot run in a browser.
+      `lib/evaluate.ts` mirrors `RecordScan`'s check order exactly so a scan
+      decided at the door and the same scan reconciled later produce identical
+      reason codes; `evaluate.test.ts` pins both against the PHP enum.
+      IndexedDB holds keys, delta and the scan buffer, all PII-free like the
+      feed. A stale feed degrades the door to signature-only and says so — it
+      never closes. Service worker and manifest are served from the site root
+      (`EntranceClientAssetController`) because a worker under `/build` could
+      never claim `/entrance` scope, and the shell is cached NetworkFirst at
+      runtime since it is a Laravel view, not a build artifact.
 - [x] Slice 5c — claim links for holder-less admissions (ADR-0032).
       `AdmissionClaimLink` + `IssueAdmissionClaimLink` / `ClaimAdmission`,
       emitting `AdmissionHolderAssigned` and moving the admission to
