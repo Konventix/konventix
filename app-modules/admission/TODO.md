@@ -28,10 +28,16 @@
       the delta feed. The feed's `revoked` kind is defined and served but
       nothing writes it yet: revocation has no Action of its own, so today
       only `checked_in` entries appear.
-- [ ] Claim-link assignment flow for unassigned admissions per ADR-0032
-      (decision log Round 6, D-COM-09): a shareable/emailable link that lets a
-      not-yet-named holder attach themselves to one of a group registration's
-      holder-less placeholders.
+- [ ] Deliver claim links through Messaging: `IssueAdmissionClaimLink` mints
+      the link and `urlFor()` builds the signed URL, but nothing emails it —
+      an organizer has to copy it out by hand. Needs an `admission.claim-link`
+      message template registered in `registerMessageTemplates()`, mirroring
+      `registration.waitlist-offer`, plus a payload Data class.
+- [ ] Organizer UI for claim links: issue, re-issue, revoke, and see which
+      placeholders are still unclaimed on a group booking.
+- [ ] Organizer-side holder assignment: `AdmissionHolderAssigned` carries
+      `viaClaimLink: false` for the desk case, but no Action produces it yet —
+      `Permission::AssignHolder`/`ReassignHolder` remain unwired.
 - [ ] Badge template admin UI: `BadgeTemplate` and the
       `admission.manage-badge-templates` capability exist, but there is no
       screen — designing a badge currently means tinker. The print endpoint
@@ -49,6 +55,19 @@
 
 ## Done
 
+- [x] Slice 5c — claim links for holder-less admissions (ADR-0032).
+      `AdmissionClaimLink` + `IssueAdmissionClaimLink` / `ClaimAdmission`,
+      emitting `AdmissionHolderAssigned` and moving the admission to
+      `Assigned` — the state that was catalogued but had no producer.
+      ADR-0032 left the mechanism open ("a signed URL, a short code, an
+      email-bound token"); this follows the waitlist-offer precedent already
+      in the codebase — `URL::temporarySignedRoute` with the row's own
+      `expires_at` as the signature expiry, so the two cannot drift apart.
+      The claim burns the link **under a row lock**, re-checking claimability
+      only after the lock is held, which closes the race ADR-0032 explicitly
+      names as unbuilt. Links may be email-bound so forwarding does not
+      transfer the seat; every failure surfaces as one 410, because
+      distinguishing them would leak who else is on the booking.
 - [x] Slice 5b — badge templates and PDF rendering (D-ADM-05). Per-event
       `BadgeTemplate` with a typed `BadgeLayoutData` cast and media by ULID
       (ADR-0035); `role` is the match key with a `role: null` fallback,

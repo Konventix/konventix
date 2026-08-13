@@ -14,3 +14,19 @@ declare(strict_types=1);
  * So: declare bare routes here. Do not re-apply `web` or the module gate, and
  * never register these routes from routes/web.php.
  */
+
+use Illuminate\Support\Facades\Route;
+use Konventix\Admission\Http\Controllers\ClaimController;
+
+/*
+ * Claiming a holder-less admission (ADR-0032). Two guards stack, exactly as
+ * Registration's waitlist claim does it: `signed` proves the URL was minted
+ * by us and has not expired, `auth` proves a real account is attaching itself
+ * (D-REG-08). Neither alone is enough — a signed link with no account would
+ * assign an admission to nobody.
+ */
+Route::middleware(['auth'])->group(function (): void {
+    Route::post('/admissions/claim/{link}', [ClaimController::class, 'store'])
+        ->middleware('signed')
+        ->name('admission.claim');
+});

@@ -27,6 +27,18 @@ reading either.
   originating registration by ULID only.
 - **Holder assignment** — an admission may be issued unassigned (group and B2B
   bookings) and be claimed or named later.
+- **`AdmissionClaimLink`** — the mechanism by which a not-yet-named person
+  attaches themselves to a holder-less placeholder (ADR-0032, which settles
+  *where* the placeholder lives but leaves *how* it is claimed open). A
+  temporary signed route whose signature expiry **is** the row's `expires_at`,
+  so URL and record cannot disagree; a row rather than a bare signed admission
+  id because a link needs revocation, an audit of who claimed which slot, and
+  re-issuing without reviving a forwarded one. Re-issuing supersedes the
+  previous live link, and a partial unique index keeps at most one live link
+  per admission. Claiming burns the link **under a row lock**, closing the
+  race ADR-0032 names as unbuilt: two people who both open the same forwarded
+  link cannot both win. Optionally email-bound, so forwarding does not
+  transfer the seat.
 - **Ticket tokens** — the scannable credential, its format, its issuance, and
   its rotation or invalidation.
 - **Badge** — the physical or printed identity of the holder at the venue:
@@ -106,7 +118,7 @@ firm up while the first flow is built.
 | Event | Emitted when | Payload |
 |---|---|---|
 | `AdmissionIssued` (proposed) | An admission is created from a confirmed registration's grants | `admission_id`, `registration_id`, `event_id`, `brand_id`, `role`, `holder_user_id` (nullable), `valid_from`, `valid_until`, `issued_at` |
-| `AdmissionHolderAssigned` (proposed) | An initially unassigned admission gets a named holder | `admission_id`, `holder_user_id`, `assigned_at` |
+| `AdmissionHolderAssigned` | An initially unassigned admission gets a named holder. `viaClaimLink` separates self-service claiming from an organizer naming someone at a desk — both end in the same state, only one means a person proved possession of a link | `admission_id`, `registration_id`, `event_id`, `brand_id`, `holder_user_id`, `via_claim_link`, `assigned_at` | implemented |
 | `AdmissionReassigned` (proposed) | An admission is transferred to a different person | `admission_id`, `previous_holder_user_id`, `holder_user_id`, `reassigned_at` |
 | `AdmissionRevoked` (proposed) | An admission stops being valid before its window ends | `admission_id`, `revoked_by_user_id`, `reason_code`, `revoked_at` |
 | `TicketTokenIssued` (proposed) | A scannable token is minted or rotated | `admission_id`, `token_id`, `issued_at`, `supersedes_token_id` (nullable) |
