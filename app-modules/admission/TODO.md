@@ -10,25 +10,24 @@
 
 ## Backlog (Phase 2 — release scope, entrance scanning is a definition-of-done item)
 
-- [ ] Ticket token issuance, rotation, and invalidation per ADR-0033
-      (decision log Round 6, D-COM-06 Option C): signature-verifiable tokens,
-      no local holder list on the device.
-- [ ] Entrance API per ADR-0033: validity manifest download plus a PII-free
-      revocation/checked-in **delta-feed** endpoint (not a full re-download),
-      scan submission, and reconciliation endpoints, with checkpoint and
-      device records.
 - [ ] The offline-capable entrance client — the one case where runtime
       separation is permitted (ADR-0002) — built against ADR-0033's
       zero-PII-by-default model, plus conflict handling for duplicate scans
-      across devices per the event's re-entry policy (D-ADM-03).
-- [ ] Check-in and check-out records with a full accepted/rejected audit trail;
-      emit `AdmissionCheckedIn`, `CheckInRejected`,
-      `CheckInBatchSynchronized`.
-- [ ] Event-day concept integration (decision log Round 6, D-ADM-04, user
-      override — new release scope): validity evaluation needs to check an
-      admission against a specific event day, not just a `valid_from`/
-      `valid_until` pair. Depends on Event's event-day model landing first
-      (see Event's `TODO.md`).
+      across devices per the event's re-entry policy (D-ADM-03). Slice 6.
+      `AdmissionTokenCodec` is deliberately database-free so the client can
+      reuse it verbatim; `RecordScan` orders its checks to match what the
+      client can decide locally, so both sides give the same reason codes.
+- [ ] Operator surface for the entrance chain: checkpoint/device CRUD, showing
+      a device token once at enrolment, revoking a lost scanner, and the
+      check-in log behind `admission.view-check-in-log`. The domain and API
+      exist; there is no screen, so enrolment currently means tinker.
+- [ ] Token delivery: `IssueAdmissionToken` mints KVX1 tokens but nothing
+      renders one into a QR or mails it to a holder yet — that lands with
+      badges (5b) and the claim flow (5c).
+- [ ] Emit `TicketTokenIssued` / `AdmissionRevoked` and append revocations to
+      the delta feed. The feed's `revoked` kind is defined and served but
+      nothing writes it yet: revocation has no Action of its own, so today
+      only `checked_in` entries appear.
 - [ ] Claim-link assignment flow for unassigned admissions per ADR-0032
       (decision log Round 6, D-COM-09): a shareable/emailable link that lets a
       not-yet-named holder attach themselves to one of a group registration's
@@ -47,6 +46,29 @@
 
 ## Done
 
+- [x] Slice 5a — entrance chain (ADR-0033). KVX1 tokens
+      (`KVX1.<kid>.<body>.<sig>`, Ed25519, body `{tid, nonce, iat, exp, evt,
+      days}`) with `EntranceSigningKey` rotation that retires without
+      expiring, so a rotation never invalidates a QR already issued.
+      `AdmissionTokenCodec` is database-free on purpose — the Slice 6 offline
+      client reuses it unchanged. Per-device bearer credentials
+      (`Checkpoint` + `EntranceDevice`, hashed token, individually revocable)
+      replacing LanCore's single shared integration token. Entrance API at
+      `routes/api/`: signing keys, the PII-free delta feed (opaque admission
+      IDs only, monotonic-sequence cursor because venue clocks are
+      unreliable), and batch scan submission idempotent per `client_scan_id`.
+      Check-in ledger with a full accepted/rejected trail and separate
+      `scanned_at`/`synced_at`; emits `AdmissionCheckedIn` **carrying
+      `registration_id`** — the ADR-0037 prerequisite that unblocks Slice 7's
+      refunds — plus `CheckInRejected` and `CheckInBatchSynchronized`.
+      Day-scoped validity (D-ADM-04) and the event's re-entry knob (D-ADM-03)
+      both evaluate from `EntranceEventProfile`, this module's read model of
+      Event, projected from `EventDaysChanged` and the new
+      `EventReentryPolicyChanged` (Event published no policy at all before —
+      the blocker found while building this).
+      ADR-0033 required a sync cadence to be set before build: **30s poll,
+      15min staleness**, per-event overridable, after which a device degrades
+      to signature-only and never to a closed door.
 - [x] Write `SPEC.md` — purpose, ownership boundary, event contract.
 - [x] Model `Admission` — holder (nullable at issue time), role, validity
       window (`valid_from`/`valid_until`), lifecycle state (`AdmissionState`:

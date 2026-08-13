@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Event\Data\EventData;
 use Konventix\Event\Events\EventDetailsUpdated;
+use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Event\Events\EventRescheduled;
 use Konventix\Event\Models\Event;
 
@@ -27,6 +28,8 @@ final class UpdateEventDetails
             $rescheduled = $event->starts_at->format('Y-m-d H:i:s') !== $data->startsAt
                 || $event->ends_at->format('Y-m-d H:i:s') !== $data->endsAt
                 || $event->timezone !== $data->timezone;
+
+            $reentryPolicyChanged = $event->reentry_policy !== $data->reentryPolicy;
 
             $event->forceFill([
                 'name' => $data->name,
@@ -53,6 +56,16 @@ final class UpdateEventDetails
                     startsAt: $event->starts_at->format('Y-m-d H:i:s'),
                     endsAt: $event->ends_at->format('Y-m-d H:i:s'),
                     timezone: $event->timezone,
+                ));
+            }
+
+            // Admission holds this locally so the door can evaluate re-entry
+            // offline (ADR-0033); it has no other way to learn it (ADR-0004).
+            if ($reentryPolicyChanged) {
+                event(new EventReentryPolicyChanged(
+                    eventId: $event->id,
+                    brandId: $event->brand_id,
+                    reentryPolicy: $event->reentry_policy->value,
                 ));
             }
 

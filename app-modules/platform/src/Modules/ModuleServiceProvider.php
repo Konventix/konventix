@@ -106,6 +106,10 @@ abstract class ModuleServiceProvider extends ServiceProvider
      * `routes/admin/` files are the module's operator-console surface
      * (ADR-0029): same `web` group, but gated to the operator host and an
      * authenticated operator with the admin capability instead of a brand.
+     *
+     * `routes/api/` files are the stateless machine surface — see the note in
+     * the body. Deliberately not gated per brand: the caller authenticates
+     * itself and names its own brand, so there is no ambient one to gate on.
      */
     protected function registerRoutes(): void
     {
@@ -117,6 +121,13 @@ abstract class ModuleServiceProvider extends ServiceProvider
             'auth',
             'can:platform.access-admin',
         ], prefix: 'admin');
+
+        // `routes/api/` is the stateless machine surface (ADR-0033's entrance
+        // API is the first): no session, no CSRF, and no brand resolved from
+        // the host — the caller's own credential carries the brand. Each file
+        // applies its own authentication, since there is no one scheme every
+        // machine caller shares.
+        $this->registerRouteDirectory('routes/api', ['api'], prefix: 'api');
     }
 
     /**

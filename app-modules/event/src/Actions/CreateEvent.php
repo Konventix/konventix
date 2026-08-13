@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Event\Data\EventData;
 use Konventix\Event\Events\EventCreated;
+use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Event\Models\Event;
 
 /**
@@ -58,6 +59,15 @@ final class CreateEvent
                 endsAt: $event->ends_at->format('Y-m-d H:i:s'),
                 timezone: $event->timezone,
                 predecessorEventId: $event->predecessor_event_id,
+            ));
+
+            // Emitted at creation, not only on change: a consumer that hears
+            // only about *changes* never learns the policy of an event whose
+            // policy was correct from the start (ADR-0033 needs it locally).
+            event(new EventReentryPolicyChanged(
+                eventId: $event->id,
+                brandId: $event->brand_id,
+                reentryPolicy: $event->reentry_policy->value,
             ));
 
             if ($days !== []) {

@@ -7,6 +7,10 @@ namespace Konventix\Admission\Providers;
 use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
+use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
+use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
+use Konventix\Event\Events\EventDaysChanged;
+use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Events\RegistrationAmended;
@@ -52,6 +56,20 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(
             RegistrationAmended::class,
             IssueAdmissionsOnRegistrationAmended::class,
+        );
+
+        // Admission's read model of the two Event facts the door must decide
+        // without a network round trip (ADR-0033). Admission may not read
+        // Event's models (ADR-0004), so these projections are the only path
+        // by which the day calendar and re-entry policy reach the entrance API.
+        Event::listen(
+            EventDaysChanged::class,
+            ProjectEventDaysOnEventDaysChanged::class,
+        );
+
+        Event::listen(
+            EventReentryPolicyChanged::class,
+            ProjectReentryPolicyOnEventReentryPolicyChanged::class,
         );
     }
 

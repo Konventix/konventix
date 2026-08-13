@@ -32,6 +32,10 @@
       dates (Admission references them), full-set `EventDaysChanged` on
       every change. Re-entry knob (D-ADM-03, `ReentryPolicy`, default
       unlimited) and `predecessor_event_id` (D-EVT-14) on the event.
+      The knob was stored but **published nowhere** until Slice 5a added
+      `EventReentryPolicyChanged` (emitted at creation and on change, full
+      current value): ADR-0033 needs it decidable at a door with no network,
+      and Admission may not read this module's models (ADR-0004).
       New Actions + events: `CreateEvent` (explicit brand, per-brand slug
       guard) → `EventCreated`; `UpdateEventDetails` → `EventDetailsUpdated`
       (+ `EventRescheduled` when the schedule moved); `AnnounceEvent` →

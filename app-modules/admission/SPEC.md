@@ -33,7 +33,30 @@ reading either.
   what is on it, when it is issued, and when it is reprinted.
 - **Check-in and check-out records** — every scan, accepted or rejected, with
   checkpoint, device, operator, and timestamp. This is the audit trail of who
-  was in the building.
+  was in the building. `scanned_at` and `synced_at` are separate: an offline
+  device buffers, so a scan can reach the server long after the person walked
+  in, and the trail must say when they actually did.
+- **`Checkpoint`** — a named door at an event. **Carries no policy**: whether a
+  repeat scan is a conflict or legitimate re-entry is the event's decision
+  (D-ADM-03), and a checkpoint only enforces it. The absence of a policy
+  column is that decision made structural (ADR-0033).
+- **`EntranceDevice`** — one enrolled scanner, holding a hash of its own bearer
+  token and revocable individually. Replaces LanCore's single shared
+  integration token, where one leak meant re-tokening every scanner at the
+  venue. Devices hold **no attendee data at all**.
+- **`EntranceSigningKey`** — Ed25519 keypairs signing KVX1 tokens. Retirement
+  and expiry are distinct: a retired key stops *signing* at once but keeps
+  *verifying* until every token it signed has expired, so rotation never
+  invalidates a QR already in an attendee's wallet.
+- **The entrance delta feed** — the PII-free list of revoked and
+  already-checked-in admission IDs that supplies the negative decisions a
+  signature cannot make (ADR-0033 Option C). Carries **opaque IDs only** — no
+  names, no hashes standing in for names. Cursor is a monotonic sequence, not
+  a timestamp, because venue hardware has unreliable clocks.
+- **`EntranceEventProfile`** — this module's *read model* of the two Event
+  facts a door needs with no network: the event-day calendar and the re-entry
+  policy. Projected from `EventDaysChanged` and `EventReentryPolicyChanged`
+  (ADR-0004 forbids reading Event's models).
 - **Validity evaluation** — the single authority that decides whether a
   presented token grants entry right now.
 - **Revocation and blocking** — including house bans and lost-badge
@@ -76,10 +99,10 @@ firm up while the first flow is built.
 | `AdmissionRevoked` (proposed) | An admission stops being valid before its window ends | `admission_id`, `revoked_by_user_id`, `reason_code`, `revoked_at` |
 | `TicketTokenIssued` (proposed) | A scannable token is minted or rotated | `admission_id`, `token_id`, `issued_at`, `supersedes_token_id` (nullable) |
 | `BadgeIssued` (proposed) | A badge is produced or reprinted at the venue | `admission_id`, `badge_id`, `issued_by_user_id`, `issued_at`, `reprint` |
-| `AdmissionCheckedIn` (proposed) | A scan is accepted at a checkpoint | `admission_id`, `checkpoint_id`, `device_id`, `operator_user_id`, `checked_in_at`, `source` (`online` / `offline`) |
-| `AdmissionCheckedOut` (proposed) | A holder is scanned out | `admission_id`, `checkpoint_id`, `device_id`, `checked_out_at` |
-| `CheckInRejected` (proposed) | A presented token is refused | `admission_id` (nullable), `token_id` (nullable), `checkpoint_id`, `device_id`, `reason_code`, `rejected_at` |
-| `CheckInBatchSynchronized` (proposed) | An offline device reconciles its buffered scans | `device_id`, `checkpoint_id`, `accepted_count`, `conflict_count`, `synchronized_at` |
+| `AdmissionCheckedIn` | A scan is accepted at a checkpoint. **`registration_id` is load-bearing beyond this module**: ADR-0037 blocks a refund on a checked-in admission, and D-COM-15 settles that Commerce answers that from its own read model fed by this event — never by reading Admission's tables. Slice 7's refunds were blocked until this shipped | `check_in_id`, `admission_id`, `registration_id`, `event_id`, `brand_id`, `event_day_id` (nullable), `checkpoint_id` (nullable), `direction`, `scanned_at` | implemented |
+| `CheckInRejected` | A presented token is refused. A first-class event, not a swallowed error — the audit trail records why | `check_in_id`, `admission_id` (nullable — a bad signature never resolves to one), `event_id`, `brand_id`, `checkpoint_id` (nullable), `reason_code`, `scanned_at` | implemented |
+| `CheckInBatchSynchronized` | A device delivered its buffered scans. `duplicates` counts scans already recorded — the normal shape of a reconnection replay, not a fault | `device_id`, `event_id`, `brand_id`, `accepted`, `rejected`, `duplicates`, `synchronized_at` | implemented |
+| `AdmissionCheckedOut` (proposed) | A holder is scanned out. Recorded today as a `direction: out` check-in; a distinct event only if a consumer needs one | `admission_id`, `checkpoint_id`, `device_id`, `checked_out_at` |
 
 ## Consumes
 
@@ -90,6 +113,8 @@ maintains from them.
 |---|---|---|
 | `RegistrationConfirmed` (proposed) | Registration | The trigger: issue one admission per granted admission in the payload, with the granted role |
 | `RegistrationAmended` | Registration | Grants were added to an already-confirmed registration (ADR-0036): issue **exactly the delta**. Idempotency is keyed on `amendment_id` (null for the original confirmation) rather than "does this registration have any admissions?", which would swallow every amendment |
+| `EventDaysChanged` | Event | Projects the event-day calendar into `EntranceEventProfile` so a door can resolve the current day locally (D-ADM-04, ADR-0033). Replaces rather than patches — the payload always carries the complete set |
+| `EventReentryPolicyChanged` | Event | Projects the re-entry knob into the same read model (D-ADM-03). Without it the door could not evaluate re-entry offline, and Admission may not read Event's models (ADR-0004) |
 | `RegistrationCancelled` (proposed) | Registration | Revoke the admissions that registration produced |
 | `UserProfileUpdated` (proposed) | Identity | Maintain the holder read model (badge name, photo reference) |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler; check-in records are attendance data and need an explicit answer |
