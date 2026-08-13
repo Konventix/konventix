@@ -11,6 +11,10 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Admission\Http\Controllers\Admin\AdmissionStatsController;
+use Konventix\Admission\Http\Controllers\BadgeController;
 
 Route::get('/events/{event}/admission-stats', AdmissionStatsController::class)
     ->name('admin.events.admission-stats');
+
+Route::get('/admissions/{admission}/badge', [BadgeController::class, 'show'])
+    ->name('admin.admissions.badge');

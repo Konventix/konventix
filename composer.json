@@ -19,6 +19,7 @@
     ],
     "require": {
         "php": "^8.3",
+        "bacon/bacon-qr-code": "^3.0",
         "barryvdh/laravel-dompdf": "^3.1",
         "horstoeko/zugferd": "^1.0",
         "inertiajs/inertia-laravel": "^3.0",

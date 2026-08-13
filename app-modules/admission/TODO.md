@@ -32,9 +32,12 @@
       (decision log Round 6, D-COM-09): a shareable/emailable link that lets a
       not-yet-named holder attach themselves to one of a group registration's
       holder-less placeholders.
-- [ ] Badge issuance and reprinting: assets (logo, background) sourced from
-      Platform's media library by ULID per ADR-0035; layout ownership is
-      still an open question in `SPEC.md`.
+- [ ] Badge template admin UI: `BadgeTemplate` and the
+      `admission.manage-badge-templates` capability exist, but there is no
+      screen — designing a badge currently means tinker. The print endpoint
+      (`GET /admin/admissions/{admission}/badge`) does exist.
+- [ ] Batch badge printing: one admission per request today, which is wrong
+      for a check-in desk handing out a group booking's badges at once.
 - [ ] Holder assignment and reassignment for group and B2B bookings; revocation
       driven by `RegistrationCancelled`.
 - [ ] Holder read model from Identity events, and the GDPR handler in
@@ -46,6 +49,21 @@
 
 ## Done
 
+- [x] Slice 5b — badge templates and PDF rendering (D-ADM-05). Per-event
+      `BadgeTemplate` with a typed `BadgeLayoutData` cast and media by ULID
+      (ADR-0035); `role` is the match key with a `role: null` fallback,
+      enforced by a partial unique index because Postgres treats NULLs as
+      distinct. `BadgeDocumentRenderer` mirrors Commerce's invoice pipeline
+      (dompdf, inline CSS, table layout) and inlines **everything** as `data:`
+      URIs — dompdf ships with remote fetching off, and turning it on would
+      let any stored media reference trigger an outbound request from the
+      server at render time. That needed `MediaLibrary::dataUriFor()`:
+      widening the sanctioned doorway rather than reaching around it, since
+      ADR-0035 says no consumer ever sees a disk or path. QR via
+      `bacon/bacon-qr-code`, promoted from a transitive Fortify dependency to
+      a declared one (lock unchanged — same version already installed).
+      `BadgeIssuance` makes `reprint` a fact rather than a claim; the PDF
+      itself is deliberately not stored.
 - [x] Slice 5a — entrance chain (ADR-0033). KVX1 tokens
       (`KVX1.<kid>.<body>.<sig>`, Ed25519, body `{tid, nonce, iat, exp, evt,
       days}`) with `EntranceSigningKey` rotation that retires without

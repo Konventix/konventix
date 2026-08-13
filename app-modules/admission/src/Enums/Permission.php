@@ -27,4 +27,8 @@ enum Permission: string
     case ViewCheckInLog = 'admission.view-check-in-log';
     case ScanCheckIn = 'admission.scan-check-in';
     case PrintBadge = 'admission.print-badge';
+    // Designing a badge is an organizer act; printing one is a door act.
+    // Keeping them apart is why door staff can hold PrintBadge without also
+    // being able to redesign the event's badges (D-ADM-05).
+    case ManageBadgeTemplates = 'admission.manage-badge-templates';
 }

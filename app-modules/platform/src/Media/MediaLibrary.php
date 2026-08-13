@@ -47,6 +47,55 @@ class MediaLibrary
     }
 
     /**
+     * Resolve a media ULID to a `data:` URI containing the asset's bytes, for
+     * renderers that cannot fetch a URL.
+     *
+     * This exists because server-side PDF rendering cannot use `urlFor()`:
+     * dompdf ships with remote fetching disabled, so an `http://` image
+     * silently renders as nothing. Enabling remote fetching instead would let
+     * any stored media reference trigger an outbound request from the server
+     * at render time, which is a much worse trade than inlining bytes.
+     *
+     * It is a method *here* rather than a `Storage::disk(...)->path()` call in
+     * the consuming module because this class is the media library's only
+     * sanctioned doorway (ADR-0035) — "no consumer ever sees a disk or path".
+     * Widening that doorway keeps the rule intact; reaching around it would
+     * not.
+     *
+     * Same graceful degradation as `urlFor()`: an unknown ULID, unknown
+     * variant, or missing file resolves to null so a stale reference renders
+     * as a missing image rather than failing the document.
+     */
+    public function dataUriFor(string $mediaId, ?string $variant = null): ?string
+    {
+        $item = MediaItem::withoutBrandScope()->find($mediaId);
+
+        if ($item === null) {
+            return null;
+        }
+
+        $path = $variant === null
+            ? $item->path
+            : ($item->variants[$variant] ?? null);
+
+        if ($path === null) {
+            return null;
+        }
+
+        $disk = Storage::disk($item->disk);
+
+        if (! $disk->exists($path)) {
+            return null;
+        }
+
+        return sprintf(
+            'data:%s;base64,%s',
+            $disk->mimeType($path) ?: 'application/octet-stream',
+            base64_encode($disk->get($path) ?? ''),
+        );
+    }
+
+    /**
      * Record that a module's entity references a media item. Idempotent —
      * re-recording the same reference is a no-op.
      */

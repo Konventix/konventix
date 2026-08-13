@@ -31,6 +31,18 @@ reading either.
   its rotation or invalidation.
 - **Badge** — the physical or printed identity of the holder at the venue:
   what is on it, when it is issued, and when it is reprinted.
+- **`BadgeTemplate`** — the per-event badge design (D-ADM-05): a typed
+  `BadgeLayoutData` behind a JSON cast, with assets referenced as media-library
+  ULIDs (ADR-0035), never URLs. `role` doubles as the match key — a template
+  with a role serves that role, and the single `role: null` row is the event's
+  fallback, enforced by a partial unique index since Postgres treats NULLs as
+  distinct. Deliberately a small fixed vocabulary, not a layout engine:
+  anything richer would be a second theming system competing with Platform's.
+- **`BadgeIssuance`** — when a badge was printed and by whom, so `reprint` is
+  a fact read from the ledger rather than a caller's claim. The rendered PDF
+  is **not** stored: a badge is reproducible on demand from the admission plus
+  its template, so unlike a GoBD-archived invoice (ADR-0031) keeping
+  attendee-bearing documents on disk would add GDPR surface for no gain.
 - **Check-in and check-out records** — every scan, accepted or rejected, with
   checkpoint, device, operator, and timestamp. This is the audit trail of who
   was in the building. `scanned_at` and `synced_at` are separate: an offline
@@ -98,7 +110,7 @@ firm up while the first flow is built.
 | `AdmissionReassigned` (proposed) | An admission is transferred to a different person | `admission_id`, `previous_holder_user_id`, `holder_user_id`, `reassigned_at` |
 | `AdmissionRevoked` (proposed) | An admission stops being valid before its window ends | `admission_id`, `revoked_by_user_id`, `reason_code`, `revoked_at` |
 | `TicketTokenIssued` (proposed) | A scannable token is minted or rotated | `admission_id`, `token_id`, `issued_at`, `supersedes_token_id` (nullable) |
-| `BadgeIssued` (proposed) | A badge is produced or reprinted at the venue | `admission_id`, `badge_id`, `issued_by_user_id`, `issued_at`, `reprint` |
+| `BadgeIssued` | A badge is produced or reprinted at the venue. `reprint` is derived from the issuance ledger, not supplied by the caller. Carries no holder name — a run of reprints is the shape of a lost badge and worth seeing, but the payload stays PII-free | `issuance_id`, `admission_id`, `event_id`, `brand_id`, `badge_template_id` (nullable), `issued_by_user_id` (nullable), `reprint`, `issued_at` | implemented |
 | `AdmissionCheckedIn` | A scan is accepted at a checkpoint. **`registration_id` is load-bearing beyond this module**: ADR-0037 blocks a refund on a checked-in admission, and D-COM-15 settles that Commerce answers that from its own read model fed by this event — never by reading Admission's tables. Slice 7's refunds were blocked until this shipped | `check_in_id`, `admission_id`, `registration_id`, `event_id`, `brand_id`, `event_day_id` (nullable), `checkpoint_id` (nullable), `direction`, `scanned_at` | implemented |
 | `CheckInRejected` | A presented token is refused. A first-class event, not a swallowed error — the audit trail records why | `check_in_id`, `admission_id` (nullable — a bad signature never resolves to one), `event_id`, `brand_id`, `checkpoint_id` (nullable), `reason_code`, `scanned_at` | implemented |
 | `CheckInBatchSynchronized` | A device delivered its buffered scans. `duplicates` counts scans already recorded — the normal shape of a reconnection replay, not a fault | `device_id`, `event_id`, `brand_id`, `accepted`, `rejected`, `duplicates`, `synchronized_at` | implemented |
