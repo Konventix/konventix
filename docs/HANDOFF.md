@@ -109,7 +109,7 @@ Completed slices, one commit each, all pushed to
   per-state lifecycle buttons, Venues admin, Inertia landing page. The
   SPEC contract table carries 15 implemented events.
 
-Verification state at handoff: **533 PHP tests + 17 TypeScript tests passing,
+Verification state at handoff: **553 PHP tests + 17 TypeScript tests passing,
 PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
 
 - **Slices 8, 9 and 12** — the three the roadmap marks independent of 5–7 and
@@ -132,9 +132,22 @@ PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
     (D-CNT-08), account-required comments (D-BATCH-7), and a block
     contributed to *Platform's* registry rather than a second one.
 
+- **Slice 10a — Competition domain** (`d78bd34`): `Discipline` per ADR-0024
+  (a video game is one *kind*; duration/team size/scoring hang off it
+  uniformly), per-event teams with a solo entrant as a team of one, entry
+  gated on a confirmed Registration alone (D-CMP-05), and the match result
+  state machine. `MatchScheduled`/`MatchFinished` emitted exactly as ADR-0012
+  specifies even though GameOps does not exist, with `MatchFinished` fired
+  once per match so a correction cannot make GameOps tear one deployment down
+  twice. An arch test keeps the dependency one-way.
+  Shipped **without** the GameOps catalogue read model: its producer is on
+  hold *and* its contract is unsettled — GameOps' SPEC lists no catalogue
+  event even as proposed and contradicts D-GOP-04 on the fields. ADR-0024
+  sanctions shipping the table and reference now.
+
 ## Next up (in build order)
 
-Slices 4, 5, 6, 8, 9 and 12 are complete, and Slice 7 is half done.
+Slices 4, 5, 6, 8, 9, 10a and 12 are complete; 7 and 10 are half done.
 
 1. **Slice 7b — payment providers.** Stripe Connect Standard and Mollie
    adapters, public checkout for `instant` settlement, and the
@@ -146,8 +159,18 @@ Slices 4, 5, 6, 8, 9 and 12 are complete, and Slice 7 is half done.
 2. **Slice 7c — bookkeeping export.** Deliberately not started: **no format is
    decided anywhere in the docs** — no DATEV/EXTF structure, no account
    mapping. Write the ADR first.
-3. **Slice 10 — Competition**, which needs slice 11's GameOps catalogue piece
-   first, then 11, 13–16 as listed in `docs/ROADMAP.md`.
+3. **Slice 10b — absorb LanBrackets' bracket engine** (ADR-0019). The source
+   is checked out at `~/git/lan-software/LanBrackets`: 5 format engines
+   (~3,185 LOC), 4 contracts, the progression graph and 21 Pest files, to be
+   renamed into `Konventix\Competition` with the REST API, `ApiToken` auth,
+   webhooks, duplicate `User` table and `(source_system,
+   external_reference_id)` mapping dropped as the ADR directs. Until it lands
+   there is no seeding, no progression and no standings — matches and slots
+   must be created by hand.
+4. **Slice 11 — GameOps**: deliberately on hold until there is infrastructure
+   to test provisioning against. It also owes the catalogue event contract
+   that Competition's `Discipline` read model is blocked on.
+5. Slices 13–16 as listed in `docs/ROADMAP.md`.
 
 Gaps deliberately left, all recorded in the owning module's `TODO.md`:
 
@@ -170,6 +193,10 @@ Gaps deliberately left, all recorded in the owning module's `TODO.md`:
 - **Content**: no editor, no public listing/detail routes, and the
   `PublishScheduledEntries` sweep has no scheduled command yet — it exists and
   is tested but nothing calls it on a timer.
+- **Competition**: no bracket engine yet (10b), so no seeding, progression or
+  standings; `Entrant::$checked_in_at` exists but nothing writes it, which is
+  where D-CMP-05's admission check will be recorded; no tournament-desk or
+  public surfaces.
 - **Repo-wide**: `npm run lint` reports 23 pre-existing ADR-0008 violations in
   other modules' Vue files. They predate this work and are untouched.
 
