@@ -170,7 +170,7 @@ PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
   position 1 both violate. Now scoped to the bracket, with `COALESCE` so 10a's
   stage-less matches stay constrained rather than silently unconstrained.
 
-- **Slice 10c — standings** (`PENDING`): the inventory's "absorb, then
+- **Slice 10c — standings** (`db22c57`): the inventory's "absorb, then
   persist". Five calculators behind one contract, pure like the generators
   (`StandingsMathematicsTest` runs with no database), plus a
   `competition_standings` projection with `CalculateStandings` as the only
