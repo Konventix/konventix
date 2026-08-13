@@ -76,3 +76,31 @@ it('never imports Konventix\Registration outside its Events\ namespace', functio
         ...$violations,
     ]));
 });
+
+it('never imports Konventix\Staffing outside its Events\ namespace', function (): void {
+    // D-STF-01 gives Admission a second sanctioned foreign import: Staffing's
+    // AssignmentAccepted, which produces a crew badge. The same rule applies
+    // as for Registration — the Events\ namespace is the contract, and a
+    // Model or Action never is (ADR-0004). Without this case the boundary
+    // would hold only by the accident of Staffing having been empty.
+    $violations = [];
+
+    foreach (admissionSourceFiles() as $file) {
+        if (preg_match_all('/^use\s+(Konventix\\\\Staffing\\\\[^;\s]+)/m', $file['contents'], $matches) === 0) {
+            continue;
+        }
+
+        foreach ($matches[1] as $import) {
+            if (! str_starts_with($import, 'Konventix\\Staffing\\Events\\')) {
+                $violations[] = "{$file['path']} imports {$import}";
+            }
+        }
+    }
+
+    expect($violations)->toBe([], implode("\n", [
+        'Admission may only reach into Staffing\'s Events\ namespace',
+        '(the public contract, ADR-0004) — never a Model, Action, or Data class.',
+        '',
+        ...$violations,
+    ]));
+});

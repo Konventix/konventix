@@ -7,6 +7,7 @@ namespace Konventix\Admission\Providers;
 use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
+use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
 use Konventix\Event\Events\EventDaysChanged;
@@ -15,6 +16,7 @@ use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Staffing\Events\AssignmentAccepted;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -70,6 +72,14 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(
             EventReentryPolicyChanged::class,
             ProjectReentryPolicyOnEventReentryPolicyChanged::class,
+        );
+
+        // D-STF-01: a rostered crew member gets a badge without a
+        // registration behind it. Staffing emits, Admission listens, and
+        // Staffing never writes here directly.
+        Event::listen(
+            AssignmentAccepted::class,
+            IssueCrewAdmissionOnAssignmentAccepted::class,
         );
     }
 

@@ -15,7 +15,9 @@ final class AdmissionIssued
 {
     public function __construct(
         public readonly string $admissionId,
-        public readonly string $registrationId,
+        // Nullable since D-STF-01: a crew admission comes from a shift
+        // assignment, not a registration, and has no commercial act behind it.
+        public readonly ?string $registrationId,
         public readonly string $eventId,
         public readonly string $brandId,
         public readonly string $role,
