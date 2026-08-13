@@ -109,12 +109,32 @@ Completed slices, one commit each, all pushed to
   per-state lifecycle buttons, Venues admin, Inertia landing page. The
   SPEC contract table carries 15 implemented events.
 
-Verification state at handoff: **482 PHP tests + 17 TypeScript tests passing,
+Verification state at handoff: **533 PHP tests + 17 TypeScript tests passing,
 PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
+
+- **Slices 8, 9 and 12** — the three the roadmap marks independent of 5–7 and
+  of each other, all domain-first with UI deferred:
+  - **8 Resources** (`f78112b`): ADR-0020's half-open interval invariant as a
+    **PostgreSQL exclusion constraint** — the repo's first `CREATE EXTENSION`
+    (`btree_gist`), so migrations are now PostgreSQL-specific, which that ADR
+    names and accepts. Unit mode is refused by the database; quantity mode
+    (ADR-0034) adds a locked summed guard, and the constraint had to become
+    partial over `is_exclusive` or quantity mode was impossible. `resource_claim`
+    grants are finally materialized — they were silently dropped before.
+  - **9 Staffing** (`4aa4c56`): flat teams (D-STF-02), self-service sign-up
+    accepted outright with approval as the opt-in (D-STF-01), and the crew
+    badge an accepted assignment produces. Required making
+    `admissions.registration_id` **nullable**: a crew member is rostered, not
+    registered, and inventing a synthetic registration would have put a fake
+    row in Registration's tables to satisfy Admission's schema.
+  - **12 Content** (`84415b2`): entries with a typed discriminator,
+    `Scheduled` as a real state, announcements carrying intent only
+    (D-CNT-08), account-required comments (D-BATCH-7), and a block
+    contributed to *Platform's* registry rather than a second one.
 
 ## Next up (in build order)
 
-Slices 4, 5 and 6 are complete, and Slice 7 is half done.
+Slices 4, 5, 6, 8, 9 and 12 are complete, and Slice 7 is half done.
 
 1. **Slice 7b — payment providers.** Stripe Connect Standard and Mollie
    adapters, public checkout for `instant` settlement, and the
@@ -126,8 +146,8 @@ Slices 4, 5 and 6 are complete, and Slice 7 is half done.
 2. **Slice 7c — bookkeeping export.** Deliberately not started: **no format is
    decided anywhere in the docs** — no DATEV/EXTF structure, no account
    mapping. Write the ADR first.
-3. Slices 8, 9 and 12 are independent of 5–7 and of each other, so they may
-   interleave; then 10–16 as listed in `docs/ROADMAP.md`.
+3. **Slice 10 — Competition**, which needs slice 11's GameOps catalogue piece
+   first, then 11, 13–16 as listed in `docs/ROADMAP.md`.
 
 Gaps deliberately left, all recorded in the owning module's `TODO.md`:
 
@@ -140,6 +160,16 @@ Gaps deliberately left, all recorded in the owning module's `TODO.md`:
   partial credit notes reuse the invoice's tax split rather than recomputing;
   `OrderCancelled` is still proposed; `BookManualPayment` still passes the
   `manual` pseudo-account instead of the resolved account id.
+- **Resources**: no admin UI or seat-plan surface; no scheduled hold-expiry
+  sweep, so a lapsed hold keeps its slot until someone tries to confirm it;
+  claim allocation is first-fit; `EventRescheduled` re-projects the window but
+  does not yet *shift* existing whole-event bookings, which ADR-0020 assigns
+  to this module.
+- **Staffing**: no roster or my-shifts UI; no `StafferProfile` read model of
+  Identity yet, so the roster shows ULIDs.
+- **Content**: no editor, no public listing/detail routes, and the
+  `PublishScheduledEntries` sweep has no scheduled command yet — it exists and
+  is tested but nothing calls it on a timer.
 - **Repo-wide**: `npm run lint` reports 23 pre-existing ADR-0008 violations in
   other modules' Vue files. They predate this work and are untouched.
 
