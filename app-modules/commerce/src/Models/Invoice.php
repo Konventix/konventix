@@ -32,6 +32,9 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $invoice_number
  * @property Carbon $issued_on
  * @property Carbon $due_on
+ * @property Carbon|null $overdue_at
+ * @property int $dunning_level
+ * @property Carbon|null $dunning_raised_at
  * @property string $currency
  * @property string $total_net
  * @property string $total_tax
@@ -91,6 +94,11 @@ class Invoice extends Model
             'billing_party' => BillingPartyData::class,
             'seller' => OperatorSellerData::class,
             'document_generated_at' => 'datetime',
+            // Dunning state is *about* the invoice, not part of what the
+            // document says — ADR-0031's immutability covers the latter.
+            'overdue_at' => 'datetime',
+            'dunning_level' => 'integer',
+            'dunning_raised_at' => 'datetime',
         ];
     }
 

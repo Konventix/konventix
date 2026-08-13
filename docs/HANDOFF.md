@@ -95,33 +95,54 @@ Completed slices, one commit each, all pushed to
   per-state lifecycle buttons, Venues admin, Inertia landing page. The
   SPEC contract table carries 15 implemented events.
 
-Verification state at handoff: **453 tests passing, PHPStan clean, pint
-clean, `npm run build` green.**
+Verification state at handoff: **482 PHP tests + 17 TypeScript tests passing,
+PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
 
 ## Next up (in build order)
 
-Slices 4 and 5 are complete.
+Slices 4, 5 and 6 are complete, and Slice 7 is half done.
 
-1. **Slice 6 — the offline entrance client** (ADR-0002's one sanctioned
-   runtime-separation carve-out; new work, not a port). 5a was built to make
-   this straightforward: `AdmissionTokenCodec` never touches the database, so
-   the client reuses it verbatim, and `RecordScan` orders its checks to match
-   what the client can decide locally — signature, expiry, event, day-scope,
-   validity, re-entry — so both sides produce the same `CheckInRejectionReason`
-   codes. The client consumes `GET /api/entrance/signing-keys`, polls
-   `GET /api/entrance/delta?since=<seq>` every 30s, and posts buffered scans
-   to `POST /api/entrance/scans` with its own `client_scan_id` per scan.
-2. **Slice 7 — Commerce completion**, now unblocked: `AdmissionCheckedIn`
-   carries `registration_id`, so ADR-0037's refund block can build its read
-   model. Credit notes also serve ADR-0036's post-invoice transfer.
-3. Slices 8–16 as listed in `docs/ROADMAP.md`.
+- **Slice 6** (`7954517`): the offline entrance client, as an installable PWA
+  at `/entrance` from its own Vite entry. No document named an artifact — a
+  PWA was chosen because it keeps module-map's "not a second application"
+  promise while adding no deployment target. Ed25519 verification is
+  reimplemented in TypeScript (PHP's sodium cannot run in a browser); the
+  check order mirrors `RecordScan` exactly so door and server return identical
+  reason codes, pinned by tests on both sides. IndexedDB holds keys, delta and
+  the scan buffer, all PII-free. New deps: `vite-plugin-pwa`, `@noble/curves`,
+  and `vitest` — the repo had no JS test runner at all.
+- **Slice 7a** (`<pending>`): internal money flows, no new dependencies.
+  ADR-0037's refund block via Commerce's own `CheckedInAdmission` read model;
+  credit notes on their own gapless `GS-` series; `SettlementAccount` plus the
+  `SettlementAdapterRegistry` seam Stripe/Mollie plug into; the daily
+  `commerce:dunning` sweep on the new `registerSchedule()` module hook.
 
-Gaps deliberately left inside Slice 5, all in Admission's `TODO.md`: the
-delta feed's `revoked` kind is defined and served but nothing writes it
-(revocation has no Action yet, so only `checked_in` entries appear); no
-operator screens for checkpoint/device enrolment, badge templates, or claim
-links; and nothing emails a claim link — `urlFor()` builds it but an
-organizer must copy it by hand.
+1. **Slice 7b — payment providers.** Stripe Connect Standard and Mollie
+   adapters, public checkout for `instant` settlement, and the
+   `SettlementAccount` connect flow. The seam is in place: an adapter is one
+   `SettlementAdapterRegistry::register()` line. Needs `stripe/stripe-php` /
+   `mollie/mollie-api-php`, real provider credentials, and webhook routes with
+   signature verification. Also owes the PSP side of refunds —
+   `SettlementAdapter` still has only `markOrderPaid()`.
+2. **Slice 7c — bookkeeping export.** Deliberately not started: **no format is
+   decided anywhere in the docs** — no DATEV/EXTF structure, no account
+   mapping. Write the ADR first.
+3. Slices 8, 9 and 12 are independent of 5–7 and of each other, so they may
+   interleave; then 10–16 as listed in `docs/ROADMAP.md`.
+
+Gaps deliberately left, all recorded in the owning module's `TODO.md`:
+
+- **Admission**: the delta feed's `revoked` kind is defined and served but
+  nothing writes it (revocation has no Action yet, so only `checked_in`
+  entries appear); no operator screens for device enrolment, badge templates
+  or claim links; nothing emails a claim link; the entrance client takes a
+  token by keyboard/paste rather than camera, and has no ADR-0018 POS screen.
+- **Commerce**: no credit-note PDF (the record exists, the document does not);
+  partial credit notes reuse the invoice's tax split rather than recomputing;
+  `OrderCancelled` is still proposed; `BookManualPayment` still passes the
+  `manual` pseudo-account instead of the resolved account id.
+- **Repo-wide**: `npm run lint` reports 23 pre-existing ADR-0008 violations in
+  other modules' Vue files. They predate this work and are untouched.
 
 ## Resuming on another machine
 

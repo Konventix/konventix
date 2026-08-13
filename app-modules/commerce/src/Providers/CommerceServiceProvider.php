@@ -4,9 +4,17 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Events\AdmissionCheckedIn;
+use Konventix\Commerce\Console\RunDunningSweep;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
+use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
+use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\ManualSettlementAdapter;
+use Konventix\Commerce\Settlement\NullSettlementAdapter;
+use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -44,6 +52,48 @@ class CommerceServiceProvider extends ModuleServiceProvider
     protected function registerListeners(): void
     {
         Event::listen(RegistrationSettlementRequested::class, CreateOrderOnSettlementRequested::class);
+
+        // The ADR-0037 read model. D-COM-15 forbids Commerce querying
+        // Admission's tables, so this projection is the *only* way the refund
+        // guard can know a registration was used.
+        Event::listen(AdmissionCheckedIn::class, ProjectCheckInOnAdmissionCheckedIn::class);
+    }
+
+    /**
+     * The settlement-adapter registry (ADR-0007). Registered as a singleton so
+     * providers can be added by other slices without touching call sites —
+     * Stripe and Mollie (Slice 7b) become two `register()` lines rather than
+     * a rewrite of every place money is settled.
+     */
+    protected function registerBindings(): void
+    {
+        $this->app->singleton(SettlementAdapterRegistry::class, function (): SettlementAdapterRegistry {
+            $registry = new SettlementAdapterRegistry;
+
+            $registry->register(SettlementAccount::PROVIDER_MANUAL, ManualSettlementAdapter::class);
+            $registry->register(SettlementAccount::PROVIDER_NULL, NullSettlementAdapter::class);
+
+            return $registry;
+        });
+    }
+
+    /**
+     * The daily dunning sweep. Scheduled here rather than in a central kernel
+     * — module wiring never goes into a central provider (ADR-0003).
+     */
+    protected function registerSchedule(): void
+    {
+        // Registered explicitly rather than relying on a discovery convention:
+        // modular auto-discovers nothing under a module's `src/Console`, and a
+        // sweep that silently fails to register would look like "no invoices
+        // are overdue" rather than like a bug.
+        if ($this->app->runningInConsole()) {
+            $this->commands([RunDunningSweep::class]);
+        }
+
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $schedule->command(RunDunningSweep::class)->dailyAt('07:00');
+        });
     }
 
     /**

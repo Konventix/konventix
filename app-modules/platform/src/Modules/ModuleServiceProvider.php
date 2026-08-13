@@ -57,6 +57,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerBlockTypes();
         $this->registerSlots();
         $this->registerMessageTemplates();
+        $this->registerSchedule();
         $this->registerGdprExporters();
     }
 
@@ -88,6 +89,15 @@ abstract class ModuleServiceProvider extends ServiceProvider
      * Container bindings owned by this module.
      */
     protected function registerBindings(): void {}
+
+    /**
+     * Scheduled work owned by this module. Deferred through
+     * `callAfterResolving` by the implementor so the scheduler is only built
+     * in the role that runs it — module wiring never goes into a central
+     * kernel (ADR-0003), which is exactly what a central `schedule()` method
+     * would become.
+     */
+    protected function registerSchedule(): void {}
 
     /**
      * Policies this module owns, as model class => policy class.

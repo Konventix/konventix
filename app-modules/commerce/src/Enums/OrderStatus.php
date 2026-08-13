@@ -16,4 +16,11 @@ enum OrderStatus: string
     case Pending = 'pending';
     case Paid = 'paid';
     case Cancelled = 'cancelled';
+
+    /**
+     * Money went back to the payer (ADR-0037). Distinct from `Cancelled`,
+     * which says the order was called off — an order can be cancelled without
+     * ever having been paid, and a refunded one was definitely paid first.
+     */
+    case Refunded = 'refunded';
 }

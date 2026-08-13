@@ -10,22 +10,34 @@
 
 ## Backlog (Phase 2 — release scope, invoice-settled registrations are a definition-of-done item)
 
-- [ ] Stripe Connect Standard and Mollie adapters against connected
-      per-brand accounts (manual payment booking is built — see Done).
-- [ ] `SettlementAccount` connection flow, surfaced in Platform's brand
-      onboarding but owned here. `SettlementAdapter::markOrderPaid()` already
-      takes an `$accountId` on every call (ADR-0007) but nothing validates it
-      against a real account yet — `BookManualPayment` passes the `manual`
-      pseudo-account.
-- [ ] Dunning: `InvoiceOverdue` emission (scheduled job over `invoices.due_on`
-      of unpaid orders), dunning levels as domain concepts, and
-      `DunningLevelRaised`.
-- [ ] Cancellation, refunds, and partial credit notes as domain flows with PSP
-      calls as side effects. `CreditNoteIssued` per ADR-0031 — the immutable
-      invoice makes credit notes the only correction path.
+- [ ] Slice 7b — Stripe Connect Standard and Mollie adapters. The seam now
+      exists: each is one `SettlementAdapterRegistry::register()` line plus an
+      implementation, not a rewrite of every call site. Needs
+      `stripe/stripe-php` / `mollie/mollie-api-php`, provider credentials, and
+      webhook routes with signature verification.
+- [ ] Slice 7b — public checkout for `instant` settlement, and the
+      `SettlementAccount` connect/onboarding flow. The model, the provider
+      column and the one-live-account constraint exist; nothing yet walks a
+      brand through connecting one, and `BookManualPayment` still passes the
+      `manual` pseudo-account rather than the resolved account id.
+- [ ] Slice 7c — bookkeeping export for the tax advisor. **No format is
+      decided anywhere in the docs** — no DATEV/EXTF structure, no account
+      mapping. It warrants its own ADR before code rather than a format
+      invented in passing.
+- [ ] Refund execution against a PSP. `RefundOrder` records the refund and
+      issues the paperwork, but no adapter moves money: `SettlementAdapter`
+      has only `markOrderPaid()`. Slice 7b adds the counterpart.
+- [ ] Credit-note PDF. `CreditNote` records the document but nothing renders
+      it; ADR-0031's hybrid ZUGFeRD pipeline should extend to credit notes,
+      with `InvoiceDocumentRenderer` as the shape to follow.
+- [ ] Partial credit notes. `IssueCreditNote` accepts a `$totalGross`
+      override, but the tax split is still the invoice's — a genuine partial
+      needs its own line-level calculation through `TaxCalculator`.
+- [ ] Cancellation as a domain flow (distinct from refund, which is built):
+      `OrderCancelled` is still proposed.
 - [ ] Cart and vouchers.
-- [ ] Bookkeeping export for the tax advisor; the GDPR exporter in
-      `src/Gdpr/`, reconciled with statutory invoice retention (§147 AO).
+- [ ] The GDPR exporter in `src/Gdpr/`, reconciled with statutory invoice
+      retention (§147 AO).
 - [ ] GoBD retention lifecycle for the `invoices` disk: the archive must
       survive brand deletion, operator changes, and storage migrations for
       ten years (ADR-0031 names the requirement; only the write-once
@@ -42,6 +54,31 @@
       ranges.
 
 ## Done
+
+- [x] Slice 7a — internal money flows (no new dependencies).
+      **ADR-0037's refund block**: `CheckedInAdmission`, Commerce's own read
+      model fed by `AdmissionCheckedIn` (Slice 5a shipped it carrying
+      `registration_id` for exactly this), and the guard in `RefundOrder`.
+      D-COM-15 forbids querying Admission's tables, so this projection is the
+      only lawful path. Keyed per admission, not a counter, so it converges
+      under the replay an offline device makes normal (ADR-0033); it keeps the
+      *earliest* check-in and ignores check-outs.
+      **Credit notes** (ADR-0031, ADR-0036) with their own gapless series
+      `GS-PREFIX-YYYY-NNNNN`, separate from invoices so neither counter can
+      perturb the other and a tax advisor can tell the documents apart by
+      number alone. A credit note requires an invoice — an `instant` order
+      paid at checkout has no document to correct and no party to address, so
+      refunding it moves money without paperwork.
+      **`SettlementAccount` + `SettlementAdapterRegistry`** (ADR-0007): the
+      seam the contract always implied but nothing provided. A brand with no
+      connected account resolves to `manual`, which is the honest default and
+      the only mode the definition of done requires. One live account per
+      brand, enforced by a partial unique index.
+      **Dunning**: `commerce:dunning`, scheduled daily via the new
+      `ModuleServiceProvider::registerSchedule()` hook. `InvoiceOverdue` once
+      per invoice, `DunningLevelRaised` per escalation at 7/21/42 days. No
+      mail is sent from Commerce — Messaging owns what a level means, and a
+      test asserts the Action never references it.
 
 - [x] Write `SPEC.md` — purpose, ownership boundary, event contract.
 - [x] Consume `RegistrationSettlementRequested`
