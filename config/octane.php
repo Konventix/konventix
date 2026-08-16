@@ -187,6 +187,12 @@ return [
 
     'watch' => [
         'app',
+        // All domain code lives in modules (.ai/rules/src.md) — without this
+        // entry the dev web role serves stale module code until a manual
+        // octane:reload, while fresh-process tests pass against the new code.
+        'app-modules/*/src/**/*.php',
+        'app-modules/*/routes/**/*.php',
+        'app-modules/*/database/**/*.php',
         'bootstrap',
         'config/**/*.php',
         'database/**/*.php',
