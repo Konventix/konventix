@@ -235,20 +235,33 @@ dependencies approved), five commits:
   registration at connect), one-live-account refusal,
   `BookManualPayment` resolving the brand's live manual account.
 
-Verification: **688 PHP tests + 22 TS tests passing, PHPStan, pint, vue-tsc
-and `npm run build` clean.**
+Then **Slice 7c — bookkeeping export** (`48eb7e1`), on ADR-0040. Interview
+decisions: both formats (DATEV Buchungsstapel + readable CSV journal),
+SKR03 Automatikkonten defaults, invoices + credit notes only (payments are
+the advisor's bank import), one collective debtor. One export per operator
+and month across all its brands (D-COM-05); tax-bucket splitting with
+bcmath and remainder-absorbing pro-ration for partial credit notes; the
+EXTF writer emits the canonical 125-column layout (verified against a
+reference batch), CP1252/CRLF, festgeschrieben, VAT IDs on reverse-charge
+rows; per-operator `BookkeepingSettings` + downloads at
+`/admin/bookkeeping`.
+
+Verification: **697 PHP tests + 22 TS tests passing (one additional failing
+test belongs to the user's in-flight `SeedDemoDataCommand` work, untouched),
+PHPStan, pint, vue-tsc and `npm run build` clean.**
+
+Note: the user worked in parallel in this session — theme editor
+(`ee51320`) and a `SeedDemoDataCommand` extension (uncommitted, its test
+still red) are theirs.
 
 ## Next up (in build order)
 
-Slices 4, 5, 6, 7b, 8, 9, 10 and 12 are complete; of 7, only 7c remains.
+Slices 4–10 and 12 are complete, including all of 7.
 
-1. **Slice 7c — bookkeeping export.** Deliberately not started: **no format is
-   decided anywhere in the docs** — no DATEV/EXTF structure, no account
-   mapping. Write the ADR first.
-2. **Slice 11 — GameOps**: deliberately on hold until there is infrastructure
+1. **Slice 11 — GameOps**: deliberately on hold until there is infrastructure
    to test provisioning against. It also owes the catalogue event contract
    that Competition's `Discipline` read model is blocked on.
-3. Slices 13–16 as listed in `docs/ROADMAP.md`.
+2. Slices 13–16 as listed in `docs/ROADMAP.md`.
 
 Gaps deliberately left, all recorded in the owning module's `TODO.md`:
 
