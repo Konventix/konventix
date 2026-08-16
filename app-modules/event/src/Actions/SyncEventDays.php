@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Event\Actions;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Models\Event;
@@ -36,15 +37,15 @@ final class SyncEventDays
                 ->values();
 
             $keptDates = $byDate->pluck('date')->all();
-            $event->days()->whereNotIn('date', $keptDates)->delete();
+            $this->daysOf($event)->whereNotIn('date', $keptDates)->delete();
 
             // Phase 1: move surviving rows out of the unique(sequence) range.
-            $event->days()->update(['sequence' => DB::raw('sequence + 10000')]);
+            $this->daysOf($event)->update(['sequence' => DB::raw('sequence + 10000')]);
 
             // Fetched AFTER the offset so the models carry the offset
             // sequence and the final write below is actually dirty. toBase():
             // Eloquent\Collection would re-key only()/except() by primary key.
-            $existing = $event->days()->get()->toBase()
+            $existing = $this->daysOf($event)->get()->toBase()
                 ->keyBy(fn (EventDay $day): string => $day->date->toDateString());
 
             foreach ($byDate as $index => $day) {
@@ -72,15 +73,32 @@ final class SyncEventDays
             event(new EventDaysChanged(
                 eventId: $event->id,
                 brandId: $event->brand_id,
-                days: array_values($event->days->map(fn (EventDay $day): array => [
-                    'day_id' => $day->id,
-                    'date' => $day->date->toDateString(),
-                    'sequence' => $day->sequence,
-                    'label' => $day->label,
-                ])->all()),
+                days: array_values($this->daysOf($event)->orderBy('sequence')->get()
+                    ->map(fn (EventDay $day): array => [
+                        'day_id' => $day->id,
+                        'date' => $day->date->toDateString(),
+                        'sequence' => $day->sequence,
+                        'label' => $day->label,
+                    ])->all()),
             ));
 
             return $event;
         });
+    }
+
+    /**
+     * Every day query escapes BrandScope, constrained by event id instead:
+     * this action runs on the operator admin host, where the scope hardens
+     * to zero rows (ADR-0029) — the scoped relation would read empty, treat
+     * every submitted date as new, and collide with the invisible existing
+     * row on unique(event_id, date). Emitting from a scoped read has the
+     * same failure: EventDaysChanged would carry an empty day set into
+     * Admission's projection.
+     *
+     * @return Builder<EventDay>
+     */
+    private function daysOf(Event $event): Builder
+    {
+        return EventDay::withoutBrandScope()->where('event_id', $event->id);
     }
 }

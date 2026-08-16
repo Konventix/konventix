@@ -19,6 +19,7 @@ use Konventix\Event\Models\EventDay;
 use Konventix\Event\Models\Venue;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Platform\Slots\SlotRegistry;
 
 /**
@@ -130,11 +131,14 @@ class EventAdminController
                 'state' => $model->state->value,
                 ...EventData::fromModel($model)->toArray(),
             ],
-            'days' => $model->days()->get()->map(fn (EventDay $day): array => [
+            // Relation loads re-apply BrandScope on the related model, which
+            // hardens to zero rows on the admin host (.ai/rules) — escape it
+            // per relation or the page renders empty day/venue lists.
+            'days' => $model->days()->withoutGlobalScope(BrandScope::class)->get()->map(fn (EventDay $day): array => [
                 'date' => $day->date->toDateString(),
                 'label' => $day->label,
             ])->all(),
-            'venues' => $model->venues()->get()->map(fn (Venue $venue): array => [
+            'venues' => $model->venues()->withoutGlobalScope(BrandScope::class)->get()->map(fn (Venue $venue): array => [
                 'id' => $venue->getKey(),
                 'name' => $venue->name,
                 'city' => $venue->city,

@@ -3,8 +3,12 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Event as EventFacade;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Models\Event;
+use Konventix\Event\Models\EventDay;
+use Konventix\Event\Models\Venue;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -121,4 +125,103 @@ it('404s the dashboard for an unknown event ulid', function (): void {
     $this->actingAs($admin)
         ->get('http://admin.eventsadmin.test/admin/events/01ARZ3NDEKTSV4RRFFQ69G5FAV')
         ->assertNotFound();
+});
+
+/**
+ * @return array{0: User, 1: Event, 2: array<string, mixed>}
+ */
+function eventsAdminEditable(): array
+{
+    [, $admin] = eventsAdminOperator(['platform.access-admin', 'event.update-event']);
+
+    test()->withBrand();
+    $event = Event::factory()->create([
+        'starts_at' => '2027-06-15 10:00:00',
+        'ends_at' => '2027-06-16 18:00:00',
+    ]);
+
+    $payload = [
+        'name' => $event->name,
+        'slug' => $event->slug,
+        'description' => $event->description,
+        'startsAt' => $event->starts_at->format('Y-m-d H:i:s'),
+        'endsAt' => $event->ends_at->format('Y-m-d H:i:s'),
+        'timezone' => $event->timezone,
+        'visibility' => $event->visibility->value,
+        'reentryPolicy' => $event->reentry_policy->value,
+    ];
+
+    return [$admin, $event, $payload];
+}
+
+// Regression: BrandScope hardens to zero rows on the admin host, so the day
+// sync used to see no existing days, re-insert the submitted date, and die on
+// unique(event_id, date) — while the edit page rendered an empty day list.
+it('keeps event days across repeated saves on the admin host', function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+
+    $payload['days'] = [['date' => '2027-06-15', 'label' => 'Day 1']];
+
+    $this->actingAs($admin)
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", $payload)
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", $payload)
+        ->assertRedirect();
+
+    expect(EventDay::withoutBrandScope()->where('event_id', $event->id)->count())->toBe(1);
+
+    $this->actingAs($admin)
+        ->get("http://admin.eventsadmin.test/admin/events/{$event->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/events/Edit')
+            ->has('days', 1)
+            ->where('days.0.date', '2027-06-15')
+            ->where('days.0.label', 'Day 1'));
+});
+
+it('emits EventDaysChanged with the full day set when saving on the admin host', function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+
+    $payload['days'] = [
+        ['date' => '2027-06-15', 'label' => null],
+        ['date' => '2027-06-16', 'label' => 'Finals'],
+    ];
+
+    EventFacade::fake([EventDaysChanged::class]);
+
+    $this->actingAs($admin)
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", $payload)
+        ->assertRedirect();
+
+    EventFacade::assertDispatched(
+        EventDaysChanged::class,
+        fn (EventDaysChanged $changed): bool => count($changed->days) === 2
+            && $changed->days[0]['date'] === '2027-06-15'
+            && $changed->days[1]['date'] === '2027-06-16',
+    );
+});
+
+it('lists assigned venues on the admin edit page', function (): void {
+    [$admin, $event] = eventsAdminEditable();
+
+    $venue = Venue::factory()->create(['brand_id' => $event->brand_id]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.eventsadmin.test/admin/events/{$event->id}/venues", [
+            'venue_id' => $venue->id,
+            'is_primary' => true,
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->get("http://admin.eventsadmin.test/admin/events/{$event->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/events/Edit')
+            ->has('venues', 1)
+            ->where('venues.0.id', $venue->id)
+            ->where('venues.0.isPrimary', true));
 });
