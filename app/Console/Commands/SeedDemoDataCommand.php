@@ -8,6 +8,8 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Str;
+use Konventix\Commerce\Actions\BookManualPayment;
+use Konventix\Commerce\Models\Order;
 use Konventix\Event\Models\Event;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
@@ -18,6 +20,7 @@ use Konventix\Platform\Models\StaticPage;
 use Konventix\Registration\Actions\ConfirmRegistration;
 use Konventix\Registration\Actions\SubmitRegistration;
 use Konventix\Registration\Data\SubmitRegistrationData;
+use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\RegistrationType;
 
@@ -37,7 +40,8 @@ use Spatie\Permission\PermissionRegistrar;
  *
  * The host command is the sanctioned place for cross-module composition
  * (like DatabaseSeeder); registrations run through the real Actions so the
- * demo data exercises the same paths as production, admissions included.
+ * demo data exercises the same paths as production, admissions and the
+ * commerce settlement chain (orders, invoices, manual payments) included.
  */
 class SeedDemoDataCommand extends Command
 {
@@ -119,7 +123,9 @@ class SeedDemoDataCommand extends Command
     {
         $names = ['SXLan', 'Xpertise', 'Nordcon', 'Playa', 'Brickfest', 'Synthwave', 'Quizzity', 'Meeple'];
 
-        return collect(range(1, $count))->map(function (int $index) use ($names): Brand {
+        $operator = Operator::query()->firstWhere('name', 'Konventix Dev Operator');
+
+        return collect(range(1, $count))->map(function (int $index) use ($names, $operator): Brand {
             $name = $names[$index - 1] ?? 'Brand '.$index;
             $slug = Str::slug($name);
 
@@ -127,6 +133,12 @@ class SeedDemoDataCommand extends Command
                 ['slug' => $slug],
                 ['name' => $name, 'theme_tokens' => []],
             );
+
+            // Settling money needs a legal seller identity: OperatorSettings
+            // refuses invoice issuance for a brand without an operator.
+            if ($brand->operator_id === null && $operator !== null) {
+                $brand->operator()->associate($operator)->save();
+            }
 
             $brand->domains()->firstOrCreate(
                 ['host' => $slug.'.localhost'],
@@ -148,6 +160,12 @@ class SeedDemoDataCommand extends Command
 
         $seededEvents = collect(range(1, max(1, $events)))
             ->map(fn (int $index): Event => $this->seedEvent($brand, $index, $members, $registrationsPerEvent));
+
+        // Settlement dispatches queued jobs; on a sync queue driver their
+        // completion forgets the ambient brand context
+        // (PropagatesBrandContextToQueue), so re-assert it before seeding
+        // anything else brand-owned.
+        app(BrandContext::class)->set($brand);
 
         // The 'home' page's countdown/cards blocks want the brand's next
         // event, not just "an" event — falls back to whatever exists if
@@ -276,7 +294,11 @@ class SeedDemoDataCommand extends Command
             // Already seeded on a previous run — registrations, quotas and
             // admissions hang off the event, so skip the whole block rather
             // than double-consume quotas. Still returned, so the 'home' page
-            // can reference it as the brand's next event.
+            // can reference it as the brand's next event. Commerce seeding is
+            // separately idempotent, so a database seeded before it existed
+            // still gets orders and invoices topped up.
+            $this->seedCommerce($brand, $existing, $members, $registrations);
+
             return $existing;
         }
 
@@ -327,6 +349,81 @@ class SeedDemoDataCommand extends Command
                 ));
             });
 
+        $this->seedCommerce($brand, $event, $members, $registrations);
+
         return $event;
+    }
+
+    /**
+     * The money-moving slice of the demo: a priced, invoice-settled
+     * "Supporter" type whose registrations flow through the real settlement
+     * chain — SubmitRegistration confirms, RequestSettlement emits, Commerce
+     * places the order and issues the invoice (ADR-0006) — then every second
+     * invoice gets a manual bank-transfer payment booked, leaving the rest
+     * open for the dunning/receivables views.
+     *
+     * Idempotent on the Supporter type's existence, mirroring how events are
+     * skipped wholesale: re-running must not double-submit registrations.
+     *
+     * @param  Collection<int, User>  $members
+     */
+    private function seedCommerce(Brand $brand, Event $event, Collection $members, int $registrations): void
+    {
+        $alreadySeeded = RegistrationType::query()
+            ->where('event_id', $event->getKey())
+            ->where('name', 'Supporter')
+            ->exists();
+
+        if ($alreadySeeded) {
+            return;
+        }
+
+        $supporter = RegistrationType::factory()
+            ->forEvent($event->getKey())
+            ->settlement(RegistrationSettlement::Invoice)
+            ->priced(unitAmountNet: '49.00')
+            ->create(['name' => 'Supporter', 'terms_days' => 14]);
+
+        if ($members->isEmpty() || $registrations === 0) {
+            return;
+        }
+
+        $submit = app(SubmitRegistration::class);
+        $bookPayment = app(BookManualPayment::class);
+
+        // Roughly a third of the visitor volume upgrades to a paid ticket.
+        $supporterCount = min(max(1, intdiv($registrations, 3)), $members->count());
+
+        $members->random($supporterCount)->values()
+            ->each(function (User $user, int $index) use ($submit, $bookPayment, $supporter, $brand): void {
+                // Each settled registration dispatches the invoice-document
+                // job; on a sync queue its completion forgets the ambient
+                // brand context, so re-assert it every iteration.
+                app(BrandContext::class)->set($brand);
+
+                // Invoice settlement requires the full billing party at
+                // submission (a legally valid invoice needs an address).
+                $registration = $submit->handle($supporter, $user->getKey(), new SubmitRegistrationData(
+                    organizationName: fake()->boolean(30) ? fake()->company() : null,
+                    billingRecipientName: $user->name,
+                    billingEmail: $user->email,
+                    billingAddressLine: fake()->streetAddress(),
+                    billingPostalCode: fake()->postcode(),
+                    billingCity: fake()->city(),
+                    billingCountryCode: 'DE',
+                ));
+
+                // Every second invoice is settled by bank transfer through
+                // the real adapter chain; the rest stay open receivables.
+                if ($index % 2 === 0) {
+                    $order = Order::query()
+                        ->where('settles_id', $registration->id)
+                        ->first();
+
+                    if ($order !== null) {
+                        $bookPayment->handle($order);
+                    }
+                }
+            });
     }
 }
