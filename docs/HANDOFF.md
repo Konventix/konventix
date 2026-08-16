@@ -1,4 +1,4 @@
-# Session handoff — 2026-08-12
+# Session handoff — 2026-08-16
 
 > Point-in-time note for continuing the Phase 2 build on another machine.
 > Superseded by the next session's work; safe to update or delete once
@@ -197,24 +197,58 @@ PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
   crowned whoever won the deepest match so far. The stage's `final_round` is
   passed in settings.
 
+## This session (2026-08-16)
+
+First, the previous session's uncommitted working tree was verified and
+landed as five topical commits (`61a0c92`…`b06e3b4`): the admin-host
+BrandScope escape for event days/venues, the compose one-shot migrator role
+(`AUTO_MIGRATE`), the Octane watch list covering `app-modules/`, ADR-0038's
+unsaved-changes guard (composable + pages rule), and spreadsheet-style group
+labels past Z (also what PHPStan's `chr()` complaint was pointing at).
+
+Then **Slice 7b — payment providers** (user decisions: Stripe is
+release-critical; Mollie and **Unzer** as the German PSP; all three SDK
+dependencies approved), five commits:
+
+- **7b-1** (`aae1981`): ADR-0039 — hosted checkout only (SAQ A), webhooks as
+  the only settlement truth, per-brand credentials encrypted on
+  `SettlementAccount`, platform credentials in config. `Payment` as a
+  first-class record unique per `(provider, external_id)`;
+  `RecordPaymentSuccess`/`Failure` transitions under row locks that converge
+  replays onto one `OrderPaid`; `refund()` on the adapter contract, routed
+  through the provider that took the payment and aborting the paperwork when
+  the provider refuses; manual booking records the same `Payment` row.
+- **7b-2** (`d024cd6`): Stripe — direct charges on the organizer's connected
+  account behind the `StripeApi` seam (tests run on fakes), signed webhooks
+  fulfilling on `completed` **and** `async_payment_succeeded` gated on
+  `payment_status`, refunds via the recorded payment intent, never
+  `application_fee_amount`, `payment_method_types` omitted on purpose.
+- **7b-3** (`8013973`): Mollie — brand's own API key decrypted just-in-time,
+  webhook body ignored entirely (fetch-back of the *stored* id; a forged
+  call re-reads real state, pinned by test).
+- **7b-4** (`0028412`): Unzer — Paypage v2 with our payment ULID as
+  `orderId`, account-level webhooks correlated via the fetched orderId,
+  float major units confined to the SDK boundary.
+- **7b-5** (`72551e6`): public checkout at `/pay/registration/{ulid}`
+  (display-only truth), the `/admin/settlement-accounts` connect console
+  (Stripe hosted onboarding two-leg, Mollie/Unzer one-step, Unzer webhook
+  registration at connect), one-live-account refusal,
+  `BookManualPayment` resolving the brand's live manual account.
+
+Verification: **688 PHP tests + 22 TS tests passing, PHPStan, pint, vue-tsc
+and `npm run build` clean.**
+
 ## Next up (in build order)
 
-Slices 4, 5, 6, 8, 9, 10 and 12 are complete; 7 is half done.
+Slices 4, 5, 6, 7b, 8, 9, 10 and 12 are complete; of 7, only 7c remains.
 
-1. **Slice 7b — payment providers.** Stripe Connect Standard and Mollie
-   adapters, public checkout for `instant` settlement, and the
-   `SettlementAccount` connect flow. The seam is in place: an adapter is one
-   `SettlementAdapterRegistry::register()` line. Needs `stripe/stripe-php` /
-   `mollie/mollie-api-php`, real provider credentials, and webhook routes with
-   signature verification. Also owes the PSP side of refunds —
-   `SettlementAdapter` still has only `markOrderPaid()`.
-2. **Slice 7c — bookkeeping export.** Deliberately not started: **no format is
+1. **Slice 7c — bookkeeping export.** Deliberately not started: **no format is
    decided anywhere in the docs** — no DATEV/EXTF structure, no account
    mapping. Write the ADR first.
-3. **Slice 11 — GameOps**: deliberately on hold until there is infrastructure
+2. **Slice 11 — GameOps**: deliberately on hold until there is infrastructure
    to test provisioning against. It also owes the catalogue event contract
    that Competition's `Discipline` read model is blocked on.
-4. Slices 13–16 as listed in `docs/ROADMAP.md`.
+3. Slices 13–16 as listed in `docs/ROADMAP.md`.
 
 Gaps deliberately left, all recorded in the owning module's `TODO.md`:
 
@@ -225,8 +259,12 @@ Gaps deliberately left, all recorded in the owning module's `TODO.md`:
   token by keyboard/paste rather than camera, and has no ADR-0018 POS screen.
 - **Commerce**: no credit-note PDF (the record exists, the document does not);
   partial credit notes reuse the invoice's tax split rather than recomputing;
-  `OrderCancelled` is still proposed; `BookManualPayment` still passes the
-  `manual` pseudo-account instead of the resolved account id.
+  `OrderCancelled` is still proposed. New 7b gaps, all in TODO.md: no Stripe
+  go-live capability check before offering checkout; Mollie/Unzer keys are
+  stored unvalidated; nothing surfaces the pay link to the payer yet
+  (Registration post-submit page / confirmation mail); the checkout page pays
+  only the latest order per registration; Mollie/Unzer webhooks need a tunnel
+  in local dev.
 - **Resources**: no admin UI or seat-plan surface; no scheduled hold-expiry
   sweep, so a lapsed hold keeps its slot until someone tries to confirm it;
   claim allocation is first-fit; `EventRescheduled` re-projects the window but
