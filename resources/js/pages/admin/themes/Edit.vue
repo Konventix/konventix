@@ -6,12 +6,13 @@
  * pretends to support with a tab that silently does nothing.
  */
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import ThemeContrastReport from '@/components/admin/theme/ThemeContrastReport.vue';
 import ThemePreview from '@/components/admin/theme/ThemePreview.vue';
 import ThemeTokenGrid from '@/components/admin/theme/ThemeTokenGrid.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 
 const props = defineProps<{
     brand: Konventix.Platform.Data.BrandSummaryData;
@@ -19,13 +20,14 @@ const props = defineProps<{
     catalog: Konventix.Platform.Data.ThemeCatalogData;
 }>();
 
-// Only overridden tokens are keys here; everything else falls back to the
-// platform default shown as each input's placeholder.
-const overrides = ref<Record<string, string>>({ ...props.tokens });
-
+// Only overridden tokens are keys in `form.tokens`; everything else falls
+// back to the platform default shown as each input's placeholder. The form
+// is the single draft state, so `form.isDirty` powers the guard (ADR-0038).
 const form = useForm<{ tokens: Record<string, string> }>({
     tokens: { ...props.tokens },
 });
+
+useUnsavedChanges(() => form.isDirty);
 
 const lightDefaults = computed<Record<string, string>>(() => {
     const defaults: Record<string, string> = {};
@@ -43,18 +45,17 @@ const lightDefaults = computed<Record<string, string>>(() => {
 // preview pane and the contrast report, so they always agree.
 const effectiveTokens = computed<Record<string, string>>(() => ({
     ...lightDefaults.value,
-    ...overrides.value,
+    ...form.tokens,
 }));
 
 function updateOverrides(next: Record<string, string>): void {
-    overrides.value = next;
+    form.tokens = next;
 }
 
 function submit(): void {
-    form.transform(() => ({ tokens: overrides.value })).put(
-        `/admin/brands/${props.brand.id}/theme`,
-        { preserveScroll: true },
-    );
+    form.put(`/admin/brands/${props.brand.id}/theme`, {
+        preserveScroll: true,
+    });
 }
 </script>
 
@@ -69,11 +70,13 @@ function submit(): void {
             >
                 ← Back to brands
             </Link>
-            <h1 class="mt-2 text-2xl font-semibold">{{ brand.name }} — Theme</h1>
+            <h1 class="mt-2 text-2xl font-semibold">
+                {{ brand.name }} — Theme
+            </h1>
             <p class="mt-2 max-w-2xl text-sm text-text-muted">
                 Overrides apply to <code>:root</code> for every visitor on
-                {{ brand.name }}'s domains (ADR-0008). Dark-mode overrides are
-                a follow-up — this editor writes a single token map, so
+                {{ brand.name }}'s domains (ADR-0008). Dark-mode overrides are a
+                follow-up — this editor writes a single token map, so
                 <code>.dark</code> keeps using the platform default until that
                 lands.
             </p>
@@ -86,14 +89,23 @@ function submit(): void {
             <div class="space-y-6">
                 <ThemeTokenGrid
                     :groups="catalog.groups"
-                    :model-value="overrides"
+                    :model-value="form.tokens"
                     @update:model-value="updateOverrides"
                 />
                 <InputError :message="form.errors.tokens" />
 
-                <Button type="submit" :disabled="form.processing">
-                    {{ form.processing ? 'Saving…' : 'Save changes' }}
-                </Button>
+                <div class="flex items-center gap-3">
+                    <Button type="submit" :disabled="form.processing">
+                        {{ form.processing ? 'Saving…' : 'Save changes' }}
+                    </Button>
+                    <span
+                        v-if="form.isDirty"
+                        role="status"
+                        class="text-sm text-warning"
+                    >
+                        Unsaved changes
+                    </span>
+                </div>
             </div>
 
             <div class="space-y-6 lg:sticky lg:top-4 lg:self-start">
