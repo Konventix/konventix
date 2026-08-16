@@ -150,8 +150,21 @@ final class GroupStageGenerator implements FormatGenerator
         return max(2, (int) ceil(count($entrantIds) / max(2, (int) $size)));
     }
 
+    /**
+     * Spreadsheet-column labels: A…Z, then AA, AB, … — chr(65 + $index)
+     * alone leaves the alphabet at the 27th group ('[').
+     *
+     * @param  non-negative-int  $index
+     */
     private function groupLabel(int $index): string
     {
-        return chr(65 + $index);
+        $label = '';
+
+        do {
+            $label = chr(65 + ($index % 26)).$label;
+            $index = intdiv($index, 26) - 1;
+        } while ($index >= 0);
+
+        return $label;
     }
 }

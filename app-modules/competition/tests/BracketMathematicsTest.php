@@ -302,6 +302,18 @@ describe('group stage — serpentine distribution', function (): void {
             expect($inA === 2 || $inB === 2)->toBeTrue();
         }
     });
+
+    it('labels groups past Z spreadsheet-style', function (): void {
+        // 27 groups of 2: the 27th label must roll over to AA, not chr(91).
+        $plan = (new GroupStageGenerator)->generate(bracketTestIds(54), ['group_count' => 27]);
+
+        $brackets = array_unique(array_map(fn ($m): ?string => $m->bracket, $plan->matches));
+
+        expect($brackets)->toContain('group-A')
+            ->and($brackets)->toContain('group-Z')
+            ->and($brackets)->toContain('group-AA')
+            ->and($brackets)->not->toContain('group-[');
+    });
 });
 
 describe('double elimination', function (): void {
