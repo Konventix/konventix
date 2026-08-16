@@ -3,6 +3,27 @@
 # scheduler, reverb) via command override. Never spawn containers from the
 # application (no docker.sock mounts — root-equivalent host access).
 services:
+    # One-shot migrator role (Kubernetes-Job style): runs `konventix:migrate`
+    # once per `up`, before any application role starts (they wait via
+    # service_completed_successfully). The gate lives in the artisan command,
+    # inside the application image — AUTO_MIGRATE=false makes it exit 0
+    # without touching the database.
+    migrate:
+        image: sail-8.5/app
+        command: ['php', 'artisan', 'konventix:migrate']
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+            AUTO_MIGRATE: '${AUTO_MIGRATE:-true}'
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            pgsql:
+                condition: service_healthy
+        restart: 'no'
+
     laravel.test:
         build:
             context: ./vendor/laravel/sail/runtimes/8.5
@@ -31,8 +52,12 @@ services:
         networks:
             - sail
         depends_on:
-            - pgsql
-            - redis
+            migrate:
+                condition: service_completed_successfully
+            pgsql:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
 
     # Role: queue worker. `--tries=1` surfaces job failures immediately in dev;
     # workers restart themselves when code changes via `sail restart queue`.
@@ -47,9 +72,14 @@ services:
         networks:
             - sail
         depends_on:
-            - laravel.test
-            - pgsql
-            - redis
+            migrate:
+                condition: service_completed_successfully
+            laravel.test:
+                condition: service_started
+            pgsql:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
         restart: unless-stopped
 
     # Role: scheduler. `schedule:work` runs in the foreground and ticks every
@@ -65,9 +95,14 @@ services:
         networks:
             - sail
         depends_on:
-            - laravel.test
-            - pgsql
-            - redis
+            migrate:
+                condition: service_completed_successfully
+            laravel.test:
+                condition: service_started
+            pgsql:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
         restart: unless-stopped
 
     # Role: websocket server (ADR-0025). ONE shared Reverb process serving one
@@ -93,9 +128,14 @@ services:
         networks:
             - sail
         depends_on:
-            - laravel.test
-            - pgsql
-            - redis
+            migrate:
+                condition: service_completed_successfully
+            laravel.test:
+                condition: service_started
+            pgsql:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
         restart: unless-stopped
 
     pgsql:

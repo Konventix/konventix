@@ -136,6 +136,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Automatic Migration On Startup
+    |--------------------------------------------------------------------------
+    |
+    | The migrator role (`konventix:migrate`) runs pending migrations before
+    | the application roles start. Operators can disable this and take over
+    | migrations manually by setting AUTO_MIGRATE=false.
+    |
+    */
+
+    'auto_migrate' => env('AUTO_MIGRATE', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Redis Databases
     |--------------------------------------------------------------------------
     |
