@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Commerce\Http\Controllers\Api\MollieWebhookController;
 use Konventix\Commerce\Http\Controllers\Api\StripeWebhookController;
 
 /*
@@ -20,4 +21,7 @@ Route::prefix('commerce/webhooks')
     ->name('api.commerce.webhooks.')
     ->group(function (): void {
         Route::post('stripe', StripeWebhookController::class)->name('stripe');
+        // {payment} is our Payment ULID, baked into the webhookUrl at
+        // checkout creation — the body Mollie posts is ignored on purpose.
+        Route::post('mollie/{payment}', MollieWebhookController::class)->name('mollie');
     });

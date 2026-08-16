@@ -13,6 +13,9 @@ use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
 use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\ManualSettlementAdapter;
+use Konventix\Commerce\Settlement\Mollie\MollieApi;
+use Konventix\Commerce\Settlement\Mollie\MollieSettlementAdapter;
+use Konventix\Commerce\Settlement\Mollie\SdkMollieApi;
 use Konventix\Commerce\Settlement\NullSettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Settlement\Stripe\SdkStripeApi;
@@ -78,9 +81,14 @@ class CommerceServiceProvider extends ModuleServiceProvider
             $registry->register(SettlementAccount::PROVIDER_MANUAL, ManualSettlementAdapter::class);
             $registry->register(SettlementAccount::PROVIDER_NULL, NullSettlementAdapter::class);
             $registry->register(SettlementAccount::PROVIDER_STRIPE, StripeSettlementAdapter::class);
+            $registry->register(SettlementAccount::PROVIDER_MOLLIE, MollieSettlementAdapter::class);
 
             return $registry;
         });
+
+        // Mollie has no platform credential (ADR-0039): the brand's own key
+        // travels with every call, so the binding needs no config at all.
+        $this->app->bind(MollieApi::class, SdkMollieApi::class);
 
         // Bound lazily: the platform key is only required the moment a
         // Stripe-connected brand actually settles something (ADR-0039).
