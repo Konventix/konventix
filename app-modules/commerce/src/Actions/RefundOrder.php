@@ -6,11 +6,15 @@ namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Exceptions\RefundBlockedByCheckInException;
 use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use RuntimeException;
 
 /**
@@ -36,6 +40,7 @@ final class RefundOrder
 {
     public function __construct(
         private readonly IssueCreditNote $issueCreditNote,
+        private readonly SettlementAdapterRegistry $registry,
     ) {}
 
     public function handle(
@@ -47,6 +52,14 @@ final class RefundOrder
         return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount): Order {
             $this->guardPaid($order);
             $this->guardNotCheckedIn($order);
+
+            // The PSP side effect (ADR-0039), first and inside the
+            // transaction: if the provider refuses the refund, no domain
+            // record or credit note may exist claiming the money moved. The
+            // inverse gap — provider refunded, then this transaction fails —
+            // is accepted; replaying the action converges because providers
+            // treat a second refund of the same payment as already done.
+            $this->refundThroughProvider($order, $amount);
 
             // An order paid at checkout was never invoiced, so there is no
             // document to correct (ADR-0031) — the money still goes back, it
@@ -79,6 +92,31 @@ final class RefundOrder
 
             return $order->refresh();
         });
+    }
+
+    /**
+     * The money goes back through the provider that took it — resolved from
+     * the order's settled payment, not from the brand's *current* live
+     * account, which may have changed since. An order with no payment row
+     * predates ADR-0039 and was necessarily booked by hand; `manual`'s
+     * refund is a no-op either way.
+     */
+    private function refundThroughProvider(Order $order, ?string $amount): void
+    {
+        $payment = Payment::withoutBrandScope()
+            ->where('order_id', $order->id)
+            ->where('status', PaymentStatus::Succeeded)
+            ->latest('received_at')
+            ->first();
+
+        $this->registry
+            ->forProvider($payment->provider ?? SettlementAccount::PROVIDER_MANUAL)
+            ->refund(
+                accountId: $payment->settlement_account_id ?? SettlementAccount::PROVIDER_MANUAL,
+                order: $order,
+                amount: $amount ?? (string) $order->total_gross,
+                currency: $order->currency,
+            );
     }
 
     private function guardPaid(Order $order): void

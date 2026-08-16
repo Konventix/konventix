@@ -16,6 +16,40 @@ use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Settlement\SettlementAdapter;
+use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
+
+/**
+ * Records refund calls so tests can assert the PSP side of `RefundOrder`
+ * (ADR-0039) without any provider SDK.
+ */
+final class RefundTestSpyAdapter implements SettlementAdapter
+{
+    /** @var list<array{accountId: string, amount: string, currency: string}> */
+    public array $refunds = [];
+
+    public bool $refuse = false;
+
+    public function markOrderPaid(
+        string $accountId,
+        Order $order,
+        string $amountPaid,
+        string $currency,
+        string $settlementMethod,
+    ): Order {
+        return $order;
+    }
+
+    public function refund(string $accountId, Order $order, string $amount, string $currency): void
+    {
+        if ($this->refuse) {
+            throw new RuntimeException('provider refused the refund');
+        }
+
+        $this->refunds[] = ['accountId' => $accountId, 'amount' => $amount, 'currency' => $currency];
+    }
+}
 
 /**
  * Refunds blocked by check-in (ADR-0037, D-COM-15) and the credit notes that
@@ -234,4 +268,61 @@ it('refuses to credit-note an order that was never invoiced', function (): void 
         refundTestPaidOrder(invoiced: false),
         IssueCreditNote::REASON_REFUND,
     ))->toThrow(CreditNoteRequiresInvoiceException::class);
+});
+
+it('sends the PSP refund through the provider that took the payment', function (): void {
+    // ADR-0039: the money goes back via the order's settled payment, not the
+    // brand's *current* live account, which may have changed since.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+    $accountId = (string) Str::ulid();
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'settlement_account_id' => $accountId,
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    $spy = app(RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, $spy);
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect($spy->refunds)->toHaveCount(1)
+        ->and($spy->refunds[0]['accountId'])->toBe($accountId)
+        ->and($spy->refunds[0]['amount'])->toBe((string) $order->total_gross);
+});
+
+it('aborts the refund entirely when the provider refuses it', function (): void {
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'settlement_account_id' => (string) Str::ulid(),
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    $spy = app(RefundTestSpyAdapter::class);
+    $spy->refuse = true;
+    app()->instance(RefundTestSpyAdapter::class, $spy);
+
+    Event::fake([OrderRefunded::class]);
+
+    expect(fn () => app(RefundOrder::class)->handle($order, reasonCode: 'customer-request'))
+        ->toThrow(RuntimeException::class, 'provider refused');
+
+    // Rolled back: no domain record may claim money moved that did not.
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and(CreditNote::query()->where('order_id', $order->id)->count())->toBe(0);
+
+    Event::assertNotDispatched(OrderRefunded::class);
 });

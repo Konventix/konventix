@@ -29,7 +29,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $provider
  * @property string|null $label
  * @property string|null $provider_account_id
- * @property string|null $credentials
+ * @property array<string, string>|null $credentials
  * @property Carbon|null $connected_at
  * @property Carbon|null $disconnected_at
  * @property Carbon|null $created_at
@@ -84,7 +84,10 @@ class SettlementAccount extends Model
     protected function casts(): array
     {
         return [
-            'credentials' => 'encrypted',
+            // Structured per provider (ADR-0039): {'api_key': …} for Mollie,
+            // {'private_key': …} for Unzer; Stripe stores no secret at all —
+            // the connected account id plus the platform key is sufficient.
+            'credentials' => 'encrypted:array',
             'connected_at' => 'datetime',
             'disconnected_at' => 'datetime',
         ];

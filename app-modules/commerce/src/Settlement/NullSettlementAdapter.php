@@ -25,4 +25,13 @@ final class NullSettlementAdapter implements SettlementAdapter
     ): Order {
         return $order;
     }
+
+    public function refund(
+        string $accountId,
+        Order $order,
+        string $amount,
+        string $currency,
+    ): void {
+        // Deliberate no-op, like everything else on this adapter.
+    }
 }
