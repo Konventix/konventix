@@ -3,6 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Plus, Star, Trash2 } from '@lucide/vue';
 import { ref } from 'vue';
 import InputError from '@/components/InputError.vue';
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -55,6 +56,8 @@ const form = useForm({
     predecessorEventId: props.event.predecessorEventId,
     days: [...props.days],
 });
+
+useUnsavedChanges(() => form.isDirty);
 
 function submit(): void {
     form.put(updateEvent(props.event.id).url, { preserveScroll: true });
@@ -215,9 +218,18 @@ function promoteVenue(venueId: string): void {
                 </CardContent>
             </Card>
 
-            <Button type="submit" class="self-start" :disabled="form.processing">
-                Save changes
-            </Button>
+            <div class="flex items-center gap-3 self-start">
+                <Button type="submit" :disabled="form.processing">
+                    Save changes
+                </Button>
+                <span
+                    v-if="form.isDirty"
+                    role="status"
+                    class="text-sm text-warning"
+                >
+                    Unsaved changes
+                </span>
+            </div>
         </form>
 
         <Card class="border-border bg-surface">
