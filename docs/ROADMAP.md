@@ -162,3 +162,68 @@ optional multi-operator groundwork.
 - No fund flows through the platform, ever (ADR-0007).
 - Module status is tracked in each module's `TODO.md`, updated in the PR that
   changes the code — no generated dashboards.
+
+## UI page catalogue (LanCore port map, audited 2026-08-16)
+
+LanCore and its satellites (LanBrackets, LanHelp, LanShout) shipped roughly
+150 Inertia pages; Konventix has ~30 today. This catalogue maps every LanCore
+surface to its Konventix home so no screen is silently forgotten. It is a
+port *map*, not a port list — pages whose concept Konventix models differently
+are marked absorbed, not copied. Detail-level gaps stay tracked in each
+module's `TODO.md`; this section only fixes the page inventory and its phase.
+
+Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
+**P2 backlog** = Phase 2, backend done, page unscheduled · **P3** = Phase 3 ·
+**absorbed/dropped** = deliberately not ported 1:1.
+
+### Kernel
+
+| Module | Pages to build | LanCore precedent | Status |
+| --- | --- | --- | --- |
+| Platform | Admin shell, dashboard, Brands, Users, media library, role assignment, theme editor, block-based landing/static pages | admin shell, `themes/*`, `legal/*`, `Welcome`, `Countdown` | ✓ |
+| Platform | Dark-mode token overrides in the theme editor | `themes/Edit` (dark palette) | S15 |
+| Platform | Operator settings page (legal seller identity, provisioning) | `settings/Organization` | S15 |
+| Identity | Auth flows, profile/security/appearance settings | `auth/*`, `settings/{Profile,Security,Appearance}` | ✓ |
+| Identity | Linked accounts + social onboarding (Steam profile completion, username pick) | `settings/LinkedAccounts`, `onboarding/Username`, `auth/CompleteSteamProfile` | S15 |
+| Identity | Admin user detail page (memberships, sessions, states) | `users/Show` | P2 backlog |
+| Event | Event index/edit/dashboard/lifecycle, venue admin, public landing | `events/*`, `venues/*` | ✓ |
+| Compliance | Policy admin CRUD; user-facing consent pages; privacy settings | `admin/policies/*`, `policies/{Required,Show}`, `settings/Privacy` | S14 |
+| Compliance | DSR console: deletion requests, retention policies, anonymization log; account-deletion self-service | `admin/data-lifecycle/*`, `account/{Delete,DeletionPending}` | S14 |
+| Compliance | Audit pages (per-entity change history — LanCore had ten `*/Audit.vue`) | `users/Audit`, `events/Audit`, `news/Audit`, … | S14 (hybrid audit trail) |
+| Messaging | Delivery log + suppression admin | `admin/emails/*` | S13 |
+| Messaging | In-app inbox + archive; notification/digest/quiet-hours preferences | `notifications/*`, `settings/{Notifications,EmailSettings}` | S13 |
+
+### Core
+
+| Module | Pages to build | LanCore precedent | Status |
+| --- | --- | --- | --- |
+| Registration | RegistrationType admin CRUD (axes, price declaration, quotas, grants) | `ticket-types/*`, `ticket-categories/*`, `ticket-addons/*` | P2 backlog |
+| Registration | Participant "my registrations" (list + detail, amendment entry point) | `tickets/{Index,Show}` | P2 backlog |
+| Registration | Amendment admin UI (ADR-0036), invitation-token management (D-COM-02), waitlist admin | — (new concepts) | P2 backlog |
+| Registration | Purchase constraints | `purchase-requirements/*`, `global-purchase-conditions/*`, `payment-provider-conditions/*`, `settings/TicketDiscovery` | absorbed — type axes, quotas and invitation tokens replace LanCore's constraint system; no 1:1 port |
+| Admission | Checkpoint/device enrolment, badge template designer (D-ADM-05), claim-link management (ADR-0032), entrance POS screen (ADR-0018) | — (LanEntrance satellite had no admin UI) | P2 backlog |
+| Commerce | Orders admin index, settlement-account console, bookkeeping export, public checkout | `orders/Index`, `shop/Settings`, `cart/Checkout` | ✓ |
+| Commerce | Order/invoice admin detail page; participant "my orders/invoices"; invoice-prefix settings | `orders/Show`, `my-orders/*` | P2 backlog |
+| Commerce | Voucher CRUD + redemption view | `vouchers/*` | P2 backlog (SPEC-owned, unscheduled) |
+| Content | Entry editor + admin index, public listing/detail, comment moderation, announcements (+ public banner), knowledge-base content type | `news/*`, `announcements/*`, LanHelp `kb/*` | P2 backlog (slice 12 shipped the domain) |
+
+### Pennant-gated modules
+
+| Module | Pages to build | LanCore precedent | Status |
+| --- | --- | --- | --- |
+| Resources | Resource + resource-type admin, seat-plan editor, public seat picker | `seating/*` incl. `Picker` and the block/category editor | P2 backlog (slice 8 shipped the domain) |
+| Staffing | Team admin + public team pages, lead roster board, crew "my shifts" | `orga-teams/*` | P2 backlog (slice 9 shipped the domain) |
+| Competition | Competition admin CRUD + team management, tournament desk, public schedule/match/standings/team pages, stream bracket overlay | `competitions/*`, `events/CompetitionBoard`, LanBrackets `Competitions/*` + `Overlay/Bracket` | P2 backlog (slice 10 shipped the engine) |
+| GameOps | Game catalogue CRUD (+ modes), operations surface (servers, APIs, jobs), participant "play next" portal | `games/*`, `orchestration/*`, `portal/PlayNext` | S11 |
+
+### Phase 3
+
+| Module | Pages to build | LanCore precedent | Status |
+| --- | --- | --- | --- |
+| Agenda | Program admin CRUD + public agenda | `programs/*` | P3 |
+| Community | Chat rooms, achievements CRUD + user showcase, public profiles, presence | `chat/Room`, LanShout, `achievements/*`, `u/Show`, `settings/Achievements` | P3 |
+| Sponsoring | Sponsor + sponsor-level CRUD, public sponsor display | `sponsors/*`, `sponsor-levels/*` | P3 |
+| Newsletter | List management | `newsletter-lists/*` | P3 |
+| Support | Ticket create/list/detail, staff queue, admin views (ADR-0022; the KB half lands in Content instead) | LanHelp `tickets/*`, `staff/*`, LanCore `admin-tickets/*` | P3 |
+| Extensibility | Webhook CRUD + delivery detail, OAuth app management | `webhooks/*` | P3 (external contracts only after internal ones are stable) |
+| — | Satellite connection screens | `integrations/*` (Create{LanBrackets,LanEntrance,LanHelp,LanShout}) | dropped — the satellites are gone (module-map) |
