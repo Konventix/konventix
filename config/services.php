@@ -30,6 +30,16 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Platform-level Stripe credentials (ADR-0039): the platform key acts on
+    // behalf of connected accounts via the Stripe-Account header, and the
+    // signing secret verifies webhooks. Per-brand providers (Mollie, Unzer)
+    // keep their credentials on SettlementAccount instead — encrypted, never
+    // in env.
+    'stripe' => [
+        'secret' => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

@@ -15,12 +15,17 @@ use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\ManualSettlementAdapter;
 use Konventix\Commerce\Settlement\NullSettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
+use Konventix\Commerce\Settlement\Stripe\SdkStripeApi;
+use Konventix\Commerce\Settlement\Stripe\StripeApi;
+use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
+use RuntimeException;
+use Stripe\StripeClient;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -72,8 +77,23 @@ class CommerceServiceProvider extends ModuleServiceProvider
 
             $registry->register(SettlementAccount::PROVIDER_MANUAL, ManualSettlementAdapter::class);
             $registry->register(SettlementAccount::PROVIDER_NULL, NullSettlementAdapter::class);
+            $registry->register(SettlementAccount::PROVIDER_STRIPE, StripeSettlementAdapter::class);
 
             return $registry;
+        });
+
+        // Bound lazily: the platform key is only required the moment a
+        // Stripe-connected brand actually settles something (ADR-0039).
+        $this->app->bind(StripeApi::class, function (): StripeApi {
+            $secret = config('services.stripe.secret');
+
+            if (! is_string($secret) || $secret === '') {
+                throw new RuntimeException(
+                    'STRIPE_SECRET is not configured; a Stripe-connected brand cannot settle without the platform key (ADR-0039).',
+                );
+            }
+
+            return new SdkStripeApi(new StripeClient($secret));
         });
     }
 

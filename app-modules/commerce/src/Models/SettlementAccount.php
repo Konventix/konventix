@@ -51,6 +51,15 @@ class SettlementAccount extends Model
     /** A brand that deliberately settles nothing through the platform. */
     public const string PROVIDER_NULL = 'null';
 
+    /** Stripe, direct charges on the organizer's connected account (ADR-0039). */
+    public const string PROVIDER_STRIPE = 'stripe';
+
+    /** Mollie, against the organizer's own API key (ADR-0039). */
+    public const string PROVIDER_MOLLIE = 'mollie';
+
+    /** Unzer, against the organizer's own private key (ADR-0039). */
+    public const string PROVIDER_UNZER = 'unzer';
+
     protected $fillable = [
         'provider',
         'label',

@@ -29,6 +29,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $amount
  * @property string $currency
  * @property string|null $external_id
+ * @property string|null $provider_transaction_id
  * @property string|null $failure_reason
  * @property Carbon|null $received_at
  * @property Carbon|null $failed_at
@@ -50,6 +51,7 @@ class Payment extends Model
         'amount',
         'currency',
         'external_id',
+        'provider_transaction_id',
         'failure_reason',
         'received_at',
         'failed_at',
