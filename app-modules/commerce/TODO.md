@@ -10,10 +10,12 @@
 
 ## Backlog (Phase 2 — release scope, invoice-settled registrations are a definition-of-done item)
 
-- [ ] Slice 7c — bookkeeping export for the tax advisor. **No format is
-      decided anywhere in the docs** — no DATEV/EXTF structure, no account
-      mapping. It warrants its own ADR before code rather than a format
-      invented in passing.
+- [ ] Bookkeeping export follow-ups (ADR-0040 accepts all of these):
+      deviating fiscal years are unsupported (WJ-Beginn is hardcoded to
+      January 1); no per-customer debtor master export (collective debtor
+      only); `Leistungsdatum` is not filled (the advisor may want the event
+      date rather than the invoice date for period assignment — ask them);
+      no SKR04 one-click preset on the settings form.
 - [ ] Stripe go-live readiness check: nothing verifies
       `configuration.merchant.capabilities.card_payments.status === 'active'`
       before offering checkout on a freshly onboarded account — until Stripe
@@ -62,6 +64,23 @@
       ranges.
 
 ## Done
+
+- [x] Slice 7c — bookkeeping export (ADR-0040). Interview decisions: both
+      formats (DATEV Buchungsstapel + readable CSV journal), SKR03
+      Automatikkonten defaults (8400/8300/8336/8195 — BU-Schlüssel stays
+      empty by construction), documents only, one collective debtor.
+      `CollectDocumentJournal` gathers one operator-month across all the
+      operator's brands (D-COM-05) and splits each document into tax
+      buckets — a mixed-rate invoice books one row per revenue account,
+      summing exactly to the document; a partial credit note pro-rates the
+      invoice's own split with the last bucket absorbing the rounding
+      remainder. `DatevBuchungsstapelWriter` emits the canonical EXTF
+      layout (version 700/13, all 125 columns by name, CP1252, CRLF,
+      festgeschrieben), reverse-charge rows carrying the buyer's VAT ID in
+      `EU-Land u. USt-IdNr.`; `JournalCsvWriter` the readable companion.
+      Per-operator `BookkeepingSettings` (consultant/client numbers,
+      accounts) with a settings form and month-picker downloads at
+      `/admin/bookkeeping`, gated on `commerce.export-bookkeeping`.
 
 - [x] Slice 7b — payment providers (ADR-0039; deps user-approved:
       `stripe/stripe-php`, `mollie/mollie-api-php`, `unzerdev/php-sdk`).

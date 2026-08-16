@@ -37,9 +37,9 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $credit_note_number
  * @property BillingPartyData $billing_party
  * @property OperatorSellerData $seller
- * @property string $total_net
- * @property string $total_tax
- * @property string $total_gross
+ * @property numeric-string $total_net
+ * @property numeric-string $total_tax
+ * @property numeric-string $total_gross
  * @property TaxTreatment $tax_treatment
  * @property string $currency
  * @property string $reason_code

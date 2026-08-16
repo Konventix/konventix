@@ -64,7 +64,12 @@ licensing.
 - **`SettlementAccount`** — the per-brand record of which PSP account settles
   that brand's money, and its connection state.
 - **Vouchers and discount codes**, their rules and their redemption records.
-- **Bookkeeping exports** for the tax advisor.
+- **Bookkeeping exports** for the tax advisor (ADR-0040): a DATEV
+  Buchungsstapel plus a readable journal, one export per operator and month,
+  all of the operator's brands in one file (D-COM-05), invoices and credit
+  notes only — payments are booked by the advisor from bank and PSP
+  statements. Account mapping (`BookkeepingSettings`) is per operator with
+  SKR03 Automatikkonten defaults.
 
 ## Does not own
 

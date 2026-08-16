@@ -10,6 +10,7 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Commerce\Http\Controllers\Admin\BookkeepingExportController;
 use Konventix\Commerce\Http\Controllers\Admin\InvoiceDocumentController;
 use Konventix\Commerce\Http\Controllers\Admin\OrderAdminController;
 use Konventix\Commerce\Http\Controllers\Admin\SettlementAccountAdminController;
@@ -24,3 +25,8 @@ Route::get('/settlement-accounts/stripe/return/{account}', [SettlementAccountAdm
 Route::post('/settlement-accounts/mollie', [SettlementAccountAdminController::class, 'connectMollie'])->name('admin.settlement-accounts.mollie');
 Route::post('/settlement-accounts/unzer', [SettlementAccountAdminController::class, 'connectUnzer'])->name('admin.settlement-accounts.unzer');
 Route::post('/settlement-accounts/{account}/disconnect', [SettlementAccountAdminController::class, 'disconnect'])->name('admin.settlement-accounts.disconnect');
+
+Route::get('/bookkeeping', [BookkeepingExportController::class, 'index'])->name('admin.bookkeeping.index');
+Route::put('/bookkeeping/settings', [BookkeepingExportController::class, 'saveSettings'])->name('admin.bookkeeping.settings');
+Route::get('/bookkeeping/datev', [BookkeepingExportController::class, 'downloadDatev'])->name('admin.bookkeeping.datev');
+Route::get('/bookkeeping/journal', [BookkeepingExportController::class, 'downloadJournal'])->name('admin.bookkeeping.journal');

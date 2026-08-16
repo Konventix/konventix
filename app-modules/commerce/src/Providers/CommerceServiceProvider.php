@@ -193,5 +193,17 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 area: NavigationItem::AREA_ADMIN,
             ),
         );
+
+        $registry->add(
+            new NavigationItem(
+                module: 'commerce',
+                label: 'Bookkeeping',
+                url: '/admin/bookkeeping',
+                icon: 'book-open-check',
+                order: 27,
+                permission: Permission::ExportBookkeeping->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+        );
     }
 }
