@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Actions;
 
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\ManualSettlementAdapter;
 use RuntimeException;
 
@@ -16,14 +17,14 @@ use RuntimeException;
  * `ManualSettlementAdapter`, which marks paid and emits `OrderPaid` — the
  * event Registration consumes (ADR-0006).
  *
- * `$accountId` is the manual pseudo-account until `SettlementAccount` rows
- * exist (TODO.md): the adapter contract is account-scoped on every call
+ * The account id is the brand's live *manual* account when one exists, and
+ * the `manual` sentinel otherwise: a bank transfer booked by hand involves
+ * no PSP, so a live Stripe/Mollie/Unzer account is deliberately never
+ * referenced here — the adapter contract is account-scoped on every call
  * (ADR-0007) even where no PSP is involved.
  */
 final class BookManualPayment
 {
-    private const string MANUAL_ACCOUNT = 'manual';
-
     public function __construct(
         private readonly ManualSettlementAdapter $adapter,
     ) {}
@@ -38,8 +39,12 @@ final class BookManualPayment
             ));
         }
 
+        $live = SettlementAccount::liveFor($order->brand_id);
+
         return $this->adapter->markOrderPaid(
-            accountId: self::MANUAL_ACCOUNT,
+            accountId: $live?->provider === SettlementAccount::PROVIDER_MANUAL
+                ? $live->id
+                : SettlementAccount::PROVIDER_MANUAL,
             order: $order,
             amountPaid: $order->total_gross,
             currency: $order->currency,

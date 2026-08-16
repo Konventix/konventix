@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Settlement\Unzer;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaymentSnapshot as PaymentSnapshot;
 use RuntimeException;
 use UnzerSDK\Constants\TransactionTypes;
+use UnzerSDK\Constants\WebhookEvents;
 use UnzerSDK\Resources\EmbeddedResources\Paypage\Urls;
 use UnzerSDK\Resources\V2\Paypage;
 use UnzerSDK\Unzer;
@@ -63,5 +64,10 @@ final class SdkUnzerApi implements UnzerApi
     {
         $client = new Unzer($privateKey);
         $client->cancelPayment($client->fetchPayment($paymentId), $amount);
+    }
+
+    public function registerWebhook(string $url, string $privateKey): void
+    {
+        new Unzer($privateKey)->createWebhook($url, WebhookEvents::ALL);
     }
 }

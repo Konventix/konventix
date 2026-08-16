@@ -168,7 +168,9 @@ class CommerceServiceProvider extends ModuleServiceProvider
 
     protected function registerNavigation(): void
     {
-        $this->app->make(NavigationRegistry::class)->add(
+        $registry = $this->app->make(NavigationRegistry::class);
+
+        $registry->add(
             new NavigationItem(
                 module: 'commerce',
                 label: 'Orders',
@@ -176,6 +178,18 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 icon: 'receipt',
                 order: 25,
                 permission: Permission::ViewOrders->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+        );
+
+        $registry->add(
+            new NavigationItem(
+                module: 'commerce',
+                label: 'Settlement',
+                url: '/admin/settlement-accounts',
+                icon: 'landmark',
+                order: 26,
+                permission: Permission::ManageSettlementAccount->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
         );

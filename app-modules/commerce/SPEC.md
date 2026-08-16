@@ -57,8 +57,10 @@ licensing.
 - **Refunds and partial credit notes** as domain flows, with PSP calls as side
   effects.
 - **Settlement adapters** behind a single contract, **account-scoped from day
-  one** (ADR-0007): each brand or operator connects its own Stripe Connect
-  Standard or Mollie account, and every adapter call carries that account.
+  one** (ADR-0007): each brand or operator connects its own Stripe, Mollie or
+  Unzer account, and every adapter call carries that account. ADR-0039 pins
+  the mechanics: hosted checkout only, settlement truth exclusively from
+  verified webhooks, per-brand credentials encrypted on the account row.
 - **`SettlementAccount`** — the per-brand record of which PSP account settles
   that brand's money, and its connection state.
 - **Vouchers and discount codes**, their rules and their redemption records.
@@ -94,16 +96,16 @@ implemented and their payloads are the contract.
 | `OrderPlaced` | An order is created from a settlement request (carts do not exist yet) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `total_net`, `total_gross`, `currency`, `placed_at` |
 | `OrderPaid` | An order is fully settled, by any adapter or by manual booking. **The event Registration consumes** (ADR-0006) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_paid`, `currency`, `paid_at`, `settlement_method` |
 | `OrderPartiallyPaid` (proposed) | A payment lands that does not cover the balance | `order_id`, `amount_paid`, `balance_due`, `currency`, `received_at` |
+| `PaymentReceived` | Any payment is recorded — a webhook-confirmed PSP payment or a manually booked bank transfer. Distinct from `OrderPaid`: this is about the money that arrived, that one about what it means for the order | `payment_id`, `order_id`, `brand_id`, `amount`, `currency`, `settlement_method`, `external_reference` (nullable — manual bookings have none), `received_at` |
+| `PaymentFailed` | An adapter reports a failed or expired attempt (ADR-0039). The order stays pending — a new checkout may follow | `payment_id`, `order_id`, `brand_id`, `settlement_method`, `reason_code`, `failed_at` |
+| `SettlementAccountConnected` | A brand finishes connecting its own PSP account (ADR-0007) — from this moment its orders settle through that provider | `settlement_account_id`, `brand_id`, `provider`, `connected_at` |
 | `OrderCancelled` (proposed) | An order is cancelled before or after settlement | `order_id`, `cancelled_by_user_id`, `reason_code`, `cancelled_at` |
 | `OrderRefunded` | Money went back to the payer. Distinct from `CreditNoteIssued`: that is the document, this is the money. An ADR-0036 transfer issues the first without the second, so a consumer counting refunds must listen here | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_refunded`, `currency`, `credit_note_id` (nullable — an uninvoiced order has no document), `reason_code`, `refunded_at` | implemented |
-| `PaymentReceived` (proposed) | Any payment is recorded, including a manually booked bank transfer | `payment_id`, `order_id`, `amount`, `currency`, `settlement_method`, `external_reference`, `received_at` |
-| `PaymentFailed` (proposed) | An adapter reports a failed or expired attempt | `payment_id`, `order_id`, `settlement_method`, `reason_code`, `failed_at` |
 | `InvoiceIssued` | An invoice number is drawn from the brand's range and the invoice is finalized — immutable from this moment (ADR-0031) | `invoice_id`, `order_id`, `brand_id`, `invoice_number`, `issued_on`, `due_on`, `total_gross`, `currency` |
 | `InvoiceOverdue` | An issued invoice passes its due date with its order unpaid. Emitted **once per invoice**, not once per sweep — the sweep runs daily and re-emitting would make one unpaid invoice a daily notification about the same fact | `invoice_id`, `invoice_number`, `order_id`, `brand_id`, `total_gross`, `currency`, `due_on`, `days_overdue`, `detected_at` | implemented |
 | `DunningLevelRaised` | An overdue invoice reached the next days-overdue threshold. Commerce declares *that* a level was reached; Messaging decides what a level means to a recipient — the same split D-CNT-08 draws for announcements, which is why no mail is sent from here | `invoice_id`, `invoice_number`, `order_id`, `brand_id`, `level`, `days_overdue`, `raised_at` | implemented |
 | `CreditNoteIssued` | A credit note was issued against an order. `reason_code` distinguishes a refund (ADR-0037) from a post-invoice transfer (ADR-0036) — a transfer is immediately followed by a new invoice for the same amount, so treating it as a refund would double-count | `credit_note_id`, `credit_note_number`, `order_id`, `invoice_id`, `brand_id`, `total_gross`, `currency`, `reason_code`, `issued_at` | implemented |
 | `VoucherRedeemed` (proposed) | A voucher is applied to an order | `voucher_id`, `order_id`, `discount_amount`, `currency`, `redeemed_at` |
-| `SettlementAccountConnected` (proposed) | A brand finishes connecting its own PSP account | `settlement_account_id`, `brand_id`, `provider`, `connected_at` |
 
 ## Consumes
 

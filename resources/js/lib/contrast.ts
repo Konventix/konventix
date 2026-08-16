@@ -105,7 +105,11 @@ export function parseColor(value: string): Rgb | null {
     const hsl = HSL_RE.exec(trimmed);
 
     if (hsl) {
-        return hslToRgb(parseFloat(hsl[1]), parseFloat(hsl[2]), parseFloat(hsl[3]));
+        return hslToRgb(
+            parseFloat(hsl[1]),
+            parseFloat(hsl[2]),
+            parseFloat(hsl[3]),
+        );
     }
 
     return null;
@@ -115,6 +119,23 @@ export function isColor(value: string): boolean {
     return parseColor(value) !== null;
 }
 
+/**
+ * Any accepted CSS color shape as `#rrggbb`, or null when it doesn't parse.
+ * `<input type="color">` only understands 6-digit hex, so the theme editor's
+ * swatches route every value through this.
+ */
+export function toHexColor(value: string): string | null {
+    const rgb = parseColor(value);
+
+    if (!rgb) {
+        return null;
+    }
+
+    const channel = (c: number): string => c.toString(16).padStart(2, '0');
+
+    return `#${channel(rgb.r)}${channel(rgb.g)}${channel(rgb.b)}`;
+}
+
 function linearize(channel: number): number {
     const c = channel / 255;
 
@@ -122,7 +143,9 @@ function linearize(channel: number): number {
 }
 
 export function relativeLuminance({ r, g, b }: Rgb): number {
-    return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
+    return (
+        0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b)
+    );
 }
 
 /**

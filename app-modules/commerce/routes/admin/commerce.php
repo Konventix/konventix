@@ -12,7 +12,15 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Commerce\Http\Controllers\Admin\InvoiceDocumentController;
 use Konventix\Commerce\Http\Controllers\Admin\OrderAdminController;
+use Konventix\Commerce\Http\Controllers\Admin\SettlementAccountAdminController;
 
 Route::get('/orders', [OrderAdminController::class, 'index'])->name('admin.orders.index');
 Route::post('/orders/{order}/payment', [OrderAdminController::class, 'bookPayment'])->name('admin.orders.book-payment');
 Route::get('/invoices/{invoice}/document', [InvoiceDocumentController::class, 'download'])->name('admin.invoices.document');
+
+Route::get('/settlement-accounts', [SettlementAccountAdminController::class, 'index'])->name('admin.settlement-accounts.index');
+Route::post('/settlement-accounts/stripe', [SettlementAccountAdminController::class, 'connectStripe'])->name('admin.settlement-accounts.stripe');
+Route::get('/settlement-accounts/stripe/return/{account}', [SettlementAccountAdminController::class, 'stripeReturn'])->name('admin.settlement-accounts.stripe-return');
+Route::post('/settlement-accounts/mollie', [SettlementAccountAdminController::class, 'connectMollie'])->name('admin.settlement-accounts.mollie');
+Route::post('/settlement-accounts/unzer', [SettlementAccountAdminController::class, 'connectUnzer'])->name('admin.settlement-accounts.unzer');
+Route::post('/settlement-accounts/{account}/disconnect', [SettlementAccountAdminController::class, 'disconnect'])->name('admin.settlement-accounts.disconnect');

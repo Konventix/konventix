@@ -32,4 +32,11 @@ interface UnzerApi
     public function fetchPayment(string $paymentId, string $privateKey): UnzerPaymentSnapshot;
 
     public function refundPayment(string $paymentId, float $amount, string $privateKey): void;
+
+    /**
+     * Registers `$url` as the account's notification endpoint for all
+     * events. Done once at connect time — Unzer notifies per account, so
+     * without this registration no payment would ever settle.
+     */
+    public function registerWebhook(string $url, string $privateKey): void;
 }

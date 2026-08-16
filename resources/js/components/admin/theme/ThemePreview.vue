@@ -3,7 +3,9 @@
  * Applies the draft's effective tokens (overrides merged onto platform
  * defaults) as inline CSS custom properties on a wrapper div, then renders
  * sample UI underneath using only semantic Tailwind classes (bg-surface,
- * text-text-muted, ...) — never a raw palette utility. Inline styles win
+ * text-text-muted, ...) — never a raw palette utility. The samples must
+ * exercise every token in TokenCatalog so no override is invisible here —
+ * extend them when the catalog grows. Inline styles win
  * over the inherited :root cascade, so the panel previews the draft
  * regardless of what the operator's own light/dark preference is.
  *
@@ -18,7 +20,10 @@ const props = defineProps<{
 
 const cssVars = computed<Record<string, string>>(() =>
     Object.fromEntries(
-        Object.entries(props.tokens).map(([name, value]) => [`--${name}`, value]),
+        Object.entries(props.tokens).map(([name, value]) => [
+            `--${name}`,
+            value,
+        ]),
     ),
 );
 </script>
@@ -51,13 +56,32 @@ const cssVars = computed<Record<string, string>>(() =>
                 </div>
 
                 <div
+                    class="rounded-lg bg-surface-inverted p-3 text-xs font-medium text-text-inverted"
+                >
+                    Inverted banner — inverted text on the inverted surface
+                    token.
+                </div>
+
+                <div
                     class="rounded-lg border border-border bg-surface-raised p-4 shadow-xs"
                 >
                     <div class="mb-1 text-sm font-semibold">Card heading</div>
                     <div class="text-xs text-text-muted">
-                        Supporting copy uses the muted text token, on the
-                        raised surface token.
+                        Supporting copy uses the muted text token, on the raised
+                        surface token.
                     </div>
+                </div>
+
+                <div
+                    class="rounded-lg bg-surface-muted p-3 text-xs text-text-muted"
+                >
+                    Muted panel — muted text on the muted surface token.
+                </div>
+
+                <div
+                    class="rounded-lg border border-danger/20 bg-danger-surface p-3 text-xs text-danger"
+                >
+                    Danger notice — danger text on the danger surface token.
                 </div>
 
                 <div class="flex flex-wrap gap-2">

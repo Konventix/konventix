@@ -1,4 +1,6 @@
 <script setup lang="ts">
+/* eslint-disable konventix/no-palette-colors -- raw color values are this
+   control's domain: it edits the tokens ADR-0008's rule points everyone at. */
 /**
  * One catalog token's control: a native color swatch plus a text input that
  * accepts any CSS color shape the server does (hex, rgb(), hsl()). Empty
@@ -6,6 +8,7 @@
  */
 import { computed } from 'vue';
 import { Input } from '@/components/ui/input';
+import { toHexColor } from '@/lib/contrast';
 
 const props = defineProps<{
     id?: string;
@@ -19,24 +22,17 @@ const emit = defineEmits<{
     (e: 'update:modelValue', value: string): void;
 }>();
 
-const HEX_RE = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
-
 /**
- * <input type="color"> only understands 6-digit hex. The catalog defaults
- * are hsl() (resources/css/app.css), so the swatch shows a plain black
- * placeholder until the operator either picks a color (which always emits
- * hex) or types a hex value directly — the text input beside it is the
- * source of truth for every other color shape.
+ * <input type="color"> only understands 6-digit hex, but the effective value
+ * can be any accepted shape — the catalog defaults are hsl() (resources/css/
+ * app.css) and the operator may type rgb()/hsl() directly. Convert whatever
+ * currently applies (override, else platform default) so the swatch always
+ * shows the real color; black only remains for unparseable input.
  */
-const swatchValue = computed<string>(() => {
-    const current = props.modelValue.trim();
-
-    if (HEX_RE.test(current)) {
-        return current;
-    }
-
-    return HEX_RE.test(props.fallback) ? props.fallback : '#000000';
-});
+const swatchValue = computed<string>(
+    () =>
+        toHexColor(props.modelValue) ?? toHexColor(props.fallback) ?? '#000000',
+);
 
 function reset(): void {
     emit('update:modelValue', '');
@@ -57,12 +53,14 @@ function reset(): void {
                     ($event.target as HTMLInputElement).value,
                 )
             "
-        >
+        />
         <Input
             :model-value="modelValue"
             :placeholder="fallback"
             class="h-9 flex-1 font-mono text-xs"
-            @update:model-value="(value) => emit('update:modelValue', String(value))"
+            @update:model-value="
+                (value) => emit('update:modelValue', String(value))
+            "
         />
         <button
             v-if="modelValue !== ''"

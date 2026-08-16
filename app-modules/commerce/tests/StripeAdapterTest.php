@@ -35,6 +35,16 @@ final class StripeAdapterTestFakeApi implements StripeApi
     {
         $this->refunds[] = ['params' => $params, 'account' => $stripeAccountId];
     }
+
+    public function createConnectedAccount(string $displayName, string $contactEmail, string $country): string
+    {
+        return 'acct_unused';
+    }
+
+    public function createOnboardingLink(string $stripeAccountId, string $returnUrl, string $refreshUrl): string
+    {
+        return 'https://stripe.test/unused';
+    }
 }
 
 function stripeAdapterTestSetup(): array

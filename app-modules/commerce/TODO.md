@@ -10,23 +10,31 @@
 
 ## Backlog (Phase 2 — release scope, invoice-settled registrations are a definition-of-done item)
 
-- [ ] Slice 7b — Stripe Connect Standard and Mollie adapters. The seam now
-      exists: each is one `SettlementAdapterRegistry::register()` line plus an
-      implementation, not a rewrite of every call site. Needs
-      `stripe/stripe-php` / `mollie/mollie-api-php`, provider credentials, and
-      webhook routes with signature verification.
-- [ ] Slice 7b — public checkout for `instant` settlement, and the
-      `SettlementAccount` connect/onboarding flow. The model, the provider
-      column and the one-live-account constraint exist; nothing yet walks a
-      brand through connecting one, and `BookManualPayment` still passes the
-      `manual` pseudo-account rather than the resolved account id.
 - [ ] Slice 7c — bookkeeping export for the tax advisor. **No format is
       decided anywhere in the docs** — no DATEV/EXTF structure, no account
       mapping. It warrants its own ADR before code rather than a format
       invented in passing.
-- [ ] Refund execution against a PSP. `RefundOrder` records the refund and
-      issues the paperwork, but no adapter moves money: `SettlementAdapter`
-      has only `markOrderPaid()`. Slice 7b adds the counterpart.
+- [ ] Stripe go-live readiness check: nothing verifies
+      `configuration.merchant.capabilities.card_payments.status === 'active'`
+      before offering checkout on a freshly onboarded account — until Stripe
+      activates it, `startCheckout` fails at Stripe rather than being hidden.
+      Needs a fetch-account seam method and a guard/badge on the admin page.
+- [ ] Mollie/Unzer key validation at connect time: the key is stored and
+      trusted; a typo surfaces at the first checkout, not in the connect
+      form. Validate with a cheap authenticated API call before saving.
+- [ ] Nothing surfaces the pay link (`/pay/registration/{ulid}`) to the
+      payer yet: Registration's post-submit page and the Messaging
+      confirmation mail should carry it for `instant` types. Registration
+      needs only the ULID it already has.
+- [ ] The checkout page pays the *latest* order for a registration
+      (ADR-0036): if an unpaid initial order coexists with an unpaid
+      amendment delta, only the newest is reachable. Fine while amendments
+      require a confirmed (settled) registration; revisit with per-order
+      pay links if that changes.
+- [ ] Local-dev webhooks: Mollie/Unzer webhook URLs are built from
+      `app.url`, which providers cannot reach from a WSL dev stack — needs
+      a tunnel for end-to-end manual testing. Stripe can replay via
+      `stripe listen --forward-to`.
 - [ ] Credit-note PDF. `CreditNote` records the document but nothing renders
       it; ADR-0031's hybrid ZUGFeRD pipeline should extend to credit notes,
       with `InvoiceDocumentRenderer` as the shape to follow.
@@ -54,6 +62,36 @@
       ranges.
 
 ## Done
+
+- [x] Slice 7b — payment providers (ADR-0039; deps user-approved:
+      `stripe/stripe-php`, `mollie/mollie-api-php`, `unzerdev/php-sdk`).
+      **The integration model** (ADR-0039): hosted checkout only (SAQ A),
+      settlement truth exclusively from verified webhooks — Stripe by
+      payload signature, Mollie and Unzer by fetch-back with the brand's own
+      key, so a forged call can at worst re-read real state. `Payment` is a
+      first-class record, unique per `(provider, external_id)` so replays
+      converge on one `OrderPaid`; `PaymentReceived`/`PaymentFailed`/
+      `SettlementAccountConnected` moved from proposed to implemented.
+      **Adapters** behind per-provider SDK seams (`StripeApi`, `MollieApi`,
+      `UnzerApi` — tests run against fakes, no SDK call leaves the process):
+      Stripe as direct charges on the organizer's connected account (v2
+      accounts, full dashboard, no `application_fee_amount` ever), Mollie
+      and Unzer against per-brand keys encrypted on `SettlementAccount`.
+      **Refunds** gained their PSP side: `SettlementAdapter::refund()`,
+      routed through the provider that took the payment (not the brand's
+      current account), called first inside `RefundOrder`'s transaction so
+      a provider refusal aborts the paperwork.
+      **Public checkout** for `instant` settlement at
+      `/pay/registration/{ulid}` (knowing the unguessable ULID authorizes
+      viewing lines and totals; billing data never renders) with a
+      display-only return state — the page never decides payment truth.
+      **Connect console** at `/admin/settlement-accounts`
+      (`commerce.manage-settlement-account`): Stripe walks hosted
+      onboarding with the row unconnected until return; Mollie/Unzer take
+      the brand's key in one step; Unzer registers this deployment's
+      webhook on the account, because Unzer notifies per account.
+      `BookManualPayment` now resolves the brand's live *manual* account id
+      and never references a PSP account for a hand-booked transfer.
 
 - [x] Slice 7a — internal money flows (no new dependencies).
       **ADR-0037's refund block**: `CheckedInAdmission`, Commerce's own read

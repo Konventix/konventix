@@ -62,6 +62,8 @@ final class UnzerAdapterTestFakeApi implements UnzerApi
     {
         $this->refunds[] = ['paymentId' => $paymentId, 'amount' => $amount, 'privateKey' => $privateKey];
     }
+
+    public function registerWebhook(string $url, string $privateKey): void {}
 }
 
 function unzerAdapterTestSetup(): array

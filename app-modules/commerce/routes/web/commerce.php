@@ -14,3 +14,15 @@ declare(strict_types=1);
  * So: declare bare routes here. Do not re-apply `web` or the module gate, and
  * never register these routes from routes/web.php.
  */
+
+use Illuminate\Support\Facades\Route;
+use Konventix\Commerce\Http\Controllers\CheckoutController;
+
+// Public checkout for `instant` settlement (ADR-0039), addressed by the
+// registration ULID — the only identifier the payer's flow carries.
+Route::get('/pay/registration/{registration}', [CheckoutController::class, 'show'])
+    ->whereUlid('registration')
+    ->name('commerce.pay.show');
+Route::post('/pay/registration/{registration}/start', [CheckoutController::class, 'start'])
+    ->whereUlid('registration')
+    ->name('commerce.pay.start');

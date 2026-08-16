@@ -26,4 +26,18 @@ interface StripeApi
      * @param  array<string, mixed>  $params
      */
     public function createRefund(array $params, string $stripeAccountId): void;
+
+    /**
+     * Creates the v2 connected account in the SaaS shape ADR-0039 pins:
+     * full dashboard, merchant configuration with card payments, Stripe
+     * collecting its own fees and carrying the losses — the organizer runs
+     * their own business on their own account. Returns the account id.
+     */
+    public function createConnectedAccount(string $displayName, string $contactEmail, string $country): string;
+
+    /**
+     * A single-use Stripe-hosted onboarding URL for the merchant
+     * configuration of `$stripeAccountId`.
+     */
+    public function createOnboardingLink(string $stripeAccountId, string $returnUrl, string $refreshUrl): string;
 }
