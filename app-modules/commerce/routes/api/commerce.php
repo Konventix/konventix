@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Commerce\Http\Controllers\Api\MollieWebhookController;
 use Konventix\Commerce\Http\Controllers\Api\StripeWebhookController;
+use Konventix\Commerce\Http\Controllers\Api\UnzerWebhookController;
 
 /*
  * Commerce's stateless machine surface (ADR-0039): PSP webhooks. No
@@ -24,4 +25,7 @@ Route::prefix('commerce/webhooks')
         // {payment} is our Payment ULID, baked into the webhookUrl at
         // checkout creation — the body Mollie posts is ignored on purpose.
         Route::post('mollie/{payment}', MollieWebhookController::class)->name('mollie');
+        // {account} is our SettlementAccount ULID — Unzer notifies per
+        // account; the payment is correlated via the fetched orderId.
+        Route::post('unzer/{account}', UnzerWebhookController::class)->name('unzer');
     });

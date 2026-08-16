@@ -1,0 +1,35 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Konventix\Commerce\Settlement\Unzer;
+
+/**
+ * The seam between the Unzer adapter and the Unzer SDK (ADR-0039). Every
+ * call carries `$privateKey` — the *brand's own* key from its
+ * `SettlementAccount`, decrypted just-in-time; like Mollie, Unzer has no
+ * platform credential at all (ADR-0007).
+ */
+interface UnzerApi
+{
+    /**
+     * Creates a Paypage v2 in charge mode. `$orderId` is our `Payment`
+     * ULID — the correlation key an account-level webhook reads back.
+     */
+    public function createPaypage(
+        float $amount,
+        string $currency,
+        string $orderId,
+        string $returnUrl,
+        string $privateKey,
+    ): UnzerPaypageSnapshot;
+
+    /**
+     * The fetch-back half of ADR-0039's webhook model: the notification
+     * body is an untrusted hint carrying a payment id, so truth is read
+     * from the API with the brand's key.
+     */
+    public function fetchPayment(string $paymentId, string $privateKey): UnzerPaymentSnapshot;
+
+    public function refundPayment(string $paymentId, float $amount, string $privateKey): void;
+}

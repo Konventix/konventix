@@ -21,6 +21,9 @@ use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Settlement\Stripe\SdkStripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
+use Konventix\Commerce\Settlement\Unzer\SdkUnzerApi;
+use Konventix\Commerce\Settlement\Unzer\UnzerApi;
+use Konventix\Commerce\Settlement\Unzer\UnzerSettlementAdapter;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -82,13 +85,16 @@ class CommerceServiceProvider extends ModuleServiceProvider
             $registry->register(SettlementAccount::PROVIDER_NULL, NullSettlementAdapter::class);
             $registry->register(SettlementAccount::PROVIDER_STRIPE, StripeSettlementAdapter::class);
             $registry->register(SettlementAccount::PROVIDER_MOLLIE, MollieSettlementAdapter::class);
+            $registry->register(SettlementAccount::PROVIDER_UNZER, UnzerSettlementAdapter::class);
 
             return $registry;
         });
 
-        // Mollie has no platform credential (ADR-0039): the brand's own key
-        // travels with every call, so the binding needs no config at all.
+        // Mollie and Unzer have no platform credential (ADR-0039): the
+        // brand's own key travels with every call, so the bindings need no
+        // config at all.
         $this->app->bind(MollieApi::class, SdkMollieApi::class);
+        $this->app->bind(UnzerApi::class, SdkUnzerApi::class);
 
         // Bound lazily: the platform key is only required the moment a
         // Stripe-connected brand actually settles something (ADR-0039).
