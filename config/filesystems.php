@@ -35,6 +35,7 @@ return [
     */
 
     'media_disk' => env('MEDIA_DISK', 'media'),
+    'invoices_disk' => env('INVOICES_DISK', 'invoices'),
 
     /*
     |--------------------------------------------------------------------------
@@ -143,6 +144,32 @@ return [
             'driver' => 'local',
             'root' => storage_path('app/invoices'),
             'serve' => false,
+            'throw' => true,
+            'report' => false,
+        ],
+
+        /*
+         * The same archive on S3-compatible object storage (ADR-0043).
+         * Deliberately carries no `public_direct` and no `url`: archived
+         * invoices are streamed by Commerce's own authenticated controller,
+         * never linked to, and never presigned — authorization stays on the
+         * Action rather than on a URL with a lifetime of its own.
+         *
+         * WORM is a property of the bucket, not of this configuration: create
+         * it with Object Lock where the provider supports it (Hetzner does,
+         * but only at creation time; Garage implements neither Object Lock
+         * nor versioning). ADR-0031's unalterability is met in the
+         * application — an issued document is never rewritten.
+         */
+        'invoices_s3' => [
+            'driver' => 's3',
+            'key' => env('AWS_INVOICES_ACCESS_KEY_ID', env('AWS_ACCESS_KEY_ID')),
+            'secret' => env('AWS_INVOICES_SECRET_ACCESS_KEY', env('AWS_SECRET_ACCESS_KEY')),
+            'region' => env('AWS_INVOICES_DEFAULT_REGION', env('AWS_DEFAULT_REGION')),
+            'bucket' => env('AWS_INVOICES_BUCKET', env('AWS_BUCKET')),
+            'endpoint' => env('AWS_INVOICES_ENDPOINT', env('AWS_ENDPOINT')),
+            'use_path_style_endpoint' => env('AWS_INVOICES_USE_PATH_STYLE_ENDPOINT', env('AWS_USE_PATH_STYLE_ENDPOINT', false)),
+            'root' => env('AWS_INVOICES_PREFIX', 'invoices'),
             'throw' => true,
             'report' => false,
         ],

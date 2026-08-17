@@ -27,7 +27,10 @@ class InvoiceDocumentController
 
         abort_if($model->document_path === null, 404, 'The invoice document has not been generated yet.');
 
-        return Storage::disk('invoices')->download(
+        // The disk recorded on the row, not the currently configured one: a
+        // document archived before a storage migration still downloads
+        // (ADR-0043).
+        return Storage::disk((string) $model->document_disk)->download(
             $model->document_path,
             $model->invoice_number.'.pdf',
         );

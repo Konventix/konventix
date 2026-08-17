@@ -78,7 +78,7 @@ final class SendInvoiceMail
             brandId: $invoice->brand_id,
             attachments: new DataCollection(AttachmentData::class, [
                 new AttachmentData(
-                    disk: 'invoices',
+                    disk: (string) $invoice->document_disk,
                     path: $invoice->document_path,
                     as: $invoice->invoice_number.'.pdf',
                     mime: 'application/pdf',

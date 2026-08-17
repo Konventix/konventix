@@ -44,6 +44,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property BillingPartyData $billing_party
  * @property OperatorSellerData $seller
  * @property string|null $document_path
+ * @property string|null $document_disk
  * @property string|null $document_sha256
  * @property Carbon|null $document_generated_at
  * @property Carbon|null $created_at

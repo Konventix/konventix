@@ -58,10 +58,16 @@ final class GenerateInvoiceDocument implements ShouldQueue
             $invoice->invoice_number,
         );
 
-        Storage::disk('invoices')->put($path, $bytes);
+        // Where NEW archives land (ADR-0043); the disk is sealed onto the row
+        // beside the path, so an archive stays readable after the pointer
+        // moves — ADR-0031 requires it to survive storage migrations.
+        $disk = (string) config('filesystems.invoices_disk', 'invoices');
+
+        Storage::disk($disk)->put($path, $bytes);
 
         $invoice->forceFill([
             'document_path' => $path,
+            'document_disk' => $disk,
             'document_sha256' => hash('sha256', $bytes),
             'document_generated_at' => now(),
         ])->save();
