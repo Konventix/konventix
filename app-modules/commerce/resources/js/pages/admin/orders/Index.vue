@@ -19,7 +19,11 @@ import {
 import type { DataTableFilters } from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
-import { bookPayment, index as ordersIndex } from '@/routes/admin/orders';
+import {
+    bookPayment,
+    index as ordersIndex,
+    show as showOrder,
+} from '@/routes/admin/orders';
 import { columns as baseColumns } from './columns';
 import type { OrderRow } from './columns';
 
@@ -155,6 +159,8 @@ const columns: ColumnDef<OrderRow>[] = [
             :pagination="pagination"
             items-label="orders"
             empty-message="No orders yet — Commerce wakes up with the first paid registration."
+            row-clickable
+            @row-click="(row: OrderRow) => router.visit(showOrder(row.id))"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

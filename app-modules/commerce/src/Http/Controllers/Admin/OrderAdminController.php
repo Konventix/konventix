@@ -11,9 +11,13 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Actions\BookManualPayment;
 use Konventix\Commerce\Enums\Permission;
+use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
+use Konventix\Commerce\Models\Payment;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
+use Konventix\Platform\Models\Brand;
 
 /**
  * Operator console: orders and their invoices (ADR-0029). Route middleware
@@ -92,6 +96,99 @@ class OrderAdminController
     }
 
     /**
+     * One order end to end: lines, invoice, payment attempts and credit
+     * notes. Every related query escapes BrandScope explicitly — relation
+     * calls would silently re-apply it on the admin host (ADR-0029).
+     */
+    public function show(string $order): Response
+    {
+        Gate::authorize(Permission::ViewOrders->value);
+
+        /** @var Order $model */
+        $model = Order::withoutBrandScope()->findOrFail($order);
+
+        /** @var Invoice|null $invoice */
+        $invoice = Invoice::withoutBrandScope()->where('order_id', $model->getKey())->first();
+
+        return Inertia::render('admin/orders/Show', [
+            'order' => [
+                'id' => $model->getKey(),
+                'brand' => Brand::query()->find($model->brand_id)->name ?? $model->brand_id,
+                'settlesType' => $model->settles_type,
+                'settlesId' => $model->settles_id,
+                'status' => $model->status->value,
+                'currency' => $model->currency,
+                'totalNet' => $model->total_net,
+                'totalTax' => $model->total_tax,
+                'totalGross' => $model->total_gross,
+                'taxTreatment' => $model->tax_treatment->value,
+                'paidAt' => $model->paid_at?->format('Y-m-d H:i'),
+                'createdAt' => $model->created_at?->format('Y-m-d H:i'),
+            ],
+            'lines' => OrderLine::withoutBrandScope()
+                ->where('order_id', $model->getKey())
+                ->orderBy('position')
+                ->get()
+                ->map(fn (OrderLine $line): array => [
+                    'id' => $line->getKey(),
+                    'label' => $line->label,
+                    'quantity' => $line->quantity,
+                    'unitAmountNet' => $line->unit_amount_net,
+                    'taxRate' => $line->tax_rate,
+                    'lineNet' => $line->line_net,
+                    'lineGross' => $line->line_gross,
+                ])
+                ->values()
+                ->all(),
+            'invoice' => $invoice === null ? null : [
+                'id' => $invoice->getKey(),
+                'number' => $invoice->invoice_number,
+                'issuedOn' => $invoice->issued_on->toDateString(),
+                'dueOn' => $invoice->due_on->toDateString(),
+                'totalGross' => $invoice->total_gross,
+                'documentReady' => $invoice->document_path !== null,
+                'billingParty' => [
+                    'name' => $invoice->billing_party->displayName(),
+                    'email' => $invoice->billing_party->email,
+                    'city' => $invoice->billing_party->city,
+                    'countryCode' => $invoice->billing_party->countryCode,
+                    'vatId' => $invoice->billing_party->vatId,
+                ],
+            ],
+            'payments' => Payment::withoutBrandScope()
+                ->where('order_id', $model->getKey())
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(fn (Payment $payment): array => [
+                    'id' => $payment->getKey(),
+                    'provider' => $payment->provider,
+                    'status' => $payment->status->value,
+                    'amount' => $payment->amount,
+                    'currency' => $payment->currency,
+                    'externalId' => $payment->external_id,
+                    'failureReason' => $payment->failure_reason,
+                    'receivedAt' => $payment->received_at?->format('Y-m-d H:i'),
+                    'failedAt' => $payment->failed_at?->format('Y-m-d H:i'),
+                ])
+                ->values()
+                ->all(),
+            'creditNotes' => CreditNote::withoutBrandScope()
+                ->where('order_id', $model->getKey())
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(fn (CreditNote $note): array => [
+                    'id' => $note->getKey(),
+                    'number' => $note->credit_note_number,
+                    'totalGross' => $note->total_gross,
+                    'reasonCode' => $note->reason_code,
+                    'issuedOn' => $note->issued_on->toDateString(),
+                ])
+                ->values()
+                ->all(),
+        ]);
+    }
+
+    /**
      * Book a manual payment — an organizer marking a bank transfer as
      * received (SPEC.md "Owns"). Deliberately a separate capability from
      * order viewing (ADR-0013).
@@ -107,6 +204,7 @@ class OrderAdminController
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Payment booked.')]);
 
-        return to_route('admin.orders.index');
+        // Back to wherever the booking happened — index dialog or detail page.
+        return back();
     }
 }

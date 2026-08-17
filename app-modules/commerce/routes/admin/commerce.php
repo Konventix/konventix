@@ -16,6 +16,7 @@ use Konventix\Commerce\Http\Controllers\Admin\OrderAdminController;
 use Konventix\Commerce\Http\Controllers\Admin\SettlementAccountAdminController;
 
 Route::get('/orders', [OrderAdminController::class, 'index'])->name('admin.orders.index');
+Route::get('/orders/{order}', [OrderAdminController::class, 'show'])->name('admin.orders.show');
 Route::post('/orders/{order}/payment', [OrderAdminController::class, 'bookPayment'])->name('admin.orders.book-payment');
 Route::get('/invoices/{invoice}/document', [InvoiceDocumentController::class, 'download'])->name('admin.invoices.document');
 

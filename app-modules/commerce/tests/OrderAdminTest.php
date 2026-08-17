@@ -5,8 +5,11 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderPaid;
+use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
+use Konventix\Commerce\Models\Payment;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
@@ -106,4 +109,46 @@ it('403s payment booking without the book-manual-payment capability', function (
         ->assertForbidden();
 
     expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+});
+
+it('shows one order with lines, invoice, payments and credit notes', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->create(['currency' => 'EUR', 'total_gross' => '119.00']);
+    $invoice = Invoice::factory()->create(['order_id' => $order->id]);
+    $line = OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'label' => 'Exhibitor package',
+    ]);
+    $payment = Payment::factory()->create(['order_id' => $order->id]);
+    $note = CreditNote::factory()->create([
+        'order_id' => $order->id,
+        'invoice_id' => $invoice->id,
+        'billing_party' => $invoice->billing_party,
+        'seller' => $invoice->seller,
+    ]);
+
+    $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders/{$order->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/orders/Show')
+            ->where('order.id', $order->id)
+            ->where('lines.0.label', 'Exhibitor package')
+            ->where('lines.0.id', $line->id)
+            ->where('invoice.number', $invoice->invoice_number)
+            ->where('payments.0.id', $payment->id)
+            ->where('creditNotes.0.number', $note->credit_note_number));
+});
+
+it('403s the order detail without the view-orders capability', function (): void {
+    [, $admin] = commerceOperator(['platform.access-admin']);
+
+    $this->withBrand();
+    $order = Order::factory()->create();
+
+    $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders/{$order->id}")
+        ->assertForbidden();
 });
