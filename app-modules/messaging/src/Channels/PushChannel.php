@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Messaging\Channels;
 
+use Illuminate\Contracts\Container\Container;
 use Konventix\Messaging\Contracts\MessageChannel;
 use Konventix\Messaging\Contracts\PushSender;
 use Konventix\Messaging\Data\PushMessageData;
@@ -26,7 +27,7 @@ use RuntimeException;
  */
 final class PushChannel implements MessageChannel
 {
-    public function __construct(private readonly PushSender $sender) {}
+    public function __construct(private readonly Container $container) {}
 
     public function send(SendMessageData $message, RenderedMessage $rendered): void
     {
@@ -47,6 +48,10 @@ final class PushChannel implements MessageChannel
             return;
         }
 
+        // Resolved only now: an unconfigured deployment (no VAPID keys)
+        // must not fail a send that has no device to reach anyway.
+        $sender = $this->container->make(PushSender::class);
+
         $payloadArray = $message->payload->toArray();
 
         $push = new PushMessageData(
@@ -60,7 +65,7 @@ final class PushChannel implements MessageChannel
         $lastReason = null;
 
         foreach ($subscriptions as $subscription) {
-            $report = $this->sender->send($subscription, $push);
+            $report = $sender->send($subscription, $push);
 
             if ($report->expired) {
                 $subscription->delete();

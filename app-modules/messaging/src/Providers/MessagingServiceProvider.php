@@ -6,6 +6,8 @@ namespace Konventix\Messaging\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Konventix\Commerce\Events\DunningLevelRaised;
+use Konventix\Content\Events\AnnouncementPublished;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Channels\ChannelMap;
@@ -19,8 +21,11 @@ use Konventix\Messaging\Contracts\MessageChannel;
 use Konventix\Messaging\Contracts\PushSender;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Listeners\ProjectRecipient;
+use Konventix\Messaging\Listeners\SendAnnouncementNotifications;
+use Konventix\Messaging\Listeners\SendDunningNotice;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Messaging\Topics\Topic;
 use Konventix\Messaging\Topics\TopicRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use RuntimeException;
@@ -93,23 +98,102 @@ class MessagingServiceProvider extends ModuleServiceProvider
 
     /**
      * The recipient read model projects from Identity's account events
-     * (SPEC.md "Consumes", ADR-0004).
+     * (SPEC.md "Consumes", ADR-0004) — plus the two intent events
+     * (ADR-0041 point 8): `AnnouncementPublished` and `DunningLevelRaised`
+     * deliberately address Messaging without naming a template, so for
+     * exactly these the listener lives here. Everything else keeps the
+     * rule: a module that wants a message sends one.
      */
     protected function registerListeners(): void
     {
         Event::listen(UserRegistered::class, ProjectRecipient::class);
         Event::listen(UserProfileUpdated::class, ProjectRecipient::class);
+
+        Event::listen(AnnouncementPublished::class, SendAnnouncementNotifications::class);
+        Event::listen(DunningLevelRaised::class, SendDunningNotice::class);
     }
 
     /**
-     * The one template Messaging itself owns: the digest that carries
-     * several coalesced held messages (ADR-0041 point 5). Each item is a
-     * held message's subject, rendered in the recipient's locale. German
-     * default, matching the release's DACH framing (ADR-0030).
+     * The topics behind the intent events (ADR-0041 point 8): Messaging
+     * owns their interpretation, so it also declares their policy.
+     * Announcements are preference-gated and digestable; a payment
+     * reminder offers no opt-out — only the mail suppression list applies.
+     */
+    protected function registerMessageTopics(): void
+    {
+        $topics = $this->app->make(TopicRegistry::class);
+
+        $topics->register(new Topic(
+            key: 'content.announcements',
+            label: 'Announcements',
+            defaultChannels: [Channel::InApp, Channel::Push, Channel::Mail],
+            suppressible: true,
+            digestable: true,
+        ));
+
+        $topics->register(new Topic(
+            key: 'commerce.dunning',
+            label: 'Payment reminders',
+            defaultChannels: [Channel::Mail],
+            suppressible: false,
+        ));
+    }
+
+    /**
+     * The templates Messaging itself owns: the digest that carries several
+     * coalesced held messages (ADR-0041 point 5), and the wording behind
+     * the two intent events (point 8) — announcement and dunning notice.
+     * German defaults, matching the release's DACH framing (ADR-0030).
      */
     protected function registerMessageTemplates(): void
     {
-        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+        $registry = $this->app->make(TemplateRegistry::class);
+
+        $registry->register(new MessageTemplate(
+            key: 'messaging.announcement',
+            subjects: [
+                'de' => '{{ $title }}',
+                'en' => '{{ $title }}',
+            ],
+            bodies: [
+                'de' => '<p>Neue Ankündigung: <strong>{{ $title }}</strong></p>',
+                'en' => '<p>New announcement: <strong>{{ $title }}</strong></p>',
+            ],
+            defaultLocale: 'de',
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: 'messaging.dunning-notice',
+            subjects: [
+                'de' => 'Zahlungserinnerung {{ $level }} zur Rechnung {{ $invoiceNumber }}',
+                'en' => 'Payment reminder {{ $level }} for invoice {{ $invoiceNumber }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag {{ $recipientName }},</p>
+                    <p>die Rechnung <strong>{{ $invoiceNumber }}</strong> über
+                    <strong>{{ $totalGross }} {{ $currency }}</strong> war am
+                    <strong>{{ $dueOn }}</strong> fällig und ist seit
+                    {{ $daysOverdue }} Tagen offen.</p>
+                    <p>Bitte begleichen Sie den Betrag unter Angabe der
+                    Rechnungsnummer. Sollte die Zahlung bereits unterwegs sein,
+                    betrachten Sie diese Erinnerung als gegenstandslos.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Dear {{ $recipientName }},</p>
+                    <p>invoice <strong>{{ $invoiceNumber }}</strong> for
+                    <strong>{{ $totalGross }} {{ $currency }}</strong> was due on
+                    <strong>{{ $dueOn }}</strong> and has been outstanding for
+                    {{ $daysOverdue }} days.</p>
+                    <p>Please settle the amount quoting the invoice number. If
+                    your payment is already on its way, kindly disregard this
+                    reminder.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        $registry->register(new MessageTemplate(
             key: 'messaging.digest',
             subjects: [
                 'de' => '{{ $count }} neue Benachrichtigungen',

@@ -98,6 +98,11 @@ final class RaiseDunningLevel
                         level: $target,
                         daysOverdue: $days,
                         raisedAt: now()->toIso8601String(),
+                        billingName: $invoice->billing_party->displayName(),
+                        billingEmail: $invoice->billing_party->email,
+                        totalGross: $invoice->total_gross,
+                        currency: $invoice->currency,
+                        dueOn: $invoice->due_on->toDateString(),
                     ));
                 }
             });

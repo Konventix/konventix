@@ -43,17 +43,22 @@ it('renders topics from the registry with the stored preference state', function
         'enabled' => false,
     ]);
 
-    $this->actingAs($user)
+    $response = $this->actingAs($user)
         ->get('/settings/notifications')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->component('settings/Notifications')
-            ->has('topics', 2)
-            ->where('topics.0.key', 'test.news')
-            ->where('topics.0.channels.0.channel', 'mail')
-            ->where('topics.0.channels.0.enabled', false)
-            ->where('topics.0.channels.1.enabled', true)
-            ->where('topics.1.suppressible', false));
+            ->component('settings/Notifications'));
+
+    // Looked up by key, not index: the registry also carries the real
+    // topics modules declare at boot (e.g. content.announcements), and this
+    // test must not break every time one lands.
+    $topics = collect($response->viewData('page')['props']['topics']);
+
+    $news = $topics->firstWhere('key', 'test.news');
+    expect($news['channels'][0]['channel'])->toBe('mail')
+        ->and($news['channels'][0]['enabled'])->toBeFalse()
+        ->and($news['channels'][1]['enabled'])->toBeTrue()
+        ->and($topics->firstWhere('key', 'test.security')['suppressible'])->toBeFalse();
 });
 
 it('saves deviations and ignores forged non-suppressible toggles', function (): void {

@@ -25,5 +25,14 @@ final readonly class DunningLevelRaised
         public int $level,
         public int $daysOverdue,
         public string $raisedAt,
+        // Billing-party scalars (ADR-0041 point 8, additive): the payment
+        // reminder goes to the invoice's billing contact, who may have no
+        // account — Messaging's listener needs the address in the payload,
+        // because it must not read this module's models (ADR-0004).
+        public string $billingName = '',
+        public ?string $billingEmail = null,
+        public string $totalGross = '',
+        public string $currency = '',
+        public string $dueOn = '',
     ) {}
 }

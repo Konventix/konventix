@@ -81,7 +81,7 @@ scalars and ULIDs, which is exactly what the rule asks for.
 |---|---|
 | Whether a person wants a given notification | Messaging itself (ADR-0041 revised this line): preferences are rows per recipient/topic/channel stored here — Identity's settings navigation links to Messaging's preference page |
 | Email address of record | Identity for accounts, Commerce for invoice recipients — Messaging resolves a recipient by ULID at send time |
-| The business condition that triggers a message | the module owning the process — Messaging never watches for reasons to send |
+| The business condition that triggers a message | the module owning the process — Messaging never watches for reasons to send, with one deliberate exception (ADR-0041 point 8): `AnnouncementPublished` and `DunningLevelRaised` *address* Messaging without naming a template ("Messaging alone decides what this means"), so for exactly those two the listener, topic and wording live here |
 | Campaigns, subscriber lists, bulk marketing | Newsletter, behind a Listmonk client contract |
 | Legal consent for marketing contact | Compliance holds the consent record; Messaging enforces deliverability from it |
 | Chat, presence, direct messages between participants | Community |
@@ -93,7 +93,10 @@ scalars and ULIDs, which is exactly what the rule asks for.
 The boundary that will be tested first: someone will want a listener in
 Messaging on `OrderPaid` to send a receipt. That listener belongs in Commerce,
 which then calls Messaging. Otherwise Messaging ends up knowing every module's
-event catalogue, which is exactly the shape LanCore's god objects took.
+event catalogue, which is exactly the shape LanCore's god objects took. The
+intent-event exception above is narrow on purpose: it applies only where the
+emitting module's own contract declares that Messaging owns the
+interpretation — `OrderPaid` declares no such thing.
 
 ## Public contract (events)
 
@@ -128,6 +131,8 @@ maintains from them.
 | `UserRegistered` | Identity | Seed the recipient read model — ULID, display name, locale |
 | `UserProfileUpdated` | Identity | Keep display name, locale and timezone current for rendering |
 | `UserAnonymized` | Identity | Drop the recipient read model entry |
+| `AnnouncementPublished` | Content | Intent event (ADR-0041 point 8, D-CNT-08): fan out to every account on the `content.announcements` topic; urgent bypasses digests and quiet hours |
+| `DunningLevelRaised` | Commerce | Intent event (ADR-0041 point 8): mail the billing contact a payment reminder on the non-suppressible `commerce.dunning` topic |
 | `BrandCreated` | Platform | Seed the brand read model — name, canonical domain, sender identity |
 | `BrandThemeUpdated` | Platform | Refresh the tokens used to render branded mail |
 | `BrandArchived` | Platform | Stop delivery for an archived brand |

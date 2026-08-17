@@ -45,6 +45,12 @@ the natural first consumer and would register the first real template.
 
 ## Backlog
 
+- [ ] Announcement audience narrowing: both `everyone` and `logged-in`
+      currently reach every known account, operator-wide — Messaging's
+      recipient read model has no notion of brand membership. Needs an
+      Identity contract signal (brand first-seen / membership) before the
+      fan-out can respect the brand boundary of the announcement.
+
 - [ ] Push end-to-end against a real browser: the channel, worker and
       subscription flow are tested on fakes; a manual pass against Chrome and
       Firefox (permission prompt, delivery with the site closed, endpoint
@@ -89,6 +95,20 @@ the natural first consumer and would register the first real template.
 
 ## Done
 
+- [x] Intent-event listeners (Slice 13e, ADR-0041 point 8, closes
+      Slice 13): `SendAnnouncementNotifications` (queued on the messaging
+      queue) fans `AnnouncementPublished` out to every account on the
+      `content.announcements` topic (in-app + push + mail, digestable —
+      urgent bypasses holds per D-CNT-08); `SendDunningNotice` mails the
+      billing contact on `commerce.dunning` (non-suppressible, mail-only;
+      German wording default like the invoice mail). Both topics and both
+      templates (`messaging.announcement`, `messaging.dunning-notice`) are
+      Messaging-owned because these two events deliberately leave the
+      interpretation here. `DunningLevelRaised` gained billing scalars
+      additively (Commerce SPEC row updated) so the listener never reads
+      Commerce models. Both SPEC boundary lines now carry the narrow
+      exception. Follow-up in Backlog: audience narrowing per brand
+      membership.
 - [x] Web push (Slice 13d, ADR-0041 point 7, closes D-MSG-02):
       `PushChannel` delivers the typed `PushMessageData` (title, plain-text
       body, URL, tag) to every `PushSubscription` of the recipient through
