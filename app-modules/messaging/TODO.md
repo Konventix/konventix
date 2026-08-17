@@ -49,13 +49,15 @@ the natural first consumer and would register the first real template.
       override — new release scope): joins mail and in-app; needs subscription
       storage per recipient device and a provider client behind the same
       channel contract `MailChannel` already implements.
-- [ ] Digest windows and quiet-hours infrastructure (decision log Round 6,
-      D-MSG-03, user override — new release scope): Messaging holds and
-      coalesces per-change sends from other modules into a digest per
-      recipient/window rather than dispatching each one immediately; quiet
-      hours suppress/delay delivery per recipient. Design the coalescing key
-      (recipient + template family?) before building the queue changes this
-      needs on top of `SendQueuedMessage`.
+- [ ] Recipient timezone is never populated: Identity's contract events carry
+      no timezone field, so quiet hours always fall back to the brand's
+      Messaging settings (or the app timezone) today. Needs
+      `UserProfileUpdated` (or a dedicated event) to gain the field, plus
+      `ProjectRecipient` projecting it.
+- [ ] Held messages with attachments are deliberately not held (attachments
+      are referenced on the envelope but not persisted on the log row, so a
+      flush would lose them). If a digestable topic ever legitimately carries
+      attachments, the log row needs to store the references.
 - [ ] In-app inbox with read state, exposed as a deferred prop rather than on
       every request (lessons-from-lancore #5). ADR-0041 point 6: the in-app
       channel writes the notification row; `notification.received` broadcasts
@@ -85,6 +87,20 @@ the natural first consumer and would register the first real template.
 
 ## Done
 
+- [x] Digest windows and quiet hours (Slice 13b, ADR-0041 point 5, closes
+      D-MSG-03): `HoldPolicy` writes a digestable topic's non-urgent send as
+      `held` with `hold_until` at the end of its 30-minute window per
+      (brand, recipient, channel) — later sends join the open window — and
+      quiet hours (22:00–08:00, recipient timezone → brand Messaging
+      settings → app timezone) push the end to 08:00. `FlushHeldMessages`
+      (scheduled `messaging:flush-held`, every minute, row locks against
+      overlapping sweeps) sends a single due hold as itself (payload
+      rehydrated from the log row via `RehydratedPayload`,
+      `recipient_locale` now stored for exactly this) and coalesces several
+      into one `messaging.digest` message (`DigestData`: each member's
+      subject rendered in the recipient's locale); members are marked sent
+      with `digest_message_id`. Urgent and attachment-carrying sends bypass
+      holding.
 - [x] Topics, fan-out, delivery log, suppression and preferences (Slice 13a,
       ADR-0041 points 1–4): `TopicRegistry` + `Topic` declared via the new
       `ModuleServiceProvider::registerMessageTopics()` hook; `SendMessage` is

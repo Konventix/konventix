@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Konventix\Messaging\Actions;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use Konventix\Messaging\Channels\ChannelMap;
 use Konventix\Messaging\Data\SendMessageData;
 use Konventix\Messaging\Data\SendMessageRequest;
+use Konventix\Messaging\Digests\HoldPolicy;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Enums\MessageStatus;
 use Konventix\Messaging\Events\MessageQueued;
@@ -43,6 +45,7 @@ final class SendMessage
         private readonly BrandContext $brandContext,
         private readonly TopicRegistry $topics,
         private readonly ChannelMap $channels,
+        private readonly HoldPolicy $holds,
     ) {}
 
     /**
@@ -105,9 +108,26 @@ final class SendMessage
                 continue;
             }
 
-            $this->log($message, MessageStatus::Queued);
+            // Digestable topics may hold instead of dispatching (ADR-0041
+            // point 5): the row is `held` in the log — visible, never
+            // swallowed — and the sweep sends or coalesces it later. The
+            // message is accepted either way, so MessageQueued still fires.
+            $holdUntil = $this->holds->holdUntil(
+                $request,
+                $request->topicKey === null ? null : $this->topics->get($request->topicKey),
+                $channel,
+                $brandId,
+                $email,
+                $recipient,
+            );
 
-            SendQueuedMessage::dispatch($message);
+            if ($holdUntil !== null) {
+                $this->log($message, MessageStatus::Held, $holdUntil);
+            } else {
+                $this->log($message, MessageStatus::Queued);
+
+                SendQueuedMessage::dispatch($message);
+            }
 
             event(new MessageQueued(
                 messageId: $message->messageId,
@@ -174,18 +194,20 @@ final class SendMessage
         return null;
     }
 
-    private function log(SendMessageData $message, MessageStatus $status): void
+    private function log(SendMessageData $message, MessageStatus $status, ?CarbonImmutable $holdUntil = null): void
     {
         $record = new MessageRecord([
             'id' => $message->messageId,
             'recipient_id' => $message->recipientId,
             'recipient_email' => $message->recipientEmail,
+            'recipient_locale' => $message->recipientLocale,
             'channel' => $message->channel,
             'template_key' => $message->templateKey,
             'topic_key' => $message->topicKey,
             'status' => $status,
             'payload' => $message->payload->toArray(),
             'urgent' => $message->urgent,
+            'hold_until' => $holdUntil,
             'queued_at' => now(),
         ]);
         // brand_id from the envelope, not ambient context (ADR-0010):

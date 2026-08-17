@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property string $email
  * @property string $display_name
  * @property string $locale
+ * @property string|null $timezone
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -33,5 +34,5 @@ class Recipient extends Model
 
     protected $keyType = 'string';
 
-    protected $fillable = ['id', 'email', 'display_name', 'locale'];
+    protected $fillable = ['id', 'email', 'display_name', 'locale', 'timezone'];
 }

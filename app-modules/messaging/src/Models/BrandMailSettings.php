@@ -25,6 +25,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $from_name
  * @property string $from_address
  * @property string|null $reply_to
+ * @property string|null $timezone
  * @property array<string, mixed>|null $transport
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -36,7 +37,7 @@ class BrandMailSettings extends Model
 
     protected $table = 'messaging_brand_settings';
 
-    protected $fillable = ['from_name', 'from_address', 'reply_to', 'transport'];
+    protected $fillable = ['from_name', 'from_address', 'reply_to', 'timezone', 'transport'];
 
     /**
      * @return array<string, string>

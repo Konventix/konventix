@@ -37,6 +37,15 @@ scalars and ULIDs, which is exactly what the rule asks for.
   applies the rule stores it, so an unsubscribe has no consistency window. The
   preference page (`settings/notifications`) renders from the registry: a new
   notification kind is one declaration, no migration, no settings-page edit.
+- **Digest windows and quiet hours** (ADR-0041 point 5): a digestable topic's
+  send is written `held` — visible in the log, never dropped — with a
+  `hold_until` at the end of its 30-minute window per (recipient, channel);
+  quiet hours (22:00–08:00 in the recipient's timezone, the brand's Messaging
+  settings then the application timezone as fallbacks) push it to 08:00. The
+  `messaging:flush-held` sweep (every minute) sends one due hold as itself and
+  coalesces several into one `messaging.digest` message listing each item's
+  rendered subject; member rows keep `digest_message_id` so "did they get it"
+  stays answerable. `urgent` bypasses both.
 - **Templates**: template keys registered by the owning module at boot,
   per-brand overrides, localisation per recipient locale, and rendering against
   a typed payload rather than a free-form array (ADR-0009,

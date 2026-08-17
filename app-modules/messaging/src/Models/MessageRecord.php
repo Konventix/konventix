@@ -27,6 +27,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $brand_id
  * @property string|null $recipient_id
  * @property string $recipient_email
+ * @property string|null $recipient_locale
  * @property Channel $channel
  * @property string $template_key
  * @property string|null $topic_key
@@ -39,6 +40,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $provider_message_id
  * @property bool $urgent
  * @property Carbon|null $hold_until
+ * @property string|null $digest_message_id
  * @property Carbon $queued_at
  * @property Carbon|null $sent_at
  * @property Carbon|null $failed_at
@@ -62,6 +64,7 @@ class MessageRecord extends Model
         'id',
         'recipient_id',
         'recipient_email',
+        'recipient_locale',
         'channel',
         'template_key',
         'topic_key',
@@ -74,6 +77,7 @@ class MessageRecord extends Model
         'provider_message_id',
         'urgent',
         'hold_until',
+        'digest_message_id',
         'queued_at',
         'sent_at',
         'failed_at',

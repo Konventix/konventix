@@ -4,14 +4,17 @@ declare(strict_types=1);
 
 namespace Konventix\Messaging\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Channels\ChannelMap;
 use Konventix\Messaging\Channels\MailChannel;
+use Konventix\Messaging\Console\FlushHeldMessagesCommand;
 use Konventix\Messaging\Contracts\MessageChannel;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Listeners\ProjectRecipient;
+use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Messaging\Topics\TopicRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -69,5 +72,61 @@ class MessagingServiceProvider extends ModuleServiceProvider
     {
         Event::listen(UserRegistered::class, ProjectRecipient::class);
         Event::listen(UserProfileUpdated::class, ProjectRecipient::class);
+    }
+
+    /**
+     * The one template Messaging itself owns: the digest that carries
+     * several coalesced held messages (ADR-0041 point 5). Each item is a
+     * held message's subject, rendered in the recipient's locale. German
+     * default, matching the release's DACH framing (ADR-0030).
+     */
+    protected function registerMessageTemplates(): void
+    {
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'messaging.digest',
+            subjects: [
+                'de' => '{{ $count }} neue Benachrichtigungen',
+                'en' => '{{ $count }} new notifications',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag,</p>
+                    <p>während Sie nicht online waren, gab es {{ $count }} neue Benachrichtigungen:</p>
+                    <ul>
+                    @foreach ($items as $item)
+                        <li>{{ $item }}</li>
+                    @endforeach
+                    </ul>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>while you were away there were {{ $count }} new notifications:</p>
+                    <ul>
+                    @foreach ($items as $item)
+                        <li>{{ $item }}</li>
+                    @endforeach
+                    </ul>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+    }
+
+    /**
+     * The digest sweep (ADR-0041 point 5), every minute — hold windows are
+     * minute-granular, and an idle sweep is one indexed query. Registered
+     * explicitly: modular auto-discovers nothing under a module's
+     * `src/Console`, and a sweep that silently failed to register would
+     * look like "nothing is held" rather than like a bug.
+     */
+    protected function registerSchedule(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([FlushHeldMessagesCommand::class]);
+        }
+
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $schedule->command(FlushHeldMessagesCommand::class)->everyMinute();
+        });
     }
 }
