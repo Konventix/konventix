@@ -29,9 +29,11 @@ module built before it will otherwise be retrofitted.
       / `SubjectRequestRefused`: the events exist and carry what a template
       needs, but nobody listens, so a subject learns their export is ready by
       revisiting the privacy page. Needs a topic (ADR-0041) and templates.
-- [ ] Expired export archives are never deleted — `archive_expires_at` stops
-      the download, and the file stays on the disk. The retention job below is
-      the right home for sweeping them, which is why this waits for it.
+- [ ] The retention sweep re-emits daily for as long as a rule stays elapsed
+      (deliberate — a delete-older-than is idempotent, and the alternative is
+      state whose failure mode is data that never gets deleted). If the
+      event-scoped emissions ever grow past a few hundred a day, the fix is a
+      per-clock high-water mark, not a flag on the rule.
 - [ ] `AssembleSubjectExport` treats a subject request as brand-scoped, but
       Round 6 (D-BATCH) settled that a request *spans the operator*
       (ADR-0016). A person registered with two of an operator's brands gets
@@ -43,8 +45,10 @@ module built before it will otherwise be retrofitted.
       two recorded reads (the registrant CSV export, a subject-export
       download). Walk each module's privileged actions once and mark what
       belongs in the trail — the mechanism is done, the coverage is not.
-- [ ] The audit trail has no retention enforcement yet: D-CPL-01 says 36
-      months, and nothing deletes. Lands with the retention machinery below.
+- [ ] GoBD deletion is still deferred to Phase 3 by decision (ROADMAP):
+      the retention machinery now has a home for it, but what §147 AO
+      deletion *means* needs its own decision before an invoice is near the
+      limit.
 - [ ] Anonymize-with-tombstone as the default deletion mode (decision log
       Round 6, D-BATCH): `UserDeletionRequested`'s `anonymize` path must leave
       a tombstone row per affected table so foreign ULID references (e.g. an
@@ -52,8 +56,11 @@ module built before it will otherwise be retrofitted.
 - [ ] DSR deadline scheduler (decision log Round 6, D-BATCH): a scheduled job
       that watches each open `DataSubjectRequest`'s statutory deadline and
       escalates through Messaging as it approaches/lapses.
-- [ ] Retention rules plus the scheduled job that emits `RetentionPeriodElapsed`
-      per data category, with `EventConcluded` as the first clock start.
+- [ ] Only two data categories have a consumer: `compliance.audit-trail` and
+      `messaging.delivery-log`. Every other module's participant data has no
+      retention rule and nothing listening — walk them once (Admission's
+      check-ins and Registration's registrant read model first) and decide
+      the numbers with the same care D-CPL-01 got.
 - [ ] Authorization stays capability gates in the controllers
       (`Gate::authorize(Permission::X->value)`), which is what every other
       module does — `src/Policies/` is still empty and would only pay off for
@@ -94,6 +101,36 @@ module built before it will otherwise be retrofitted.
       tracked as Platform's concern.
 
 ## Done
+
+- [x] Retention rules, their clocks, and the daily sweep (D-CPL-01).
+      `RetentionRule` names a *data category*, never a table: Compliance
+      publishes how long something may be kept and the module that holds it
+      deletes its own rows when `RetentionPeriodElapsed` arrives. A sweep
+      that reached into foreign tables would be the same violation the GDPR
+      fan-out was built to avoid (ADR-0004) — so Compliance discharges its
+      own audit-trail rule through the identical contract, as a listener like
+      anyone else.
+      The two D-CPL-01 numbers ship as seeded operator-wide rules (audit
+      trail 36 months, delivery log 12): a platform that has to be configured
+      before it is lawful is not lawful. `brand_id` is nullable for exactly
+      that scope, which is why the unique constraint is hand-written as
+      `UNIQUE NULLS NOT DISTINCT` — a plain unique index treats every NULL as
+      distinct and would leave the operator-wide rows unconstrained.
+      Two clocks: `record_age` counts each row's own age, `event_concluded`
+      counts from the end of the event the data belongs to —
+      `Listeners\StartRetentionClock` records that date from Event's
+      `EventConcluded` rather than asking Event for it later. Event-scoped
+      signals carry the event id, so a consumer knows *which* event's data is
+      out of retention (SPEC payload extended accordingly).
+      `compliance:apply-retention` runs daily at 03:30 with a `--dry-run`,
+      and additionally deletes expired subject-export archives — files, not
+      rows, and a second copy of a person's whole record that had no reason
+      to outlive its download window. Messaging prunes its own delivery log
+      from the same signal (`Listeners\PruneDeliveryLog`), leaving messages
+      still in flight alone. Console at `/admin/retention` shows each rule's
+      *current cutoff*, because "36 months" and "everything before
+      2023-08-17" are the same fact and only one is checkable at a glance.
+      `tests/RetentionTest.php`.
 
 - [x] The hybrid audit trail (Round 6 D-BATCH), both halves.
       Subscriber half: `Audit\AuditableEvent` is a marker an event

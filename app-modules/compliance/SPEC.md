@@ -75,7 +75,7 @@ A row becomes binding when its event class lands; the rest stay proposals.
 | `UserDeletionRequested` | A deletion request is accepted and fans out | `request_id`, `subject_id`, `brand_id`, `mode` (`anonymize` or `erase`) | shipped |
 | `UserDeletionCompleted` | Every handler has confirmed | `request_id`, `subject_id`, `completed_at` | shipped |
 | `SubjectRequestRefused` | A request is refused, with a legal ground | `request_id`, `subject_id`, `reason_code` | shipped |
-| `RetentionPeriodElapsed` | A retention clock runs out for a data category | `rule_id`, `brand_id`, `data_category`, `cutoff_at` | proposed |
+| `RetentionPeriodElapsed` | A retention clock runs out for a data category | `rule_id`, `brand_id`, `data_category`, `cutoff_at`, `event_id` (event-scoped clocks only) | shipped |
 
 Handlers must be idempotent: a request may be re-dispatched after a partial
 failure, and Compliance re-runs the fan-out rather than tracking which rows a

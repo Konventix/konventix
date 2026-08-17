@@ -7,6 +7,7 @@ namespace Konventix\Messaging\Providers;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Events\DunningLevelRaised;
+use Konventix\Compliance\Events\RetentionPeriodElapsed;
 use Konventix\Content\Events\AnnouncementPublished;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
@@ -22,6 +23,7 @@ use Konventix\Messaging\Contracts\PushSender;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Enums\Permission;
 use Konventix\Messaging\Listeners\ProjectRecipient;
+use Konventix\Messaging\Listeners\PruneDeliveryLog;
 use Konventix\Messaging\Listeners\SendAnnouncementNotifications;
 use Konventix\Messaging\Listeners\SendDunningNotice;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -134,6 +136,10 @@ class MessagingServiceProvider extends ModuleServiceProvider
 
         Event::listen(AnnouncementPublished::class, SendAnnouncementNotifications::class);
         Event::listen(DunningLevelRaised::class, SendDunningNotice::class);
+
+        // Compliance publishes the delivery log's retention period
+        // (D-CPL-01); Messaging is the module that deletes its own rows.
+        Event::listen(RetentionPeriodElapsed::class, PruneDeliveryLog::class);
     }
 
     /**

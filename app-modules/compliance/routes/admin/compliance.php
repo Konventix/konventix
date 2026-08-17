@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Route;
 use Konventix\Compliance\Http\Controllers\Admin\AuditLogController;
 use Konventix\Compliance\Http\Controllers\Admin\PolicyAdminController;
 use Konventix\Compliance\Http\Controllers\Admin\PolicyVersionController;
+use Konventix\Compliance\Http\Controllers\Admin\RetentionRuleController;
 use Konventix\Compliance\Http\Controllers\Admin\SubjectRequestController;
 
 Route::get('/policies', [PolicyAdminController::class, 'index'])->name('admin.policies.index');
@@ -37,3 +38,9 @@ Route::get('/subject-requests/{subjectRequest}/download', [SubjectRequestControl
 // The audit trail. Read-only by design — there is no write endpoint, and
 // there never will be: a trail an operator can edit answers no question.
 Route::get('/audit', [AuditLogController::class, 'index'])->name('admin.audit.index');
+
+// Retention rules. Compliance publishes them here; the module that holds the
+// data is what deletes when the period elapses.
+Route::get('/retention', [RetentionRuleController::class, 'index'])->name('admin.retention.index');
+Route::post('/retention', [RetentionRuleController::class, 'store'])->name('admin.retention.store');
+Route::put('/retention/{rule}', [RetentionRuleController::class, 'update'])->name('admin.retention.update');

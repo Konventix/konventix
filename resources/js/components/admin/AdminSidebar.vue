@@ -25,6 +25,7 @@ import {
     Shield,
     Store,
     Ticket,
+    Timer,
     Users,
 } from '@lucide/vue';
 import type { Component } from 'vue';
@@ -75,6 +76,7 @@ const iconMap: Record<string, Component> = {
     shield: Shield,
     store: Store,
     ticket: Ticket,
+    timer: Timer,
     users: Users,
 };
 

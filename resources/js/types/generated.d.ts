@@ -114,6 +114,7 @@ declare namespace Konventix {
                 | 'compliance.manage-retention-rules';
             export type PolicyVersionState =
                 'draft' | 'published' | 'superseded';
+            export type RetentionClockStart = 'record_age' | 'event_concluded';
         }
     }
     namespace Content {

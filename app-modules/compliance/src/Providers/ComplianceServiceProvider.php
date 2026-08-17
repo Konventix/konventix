@@ -4,16 +4,22 @@ declare(strict_types=1);
 
 namespace Konventix\Compliance\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
+use Konventix\Compliance\Console\ApplyRetentionRulesCommand;
 use Konventix\Compliance\Enums\Permission;
 use Konventix\Compliance\Events\DataExportRequested;
+use Konventix\Compliance\Events\RetentionPeriodElapsed;
 use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Compliance\Http\Middleware\EnsurePoliciesAccepted;
 use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
+use Konventix\Compliance\Listeners\PruneAuditTrail;
 use Konventix\Compliance\Listeners\RecordAuditableEvents;
+use Konventix\Compliance\Listeners\StartRetentionClock;
 use Konventix\Compliance\Support\PolicyMarkdown;
+use Konventix\Event\Events\EventConcluded;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -79,6 +85,28 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // of classes here would be a second place to keep in sync, maintained
         // by the module least likely to remember.
         Event::listen('*', [RecordAuditableEvents::class, 'handle']);
+
+        // Retention: Event tells us when a clock starts, and Compliance
+        // discharges its own rule through the same contract every other
+        // module uses.
+        Event::listen(EventConcluded::class, StartRetentionClock::class);
+        Event::listen(RetentionPeriodElapsed::class, PruneAuditTrail::class);
+    }
+
+    /**
+     * The retention sweep and the deadline watch. Registered explicitly
+     * rather than by discovery: a sweep that silently failed to register
+     * would look like "nothing is out of retention" rather than like a bug.
+     */
+    protected function registerSchedule(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([ApplyRetentionRulesCommand::class]);
+        }
+
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $schedule->command(ApplyRetentionRulesCommand::class)->dailyAt('03:30');
+        });
     }
 
     /**
@@ -116,6 +144,15 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 icon: 'scroll-text',
                 order: 32,
                 permission: Permission::ViewAuditLog->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'compliance',
+                label: 'Retention',
+                url: '/admin/retention',
+                icon: 'timer',
+                order: 33,
+                permission: Permission::ManageRetentionRules->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
         );
