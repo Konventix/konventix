@@ -12,6 +12,7 @@ use Konventix\Compliance\Enums\Permission;
 use Konventix\Compliance\Events\DataExportRequested;
 use Konventix\Compliance\Events\RetentionPeriodElapsed;
 use Konventix\Compliance\Events\UserDeletionRequested;
+use Konventix\Compliance\Gdpr\ComplianceGdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Compliance\Http\Middleware\EnsurePoliciesAccepted;
 use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
@@ -156,5 +157,15 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 area: NavigationItem::AREA_ADMIN,
             ),
         );
+    }
+
+    /**
+     * Compliance takes part in its own fan-out. Deletion is deliberately a
+     * no-op: consent records prove consent was given, and destroying them to
+     * honour a deletion request would destroy the proof it was honoured.
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register(new ComplianceGdprHandler);
     }
 }

@@ -52,17 +52,17 @@ person behind it. The value here is in what is left out.
 - [ ] Capability catalogue in `src/Enums/Permission.php`, policies for user
       administration, and the user administration screens registered with
       Platform's navigation registry.
-- [ ] `src/Gdpr/` handler: export the account, social identities and session
-      history on `DataExportRequested`; anonymize on `UserDeletionRequested` and
-      emit `UserAnonymized`.
-- [ ] Tombstone row on anonymization (decision log Round 6, D-BATCH): the
-      anonymize path must leave a row behind (scrubbed name/email/etc., ULID
-      unchanged) rather than deleting `users`, so every other module's
-      cross-module ULID reference to this user stays resolvable.
-- [ ] `AccountState` only has `Active`/`Locked`. `pending` is effectively
-      covered by `email_verified_at` (Fortify's `emailVerification` feature)
-      and doesn't need its own state; `anonymized` belongs with the `Gdpr/`
-      handler above rather than being added early and left unused.
+- [x] `src/Gdpr/IdentityGdprHandler`: exports the account, brand memberships
+      and session history; anonymizes with a tombstone and emits
+      `UserAnonymized`. `AccountState::Anonymized` landed with it and
+      `AuthenticateUser` refuses it. Social identities join the export when
+      social login lands (slice 15).
+      The rule worth knowing: a per-brand deletion request drops that brand's
+      membership and anonymizes the account **only when it was the last one**
+      — the account is operator-wide (ADR-0016) and one brand may not end a
+      person's participation in another. That rule exists because Compliance
+      opens requests per brand today; when requests become operator-wide it
+      becomes redundant rather than wrong.
 - [ ] ADR-0016 gap, flagged rather than worked around (`RegisterData`'s
       docblock): a duplicate email on the registration form surfaces as an
       ordinary "already taken" validation error, not the "indistinguishable

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -117,9 +118,11 @@ it('shows per-module responses and names modules the fan-out never addressed', f
             ->component('admin/subject-requests/Show')
             ->has('responses', 1)
             ->where('responses.0.module', 'registration')
-            // Registration is the module that ships a handler today; it
-            // answered, so nothing is missing.
-            ->where('missingModules', [])
+            // Every other module that registered a handler after this
+            // request opened shows as never addressed — which is what
+            // re-dispatch fixes.
+            ->where('missingModules', fn (Collection $missing): bool => ! $missing->contains('registration')
+                && $missing->contains('identity'))
             ->where('canHandle', true)
             ->where('canDownload', true));
 });

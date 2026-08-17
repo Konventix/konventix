@@ -49,6 +49,14 @@ final class AuthenticateUser
             ]);
         }
 
+        // An anonymized account has no owner left to log in: the credentials
+        // were scrambled by the GDPR handler, so this is belt and braces —
+        // but the row survives as a tombstone (Round 6 D-BATCH), and a
+        // tombstone must never authenticate.
+        if ($user->state === AccountState::Anonymized) {
+            return null;
+        }
+
         return $user;
     }
 }

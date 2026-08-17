@@ -49,10 +49,13 @@ module built before it will otherwise be retrofitted.
       the retention machinery now has a home for it, but what §147 AO
       deletion *means* needs its own decision before an invoice is near the
       limit.
-- [ ] Anonymize-with-tombstone as the default deletion mode (decision log
-      Round 6, D-BATCH): `UserDeletionRequested`'s `anonymize` path must leave
-      a tombstone row per affected table so foreign ULID references (e.g. an
-      `Admission.holder_user_id`) stay resolvable rather than dangling.
+- [ ] Commerce has **no** GDPR handler, and that is a finding rather than an
+      omission: an order is keyed by `settles_type`/`settles_id`, so Commerce
+      cannot resolve a subject to their invoices without reading
+      Registration's tables (ADR-0004 forbids it). Either Commerce keeps a
+      subject read model, or Registration's export carries the invoice
+      references. Note that an issued invoice may not be deleted at all
+      (§147 AO / Art. 17(3)(b)), so this is about export, not erasure.
 - [ ] DSR deadline scheduler (decision log Round 6, D-BATCH): a scheduled job
       that watches each open `DataSubjectRequest`'s statutory deadline and
       escalates through Messaging as it approaches/lapses.
@@ -84,11 +87,10 @@ module built before it will otherwise be retrofitted.
       `OpenSubjectRequest` currently opens a `rectification`-type request
       without dispatching anything. Define the event in SPEC first, then wire
       the dispatch.
-- [ ] Compliance's own `GdprHandler` for its own personal data (consent
-      records, subject requests) — Compliance holds subject ULIDs itself and
-      arguably needs to export/anonymize its own rows on a subject request,
-      but nothing in the Phase 2 scope registers a handler for `compliance`
-      itself yet.
+- [ ] Content's handler anonymizes comment *authorship* and keeps the
+      bodies. A person who wants their words gone needs an operator to act
+      through the moderation queue — decide whether self-service deletion of
+      one's own comments belongs on the privacy page.
 - [ ] Consider a Postgres partial unique index
       (`policy_versions(policy_id) WHERE state = 'published'`) for
       concurrent-write safety. Today "only one published version per policy"
@@ -101,6 +103,32 @@ module built before it will otherwise be retrofitted.
       tracked as Platform's concern.
 
 ## Done
+
+- [x] A `Gdpr/` handler in every module that holds personal data (slice 14's
+      sweep): identity, admission, content, messaging, compliance, staffing,
+      competition — joining registration's.
+      Identity's carries the hard question. An account spans the operator
+      (ADR-0016) but the fan-out arrives per brand, so its handler drops the
+      membership for the brand that asked and anonymizes the account **only
+      when that was the last one** — a person who leaves one convention keeps
+      their account for the others. Anonymization is a tombstone: the row
+      survives with its ULID (`AccountState::Anonymized`, which
+      `AuthenticateUser` refuses), so every `*_user_id` in every other module
+      still resolves. `erase` behaves identically — a dangling reference is
+      not a stronger form of privacy, it is a broken database. New
+      `UserAnonymized` event (SPEC row was proposed).
+      The interesting refusals are documented in the handlers themselves:
+      Compliance's own deletes **nothing** (destroying consent proof to
+      honour a deletion request destroys the proof it was honoured);
+      Messaging keeps suppressions (they exist to keep *not* sending) while
+      deleting push endpoints and inbox bodies outright; Content anonymizes
+      comment authorship but keeps the bodies; Admission keeps admissions and
+      scrubs only the invitation addresses it stored itself; Staffing and
+      Competition export but have nothing to scrub, and say so rather than
+      staying silent.
+      `tests/GdprSweepTest.php` proves the whole fan-out end to end: every
+      module contributes to one archive, and a deletion leaves every foreign
+      reference resolvable.
 
 - [x] Retention rules, their clocks, and the daily sweep (D-CPL-01).
       `RetentionRule` names a *data category*, never a table: Compliance

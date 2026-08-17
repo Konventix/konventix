@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Staffing\Providers;
 
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Staffing\Gdpr\StaffingGdprHandler;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -21,5 +23,15 @@ class StaffingServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'staffing';
+    }
+
+    /**
+     * Registered unconditionally although the module is Pennant-gated:
+     * whether a brand runs Staffing today has no bearing on rows it wrote
+     * yesterday (ADR-0003 — registration is unconditional, activation is not).
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register(new StaffingGdprHandler);
     }
 }

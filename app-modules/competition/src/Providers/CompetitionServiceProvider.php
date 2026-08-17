@@ -11,6 +11,7 @@ use Konventix\Competition\Brackets\Formats\GroupStageGenerator;
 use Konventix\Competition\Brackets\Formats\RoundRobinGenerator;
 use Konventix\Competition\Brackets\Formats\SingleEliminationGenerator;
 use Konventix\Competition\Brackets\Formats\SwissGenerator;
+use Konventix\Competition\Gdpr\CompetitionGdprHandler;
 use Konventix\Competition\Listeners\ProjectEligibilityOnRegistrationEvents;
 use Konventix\Competition\Standings\Calculators\DoubleEliminationStandingsCalculator;
 use Konventix\Competition\Standings\Calculators\GroupStandingsCalculator;
@@ -18,6 +19,7 @@ use Konventix\Competition\Standings\Calculators\PointsStandingsCalculator;
 use Konventix\Competition\Standings\Calculators\SingleEliminationStandingsCalculator;
 use Konventix\Competition\Standings\Calculators\SwissStandingsCalculator;
 use Konventix\Competition\Standings\StandingsCalculatorRegistry;
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationSubmitted;
@@ -88,5 +90,13 @@ class CompetitionServiceProvider extends ModuleServiceProvider
             RegistrationConfirmed::class,
             [ProjectEligibilityOnRegistrationEvents::class, 'handleConfirmed'],
         );
+    }
+
+    /**
+     * Same shape as Staffing's, and registered for the same reason.
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register(new CompetitionGdprHandler);
     }
 }

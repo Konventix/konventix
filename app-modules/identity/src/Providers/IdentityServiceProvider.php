@@ -14,10 +14,12 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Identity\Actions\AuthenticateUser;
 use Konventix\Identity\Actions\CreateNewUser;
 use Konventix\Identity\Actions\ResetUserPassword;
 use Konventix\Identity\Enums\Permission;
+use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
@@ -135,5 +137,15 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
             return Limit::perMinute(5)->by($throttleKey);
         });
+    }
+
+    /**
+     * The account itself, and the one handler with a genuinely hard question
+     * in it — see the class docblock on why a per-brand request does not
+     * anonymize an operator-wide account.
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register(new IdentityGdprHandler);
     }
 }

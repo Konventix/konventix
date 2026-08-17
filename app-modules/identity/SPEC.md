@@ -98,7 +98,7 @@ event class lands.
 | `SocialIdentityUnlinked` | A social provider identity is detached | `user_id`, `provider` | proposed |
 | `TwoFactorEnabled` | 2FA enrolment is confirmed | `user_id`, `enabled_at` | proposed |
 | `TwoFactorDisabled` | 2FA is switched off or reset | `user_id`, `disabled_at` | proposed |
-| `UserAnonymized` | Identity's own records for a subject are scrubbed | `user_id`, `anonymized_at` | proposed |
+| `UserAnonymized` | Identity's own records for a subject are scrubbed | `user_id`, `anonymized_at` | shipped |
 
 `UserAnonymized` reports completion of Identity's part of a deletion. It is not
 a signal for other modules to delete their data — that fan-out is Compliance's

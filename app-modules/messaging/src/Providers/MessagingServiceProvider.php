@@ -8,6 +8,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Events\DunningLevelRaised;
 use Konventix\Compliance\Events\RetentionPeriodElapsed;
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Content\Events\AnnouncementPublished;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
@@ -22,6 +23,7 @@ use Konventix\Messaging\Contracts\MessageChannel;
 use Konventix\Messaging\Contracts\PushSender;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Enums\Permission;
+use Konventix\Messaging\Gdpr\MessagingGdprHandler;
 use Konventix\Messaging\Listeners\ProjectRecipient;
 use Konventix\Messaging\Listeners\PruneDeliveryLog;
 use Konventix\Messaging\Listeners\SendAnnouncementNotifications;
@@ -268,5 +270,14 @@ class MessagingServiceProvider extends ModuleServiceProvider
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command(FlushHeldMessagesCommand::class)->everyMinute();
         });
+    }
+
+    /**
+     * Everything here is a way to reach a person, so deletion is unusually
+     * thorough — except suppressions, which exist to keep NOT sending.
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register(new MessagingGdprHandler);
     }
 }

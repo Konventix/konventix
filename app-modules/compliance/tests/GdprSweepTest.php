@@ -1,0 +1,172 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Facades\Storage;
+use Konventix\Admission\Models\Admission;
+use Konventix\Admission\Models\AdmissionClaimLink;
+use Konventix\Compliance\Actions\OpenSubjectRequest;
+use Konventix\Compliance\Enums\DataSubjectRequestType;
+use Konventix\Compliance\Enums\DeletionMode;
+use Konventix\Compliance\Enums\ModuleResponseState;
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Models\Consent;
+use Konventix\Compliance\Models\DataSubjectRequestResponse;
+use Konventix\Compliance\Models\Policy;
+use Konventix\Compliance\Models\PolicyVersion;
+use Konventix\Content\Models\Author;
+use Konventix\Content\Models\ContentComment;
+use Konventix\Content\Models\ContentEntry;
+use Konventix\Identity\Enums\AccountState;
+use Konventix\Identity\Models\BrandMembership;
+use Konventix\Identity\Models\User;
+use Konventix\Messaging\Models\PushSubscription;
+use Konventix\Messaging\Models\Recipient;
+use Konventix\Platform\Models\Brand;
+use Konventix\Registration\Models\Registration;
+
+/**
+ * The slice-14 sweep: every module that holds personal data now answers the
+ * fan-out, and a deletion leaves tombstones rather than dangling references
+ * (Round 6 D-BATCH).
+ */
+it('registers a handler for every module that holds personal data', function (): void {
+    $modules = app(GdprHandlerRegistry::class)->moduleNames();
+
+    expect($modules)->toContain(
+        'identity',
+        'registration',
+        'admission',
+        'content',
+        'messaging',
+        'compliance',
+        'staffing',
+        'competition',
+    );
+});
+
+it('assembles a real export from every registered module', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('exports');
+
+    $user = User::factory()->create(['name' => 'Alex Muster', 'email' => 'alex@example.test']);
+    BrandMembership::factory()->create(['user_id' => $user->id]);
+    Registration::factory()->create(['registrant_user_id' => $user->id]);
+    Admission::factory()->create(['holder_user_id' => $user->id]);
+    Recipient::query()->create([
+        'id' => $user->id,
+        'email' => $user->email,
+        'display_name' => $user->name,
+        'locale' => 'de',
+    ]);
+
+    $request = app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Export);
+    $request->refresh();
+
+    $archive = json_decode(Storage::disk('exports')->get((string) $request->archive_path), true);
+
+    expect($archive['modules']['identity']['account']['email'])->toBe('alex@example.test')
+        ->and($archive['modules']['registration']['registrations'])->toHaveCount(1)
+        ->and($archive['modules']['admission']['admissions'])->toHaveCount(1)
+        ->and($archive['modules']['messaging']['recipient']['display_name'])->toBe('Alex Muster')
+        ->and($archive['modules'])->toHaveKeys(['compliance', 'content', 'staffing', 'competition']);
+
+    expect(DataSubjectRequestResponse::query()
+        ->where('data_subject_request_id', $request->id)
+        ->where('state', '!=', ModuleResponseState::Completed)
+        ->count())->toBe(0);
+});
+
+it('anonymizes across modules while every reference still resolves', function (): void {
+    $brand = $this->withBrand();
+
+    $user = User::factory()->create(['name' => 'Alex Muster']);
+    BrandMembership::factory()->create(['user_id' => $user->id]);
+
+    $registration = Registration::factory()->create([
+        'registrant_user_id' => $user->id,
+        'billing_email' => 'alex@example.test',
+    ]);
+    $admission = Admission::factory()->create(['holder_user_id' => $user->id]);
+    $claimLink = AdmissionClaimLink::factory()->create([
+        'admission_id' => $admission->id,
+        'intended_email' => 'alex@example.test',
+    ]);
+    Author::query()->create(['id' => $user->id, 'display_name' => 'Alex Muster']);
+    $comment = ContentComment::factory()->create([
+        'content_entry_id' => ContentEntry::factory()->create()->id,
+        'author_user_id' => $user->id,
+    ]);
+    Recipient::query()->create([
+        'id' => $user->id,
+        'email' => 'alex@example.test',
+        'display_name' => 'Alex Muster',
+        'locale' => 'de',
+    ]);
+    PushSubscription::query()->create([
+        'recipient_id' => $user->id,
+        'endpoint' => 'https://push.test/abc',
+        'p256dh' => 'key',
+        'auth' => 'auth',
+        'content_encoding' => 'aes128gcm',
+    ]);
+
+    app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
+
+    $user->refresh();
+
+    expect($user->state)->toBe(AccountState::Anonymized)
+        ->and($user->name)->toBe('Deleted account')
+        ->and($user->email)->toContain('@invalid')
+        // The tombstone: every foreign reference still points at a row.
+        ->and($registration->refresh()->registrant_user_id)->toBe($user->id)
+        ->and($admission->refresh()->holder_user_id)->toBe($user->id)
+        ->and($comment->refresh()->author_user_id)->toBe($user->id);
+
+    expect($registration->billing_email)->toBeNull()
+        ->and($claimLink->refresh()->intended_email)->toBeNull()
+        ->and(Author::query()->whereKey($user->id)->value('display_name'))->toBe('Deleted account')
+        ->and(Recipient::query()->whereKey($user->id)->value('email'))->toContain('@invalid')
+        ->and(PushSubscription::query()->where('recipient_id', $user->id)->exists())->toBeFalse();
+
+    // The comment body survives — a thread other people replied to is not one
+    // person's to rewrite (see ContentGdprHandler).
+    expect($comment->body)->not->toBeEmpty();
+});
+
+it('keeps an account that still belongs to another brand', function (): void {
+    $brandA = $this->withBrand();
+    $brandB = Brand::factory()->create();
+
+    $user = User::factory()->create();
+
+    // One membership per brand, each stamped by the context it was created
+    // in (ADR-0010) — the request below arrives for brand A only.
+    BrandMembership::factory()->create(['user_id' => $user->id]);
+    $this->withBrand($brandB);
+    BrandMembership::factory()->create(['user_id' => $user->id]);
+    $this->withBrand($brandA);
+
+    app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
+
+    // One brand asked; the account spans the operator (ADR-0016) and the
+    // person is still registered elsewhere.
+    expect($user->refresh()->state)->toBe(AccountState::Active)
+        ->and(BrandMembership::query()->where('user_id', $user->id)->count())->toBe(1);
+});
+
+it('leaves the consent record standing after a deletion', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    BrandMembership::factory()->create(['user_id' => $user->id]);
+
+    $version = PolicyVersion::factory()->for(Policy::factory())->published()->create();
+    Consent::factory()->create(['subject_id' => $user->id, 'policy_version_id' => $version->id]);
+
+    app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
+
+    // Destroying the proof that consent was given, in order to honour a
+    // deletion request, would destroy the proof the request was honoured.
+    expect(Consent::query()->where('subject_id', $user->id)->count())->toBe(1);
+});

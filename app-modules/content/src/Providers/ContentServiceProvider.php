@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Konventix\Content\Providers;
 
 use Illuminate\Support\Facades\Event;
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Content\Blocks\Types\LatestNewsBlock;
 use Konventix\Content\Enums\Permission;
+use Konventix\Content\Gdpr\ContentGdprHandler;
 use Konventix\Content\Listeners\ProjectAuthor;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
@@ -79,5 +81,14 @@ class ContentServiceProvider extends ModuleServiceProvider
                 area: NavigationItem::AREA_ADMIN,
             ),
         );
+    }
+
+    /**
+     * Comment authorship is anonymized; the bodies stay, because a thread
+     * others replied to is not one person's to rewrite.
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register(new ContentGdprHandler);
     }
 }

@@ -91,10 +91,14 @@ it('assembles every handler contribution into one archive and closes the request
         ->and($archive['modules'])->toHaveKeys(['registration', 'commerce'])
         ->and($archive['modules']['registration']['registrations'][0]['id'])->toBe('r1');
 
-    expect(DataSubjectRequestResponse::query()
+    // Named rather than counted: every module that ships a handler answers
+    // too, and a total would break each time another one lands.
+    $states = DataSubjectRequestResponse::query()
         ->where('data_subject_request_id', $request->id)
-        ->where('state', ModuleResponseState::Completed)
-        ->count())->toBe(2);
+        ->pluck('state', 'module');
+
+    expect($states['registration'])->toBe(ModuleResponseState::Completed)
+        ->and($states['commerce'])->toBe(ModuleResponseState::Completed);
 
     Event::assertDispatched(
         DataExportCompleted::class,

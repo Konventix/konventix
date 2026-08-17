@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Konventix\Admission\Providers;
 
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Gdpr\AdmissionGdprHandler;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -99,5 +101,14 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             props: [],
             order: 20,
         );
+    }
+
+    /**
+     * Admissions stay; the invitation addresses this module stored itself do
+     * not (ADR-0004: Compliance orchestrates, this module touches its rows).
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register(new AdmissionGdprHandler);
     }
 }
