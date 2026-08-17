@@ -3,6 +3,10 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { destroy as withdrawConsent } from '@/routes/consents';
+import {
+    download as downloadArchive,
+    store as storeDataRequest,
+} from '@/routes/data-requests';
 import { required as requiredPolicies, show as showPolicy } from '@/routes/policies';
 import { edit } from '@/routes/privacy';
 
@@ -34,9 +38,21 @@ type OutstandingRow = {
     version: string;
 };
 
+type RequestRow = {
+    id: string;
+    type: Konventix.Compliance.Enums.DataSubjectRequestType;
+    state: Konventix.Compliance.Enums.DataSubjectRequestState;
+    openedAt: string | null;
+    deadlineAt: string;
+    downloadable: boolean;
+    archiveExpiresAt: string | null;
+};
+
 const props = defineProps<{
     consents: ConsentRow[];
     outstanding: OutstandingRow[];
+    requests: RequestRow[];
+    openTypes: string[];
 }>();
 
 defineOptions({
@@ -62,6 +78,20 @@ function formatDate(value: string): string {
 function withdraw(consent: ConsentRow): void {
     router.delete(withdrawConsent(consent.id).url, { preserveScroll: true });
 }
+
+function requestData(type: 'export' | 'deletion'): void {
+    router.post(storeDataRequest().url, { type }, { preserveScroll: true });
+}
+
+const stateLabels: Record<
+    Konventix.Compliance.Enums.DataSubjectRequestState,
+    string
+> = {
+    received: 'Received',
+    in_progress: 'In progress',
+    fulfilled: 'Done',
+    refused: 'Refused',
+};
 </script>
 
 <template>
@@ -144,5 +174,74 @@ function withdraw(consent: ConsentRow): void {
         <p v-else class="text-sm text-text-muted">
             Nothing recorded yet. Agreements you give appear here.
         </p>
+
+        <Heading
+            variant="small"
+            title="Your data"
+            description="Ask for a copy of your data, or for it to be deleted"
+        />
+
+        <div class="flex flex-wrap gap-3">
+            <Button
+                variant="outline"
+                :disabled="props.openTypes.includes('export')"
+                @click="requestData('export')"
+            >
+                Request a copy of my data
+            </Button>
+            <Button
+                variant="outline"
+                :disabled="props.openTypes.includes('deletion')"
+                @click="requestData('deletion')"
+            >
+                Request deletion
+            </Button>
+        </div>
+
+        <p class="text-sm text-text-muted">
+            We answer within 30 days. Deletion anonymizes your records rather
+            than erasing every trace: documents we are legally required to keep
+            — invoices, above all — survive without your personal details
+            attached.
+        </p>
+
+        <ul v-if="props.requests.length > 0" class="flex flex-col gap-3">
+            <li
+                v-for="dataRequest in props.requests"
+                :key="dataRequest.id"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4"
+            >
+                <div class="flex flex-col gap-1">
+                    <span class="font-medium">
+                        {{
+                            dataRequest.type === 'export'
+                                ? 'Copy of my data'
+                                : 'Deletion'
+                        }}
+                        — {{ stateLabels[dataRequest.state] }}
+                    </span>
+                    <span class="text-xs text-text-muted">
+                        Opened {{ dataRequest.openedAt }} · answer due by
+                        {{ dataRequest.deadlineAt }}
+                    </span>
+                    <span
+                        v-if="dataRequest.archiveExpiresAt"
+                        class="text-xs text-text-muted"
+                    >
+                        Download available until
+                        {{ dataRequest.archiveExpiresAt }}
+                    </span>
+                </div>
+
+                <Button
+                    v-if="dataRequest.downloadable"
+                    variant="outline"
+                    size="sm"
+                    as-child
+                >
+                    <a :href="downloadArchive(dataRequest.id).url">Download</a>
+                </Button>
+            </li>
+        </ul>
     </div>
 </template>

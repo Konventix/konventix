@@ -12,6 +12,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Compliance\Http\Controllers\Admin\PolicyAdminController;
 use Konventix\Compliance\Http\Controllers\Admin\PolicyVersionController;
+use Konventix\Compliance\Http\Controllers\Admin\SubjectRequestController;
 
 Route::get('/policies', [PolicyAdminController::class, 'index'])->name('admin.policies.index');
 Route::post('/policies', [PolicyAdminController::class, 'store'])->name('admin.policies.store');
@@ -23,3 +24,11 @@ Route::put('/policies/{policy}', [PolicyAdminController::class, 'update'])->name
 Route::post('/policies/{policy}/versions', [PolicyVersionController::class, 'store'])->name('admin.policy-versions.store');
 Route::put('/policy-versions/{version}', [PolicyVersionController::class, 'update'])->name('admin.policy-versions.update');
 Route::post('/policy-versions/{version}/publish', [PolicyVersionController::class, 'publish'])->name('admin.policy-versions.publish');
+
+// The data subject request queue. Reading the queue, acting on it and
+// reading an export's contents are three capabilities, checked per endpoint.
+Route::get('/subject-requests', [SubjectRequestController::class, 'index'])->name('admin.subject-requests.index');
+Route::get('/subject-requests/{subjectRequest}', [SubjectRequestController::class, 'show'])->name('admin.subject-requests.show');
+Route::post('/subject-requests/{subjectRequest}/redispatch', [SubjectRequestController::class, 'redispatch'])->name('admin.subject-requests.redispatch');
+Route::post('/subject-requests/{subjectRequest}/refuse', [SubjectRequestController::class, 'refuse'])->name('admin.subject-requests.refuse');
+Route::get('/subject-requests/{subjectRequest}/download', [SubjectRequestController::class, 'download'])->name('admin.subject-requests.download');

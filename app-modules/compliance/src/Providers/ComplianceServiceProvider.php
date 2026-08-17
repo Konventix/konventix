@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace Konventix\Compliance\Providers;
 
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Event;
 use Konventix\Compliance\Enums\Permission;
+use Konventix\Compliance\Events\DataExportRequested;
+use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Compliance\Http\Middleware\EnsurePoliciesAccepted;
+use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
 use Konventix\Compliance\Support\PolicyMarkdown;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
@@ -60,9 +64,22 @@ class ComplianceServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * Operator-console entry (ADR-0029). Viewing policies is its own
+     * The fan-out that carries out a subject request. Registered explicitly —
+     * modular event discovery is off and must stay off
+     * (.ai/rules/listeners.md).
+     */
+    protected function registerListeners(): void
+    {
+        Event::listen(DataExportRequested::class, [DispatchSubjectRequestFanOut::class, 'handleExport']);
+        Event::listen(UserDeletionRequested::class, [DispatchSubjectRequestFanOut::class, 'handleDeletion']);
+    }
+
+    /**
+     * Operator-console entries (ADR-0029). Viewing policies is its own
      * capability, separate from managing or publishing them: a legal reviewer
-     * who may read every published text has no business publishing one.
+     * who may read every published text has no business publishing one. The
+     * subject-request queue is a separate entry for the same reason — and
+     * often a separate person.
      */
     protected function registerNavigation(): void
     {
@@ -74,6 +91,15 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 icon: 'shield',
                 order: 30,
                 permission: Permission::ViewPolicies->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'compliance',
+                label: 'Data requests',
+                url: '/admin/subject-requests',
+                icon: 'file-search',
+                order: 31,
+                permission: Permission::ViewSubjectRequests->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
         );

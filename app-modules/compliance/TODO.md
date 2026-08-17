@@ -25,10 +25,19 @@ module built before it will otherwise be retrofitted.
 
 ## Backlog
 
-- [ ] Export assembly from handler contributions, archive storage, expiring
-      download link, and `DataExportCompleted` so Messaging can notify the
-      subject. This is also where `GdprHandlerRegistry::all()` gets its first
-      real caller — nothing calls `exportFor()` yet.
+- [ ] Messaging delivery for `DataExportCompleted` / `UserDeletionCompleted`
+      / `SubjectRequestRefused`: the events exist and carry what a template
+      needs, but nobody listens, so a subject learns their export is ready by
+      revisiting the privacy page. Needs a topic (ADR-0041) and templates.
+- [ ] Expired export archives are never deleted — `archive_expires_at` stops
+      the download, and the file stays on the disk. The retention job below is
+      the right home for sweeping them, which is why this waits for it.
+- [ ] `AssembleSubjectExport` treats a subject request as brand-scoped, but
+      Round 6 (D-BATCH) settled that a request *spans the operator*
+      (ADR-0016). A person registered with two of an operator's brands gets
+      two archives today. Closing that means opening one request per brand
+      from one form, or an archive assembled across brands — decide which
+      before an operator runs two brands in production.
 - [ ] Audit trail per the hybrid mechanism settled in `SPEC.md` (decision log
       Round 6, D-BATCH): the wildcard subscriber over auditable-marked events,
       **plus** an explicit recorder contract modules call for eventless
@@ -59,6 +68,9 @@ module built before it will otherwise be retrofitted.
       preview behind a toggle. Live preview needs a client-side renderer,
       which means a second markdown implementation and a second XSS surface
       — worth it only if operators complain.
+- [ ] A rectification request opens and then sits there: the console can
+      refuse it or mark it handled, but nothing fans out (see the
+      `RectificationRequested` item below) and no module can act on one.
 - [ ] `RectificationRequested` event: SPEC's "Public contract" table only
       proposes `DataExportRequested`/`UserDeletionRequested`, so
       `OpenSubjectRequest` currently opens a `rectification`-type request
@@ -81,6 +93,44 @@ module built before it will otherwise be retrofitted.
       tracked as Platform's concern.
 
 ## Done
+
+- [x] The fan-out actually runs, and the queue has a console (slice 14,
+      second half). `DataExportRequested`/`UserDeletionRequested` were
+      announcements nobody acted on: `GdprHandlerRegistry::all()` had no
+      caller and `exportFor()` was dead code.
+      `Jobs\AssembleSubjectExport` and `Jobs\RunSubjectDeletion` call every
+      registered handler through the contract — never a foreign table
+      (ADR-0004) — record each answer per module, and close the request only
+      when all of them succeeded. A failed module leaves the request
+      `in_progress` with no archive written: a partial archive presented as
+      "your data" is worse than a late one.
+      Both jobs are reached through `Listeners\DispatchSubjectRequestFanOut`
+      rather than called from `OpenSubjectRequest`, so re-dispatch runs the
+      identical path — a retry down a second code path is the one that rots.
+      `afterCommit()` matters: the events fire inside the opening
+      transaction.
+      Archives are JSON (Art. 20 "commonly used, machine-readable"), one key
+      per module, on a new private `exports` disk with the disk sealed beside
+      the path (ADR-0043) and a 14-day expiry — the archive is a second copy
+      of a person's data that exists to be handed over once.
+      Console: the queue sorted by statutory deadline showing days left, the
+      per-module response detail (including modules that registered a handler
+      after the request opened, which re-dispatch fixes), re-dispatch, refusal
+      with a mandatory legal ground (`RefuseSubjectRequest` →
+      `SubjectRequestRefused`), and the archive download. Three capabilities:
+      reading the queue, acting on it, and reading an export's contents are
+      separately granted — that file is every module's answer about one
+      person.
+      Self-service on `settings/Privacy`: request a copy or deletion, one
+      open request per type, and download the archive while it lasts.
+      Deletion always opens `anonymize` (Round 6 D-BATCH); erasure conflicts
+      with §147 AO retention, so it stays an operator decision rather than a
+      button. New events `DataExportCompleted`, `UserDeletionCompleted`,
+      `SubjectRequestRefused`.
+      `tests/{SubjectRequestFulfilmentTest,SubjectRequestConsoleTest}.php`.
+      `ModuleResponseTrackingTest` gained `Queue::fake()` where it asserts the
+      *seeding* — the sync queue now carries a request to fulfilled before the
+      assertion would otherwise run.
 
 - [x] Policy console, public policy pages and the consent gate (slice 14,
       first half) — Compliance had the whole domain and **no HTTP surface at

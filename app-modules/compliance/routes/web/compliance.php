@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Compliance\Http\Controllers\ConsentController;
+use Konventix\Compliance\Http\Controllers\DataRequestController;
 use Konventix\Compliance\Http\Controllers\PolicyController;
 use Konventix\Compliance\Http\Controllers\PrivacyController;
 
@@ -38,4 +39,10 @@ Route::middleware('auth')->group(function (): void {
     // module's, the shell is Identity's (same split as Messaging's
     // notification preferences).
     Route::get('settings/privacy', [PrivacyController::class, 'edit'])->name('privacy.edit');
+
+    // Self-service Art. 15 / Art. 17 requests, and the subject's own download
+    // of what came back. No signed link — see the controller.
+    Route::post('/data-requests', [DataRequestController::class, 'store'])->name('data-requests.store');
+    Route::get('/data-requests/{subjectRequest}/download', [DataRequestController::class, 'download'])
+        ->name('data-requests.download');
 });

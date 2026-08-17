@@ -36,6 +36,7 @@ return [
 
     'media_disk' => env('MEDIA_DISK', 'media'),
     'invoices_disk' => env('INVOICES_DISK', 'invoices'),
+    'exports_disk' => env('EXPORTS_DISK', 'exports'),
 
     /*
     |--------------------------------------------------------------------------
@@ -170,6 +171,44 @@ return [
             'endpoint' => env('AWS_INVOICES_ENDPOINT', env('AWS_ENDPOINT')),
             'use_path_style_endpoint' => env('AWS_INVOICES_USE_PATH_STYLE_ENDPOINT', env('AWS_USE_PATH_STYLE_ENDPOINT', false)),
             'root' => env('AWS_INVOICES_PREFIX', 'invoices'),
+            'throw' => true,
+            'report' => false,
+        ],
+
+        /*
+         * Compliance's subject-export archives (GDPR Art. 15/20). Private and
+         * never served directly: an export is every module's answer about one
+         * person, so it is streamed by Compliance's own authenticated
+         * controller that checks the subject — or the capability — on every
+         * request, never handed out as a URL with a life of its own.
+         *
+         * The opposite of the invoice archive in lifetime: these are
+         * deliberately short-lived and deleted when they expire, because the
+         * archive is a copy of personal data that exists only to be handed
+         * over once.
+         */
+        'exports' => [
+            'driver' => 'local',
+            'root' => storage_path('app/exports'),
+            'serve' => false,
+            'throw' => true,
+            'report' => false,
+        ],
+
+        /*
+         * The same archives on S3-compatible object storage (ADR-0043). No
+         * `url`, no `public_direct`, no presigning — same reasoning as
+         * `invoices_s3`, and more strongly here.
+         */
+        'exports_s3' => [
+            'driver' => 's3',
+            'key' => env('AWS_EXPORTS_ACCESS_KEY_ID', env('AWS_ACCESS_KEY_ID')),
+            'secret' => env('AWS_EXPORTS_SECRET_ACCESS_KEY', env('AWS_SECRET_ACCESS_KEY')),
+            'region' => env('AWS_EXPORTS_DEFAULT_REGION', env('AWS_DEFAULT_REGION')),
+            'bucket' => env('AWS_EXPORTS_BUCKET', env('AWS_BUCKET')),
+            'endpoint' => env('AWS_EXPORTS_ENDPOINT', env('AWS_ENDPOINT')),
+            'use_path_style_endpoint' => env('AWS_EXPORTS_USE_PATH_STYLE_ENDPOINT', env('AWS_USE_PATH_STYLE_ENDPOINT', false)),
+            'root' => env('AWS_EXPORTS_PREFIX', 'exports'),
             'throw' => true,
             'report' => false,
         ],

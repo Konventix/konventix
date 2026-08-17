@@ -71,10 +71,10 @@ A row becomes binding when its event class lands; the rest stay proposals.
 | `ConsentGranted` | A subject agrees to a policy version | `consent_id`, `subject_id`, `policy_id`, `version_id`, `brand_id`, `granted_at` | shipped |
 | `ConsentWithdrawn` | A subject withdraws agreement | `consent_id`, `subject_id`, `policy_id`, `withdrawn_at` | shipped |
 | `DataExportRequested` | An export request is accepted and fans out | `request_id`, `subject_id`, `brand_id`, `requested_at` | shipped |
-| `DataExportCompleted` | Every handler has responded and the archive exists | `request_id`, `subject_id`, `archive_expires_at` | proposed |
+| `DataExportCompleted` | Every handler has responded and the archive exists | `request_id`, `subject_id`, `archive_expires_at` | shipped |
 | `UserDeletionRequested` | A deletion request is accepted and fans out | `request_id`, `subject_id`, `brand_id`, `mode` (`anonymize` or `erase`) | shipped |
-| `UserDeletionCompleted` | Every handler has confirmed | `request_id`, `subject_id`, `completed_at` | proposed |
-| `SubjectRequestRefused` | A request is refused, with a legal ground | `request_id`, `subject_id`, `reason_code` | proposed |
+| `UserDeletionCompleted` | Every handler has confirmed | `request_id`, `subject_id`, `completed_at` | shipped |
+| `SubjectRequestRefused` | A request is refused, with a legal ground | `request_id`, `subject_id`, `reason_code` | shipped |
 | `RetentionPeriodElapsed` | A retention clock runs out for a data category | `rule_id`, `brand_id`, `data_category`, `cutoff_at` | proposed |
 
 Handlers must be idempotent: a request may be re-dispatched after a partial

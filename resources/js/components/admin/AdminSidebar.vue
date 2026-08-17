@@ -9,6 +9,7 @@ import {
     BookOpenCheck,
     Calendar,
     ClipboardList,
+    FileSearch,
     Gauge,
     HardDrive,
     Image,
@@ -57,6 +58,7 @@ type AdminNavItem = {
 const iconMap: Record<string, Component> = {
     'book-open-check': BookOpenCheck,
     'clipboard-list': ClipboardList,
+    'file-search': FileSearch,
     'hard-drive': HardDrive,
     'layout-grid': LayoutGrid,
     'map-pin': MapPin,

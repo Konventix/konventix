@@ -30,6 +30,11 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property DataSubjectRequestState $state
  * @property DeletionMode|null $mode
  * @property Carbon $deadline_at
+ * @property string|null $archive_path
+ * @property string|null $archive_disk
+ * @property Carbon|null $archive_expires_at
+ * @property Carbon|null $closed_at
+ * @property string|null $reason_code
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -40,7 +45,29 @@ class DataSubjectRequest extends Model
     /** @use HasFactory<DataSubjectRequestFactory> */
     use HasFactory, HasUlids;
 
-    protected $fillable = ['subject_id', 'type', 'state', 'mode', 'deadline_at'];
+    protected $fillable = [
+        'subject_id',
+        'type',
+        'state',
+        'mode',
+        'deadline_at',
+        'archive_path',
+        'archive_disk',
+        'archive_expires_at',
+        'closed_at',
+        'reason_code',
+    ];
+
+    /**
+     * An archive that exists and has not expired yet — the only state in
+     * which a download may be served (see SubjectExportController).
+     */
+    public function hasDownloadableArchive(): bool
+    {
+        return $this->archive_path !== null
+            && $this->archive_disk !== null
+            && ($this->archive_expires_at === null || $this->archive_expires_at->isFuture());
+    }
 
     /**
      * Per-module response tracking (TODO.md "Next"): one row per registered
@@ -63,6 +90,8 @@ class DataSubjectRequest extends Model
             'state' => DataSubjectRequestState::class,
             'mode' => DeletionMode::class,
             'deadline_at' => 'datetime',
+            'archive_expires_at' => 'datetime',
+            'closed_at' => 'datetime',
         ];
     }
 

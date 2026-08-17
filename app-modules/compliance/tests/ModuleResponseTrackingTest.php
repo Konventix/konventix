@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Konventix\Compliance\Actions\OpenSubjectRequest;
 use Konventix\Compliance\Actions\RecordModuleResponse;
@@ -33,10 +35,24 @@ final class FakeStaffingGdprHandler implements GdprHandler
     public function delete(string $subjectId, string $brandId, DeletionMode $mode): void {}
 }
 
+/*
+ * The fan-out now runs for real when a request opens (sync queue in tests),
+ * and an export writes an archive — onto a fake disk here, never the
+ * repository's own storage directory.
+ */
+beforeEach(function (): void {
+    Storage::fake('exports');
+});
+
 it('seeds a pending response row for every registered module when a request opens', function (): void {
     $this->withBrand();
     $registry = app(GdprHandlerRegistry::class);
     $registry->register(new FakeStaffingGdprHandler);
+
+    // The fan-out job would run inline under `QUEUE_CONNECTION=sync` and
+    // complete these rows immediately; what is under test here is the seeding
+    // OpenSubjectRequest does before any handler is called.
+    Queue::fake();
 
     $request = (new OpenSubjectRequest($registry))((string) Str::ulid(), DataSubjectRequestType::Export);
 

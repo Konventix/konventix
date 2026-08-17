@@ -7,8 +7,11 @@ namespace Konventix\Compliance\Http\Controllers;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Compliance\Enums\DataSubjectRequestState;
+use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Models\Consent;
+use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Compliance\Support\OutstandingConsents;
 
@@ -22,8 +25,9 @@ use Konventix\Compliance\Support\OutstandingConsents;
  * Messaging's notification preferences do: the shell is Identity's, the rows
  * are this module's (ADR-0003 — no module wiring in a central place).
  *
- * Export and deletion requests get their own console on this page later
- * (slice 14's DSR half); this commit is consent only.
+ * It is also where a person exercises Art. 15 and Art. 17: asking for their
+ * data, or for its deletion, and downloading what came back while the
+ * archive lasts.
  */
 final class PrivacyController
 {
@@ -58,6 +62,29 @@ final class PrivacyController
                     'slug' => $version->policy->slug,
                     'version' => $version->version,
                 ])->all(),
+            'requests' => DataSubjectRequest::query()
+                ->where('subject_id', $subjectId)
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(fn (DataSubjectRequest $subjectRequest): array => [
+                    'id' => $subjectRequest->getKey(),
+                    'type' => $subjectRequest->type->value,
+                    'state' => $subjectRequest->state->value,
+                    'openedAt' => $subjectRequest->created_at?->toDateTimeString(),
+                    'deadlineAt' => $subjectRequest->deadline_at->toDateString(),
+                    // Whether *this* person can still fetch the archive, not
+                    // whether one was ever written: an expired archive is
+                    // deleted, and offering the button anyway would 404.
+                    'downloadable' => $subjectRequest->hasDownloadableArchive(),
+                    'archiveExpiresAt' => $subjectRequest->archive_expires_at?->toDateString(),
+                ])->all(),
+            'openTypes' => DataSubjectRequest::query()
+                ->where('subject_id', $subjectId)
+                ->whereIn('state', [DataSubjectRequestState::Received, DataSubjectRequestState::InProgress])
+                ->pluck('type')
+                ->map(fn (DataSubjectRequestType $type): string => $type->value)
+                ->values()
+                ->all(),
         ]);
     }
 }
