@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { usePage } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { useEcho } from '@laravel/echo-vue';
 import { Bell } from '@lucide/vue';
 import { computed, onMounted, ref } from 'vue';
@@ -9,6 +9,7 @@ import {
     DropdownMenuContent,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { edit as notificationSettings } from '@/routes/notification-preferences';
 import {
     index as notificationsIndex,
     read as notificationsRead,
@@ -167,6 +168,14 @@ function open(notification: Notification): void {
                         </span>
                     </span>
                 </button>
+            </div>
+            <div class="border-t border-border px-3 py-2 text-center">
+                <Link
+                    :href="notificationSettings()"
+                    class="text-xs text-text-muted hover:text-text"
+                >
+                    Notification settings
+                </Link>
             </div>
         </DropdownMenuContent>
     </DropdownMenu>

@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Plus, Star, Trash2 } from '@lucide/vue';
 import { ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { Button } from '@/components/ui/button';
@@ -101,15 +102,17 @@ function promoteVenue(venueId: string): void {
     <Head :title="`Edit — ${props.event.name}`" />
 
     <div class="flex max-w-3xl flex-col gap-6">
-        <div class="flex items-center justify-between">
-            <h1 class="text-2xl font-semibold">{{ props.event.name }}</h1>
+        <AdminPageHeader
+            :title="props.event.name"
+            description="Details, days and venues — times are wall-clock in the event's zone"
+        >
             <Link
                 :href="showEvent(props.event.id).url"
                 class="text-sm text-text-muted hover:text-text"
             >
                 Dashboard
             </Link>
-        </div>
+        </AdminPageHeader>
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <Card class="border-border bg-surface">

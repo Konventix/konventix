@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
 defineProps<{
     operator: { name: string | null };
@@ -11,7 +12,10 @@ defineProps<{
     <Head title="Admin" />
 
     <div class="flex flex-col gap-6">
-        <h1 class="text-2xl font-semibold">{{ operator.name }}</h1>
+        <AdminPageHeader
+            :title="operator.name ?? 'Operator console'"
+            description="Everything the operator runs, across all brands"
+        />
 
         <div class="grid gap-4 sm:grid-cols-2 lg:max-w-xl">
             <div class="rounded-xl border border-border p-4">

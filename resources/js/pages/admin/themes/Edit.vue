@@ -7,6 +7,7 @@
  */
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import ThemeContrastReport from '@/components/admin/theme/ThemeContrastReport.vue';
 import ThemePreview from '@/components/admin/theme/ThemePreview.vue';
 import ThemeTokenGrid from '@/components/admin/theme/ThemeTokenGrid.vue';
@@ -70,9 +71,9 @@ function submit(): void {
             >
                 ← Back to brands
             </Link>
-            <h1 class="mt-2 text-2xl font-semibold">
-                {{ brand.name }} — Theme
-            </h1>
+            <div class="mt-2">
+                <AdminPageHeader :title="`${brand.name} — Theme`" />
+            </div>
             <p class="mt-2 max-w-2xl text-sm text-text-muted">
                 Overrides apply to <code>:root</code> for every visitor on
                 {{ brand.name }}'s domains (ADR-0008). Dark-mode overrides are a
