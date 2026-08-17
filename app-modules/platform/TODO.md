@@ -30,14 +30,19 @@ depends on brand resolution and gating working.
       repointing (17e); `storage:doctor`, which fetches a probe object
       anonymously to check the `public_direct` claim (17e2); Garage behind
       the `s3` compose profile with `storage:garage-init` (17f).
-- [ ] Brand-scoped disk resolution (`media:{brandId}`, ADR-0043 point 6,
-      ADR-0028 shape): a brand bringing its own bucket. Deliberately not
-      built with the rest of slice 17 — nothing produces per-brand storage
-      settings yet, so the resolver would have no caller. The column
-      semantics it needs already hold (every item records its own disk).
-      Octane trap for whoever builds it: `FilesystemManager` caches resolved
-      disks in a singleton, so a brand-scoped disk must be keyed per brand
-      and never survive a request.
+- [x] Brand-scoped disk resolution (`media:{brandId}`, ADR-0043 point 6,
+      ADR-0028 shape): `BrandStorageSetting` (credentials encrypted),
+      `Storage\DiskResolver` as the one place that reads both kinds of disk
+      name, and an operator-console screen at `admin/storage-settings`
+      (`platform.manage-storage-settings`). Switching a brand's own storage
+      off is refused while files still live in that bucket — clearing the
+      settings would leave rows naming a disk nobody can build.
+      Octane: the resolver is bound **scoped** and memoizes per request,
+      because `FilesystemManager` caches disks in a singleton;
+      `Storage::build()` returns an instance without registering it, which is
+      what makes that safe. HeroBlock stopped taking MediaLibrary at
+      construction for the same reason — block types live in a boot-time
+      registry a long-lived worker shares.
 - [x] Queued prefix cleanup on brand deletion (ADR-0043): `PurgeBrandMedia`,
       with the disks collected in Brand's `deleting` hook while the rows
       still exist. Media only — never the invoice archive.
