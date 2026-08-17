@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Registration\Actions\ApproveRegistration;
 use Konventix\Registration\Enums\Permission;
@@ -133,11 +134,26 @@ class RegistrationAdminController
      * CSV export of the current filter set (TODO.md). Streams — an
      * exhibitor list is small, a visitor list may not be.
      */
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request, AuditRecorder $auditRecorder): StreamedResponse
     {
         Gate::authorize(Permission::ExportRegistrations->value);
 
         $query = $this->filteredQuery($request)->orderBy('submitted_at');
+
+        // The audit trail's explicit half (Round 6 D-BATCH): pulling every
+        // registrant's name and email out of the system changes nothing, so
+        // there is no domain event to subscribe to — and it is exactly the
+        // kind of access worth having a record of. Recorded before the stream
+        // starts, because a download that dies halfway still happened.
+        $auditRecorder->record(
+            action: 'registration.registrations.exported',
+            context: [
+                'event' => $request->string('event')->toString() ?: null,
+                'status' => $request->string('status')->toString() ?: null,
+                'search' => $request->string('search')->toString() ?: null,
+                'rows' => (clone $query)->count(),
+            ],
+        );
 
         return response()->streamDownload(function () use ($query): void {
             $out = fopen('php://output', 'w');

@@ -12,6 +12,7 @@ use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Compliance\Http\Middleware\EnsurePoliciesAccepted;
 use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
+use Konventix\Compliance\Listeners\RecordAuditableEvents;
 use Konventix\Compliance\Support\PolicyMarkdown;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
@@ -72,6 +73,12 @@ class ComplianceServiceProvider extends ModuleServiceProvider
     {
         Event::listen(DataExportRequested::class, [DispatchSubjectRequestFanOut::class, 'handleExport']);
         Event::listen(UserDeletionRequested::class, [DispatchSubjectRequestFanOut::class, 'handleDeletion']);
+
+        // The audit trail's subscriber half (Round 6 D-BATCH): one wildcard
+        // listener that records events declaring themselves auditable. A list
+        // of classes here would be a second place to keep in sync, maintained
+        // by the module least likely to remember.
+        Event::listen('*', [RecordAuditableEvents::class, 'handle']);
     }
 
     /**
@@ -100,6 +107,15 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 icon: 'file-search',
                 order: 31,
                 permission: Permission::ViewSubjectRequests->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'compliance',
+                label: 'Audit trail',
+                url: '/admin/audit',
+                icon: 'scroll-text',
+                order: 32,
+                permission: Permission::ViewAuditLog->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
         );

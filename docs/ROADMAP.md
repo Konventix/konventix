@@ -210,7 +210,7 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Compliance | Policy admin CRUD; user-facing consent pages; privacy settings | `admin/policies/*`, `policies/{Required,Show}`, `settings/Privacy` | ✓ |
 | Compliance | DSR console: export/deletion requests with their per-module fan-out; self-service request + download on the privacy page | `admin/data-lifecycle/*`, `account/{Delete,DeletionPending}` | ✓ |
 | Compliance | Retention-policy admin and the anonymization log | `admin/data-lifecycle/*` | S14 |
-| Compliance | Audit pages (per-entity change history — LanCore had ten `*/Audit.vue`) | `users/Audit`, `events/Audit`, `news/Audit`, … | S14 (hybrid audit trail) |
+| Compliance | Audit pages (per-entity change history — LanCore had ten `*/Audit.vue`) | `users/Audit`, `events/Audit`, `news/Audit`, … | ✓ — absorbed into one filtered trail, not ported per entity |
 | Messaging | Delivery log + suppression admin | `admin/emails/*` | S13 |
 | Messaging | In-app inbox + archive; notification/digest/quiet-hours preferences | `notifications/*`, `settings/{Notifications,EmailSettings}` | S13 |
 

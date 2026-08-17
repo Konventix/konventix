@@ -12,6 +12,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Compliance\Actions\RedispatchSubjectRequest;
 use Konventix\Compliance\Actions\RefuseSubjectRequest;
+use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Compliance\Enums\DataSubjectRequestState;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Enums\ModuleResponseState;
@@ -174,13 +175,24 @@ class SubjectRequestController
         return back();
     }
 
-    public function download(string $subjectRequest): StreamedResponse
+    public function download(string $subjectRequest, AuditRecorder $auditRecorder): StreamedResponse
     {
         Gate::authorize(Permission::DownloadSubjectExport->value);
 
         $model = $this->find($subjectRequest);
 
         abort_unless($model->hasDownloadableArchive(), 404);
+
+        // An operator reading one person's entire record across every module
+        // is the most privileged read in the application, and it emits no
+        // domain event — the explicit recorder is what the hybrid trail has
+        // this half for (Round 6 D-BATCH).
+        $auditRecorder->record(
+            action: 'compliance.subject-export.downloaded',
+            subjectId: $model->subject_id,
+            brandId: $model->brand_id,
+            context: ['request_id' => $model->getKey()],
+        );
 
         return Storage::disk((string) $model->archive_disk)
             ->download((string) $model->archive_path, "subject-export-{$model->getKey()}.json");

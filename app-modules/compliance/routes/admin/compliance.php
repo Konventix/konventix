@@ -10,6 +10,7 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Compliance\Http\Controllers\Admin\AuditLogController;
 use Konventix\Compliance\Http\Controllers\Admin\PolicyAdminController;
 use Konventix\Compliance\Http\Controllers\Admin\PolicyVersionController;
 use Konventix\Compliance\Http\Controllers\Admin\SubjectRequestController;
@@ -32,3 +33,7 @@ Route::get('/subject-requests/{subjectRequest}', [SubjectRequestController::clas
 Route::post('/subject-requests/{subjectRequest}/redispatch', [SubjectRequestController::class, 'redispatch'])->name('admin.subject-requests.redispatch');
 Route::post('/subject-requests/{subjectRequest}/refuse', [SubjectRequestController::class, 'refuse'])->name('admin.subject-requests.refuse');
 Route::get('/subject-requests/{subjectRequest}/download', [SubjectRequestController::class, 'download'])->name('admin.subject-requests.download');
+
+// The audit trail. Read-only by design — there is no write endpoint, and
+// there never will be: a trail an operator can edit answers no question.
+Route::get('/audit', [AuditLogController::class, 'index'])->name('admin.audit.index');

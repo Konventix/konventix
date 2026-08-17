@@ -38,11 +38,13 @@ module built before it will otherwise be retrofitted.
       two archives today. Closing that means opening one request per brand
       from one form, or an archive assembled across brands — decide which
       before an operator runs two brands in production.
-- [ ] Audit trail per the hybrid mechanism settled in `SPEC.md` (decision log
-      Round 6, D-BATCH): the wildcard subscriber over auditable-marked events,
-      **plus** an explicit recorder contract modules call for eventless
-      actions (list views, CSV exports) — implement both halves, not just the
-      subscriber.
+- [ ] Only four actions are marked auditable so far (policy publication,
+      deletion dispatch, request refusal, registration approve/reject) plus
+      two recorded reads (the registrant CSV export, a subject-export
+      download). Walk each module's privileged actions once and mark what
+      belongs in the trail — the mechanism is done, the coverage is not.
+- [ ] The audit trail has no retention enforcement yet: D-CPL-01 says 36
+      months, and nothing deletes. Lands with the retention machinery below.
 - [ ] Anonymize-with-tombstone as the default deletion mode (decision log
       Round 6, D-BATCH): `UserDeletionRequested`'s `anonymize` path must leave
       a tombstone row per affected table so foreign ULID references (e.g. an
@@ -52,11 +54,10 @@ module built before it will otherwise be retrofitted.
       escalates through Messaging as it approaches/lapses.
 - [ ] Retention rules plus the scheduled job that emits `RetentionPeriodElapsed`
       per data category, with `EventConcluded` as the first clock start.
-- [ ] The subject-request console, registered with Platform's navigation
-      registry next to the policy console. (Authorization stays capability
-      gates in the controllers — `Gate::authorize(Permission::X->value)` —
-      which is what every other module does; a `src/Policies/` class would
-      only pay off for per-row decisions, and no Compliance row has one.)
+- [ ] Authorization stays capability gates in the controllers
+      (`Gate::authorize(Permission::X->value)`), which is what every other
+      module does — `src/Policies/` is still empty and would only pay off for
+      per-row decisions, which no Compliance row has. Revisit if one appears.
 - [ ] Policy *withdrawal*: SPEC proposes `PolicyWithdrawn`, but nothing can
       un-publish a version today. A brand that publishes the wrong text must
       publish a corrected version over it. Needs the event class first.
@@ -93,6 +94,28 @@ module built before it will otherwise be retrofitted.
       tracked as Platform's concern.
 
 ## Done
+
+- [x] The hybrid audit trail (Round 6 D-BATCH), both halves.
+      Subscriber half: `Audit\AuditableEvent` is a marker an event
+      implements, and one wildcard `Event::listen('*')` subscriber records
+      whatever declares itself auditable. A list of event classes in
+      Compliance would be a second place to keep in sync, maintained by the
+      module least likely to remember it exists.
+      Recorder half: `Audit\AuditRecorder` for actions with no domain event
+      to hear — streaming the registrant CSV, downloading a subject's export.
+      ADR-0004 pushes hard towards events and wins for state changes; these
+      reads are the residue it cannot cover, and they are exactly the access
+      worth recording. Not an Action, deliberately: an audit write must never
+      join the caller's rollback.
+      `Audit\` joins `Gdpr\` as a sanctioned cross-module contract surface
+      in the architecture test — a module implements the marker on its own
+      event and keeps owning what the record says.
+      `audit_log_entries` is **not** brand-scoped: the trail spans brands by
+      design and half its rows are recorded on the operator host where no
+      brand exists, so `brand_id` is nullable data on the row. Read-only
+      console at `/admin/audit` behind `compliance.view-audit-log` — one
+      filtered page over one table, where LanCore had ten per-entity audit
+      screens. `tests/AuditTrailTest.php`.
 
 - [x] The fan-out actually runs, and the queue has a console (slice 14,
       second half). `DataExportRequested`/`UserDeletionRequested` were

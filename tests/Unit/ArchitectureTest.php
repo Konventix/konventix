@@ -94,12 +94,15 @@ it('never imports another module internals across a boundary', function (): void
                 continue;
             }
 
-            // Compliance's GDPR contract surface: the GdprHandler contract's
-            // own docblock instructs every module to implement it and
-            // register via registerGdprExporters() (ADR-0003) — the
-            // interface, registry, and DeletionMode enum ARE the API.
-            // Compliance's models stay forbidden.
-            if ($importedModule === 'Compliance' && in_array($segments[2] ?? null, ['Gdpr', 'Enums'], true)) {
+            // Compliance's GDPR and audit contract surfaces: both are
+            // published FOR other modules. `Gdpr\GdprHandler` is implemented
+            // and registered via registerGdprExporters() (ADR-0003);
+            // `Audit\AuditableEvent` is implemented by a module's own event
+            // so Compliance's wildcard subscriber records it (Round 6
+            // D-BATCH), and `Audit\AuditRecorder` is what a module calls for
+            // an action with no event to subscribe to. Compliance's models
+            // stay forbidden.
+            if ($importedModule === 'Compliance' && in_array($segments[2] ?? null, ['Gdpr', 'Audit', 'Enums'], true)) {
                 continue;
             }
 
