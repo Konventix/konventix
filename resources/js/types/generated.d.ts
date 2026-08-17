@@ -82,6 +82,18 @@ declare namespace Konventix {
         }
     }
     namespace Compliance {
+        namespace Data {
+            export type PolicyData = {
+                readonly name: string;
+                readonly slug: string;
+            };
+            export type PolicyVersionData = {
+                readonly version: string;
+                readonly content: string;
+                readonly requiresConsent: boolean;
+                readonly effectiveAt: string | null;
+            };
+        }
         namespace Enums {
             export type DataSubjectRequestState =
                 'received' | 'in_progress' | 'fulfilled' | 'refused';

@@ -1,0 +1,93 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Konventix\Compliance\Http\Controllers\Admin;
+
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
+use Inertia\Inertia;
+use Konventix\Compliance\Actions\DraftPolicyVersion;
+use Konventix\Compliance\Actions\PublishPolicyVersion;
+use Konventix\Compliance\Actions\UpdatePolicyVersion;
+use Konventix\Compliance\Data\PolicyVersionData;
+use Konventix\Compliance\Enums\Permission;
+use Konventix\Compliance\Models\Policy;
+use Konventix\Compliance\Models\PolicyVersion;
+
+/**
+ * The version half of the policy console: drafting, editing a draft, and
+ * publishing (ADR-0029).
+ *
+ * Its own controller because it is its own capability. `ManagePolicies`
+ * writes text nobody is bound by; `PublishPolicy` makes a text binding,
+ * supersedes the previous one and — when it requires consent — puts the
+ * consent gate in front of every user on their next visit. A legal editor
+ * and the person who may commit the brand to a text are not necessarily the
+ * same person.
+ *
+ * Every guard lives in the Actions, so tinker is refused on the same grounds
+ * as this form.
+ */
+class PolicyVersionController
+{
+    public function store(Request $request, string $policy, DraftPolicyVersion $draftPolicyVersion): RedirectResponse
+    {
+        Gate::authorize(Permission::ManagePolicies->value);
+
+        $model = $this->findPolicy($policy);
+
+        $version = $draftPolicyVersion($model, PolicyVersionData::validateAndCreate($request->all()));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Draft version created.')]);
+
+        return to_route('admin.policies.edit', [$model->getKey(), 'version' => $version->getKey()]);
+    }
+
+    public function update(Request $request, string $version, UpdatePolicyVersion $updatePolicyVersion): RedirectResponse
+    {
+        Gate::authorize(Permission::ManagePolicies->value);
+
+        $model = $this->findVersion($version);
+
+        $updatePolicyVersion($model, PolicyVersionData::validateAndCreate($request->all()));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Draft saved.')]);
+
+        return to_route('admin.policies.edit', [$model->policy_id, 'version' => $model->getKey()]);
+    }
+
+    /**
+     * Publishing is the moment the text becomes binding. `effectiveAt` may be
+     * in the future — the version publishes now and starts applying then,
+     * which is what a "our terms change on 1 January" notice needs.
+     */
+    public function publish(Request $request, string $version, PublishPolicyVersion $publishPolicyVersion): RedirectResponse
+    {
+        Gate::authorize(Permission::PublishPolicy->value);
+
+        $model = $this->findVersion($version);
+
+        $validated = $request->validate(['effectiveAt' => ['nullable', 'date']]);
+        $effectiveAt = $validated['effectiveAt'] ?? null;
+
+        $publishPolicyVersion($model, $effectiveAt === null ? null : now()->parse($effectiveAt));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Version published.')]);
+
+        return to_route('admin.policies.edit', [$model->policy_id, 'version' => $model->getKey()]);
+    }
+
+    private function findPolicy(string $policy): Policy
+    {
+        /** @var Policy */
+        return Policy::withoutBrandScope()->findOrFail($policy);
+    }
+
+    private function findVersion(string $version): PolicyVersion
+    {
+        /** @var PolicyVersion */
+        return PolicyVersion::withoutBrandScope()->findOrFail($version);
+    }
+}

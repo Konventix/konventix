@@ -207,7 +207,7 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Identity | Linked accounts + social onboarding (Steam profile completion, username pick) | `settings/LinkedAccounts`, `onboarding/Username`, `auth/CompleteSteamProfile` | S15 |
 | Identity | Admin user detail page (memberships, sessions, states) | `users/Show` | P2 backlog |
 | Event | Event index/edit/dashboard/lifecycle, venue admin, public landing | `events/*`, `venues/*` | ✓ |
-| Compliance | Policy admin CRUD; user-facing consent pages; privacy settings | `admin/policies/*`, `policies/{Required,Show}`, `settings/Privacy` | S14 |
+| Compliance | Policy admin CRUD; user-facing consent pages; privacy settings | `admin/policies/*`, `policies/{Required,Show}`, `settings/Privacy` | ✓ |
 | Compliance | DSR console: deletion requests, retention policies, anonymization log; account-deletion self-service | `admin/data-lifecycle/*`, `account/{Delete,DeletionPending}` | S14 |
 | Compliance | Audit pages (per-entity change history — LanCore had ten `*/Audit.vue`) | `users/Audit`, `events/Audit`, `news/Audit`, … | S14 (hybrid audit trail) |
 | Messaging | Delivery log + suppression admin | `admin/emails/*` | S13 |

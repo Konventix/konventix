@@ -62,18 +62,17 @@ The module that holds the data is the one that discharges it.
 Events are the only way other modules may react to this one (ADR-0004).
 Payloads carry ULIDs and scalars — never Eloquent models.
 
-No code exists yet. Every row below is a proposal and becomes binding when the
-event class lands.
+A row becomes binding when its event class lands; the rest stay proposals.
 
 | Event | Emitted when | Payload | Status |
 |---|---|---|---|
-| `PolicyPublished` | A policy version becomes effective | `policy_id`, `version_id`, `brand_id`, `slug`, `effective_at`, `requires_consent` | proposed |
+| `PolicyPublished` | A policy version becomes effective | `policy_id`, `version_id`, `brand_id`, `slug`, `effective_at`, `requires_consent` | shipped |
 | `PolicyWithdrawn` | A policy version is superseded or withdrawn | `policy_id`, `version_id`, `brand_id` | proposed |
-| `ConsentGranted` | A subject agrees to a policy version | `consent_id`, `subject_id`, `policy_id`, `version_id`, `brand_id`, `granted_at` | proposed |
-| `ConsentWithdrawn` | A subject withdraws agreement | `consent_id`, `subject_id`, `policy_id`, `withdrawn_at` | proposed |
-| `DataExportRequested` | An export request is accepted and fans out | `request_id`, `subject_id`, `brand_id`, `requested_at` | proposed |
+| `ConsentGranted` | A subject agrees to a policy version | `consent_id`, `subject_id`, `policy_id`, `version_id`, `brand_id`, `granted_at` | shipped |
+| `ConsentWithdrawn` | A subject withdraws agreement | `consent_id`, `subject_id`, `policy_id`, `withdrawn_at` | shipped |
+| `DataExportRequested` | An export request is accepted and fans out | `request_id`, `subject_id`, `brand_id`, `requested_at` | shipped |
 | `DataExportCompleted` | Every handler has responded and the archive exists | `request_id`, `subject_id`, `archive_expires_at` | proposed |
-| `UserDeletionRequested` | A deletion request is accepted and fans out | `request_id`, `subject_id`, `brand_id`, `mode` (`anonymize` or `erase`) | proposed |
+| `UserDeletionRequested` | A deletion request is accepted and fans out | `request_id`, `subject_id`, `brand_id`, `mode` (`anonymize` or `erase`) | shipped |
 | `UserDeletionCompleted` | Every handler has confirmed | `request_id`, `subject_id`, `completed_at` | proposed |
 | `SubjectRequestRefused` | A request is refused, with a legal ground | `request_id`, `subject_id`, `reason_code` | proposed |
 | `RetentionPeriodElapsed` | A retention clock runs out for a data category | `rule_id`, `brand_id`, `data_category`, `cutoff_at` | proposed |

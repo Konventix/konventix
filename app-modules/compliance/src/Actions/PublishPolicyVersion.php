@@ -8,6 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Events\PolicyPublished;
+use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
 
 /**
@@ -18,13 +19,19 @@ use Konventix\Compliance\Models\PolicyVersion;
  * `effectiveAt` defaults to the version's own `effective_at` if it was set
  * ahead of publication, falling back to now() so a version can never publish
  * without an effective date.
+ *
+ * Every read here escapes `BrandScope` explicitly: publishing happens from
+ * the operator console, where the scope hardens to zero rows (ADR-0029). A
+ * scoped supersede-update would silently match nothing and leave two
+ * published versions of the same policy standing, and a scoped relation load
+ * would read a null policy (.ai/rules).
  */
 final class PublishPolicyVersion
 {
     public function __invoke(PolicyVersion $version, ?CarbonInterface $effectiveAt = null): PolicyVersion
     {
         return DB::transaction(function () use ($version, $effectiveAt): PolicyVersion {
-            PolicyVersion::query()
+            PolicyVersion::withoutBrandScope()
                 ->where('policy_id', $version->policy_id)
                 ->where('id', '!=', $version->id)
                 ->where('state', PolicyVersionState::Published)
@@ -36,13 +43,13 @@ final class PublishPolicyVersion
                 'published_at' => now(),
             ])->save();
 
-            $version->loadMissing('policy');
+            $policy = Policy::withoutBrandScope()->findOrFail($version->policy_id);
 
             event(new PolicyPublished(
                 policyId: $version->policy_id,
                 versionId: $version->id,
                 brandId: $version->brand_id,
-                slug: $version->policy->slug,
+                slug: $policy->slug,
                 effectiveAt: $version->effective_at->toIso8601String(),
                 requiresConsent: $version->requires_consent,
             ));

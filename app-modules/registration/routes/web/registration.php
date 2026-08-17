@@ -25,11 +25,18 @@ use Konventix\Registration\Http\Controllers\WaitlistController;
 // deferred. `{type}` binds a `RegistrationType` by its ULID primary key
 // (ADR-0014); the controller checks it actually belongs to `{event_ulid}`.
 Route::middleware(['auth'])->group(function (): void {
-    Route::get('/events/{event_ulid}/register/{type}', [RegistrationController::class, 'show'])
-        ->name('registration.show');
+    // `require-consent` is Compliance's opt-in gate (its provider aliases it):
+    // a registration is a contract, so it may not be entered by someone who
+    // has not agreed to the brand's required policies. Registration applies
+    // it here because Registration is the module that knows that — Compliance
+    // wires nothing centrally (ADR-0003).
+    Route::middleware('require-consent')->group(function (): void {
+        Route::get('/events/{event_ulid}/register/{type}', [RegistrationController::class, 'show'])
+            ->name('registration.show');
 
-    Route::post('/events/{event_ulid}/register/{type}', [RegistrationController::class, 'store'])
-        ->name('registration.store');
+        Route::post('/events/{event_ulid}/register/{type}', [RegistrationController::class, 'store'])
+            ->name('registration.store');
+    });
 
     // Waitlist offer claim (D-REG-12): the offer mail's temporary signed
     // link — signature expiry equals the offer's own; the controller

@@ -16,6 +16,13 @@ use Konventix\Compliance\Models\PolicyVersion;
  * `subjectId` is not validated against any table on purpose — Compliance
  * never queries a foreign table (ADR-0004), and the subject may not have an
  * account at all (see Consent's docblock / decision-log Round 5 D-REG-08).
+ *
+ * Granting twice returns the consent already on record instead of writing a
+ * second row: a double-submitted consent form, or a page reloaded after the
+ * POST, is one agreement, and duplicate rows would make "when did they
+ * agree" ambiguous and notify listeners twice. A *re-grant after withdrawal*
+ * is a different fact and does create a new row — the withdrawn one stays as
+ * the record of the period in between.
  */
 final class GrantConsent
 {
@@ -27,6 +34,17 @@ final class GrantConsent
     ): Consent {
         return DB::transaction(function () use ($subjectId, $policyVersion, $captureContext, $grantedAt): Consent {
             $grantedAt ??= now();
+
+            /** @var Consent|null $existing */
+            $existing = Consent::query()
+                ->where('subject_id', $subjectId)
+                ->where('policy_version_id', $policyVersion->id)
+                ->whereNull('withdrawn_at')
+                ->first();
+
+            if ($existing !== null) {
+                return $existing;
+            }
 
             $consent = Consent::create([
                 'subject_id' => $subjectId,
