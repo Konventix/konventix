@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Carbon;
 use Konventix\Platform\Database\Factories\MediaItemFactory;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
@@ -27,9 +27,10 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property int $size_bytes
  * @property string|null $alt_text
  * @property array<string, string> $variants
+ * @property CarbonImmutable|null $variants_generated_at
  * @property string|null $uploaded_by_user_id
- * @property Carbon|null $created_at
- * @property Carbon|null $updated_at
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $updated_at
  */
 class MediaItem extends Model
 {
@@ -65,6 +66,7 @@ class MediaItem extends Model
         return [
             'size_bytes' => 'integer',
             'variants' => 'array',
+            'variants_generated_at' => 'datetime',
         ];
     }
 

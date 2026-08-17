@@ -7,14 +7,20 @@ namespace Konventix\Platform\Actions;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Konventix\Platform\Jobs\GenerateMediaVariants;
 use Konventix\Platform\Media\ThumbnailGenerator;
 use Konventix\Platform\Models\MediaItem;
 
 /**
  * Accepts an upload into the brand's media library (ADR-0035): stores the
- * file brand-sharded on the `media` disk, generates variants, and creates
- * the item row. Takes an explicit brand ULID — uploads happen on the
+ * file brand-sharded on the configured media disk, generates variants, and
+ * creates the item row. Takes an explicit brand ULID — uploads happen on the
  * operator admin host, which resolves no ambient brand (ADR-0029).
+ *
+ * Variants are generated inline on a local disk and queued on a remote one
+ * (ADR-0043): reading the original back and writing the thumbnail are two
+ * network round trips, and an operator's upload request should not wait for
+ * them. The item exists either way — only its `thumb` arrives late.
  */
 final class StoreMediaUpload
 {
@@ -34,9 +40,13 @@ final class StoreMediaUpload
 
         $file->storeAs(dirname($path), basename($path), $disk);
 
-        $variants = $this->thumbnails->generate($disk, $path, $file->getMimeType() ?? 'application/octet-stream');
+        $inline = config("filesystems.disks.{$disk}.driver") === 'local';
 
-        return DB::transaction(function () use ($brandId, $disk, $file, $path, $variants, $altText, $uploadedByUserId): MediaItem {
+        $variants = $inline
+            ? $this->thumbnails->generate($disk, $path, $file->getMimeType() ?? 'application/octet-stream')
+            : [];
+
+        $item = DB::transaction(function () use ($brandId, $disk, $inline, $file, $path, $variants, $altText, $uploadedByUserId): MediaItem {
             $item = new MediaItem([
                 'disk' => $disk,
                 'path' => $path,
@@ -49,9 +59,20 @@ final class StoreMediaUpload
             ]);
             // Explicit brand from the request, not ambient context (ADR-0029).
             $item->brand_id = $brandId;
+            // Null means "still to be generated" — an empty map alone cannot
+            // say whether a file has no variants or has not been processed.
+            $item->variants_generated_at = $inline ? now() : null;
             $item->save();
 
             return $item;
         });
+
+        if (! $inline) {
+            // After the transaction: the job looks the row up by ULID and
+            // would find nothing inside it.
+            GenerateMediaVariants::dispatch($item->getKey());
+        }
+
+        return $item;
     }
 }

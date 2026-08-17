@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Konventix\Platform\Actions\StoreMediaUpload;
+use Konventix\Platform\Data\MediaItemData;
+use Konventix\Platform\Jobs\GenerateMediaVariants;
 use Konventix\Platform\Media\MediaLibrary;
+use Konventix\Platform\Media\ThumbnailGenerator;
 use Konventix\Platform\Models\MediaItem;
 
 /**
@@ -114,4 +118,98 @@ it('writes new uploads to the configured media disk', function (): void {
     expect($item->disk)->toBe('media_s3');
     Storage::disk('media_s3')->assertExists($item->path);
     Storage::disk('media')->assertMissing($item->path);
+});
+
+/**
+ * ADR-0043: variant generation is inline on a local disk and queued on a
+ * remote one — two network round trips have no business inside an operator's
+ * upload request.
+ */
+it('generates variants inline on a local disk', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('media');
+    Queue::fake();
+
+    $item = app(StoreMediaUpload::class)->handle(
+        brandId: $brand->getKey(),
+        file: UploadedFile::fake()->image('logo.png', 1200, 800),
+        altText: null,
+        uploadedByUserId: null,
+    );
+
+    expect($item->variants)->toHaveKey('thumb')
+        ->and($item->variants_generated_at)->not->toBeNull();
+
+    Queue::assertNothingPushed();
+});
+
+it('queues variant generation for a remote disk and marks the item pending', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('media_s3');
+    Queue::fake();
+
+    Config::set('filesystems.media_disk', 'media_s3');
+
+    $item = app(StoreMediaUpload::class)->handle(
+        brandId: $brand->getKey(),
+        file: UploadedFile::fake()->image('logo.png', 1200, 800),
+        altText: null,
+        uploadedByUserId: null,
+    );
+
+    // The item is usable immediately; only its thumbnail arrives late.
+    expect($item->variants)->toBe([])
+        ->and($item->variants_generated_at)->toBeNull()
+        ->and(MediaItemData::fromModel($item->refresh(), app(MediaLibrary::class))->variantsPending)->toBeTrue();
+
+    Queue::assertPushed(GenerateMediaVariants::class, fn (GenerateMediaVariants $job): bool => $job->mediaItemId === $item->getKey());
+});
+
+it('fills the variants when the job runs, and does nothing on replay', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('media_s3');
+
+    Config::set('filesystems.media_disk', 'media_s3');
+
+    $item = app(StoreMediaUpload::class)->handle(
+        brandId: $brand->getKey(),
+        file: UploadedFile::fake()->image('logo.png', 1200, 800),
+        altText: null,
+        uploadedByUserId: null,
+    );
+
+    (new GenerateMediaVariants($item->getKey()))->handle(app(ThumbnailGenerator::class));
+
+    $item->refresh();
+
+    expect($item->variants)->toHaveKey('thumb')
+        ->and($item->variants_generated_at)->not->toBeNull();
+    Storage::disk('media_s3')->assertExists($item->variants['thumb']);
+
+    // A retry after the stamp must not rewrite a variant readers may already
+    // be caching (keys are immutable, ADR-0043).
+    $stampedAt = $item->variants_generated_at;
+    (new GenerateMediaVariants($item->getKey()))->handle(app(ThumbnailGenerator::class));
+
+    expect($item->refresh()->variants_generated_at->equalTo($stampedAt))->toBeTrue();
+});
+
+it('marks a non-raster upload processed rather than perpetually pending', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('media_s3');
+
+    Config::set('filesystems.media_disk', 'media_s3');
+
+    $item = app(StoreMediaUpload::class)->handle(
+        brandId: $brand->getKey(),
+        file: UploadedFile::fake()->create('poster.pdf', 12, 'application/pdf'),
+        altText: null,
+        uploadedByUserId: null,
+    );
+
+    (new GenerateMediaVariants($item->getKey()))->handle(app(ThumbnailGenerator::class));
+
+    // "Processed, nothing to make" is a state — not a spinner forever.
+    expect($item->refresh()->variants)->toBe([])
+        ->and($item->variants_generated_at)->not->toBeNull();
 });

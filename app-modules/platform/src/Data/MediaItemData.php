@@ -27,6 +27,8 @@ final class MediaItemData extends Data
         public ?string $url,
         public ?string $thumbUrl,
         public int $usageCount,
+        /** Variants are still being generated on a remote disk (ADR-0043). */
+        public bool $variantsPending,
         public ?string $uploadedAt,
     ) {}
 
@@ -43,6 +45,7 @@ final class MediaItemData extends Data
             thumbUrl: $library->urlFor($item->getKey(), 'thumb'),
             usageCount: $item->usages_count
                 ?? MediaUsage::withoutBrandScope()->where('media_item_id', $item->getKey())->count(),
+            variantsPending: $item->variants_generated_at === null,
             uploadedAt: $item->created_at?->format('Y-m-d H:i'),
         );
     }

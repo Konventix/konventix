@@ -284,6 +284,7 @@ declare namespace Konventix {
                 url: string | null;
                 thumbUrl: string | null;
                 usageCount: number;
+                variantsPending: boolean;
                 uploadedAt: string | null;
             };
             export type ThemeCatalogData = {
