@@ -21,31 +21,26 @@ depends on brand resolution and gating working.
 
 ## Backlog
 
-- [ ] Object storage for the media library (ADR-0043, ROADMAP slice 17), in
-      this order:
-      1. `hero` block stores `imageMediaId` instead of a resolved
-         `imageUrl`, resolved through `ResolvesBlockProps`/`MediaLibrary`,
-         with a payload migration for existing pages. Prerequisite: stored
-         URLs rot the moment the disk or asset host changes.
-      2. S3 driver on the `media` disk, `public_direct` + asset `url` as
-         explicit deployment config; `MediaLibrary::urlFor()` is the single
-         branch point, resolution stays network-free.
-      3. Public proxy route for the non-direct case (also the local-disk
-         fallback), long immutable cache headers — keys are never
-         overwritten.
-      4. Queued variant generation whenever the disk is remote, with a
-         pending state in `MediaItemData` and a UI placeholder.
-      5. Brand-scoped disk resolution (`media:{brandId}`, ADR-0028 shape).
-         Octane trap: `FilesystemManager` caches disks in a singleton — key
-         per brand, never across requests.
-      6. `storage:migrate` (copy → verify size+checksum → rewrite rows in
-         batches → optional delete) and a storage doctor command covering
-         every configured disk, the `public/storage` symlink, and an
-         unauthenticated fetch that proves `public_direct` is true.
-      7. Garage behind a compose profile as the dev backend; idempotent
-         admin-API init command for the second bucket and website access.
-- [ ] Queued prefix cleanup on brand deletion (ADR-0043): rows cascade,
-      objects do not. Media only — never the invoice archive.
+- [x] Object storage for the media library (ADR-0043, ROADMAP slice 17):
+      `hero` blocks reference media by ULID and resolve at render (17a); the
+      `media_s3` disk plus a `public_direct` delivery branch in
+      `MediaLibrary` and the application media route for everything else
+      (17b); queued variant generation with a pending state on remote disks
+      (17c); `storage:migrate` with per-file verification and per-record
+      repointing (17e); `storage:doctor`, which fetches a probe object
+      anonymously to check the `public_direct` claim (17e2); Garage behind
+      the `s3` compose profile with `storage:garage-init` (17f).
+- [ ] Brand-scoped disk resolution (`media:{brandId}`, ADR-0043 point 6,
+      ADR-0028 shape): a brand bringing its own bucket. Deliberately not
+      built with the rest of slice 17 — nothing produces per-brand storage
+      settings yet, so the resolver would have no caller. The column
+      semantics it needs already hold (every item records its own disk).
+      Octane trap for whoever builds it: `FilesystemManager` caches resolved
+      disks in a singleton, so a brand-scoped disk must be keyed per brand
+      and never survive a request.
+- [x] Queued prefix cleanup on brand deletion (ADR-0043): `PurgeBrandMedia`,
+      with the disks collected in Brand's `deleting` hook while the rows
+      still exist. Media only — never the invoice archive.
 - [ ] Orphan media cleanup job (ADR-0035 defers it): usage references exist,
       the job that garbage-collects unreferenced items after a grace period
       does not.

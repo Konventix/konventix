@@ -52,15 +52,16 @@
       survive brand deletion, operator changes, and storage migrations for
       ten years (ADR-0031 names the requirement; only the write-once
       archive itself is built). Production needs the disk pointed at
-      durable storage — ADR-0043 makes that an S3 driver choice and puts
-      Object Lock/versioning on the deployment checklist, since Garage
-      implements neither.
-- [ ] Retention *reporting* (ADR-0043 point 9): a scheduled job that names
-      archived documents past their window plus a manual artisan command.
-      Deliberately no automated deletion and no startup check — under
-      Octane "startup" is every worker boot. What deletion means (§147 AO
-      counts ten years from the end of the calendar year of issue) is
-      deferred to its own decision, tracked in ROADMAP Phase 3.
+      durable storage — ADR-0043 makes that an S3 driver choice (`invoices_s3`,
+      with `document_disk` sealed per invoice and `storage:migrate` verifying
+      each copy against the GoBD sha256) and puts Object Lock/versioning on
+      the deployment checklist, since Garage implements neither.
+- [x] Retention *reporting* (ADR-0043 point 9): `commerce:invoice-retention`,
+      scheduled daily at 07:15 and logged at INFO. Deliberately no automated
+      deletion and no startup check — under Octane "startup" is every worker
+      boot. What deletion means (§147 AO counts ten years from the end of the
+      calendar year of issue) stays deferred to its own decision, tracked in
+      ROADMAP Phase 3.
 - [ ] VIES validation for reverse-charge VAT IDs — ADR-0030 accepts the
       unvalidated-ID gap at release; the organizer's bookkeeper must be told.
       Revisit before any real cross-border exhibitor volume.
