@@ -40,6 +40,19 @@ final class MediaStorageMigration implements StorageMigration
         }
     }
 
+    /**
+     * @return array<string, int>
+     */
+    public function disksInUse(): array
+    {
+        return MediaItem::withoutBrandScope()
+            ->selectRaw('disk, count(*) as total')
+            ->groupBy('disk')
+            ->pluck('total', 'disk')
+            ->map(fn ($total): int => (int) $total)
+            ->all();
+    }
+
     public function markMoved(string $recordId, string $disk): void
     {
         MediaItem::withoutBrandScope()

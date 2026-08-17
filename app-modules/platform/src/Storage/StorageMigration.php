@@ -38,6 +38,15 @@ interface StorageMigration
     public function recordsOn(string $disk): iterable;
 
     /**
+     * Every disk name this module's records currently point at, with how many
+     * point at it. A name that is no longer configured means unreadable
+     * files — `storage:doctor` reports it.
+     *
+     * @return array<string, int> disk name => record count
+     */
+    public function disksInUse(): array;
+
+    /**
      * Point a record at the disk its files now live on. Called only after
      * every one of its paths has been copied and verified.
      */

@@ -52,6 +52,20 @@ final class InvoiceStorageMigration implements StorageMigration
         }
     }
 
+    /**
+     * @return array<string, int>
+     */
+    public function disksInUse(): array
+    {
+        return Invoice::withoutBrandScope()
+            ->whereNotNull('document_disk')
+            ->selectRaw('document_disk, count(*) as total')
+            ->groupBy('document_disk')
+            ->pluck('total', 'document_disk')
+            ->map(fn ($total): int => (int) $total)
+            ->all();
+    }
+
     public function markMoved(string $recordId, string $disk): void
     {
         Invoice::withoutBrandScope()
