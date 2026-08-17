@@ -90,7 +90,7 @@ maintains from them.
 
 | Event | Owning module | Why |
 |---|---|---|
-| `UserProfileUpdated` (proposed) | Identity | Maintain the author and commenter read model (display name, avatar reference) used in bylines |
+| `UserRegistered`, `UserProfileUpdated` | Identity | Maintain the author and commenter read model behind bylines (`Models\Author`, projected by `Listeners\ProjectAuthor`). Display name only — a byline needs a name, not an address, and a read model holding contact data it never shows is a liability with no upside |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler: authored entries and comments need an explicit anonymize-or-remove answer |
 | `EventPublished`, `EventUpdated`, `EventArchived` (proposed) | Event | Maintain the event read model for event-scoped entries and stop surfacing content for archived events |
 | `BrandCreated` (proposed) | Platform | Seed the brand's default content types and taxonomy |

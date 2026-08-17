@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Konventix\Content\Providers;
 
+use Illuminate\Support\Facades\Event;
 use Konventix\Content\Blocks\Types\LatestNewsBlock;
 use Konventix\Content\Enums\Permission;
+use Konventix\Content\Listeners\ProjectAuthor;
+use Konventix\Identity\Events\UserProfileUpdated;
+use Konventix\Identity\Events\UserRegistered;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
@@ -35,6 +39,16 @@ class ContentServiceProvider extends ModuleServiceProvider
     protected function registerBlockTypes(): void
     {
         $this->app->make(BlockRegistry::class)->register(new LatestNewsBlock);
+    }
+
+    /**
+     * The author read model (ADR-0004). Registered explicitly — modular event
+     * discovery is off and must stay off (.ai/rules/listeners.md).
+     */
+    protected function registerListeners(): void
+    {
+        Event::listen(UserRegistered::class, ProjectAuthor::class);
+        Event::listen(UserProfileUpdated::class, ProjectAuthor::class);
     }
 
     /**

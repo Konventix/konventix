@@ -121,6 +121,27 @@ declare namespace Konventix {
                 readonly heading: string | null;
                 readonly limit: number;
             };
+            export type PostCommentData = {
+                readonly body: string;
+            };
+            export type PublicCommentData = {
+                readonly id: string;
+                readonly body: string;
+                readonly authorName: string;
+                readonly postedAt: string;
+                readonly isMine: boolean;
+            };
+            export type PublicEntryData = {
+                readonly slug: string;
+                readonly type: Konventix.Content.Enums.ContentType;
+                readonly title: string;
+                readonly teaser: string | null;
+                readonly body: string | null;
+                readonly urgency: Konventix.Content.Enums.Urgency | null;
+                readonly authorName: string | null;
+                readonly publishedAt: string | null;
+                readonly commentsEnabled: boolean;
+            };
         }
         namespace Enums {
             export type Audience = 'everyone' | 'logged-in';

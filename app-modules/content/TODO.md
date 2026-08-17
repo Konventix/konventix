@@ -6,19 +6,26 @@
 
 ## Next
 
-- [ ] Public listing and detail pages, with one `Data` object per endpoint
-      driving validation, Inertia props, and the generated TS type; components
-      reference semantic design tokens only (ADR-0008, ADR-0009).
-- [ ] `LatestNewsBlock` names the Vue component `content/blocks/LatestNewsBlock`
-      but no such component exists, so a page carrying the block renders
-      nothing. It lands with the public pages above (the block links into
-      them).
+- [ ] Author backfill: `content_authors` fills from Identity events, so
+      accounts that existed before the projection have no row and read as
+      "Participant". Identity owes a profile-replay command — Messaging's
+      recipient read model has exactly the same gap, and one replay would
+      close both.
+- [ ] Bodies are plain text rendered with preserved line breaks. Rich text
+      (or Markdown) needs a sanitizer chosen first: the public entry body is
+      the one field on the site that would become an XSS sink.
 - [ ] Event association is a raw ULID field in the editor: Content may not
       import Event's models (ADR-0004), so an event picker needs an event read
       model here, fed by Event's contract events.
-- [ ] No editor read model either — the moderation queue and the entry list
-      show bare author ULIDs, the same gap the role and media screens have
-      (Platform TODO: identity read model).
+- [ ] The entry list and moderation queue still show bare author ULIDs — the
+      operator console reads no author names yet, though the read model now
+      exists to give it them.
+- [ ] Nothing in the public navigation points at `/news`; readers arrive
+      through the latest-news block or the banner. A public nav contribution
+      needs a shell mechanism (PublicTopbar hardcodes its links today).
+- [ ] Reporting a comment is not deduplicated per reader — a second click
+      raises the counter again. Accepted while the counter is only a queue
+      ordering hint; revisit if it is ever used as a moderation threshold.
 
 ## Backlog (Phase 2 — release scope)
 
@@ -40,6 +47,26 @@
       this to Registration state.
 
 ## Done
+
+- [x] Public pages — `/news` listing, `/news/{slug}` detail with comments,
+      the urgent-announcement banner, and the `LatestNewsBlock` Vue component
+      that had been registered with no component behind it (a page carrying
+      the block rendered nothing). Two rules run on every read: live-only via
+      `scopeLive`, and audience — a `logged-in` entry is absent from the list
+      for a guest and **404s** by slug rather than redirecting to login,
+      because a redirect confirms the slug exists and D-CNT-07 makes audience
+      a visibility rule, not a paywall. The banner carries urgent
+      announcements only and fetches itself once per browser page load, the
+      way the notification bell does, so no public controller carries
+      announcement plumbing. `PostComment`'s refusal on a closed section
+      surfaces as a form error: from the reader's side that is an ordinary
+      race, not a fault.
+
+- [x] Author read model (`Models\Author`, `Listeners\ProjectAuthor`) —
+      display names for bylines and comments, projected from Identity's
+      `UserRegistered`/`UserProfileUpdated` (ADR-0004). Display name only: a
+      byline needs a name, not an address, and storing contact data this
+      module never shows would only hand Compliance another table to sweep.
 
 - [x] Operator console (ADR-0029) — editorial index, entry editor, lifecycle
       endpoints, moderation queue, and the two navigation entries. The screen

@@ -225,7 +225,8 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Commerce | Orders admin index, settlement-account console, bookkeeping export, public checkout | `orders/Index`, `shop/Settings`, `cart/Checkout` | ✓ |
 | Commerce | Order/invoice admin detail page; participant "my orders/invoices"; invoice-prefix settings | `orders/Show`, `my-orders/*` | P2 backlog |
 | Commerce | Voucher CRUD + redemption view | `vouchers/*` | P2 backlog (SPEC-owned, unscheduled) |
-| Content | Entry editor + admin index, public listing/detail, comment moderation, announcements (+ public banner), knowledge-base content type | `news/*`, `announcements/*`, LanHelp `kb/*` | P2 backlog (slice 12 shipped the domain) |
+| Content | Entry editor + admin index, public listing/detail, comment moderation, announcements (+ public banner) | `news/*`, `announcements/*` | ✓ |
+| Content | Knowledge-base content type | LanHelp `kb/*` | P3 — lands with Support (ADR-0022) |
 
 ### Pennant-gated modules
 

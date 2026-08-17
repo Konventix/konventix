@@ -8,6 +8,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { home, login, register } from '@/routes';
 import { edit as editProfile } from '@/routes/profile';
 
@@ -30,10 +31,19 @@ defineProps<{
 
 const page = usePage();
 const mobileMenuOpen = ref(false);
+
+// Content's urgent-announcement banner, resolved through the module
+// component registry so this shell holds no module import — the same seam
+// the notification bell uses (ADR-0003). A build without Content simply
+// renders no banner.
+const AnnouncementBanner = resolveRegisteredComponent(
+    'content/AnnouncementBanner',
+);
 </script>
 
 <template>
     <header class="border-b border-border">
+        <component :is="AnnouncementBanner" v-if="AnnouncementBanner" />
         <Collapsible v-model:open="mobileMenuOpen" class="lg:hidden">
             <div
                 class="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6"
