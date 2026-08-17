@@ -92,8 +92,8 @@ event class lands.
 | `UserPreferencesUpdated` | Typed preference values change (notification preferences are *not* these — they live in Messaging per ADR-0041) | `user_id`, `preference_key`, `value` | proposed |
 | `UserAuthenticated` | A login succeeds | `user_id`, `brand_id`, `authenticated_at` | proposed |
 | `UserAuthenticationFailed` | A login attempt is rejected | `user_id` or `null`, `brand_id`, `reason_code` | proposed |
-| `UserAccountLocked` | The account is locked, manually or by policy | `user_id`, `reason_code`, `locked_at` | proposed |
-| `UserAccountUnlocked` | The lock is lifted | `user_id`, `unlocked_at` | proposed |
+| `UserAccountLocked` | The account is locked, manually or by policy (first lock only — re-locking emits nothing) | `user_id`, `reason_code`, `locked_at` | implemented |
+| `UserAccountUnlocked` | The lock is lifted | `user_id`, `unlocked_at` | implemented |
 | `SocialIdentityLinked` | A social provider identity is attached | `user_id`, `provider`, `provider_user_id` | proposed |
 | `SocialIdentityUnlinked` | A social provider identity is detached | `user_id`, `provider` | proposed |
 | `TwoFactorEnabled` | 2FA enrolment is confirmed | `user_id`, `enabled_at` | proposed |

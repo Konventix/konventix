@@ -173,6 +173,12 @@ declare namespace Konventix {
             export type AccountPreferencesData = {
                 readonly emailNotifications: boolean;
             };
+            export type AdminUpdateUserData = {
+                name: string;
+                email: string;
+                locale: string;
+                timezone: string;
+            };
             export type PasswordUpdateData = {
                 readonly current_password: string;
                 readonly password: string;

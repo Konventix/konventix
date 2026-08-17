@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import type { SortingState } from '@tanstack/vue-table';
 import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -7,7 +7,7 @@ import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import type { DataTableFilters } from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
-import { index as usersIndex } from '@/routes/admin/users';
+import { edit as editUser, index as usersIndex } from '@/routes/admin/users';
 import { columns } from './columns';
 import type { UserRow } from './columns';
 
@@ -77,6 +77,8 @@ const pagination = computed(() => ({
             :get-row-id="(row: UserRow) => row.id"
             items-label="users"
             empty-message="No users found."
+            row-clickable
+            @row-click="(row: UserRow) => router.visit(editUser(row.id))"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />
