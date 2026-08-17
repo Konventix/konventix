@@ -21,8 +21,6 @@ use Konventix\Platform\Media\MediaLibrary;
  */
 class HeroBlock implements BlockType, ResolvesBlockProps
 {
-    public function __construct(private readonly MediaLibrary $media) {}
-
     public function key(): string
     {
         return 'hero';
@@ -51,9 +49,14 @@ class HeroBlock implements BlockType, ResolvesBlockProps
     {
         $payload = HeroBlockData::from($data);
 
+        // Resolved per render, not injected: block types are registered at
+        // boot into a registry a long-lived Octane worker shares, and
+        // MediaLibrary reaches request-scoped disk resolution (ADR-0043
+        // point 6). A boot-time instance would pin one request's resolver
+        // into every later request that worker serves.
         $image = $payload->imageMediaId === null
             ? null
-            : $this->media->referenceFor($payload->imageMediaId);
+            : app(MediaLibrary::class)->referenceFor($payload->imageMediaId);
 
         return (new HeroResolvedData(
             heading: $payload->heading,

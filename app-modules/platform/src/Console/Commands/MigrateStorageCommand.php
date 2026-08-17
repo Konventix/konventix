@@ -6,8 +6,8 @@ namespace Konventix\Platform\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Filesystem\Filesystem;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Konventix\Platform\Storage\DiskResolver;
 use Konventix\Platform\Storage\StorageMigration;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Konventix\Platform\Storage\StorageRecord;
@@ -48,8 +48,12 @@ class MigrateStorageCommand extends Command
 
     protected $description = 'Move stored files between disks, verifying every copy (ADR-0043)';
 
-    public function handle(StorageMigrationRegistry $registry): int
+    private DiskResolver $disks;
+
+    public function handle(StorageMigrationRegistry $registry, DiskResolver $disks): int
     {
+        $this->disks = $disks;
+
         intro('Konventix storage migration');
 
         $migration = $this->resolveMigration($registry);
@@ -88,8 +92,8 @@ class MigrateStorageCommand extends Command
             return self::SUCCESS;
         }
 
-        $source = Storage::disk($from);
-        $destination = Storage::disk($to);
+        $source = $this->disks->filesystem($from);
+        $destination = $this->disks->filesystem($to);
 
         $moved = 0;
         $files = 0;
@@ -173,9 +177,9 @@ class MigrateStorageCommand extends Command
      */
     private function resolveDisks(StorageMigration $migration): array
     {
-        /** @var array<string, mixed> $disks */
-        $disks = config('filesystems.disks', []);
-        $names = array_keys($disks);
+        /** @var array<string, mixed> $configured */
+        $configured = config('filesystems.disks', []);
+        $names = array_keys($configured);
 
         $from = $this->option('from') ?? select(
             label: 'Move files off which disk?',
@@ -188,8 +192,11 @@ class MigrateStorageCommand extends Command
             options: $names,
         );
 
+        // A brand's own bucket (`media:{brandId}`) is a valid endpoint on
+        // either side — it just is not in the configured list, so it has to be
+        // passed explicitly (ADR-0043 point 6).
         foreach ([$from, $to] as $name) {
-            if (! isset($disks[$name])) {
+            if (! $this->disks->exists((string) $name)) {
                 $this->components->error(sprintf("Unknown disk '%s'.", $name));
 
                 return [null, null];
@@ -210,7 +217,7 @@ class MigrateStorageCommand extends Command
         $payload = 'konventix storage probe';
 
         try {
-            $filesystem = Storage::disk($disk);
+            $filesystem = $this->disks->filesystem($disk);
             $filesystem->put($key, $payload);
 
             if ($filesystem->get($key) !== $payload) {

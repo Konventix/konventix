@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Konventix\Platform\Actions;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\MediaUsage;
+use Konventix\Platform\Storage\DiskResolver;
 
 /**
  * Deletes a media item and its stored files — refused while any usage
@@ -17,6 +17,8 @@ use Konventix\Platform\Models\MediaUsage;
  */
 final class DeleteMediaItem
 {
+    public function __construct(private readonly DiskResolver $disks) {}
+
     public function handle(MediaItem $item): void
     {
         DB::transaction(function () use ($item): void {
@@ -37,7 +39,7 @@ final class DeleteMediaItem
 
             $item->delete();
 
-            Storage::disk($item->disk)->delete($paths);
+            $this->disks->filesystem($item->disk)->delete($paths);
         });
     }
 }

@@ -10,6 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Konventix\Platform\Media\ThumbnailGenerator;
 use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Storage\DiskResolver;
 
 /**
  * Generates a media item's variants outside the upload request (ADR-0043).
@@ -37,7 +38,7 @@ final class GenerateMediaVariants implements ShouldQueue
 
     public function __construct(public readonly string $mediaItemId) {}
 
-    public function handle(ThumbnailGenerator $thumbnails): void
+    public function handle(ThumbnailGenerator $thumbnails, DiskResolver $disks): void
     {
         $item = MediaItem::withoutBrandScope()->find($this->mediaItemId);
 
@@ -45,7 +46,7 @@ final class GenerateMediaVariants implements ShouldQueue
             return;
         }
 
-        $variants = $thumbnails->generate($item->disk, $item->path, $item->mime_type);
+        $variants = $thumbnails->generate($disks->filesystem($item->disk), $item->path, $item->mime_type);
 
         $item->forceFill([
             'variants' => $variants,

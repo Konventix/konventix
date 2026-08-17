@@ -13,6 +13,7 @@ use Konventix\Platform\Jobs\GenerateMediaVariants;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Media\ThumbnailGenerator;
 use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Storage\DiskResolver;
 
 /**
  * ADR-0043: how a media ULID becomes a URL depends on the disk it lives on.
@@ -178,7 +179,7 @@ it('fills the variants when the job runs, and does nothing on replay', function 
         uploadedByUserId: null,
     );
 
-    (new GenerateMediaVariants($item->getKey()))->handle(app(ThumbnailGenerator::class));
+    (new GenerateMediaVariants($item->getKey()))->handle(app(ThumbnailGenerator::class), app(DiskResolver::class));
 
     $item->refresh();
 
@@ -189,7 +190,7 @@ it('fills the variants when the job runs, and does nothing on replay', function 
     // A retry after the stamp must not rewrite a variant readers may already
     // be caching (keys are immutable, ADR-0043).
     $stampedAt = $item->variants_generated_at;
-    (new GenerateMediaVariants($item->getKey()))->handle(app(ThumbnailGenerator::class));
+    (new GenerateMediaVariants($item->getKey()))->handle(app(ThumbnailGenerator::class), app(DiskResolver::class));
 
     expect($item->refresh()->variants_generated_at->equalTo($stampedAt))->toBeTrue();
 });
@@ -207,7 +208,7 @@ it('marks a non-raster upload processed rather than perpetually pending', functi
         uploadedByUserId: null,
     );
 
-    (new GenerateMediaVariants($item->getKey()))->handle(app(ThumbnailGenerator::class));
+    (new GenerateMediaVariants($item->getKey()))->handle(app(ThumbnailGenerator::class), app(DiskResolver::class));
 
     // "Processed, nothing to make" is a state — not a spinner forever.
     expect($item->refresh()->variants)->toBe([])

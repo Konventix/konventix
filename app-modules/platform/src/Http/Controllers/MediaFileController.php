@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Http\Controllers;
 
-use Illuminate\Support\Facades\Storage;
 use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Storage\DiskResolver;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -25,7 +25,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class MediaFileController
 {
-    public function __invoke(string $media, ?string $variant = null): StreamedResponse
+    public function __invoke(DiskResolver $disks, string $media, ?string $variant = null): StreamedResponse
     {
         // Cross-brand by ULID like the rest of the library: the ULID implies
         // the brand, and rendering happens wherever it happens.
@@ -39,7 +39,9 @@ class MediaFileController
 
         abort_if($path === null, 404);
 
-        $disk = Storage::disk($item->disk);
+        abort_unless($disks->exists($item->disk), 404);
+
+        $disk = $disks->filesystem($item->disk);
 
         abort_unless($disk->exists($path), 404);
 

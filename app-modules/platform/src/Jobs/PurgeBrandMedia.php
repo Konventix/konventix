@@ -8,7 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Support\Facades\Storage;
+use Konventix\Platform\Storage\DiskResolver;
 
 /**
  * Deletes a deleted brand's media files (ADR-0043).
@@ -39,14 +39,17 @@ final class PurgeBrandMedia implements ShouldQueue
         public readonly array $disks,
     ) {}
 
-    public function handle(): void
+    public function handle(DiskResolver $resolver): void
     {
         foreach ($this->disks as $disk) {
-            if (config("filesystems.disks.{$disk}") === null) {
+            // A disk whose definition is gone — a retired bucket, or this
+            // brand's own storage settings, deleted with the brand a moment
+            // ago — has nothing left to purge through.
+            if (! $resolver->exists($disk)) {
                 continue;
             }
 
-            Storage::disk($disk)->deleteDirectory($this->brandId);
+            $resolver->filesystem($disk)->deleteDirectory($this->brandId);
         }
     }
 }

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Media;
 
-use Illuminate\Support\Facades\Storage;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\MediaUsage;
+use Konventix\Platform\Storage\DiskResolver;
 
 /**
  * The sanctioned read/reference API of the media library (ADR-0035):
@@ -17,10 +17,17 @@ use Konventix\Platform\Models\MediaUsage;
  * Lookups run `withoutBrandScope` deliberately: a consumer passes the ULID
  * it stored, and that ULID already implies the brand — resolution must not
  * depend on which brand (or operator host) is ambient when rendering
- * happens (queued mail, admin previews). Stateless; safe under Octane.
+ * happens (queued mail, admin previews).
+ *
+ * Disk resolution goes through {@see DiskResolver}, which is request-scoped
+ * because a brand may bring its own bucket (ADR-0043 point 6) — so an
+ * instance of this class must be resolved per request too, never captured at
+ * boot.
  */
 class MediaLibrary
 {
+    public function __construct(private readonly DiskResolver $disks) {}
+
     /**
      * Resolve a media ULID to a public URL, optionally for a named variant.
      * Unknown ULIDs and unknown variants resolve to null — a stale
@@ -84,8 +91,8 @@ class MediaLibrary
      */
     private function deliveryUrl(MediaItem $item, string $path, ?string $variant): string
     {
-        if (config("filesystems.disks.{$item->disk}.public_direct") === true) {
-            return Storage::disk($item->disk)->url($path);
+        if ($this->disks->isPublicDirect($item->disk)) {
+            return $this->disks->filesystem($item->disk)->url($path);
         }
 
         return route('platform.media.show', array_filter([
@@ -128,7 +135,7 @@ class MediaLibrary
             return null;
         }
 
-        $disk = Storage::disk($item->disk);
+        $disk = $this->disks->filesystem($item->disk);
 
         if (! $disk->exists($path)) {
             return null;

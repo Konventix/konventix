@@ -22,6 +22,7 @@ use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\OperatorContext;
 use Konventix\Platform\Realtime\BrandApplicationProvider;
 use Konventix\Platform\Slots\SlotRegistry;
+use Konventix\Platform\Storage\DiskResolver;
 use Konventix\Platform\Storage\MediaStorageMigration;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Laravel\Pennant\Feature;
@@ -119,6 +120,11 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->app->singleton(SlotRegistry::class);
         $this->app->singleton(BlockRegistry::class);
         $this->app->singleton(StorageMigrationRegistry::class);
+
+        // Scoped, not singleton: DiskResolver memoizes built filesystems —
+        // including a brand's own bucket (ADR-0043 point 6) — and those must
+        // not survive into the next request an Octane worker serves.
+        $this->app->scoped(DiskResolver::class);
     }
 
     /**
@@ -131,11 +137,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $registry = $this->app->make(BlockRegistry::class);
 
         $registry->register(new TextBlock);
-        // Resolved through the container: HeroBlock needs MediaLibrary to
-        // turn its stored media ULID into a URL (ADR-0035/ADR-0043). The
-        // library is stateless, so holding one in a boot-time registry is
-        // safe under Octane.
-        $registry->register($this->app->make(HeroBlock::class));
+        $registry->register(new HeroBlock);
         $registry->register(new CardsBlock);
     }
 

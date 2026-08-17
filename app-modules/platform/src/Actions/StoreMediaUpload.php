@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use Konventix\Platform\Jobs\GenerateMediaVariants;
 use Konventix\Platform\Media\ThumbnailGenerator;
 use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Storage\DiskResolver;
 
 /**
  * Accepts an upload into the brand's media library (ADR-0035): stores the
@@ -26,24 +27,27 @@ final class StoreMediaUpload
 {
     public function __construct(
         private readonly ThumbnailGenerator $thumbnails,
+        private readonly DiskResolver $disks,
     ) {}
 
     public function handle(string $brandId, UploadedFile $file, ?string $altText, ?string $uploadedByUserId): MediaItem
     {
-        // Where NEW media lands (ADR-0043). The disk is recorded on the row,
-        // so pointing this at object storage leaves everything already
-        // uploaded readable on the disk it was written to.
-        $disk = (string) config('filesystems.media_disk', 'media');
+        // Where NEW media lands (ADR-0043): the brand's own bucket when it
+        // has one, the deployment's configured media disk otherwise. The
+        // name is recorded on the row, so everything already uploaded stays
+        // readable on the disk it was written to.
+        $disk = $this->disks->mediaDiskNameFor($brandId);
+        $filesystem = $this->disks->filesystem($disk);
 
         $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension());
         $path = sprintf('%s/%s.%s', $brandId, (string) Str::ulid(), $extension);
 
-        $file->storeAs(dirname($path), basename($path), $disk);
+        $filesystem->putFileAs(dirname($path), $file, basename($path));
 
-        $inline = config("filesystems.disks.{$disk}.driver") === 'local';
+        $inline = ($this->disks->configFor($disk)['driver'] ?? null) === 'local';
 
         $variants = $inline
-            ? $this->thumbnails->generate($disk, $path, $file->getMimeType() ?? 'application/octet-stream')
+            ? $this->thumbnails->generate($filesystem, $path, $file->getMimeType() ?? 'application/octet-stream')
             : [];
 
         $item = DB::transaction(function () use ($brandId, $disk, $inline, $file, $path, $variants, $altText, $uploadedByUserId): MediaItem {

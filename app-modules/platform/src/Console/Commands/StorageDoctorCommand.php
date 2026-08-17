@@ -6,8 +6,9 @@ namespace Konventix\Platform\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Konventix\Platform\Models\BrandStorageSetting;
+use Konventix\Platform\Storage\DiskResolver;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Throwable;
 
@@ -41,8 +42,12 @@ class StorageDoctorCommand extends Command
 
     private bool $failed = false;
 
-    public function handle(StorageMigrationRegistry $registry): int
+    private DiskResolver $disks;
+
+    public function handle(StorageMigrationRegistry $registry, DiskResolver $disks): int
     {
+        $this->disks = $disks;
+
         $this->checkSymlink();
 
         foreach ($this->disksToCheck($registry) as $disk => $purposes) {
@@ -82,6 +87,13 @@ class StorageDoctorCommand extends Command
             $disks[$migration->configuredDisk()][] = $key;
         }
 
+        // Brands that brought their own bucket (ADR-0043 point 6). They are
+        // the likeliest thing to be misconfigured, since an operator sets
+        // them per brand rather than once per deployment.
+        foreach (BrandStorageSetting::withoutBrandScope()->pluck('brand_id') as $brandId) {
+            $disks['media'.DiskResolver::BRAND_SEPARATOR.$brandId][] = 'media (brand-owned)';
+        }
+
         return $disks;
     }
 
@@ -115,9 +127,9 @@ class StorageDoctorCommand extends Command
             $this->describe($disk),
         );
 
-        $config = config("filesystems.disks.{$disk}");
+        $config = $this->disks->configFor($disk);
 
-        if (! is_array($config)) {
+        if ($config === null) {
             $this->reportFailure($disk, 'is not a configured disk');
 
             return;
@@ -127,7 +139,7 @@ class StorageDoctorCommand extends Command
         $payload = 'konventix storage doctor probe';
 
         try {
-            $filesystem = Storage::disk($disk);
+            $filesystem = $this->disks->filesystem($disk);
 
             $filesystem->put($key, $payload);
             $this->reportOk('write');
@@ -162,7 +174,7 @@ class StorageDoctorCommand extends Command
      */
     private function checkPublicDirect(string $disk, string $key, string $payload): void
     {
-        $url = Storage::disk($disk)->url($key);
+        $url = $this->disks->filesystem($disk)->url($key);
 
         try {
             $response = Http::withOptions(['allow_redirects' => true])->timeout(10)->get($url);
@@ -197,7 +209,7 @@ class StorageDoctorCommand extends Command
     {
         foreach ($registry->all() as $key => $migration) {
             foreach ($migration->disksInUse() as $disk => $count) {
-                if (config("filesystems.disks.{$disk}") !== null) {
+                if ($this->disks->exists($disk)) {
                     continue;
                 }
 
@@ -213,9 +225,9 @@ class StorageDoctorCommand extends Command
 
     private function describe(string $disk): string
     {
-        $config = config("filesystems.disks.{$disk}");
+        $config = $this->disks->configFor($disk);
 
-        if (! is_array($config)) {
+        if ($config === null) {
             return 'not configured';
         }
 

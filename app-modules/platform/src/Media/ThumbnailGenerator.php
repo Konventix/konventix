@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Media;
 
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Contracts\Filesystem\Filesystem;
 
 /**
  * Generates the library's `thumb` variant (ADR-0035 "generated variants")
@@ -19,15 +19,19 @@ class ThumbnailGenerator
     private const array RASTER_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
     /**
+     * Takes a resolved filesystem rather than a disk name: media may live on
+     * a brand's own bucket, which only `DiskResolver` knows how to build
+     * (ADR-0043 point 6).
+     *
      * @return array<string, string> variant name => storage path
      */
-    public function generate(string $disk, string $path, string $mimeType): array
+    public function generate(Filesystem $disk, string $path, string $mimeType): array
     {
         if (! in_array($mimeType, self::RASTER_MIMES, true)) {
             return [];
         }
 
-        $source = imagecreatefromstring(Storage::disk($disk)->get($path));
+        $source = imagecreatefromstring((string) $disk->get($path));
 
         if ($source === false) {
             return [];
@@ -59,7 +63,7 @@ class ThumbnailGenerator
 
         $thumbPath = preg_replace('/(\.[^.\/]+)?$/', '', $path, 1).'.thumb.webp';
 
-        Storage::disk($disk)->put($thumbPath, $bytes);
+        $disk->put($thumbPath, $bytes);
 
         return ['thumb' => $thumbPath];
     }

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Konventix\Platform\Jobs\PurgeBrandMedia;
 use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Storage\DiskResolver;
 
 /**
  * ADR-0043: media rows cascade with the brand, files do not. On object
@@ -48,7 +49,7 @@ it('deletes the brand prefix and leaves other brands alone', function (): void {
     Storage::disk('media')->put('brand-a/hero.jpg', 'a');
     Storage::disk('media')->put('brand-b/logo.png', 'b');
 
-    (new PurgeBrandMedia('brand-a', ['media']))->handle();
+    (new PurgeBrandMedia('brand-a', ['media']))->handle(app(DiskResolver::class));
 
     Storage::disk('media')->assertMissing('brand-a/logo.png');
     Storage::disk('media')->assertMissing('brand-a/hero.jpg');
@@ -59,7 +60,7 @@ it('skips a disk that is no longer configured instead of failing', function (): 
     Storage::fake('media');
     Storage::disk('media')->put('brand-a/logo.png', 'a');
 
-    (new PurgeBrandMedia('brand-a', ['retired_bucket', 'media']))->handle();
+    (new PurgeBrandMedia('brand-a', ['retired_bucket', 'media']))->handle(app(DiskResolver::class));
 
     Storage::disk('media')->assertMissing('brand-a/logo.png');
 });
