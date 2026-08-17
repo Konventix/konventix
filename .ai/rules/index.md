@@ -8,6 +8,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | config/octane.php | .ai/rules/config.md |
 | app-modules/*/src/Data/** | .ai/rules/data.md |
 | phpstan.neon, compose.yaml, .env.example, README.md | .ai/rules/general.md |
+| app-modules/*/src/Listeners/** | .ai/rules/listeners.md |
 | app-modules/*/src/Models/**, app-modules/*/database/** | .ai/rules/models.md |
 | app-modules/*/resources/js/pages/**, resources/js/pages/** | .ai/rules/pages.md |
 | app-modules/*/src/Providers/** | .ai/rules/providers.md |

@@ -109,7 +109,13 @@ return [
     | disable event discovery, set this to false. If you want to enable event
     | discovery, set this to true. We will still check the app namespace for
     | the presence of event discovery.
+    |
+    | Deliberately OFF here: every module registers its listeners explicitly
+    | in its own ServiceProvider (ADR-0003), and discovery scanned the same
+    | src/Listeners directories a second time — every listener ran twice per
+    | event. Idempotent projections masked it; Messaging's send listeners
+    | (ADR-0041 point 8) surfaced it as duplicate mail.
     */
 
-    'should_discover_events' => null,
+    'should_discover_events' => false,
 ];
