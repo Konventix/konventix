@@ -6,6 +6,9 @@
     "guidelines": true,
     "mcp": true,
     "nightwatch": false,
+    "packages": [
+        "internachi/modular"
+    ],
     "sail": false,
     "skills": [
         "infer-conventions",
@@ -18,6 +21,7 @@
         "inertia-vue-development",
         "echo-vue-development",
         "echo-development",
-        "tailwindcss-development"
+        "tailwindcss-development",
+        "modular"
     ]
 }
