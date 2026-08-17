@@ -25,10 +25,14 @@ scalars and ULIDs, which is exactly what the rule asks for.
 
 ## Owns
 
-- **Channel abstraction**: a `MessageChannel` driver contract with mail as the
-  first implementation, in-app next, and push after that. Channel selection,
-  fallback between channels, and per-brand sender identity — from address,
-  reply-to, footer, signing domain.
+- **Channel abstraction**: a `MessageChannel` driver contract with mail,
+  in-app and web push implementations behind one `ChannelMap`. Channel
+  selection, fallback between channels, and per-brand sender identity — from
+  address, reply-to, footer, signing domain. Web push (ADR-0041 point 7,
+  D-MSG-02) uses one VAPID key pair per deployment, per-device subscription
+  rows keyed (recipient, endpoint) pruned when the push service reports them
+  gone, and a typed payload (title, body, URL, tag) rendered by the static
+  `push-sw.js` worker — never a free-form array.
 - **Topics and preferences** (ADR-0041, D-MSG-05/06): modules declare topics at
   boot (key, label, default channels, `suppressible`, `digestable`) in the
   `TopicRegistry`, exactly as they declare templates. A send names its topic;

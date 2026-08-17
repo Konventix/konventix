@@ -11,14 +11,19 @@ use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Channels\ChannelMap;
 use Konventix\Messaging\Channels\InAppChannel;
 use Konventix\Messaging\Channels\MailChannel;
+use Konventix\Messaging\Channels\PushChannel;
+use Konventix\Messaging\Channels\WebPushSender;
 use Konventix\Messaging\Console\FlushHeldMessagesCommand;
+use Konventix\Messaging\Console\GenerateVapidKeysCommand;
 use Konventix\Messaging\Contracts\MessageChannel;
+use Konventix\Messaging\Contracts\PushSender;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Listeners\ProjectRecipient;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Messaging\Topics\TopicRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use RuntimeException;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -51,12 +56,12 @@ class MessagingServiceProvider extends ModuleServiceProvider
         $this->app->singleton(TopicRegistry::class);
 
         // Channel drivers resolve through the map (ADR-0041): adding a
-        // channel is one register() line. Push registers here when its
-        // slice lands.
+        // channel is one register() line.
         $this->app->singleton(ChannelMap::class, function (): ChannelMap {
             $map = new ChannelMap;
             $map->register(Channel::Mail, MailChannel::class);
             $map->register(Channel::InApp, InAppChannel::class);
+            $map->register(Channel::Push, PushChannel::class);
 
             return $map;
         });
@@ -64,6 +69,26 @@ class MessagingServiceProvider extends ModuleServiceProvider
         // Kept for anything resolving the bare contract; the pipeline
         // itself selects per envelope through ChannelMap.
         $this->app->bind(MessageChannel::class, MailChannel::class);
+
+        // The web-push wire seam (ADR-0041 point 7): resolved only when a
+        // push envelope actually delivers, so an unconfigured deployment
+        // fails loudly at send time — never at boot.
+        $this->app->bind(PushSender::class, function (): PushSender {
+            $publicKey = config('services.webpush.public_key');
+            $privateKey = config('services.webpush.private_key');
+
+            if (! is_string($publicKey) || $publicKey === '' || ! is_string($privateKey) || $privateKey === '') {
+                throw new RuntimeException(
+                    'Web push is not configured: set VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY (generate with `php artisan messaging:vapid-keys`).',
+                );
+            }
+
+            return new WebPushSender(
+                publicKey: $publicKey,
+                privateKey: $privateKey,
+                subject: (string) config('services.webpush.subject'),
+            );
+        });
     }
 
     /**
@@ -124,7 +149,7 @@ class MessagingServiceProvider extends ModuleServiceProvider
     protected function registerSchedule(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([FlushHeldMessagesCommand::class]);
+            $this->commands([FlushHeldMessagesCommand::class, GenerateVapidKeysCommand::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
+import { onMounted, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { edit, update } from '@/routes/notification-preferences';
+import { destroy as pushDestroy, store as pushStore } from '@/routes/push-subscriptions';
 
 /**
  * Rendered from the topic registry (ADR-0041): a new notification kind
@@ -20,7 +22,7 @@ type TopicRow = {
     channels: TopicChannel[];
 };
 
-const props = defineProps<{ topics: TopicRow[] }>();
+const props = defineProps<{ topics: TopicRow[]; vapidPublicKey: string | null }>();
 
 defineOptions({
     layout: {
@@ -57,6 +59,111 @@ function entry(topic: string, channel: string) {
 
 function submit(): void {
     form.put(update().url, { preserveScroll: true });
+}
+
+/**
+ * Push on this device (ADR-0041 point 7): the subscription lives in the
+ * browser's push manager; the backend only mirrors it. `push-sw.js` is a
+ * static worker that renders the typed payload — nothing else.
+ */
+const pushSupported =
+    typeof window !== 'undefined' &&
+    'serviceWorker' in navigator &&
+    'PushManager' in window &&
+    props.vapidPublicKey !== null;
+
+const pushEnabled = ref(false);
+const pushDenied = ref(false);
+const pushBusy = ref(false);
+
+function urlBase64ToUint8Array(base64: string): Uint8Array {
+    const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+    const raw = window.atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+}
+
+async function pushRequest(url: string, method: 'POST' | 'DELETE', body: Record<string, unknown>): Promise<void> {
+    const xsrf = document.cookie
+        .split('; ')
+        .find((row) => row.startsWith('XSRF-TOKEN='))
+        ?.split('=')[1];
+
+    const response = await fetch(url, {
+        method,
+        headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(xsrf ? { 'X-XSRF-TOKEN': decodeURIComponent(xsrf) } : {}),
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Push subscription request failed: ${response.status}`);
+    }
+}
+
+onMounted(async () => {
+    if (!pushSupported) {
+        return;
+    }
+
+    pushDenied.value = Notification.permission === 'denied';
+
+    const registration = await navigator.serviceWorker.getRegistration('/push-sw.js');
+    pushEnabled.value = !!(await registration?.pushManager.getSubscription());
+});
+
+async function enablePush(): Promise<void> {
+    if (!props.vapidPublicKey) {
+        return;
+    }
+
+    pushBusy.value = true;
+
+    try {
+        if ((await Notification.requestPermission()) !== 'granted') {
+            pushDenied.value = Notification.permission === 'denied';
+            return;
+        }
+
+        const registration = await navigator.serviceWorker.register('/push-sw.js');
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(props.vapidPublicKey),
+        });
+
+        const json = subscription.toJSON();
+        await pushRequest(pushStore().url, 'POST', {
+            endpoint: json.endpoint,
+            p256dh: json.keys?.p256dh,
+            auth: json.keys?.auth,
+        });
+
+        pushEnabled.value = true;
+    } finally {
+        pushBusy.value = false;
+    }
+}
+
+async function disablePush(): Promise<void> {
+    pushBusy.value = true;
+
+    try {
+        const registration = await navigator.serviceWorker.getRegistration('/push-sw.js');
+        const subscription = await registration?.pushManager.getSubscription();
+
+        if (subscription) {
+            await pushRequest(pushDestroy().url, 'DELETE', { endpoint: subscription.endpoint });
+            await subscription.unsubscribe();
+        }
+
+        pushEnabled.value = false;
+    } finally {
+        pushBusy.value = false;
+    }
 }
 </script>
 
@@ -122,5 +229,36 @@ function submit(): void {
                 </span>
             </div>
         </form>
+
+        <div v-if="pushSupported" class="flex flex-col gap-2 rounded-md border border-border p-4">
+            <h2 class="text-sm font-medium text-text">Push on this device</h2>
+            <p class="text-xs text-text-muted">
+                Browser notifications reach this device even while the site is
+                closed. Each device is enabled separately.
+            </p>
+            <p v-if="pushDenied" class="text-sm text-text-muted">
+                Notifications are blocked for this site in the browser settings.
+            </p>
+            <div v-else>
+                <Button
+                    v-if="!pushEnabled"
+                    type="button"
+                    variant="outline"
+                    :disabled="pushBusy"
+                    @click="enablePush"
+                >
+                    Enable on this device
+                </Button>
+                <Button
+                    v-else
+                    type="button"
+                    variant="outline"
+                    :disabled="pushBusy"
+                    @click="disablePush"
+                >
+                    Disable on this device
+                </Button>
+            </div>
+        </div>
     </div>
 </template>

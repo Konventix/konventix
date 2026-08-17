@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Messaging\Http\Controllers\NotificationPreferencesController;
 use Konventix\Messaging\Http\Controllers\NotificationsController;
+use Konventix\Messaging\Http\Controllers\PushSubscriptionsController;
 
 Route::middleware(['auth'])->group(function (): void {
     // The preferences page lives with the account's other settings pages;
@@ -23,6 +24,13 @@ Route::middleware(['auth'])->group(function (): void {
         ->name('notifications.read-all');
     Route::post('notifications/{notification}/read', [NotificationsController::class, 'read'])
         ->name('notifications.read');
+
+    // Web-push device subscriptions (ADR-0041 point 7): registered from
+    // the notification settings page after the permission grant.
+    Route::post('push-subscriptions', [PushSubscriptionsController::class, 'store'])
+        ->name('push-subscriptions.store');
+    Route::delete('push-subscriptions', [PushSubscriptionsController::class, 'destroy'])
+        ->name('push-subscriptions.destroy');
 });
 
 /*

@@ -40,6 +40,17 @@ return [
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
     ],
 
+    // Web push (ADR-0041 point 7): one VAPID key pair per deployment —
+    // every stored subscription is bound to it, so rotation invalidates
+    // them all. Generate with `php artisan messaging:vapid-keys`. The
+    // subject identifies the sender to push services (a mailto: or the
+    // platform origin).
+    'webpush' => [
+        'public_key' => env('VAPID_PUBLIC_KEY'),
+        'private_key' => env('VAPID_PRIVATE_KEY'),
+        'subject' => env('VAPID_SUBJECT', 'mailto:'.env('MAIL_FROM_ADDRESS', 'hello@example.com')),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

@@ -37,6 +37,10 @@ class NotificationPreferencesController
             ->groupBy('topic_key');
 
         return Inertia::render('settings/Notifications', [
+            // The deployment's VAPID public key (ADR-0041 point 7): the
+            // browser needs it to subscribe this device; null hides the
+            // push section entirely.
+            'vapidPublicKey' => config('services.webpush.public_key'),
             'topics' => collect($topics->all())
                 ->map(fn (Topic $topic): array => [
                     'key' => $topic->key,
