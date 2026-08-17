@@ -78,9 +78,9 @@ the natural first consumer and would register the first real template.
       (`ViewMessageLog`/`ViewMessageContent`/`ResendMessage` from
       `src/Enums/Permission.php`, done — see Done below), plus the
       `src/Gdpr/` handler that exports and purges inbox and log rows
-      (`ManageMessageTemplates`/`ManageSenderIdentity`/`ViewSuppressionList`/
-      `ManageSuppressionList` are the remaining capabilities with no UI yet
-      either).
+      (`ManageMessageTemplates`/`ViewSuppressionList`/
+      `ManageSuppressionList` are the remaining capabilities with no UI yet;
+      `ManageSenderIdentity` gates the mail-settings console — see Done).
 - [ ] `permissions:sync` (ADR-0013) doesn't exist in the codebase yet — once it
       does, run it so `src/Enums/Permission.php`'s seven cases get rows in the
       `permissions` table. Not specific to this module, but noted here since
@@ -95,6 +95,12 @@ the natural first consumer and would register the first real template.
 
 ## Done
 
+- [x] Mail-settings console (`/admin/mail-settings`, gated by
+      `ManageSenderIdentity`): per-brand sender identity, quiet-hours
+      timezone (ADR-0041) and optional own SMTP transport (ADR-0028) —
+      index over every brand with its transport state, edit form whose
+      stored password never travels to the browser and survives a blank
+      re-submit. First Messaging entry in the operator navigation.
 - [x] Intent-event listeners (Slice 13e, ADR-0041 point 8, closes
       Slice 13): `SendAnnouncementNotifications` (queued on the messaging
       queue) fans `AnnouncementPublished` out to every account on the

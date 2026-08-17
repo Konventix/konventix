@@ -210,6 +210,18 @@ declare namespace Konventix {
     }
     namespace Messaging {
         namespace Data {
+            export type MailSettingsData = {
+                fromName: string;
+                fromAddress: string;
+                replyTo: string | null;
+                timezone: string | null;
+                useCustomTransport: boolean;
+                smtpHost: string | null;
+                smtpPort: number | null;
+                smtpUsername: string | null;
+                smtpPassword: string | null;
+                smtpScheme: string | null;
+            };
             export type NotificationData = {
                 readonly id: string;
                 readonly topicKey: string | null;

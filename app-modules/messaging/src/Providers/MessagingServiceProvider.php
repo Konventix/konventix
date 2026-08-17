@@ -20,6 +20,7 @@ use Konventix\Messaging\Console\GenerateVapidKeysCommand;
 use Konventix\Messaging\Contracts\MessageChannel;
 use Konventix\Messaging\Contracts\PushSender;
 use Konventix\Messaging\Enums\Channel;
+use Konventix\Messaging\Enums\Permission;
 use Konventix\Messaging\Listeners\ProjectRecipient;
 use Konventix\Messaging\Listeners\SendAnnouncementNotifications;
 use Konventix\Messaging\Listeners\SendDunningNotice;
@@ -28,6 +29,8 @@ use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Messaging\Topics\Topic;
 use Konventix\Messaging\Topics\TopicRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Navigation\NavigationItem;
+use Konventix\Platform\Navigation\NavigationRegistry;
 use RuntimeException;
 
 /**
@@ -94,6 +97,26 @@ class MessagingServiceProvider extends ModuleServiceProvider
                 subject: (string) config('services.webpush.subject'),
             );
         });
+    }
+
+    /**
+     * The operator console's mail-settings screen (ADR-0028): sender
+     * identity and transport are Messaging-owned config data, so the nav
+     * entry is Messaging's to contribute (ADR-0003).
+     */
+    protected function registerNavigation(): void
+    {
+        $this->app->make(NavigationRegistry::class)->add(
+            new NavigationItem(
+                module: 'messaging',
+                label: 'Mail settings',
+                url: '/admin/mail-settings',
+                icon: 'mail',
+                order: 40,
+                permission: Permission::ManageSenderIdentity->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+        );
     }
 
     /**
