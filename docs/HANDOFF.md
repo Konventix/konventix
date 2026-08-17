@@ -75,7 +75,40 @@ ADR itself). Five commits plus one repo-wide bug fix:
   never reads Commerce models. Messaging owns both topics and templates;
   both SPEC boundary lines carry the (narrow) exception.
 
-Verification at handoff: **746 PHP tests + 22 TS tests passing (1 PHP
+**Second half of the session — admin/UI sweep** (user request: consistent
+console, dead-link-free navigation, View/Edit+Index for the core admin
+areas), seven commits `77f542b`…`d23bc18`:
+
+- **Nav cleanup**: brand hosts have no dashboard — `/dashboard` redirects
+  to the landing page (route name kept as Fortify's post-login target),
+  the stub page and the unused AppHeader/AppHeaderLayout shell are gone,
+  sidebar links Home, PublicTopbar's logged-in CTA goes to account
+  settings. A shop link joins the brand nav later.
+- **AdminPageHeader**: one header component (title, description, actions
+  slot) adopted by every console page, including the ones that
+  double-padded or hand-rolled their own.
+- **Brands**: real edit page — identity fields, host sync (first host
+  primary), theme shortcut, and **per-brand module activation** toggles
+  over Pennant (ADR-0003), gated by `platform.manage-module-activation`;
+  `ModuleGate::allModuleNames()` added for the read.
+- **Mail settings** (`/admin/mail-settings`, Messaging-owned, ADR-0028):
+  per-brand sender identity, quiet-hours timezone, optional own SMTP
+  transport; stored password never travels to the browser.
+- **Users**: account page with profile edit (emits `UserProfileUpdated`),
+  lock/unlock (first producers of `UserAccountLocked`/`Unlocked`, now
+  implemented in the SPEC), brand memberships and cross-brand roles.
+- **Orders**: detail page — lines, invoice + billing party + PDF,
+  payment attempts, credit notes, book-bank-transfer in place
+  (`bookPayment` now redirects `back()`).
+- **Roles**: create dialog + grant editor rendering from the new
+  `PermissionCatalog` (walks every module's Permission enum;
+  `permissions:sync` delegates to it); undeclared grants refused.
+- **Bell**: dropdown now links to `/settings/notifications` — the
+  preference page existed but nothing led there.
+- Venues kept their dialog-based create/edit (already complete); Events
+  already had full CRUD and only needed the header alignment.
+
+Verification at handoff: **767 PHP tests + 22 TS tests passing (1 PHP
 skip), PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
 
 The user worked in parallel this session (admin favorites in Platform,
