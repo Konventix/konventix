@@ -40,7 +40,7 @@ it('queues the job on Messaging\'s own queue with the accepted message', functio
     Queue::fake();
 
     $recipientId = (string) Str::ulid();
-    $message = app(SendMessage::class)->handle(messagingSendRequest($recipientId));
+    [$message] = app(SendMessage::class)->handle(messagingSendRequest($recipientId));
 
     expect($message->brandId)->toBe($brand->getKey())
         ->and($message->recipientId)->toBe($recipientId)
@@ -61,7 +61,7 @@ it('emits MessageQueued with a scalar-only payload when a message is accepted', 
     Event::fake([MessageQueued::class]);
 
     $recipientId = (string) Str::ulid();
-    $message = app(SendMessage::class)->handle(messagingSendRequest($recipientId));
+    [$message] = app(SendMessage::class)->handle(messagingSendRequest($recipientId));
 
     Event::assertDispatched(
         MessageQueued::class,

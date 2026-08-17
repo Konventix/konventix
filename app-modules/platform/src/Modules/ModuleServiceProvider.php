@@ -57,6 +57,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerBlockTypes();
         $this->registerSlots();
         $this->registerMessageTemplates();
+        $this->registerMessageTopics();
         $this->registerSchedule();
         $this->registerGdprExporters();
     }
@@ -224,6 +225,13 @@ abstract class ModuleServiceProvider extends ServiceProvider
      * registerBlockTypes/registerSlots).
      */
     protected function registerMessageTemplates(): void {}
+
+    /**
+     * Notification topics this module declares with Messaging's
+     * TopicRegistry (ADR-0041) — the unit of preference and delivery
+     * policy, declared next to the templates that use it.
+     */
+    protected function registerMessageTopics(): void {}
 
     protected function registerGdprExporters(): void {}
 

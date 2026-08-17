@@ -29,6 +29,14 @@ scalars and ULIDs, which is exactly what the rule asks for.
   first implementation, in-app next, and push after that. Channel selection,
   fallback between channels, and per-brand sender identity — from address,
   reply-to, footer, signing domain.
+- **Topics and preferences** (ADR-0041, D-MSG-05/06): modules declare topics at
+  boot (key, label, default channels, `suppressible`, `digestable`) in the
+  `TopicRegistry`, exactly as they declare templates. A send names its topic;
+  `SendMessage` fans out one envelope per default channel intersected with the
+  recipient's stored preferences. Preference rows live *here* — the module that
+  applies the rule stores it, so an unsubscribe has no consistency window. The
+  preference page (`settings/notifications`) renders from the registry: a new
+  notification kind is one declaration, no migration, no settings-page edit.
 - **Templates**: template keys registered by the owning module at boot,
   per-brand overrides, localisation per recipient locale, and rendering against
   a typed payload rather than a free-form array (ADR-0009,
@@ -53,7 +61,7 @@ scalars and ULIDs, which is exactly what the rule asks for.
 
 | Nearby concept | Owned by |
 |---|---|
-| Whether a person wants a given notification | Identity owns the stated preference; Messaging keeps a read model of it and applies it |
+| Whether a person wants a given notification | Messaging itself (ADR-0041 revised this line): preferences are rows per recipient/topic/channel stored here — Identity's settings navigation links to Messaging's preference page |
 | Email address of record | Identity for accounts, Commerce for invoice recipients — Messaging resolves a recipient by ULID at send time |
 | The business condition that triggers a message | the module owning the process — Messaging never watches for reasons to send |
 | Campaigns, subscriber lists, bulk marketing | Newsletter, behind a Listmonk client contract |
@@ -81,12 +89,12 @@ one.
 | Event | Emitted when | Payload | Status |
 |---|---|---|---|
 | `MessageQueued` | A message is accepted for delivery | `message_id`, `brand_id`, `recipient_id`, `channel`, `template_key` | implemented |
-| `MessageDelivered` | A channel confirms delivery | `message_id`, `channel`, `provider_message_id`, `delivered_at` | proposed |
-| `MessageFailed` | An attempt fails and will or will not be retried | `message_id`, `channel`, `failure_code`, `attempt`, `will_retry` | proposed |
+| `MessageDelivered` | The transport accepts the message (provider callbacks may refine later) | `message_id`, `channel`, `provider_message_id`, `delivered_at` | implemented |
+| `MessageFailed` | An attempt fails and will or will not be retried | `message_id`, `channel`, `failure_code`, `attempt`, `will_retry` | implemented |
 | `MessageBounced` | A provider reports a bounce | `message_id`, `recipient_id`, `bounce_type`, `bounced_at` | proposed |
-| `MessageSuppressed` | A send is refused before dispatch | `brand_id`, `recipient_id`, `template_key`, `reason_code` | proposed |
-| `RecipientSuppressionAdded` | A recipient is added to the suppression list | `recipient_id`, `channel`, `reason_code`, `suppressed_at` | proposed |
-| `RecipientSuppressionLifted` | A suppression is removed | `recipient_id`, `channel`, `lifted_at` | proposed |
+| `MessageSuppressed` | A channel's send is refused before dispatch (preferences or suppression list) | `message_id`, `brand_id`, `recipient_id`, `template_key`, `channel`, `reason_code` | implemented |
+| `RecipientSuppressionAdded` | An address or recipient joins the brand's suppression list | `suppression_id`, `brand_id`, `recipient_id`, `email`, `channel`, `reason_code`, `suppressed_at` | implemented |
+| `RecipientSuppressionLifted` | A suppression is lifted | `suppression_id`, `brand_id`, `recipient_id`, `email`, `channel`, `lifted_at` | implemented |
 | `NotificationRead` | An in-app notification is marked read | `notification_id`, `recipient_id`, `read_at` | proposed |
 
 `MessageSuppressed` matters more than it looks: a module that believes it sent a
@@ -101,7 +109,6 @@ maintains from them.
 |---|---|---|
 | `UserRegistered` | Identity | Seed the recipient read model — ULID, display name, locale |
 | `UserProfileUpdated` | Identity | Keep display name, locale and timezone current for rendering |
-| `UserPreferencesUpdated` | Identity | Maintain the notification preference read model that gates sends |
 | `UserAnonymized` | Identity | Drop the recipient read model entry |
 | `BrandCreated` | Platform | Seed the brand read model — name, canonical domain, sender identity |
 | `BrandThemeUpdated` | Platform | Refresh the tokens used to render branded mail |

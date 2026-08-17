@@ -72,7 +72,7 @@ on User; each is a read model in the owning module, keyed by the user's ULID:
 | The commercial act a person performed | Registration |
 | Invoice recipient identity, which may be an organization rather than a person | Commerce |
 | Consent, policy acceptance, GDPR orchestration, audit | Compliance — Identity supplies a `Gdpr/` handler for its own tables and nothing more |
-| Notification channels, delivery, inbox | Messaging — Identity owns the user's stated *preferences*, Messaging owns what happens with them |
+| Notification channels, delivery, inbox | Messaging — including *notification preferences* (ADR-0041 revised this line, D-MSG-06): the rows live in Messaging, and Identity's settings navigation links to Messaging's preference page |
 | Volunteer profile, skills, availability | Staffing |
 | Public profile pages, activity feeds, follower graphs | Community |
 
@@ -89,7 +89,7 @@ event class lands.
 | `UserRegistered` | An account is created | `user_id`, `brand_id` (the brand it was created *through*, ADR-0016), `email`, `display_name`, `locale`, `registered_at` | implemented |
 | `UserEmailVerified` | The email address is confirmed | `user_id`, `verified_at` | proposed |
 | `UserProfileUpdated` | Account contact/profile data changes | `user_id`, `email`, `display_name`, `locale`, `updated_at` | implemented |
-| `UserPreferencesUpdated` | Typed preference values change | `user_id`, `preference_key`, `value` | proposed |
+| `UserPreferencesUpdated` | Typed preference values change (notification preferences are *not* these — they live in Messaging per ADR-0041) | `user_id`, `preference_key`, `value` | proposed |
 | `UserAuthenticated` | A login succeeds | `user_id`, `brand_id`, `authenticated_at` | proposed |
 | `UserAuthenticationFailed` | A login attempt is rejected | `user_id` or `null`, `brand_id`, `reason_code` | proposed |
 | `UserAccountLocked` | The account is locked, manually or by policy | `user_id`, `reason_code`, `locked_at` | proposed |

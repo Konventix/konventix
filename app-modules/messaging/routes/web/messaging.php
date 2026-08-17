@@ -2,6 +2,19 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Route;
+use Konventix\Messaging\Http\Controllers\NotificationPreferencesController;
+
+Route::middleware(['auth'])->group(function (): void {
+    // The preferences page lives with the account's other settings pages;
+    // Identity links here — the rows live in Messaging (ADR-0041,
+    // D-MSG-06).
+    Route::get('settings/notifications', [NotificationPreferencesController::class, 'edit'])
+        ->name('notification-preferences.edit');
+    Route::put('settings/notifications', [NotificationPreferencesController::class, 'update'])
+        ->name('notification-preferences.update');
+});
+
 /*
  * Routes owned by the Messaging module.
  *

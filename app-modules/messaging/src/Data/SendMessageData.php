@@ -32,5 +32,7 @@ final class SendMessageData extends Data
         public readonly Data $payload,
         public readonly string $channel,
         public readonly ?DataCollection $attachments = null,
+        public readonly ?string $topicKey = null,
+        public readonly bool $urgent = false,
     ) {}
 }

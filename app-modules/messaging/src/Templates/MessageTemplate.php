@@ -26,6 +26,10 @@ final class MessageTemplate
         public readonly array $subjects,
         public readonly array $bodies,
         public readonly string $defaultLocale = 'en',
+        // D-MSG-07 hybrid (ADR-0041): only templates flagged legally
+        // significant store their rendered bodies on the delivery log.
+        // Default off — the log keeps the typed payload either way.
+        public readonly bool $logBodies = false,
     ) {
         if (! array_key_exists($defaultLocale, $subjects) || ! array_key_exists($defaultLocale, $bodies)) {
             throw new InvalidArgumentException(

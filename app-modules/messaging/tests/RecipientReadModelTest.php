@@ -72,7 +72,7 @@ it('resolves email and locale from the read model when the caller passes only th
     $userId = (string) Str::ulid();
     event(registeredEventFor($userId, $brand->getKey(), 'resolved@example.test'));
 
-    $message = app(SendMessage::class)->handle(new SendMessageRequest(
+    [$message] = app(SendMessage::class)->handle(new SendMessageRequest(
         recipientId: $userId,
         templateKey: 'test.read-model',
         payload: new RecipientTestPayload('Ada'),
@@ -101,7 +101,7 @@ it('accepts an explicit brand override outside any brand context', function (): 
     $brand = Brand::factory()->create();
     Queue::fake();
 
-    $message = app(SendMessage::class)->handle(new SendMessageRequest(
+    [$message] = app(SendMessage::class)->handle(new SendMessageRequest(
         recipientId: null,
         templateKey: 'test.read-model',
         payload: new RecipientTestPayload('Ada'),

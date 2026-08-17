@@ -39,5 +39,11 @@ final class SendMessageRequest extends Data
         public readonly ?string $recipientLocale = null,
         public readonly ?string $brandId = null,
         public readonly ?DataCollection $attachments = null,
+        // ADR-0041: names the declared topic whose channels and preferences
+        // govern this send. Null keeps the pre-topic behavior — immediate,
+        // mail only, no preference gate — so existing callers are unchanged.
+        public readonly ?string $topicKey = null,
+        // D-CNT-08's word: an urgent send bypasses digests and quiet hours.
+        public readonly bool $urgent = false,
     ) {}
 }

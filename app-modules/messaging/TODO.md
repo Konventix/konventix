@@ -15,9 +15,14 @@ the natural first consumer and would register the first real template.
       path (or an Identity replay) is needed before relying on
       id-only sends for old accounts. `UserAnonymized` is also still
       unconsumed — it lands with Identity's GDPR handler.
-- [ ] Channel selection: `SendMessageRequest`/`SendMessage` hardcode
-      `Channel::Mail` because it is the only driver bound. Needs a `channel`
-      parameter (or preference-based selection) once in-app/push exist.
+- [ ] Suppression-list and message-log operator screens: `AddSuppression`/
+      `LiftSuppression` exist with `ViewSuppressionList`/`ManageSuppressionList`
+      catalogued, but lifting means tinker; the delivery log likewise has no
+      `/admin` view yet (`ViewMessageLog`/`ViewMessageContent`).
+- [ ] Provider bounce/complaint webhooks feeding `AddSuppression` (ADR-0041
+      point 4 follow-up): per-brand transports are plain SMTP today and emit
+      none, so only the seam exists. `MessageBounced` in SPEC.md stays
+      proposed until this lands.
 - [ ] A brand read model — name, canonical domain, theme tokens for mail —
       maintained from `BrandCreated` / `BrandThemeUpdated` / `BrandArchived`
       (SPEC.md "Consumes"). Sender identity and transport do **not** need this:
@@ -51,14 +56,10 @@ the natural first consumer and would register the first real template.
       hours suppress/delay delivery per recipient. Design the coalescing key
       (recipient + template family?) before building the queue changes this
       needs on top of `SendQueuedMessage`.
-- [ ] Delivery log with attempts and provider identifiers, provider webhooks
-      for bounces and complaints, and the suppression list built from them —
-      **per brand, not global** (ADR-0028: reputation is per sending domain).
-      `MessageDelivered`, `MessageFailed`, `MessageBounced`,
-      `RecipientSuppressionAdded`/`Lifted` in SPEC.md's contract table all
-      depend on this landing.
 - [ ] In-app inbox with read state, exposed as a deferred prop rather than on
-      every request (lessons-from-lancore #5).
+      every request (lessons-from-lancore #5). ADR-0041 point 6: the in-app
+      channel writes the notification row; `notification.received` broadcasts
+      on the user's private Reverb channel.
 - [ ] Recipient and preference read models from Identity events — idempotent
       and replayable, rebuildable from scratch. (Superset of the recipient
       read model item under Next above; that item is the minimum slice —
@@ -84,6 +85,25 @@ the natural first consumer and would register the first real template.
 
 ## Done
 
+- [x] Topics, fan-out, delivery log, suppression and preferences (Slice 13a,
+      ADR-0041 points 1–4): `TopicRegistry` + `Topic` declared via the new
+      `ModuleServiceProvider::registerMessageTopics()` hook; `SendMessage` is
+      now the fan-out point — one envelope and one `messaging_messages` log
+      row per resolved channel (topic defaults, minus channels without a
+      driver or that need an account the recipient lacks), with preference
+      and suppression refusals logged `suppressed` + `MessageSuppressed`,
+      never silent. `SendQueuedMessage` keeps the log row (`sent`/`failed`,
+      attempts, last error) and emits `MessageDelivered`/`MessageFailed`;
+      bodies stored only for `logBodies`-flagged templates (D-MSG-07 hybrid).
+      Per-brand `Suppression` with partial-unique live rows,
+      `AddSuppression`/`LiftSuppression` +
+      `RecipientSuppressionAdded`/`Lifted`. `NotificationPreference` rows per
+      (recipient, topic, channel) with the `settings/notifications` page
+      rendered from the registry (non-suppressible topics render always-on,
+      forged toggles ignored). `messaging_recipients.timezone` added
+      (nullable, awaits an Identity payload) for quiet hours. A send without
+      a topic behaves exactly as before — immediate, mail, no preference
+      gate.
 - [x] Recipient read model (Slice 2): `messaging_recipients` keyed by the
       user's own ULID (a projection, not an entity — no generated key, not
       brand-scoped per ADR-0016), projected idempotently by
