@@ -141,9 +141,13 @@ interleave.
 13. Messaging full: web push driver (D-MSG-02), digests + quiet hours
     (D-MSG-03, urgent bypasses), per-brand delivery log + suppression
     (ADR-0028), in-app inbox.
-14. Compliance completion + GDPR sweep: consent UI, export assembly, hybrid
-    audit trail, retention rules incl. D-CPL-01 numbers, DSR scheduler, and
-    a `src/Gdpr/` handler in every module.
+14. Compliance completion + GDPR sweep — **done**: policy console and the
+    opt-in consent gate, export assembly with a real fan-out, the hybrid
+    audit trail, retention rules incl. the D-CPL-01 numbers, the DSR deadline
+    scheduler, and a `src/Gdpr/` handler in every module holding personal
+    data. Left standing: Commerce has no handler (an order cannot resolve a
+    subject without reading Registration — see Compliance's TODO), and the
+    per-module anonymization log has no screen.
 15. Identity social login (Steam + Google + Discord, D-IDN-01) + Platform
     polish (dark-mode token overrides, compliant default status colors,
     operator provisioning tightens `brands.operator_id`).

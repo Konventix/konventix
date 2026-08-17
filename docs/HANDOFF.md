@@ -1,4 +1,4 @@
-# Session handoff — 2026-08-17 (second session of the day)
+# Session handoff — 2026-08-17 (third session of the day)
 
 > Point-in-time note for continuing the Phase 2 build.
 > Superseded by the next session's work; safe to update or delete once
@@ -7,111 +7,129 @@
 
 ## Where things stand
 
-Slices 1–10, 12, 13 and 17 are complete, plus the admin/UI sweep and
-slice 17's storage work from the earlier session today. The verbose
-history of those lives in this file's previous revisions
-(`git log docs/HANDOFF.md`).
+Slices 1–10, 12, 13, **14** and 17 are complete, plus the admin/UI sweep
+and the two UI-gap slices from the previous session (Content console and
+public pages; Registration types and quotas). Slice 11 (GameOps) stays
+deliberately on hold; 15–16 are open.
 
-Still open in build order: **slice 14** (Compliance completion + GDPR
-sweep), **slice 11** (GameOps, deliberately on hold), then 15–16.
+**Slice 14 landed this session, in six commits.** Compliance had its whole
+domain — policies, versions, consents, the DSR workflow, the GDPR handler
+registry — and *no HTTP surface at all*. The legal texts every registration
+depends on were seeder rows, `requires_consent` was a column nothing
+enforced, and `DataExportRequested` was an announcement nobody acted on.
 
-## This session — closing UI gaps
+1. **Policy console and the consent gate** (`2ddb751`). Policy index and
+   editor, drafting and publishing as separate capabilities. A published
+   version is immutable — a Consent row means "agreed to *this* text" — and
+   a policy's slug freezes on first publication. Public `/policies/{slug}`
+   renders markdown through `Support\PolicyMarkdown` (CommonMark,
+   `html_input: strip`, no unsafe links), which makes it the one `v-html` in
+   the application; `league/commonmark` is now a direct dependency.
+   `EnsurePoliciesAccepted` is aliased `require-consent` and applied by
+   *consuming* modules — Registration's public form is the first. One
+   checkbox per policy (Art. 7(2)), never a bundled agreement.
+   `settings/Privacy` shows what an account agreed to, keeping withdrawn
+   rows.
+2. **The fan-out runs, and the queue has a console** (`a53d038`).
+   `AssembleSubjectExport` / `RunSubjectDeletion` call every registered
+   handler through the contract, record each answer per module, and close
+   only when all succeeded — a failed module leaves the request open with no
+   partial archive written. Both are reached through a listener on
+   Compliance's own events, so re-dispatch runs the identical path. Archives
+   are JSON on a new private `exports` disk with a 14-day expiry. Console at
+   `/admin/subject-requests` with three separate capabilities: reading the
+   queue, acting on it, and reading an export's contents.
+3. **The hybrid audit trail** (`c0f7a74`). `Audit\AuditableEvent` marker +
+   one wildcard subscriber, plus `Audit\AuditRecorder` for privileged reads
+   with no event (the registrant CSV export, a subject-export download).
+   `Audit\` joins `Gdpr\` as a sanctioned cross-module contract surface in
+   the architecture test. Not brand-scoped: the trail spans brands and half
+   its rows are written on the operator host.
+4. **Retention rules, clocks and the daily sweep** (`8cbcf35`). A rule names
+   a *data category*, never a table; the owning module deletes its own rows
+   on `RetentionPeriodElapsed`. Both D-CPL-01 numbers ship as seeded
+   operator-wide rules (`UNIQUE NULLS NOT DISTINCT`, or the operator-wide
+   rows would be unconstrained). Two clocks: `record_age` and
+   `event_concluded` (fed by Event's own event). The sweep also deletes
+   expired export archives.
+5. **A `Gdpr/` handler in every module** holding personal data (`5e2f849`) —
+   identity, admission, content, messaging, compliance, staffing,
+   competition, joining registration's. Identity's carries the hard question
+   (below). The refusals are argued in the handlers: Compliance deletes
+   nothing, Messaging keeps suppressions, Content keeps comment bodies.
+6. **Subject notices and the deadline watch** (`5785478`). Export-ready,
+   deletion-acknowledged and refusal notices, plus
+   `compliance:watch-deadlines` escalating twice (approaching, overdue) to
+   the operator's contact address.
 
-The roadmap's "UI page catalogue" tracks screens whose backend shipped
-but whose pages never did. Two of those entries are now closed.
+Verification at handoff: **920 PHP tests passing (1 skip)**, PHPStan clean,
+pint clean, `npm run build` green.
 
-**Content (`34286f8`, `2f14dc4`).** Slice 12 shipped Content's whole
-domain with *no HTTP surface at all* — no controllers, no routes, no
-pages, and a registered `latest-news` block whose Vue component did not
-exist, so any page carrying it rendered nothing.
+## Decisions worth knowing (they will look arbitrary otherwise)
 
-- Operator console: entry index (type/state filters), the editor, one
-  endpoint per lifecycle Action, and the comment moderation queue. New
-  Actions `CreateEntry`/`UpdateEntry`/`ArchiveEntry` — `Archived` was a
-  state nothing could reach. `UpdateEntry` deliberately touches neither
-  `state` nor `published_at`: fixing a typo in a live announcement must
-  not notify everyone again. Legal `transitions` come from the server.
-  Authoring (`content.manage-entries`) and publishing
-  (`content.publish-entries`) are separately enforced, with a test for
-  an author who may edit and may not publish.
-- Public pages: `/news`, `/news/{slug}` with comments, and the
-  urgent-announcement banner. Two rules on every read — live-only via
-  `scopeLive`, and audience, which **404s** rather than redirecting to
-  login (a redirect confirms the slug exists; D-CNT-07 makes audience a
-  visibility rule, not a paywall). The banner fetches once per browser
-  page load and mounts under `PublicTopbar` through the module component
-  registry, the same seam Messaging's bell uses.
-- Author read model (`content_authors`, `ProjectAuthor`) from Identity's
-  `UserRegistered`/`UserProfileUpdated` — display name only.
-- Entry bodies render as plain text with preserved line breaks, never
-  `v-html`; rich text needs a sanitizer decision first (Content TODO).
-
-**Registration types + quotas (`f9f47e4`).** The offer itself had no
-screen: types came from a seeder or tinker. Now there is a type index,
-a type editor (axes, grants, price declaration, quota links) and a quota
-screen. Three invariants moved into the Actions, so tinker is refused on
-the same grounds as the form:
-
-- a priced settlement with no price declaration (ADR-0017) — otherwise
-  `RequestSettlement` throws at submission, in front of a registrant;
-- an `on_payment` gate on a settlement nobody pays — nothing would ever
-  confirm such a registration;
-- **terms freeze once registrations exist.** Event, approval,
-  settlement, gate, terms days, grants and price stop being editable
-  (name, visibility and quota links stay). `ApproveRegistration` and
-  `RecordOrderPaidForRegistration` read the type's *current* axes, so
-  editing them under live registrations reinterprets those
-  registrations rather than migrating them.
-
-Quota capacity may not fall below what is consumed. `EventSummary`
-(projected from `EventCreated`/`EventDetailsUpdated`/`EventArchived`)
-gives the type editor an event picker without reading Event's models.
-
-Also: the admin sidebar's icon map gained the eight identifiers modules
-were already sending (mail, landmark, hard-drive, book-open-check,
-newspaper, message-square, ticket, gauge) — all had been silently
-falling back to the puzzle-piece icon.
-
-Verification at handoff: **856 PHP tests + 22 TS tests passing (1 PHP
-skip), PHPStan clean, pint clean, `npm run build` green.** Note the
-frontend caveat below about `vue-tsc` coverage.
+- **The consent gate is opt-in per route**, not global. A blanket gate on the
+  `web` group makes the policy page itself a redirect candidate, which is how
+  consent walls become loops. Only Registration's public form carries it
+  today; every other route is an unmade decision (Compliance TODO).
+- **Deletion is acknowledged when it starts.** By completion, every module
+  has scrubbed the person's contact details, so a "your deletion is done"
+  mail would have nowhere to go. The notify listener is registered *before*
+  the fan-out for exactly this reason.
+- **Identity anonymizes only when the last brand membership goes.** An
+  account spans the operator (ADR-0016) but the fan-out arrives per brand;
+  anonymizing on one brand's request would end the person's participation in
+  the others. The rule becomes redundant, not wrong, once requests are opened
+  operator-wide.
+- **Compliance's own handler deletes nothing.** Destroying consent proof to
+  honour a deletion request would destroy the evidence the request was
+  honoured.
+- **The retention sweep re-emits daily** while a rule stays elapsed. A
+  delete-older-than is idempotent; the alternative is state whose failure
+  mode is data that never gets deleted.
 
 ## Next up
 
-1. **Remaining UI-catalogue gaps**, if the UI pass continues: invitation
-   tokens and amendment admin (both belong on the new type editor —
-   amendment also needs a `registration.amend-registrations`
-   capability), participant "my registrations", the Admission operator
-   surface (checkpoint/device enrolment, check-in log, badge templates),
-   and the three gated modules whose domains shipped without screens
-   (Resources, Staffing, Competition).
-2. **Slice 14 — Compliance completion + GDPR sweep** (touches every
-   module; Compliance's `TODO.md` Backlog is the authoritative list).
-3. Slice 11 GameOps stays on hold; then 15–16.
+1. **Slice 15** — Identity social login (Steam + Google + Discord, D-IDN-01)
+   plus Platform polish (dark-mode token overrides, operator settings page,
+   `brands.operator_id` tightening). Note slice 14 gave Platform's
+   `OperatorSettings` a `contactEmailForBrand()`, so the operator settings
+   page has a doorway to edit against.
+2. **Remaining UI-catalogue gaps** if the UI pass resumes instead: invitation
+   tokens and amendment admin (both belong on Registration's type editor;
+   amendment also needs a `registration.amend-registrations` capability),
+   participant "my registrations", the Admission operator surface, and the
+   three gated modules whose domains shipped without screens (Resources,
+   Staffing, Competition).
+3. Slice 11 GameOps stays on hold; then 16.
 
 ## Loose threads worth knowing about
 
-- **Module Vue files are not type-checked or linted.** `tsconfig.json`
-  includes only `resources/js/**`, so `vue-tsc` never sees
-  `app-modules/*/resources/js/**`, and ESLint's project service fails to
-  parse those files ("was not found by the project service") — which
-  also means the ADR-0008 palette rule never runs on them. Adding the
-  glob surfaces ~44 pre-existing errors across Event, Messaging and
-  Platform pages (mostly `string | null` into `Input`'s `model-value`,
-  plus `Cannot find namespace 'App'` in the media page). Both new page
-  sets in this session were verified by temporarily adding the glob and
-  are clean; the repo-wide fix is still owed.
-- Identity owes a **profile-replay command** (`identity:replay-profiles`):
-  Messaging's recipients and Content's authors both only see accounts
-  created after their projection existed, and neither module may read
-  Identity's tables. One replay closes both — it is in Identity's TODO.
-- A frozen registration type cannot be superseded from the console; the
-  replacement must be built by hand. A "duplicate this type" action is
-  in Registration's TODO.
-- Grants take a free-text `role`, so a typo becomes a badge nobody can
-  check in. A role picker needs a contract with Admission.
-- Registration's public form still posts `days`-less; invitation tokens
-  and amendment remain tinker-only.
+- **Commerce has no GDPR handler**, and that is a finding rather than an
+  oversight: an order is keyed by `settles_type`/`settles_id`, so Commerce
+  cannot resolve a subject to their invoices without reading Registration's
+  tables (ADR-0004 forbids it). Either Commerce keeps a subject read model or
+  Registration's export carries the invoice references. An issued invoice may
+  not be deleted at all (§147 AO), so this is about export, not erasure.
+- **A subject request is still brand-scoped** while Round 6 settled that it
+  spans the operator. A person registered with two brands gets two archives.
+  Compliance's TODO carries it.
+- **Content's public pages never opted out of the app layout.** Event's
+  `Landing.vue` sets `defineOptions({ layout: null })`; `content/Index.vue`
+  and `content/Show.vue` do not, so they render their own `PublicTopbar`
+  inside the authenticated app shell. Compliance's new public pages do it
+  correctly — the Content pages are a one-line fix nobody has made.
+- **Module Vue files are still not type-checked or linted.** `tsconfig.json`
+  includes only `resources/js/**`. Adding the glob surfaces ~44 pre-existing
+  errors across Event, Messaging and Platform pages. This session's pages
+  were verified by temporarily adding the glob: clean apart from the known
+  `defineOptions({ layout: null })` typing gap that Event and Commerce pages
+  already have.
+- Identity still owes `identity:replay-profiles`: Messaging's recipients and
+  Content's authors only see accounts created after their projection existed.
+  Slice 14 made this visible — a subject with no recipient row gets no
+  notice, logged rather than thrown.
+- Registration's public form still posts `days`-less; invitation tokens and
+  amendment remain tinker-only.
 - Messaging gaps unchanged (recipient timezone, D-BATCH-7 inactive-module
   filtering, announcement audience narrowing, suppression/log operator
   screens, provider bounce webhooks, real-browser push pass).
@@ -162,16 +180,20 @@ Working conventions that matter mid-stream:
   Inertia resolves them through the Vite manifest.
 - An admin-host request leaves **no resolved brand** behind, so a test
   that needs a brand-scoped factory after such a request must create the
-  row before it.
+  row before it. `operators.admin_host` is unique — a test creating two
+  operators needs two hosts.
 - The Boost `database-schema` MCP tool cannot reach pgsql from outside
   the containers — read migrations instead.
 - Tests run against a `testing` **Postgres** database, not SQLite:
   `phpunit.xml` overrides `DB_DATABASE` only, never `DB_CONNECTION`.
-- `QUEUE_CONNECTION=sync` in `phpunit.xml` runs jobs inline. A test that
-  settles money for real must `Queue::fake()`, or
-  `GenerateInvoiceDocument` executes and fails resolving brand context.
+- `QUEUE_CONNECTION=sync` in `phpunit.xml` runs jobs inline. That now means
+  opening a subject request carries out its whole fan-out during the call —
+  `Queue::fake()` where a test asserts the state *before* the handlers run.
+- Postgres aborts the surrounding transaction after a constraint violation,
+  so a test cannot query the database after asserting a 500 from one.
 - `BROADCAST_CONNECTION=null` and `MAIL_MAILER=array` in `phpunit.xml` —
-  broadcasting and mail are safe to exercise for real in tests.
+  mail is safe to exercise for real, and `Mail::mailer()->getSymfonyTransport()
+  ->messages()` is how to assert what actually went out.
 - The user works in parallel in the same working tree and testing
   database: never commit their uncommitted files, and re-run a red (or
   suspiciously slow) suite before believing it.
