@@ -489,10 +489,9 @@ class SeedDemoDataCommand extends Command
         $hero = $media['hero'] ?? null;
 
         if ($hero !== null) {
-            // The hero block stores a resolved URL rather than a ULID today,
-            // but the page does reference the file — recording the usage is
-            // what stops the console deleting it out from under the page.
-            // Idempotent, so a re-run does not stack references.
+            // The page references the file by ULID (ADR-0043) — recording the
+            // usage is what stops the console deleting it out from under the
+            // page. Idempotent, so a re-run does not stack references.
             app(MediaLibrary::class)->recordUsage($hero->getKey(), 'platform', 'static_page', $home->getKey());
         }
     }
@@ -513,12 +512,9 @@ class SeedDemoDataCommand extends Command
                     'subheading' => 'Event-agnostic event management, done right.',
                     'ctaLabel' => $firstEvent !== null ? 'View the event' : null,
                     'ctaUrl' => $firstEvent !== null ? '/events/'.$firstEvent->slug : null,
-                    // Resolved through the library — the only sanctioned way
-                    // to turn a media ULID into something renderable
-                    // (ADR-0035).
-                    'imageUrl' => $hero !== null
-                        ? app(MediaLibrary::class)->urlFor($hero->getKey())
-                        : null,
+                    // A media ULID, never a URL: the block resolves it
+                    // through MediaLibrary at render time (ADR-0043).
+                    'imageMediaId' => $hero?->getKey(),
                 ],
             ],
         ];

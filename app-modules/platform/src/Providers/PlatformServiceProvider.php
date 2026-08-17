@@ -111,7 +111,11 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $registry = $this->app->make(BlockRegistry::class);
 
         $registry->register(new TextBlock);
-        $registry->register(new HeroBlock);
+        // Resolved through the container: HeroBlock needs MediaLibrary to
+        // turn its stored media ULID into a URL (ADR-0035/ADR-0043). The
+        // library is stateless, so holding one in a boot-time registry is
+        // safe under Octane.
+        $registry->register($this->app->make(HeroBlock::class));
         $registry->register(new CardsBlock);
     }
 

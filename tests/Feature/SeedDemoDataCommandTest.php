@@ -114,9 +114,10 @@ it('seeds the media library with referenced and unreferenced files', function ()
     expect($template->layout->logoMediaId)->toBe($media['sxlan-logo.png']->getKey())
         ->and($template->layout->backgroundMediaId)->toBe($media['sxlan-badge-background.png']->getKey());
 
-    // The home page hero renders the seeded image.
+    // The home page hero references the seeded image by ULID (ADR-0043),
+    // never by a resolved URL.
     $home = StaticPage::withoutBrandScope()->where('brand_id', $brand->getKey())->firstWhere('slug', 'home');
-    expect($home->blocks[0]['data']['imageUrl'])->toContain($media['sxlan-hero.jpg']->path);
+    expect($home->blocks[0]['data']['imageMediaId'])->toBe($media['sxlan-hero.jpg']->getKey());
 
     $usages = MediaUsage::withoutBrandScope()->where('brand_id', $brand->getKey())->get();
     expect($usages)->toHaveCount(3)

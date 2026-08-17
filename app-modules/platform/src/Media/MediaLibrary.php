@@ -29,21 +29,40 @@ class MediaLibrary
      */
     public function urlFor(string $mediaId, ?string $variant = null): ?string
     {
+        return $this->referenceFor($mediaId, $variant)['url'] ?? null;
+    }
+
+    /**
+     * Resolve a media ULID to everything a renderer needs to display it: the
+     * URL plus the item's own alt text.
+     *
+     * One method rather than `urlFor()` + an `altText()` companion because a
+     * consumer that renders an image needs both, and two calls would mean two
+     * lookups of the same row for every image on a page.
+     *
+     * Same graceful degradation as everything else here: an unknown ULID or
+     * unknown variant resolves to null.
+     *
+     * @return array{url: string, altText: string|null}|null
+     */
+    public function referenceFor(string $mediaId, ?string $variant = null): ?array
+    {
         $item = MediaItem::withoutBrandScope()->find($mediaId);
 
         if ($item === null) {
             return null;
         }
 
-        $path = $variant === null
-            ? $item->path
-            : ($item->variants[$variant] ?? null);
+        $path = $this->pathFor($item, $variant);
 
         if ($path === null) {
             return null;
         }
 
-        return Storage::disk($item->disk)->url($path);
+        return [
+            'url' => Storage::disk($item->disk)->url($path),
+            'altText' => $item->alt_text,
+        ];
     }
 
     /**
@@ -74,9 +93,7 @@ class MediaLibrary
             return null;
         }
 
-        $path = $variant === null
-            ? $item->path
-            : ($item->variants[$variant] ?? null);
+        $path = $this->pathFor($item, $variant);
 
         if ($path === null) {
             return null;
@@ -93,6 +110,19 @@ class MediaLibrary
             $disk->mimeType($path) ?: 'application/octet-stream',
             base64_encode($disk->get($path) ?? ''),
         );
+    }
+
+    /**
+     * The stored path behind an item's variant, or the original when no
+     * variant is asked for. Null means the item has no such variant.
+     */
+    private function pathFor(MediaItem $item, ?string $variant): ?string
+    {
+        if ($variant === null) {
+            return $item->path;
+        }
+
+        return $item->variants[$variant] ?? null;
     }
 
     /**

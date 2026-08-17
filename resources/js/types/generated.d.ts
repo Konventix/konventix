@@ -325,7 +325,15 @@ declare namespace Konventix {
                     subheading: string | null;
                     ctaLabel: string | null;
                     ctaUrl: string | null;
-                    imageUrl: string | null;
+                    imageMediaId: string | null;
+                };
+                export type HeroResolvedData = {
+                    readonly heading: string;
+                    readonly subheading: string | null;
+                    readonly ctaLabel: string | null;
+                    readonly ctaUrl: string | null;
+                    readonly imageUrl: string | null;
+                    readonly imageAlt: string | null;
                 };
                 export type TextBlockData = {
                     heading: string | null;

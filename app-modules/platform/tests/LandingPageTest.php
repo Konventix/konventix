@@ -24,7 +24,7 @@ it('renders the brand\'s home page through the block pipeline', function (): voi
                 'subheading' => null,
                 'ctaLabel' => null,
                 'ctaUrl' => null,
-                'imageUrl' => null,
+                'imageMediaId' => null,
             ]],
         ],
     ]);

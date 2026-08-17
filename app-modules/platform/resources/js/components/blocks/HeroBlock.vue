@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
+import { computed } from 'vue';
 
-defineProps<{
+const props = defineProps<{
     heading: string;
     subheading: string | null;
     ctaLabel: string | null;
     ctaUrl: string | null;
     imageUrl: string | null;
+    imageAlt: string | null;
 }>();
+
+// The media item's own alt text when the library has one; the heading is the
+// fallback so the image is never announced as unlabelled.
+const imageAltText = computed(() => props.imageAlt ?? props.heading);
 </script>
 
 <template>
@@ -36,7 +42,7 @@ defineProps<{
             <img
                 v-if="imageUrl"
                 :src="imageUrl"
-                :alt="heading"
+                :alt="imageAltText"
                 class="aspect-video w-full rounded-lg border border-border object-cover"
             />
         </div>
