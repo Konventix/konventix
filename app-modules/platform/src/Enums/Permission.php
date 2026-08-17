@@ -25,4 +25,5 @@ enum Permission: string
     case ViewCrossBrand = 'platform.view-cross-brand';
     case ViewMedia = 'platform.view-media';
     case ManageMedia = 'platform.manage-media';
+    case ManageStorageSettings = 'platform.manage-storage-settings';
 }

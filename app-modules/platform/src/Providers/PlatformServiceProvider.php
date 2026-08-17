@@ -185,6 +185,15 @@ class PlatformServiceProvider extends ModuleServiceProvider
             ),
             new NavigationItem(
                 module: 'platform',
+                label: 'Storage',
+                url: '/admin/storage-settings',
+                icon: 'hard-drive',
+                order: 13,
+                permission: Permission::ManageStorageSettings->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'platform',
                 label: 'Roles',
                 url: '/admin/roles',
                 icon: 'shield',

@@ -266,6 +266,18 @@ declare namespace Konventix {
                 slug: string;
                 hosts: string[];
             };
+            export type BrandStorageSettingsData = {
+                useOwnStorage: boolean;
+                bucket: string | null;
+                region: string | null;
+                endpoint: string | null;
+                prefix: string | null;
+                usePathStyleEndpoint: boolean;
+                publicDirect: boolean;
+                url: string | null;
+                accessKeyId: string | null;
+                secretAccessKey: string | null;
+            };
             export type BrandSummaryData = {
                 id: string;
                 name: string;
@@ -354,7 +366,8 @@ declare namespace Konventix {
                 | 'platform.manage-roles'
                 | 'platform.view-cross-brand'
                 | 'platform.view-media'
-                | 'platform.manage-media';
+                | 'platform.manage-media'
+                | 'platform.manage-storage-settings';
         }
     }
     namespace Registration {

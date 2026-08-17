@@ -5,12 +5,17 @@ declare(strict_types=1);
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Konventix\Identity\Models\User;
 use Konventix\Platform\Actions\StoreMediaUpload;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\BrandStorageSetting;
 use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Models\Operator;
+use Konventix\Platform\Models\Permission as PermissionModel;
+use Konventix\Platform\Models\Role;
 use Konventix\Platform\Storage\DiskResolver;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * ADR-0043 point 6: a brand may bring its own bucket, carried as brand data
@@ -119,4 +124,136 @@ it('resolves two brands to two different buckets in one process', function (): v
     // request-scoped — one brand's bucket can never answer for another's.
     expect($resolver->configFor('media:'.$first->getKey())['bucket'])->toBe('first-bucket')
         ->and($resolver->configFor('media:'.$second->getKey())['bucket'])->toBe('second-bucket');
+});
+
+/**
+ * The operator console for per-brand storage (ADR-0029, ADR-0043 point 6),
+ * mirroring the per-brand mail transport screen (ADR-0028).
+ */
+function storageSettingsAdmin(array $permissions = ['platform.access-admin', 'platform.manage-storage-settings']): array
+{
+    $operator = Operator::factory()->create();
+    $operator->forceFill(['admin_host' => 'admin.storage.test'])->save();
+
+    $registrar = app(PermissionRegistrar::class);
+    $registrar->setPermissionsTeamId($operator->getKey());
+
+    foreach ($permissions as $name) {
+        PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
+    }
+
+    $role = Role::query()->create([
+        'name' => 'Operator Admin',
+        'guard_name' => 'web',
+        'brand_id' => $operator->getKey(),
+    ]);
+    $role->givePermissionTo($permissions);
+
+    $admin = User::factory()->create();
+    $admin->assignRole($role);
+
+    $registrar->setPermissionsTeamId(null);
+
+    return [$operator, $admin];
+}
+
+it('403s an admin without the storage capability and 404s on a brand host', function (): void {
+    [, $admin] = storageSettingsAdmin(['platform.access-admin']);
+
+    $this->actingAs($admin)
+        ->get('http://admin.storage.test/admin/storage-settings')
+        ->assertForbidden();
+
+    $this->get('http://localhost/admin/storage-settings')->assertNotFound();
+});
+
+it('saves a brand\'s own storage and never echoes the secret back', function (): void {
+    $brand = $this->withBrand();
+    [, $admin] = storageSettingsAdmin();
+
+    $this->actingAs($admin)
+        ->put('http://admin.storage.test/admin/storage-settings/'.$brand->getKey(), [
+            'useOwnStorage' => true,
+            'bucket' => 'sxlan-media',
+            'region' => 'garage',
+            'endpoint' => 'http://garage:3900',
+            'prefix' => 'media',
+            'usePathStyleEndpoint' => true,
+            'publicDirect' => false,
+            'url' => null,
+            'accessKeyId' => 'GKbrand',
+            'secretAccessKey' => 'super-secret',
+        ])
+        ->assertRedirect();
+
+    $settings = BrandStorageSetting::withoutBrandScope()->sole();
+    expect($settings->bucket)->toBe('sxlan-media')
+        ->and($settings->credentials['secret'])->toBe('super-secret');
+
+    $this->actingAs($admin)
+        ->get('http://admin.storage.test/admin/storage-settings/'.$brand->getKey().'/edit')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/storage-settings/Edit')
+            ->where('settings.accessKeyId', 'GKbrand')
+            ->where('settings.hasSecretAccessKey', true)
+            // The secret is not among the props at all.
+            ->missing('settings.secretAccessKey'));
+});
+
+it('keeps the stored secret when the form submits none', function (): void {
+    $brand = $this->withBrand();
+    [, $admin] = storageSettingsAdmin();
+    BrandStorageSetting::factory()->create(['bucket' => 'sxlan-media']);
+
+    $this->actingAs($admin)
+        ->put('http://admin.storage.test/admin/storage-settings/'.$brand->getKey(), [
+            'useOwnStorage' => true,
+            'bucket' => 'renamed-bucket',
+            'prefix' => 'media',
+            'usePathStyleEndpoint' => true,
+            'publicDirect' => false,
+            'accessKeyId' => 'GKtest',
+            'secretAccessKey' => null,
+        ])
+        ->assertRedirect();
+
+    $settings = BrandStorageSetting::withoutBrandScope()->sole();
+    expect($settings->bucket)->toBe('renamed-bucket')
+        ->and($settings->credentials['secret'])->toBe('secret');
+});
+
+it('refuses to switch own storage off while files still live in that bucket', function (): void {
+    $brand = $this->withBrand();
+    [, $admin] = storageSettingsAdmin();
+    BrandStorageSetting::factory()->create(['bucket' => 'sxlan-media']);
+    MediaItem::factory()->create(['disk' => 'media:'.$brand->getKey()]);
+
+    // Clearing the settings would leave those rows naming a disk nobody can
+    // build — unreadable files, not a tidy rollback.
+    $this->actingAs($admin)
+        ->put('http://admin.storage.test/admin/storage-settings/'.$brand->getKey(), [
+            'useOwnStorage' => false,
+        ])
+        ->assertSessionHasErrors('useOwnStorage');
+
+    expect(BrandStorageSetting::withoutBrandScope()->count())->toBe(1);
+});
+
+it('switches own storage off once the bucket is empty', function (): void {
+    $brand = $this->withBrand();
+    [, $admin] = storageSettingsAdmin();
+    BrandStorageSetting::factory()->create(['bucket' => 'sxlan-media']);
+
+    // Media that stayed on the deployment disk does not block the switch.
+    MediaItem::factory()->create(['disk' => 'media']);
+
+    $this->actingAs($admin)
+        ->put('http://admin.storage.test/admin/storage-settings/'.$brand->getKey(), [
+            'useOwnStorage' => false,
+        ])
+        ->assertRedirect();
+
+    expect(BrandStorageSetting::withoutBrandScope()->count())->toBe(0)
+        ->and(app(DiskResolver::class)->mediaDiskNameFor($brand->getKey()))->toBe('media');
 });
