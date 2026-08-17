@@ -13,6 +13,7 @@ use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Brands\PropagatesBrandContextToQueue;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Http\Controllers\CaddyAskController;
+use Konventix\Platform\Http\Controllers\MediaFileController;
 use Konventix\Platform\Http\Middleware\EnsureModuleIsActive;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -54,6 +55,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
 
         $this->registerRouteMiddleware();
         $this->registerCaddyAskRoute();
+        $this->registerMediaFileRoute();
         $this->app->make(PropagatesBrandContextToQueue::class)->register();
     }
 
@@ -67,6 +69,21 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->app->make(Router::class)
             ->get('/caddy/ask', CaddyAskController::class)
             ->name('platform.caddy-ask');
+    }
+
+    /**
+     * Media served through the application (ADR-0043) — for disks that are
+     * not `public_direct`. Registered here rather than in `routes/web/` so it
+     * escapes the `web` group: the operator console renders the same URLs on
+     * the admin host, where ResolveBrand would 404 them (ADR-0029), and
+     * public media needs neither a session nor a brand.
+     */
+    private function registerMediaFileRoute(): void
+    {
+        $this->app->make(Router::class)
+            ->get('/media/{media}/{variant?}', MediaFileController::class)
+            ->where(['media' => '[0-9A-Za-z]{26}', 'variant' => '[a-z0-9_-]+'])
+            ->name('platform.media.show');
     }
 
     public function register(): void

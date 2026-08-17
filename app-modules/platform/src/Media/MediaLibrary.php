@@ -60,9 +60,38 @@ class MediaLibrary
         }
 
         return [
-            'url' => Storage::disk($item->disk)->url($path),
+            'url' => $this->deliveryUrl($item, $path, $variant),
             'altText' => $item->alt_text,
         ];
+    }
+
+    /**
+     * Where a reader fetches this object from (ADR-0043).
+     *
+     * A disk marked `public_direct` is readable without the application —
+     * the local disk through the `public/storage` symlink, an object store
+     * through a public bucket or CDN — so its own URL is handed out and the
+     * bytes never touch a worker. Anything else is served through the
+     * application's media route.
+     *
+     * The flag is deployment configuration and is never inferred from the
+     * driver: a bucket's readability is a property of how the operator
+     * created it, and guessing wrong yields either broken images or needless
+     * proxying. `storage:doctor` is what checks the claim.
+     *
+     * Resolution stays network-free either way — this builds a URL, it never
+     * asks the store whether the object is there.
+     */
+    private function deliveryUrl(MediaItem $item, string $path, ?string $variant): string
+    {
+        if (config("filesystems.disks.{$item->disk}.public_direct") === true) {
+            return Storage::disk($item->disk)->url($path);
+        }
+
+        return route('platform.media.show', array_filter([
+            'media' => $item->getKey(),
+            'variant' => $variant,
+        ]));
     }
 
     /**

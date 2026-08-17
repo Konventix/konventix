@@ -19,6 +19,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Per-purpose disk selection
+    |--------------------------------------------------------------------------
+    |
+    | Which disk NEW files of a given purpose are written to (ADR-0043). Each
+    | purpose is pointed independently — a GoBD invoice archive and a brand
+    | logo want different durability and delivery, which a single global
+    | "public/private" pair could not express.
+    |
+    | Existing files are NOT affected: every media item records the disk it
+    | was written to, so switching this leaves the library readable and
+    | `storage:migrate` moves what already exists. A half-migrated library
+    | still renders every file from wherever it currently lives.
+    |
+    */
+
+    'media_disk' => env('MEDIA_DISK', 'media'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
@@ -74,6 +93,41 @@ return [
             'root' => storage_path('app/public/media'),
             'url' => rtrim((string) env('APP_URL', 'http://localhost'), '/').'/storage/media',
             'visibility' => 'public',
+            // The web server serves these straight off the `public/storage`
+            // symlink, so URLs need no application request (ADR-0043).
+            'public_direct' => true,
+            'throw' => true,
+            'report' => false,
+        ],
+
+        /*
+         * The same media library on S3-compatible object storage (ADR-0043).
+         * `root` is a key prefix here, not a filesystem path: one public
+         * bucket holds `media/{brandId}/…`.
+         *
+         * `public_direct` states whether objects are readable without
+         * credentials — a bucket policy on Hetzner, website mode on Garage
+         * (which implements neither bucket policies nor ACLs). It is a
+         * deployment claim the application never infers; `storage:doctor`
+         * verifies it. When false, media is served through the application's
+         * own media route instead.
+         *
+         * Deliberately no `visibility` key: Laravel would then send an
+         * `x-amz-acl` header on every write, and per-object ACLs are exactly
+         * what Garage and R2 do not implement. Public readability is a
+         * bucket-level deployment concern.
+         */
+        'media_s3' => [
+            'driver' => 's3',
+            'key' => env('AWS_MEDIA_ACCESS_KEY_ID', env('AWS_ACCESS_KEY_ID')),
+            'secret' => env('AWS_MEDIA_SECRET_ACCESS_KEY', env('AWS_SECRET_ACCESS_KEY')),
+            'region' => env('AWS_MEDIA_DEFAULT_REGION', env('AWS_DEFAULT_REGION')),
+            'bucket' => env('AWS_MEDIA_BUCKET', env('AWS_BUCKET')),
+            'url' => env('AWS_MEDIA_URL', env('AWS_URL')),
+            'endpoint' => env('AWS_MEDIA_ENDPOINT', env('AWS_ENDPOINT')),
+            'use_path_style_endpoint' => env('AWS_MEDIA_USE_PATH_STYLE_ENDPOINT', env('AWS_USE_PATH_STYLE_ENDPOINT', false)),
+            'root' => env('AWS_MEDIA_PREFIX', 'media'),
+            'public_direct' => env('AWS_MEDIA_PUBLIC_DIRECT', false),
             'throw' => true,
             'report' => false,
         ],

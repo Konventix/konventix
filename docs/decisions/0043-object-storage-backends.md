@@ -59,13 +59,15 @@ first-class production deployment.**
    to separate them is that a GoBD archive and a brand logo need different
    durability, delivery and lifecycle, which a two-role model erases.
 
-2. **Public media is served directly by the object store when configured,
-   proxied otherwise.** The `media` disk carries an explicit
-   `public_direct` flag plus its asset `url`; the application never probes
-   for the capability and never infers it. Where the flag is false — and
-   for every local disk — reads go through an application route. The
-   deployment claim is verified by the storage doctor command (below), so
-   a wrong flag is a failing check rather than a page of broken images.
+2. **Public media is served without touching a worker wherever that is
+   possible, proxied otherwise.** Each media disk carries an explicit
+   `public_direct` flag: true for the local disk, whose files the web
+   server hands out through the `public/storage` symlink, and true for an
+   object store the operator made publicly readable. The application never
+   probes for the capability and never infers it from the driver — the
+   deployment claim is verified by the storage doctor command (below), so a
+   wrong flag is a failing check rather than a page of broken images. Where
+   the flag is false, reads go through an application route.
 
 3. **`MediaLibrary` is the only place that branches on driver.** ADR-0035
    already makes it the sole ULID→asset resolver ("no consumer ever sees a

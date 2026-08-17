@@ -18,24 +18,27 @@ use Konventix\Platform\Models\MediaItem;
  */
 final class StoreMediaUpload
 {
-    private const string DISK = 'media';
-
     public function __construct(
         private readonly ThumbnailGenerator $thumbnails,
     ) {}
 
     public function handle(string $brandId, UploadedFile $file, ?string $altText, ?string $uploadedByUserId): MediaItem
     {
+        // Where NEW media lands (ADR-0043). The disk is recorded on the row,
+        // so pointing this at object storage leaves everything already
+        // uploaded readable on the disk it was written to.
+        $disk = (string) config('filesystems.media_disk', 'media');
+
         $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension());
         $path = sprintf('%s/%s.%s', $brandId, (string) Str::ulid(), $extension);
 
-        $file->storeAs(dirname($path), basename($path), self::DISK);
+        $file->storeAs(dirname($path), basename($path), $disk);
 
-        $variants = $this->thumbnails->generate(self::DISK, $path, $file->getMimeType() ?? 'application/octet-stream');
+        $variants = $this->thumbnails->generate($disk, $path, $file->getMimeType() ?? 'application/octet-stream');
 
-        return DB::transaction(function () use ($brandId, $file, $path, $variants, $altText, $uploadedByUserId): MediaItem {
+        return DB::transaction(function () use ($brandId, $disk, $file, $path, $variants, $altText, $uploadedByUserId): MediaItem {
             $item = new MediaItem([
-                'disk' => self::DISK,
+                'disk' => $disk,
                 'path' => $path,
                 'original_filename' => $file->getClientOriginalName(),
                 'mime_type' => $file->getMimeType() ?? 'application/octet-stream',
