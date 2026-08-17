@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Events\InvoiceIssued;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventArchived;
+use Konventix\Event\Events\EventCreated;
+use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -22,6 +25,7 @@ use Konventix\Registration\Enums\Permission;
 use Konventix\Registration\Events\QuotaReleased;
 use Konventix\Registration\Gdpr\RegistrationGdprHandler;
 use Konventix\Registration\Listeners\MarkInvoicedOnInvoiceIssued;
+use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Listeners\ProjectRegistrant;
 use Konventix\Registration\Listeners\PromoteOnQuotaReleased;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
@@ -67,6 +71,12 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // Registrant read model for organizer lists (ADR-0004).
         Event::listen(UserRegistered::class, ProjectRegistrant::class);
         Event::listen(UserProfileUpdated::class, ProjectRegistrant::class);
+
+        // Event read model, so a type is created against an event picked by
+        // name rather than by pasted ULID (ADR-0004).
+        Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
+        Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
+        Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleArchived']);
     }
 
     protected function registerGdprExporters(): void
@@ -84,6 +94,24 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 icon: 'clipboard-list',
                 order: 20,
                 permission: Permission::ViewRegistrations->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'registration',
+                label: 'Registration types',
+                url: '/admin/registration-types',
+                icon: 'ticket',
+                order: 21,
+                permission: Permission::ManageRegistrationTypes->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'registration',
+                label: 'Quotas',
+                url: '/admin/quotas',
+                icon: 'gauge',
+                order: 22,
+                permission: Permission::ManageQuotas->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
         );

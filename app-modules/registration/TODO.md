@@ -4,11 +4,21 @@
 > what you completed, add follow-ups you discovered. Do not generate status
 > dashboards, percentages, or summary tables here.
 
-## Next (Phase 1 PoC — one registration flow, multiple types, free settlement)
+## Next
 
 - [ ] Register policies for viewing, approving, and managing types and quotas
       (the `Permission` catalog exists — `src/Enums/Permission.php` — but is
       not wired to `permissions:sync` or any Policy class yet).
+- [ ] A frozen type cannot be superseded from the console: an organizer whose
+      terms have changed must build the replacement by hand. A "duplicate this
+      type" action would make the intended path (new type, old one hidden by
+      visibility) as easy as the refused one.
+- [ ] Grants take a free-text `role`. Admission decides what a role means, so
+      a typo becomes a badge nobody can check in — the roles an event knows
+      belong in a picker, which needs a contract with Admission.
+- [ ] The type list shows no sales figures. `RegistrationStatsController`
+      already computes per-type counts for the event dashboard; the same
+      numbers belong on the type row.
 
 ## Backlog (Phase 2 — release scope)
 
@@ -34,10 +44,36 @@
       on `RegistrationType`, the priced path should derive lines instead of
       trusting the caller.
 - [ ] Token management UI: `InvitationToken` has model/guards/burn logic but
-      no operator screen yet — issue/revoke currently means tinker. Fold
-      into a registration-type admin screen when one exists.
+      no operator screen yet — issue/revoke currently means tinker. The type
+      editor now exists to hang it on: an `invite_only` or `link` type's own
+      screen is where its tokens belong.
 
 ## Done
+
+- [x] Registration-type and quota console (ADR-0029) — the offer had no screen
+      at all: types were created by seeder or tinker, which made the central
+      object of the product the one thing an operator could not touch. The
+      editor carries the four axes (ADR-0005), the grants, the price
+      declaration (ADR-0017) and the quota links; quotas get their own screen
+      because they are a standalone entity shared by several types.
+      Two configuration mistakes are now refused at the source rather than at
+      submission time in front of a registrant: a priced settlement with no
+      price declaration (which `RequestSettlement` throws on), and an
+      `on_payment` gate on a settlement nobody pays (nothing would ever
+      confirm such a registration). Both guards live in the Actions, so
+      tinker is refused on the same grounds as the form.
+      Terms freeze once registrations exist — event, approval, settlement,
+      gate, payment terms, grants and price stop being editable, while name,
+      visibility and quota links stay. The Actions read a type's *current*
+      axes when a payment lands or an approval is given, so an edit under live
+      registrations reinterprets them rather than migrating them.
+      Quota capacity may not drop below what is already consumed.
+
+- [x] Event read model (`Models\EventSummary`, `Listeners\ProjectEventSummary`)
+      projected from `EventCreated`/`EventDetailsUpdated`/`EventArchived`
+      (ADR-0004), so the type editor offers event names instead of asking for
+      a pasted ULID. Archived events drop out of the picker but keep their row,
+      or existing types would lose their label.
 
 - [x] Amendment as delta orders (ADR-0036 — completes Slice 4).
       `RegistrationAmendment` records the delta; `AmendRegistration` guards

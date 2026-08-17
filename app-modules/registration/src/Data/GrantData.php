@@ -12,6 +12,7 @@ use Spatie\LaravelData\Attributes\Validation\Required;
 use Spatie\LaravelData\Attributes\Validation\StringType;
 use Spatie\LaravelData\Attributes\Validation\Ulid;
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * One entry in a `RegistrationType`'s `grants` collection (ADR-0005, SPEC.md
@@ -24,6 +25,7 @@ use Spatie\LaravelData\Data;
  * `resourceTypeId` only applies to `GrantKind::ResourceClaim`; it stays a
  * plain nullable ULID (no FK) because Resources owns that entity (ADR-0014).
  */
+#[TypeScript]
 final class GrantData extends Data
 {
     public function __construct(

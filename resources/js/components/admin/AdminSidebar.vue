@@ -9,6 +9,7 @@ import {
     BookOpenCheck,
     Calendar,
     ClipboardList,
+    Gauge,
     HardDrive,
     Image,
     Landmark,
@@ -21,6 +22,7 @@ import {
     Receipt,
     Shield,
     Store,
+    Ticket,
     Users,
 } from '@lucide/vue';
 import type { Component } from 'vue';
@@ -60,6 +62,7 @@ const iconMap: Record<string, Component> = {
     'map-pin': MapPin,
     'message-square': MessageSquare,
     calendar: Calendar,
+    gauge: Gauge,
     image: Image,
     landmark: Landmark,
     mail: Mail,
@@ -67,6 +70,7 @@ const iconMap: Record<string, Component> = {
     receipt: Receipt,
     shield: Shield,
     store: Store,
+    ticket: Ticket,
     users: Users,
 };
 

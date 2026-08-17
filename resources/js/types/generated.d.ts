@@ -404,10 +404,20 @@ declare namespace Konventix {
     }
     namespace Registration {
         namespace Data {
+            export type GrantData = {
+                readonly kind: Konventix.Registration.Enums.GrantKind;
+                readonly role: string;
+                readonly quantity: number;
+                readonly resourceTypeId: string | null;
+            };
             export type PriceDeclarationData = {
                 readonly unitAmountNet: string;
                 readonly taxClass: Konventix.Registration.Enums.TaxClass;
                 readonly display: Konventix.Registration.Enums.PriceDisplay;
+            };
+            export type QuotaData = {
+                readonly name: string;
+                readonly capacity: number;
             };
             export type RegistrationFormData = {
                 readonly registrationTypeId: string;
@@ -417,6 +427,18 @@ declare namespace Konventix {
                 readonly confirmationGate: string;
                 readonly price: Konventix.Registration.Data.PriceDeclarationData | null;
                 readonly termsDays: number;
+            };
+            export type RegistrationTypeData = {
+                readonly eventId: string;
+                readonly name: string;
+                readonly visibility: Konventix.Registration.Enums.RegistrationVisibility;
+                readonly approval: Konventix.Registration.Enums.RegistrationApproval;
+                readonly settlement: Konventix.Registration.Enums.RegistrationSettlement;
+                readonly confirmationGate: Konventix.Registration.Enums.ConfirmationGate;
+                readonly termsDays: number;
+                readonly grants: Konventix.Registration.Data.GrantData[];
+                readonly priceDeclaration: Konventix.Registration.Data.PriceDeclarationData | null;
+                readonly quotaIds: string[];
             };
             export type SubmitRegistrationData = {
                 readonly organizationName: string | null;

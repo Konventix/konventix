@@ -119,7 +119,7 @@ maintains from them.
 | `OrderCancelled`, `OrderRefunded` (proposed) | Commerce | Decide whether the contractual act is cancelled too, or only its settlement |
 | `UserProfileUpdated` (proposed) | Identity | Maintain the registrant read model (display name, contact) used in registration lists |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler |
-| `EventPublished`, `EventUpdated` (proposed) | Event | Maintain an event read model for registration listings and sales windows |
+| `EventCreated`, `EventDetailsUpdated`, `EventArchived` | Event | Maintain the event read model (`Models\EventSummary`, projected by `Listeners\ProjectEventSummary`) behind the type editor's event picker — name and slug only, plus whether the event is archived and should stop being offered |
 | `ResourceBookingReleased` (proposed) | Resources | Release the matching resource claim when a booking is given up upstream |
 
 ## Capabilities
