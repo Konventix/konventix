@@ -180,6 +180,44 @@ services:
             retries: 3
             timeout: 5s
 
+    # S3-compatible object storage for developing against ADR-0043, behind a
+    # compose profile: `COMPOSE_PROFILES=s3` in .env (sail sources it) or
+    # `sail --profile s3 up -d`. Off by default — the default dev loop keeps
+    # media on local disks, and an always-on service nobody exercises is how
+    # LanCore's Garage stack rotted unnoticed.
+    #
+    # `--single-node --default-bucket` applies the cluster layout and creates
+    # the first key and bucket from the GARAGE_DEFAULT_* variables at boot
+    # (Garage 2.3+); `sail artisan storage:garage-init` adds the second bucket
+    # and the website access that makes the public one anonymously readable.
+    garage:
+        image: 'dxflrs/garage:v2.3.0'
+        profiles: ['s3']
+        command: ['/garage', 'server', '--single-node', '--default-bucket']
+        environment:
+            GARAGE_DEFAULT_ACCESS_KEY: '${AWS_ACCESS_KEY_ID:-GKkonventixdevaccesskey00000000}'
+            GARAGE_DEFAULT_SECRET_KEY: '${AWS_SECRET_ACCESS_KEY:-konventixdevsecretkey0000000000000000000000000000000000000000000}'
+            GARAGE_DEFAULT_BUCKET: '${AWS_MEDIA_BUCKET:-konventix-public}'
+        ports:
+            - '${FORWARD_GARAGE_S3_PORT:-3900}:3900'
+            - '${FORWARD_GARAGE_WEB_PORT:-3902}:3902'
+            - '${FORWARD_GARAGE_ADMIN_PORT:-3903}:3903'
+        volumes:
+            - './contrib/garage.toml:/etc/garage.toml:ro'
+            - 'sail-garage-meta:/var/lib/garage/meta'
+            - 'sail-garage-data:/var/lib/garage/data'
+        networks:
+            sail:
+                # Garage's web endpoint picks the bucket from the Host header,
+                # matching either `<bucket>.web.garage.localhost` or the bucket
+                # alias itself. The browser uses the first form (`.localhost`
+                # resolves to loopback, and 3902 is published below); this
+                # alias makes the second form resolvable inside the compose
+                # network, since a `.localhost` name never leaves the container
+                # that asks for it (RFC 6761).
+                aliases:
+                    - '${AWS_MEDIA_BUCKET:-konventix-public}'
+
     mailpit:
         image: 'axllent/mailpit:latest'
         ports:
@@ -196,4 +234,8 @@ volumes:
     sail-pgsql:
         driver: local
     sail-redis:
+        driver: local
+    sail-garage-meta:
+        driver: local
+    sail-garage-data:
         driver: local

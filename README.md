@@ -128,6 +128,21 @@ php artisan make:module <name>          # scaffold a module from stubs/app-modul
 php artisan make:<thing> --module=<name>  # generate into a module, not app/
 ```
 
+Developing against object storage (ADR-0043) is opt-in — media and invoices stay on local
+disks by default:
+
+```bash
+# .env: COMPOSE_PROFILES=s3, plus the Garage block from .env.example
+./vendor/bin/sail up -d                 # brings Garage up with the profile set
+./vendor/bin/sail artisan storage:garage-init   # buckets, grants, website access — idempotent
+./vendor/bin/sail artisan storage:doctor        # probes every configured disk
+./vendor/bin/sail artisan storage:migrate       # moves existing files, verifying each copy
+```
+
+Garage applies its own cluster layout and creates the first key and bucket at boot; the init
+command adds the second bucket and the anonymous read access that Garage only offers through
+website mode, having neither bucket policies nor ACLs.
+
 Requires PostgreSQL (see `.env.example`). Tests run against a separate `testing` database on
 the same Postgres server — `phpunit.xml` overrides `DB_DATABASE` only, so the connection stays
 `pgsql`; Sail's `create-testing-database.sql` creates it during `initdb`. Module feature tests

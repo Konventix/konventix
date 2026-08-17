@@ -51,6 +51,16 @@ return [
         'subject' => env('VAPID_SUBJECT', 'mailto:'.env('MAIL_FROM_ADDRESS', 'hello@example.com')),
     ],
 
+    // Garage's admin API (ADR-0043), used by `storage:garage-init` to create
+    // the buckets this deployment's disks name and — since Garage implements
+    // no bucket policies or ACLs — enable website access on the public one.
+    // Only needed where Garage is the S3 backend; other providers are
+    // provisioned through their own console.
+    'garage' => [
+        'admin_endpoint' => env('GARAGE_ADMIN_ENDPOINT'),
+        'admin_token' => env('GARAGE_ADMIN_TOKEN'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

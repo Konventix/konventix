@@ -1,0 +1,39 @@
+# Garage configuration for the LOCAL DEV STACK only (ADR-0043).
+#
+# Single node, replication factor 1, sqlite metadata: this is a laptop, not a
+# cluster. `garage server --single-node --default-bucket` (see compose.yaml)
+# applies the layout and creates the first key and bucket from the
+# GARAGE_DEFAULT_* environment variables, so no manual `garage layout assign`
+# step is needed — `sail --profile s3 up -d` plus `storage:garage-init` is the
+# whole setup.
+#
+# The rpc secret and admin token are DEV CREDENTIALS committed on purpose, the
+# same way the dev database password is. Never reuse them anywhere real.
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "garage:3901"
+rpc_secret = "6b1a0c4b1e2f4d5a8c7b9e0d3f6a1c4b7e0d3f6a9c2b5e8d1f4a7c0b3e6d9f2a"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"
+
+# Anonymous public read lives here, not on the S3 API: Garage implements
+# neither bucket policies nor ACLs, so a "public bucket" is a bucket with
+# website access enabled, served on this separate endpoint (ADR-0043). That
+# is what AWS_MEDIA_URL points at when AWS_MEDIA_PUBLIC_DIRECT=true.
+[s3_web]
+bind_addr = "[::]:3902"
+root_domain = ".web.garage.localhost"
+index = "index.html"
+
+[admin]
+api_bind_addr = "[::]:3903"
+admin_token = "konventix-dev-admin-token"
