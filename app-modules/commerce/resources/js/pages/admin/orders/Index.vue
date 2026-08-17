@@ -4,6 +4,7 @@ import { Download } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import { computed, ref } from 'vue';
 import { h } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import { Button } from '@/components/ui/button';
@@ -133,7 +134,10 @@ const columns: ColumnDef<OrderRow>[] = [
     <Head title="Orders" />
 
     <div class="flex flex-col gap-6">
-        <h1 class="text-2xl font-semibold">Orders</h1>
+        <AdminPageHeader
+            title="Orders"
+            description="Money owed and settled across registrations"
+        />
 
         <DataTableToolbar
             :search="filters.search ?? ''"

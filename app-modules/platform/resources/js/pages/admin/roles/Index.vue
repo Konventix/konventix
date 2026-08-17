@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { ShieldMinus } from '@lucide/vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -61,9 +62,10 @@ function submitRevoke(roleId: string, userId: string): void {
     <Head title="Roles" />
 
     <div class="flex flex-col gap-6">
-        <div class="flex items-center justify-between">
-            <h1 class="text-2xl font-semibold">Roles</h1>
-
+        <AdminPageHeader
+            title="Roles"
+            description="Per-brand roles and who holds them"
+        >
             <select
                 class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                 :value="props.selectedBrandId ?? ''"
@@ -77,7 +79,7 @@ function submitRevoke(roleId: string, userId: string): void {
                     {{ brand.name }}
                 </option>
             </select>
-        </div>
+        </AdminPageHeader>
 
         <p v-if="props.roles.length === 0" class="text-sm text-text-muted">
             This brand has no roles yet — roles are created by

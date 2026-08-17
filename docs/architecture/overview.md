@@ -99,6 +99,14 @@ scheduler, and one shared Reverb websocket server with one app entry per brand
 containers via command override — the application never spawns containers
 itself.
 
+Files live on per-purpose disks, each independently pointable at local
+storage or an S3-compatible store (ADR-0043): public media may be served
+straight from the store when the deployment declares it public, while
+private artifacts — the GoBD invoice archive above all — always stream
+through the application, so authorization never leaves the Gate. Local
+storage stays a supported production deployment; object storage is an
+option, not a requirement.
+
 ## Non-goals (write it down so nobody builds it)
 
 - No classical multi-tenancy / tenant self-signup at release.

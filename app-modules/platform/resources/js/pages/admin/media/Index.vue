@@ -3,6 +3,7 @@ import { Head, router, useForm } from '@inertiajs/vue3';
 import { Trash2, Upload } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import { computed, h, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import InputError from '@/components/InputError.vue';
@@ -197,7 +198,10 @@ const columns: ColumnDef<MediaRow>[] = [
     <Head title="Media" />
 
     <div class="flex flex-col gap-6">
-        <h1 class="text-2xl font-semibold">Media</h1>
+        <AdminPageHeader
+            title="Media"
+            description="Shared file library for badges, themes and pages"
+        />
 
         <DataTableToolbar
             :search="filters.search ?? ''"

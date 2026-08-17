@@ -150,12 +150,31 @@ interleave.
 16. Hardening + dry run: CI with PostgreSQL, `konventix:seed` for both
     event archetypes, BFSG pass, production Caddyfile, then SXLan and
     Xpertise rehearsed end-to-end on seeded data.
+17. Object storage backends (ADR-0043): media ULIDs in page blocks (the
+    `hero` block stores a resolved URL today and would rot on any disk
+    change — prerequisite for everything below), S3 driver on the `media`
+    and `invoices` disks with direct public delivery where the deployment
+    declares it, proxied private downloads, queued variant generation,
+    brand-scoped disk resolution (ADR-0028 shape, per-brand buckets later),
+    `storage:migrate` with verification, a storage doctor command, and
+    Garage behind a compose profile as the development backend. May
+    interleave with 8–15; the block change should land early regardless.
 
 ## Phase 3 — post-release
 
 Community, Agenda, Sponsoring, Newsletter, Extensibility (external
 webhook/OAuth API only after internal contracts are stable), BFSG audit pass,
 optional multi-operator groundwork.
+
+Also deferred here by decision, not by omission:
+
+- **GoBD retention deletion** (ADR-0031, ADR-0043 point 9). Slice 17 ships
+  reporting only — a scheduled job that names archived documents past their
+  window, plus a manual command. What deletion *means* (§147 AO counts ten
+  years from the end of the calendar year of issue, and a deletion that runs
+  early is worse than one that never runs) needs its own decision before any
+  operator is near the limit. Konventix has no invoice older than 2026, so
+  the honest deadline is far out — but the fix is owed, not waived.
 
 ## Standing constraints
 

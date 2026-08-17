@@ -21,6 +21,31 @@ depends on brand resolution and gating working.
 
 ## Backlog
 
+- [ ] Object storage for the media library (ADR-0043, ROADMAP slice 17), in
+      this order:
+      1. `hero` block stores `imageMediaId` instead of a resolved
+         `imageUrl`, resolved through `ResolvesBlockProps`/`MediaLibrary`,
+         with a payload migration for existing pages. Prerequisite: stored
+         URLs rot the moment the disk or asset host changes.
+      2. S3 driver on the `media` disk, `public_direct` + asset `url` as
+         explicit deployment config; `MediaLibrary::urlFor()` is the single
+         branch point, resolution stays network-free.
+      3. Public proxy route for the non-direct case (also the local-disk
+         fallback), long immutable cache headers — keys are never
+         overwritten.
+      4. Queued variant generation whenever the disk is remote, with a
+         pending state in `MediaItemData` and a UI placeholder.
+      5. Brand-scoped disk resolution (`media:{brandId}`, ADR-0028 shape).
+         Octane trap: `FilesystemManager` caches disks in a singleton — key
+         per brand, never across requests.
+      6. `storage:migrate` (copy → verify size+checksum → rewrite rows in
+         batches → optional delete) and a storage doctor command covering
+         every configured disk, the `public/storage` symlink, and an
+         unauthenticated fetch that proves `public_direct` is true.
+      7. Garage behind a compose profile as the dev backend; idempotent
+         admin-API init command for the second bucket and website access.
+- [ ] Queued prefix cleanup on brand deletion (ADR-0043): rows cascade,
+      objects do not. Media only — never the invoice archive.
 - [ ] Orphan media cleanup job (ADR-0035 defers it): usage references exist,
       the job that garbage-collects unreferenced items after a grace period
       does not.

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
-import { Landmark, Unplug } from '@lucide/vue';
+import { Unplug } from '@lucide/vue';
 import { ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -101,11 +102,11 @@ const providerNames: Record<string, string> = {
 <template>
     <Head title="Settlement accounts" />
 
-    <div class="flex flex-col gap-6 p-6 lg:p-8">
-        <div class="flex items-center gap-3">
-            <Landmark class="size-6 text-text-muted" />
-            <h1 class="text-2xl font-semibold text-text">Settlement accounts</h1>
-        </div>
+    <div class="flex flex-col gap-6">
+        <AdminPageHeader
+            title="Settlement accounts"
+            description="Each brand's own payment-provider connection"
+        />
 
         <p class="max-w-2xl text-sm text-text-muted">
             Money flows directly from the participant into the organizer's own

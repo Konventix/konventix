@@ -33,7 +33,10 @@ test('a verified user reaches a verified-only route', function () {
 
     $response = $this->actingAs($user)->get(route('dashboard'));
 
-    $response->assertOk();
+    // Past the gate: the dashboard route itself now forwards to the brand
+    // landing page (brand hosts have no dashboard) — what matters here is
+    // that verification did NOT bounce us to the notice screen.
+    $response->assertRedirect('/');
 });
 
 test('the verification notice screen renders for an unverified user', function () {

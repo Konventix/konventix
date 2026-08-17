@@ -35,5 +35,9 @@ Route::get('/', function (StaticPageRenderer $renderer) {
 })->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function (): void {
-    Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+    // Brand hosts have no dashboard — the brand landing page is the hub
+    // (a shop joins it later). The route name survives as the post-login
+    // redirect target (config/fortify.php `home`) and for any generated
+    // links, so nothing dangles.
+    Route::redirect('dashboard', '/')->name('dashboard');
 });

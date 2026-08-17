@@ -3,6 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import { computed, h, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import InputError from '@/components/InputError.vue';
@@ -162,7 +163,10 @@ function submit(): void {
     <Head title="Events" />
 
     <div class="flex flex-col gap-6">
-        <h1 class="text-2xl font-semibold">Events</h1>
+        <AdminPageHeader
+            title="Events"
+            description="Every event across its lifecycle"
+        />
 
         <DataTableToolbar
             :search="filters.search ?? ''"

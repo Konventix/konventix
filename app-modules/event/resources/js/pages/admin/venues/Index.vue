@@ -3,6 +3,7 @@ import { Head, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import { computed, h, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import InputError from '@/components/InputError.vue';
@@ -171,7 +172,10 @@ const columns: ColumnDef<VenueRow>[] = [
     <Head title="Venues" />
 
     <div class="flex flex-col gap-6">
-        <h1 class="text-2xl font-semibold">Venues</h1>
+        <AdminPageHeader
+            title="Venues"
+            description="Locations events take place at"
+        />
 
         <DataTableToolbar
             :search="filters.search ?? ''"

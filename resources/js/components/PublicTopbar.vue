@@ -8,7 +8,8 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { dashboard, home, login, register } from '@/routes';
+import { home, login, register } from '@/routes';
+import { edit as editProfile } from '@/routes/profile';
 
 /**
  * Public-facing topbar for the brand landing page and static brand pages
@@ -18,8 +19,10 @@ import { dashboard, home, login, register } from '@/routes';
  * a specific shared-prop shape.
  *
  * Kept deliberately simple per scope: a single "Home" link plus
- * auth-aware CTAs (dashboard when logged in, otherwise login/register) — no
- * dynamic published-pages nav, which would need a new shared Inertia prop.
+ * auth-aware CTAs (account settings when logged in, otherwise
+ * login/register) — no dynamic published-pages nav, which would need a new
+ * shared Inertia prop. Brand hosts have no dashboard; a shop link joins
+ * here later.
  */
 defineProps<{
     name: string;
@@ -63,10 +66,10 @@ const mobileMenuOpen = ref(false);
                     </Link>
                     <Link
                         v-if="page.props.auth.user"
-                        :href="dashboard()"
+                        :href="editProfile()"
                         class="rounded-lg bg-accent px-4 py-2.5 text-center text-sm font-medium text-on-accent hover:bg-accent/90"
                     >
-                        Dashboard
+                        Account
                     </Link>
                     <template v-else>
                         <Link
@@ -102,10 +105,10 @@ const mobileMenuOpen = ref(false);
                 </Link>
                 <Link
                     v-if="page.props.auth.user"
-                    :href="dashboard()"
+                    :href="editProfile()"
                     class="rounded-md bg-accent px-4 py-2 text-sm font-medium whitespace-nowrap text-on-accent hover:bg-accent/90"
                 >
-                    Dashboard
+                    Account
                 </Link>
                 <template v-else>
                     <Link

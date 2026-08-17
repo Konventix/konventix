@@ -3,6 +3,7 @@ import { Head, router } from '@inertiajs/vue3';
 import { Check, Download } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import { computed, h, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import { Button } from '@/components/ui/button';
@@ -190,7 +191,10 @@ const columns: ColumnDef<RegistrationRow>[] = [
     <Head title="Registrations" />
 
     <div class="flex flex-col gap-6">
-        <h1 class="text-2xl font-semibold">Registrations</h1>
+        <AdminPageHeader
+            title="Registrations"
+            description="Submissions, approvals and the waitlist"
+        />
 
         <DataTableToolbar
             :search="filters.search ?? ''"

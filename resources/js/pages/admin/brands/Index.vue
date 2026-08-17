@@ -3,6 +3,7 @@ import { Head, useForm } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { SortingState } from '@tanstack/vue-table';
 import { computed, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import InputError from '@/components/InputError.vue';
@@ -88,7 +89,10 @@ function submit(): void {
     <Head title="Brands" />
 
     <div class="flex flex-col gap-6">
-        <h1 class="text-2xl font-semibold">Brands</h1>
+        <AdminPageHeader
+            title="Brands"
+            description="The operator's brands, their hosts and features"
+        />
 
         <DataTableToolbar
             :search="filters.search ?? ''"

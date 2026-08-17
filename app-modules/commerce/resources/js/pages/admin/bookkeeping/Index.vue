@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
-import { BookOpenCheck, Download } from '@lucide/vue';
+import { Download } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -71,11 +72,11 @@ function submit(): void {
 <template>
     <Head title="Bookkeeping export" />
 
-    <div class="flex flex-col gap-6 p-6 lg:p-8">
-        <div class="flex items-center gap-3">
-            <BookOpenCheck class="size-6 text-text-muted" />
-            <h1 class="text-2xl font-semibold text-text">Bookkeeping export</h1>
-        </div>
+    <div class="flex flex-col gap-6">
+        <AdminPageHeader
+            title="Bookkeeping export"
+            description="DATEV Buchungsstapel and readable journal, one export per operator and month"
+        />
 
         <Card class="border-border bg-surface">
             <CardHeader>

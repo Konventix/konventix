@@ -2,6 +2,7 @@
 import { Head } from '@inertiajs/vue3';
 import type { SortingState } from '@tanstack/vue-table';
 import { computed } from 'vue';
+import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import type { DataTableFilters } from '@/composables/useDataTable';
@@ -53,7 +54,10 @@ const pagination = computed(() => ({
     <Head title="Users" />
 
     <div class="flex flex-col gap-6">
-        <h1 class="text-2xl font-semibold">Users</h1>
+        <AdminPageHeader
+            title="Users"
+            description="Every account across the operator's brands"
+        />
 
         <DataTableToolbar
             :search="filters.search ?? ''"
