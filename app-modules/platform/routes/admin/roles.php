@@ -13,5 +13,8 @@ use Illuminate\Support\Facades\Route;
 use Konventix\Platform\Http\Controllers\Admin\RoleAssignmentController;
 
 Route::get('/roles', [RoleAssignmentController::class, 'index'])->name('admin.roles.index');
+Route::post('/roles', [RoleAssignmentController::class, 'store'])->name('admin.roles.store');
+Route::get('/roles/{role}/edit', [RoleAssignmentController::class, 'edit'])->name('admin.roles.edit');
+Route::put('/roles/{role}', [RoleAssignmentController::class, 'update'])->name('admin.roles.update');
 Route::post('/roles/assign', [RoleAssignmentController::class, 'assign'])->name('admin.roles.assign');
 Route::post('/roles/revoke', [RoleAssignmentController::class, 'revoke'])->name('admin.roles.revoke');

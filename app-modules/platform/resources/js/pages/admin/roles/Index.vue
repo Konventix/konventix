@@ -1,16 +1,26 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
-import { ShieldMinus } from '@lucide/vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Pencil, Plus, ShieldMinus } from '@lucide/vue';
+import { ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import InputError from '@/components/InputError.vue';
 import {
     assign as assignRole,
+    edit as editRole,
     index as rolesIndex,
     revoke as revokeRole,
+    store as storeRole,
 } from '@/routes/admin/roles';
 
 /**
@@ -56,6 +66,23 @@ function submitRevoke(roleId: string, userId: string): void {
         { preserveScroll: true },
     );
 }
+
+const createOpen = ref(false);
+
+const createForm = useForm({
+    brand_id: props.selectedBrandId ?? '',
+    name: '',
+});
+
+function submitCreate(): void {
+    createForm.brand_id = props.selectedBrandId ?? '';
+    createForm.post(storeRole().url, {
+        onSuccess: () => {
+            createForm.reset('name');
+            createOpen.value = false;
+        },
+    });
+}
 </script>
 
 <template>
@@ -79,6 +106,34 @@ function submitRevoke(roleId: string, userId: string): void {
                     {{ brand.name }}
                 </option>
             </select>
+
+            <Dialog v-model:open="createOpen">
+                <DialogTrigger as-child>
+                    <Button>
+                        <Plus class="size-4" />
+                        New role
+                    </Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Create role</DialogTitle>
+                    </DialogHeader>
+                    <form class="flex flex-col gap-4" @submit.prevent="submitCreate">
+                        <div class="grid gap-2">
+                            <Label for="new-role-name">Name</Label>
+                            <Input id="new-role-name" v-model="createForm.name" />
+                            <InputError :message="createForm.errors.name" />
+                        </div>
+                        <p class="text-xs text-text-muted">
+                            Created for the selected brand — you grant its
+                            capabilities on the next screen.
+                        </p>
+                        <Button type="submit" :disabled="createForm.processing">
+                            Create
+                        </Button>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </AdminPageHeader>
 
         <p v-if="props.roles.length === 0" class="text-sm text-text-muted">
@@ -98,6 +153,12 @@ function submitRevoke(roleId: string, userId: string): void {
                     <span class="text-xs font-normal text-text-muted">
                         {{ role.permissions.length }} capabilities
                     </span>
+                    <Button as-child variant="ghost" size="sm" class="ml-auto">
+                        <Link :href="editRole(role.id)">
+                            <Pencil class="size-4" />
+                            Edit
+                        </Link>
+                    </Button>
                 </CardTitle>
             </CardHeader>
             <CardContent class="flex flex-col gap-4">

@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Console\Commands;
 
-use BackedEnum;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
-use InterNACHI\Modular\Support\ModuleRegistry;
 use Konventix\Platform\Models\Permission;
+use Konventix\Platform\Permissions\PermissionCatalog;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -24,11 +23,11 @@ class SyncPermissionsCommand extends Command
 
     protected $description = 'Upsert permission rows from every module\'s Permission enum and report orphans';
 
-    public function handle(ModuleRegistry $modules, PermissionRegistrar $registrar): int
+    public function handle(PermissionCatalog $catalog, PermissionRegistrar $registrar): int
     {
         $guard = (string) $this->option('guard');
 
-        $declared = $this->declaredPermissions($modules);
+        $declared = $catalog->all();
 
         if ($declared === []) {
             $this->warn('No module declares a Permission enum yet.');
@@ -66,32 +65,5 @@ class SyncPermissionsCommand extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    /**
-     * Every case value of every module's Permission enum, deduplicated.
-     *
-     * @return array<int, string>
-     */
-    private function declaredPermissions(ModuleRegistry $modules): array
-    {
-        $names = [];
-
-        foreach ($modules->modules() as $module) {
-            /** @var class-string $enum */
-            $enum = $module->qualify('Enums\\Permission');
-
-            if (! enum_exists($enum)) {
-                continue;
-            }
-
-            foreach ($enum::cases() as $case) {
-                if ($case instanceof BackedEnum) {
-                    $names[] = (string) $case->value;
-                }
-            }
-        }
-
-        return array_values(array_unique($names));
     }
 }

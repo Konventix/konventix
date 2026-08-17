@@ -12,9 +12,11 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Platform\Actions\AssignRoleToUser;
 use Konventix\Platform\Actions\RevokeRoleFromUser;
+use Konventix\Platform\Actions\SaveRole;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Role;
+use Konventix\Platform\Permissions\PermissionCatalog;
 
 /**
  * Operator console: per-brand role assignment (decision log Round 6,
@@ -63,6 +65,63 @@ class RoleAssignmentController
             'selectedBrandId' => $brandId,
             'roles' => $roles->all(),
         ]);
+    }
+
+    public function store(Request $request, SaveRole $saveRole): RedirectResponse
+    {
+        Gate::authorize(Permission::ManageRoles->value);
+
+        $validated = $request->validate([
+            'brand_id' => ['required', 'ulid', 'exists:brands,id'],
+            'name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $role = $saveRole->create($validated['brand_id'], $validated['name'], []);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Role created — now grant its capabilities.')]);
+
+        return to_route('admin.roles.edit', $role);
+    }
+
+    public function edit(Role $role, PermissionCatalog $catalog): Response
+    {
+        Gate::authorize(Permission::ManageRoles->value);
+
+        $brandId = (string) $role->getAttribute('brand_id');
+
+        return Inertia::render('admin/roles/Edit', [
+            'role' => [
+                'id' => $role->getKey(),
+                'name' => $role->name,
+                'brandId' => $brandId,
+                'brandName' => Brand::query()->find($brandId)->name ?? $brandId,
+            ],
+            'granted' => $role->permissions->pluck('name')->sort()->values()->all(),
+            'catalog' => collect($catalog->grouped())
+                ->map(fn (array $permissions, string $module): array => [
+                    'module' => $module,
+                    'permissions' => $permissions,
+                ])
+                ->values()
+                ->all(),
+        ]);
+    }
+
+    public function update(Role $role, Request $request, SaveRole $saveRole): RedirectResponse
+    {
+        Gate::authorize(Permission::ManageRoles->value);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'permissions' => ['array'],
+            'permissions.*' => ['string'],
+        ]);
+
+        $saveRole->update($role, $validated['name'], array_values($validated['permissions'] ?? []));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Role saved.')]);
+
+        return to_route('admin.roles.edit', $role);
     }
 
     public function assign(Request $request, AssignRoleToUser $assignRoleToUser): RedirectResponse
