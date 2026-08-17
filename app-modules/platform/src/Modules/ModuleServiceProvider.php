@@ -60,6 +60,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerMessageTopics();
         $this->registerSchedule();
         $this->registerGdprExporters();
+        $this->registerStorageMigrations();
     }
 
     /**
@@ -90,6 +91,13 @@ abstract class ModuleServiceProvider extends ServiceProvider
      * Container bindings owned by this module.
      */
     protected function registerBindings(): void {}
+
+    /**
+     * What this module keeps on a storage disk, so `storage:migrate` can move
+     * it between disks and repoint the module's own records (ADR-0043).
+     * Modules with no stored files implement nothing.
+     */
+    protected function registerStorageMigrations(): void {}
 
     /**
      * Scheduled work owned by this module. Deferred through

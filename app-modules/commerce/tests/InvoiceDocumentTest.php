@@ -172,3 +172,58 @@ it('downloads an older archive from the disk it was written to', function (): vo
         ->assertOk()
         ->assertHeader('content-disposition', 'attachment; filename='.$invoice->refresh()->invoice_number.'.pdf');
 });
+
+/**
+ * ADR-0043 + ADR-0031: moving the archive proves the bytes. Every copy is
+ * checked against the sha256 sealed onto the invoice when it was written, so
+ * "the file moved" and "the archived document is unaltered" are the same
+ * statement.
+ */
+it('migrates the archive to another disk and verifies the sealed digest', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Storage::fake('invoices_s3');
+    Mail::fake();
+
+    $invoice = issuedInvoice();
+    (new GenerateInvoiceDocument($invoice->id, $brand->id))
+        ->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));
+
+    $this->artisan('storage:migrate', [
+        '--purpose' => 'invoices',
+        '--from' => 'invoices',
+        '--to' => 'invoices_s3',
+        '--no-interaction' => true,
+    ])->assertSuccessful();
+
+    $invoice->refresh();
+
+    expect($invoice->document_disk)->toBe('invoices_s3');
+    Storage::disk('invoices_s3')->assertExists($invoice->document_path);
+    expect(hash('sha256', Storage::disk('invoices_s3')->get($invoice->document_path)))
+        ->toBe($invoice->document_sha256);
+});
+
+it('refuses to repoint an invoice whose archived bytes no longer match the seal', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Storage::fake('invoices_s3');
+    Mail::fake();
+
+    $invoice = issuedInvoice();
+    (new GenerateInvoiceDocument($invoice->id, $brand->id))
+        ->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));
+
+    // Something rewrote the archived document — exactly what GoBD retention
+    // forbids. A faithful copy of corrupted bytes is still a failure.
+    Storage::disk('invoices')->put($invoice->refresh()->document_path, 'tampered');
+
+    $this->artisan('storage:migrate', [
+        '--purpose' => 'invoices',
+        '--from' => 'invoices',
+        '--to' => 'invoices_s3',
+        '--no-interaction' => true,
+    ])->assertFailed();
+
+    expect($invoice->refresh()->document_disk)->toBe('invoices');
+});

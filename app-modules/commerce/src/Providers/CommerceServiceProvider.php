@@ -24,11 +24,13 @@ use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
 use Konventix\Commerce\Settlement\Unzer\SdkUnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerSettlementAdapter;
+use Konventix\Commerce\Storage\InvoiceStorageMigration;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
 use RuntimeException;
 use Stripe\StripeClient;
@@ -109,6 +111,16 @@ class CommerceServiceProvider extends ModuleServiceProvider
 
             return new SdkStripeApi(new StripeClient($secret));
         });
+    }
+
+    /**
+     * The GoBD invoice archive (ADR-0043). Copies are verified against the
+     * sha256 sealed onto each invoice, so a migration proves the archived
+     * bytes rather than merely moving them (ADR-0031).
+     */
+    protected function registerStorageMigrations(): void
+    {
+        $this->app->make(StorageMigrationRegistry::class)->register(new InvoiceStorageMigration);
     }
 
     /**

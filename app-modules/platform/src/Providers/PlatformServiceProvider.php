@@ -22,6 +22,8 @@ use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\OperatorContext;
 use Konventix\Platform\Realtime\BrandApplicationProvider;
 use Konventix\Platform\Slots\SlotRegistry;
+use Konventix\Platform\Storage\MediaStorageMigration;
+use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Laravel\Pennant\Feature;
 use Laravel\Reverb\ApplicationManager;
 
@@ -116,6 +118,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->app->singleton(NavigationRegistry::class);
         $this->app->singleton(SlotRegistry::class);
         $this->app->singleton(BlockRegistry::class);
+        $this->app->singleton(StorageMigrationRegistry::class);
     }
 
     /**
@@ -134,6 +137,15 @@ class PlatformServiceProvider extends ModuleServiceProvider
         // safe under Octane.
         $registry->register($this->app->make(HeroBlock::class));
         $registry->register(new CardsBlock);
+    }
+
+    /**
+     * The media library's files (ADR-0043). Platform owns the copier;
+     * each module describes and repoints its own records.
+     */
+    protected function registerStorageMigrations(): void
+    {
+        $this->app->make(StorageMigrationRegistry::class)->register(new MediaStorageMigration);
     }
 
     /**
