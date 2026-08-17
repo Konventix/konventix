@@ -287,6 +287,12 @@ declare namespace Konventix {
                 label: string;
                 tokens: Konventix.Platform.Data.ThemeTokenDefinitionData[];
             };
+            export type UpdateBrandData = {
+                name: string;
+                slug: string;
+                currency: string;
+                hosts: string[];
+            };
             namespace Blocks {
                 export type CardItemData = {
                     title: string;

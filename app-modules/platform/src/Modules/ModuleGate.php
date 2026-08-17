@@ -70,6 +70,17 @@ class ModuleGate
     }
 
     /**
+     * Every module's name, gateable or not — the console's brand page lists
+     * both so activation tells the whole story.
+     *
+     * @return array<int, string>
+     */
+    public function allModuleNames(): array
+    {
+        return array_keys($this->gateableModules());
+    }
+
+    /**
      * The Pennant feature name for a module.
      */
     public function featureName(string $module): string

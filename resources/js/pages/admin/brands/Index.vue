@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import { Plus } from '@lucide/vue';
 import type { SortingState } from '@tanstack/vue-table';
 import { computed, ref } from 'vue';
@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label';
 import type { DataTableFilters } from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
 import {
+    edit as editBrand,
     index as brandsIndex,
     store as createBrand,
 } from '@/routes/admin/brands';
@@ -169,6 +170,8 @@ function submit(): void {
             :get-row-id="(row: BrandRow) => row.id"
             items-label="brands"
             empty-message="No brands found."
+            row-clickable
+            @row-click="(row: BrandRow) => router.visit(editBrand(row.id))"
             @update:sorting="onSortingChange"
             @update:page="setPage"
         />

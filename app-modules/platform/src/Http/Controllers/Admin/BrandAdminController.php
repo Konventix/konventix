@@ -10,11 +10,16 @@ use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Platform\Actions\CreateBrand;
+use Konventix\Platform\Actions\UpdateBrand;
+use Konventix\Platform\Actions\UpdateBrandModules;
 use Konventix\Platform\Data\BrandData;
+use Konventix\Platform\Data\UpdateBrandData;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Operators\OperatorContext;
+use Laravel\Pennant\Feature;
 
 /**
  * Operator console: brand management (ADR-0029). Route middleware already
@@ -67,5 +72,66 @@ class BrandAdminController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Brand created.')]);
 
         return to_route('admin.brands.index');
+    }
+
+    public function edit(Brand $brand, ModuleGate $gate): Response
+    {
+        Gate::authorize(Permission::ViewBrands->value);
+
+        $gateable = collect($gate->gateableModuleNames())->sort()->values();
+
+        return Inertia::render('admin/brands/Edit', [
+            'brand' => [
+                'id' => $brand->getKey(),
+                'name' => $brand->name,
+                'slug' => $brand->slug,
+                'currency' => $brand->currency,
+                'hosts' => $brand->domains()->orderByDesc('is_primary')->pluck('host')->all(),
+            ],
+            // Per-brand module activation (ADR-0003): gateable modules with
+            // their Pennant state for THIS brand; everything else is always
+            // on and only listed so the page tells the whole story.
+            'modules' => $gateable
+                ->map(fn (string $module): array => [
+                    'module' => $module,
+                    'active' => Feature::for($brand)->active($gate->featureName($module)),
+                ])
+                ->all(),
+            'alwaysOn' => collect($gate->allModuleNames())
+                ->reject(fn (string $module): bool => $gateable->contains($module))
+                ->sort()
+                ->values()
+                ->all(),
+        ]);
+    }
+
+    public function update(Brand $brand, UpdateBrandData $data, UpdateBrand $updateBrand): RedirectResponse
+    {
+        Gate::authorize(Permission::ManageBrands->value);
+
+        $updateBrand->handle($brand, $data);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Brand saved.')]);
+
+        return to_route('admin.brands.edit', $brand);
+    }
+
+    public function updateModules(Brand $brand, Request $request, UpdateBrandModules $updateModules): RedirectResponse
+    {
+        Gate::authorize(Permission::ManageModuleActivation->value);
+
+        $data = $request->validate([
+            'modules' => ['required', 'array'],
+            'modules.*' => ['boolean'],
+        ]);
+
+        $updateModules->handle($brand, array_map(
+            fn (mixed $active): bool => (bool) $active,
+            $data['modules'],
+        ));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Module activation saved.')]);
+
+        return to_route('admin.brands.edit', $brand);
     }
 }

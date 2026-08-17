@@ -17,3 +17,6 @@ Route::get('/', AdminDashboardController::class)->name('admin.dashboard');
 
 Route::get('/brands', [BrandAdminController::class, 'index'])->name('admin.brands.index');
 Route::post('/brands', [BrandAdminController::class, 'store'])->name('admin.brands.store');
+Route::get('/brands/{brand}/edit', [BrandAdminController::class, 'edit'])->name('admin.brands.edit');
+Route::put('/brands/{brand}', [BrandAdminController::class, 'update'])->name('admin.brands.update');
+Route::put('/brands/{brand}/modules', [BrandAdminController::class, 'updateModules'])->name('admin.brands.modules.update');
