@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Event;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Channels\ChannelMap;
+use Konventix\Messaging\Channels\InAppChannel;
 use Konventix\Messaging\Channels\MailChannel;
 use Konventix\Messaging\Console\FlushHeldMessagesCommand;
 use Konventix\Messaging\Contracts\MessageChannel;
@@ -50,11 +51,12 @@ class MessagingServiceProvider extends ModuleServiceProvider
         $this->app->singleton(TopicRegistry::class);
 
         // Channel drivers resolve through the map (ADR-0041): adding a
-        // channel is one register() line. In-app and push register here as
-        // their slices land.
+        // channel is one register() line. Push registers here when its
+        // slice lands.
         $this->app->singleton(ChannelMap::class, function (): ChannelMap {
             $map = new ChannelMap;
             $map->register(Channel::Mail, MailChannel::class);
+            $map->register(Channel::InApp, InAppChannel::class);
 
             return $map;
         });

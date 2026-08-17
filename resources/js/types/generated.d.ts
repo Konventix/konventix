@@ -1,8 +1,31 @@
 declare namespace Konventix {
     namespace Admission {
+        namespace Data {
+            export type BadgeLayoutData = {
+                readonly size: string;
+                readonly orientation: string;
+                readonly logoMediaId: string | null;
+                readonly backgroundMediaId: string | null;
+                readonly accentColor: string;
+                readonly showRole: boolean;
+                readonly showQrCode: boolean;
+                readonly footerText: string | null;
+            };
+        }
         namespace Enums {
             export type AdmissionState =
                 'issued' | 'assigned' | 'revoked' | 'expired';
+            export type CheckInRejectionReason =
+                | 'unknown_admission'
+                | 'invalid_signature'
+                | 'token_expired'
+                | 'nonce_superseded'
+                | 'admission_not_valid'
+                | 'outside_event_day'
+                | 'not_valid_on_this_day'
+                | 'reentry_not_permitted'
+                | 'wrong_event';
+            export type CheckInResult = 'accepted' | 'rejected';
             export type Permission =
                 | 'admission.view-admissions'
                 | 'admission.issue-admissions'
@@ -12,12 +35,18 @@ declare namespace Konventix {
                 | 'admission.manage-checkpoints'
                 | 'admission.view-check-in-log'
                 | 'admission.scan-check-in'
-                | 'admission.print-badge';
+                | 'admission.print-badge'
+                | 'admission.manage-badge-templates';
+            export type ReentryPolicy =
+                'once_only' | 'once_per_day' | 'unlimited';
         }
     }
     namespace Commerce {
         namespace Enums {
-            export type OrderStatus = 'pending' | 'paid' | 'cancelled';
+            export type OrderStatus =
+                'pending' | 'paid' | 'cancelled' | 'refunded';
+            export type PaymentStatus =
+                'pending' | 'succeeded' | 'failed' | 'expired';
             export type Permission =
                 | 'commerce.view-orders'
                 | 'commerce.view-invoices'
@@ -33,6 +62,23 @@ declare namespace Konventix {
             export type TaxClass = 'standard' | 'reduced';
             export type TaxTreatment =
                 'standard' | 'reverse_charge' | 'small_business';
+        }
+    }
+    namespace Competition {
+        namespace Enums {
+            export type DisciplineKind =
+                'video_game' | 'tabletop' | 'quiz' | 'judged';
+            export type EntrantState =
+                'registered' | 'checked_in' | 'withdrawn' | 'disqualified';
+            export type MatchState =
+                'pending' | 'scheduled' | 'live' | 'finished' | 'cancelled';
+            export type Permission =
+                | 'competition.view-competitions'
+                | 'competition.manage-disciplines'
+                | 'competition.manage-competitions'
+                | 'competition.manage-entrants'
+                | 'competition.record-results'
+                | 'competition.correct-results';
         }
     }
     namespace Compliance {
@@ -56,6 +102,32 @@ declare namespace Konventix {
                 | 'compliance.manage-retention-rules';
             export type PolicyVersionState =
                 'draft' | 'published' | 'superseded';
+        }
+    }
+    namespace Content {
+        namespace Data {
+            export type LatestNewsBlockData = {
+                readonly heading: string | null;
+                readonly limit: number;
+            };
+        }
+        namespace Enums {
+            export type Audience = 'everyone' | 'logged-in';
+            export type CommentState =
+                'pending' | 'approved' | 'rejected' | 'hidden';
+            export type ContentType = 'news' | 'page' | 'announcement';
+            export type Permission =
+                | 'content.view-entries'
+                | 'content.manage-entries'
+                | 'content.publish-entries'
+                | 'content.moderate-comments';
+            export type PublicationState =
+                | 'draft'
+                | 'scheduled'
+                | 'published'
+                | 'unpublished'
+                | 'archived';
+            export type Urgency = 'normal' | 'urgent';
         }
     }
     namespace Event {
@@ -137,8 +209,21 @@ declare namespace Konventix {
         }
     }
     namespace Messaging {
+        namespace Data {
+            export type NotificationData = {
+                readonly id: string;
+                readonly topicKey: string | null;
+                readonly title: string;
+                readonly body: string;
+                readonly url: string | null;
+                readonly readAt: string | null;
+                readonly createdAt: string;
+            };
+        }
         namespace Enums {
-            export type Channel = 'mail';
+            export type Channel = 'mail' | 'in_app' | 'push';
+            export type MessageStatus =
+                'queued' | 'held' | 'sent' | 'failed' | 'suppressed';
             export type Permission =
                 | 'messaging.view-message-log'
                 | 'messaging.view-message-content'
@@ -154,6 +239,9 @@ declare namespace Konventix {
             export type AdminFavoriteData = {
                 label: string;
                 url: string;
+            };
+            export type AdminFavoriteOrderData = {
+                ids: string[];
             };
             export type BrandData = {
                 name: string;
@@ -290,6 +378,39 @@ declare namespace Konventix {
             export type RegistrationVisibility =
                 'public' | 'link' | 'invite_only';
             export type TaxClass = 'standard' | 'reduced';
+            export type WaitlistState =
+                'queued' | 'offered' | 'converted' | 'expired' | 'withdrawn';
+        }
+    }
+    namespace Resources {
+        namespace Enums {
+            export type BookingState =
+                'held' | 'confirmed' | 'released' | 'cancelled' | 'expired';
+            export type CapacityMode = 'unit' | 'quantity';
+            export type Permission =
+                | 'resources.view-resources'
+                | 'resources.manage-resource-types'
+                | 'resources.manage-resources'
+                | 'resources.book-on-behalf'
+                | 'resources.release-bookings';
+        }
+    }
+    namespace Staffing {
+        namespace Enums {
+            export type AssignmentState =
+                | 'offered'
+                | 'accepted'
+                | 'declined'
+                | 'released'
+                | 'completed'
+                | 'no_show';
+            export type Permission =
+                | 'staffing.view-roster'
+                | 'staffing.manage-teams'
+                | 'staffing.manage-shift-roles'
+                | 'staffing.manage-shifts'
+                | 'staffing.manage-assignments'
+                | 'staffing.claim-own-shifts';
         }
     }
 }

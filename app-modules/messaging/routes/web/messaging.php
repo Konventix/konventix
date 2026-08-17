@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Messaging\Http\Controllers\NotificationPreferencesController;
+use Konventix\Messaging\Http\Controllers\NotificationsController;
 
 Route::middleware(['auth'])->group(function (): void {
     // The preferences page lives with the account's other settings pages;
@@ -13,6 +14,15 @@ Route::middleware(['auth'])->group(function (): void {
         ->name('notification-preferences.edit');
     Route::put('settings/notifications', [NotificationPreferencesController::class, 'update'])
         ->name('notification-preferences.update');
+
+    // The bell's JSON endpoints (ADR-0041 point 6): fetched by the
+    // persistent layout, live-updated over Reverb.
+    Route::get('notifications', [NotificationsController::class, 'index'])
+        ->name('notifications.index');
+    Route::post('notifications/read-all', [NotificationsController::class, 'readAll'])
+        ->name('notifications.read-all');
+    Route::post('notifications/{notification}/read', [NotificationsController::class, 'read'])
+        ->name('notifications.read');
 });
 
 /*

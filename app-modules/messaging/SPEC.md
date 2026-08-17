@@ -50,9 +50,14 @@ scalars and ULIDs, which is exactly what the rule asks for.
   per-brand overrides, localisation per recipient locale, and rendering against
   a typed payload rather than a free-form array (ADR-0009,
   lessons-from-lancore #11).
-- **In-app notification inbox**: notification records per recipient with read
-  state, exposed to the frontend as a deferred prop rather than on every request
-  (lessons-from-lancore #5).
+- **In-app notification inbox** (ADR-0041 point 6): the in-app channel's
+  delivery *is* the `messaging_notifications` row (title, body, optional URL,
+  topic, read state). The bell lives in the persistent layout and fetches its
+  JSON feed once per browser page load — never on every request
+  (lessons-from-lancore #5) — then stays current via `notification.received`
+  broadcast on the recipient's private channel over Reverb (ADR-0025).
+  Rendering-time filtering for inactive modules (D-BATCH-7) applies at read,
+  not at send.
 - **Delivery log**: attempts, provider message identifiers, deliveries, bounces
   and complaints, plus the suppression list built from hard bounces and spam
   complaints. Infrastructure, not a domain record — it exists so a support
@@ -104,7 +109,7 @@ one.
 | `MessageSuppressed` | A channel's send is refused before dispatch (preferences or suppression list) | `message_id`, `brand_id`, `recipient_id`, `template_key`, `channel`, `reason_code` | implemented |
 | `RecipientSuppressionAdded` | An address or recipient joins the brand's suppression list | `suppression_id`, `brand_id`, `recipient_id`, `email`, `channel`, `reason_code`, `suppressed_at` | implemented |
 | `RecipientSuppressionLifted` | A suppression is lifted | `suppression_id`, `brand_id`, `recipient_id`, `email`, `channel`, `lifted_at` | implemented |
-| `NotificationRead` | An in-app notification is marked read | `notification_id`, `recipient_id`, `read_at` | proposed |
+| `NotificationRead` | An in-app notification is marked read (first read only — re-reads emit nothing) | `notification_id`, `recipient_id`, `read_at` | implemented |
 
 `MessageSuppressed` matters more than it looks: a module that believes it sent a
 confirmation needs a way to learn that the platform declined to.

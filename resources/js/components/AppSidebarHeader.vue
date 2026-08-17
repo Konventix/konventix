@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import type { BreadcrumbItem } from '@/types';
 
 withDefaults(
@@ -11,6 +12,11 @@ withDefaults(
         breadcrumbs: () => [],
     },
 );
+
+// Messaging's bell (ADR-0041 point 6), resolved through the module
+// component registry so the shell holds no module import — a build without
+// the messaging module simply renders no bell.
+const NotificationBell = resolveRegisteredComponent('messaging/NotificationBell');
 </script>
 
 <template>
@@ -22,6 +28,9 @@ withDefaults(
             <template v-if="breadcrumbs && breadcrumbs.length > 0">
                 <Breadcrumbs :breadcrumbs="breadcrumbs" />
             </template>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+            <component :is="NotificationBell" v-if="NotificationBell" />
         </div>
     </header>
 </template>

@@ -58,10 +58,12 @@ the natural first consumer and would register the first real template.
       are referenced on the envelope but not persisted on the log row, so a
       flush would lose them). If a digestable topic ever legitimately carries
       attachments, the log row needs to store the references.
-- [ ] In-app inbox with read state, exposed as a deferred prop rather than on
-      every request (lessons-from-lancore #5). ADR-0041 point 6: the in-app
-      channel writes the notification row; `notification.received` broadcasts
-      on the user's private Reverb channel.
+- [ ] D-BATCH-7 render-time filtering for inactive modules in the inbox: the
+      read endpoints do not yet skip notifications whose topic belongs to a
+      module inactive for the brand — harmless today because every module
+      that declares topics is a kernel/core module (always active), but the
+      filter needs module attribution on topics before a gateable module
+      declares one.
 - [ ] Recipient and preference read models from Identity events — idempotent
       and replayable, rebuildable from scratch. (Superset of the recipient
       read model item under Next above; that item is the minimum slice —
@@ -87,6 +89,19 @@ the natural first consumer and would register the first real template.
 
 ## Done
 
+- [x] In-app inbox (Slice 13c, ADR-0041 point 6): `InAppChannel` delivers by
+      writing the `InboxNotification` row (rendered title/body, optional
+      `url` taken from a string `url` key in the payload, topic, read state)
+      and pushing `NotificationReceived` (`notification.received`,
+      `ShouldBroadcastNow`) on the recipient's private Reverb channel — the
+      one `routes/channels.php` already authorizes. Bell
+      (`messaging/NotificationBell`, mounted in `AppSidebarHeader` via the
+      module component registry so the shell holds no module import) fetches
+      `/notifications` JSON once per browser page load and listens over
+      Echo; mark-read / mark-all-read endpoints call
+      `MarkNotificationRead`/`MarkAllNotificationsRead`, which emit
+      `NotificationRead` on first read only. `NotificationData` is the
+      ADR-0009 single shape for fetched rows and broadcast payloads alike.
 - [x] Digest windows and quiet hours (Slice 13b, ADR-0041 point 5, closes
       D-MSG-03): `HoldPolicy` writes a digestable topic's non-urgent send as
       `held` with `hold_until` at the end of its 30-minute window per
