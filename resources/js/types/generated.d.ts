@@ -106,6 +106,17 @@ declare namespace Konventix {
     }
     namespace Content {
         namespace Data {
+            export type ContentEntryData = {
+                readonly type: Konventix.Content.Enums.ContentType;
+                readonly title: string;
+                readonly slug: string;
+                readonly audience: Konventix.Content.Enums.Audience;
+                readonly commentsEnabled: boolean;
+                readonly teaser: string | null;
+                readonly body: string | null;
+                readonly urgency: Konventix.Content.Enums.Urgency | null;
+                readonly eventId: string | null;
+            };
             export type LatestNewsBlockData = {
                 readonly heading: string | null;
                 readonly limit: number;

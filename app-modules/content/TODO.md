@@ -4,38 +4,33 @@
 > what you completed, add follow-ups you discovered. Do not generate status
 > dashboards, percentages, or summary tables here.
 
-## Next (Phase 1 PoC — content types plus the block types Platform's page CMS needs)
+## Next
 
-- [ ] Model `ContentEntry` as **one** publishing model with a content type
-      discriminator, slug, publication state, and publish window. ULID primary
-      key, `BelongsToBrand`, optional `event_id` as a plain ULID column.
-- [ ] Define content types as typed configuration, not a schemaless `settings`
-      blob (ADR-0009); news and announcement are the first two.
-- [ ] Register Content's block types with Platform's block-based page CMS so a
-      brand's static pages can embed a news listing — this is part of the
-      Phase 1 block-based static pages proof.
-- [ ] Build the publish/unpublish/schedule Actions and emit
-      `ContentEntryPublished`, `ContentEntryScheduled`,
-      `ContentEntryUnpublished`.
 - [ ] Public listing and detail pages, with one `Data` object per endpoint
       driving validation, Inertia props, and the generated TS type; components
       reference semantic design tokens only (ADR-0008, ADR-0009).
-- [ ] Define the capability catalog in `src/Enums/Permission.php`, keeping
-      publishing separate from authoring.
+- [ ] `LatestNewsBlock` names the Vue component `content/blocks/LatestNewsBlock`
+      but no such component exists, so a page carrying the block renders
+      nothing. It lands with the public pages above (the block links into
+      them).
+- [ ] Event association is a raw ULID field in the editor: Content may not
+      import Event's models (ADR-0004), so an event picker needs an event read
+      model here, fed by Event's contract events.
+- [ ] No editor read model either — the moderation queue and the entry list
+      show bare author ULIDs, the same gap the role and media screens have
+      (Platform TODO: identity read model).
 
 ## Backlog (Phase 2 — release scope)
 
-- [ ] Comments with a moderation queue, reporting, and the moderation record;
-      make "comments allowed" a per-brand setting rather than a module gate.
+- [ ] "Comments allowed" is per entry today; make it a per-brand default the
+      entry can override, and decide where pre-moderation is switched on —
+      `PostComment` already takes the flag, but nothing sets it.
 - [ ] Taxonomy (categories and tags) with filtered listings and feeds.
 - [ ] Author read model fed by Identity events; the GDPR handler in
       `src/Gdpr/` covering authored entries and comments.
-- [ ] `AnnouncementPublished` consumed by Messaging, once the announcement
-      urgency and audience contract in `SPEC.md` is settled.
 - [ ] Media handling for entry attachments per ADR-0035 (decision log Round 6,
       D-CNT-05): reference Platform's brand-scoped media library by ULID
       instead of Content's own attachment storage.
-- [ ] Register navigation entries with Platform.
 - [ ] Single-locale-per-brand content model per decision log Round 6
       (D-CNT-06) — no translation columns or per-entry locale variants; a
       translation layer stays a future platform-wide decision, not something
@@ -45,6 +40,22 @@
       this to Registration state.
 
 ## Done
+
+- [x] Operator console (ADR-0029) — editorial index, entry editor, lifecycle
+      endpoints, moderation queue, and the two navigation entries. The screen
+      split follows the domain, not a layout preference: `UpdateEntry` never
+      touches `state` or `published_at`, so saving a typo fix in a live
+      announcement cannot notify everyone a second time, and publishing is one
+      button per Action. `transitions` is computed server-side so the console
+      cannot offer a move the Actions would refuse. Authoring
+      (`content.manage-entries`) and publishing (`content.publish-entries`)
+      are enforced separately — there is a test that an author may edit and
+      may not publish. The moderation queue opens on "needs attention"
+      (pending plus anything reported) rather than every comment ever posted,
+      and keeps reject and hide apart the way `ModerateComment` does.
+
+- [x] `AnnouncementPublished` consumed by Messaging (slice 13e:
+      `SendAnnouncementNotifications` over the `content.announcements` topic).
 
 - [x] Slice 12 (domain) — entries, publishing, announcements, comments.
       `ContentEntry` with a typed discriminator rather than a table per kind:

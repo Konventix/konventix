@@ -6,11 +6,17 @@
 // their own order (ADR-0042).
 import { Link, usePage } from '@inertiajs/vue3';
 import {
+    BookOpenCheck,
     Calendar,
     ClipboardList,
+    HardDrive,
     Image,
+    Landmark,
     LayoutGrid,
+    Mail,
     MapPin,
+    MessageSquare,
+    Newspaper,
     Puzzle,
     Receipt,
     Shield,
@@ -47,11 +53,17 @@ type AdminNavItem = {
 
 /** Icon identifiers a module's NavigationItem may send; unknown ones fall back to Puzzle. */
 const iconMap: Record<string, Component> = {
+    'book-open-check': BookOpenCheck,
+    'clipboard-list': ClipboardList,
+    'hard-drive': HardDrive,
     'layout-grid': LayoutGrid,
     'map-pin': MapPin,
+    'message-square': MessageSquare,
     calendar: Calendar,
-    'clipboard-list': ClipboardList,
     image: Image,
+    landmark: Landmark,
+    mail: Mail,
+    newspaper: Newspaper,
     receipt: Receipt,
     shield: Shield,
     store: Store,
