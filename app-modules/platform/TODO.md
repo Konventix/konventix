@@ -139,6 +139,26 @@ depends on brand resolution and gating working.
       `getCoreRowModel`/`FlexRender` in the familiar v8 shape) incompatible
       with the established composable pattern.
 
+- [x] Drag-reorderable sidebar favorites (ADR-0042), the ordering half of the
+      favorites feature LanCore never had. `admin_favorites.position`
+      (`unsignedSmallInteger`, migration backfills existing rows in their
+      previous alphabetical order; deliberately no `unique(user_id, position)`
+      — a reorder rewrites row by row and would trip it mid-write) +
+      `AdminFavorite::scopeInUserOrder()` (position, then label as
+      tie-breaker), which `HandleInertiaRequests` now shares through instead of
+      `orderBy('label')`. `store()` appends at `max(position) + 1`, so pinning
+      never disturbs an arranged list. New `reorder()` action +
+      `PUT /admin/favorites/order` (`admin.favorites.reorder`) taking the whole
+      id list top-first (`Data\AdminFavoriteOrderData`, `ids.*` ulid):
+      positions are derived from the list index server-side, foreign ids are
+      filtered out rather than fatal, absent ids keep their position.
+      Frontend: `useAdminFavorites().reorder(ids)` and a rewritten
+      `AdminFavoritesNav.vue` — native HTML5 drag-and-drop (no new dependency),
+      local list copy reordered live on `dragenter`, one persist on drop, and a
+      grip handle with ArrowUp/ArrowDown keyboard parity plus an sr-only hint.
+      `Link` carries `draggable="false"` so the browser's native link drag does
+      not hijack the row's.
+
 - [x] Brand theme editor, closing the theming half of the ADR-0008 backlog
       item (server-side token injection already existed — see ResolveBrand
       below). `Theming\TokenCatalog` (the overridable raw tokens, grouped,

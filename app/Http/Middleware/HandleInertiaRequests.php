@@ -62,11 +62,12 @@ class HandleInertiaRequests extends Middleware
                     ->visible(NavigationItem::AREA_ADMIN)
                     ->map(fn (NavigationItem $item): array => $item->toArray())
                     ->all(),
+                // In the user's own drag order (ADR-0042), not alphabetical.
                 'favorites' => $request->user()
                     ? AdminFavorite::query()
                         ->where('user_id', $request->user()->getKey())
-                        ->orderBy('label')
-                        ->get(['id', 'label', 'url'])
+                        ->inUserOrder()
+                        ->get(['id', 'label', 'url', 'position'])
                         ->map(fn (AdminFavorite $favorite): array => [
                             'id' => $favorite->getKey(),
                             'label' => $favorite->label,

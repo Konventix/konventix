@@ -58,7 +58,8 @@ Kernel: Platform, Identity, Event, Compliance, Messaging — **started**:
   2FA (confirmed), session list/revocation, account states, auth Data
   objects; `brand_memberships` (ADR-0016) recorded on login/registration
 - LanCore UX adapted (same stack, so ports not rewrites): admin shell
-  (module-grouped collapsible sidebar, search, server-persisted favorites),
+  (module-grouped collapsible sidebar, search, server-persisted favorites the
+  user can drag into their own order — ADR-0042, beyond LanCore),
   shared DataTable pattern, brand landing pages as block compositions
   (hero/cards from Platform, event-hero/countdown contributed by Event —
   the ADR-0003 extension proof), PublicTopbar, brand theme editor with

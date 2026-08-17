@@ -2,9 +2,21 @@
 // Operator console shell (ADR-0029), ported concept from LanCore's
 // AppSidebar: collapsible groups — one per module, derived from the shared
 // `admin.navigation` prop Platform's NavigationRegistry contributes — plus a
-// live client-side search filter and pinned favorites.
+// live client-side search filter and pinned favorites the user can drag into
+// their own order (ADR-0042).
 import { Link, usePage } from '@inertiajs/vue3';
-import { Calendar, ClipboardList, Image, LayoutGrid, MapPin, Puzzle, Receipt, Shield, Store, Users } from '@lucide/vue';
+import {
+    Calendar,
+    ClipboardList,
+    Image,
+    LayoutGrid,
+    MapPin,
+    Puzzle,
+    Receipt,
+    Shield,
+    Store,
+    Users,
+} from '@lucide/vue';
 import type { Component } from 'vue';
 import { computed, ref } from 'vue';
 import AdminFavoritesNav from '@/components/admin/AdminFavoritesNav.vue';
@@ -70,7 +82,7 @@ const admin = computed(
         } | null,
 );
 
-const { favorites, isPinned, toggle } = useAdminFavorites();
+const { favorites, isPinned, toggle, reorder } = useAdminFavorites();
 
 const searchQuery = ref('');
 const searchActive = computed(() => searchQuery.value.trim().length > 0);
@@ -129,7 +141,11 @@ const groups = computed(() => {
         </SidebarHeader>
 
         <SidebarContent>
-            <AdminFavoritesNav :favorites="favorites" @unpin="toggle" />
+            <AdminFavoritesNav
+                :favorites="favorites"
+                @unpin="toggle"
+                @reorder="reorder"
+            />
 
             <AdminNavGroup
                 v-for="group in groups"

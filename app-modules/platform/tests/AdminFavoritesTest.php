@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Str;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\AdminFavorite;
 use Konventix\Platform\Models\Operator;
@@ -101,6 +102,90 @@ it('isolates favorites per user: an admin cannot unpin another admin\'s favorite
         ->assertNotFound();
 
     expect(AdminFavorite::query()->whereKey($favorite->getKey())->exists())->toBeTrue();
+});
+
+it('appends a new pin to the end of the order', function (): void {
+    [, $admin] = favoritesAdminOperator();
+
+    AdminFavorite::factory()->create([
+        'user_id' => $admin->getKey(),
+        'url' => '/admin/brands',
+        'position' => 7,
+    ]);
+
+    $this->actingAs($admin)->post('http://admin.favorites.test/admin/favorites', [
+        'label' => 'Users',
+        'url' => '/admin/users',
+    ]);
+
+    expect(
+        AdminFavorite::query()
+            ->where('user_id', $admin->getKey())
+            ->where('url', '/admin/users')
+            ->value('position'),
+    )->toBe(8);
+});
+
+it('persists a drag-reorder of the favorites', function (): void {
+    [, $admin] = favoritesAdminOperator();
+
+    $first = AdminFavorite::factory()->create(['user_id' => $admin->getKey(), 'position' => 1]);
+    $second = AdminFavorite::factory()->create(['user_id' => $admin->getKey(), 'position' => 2]);
+    $third = AdminFavorite::factory()->create(['user_id' => $admin->getKey(), 'position' => 3]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.favorites.test/admin/favorites/order', [
+            'ids' => [$third->getKey(), $first->getKey(), $second->getKey()],
+        ])
+        ->assertRedirect();
+
+    expect(
+        AdminFavorite::query()
+            ->where('user_id', $admin->getKey())
+            ->inUserOrder()
+            ->pluck('id')
+            ->all(),
+    )->toBe([$third->getKey(), $first->getKey(), $second->getKey()]);
+});
+
+it('ignores ids belonging to another user when reordering', function (): void {
+    [$operator, $admin, $role] = favoritesAdminOperator();
+
+    $registrar = app(PermissionRegistrar::class);
+    $registrar->setPermissionsTeamId($operator->getKey());
+    $otherAdmin = User::factory()->create();
+    $otherAdmin->assignRole($role);
+    $registrar->setPermissionsTeamId(null);
+
+    $own = AdminFavorite::factory()->create(['user_id' => $admin->getKey(), 'position' => 5]);
+    $foreign = AdminFavorite::factory()->create(['user_id' => $otherAdmin->getKey(), 'position' => 9]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.favorites.test/admin/favorites/order', [
+            'ids' => [$foreign->getKey(), $own->getKey()],
+        ])
+        ->assertRedirect();
+
+    expect($own->refresh()->position)->toBe(1)
+        ->and($foreign->refresh()->position)->toBe(9);
+});
+
+it('rejects a reorder without ids', function (): void {
+    [, $admin] = favoritesAdminOperator();
+
+    $this->actingAs($admin)
+        ->put('http://admin.favorites.test/admin/favorites/order', ['ids' => []])
+        ->assertSessionHasErrors('ids');
+});
+
+it('requires the admin capability to reorder favorites', function (): void {
+    favoritesAdminOperator();
+
+    $this->actingAs(User::factory()->create())
+        ->put('http://admin.favorites.test/admin/favorites/order', [
+            'ids' => [(string) Str::ulid()],
+        ])
+        ->assertForbidden();
 });
 
 it('requires the admin capability to pin a favorite', function (): void {

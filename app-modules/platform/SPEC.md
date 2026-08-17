@@ -39,6 +39,11 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
 - **Navigation registry.** Modules contribute entries; Platform filters them by
   active feature and by permission at render time, so no component holds a list
   of modules (lessons-from-lancore #10).
+- **Personal operator-console navigation state.** Per-user pinned admin
+  favorites (`admin_favorites`) and the order the user dragged them into
+  (ADR-0042). Registry order is Platform's; *this* order is the user's, and it
+  is server-persisted so it follows them across browsers. Transient view state
+  — which nav groups are expanded — stays client-side and is not data.
 - **UI slot registry.** Named slots modules render into, gated per brand.
 - **Block-based CMS for brand static pages.** Page and block models, publication
   state, and the block-type registry that modules register their own block types

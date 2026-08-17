@@ -14,4 +14,5 @@ use Illuminate\Support\Facades\Route;
 use Konventix\Platform\Http\Controllers\Admin\AdminFavoriteController;
 
 Route::post('/favorites', [AdminFavoriteController::class, 'store'])->name('admin.favorites.store');
+Route::put('/favorites/order', [AdminFavoriteController::class, 'reorder'])->name('admin.favorites.reorder');
 Route::delete('/favorites/{favorite}', [AdminFavoriteController::class, 'destroy'])->name('admin.favorites.destroy');

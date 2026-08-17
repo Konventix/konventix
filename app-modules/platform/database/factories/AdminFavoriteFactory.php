@@ -25,6 +25,7 @@ class AdminFavoriteFactory extends Factory
             'user_id' => (string) Str::ulid(),
             'label' => fake()->words(2, true),
             'url' => '/admin/'.fake()->unique()->slug(),
+            'position' => fake()->numberBetween(1, 20),
         ];
     }
 }
