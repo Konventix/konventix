@@ -8,19 +8,25 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Konventix\Compliance\Console\ApplyRetentionRulesCommand;
+use Konventix\Compliance\Console\WatchSubjectRequestDeadlinesCommand;
 use Konventix\Compliance\Enums\Permission;
+use Konventix\Compliance\Events\DataExportCompleted;
 use Konventix\Compliance\Events\DataExportRequested;
 use Konventix\Compliance\Events\RetentionPeriodElapsed;
+use Konventix\Compliance\Events\SubjectRequestRefused;
 use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\ComplianceGdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Compliance\Http\Middleware\EnsurePoliciesAccepted;
 use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
+use Konventix\Compliance\Listeners\NotifySubjectOfRequestOutcome;
 use Konventix\Compliance\Listeners\PruneAuditTrail;
 use Konventix\Compliance\Listeners\RecordAuditableEvents;
 use Konventix\Compliance\Listeners\StartRetentionClock;
 use Konventix\Compliance\Support\PolicyMarkdown;
 use Konventix\Event\Events\EventConcluded;
+use Konventix\Messaging\Templates\MessageTemplate;
+use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -78,6 +84,12 @@ class ComplianceServiceProvider extends ModuleServiceProvider
      */
     protected function registerListeners(): void
     {
+        // Registered BEFORE the fan-out on purpose: a deletion acknowledgment
+        // has to be queued while the recipient's address still exists — the
+        // fan-out is what scrubs it, and under a synchronous queue it would
+        // otherwise run first (see the listener's docblock).
+        Event::listen(UserDeletionRequested::class, [NotifySubjectOfRequestOutcome::class, 'handleDeletionRequested']);
+
         Event::listen(DataExportRequested::class, [DispatchSubjectRequestFanOut::class, 'handleExport']);
         Event::listen(UserDeletionRequested::class, [DispatchSubjectRequestFanOut::class, 'handleDeletion']);
 
@@ -92,6 +104,115 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // module uses.
         Event::listen(EventConcluded::class, StartRetentionClock::class);
         Event::listen(RetentionPeriodElapsed::class, PruneAuditTrail::class);
+
+        // Telling the subject what happened to their request (Art. 12(3)).
+        // Deletion is acknowledged when it *starts* — see the listener for
+        // why a completion notice would have nowhere to go.
+        Event::listen(DataExportCompleted::class, [NotifySubjectOfRequestOutcome::class, 'handleExportCompleted']);
+        Event::listen(SubjectRequestRefused::class, [NotifySubjectOfRequestOutcome::class, 'handleRefused']);
+    }
+
+    /**
+     * Subject-facing legal notices and the operator's deadline escalation.
+     *
+     * No topic (ADR-0041) on any of them, deliberately: the topic machinery
+     * exists to honour preferences, and none of these is a notification a
+     * person may switch off. Only the suppression list applies, which
+     * SendMessage enforces regardless.
+     */
+    protected function registerMessageTemplates(): void
+    {
+        $registry = $this->app->make(TemplateRegistry::class);
+
+        $registry->register(new MessageTemplate(
+            key: NotifySubjectOfRequestOutcome::EXPORT_READY,
+            subjects: [
+                'de' => 'Ihre Datenkopie steht bereit',
+                'en' => 'Your data export is ready',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Ihre Kopie der bei uns gespeicherten Daten ist fertig.</p>
+                    <p>Sie finden sie unter „Einstellungen → Datenschutz“ zum Herunterladen.</p>
+                    <p>Verfügbar bis: {{ $availableUntil ?? 'siehe Konto' }}.</p>
+                    <p>Aus Sicherheitsgründen verschicken wir die Datei nicht per E-Mail: der Download ist nur nach Anmeldung möglich.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Your copy of the data we hold about you is ready.</p>
+                    <p>You can download it under “Settings → Privacy”.</p>
+                    <p>Available until: {{ $availableUntil ?? 'see your account' }}.</p>
+                    <p>We deliberately do not attach the file: the download requires you to be signed in.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            // Legally significant: what we told a data subject, and when.
+            logBodies: true,
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: NotifySubjectOfRequestOutcome::DELETION_ACKNOWLEDGED,
+            subjects: [
+                'de' => 'Ihr Löschantrag ist eingegangen',
+                'en' => 'We received your deletion request',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Wir haben Ihren Antrag auf Löschung erhalten und bearbeiten ihn bis spätestens {{ $deadline }}.</p>
+                    <p>Ihre Daten werden anonymisiert: Unterlagen, die wir gesetzlich aufbewahren müssen — Rechnungen vor allem — bleiben bestehen, aber ohne Ihre persönlichen Angaben.</p>
+                    <p>Dies ist die letzte Nachricht an diese Adresse: nach der Anonymisierung haben wir keine Kontaktdaten mehr von Ihnen.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>We received your deletion request and will complete it by {{ $deadline }} at the latest.</p>
+                    <p>Your data will be anonymized: records we are legally required to keep — invoices above all — survive without your personal details attached.</p>
+                    <p>This is the last message to this address: once anonymized, we no longer hold contact details for you.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            logBodies: true,
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: NotifySubjectOfRequestOutcome::REQUEST_REFUSED,
+            subjects: [
+                'de' => 'Zu Ihrem Antrag',
+                'en' => 'About your request',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Wir können Ihrem Antrag ({{ $requestType }}) nicht entsprechen.</p>
+                    <p>Rechtlicher Grund: {{ $reasonCode }}.</p>
+                    <p>Sie können sich an die zuständige Datenschutzaufsichtsbehörde wenden.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>We are unable to act on your request ({{ $requestType }}).</p>
+                    <p>Legal ground: {{ $reasonCode }}.</p>
+                    <p>You may lodge a complaint with your data protection supervisory authority.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            logBodies: true,
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: WatchSubjectRequestDeadlinesCommand::TEMPLATE_KEY,
+            subjects: [
+                'de' => 'Frist für einen Betroffenenantrag',
+                'en' => 'Data subject request deadline',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Antrag {{ $requestId }} ({{ $requestType }}) — Frist {{ $deadline }}.</p>
+                    <p>{{ $daysLeft < 0 ? 'Überfällig seit '.abs($daysLeft).' Tag(en).' : 'Noch '.$daysLeft.' Tag(e).' }}</p>
+                    <p>{{ $openModules }} Modul(e) haben noch nicht geantwortet.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Request {{ $requestId }} ({{ $requestType }}) — deadline {{ $deadline }}.</p>
+                    <p>{{ $daysLeft < 0 ? 'Overdue by '.abs($daysLeft).' day(s).' : $daysLeft.' day(s) left.' }}</p>
+                    <p>{{ $openModules }} module(s) have not answered yet.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
     }
 
     /**
@@ -102,11 +223,15 @@ class ComplianceServiceProvider extends ModuleServiceProvider
     protected function registerSchedule(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([ApplyRetentionRulesCommand::class]);
+            $this->commands([ApplyRetentionRulesCommand::class, WatchSubjectRequestDeadlinesCommand::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command(ApplyRetentionRulesCommand::class)->dailyAt('03:30');
+
+            // Early enough that a warning is in the operator's inbox at the
+            // start of the working day the deadline actually matters on.
+            $schedule->command(WatchSubjectRequestDeadlinesCommand::class)->dailyAt('06:45');
         });
     }
 

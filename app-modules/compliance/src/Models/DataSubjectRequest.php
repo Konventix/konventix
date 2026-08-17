@@ -30,6 +30,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property DataSubjectRequestState $state
  * @property DeletionMode|null $mode
  * @property Carbon $deadline_at
+ * @property int $escalation_level
  * @property string|null $archive_path
  * @property string|null $archive_disk
  * @property Carbon|null $archive_expires_at
@@ -56,6 +57,7 @@ class DataSubjectRequest extends Model
         'archive_expires_at',
         'closed_at',
         'reason_code',
+        'escalation_level',
     ];
 
     /**
@@ -90,6 +92,7 @@ class DataSubjectRequest extends Model
             'state' => DataSubjectRequestState::class,
             'mode' => DeletionMode::class,
             'deadline_at' => 'datetime',
+            'escalation_level' => 'integer',
             'archive_expires_at' => 'datetime',
             'closed_at' => 'datetime',
         ];

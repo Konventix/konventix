@@ -25,10 +25,11 @@ module built before it will otherwise be retrofitted.
 
 ## Backlog
 
-- [ ] Messaging delivery for `DataExportCompleted` / `UserDeletionCompleted`
-      / `SubjectRequestRefused`: the events exist and carry what a template
-      needs, but nobody listens, so a subject learns their export is ready by
-      revisiting the privacy page. Needs a topic (ADR-0041) and templates.
+- [ ] `UserDeletionCompleted` still notifies nobody, and cannot: by then the
+      address is scrubbed. If a "your deletion is done" notice is ever
+      required, it needs an address captured at request time and held outside
+      the fan-out's reach — which is a copy of personal data kept for the
+      purpose of deleting personal data, and needs a decision, not code.
 - [ ] The retention sweep re-emits daily for as long as a rule stays elapsed
       (deliberate — a delete-older-than is idempotent, and the alternative is
       state whose failure mode is data that never gets deleted). If the
@@ -56,9 +57,10 @@ module built before it will otherwise be retrofitted.
       subject read model, or Registration's export carries the invoice
       references. Note that an issued invoice may not be deleted at all
       (§147 AO / Art. 17(3)(b)), so this is about export, not erasure.
-- [ ] DSR deadline scheduler (decision log Round 6, D-BATCH): a scheduled job
-      that watches each open `DataSubjectRequest`'s statutory deadline and
-      escalates through Messaging as it approaches/lapses.
+- [ ] The deadline escalation goes to the operator's single contact address.
+      Per-brand or per-role routing (a data protection officer who is not the
+      operator's general contact) needs a settings field; flagged rather than
+      invented.
 - [ ] Only two data categories have a consumer: `compliance.audit-trail` and
       `messaging.delivery-log`. Every other module's participant data has no
       retention rule and nothing listening — walk them once (Admission's
@@ -103,6 +105,30 @@ module built before it will otherwise be retrofitted.
       tracked as Platform's concern.
 
 ## Done
+
+- [x] Subject notices and the deadline watch — the last of slice 14.
+      Three subject-facing templates (export ready, deletion acknowledged,
+      refusal with its legal ground) and one operator-facing escalation, all
+      through Messaging's send API. No topic on any of them (ADR-0041): the
+      topic machinery exists to honour preferences, and a legal notice is not
+      a notification anyone may switch off — only the suppression list
+      applies. All three subject notices set `logBodies`, because what we
+      told a data subject and when is itself the evidence.
+      **Deletion is acknowledged when it starts, not when it finishes.** By
+      completion every module has scrubbed the person's contact details, so a
+      completion notice would have nowhere to go; the listener is therefore
+      registered *before* the fan-out, and a test asserts the mail left for
+      the real address before the scrub caught up with it.
+      Notices are best-effort: `SendMessage` refuses loudly when a subject
+      has no resolvable address, which is right for Messaging and wrong as a
+      way to fail a statutory request, so Compliance logs and continues.
+      `compliance:watch-deadlines` runs daily at 06:45 and escalates twice —
+      approaching (7 days) and overdue — tracked by `escalation_level` on the
+      request, because a mail every morning is a mail an operator learns to
+      filter. It goes to the operator's contact address through Platform's
+      `OperatorSettings` doorway (Compliance may not import the Operator
+      model), which gained `contactEmailForBrand()` for it.
+      `tests/SubjectRequestNotificationTest.php`.
 
 - [x] A `Gdpr/` handler in every module that holds personal data (slice 14's
       sweep): identity, admission, content, messaging, compliance, staffing,

@@ -41,4 +41,21 @@ class OperatorSettings
     {
         return Brand::query()->findOrFail($brandId)->currency;
     }
+
+    /**
+     * Where operator-facing mail goes for this brand — Compliance's deadline
+     * escalation is the first caller.
+     *
+     * One address rather than "everyone holding the capability": a statutory
+     * deadline needs an owner, and a mail to fifteen people is a mail nobody
+     * answers. Null when the brand has no operator or the operator left the
+     * field empty, and the caller then has nowhere to escalate to (which the
+     * scheduler logs rather than guessing).
+     */
+    public function contactEmailForBrand(string $brandId): ?string
+    {
+        $operator = Brand::query()->find($brandId)?->operator;
+
+        return $operator?->contact_email;
+    }
 }
