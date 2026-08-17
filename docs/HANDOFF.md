@@ -1,4 +1,4 @@
-# Session handoff — 2026-08-17
+# Session handoff — 2026-08-17 (second session of the day)
 
 > Point-in-time note for continuing the Phase 2 build.
 > Superseded by the next session's work; safe to update or delete once
@@ -7,137 +7,116 @@
 
 ## Where things stand
 
-Slices 1–10, 12, 13 and all of 7 are complete; every slice is one (or a
-few topical) commits, pushed to `github.com/Konventix/konventix-poc`
-(`main`). The full history of slices 1–12 with their design notes lives in
-this file's previous revision (`git log docs/HANDOFF.md`) — this revision
-keeps only the newest session verbose.
+Slices 1–10, 12, 13 and 17 are complete, plus the admin/UI sweep and
+slice 17's storage work from the earlier session today. The verbose
+history of those lives in this file's previous revisions
+(`git log docs/HANDOFF.md`).
 
-## This session (2026-08-17)
+Still open in build order: **slice 14** (Compliance completion + GDPR
+sweep), **slice 11** (GameOps, deliberately on hold), then 15–16.
 
-**Slice 13 — Messaging delivery model — is complete**, built on ADR-0041
-(committed with 13a; interview decisions of 2026-08-16 are recorded in the
-ADR itself). Five commits plus one repo-wide bug fix:
+## This session — closing UI gaps
 
-- **13a** (`7eb97e5`): ADR-0041 points 1–4. Topics as the unit of
-  preference and policy, declared at boot via the new
-  `ModuleServiceProvider::registerMessageTopics()` hook; `SendMessage` as
-  the fan-out point (one envelope + one `messaging_messages` log row per
-  resolved channel; preference/suppression refusals logged `suppressed` +
-  `MessageSuppressed`, never silent); per-brand `Suppression` with
-  partial-unique live rows and add/lift Actions + events;
-  `NotificationPreference` rows in Messaging (D-MSG-06) with the
-  `settings/notifications` page rendered from the registry; log bodies
-  only for `logBodies`-flagged templates (D-MSG-07 hybrid). Both SPEC
-  boundary lines (Identity preference custody) updated. A topicless send
-  behaves exactly as before.
-- **13b** (`0983975`): digests + quiet hours (point 5). `HoldPolicy`
-  writes digestable non-urgent sends as `held` (30-min window per brand ×
-  recipient × channel, joined by later sends; quiet hours 22:00–08:00 in
-  recipient tz → brand `messaging_brand_settings.timezone` → app tz push
-  the end to 08:00). `messaging:flush-held` (every minute, row-locked)
-  sends single holds as themselves — payload rehydrated from the log via
-  `RehydratedPayload`, locale from the new `recipient_locale` column —
-  and coalesces several into one `messaging.digest`; members marked sent
-  with `digest_message_id`. Urgent and attachment-carrying sends bypass
-  holding (attachments are not persisted on log rows — TODO.md).
-- **13c** (`005d521`): in-app inbox (point 6). `InAppChannel`'s delivery
-  *is* the `InboxNotification` row; `NotificationReceived`
-  (`ShouldBroadcastNow`, `notification.received`) pushes on the
-  recipient's private Reverb channel. The bell
-  (`messaging/NotificationBell`) mounts in `AppSidebarHeader` via the
-  module component registry, fetches `/notifications` JSON once per
-  browser page load and listens over Echo; mark-read emits
-  `NotificationRead` on first read only. `generated.d.ts` also caught up
-  several stale slices of enum types in this commit.
-- **13d** (`4ff0291`): web push (point 7, D-MSG-02). `PushChannel` →
-  `PushSender` seam → `WebPushSender` (minishlink/web-push, new approved
-  dep). Typed `PushMessageData` (title/body/url/tag); per-device
-  `PushSubscription` rows keyed (recipient, endpoint), pruned on 404/410;
-  no devices = no-op; all-endpoints-refused = retry. One VAPID pair per
-  deployment (`services.webpush`, `messaging:vapid-keys`; rotation
-  invalidates all subscriptions). Static `public/push-sw.js`; per-device
-  enable/disable on the notification settings page. PushSender resolves
-  lazily so unconfigured deployments only fail sends that could deliver.
-- **Fix** (`3dbf161`): **modular event discovery disabled** —
-  InterNACHI modular auto-discovered every `src/Listeners/` class while
-  every module also registers explicitly (ADR-0003), so **every listener
-  ran twice per event** since the first one landed. Idempotent
-  projections and request-key convergence masked it; Messaging's send
-  listeners surfaced it as duplicate mail. `should_discover_events =>
-  false` + `.ai/rules/listeners.md`.
-- **13e** (`35d2f2a`): intent-event listeners (point 8).
-  `SendAnnouncementNotifications` (queued) fans `AnnouncementPublished`
-  to every account on `content.announcements` (in-app/push/mail,
-  digestable, urgent bypasses — D-CNT-08); `SendDunningNotice` mails the
-  billing contact on non-suppressible `commerce.dunning`.
-  `DunningLevelRaised` gained billing scalars additively so the listener
-  never reads Commerce models. Messaging owns both topics and templates;
-  both SPEC boundary lines carry the (narrow) exception.
+The roadmap's "UI page catalogue" tracks screens whose backend shipped
+but whose pages never did. Two of those entries are now closed.
 
-**Second half of the session — admin/UI sweep** (user request: consistent
-console, dead-link-free navigation, View/Edit+Index for the core admin
-areas), seven commits `77f542b`…`d23bc18`:
+**Content (`34286f8`, `2f14dc4`).** Slice 12 shipped Content's whole
+domain with *no HTTP surface at all* — no controllers, no routes, no
+pages, and a registered `latest-news` block whose Vue component did not
+exist, so any page carrying it rendered nothing.
 
-- **Nav cleanup**: brand hosts have no dashboard — `/dashboard` redirects
-  to the landing page (route name kept as Fortify's post-login target),
-  the stub page and the unused AppHeader/AppHeaderLayout shell are gone,
-  sidebar links Home, PublicTopbar's logged-in CTA goes to account
-  settings. A shop link joins the brand nav later.
-- **AdminPageHeader**: one header component (title, description, actions
-  slot) adopted by every console page, including the ones that
-  double-padded or hand-rolled their own.
-- **Brands**: real edit page — identity fields, host sync (first host
-  primary), theme shortcut, and **per-brand module activation** toggles
-  over Pennant (ADR-0003), gated by `platform.manage-module-activation`;
-  `ModuleGate::allModuleNames()` added for the read.
-- **Mail settings** (`/admin/mail-settings`, Messaging-owned, ADR-0028):
-  per-brand sender identity, quiet-hours timezone, optional own SMTP
-  transport; stored password never travels to the browser.
-- **Users**: account page with profile edit (emits `UserProfileUpdated`),
-  lock/unlock (first producers of `UserAccountLocked`/`Unlocked`, now
-  implemented in the SPEC), brand memberships and cross-brand roles.
-- **Orders**: detail page — lines, invoice + billing party + PDF,
-  payment attempts, credit notes, book-bank-transfer in place
-  (`bookPayment` now redirects `back()`).
-- **Roles**: create dialog + grant editor rendering from the new
-  `PermissionCatalog` (walks every module's Permission enum;
-  `permissions:sync` delegates to it); undeclared grants refused.
-- **Bell**: dropdown now links to `/settings/notifications` — the
-  preference page existed but nothing led there.
-- Venues kept their dialog-based create/edit (already complete); Events
-  already had full CRUD and only needed the header alignment.
+- Operator console: entry index (type/state filters), the editor, one
+  endpoint per lifecycle Action, and the comment moderation queue. New
+  Actions `CreateEntry`/`UpdateEntry`/`ArchiveEntry` — `Archived` was a
+  state nothing could reach. `UpdateEntry` deliberately touches neither
+  `state` nor `published_at`: fixing a typo in a live announcement must
+  not notify everyone again. Legal `transitions` come from the server.
+  Authoring (`content.manage-entries`) and publishing
+  (`content.publish-entries`) are separately enforced, with a test for
+  an author who may edit and may not publish.
+- Public pages: `/news`, `/news/{slug}` with comments, and the
+  urgent-announcement banner. Two rules on every read — live-only via
+  `scopeLive`, and audience, which **404s** rather than redirecting to
+  login (a redirect confirms the slug exists; D-CNT-07 makes audience a
+  visibility rule, not a paywall). The banner fetches once per browser
+  page load and mounts under `PublicTopbar` through the module component
+  registry, the same seam Messaging's bell uses.
+- Author read model (`content_authors`, `ProjectAuthor`) from Identity's
+  `UserRegistered`/`UserProfileUpdated` — display name only.
+- Entry bodies render as plain text with preserved line breaks, never
+  `v-html`; rich text needs a sanitizer decision first (Content TODO).
 
-Verification at handoff: **767 PHP tests + 22 TS tests passing (1 PHP
-skip), PHPStan clean, pint clean, vue-tsc clean, `npm run build` green.**
+**Registration types + quotas (`f9f47e4`).** The offer itself had no
+screen: types came from a seeder or tinker. Now there is a type index,
+a type editor (axes, grants, price declaration, quota links) and a quota
+screen. Three invariants moved into the Actions, so tinker is refused on
+the same grounds as the form:
 
-The user worked in parallel this session (admin favorites in Platform,
-`SeedDemoDataCommand`, ROADMAP edits — all theirs, uncommitted at the
-time of writing; none of it is in the commits above). Parallel test runs
-share the one `testing` database and can transiently fail each other —
-re-run before believing a red suite.
+- a priced settlement with no price declaration (ADR-0017) — otherwise
+  `RequestSettlement` throws at submission, in front of a registrant;
+- an `on_payment` gate on a settlement nobody pays — nothing would ever
+  confirm such a registration;
+- **terms freeze once registrations exist.** Event, approval,
+  settlement, gate, terms days, grants and price stop being editable
+  (name, visibility and quota links stay). `ApproveRegistration` and
+  `RecordOrderPaidForRegistration` read the type's *current* axes, so
+  editing them under live registrations reinterprets those
+  registrations rather than migrating them.
 
-## Next up (in build order)
+Quota capacity may not fall below what is consumed. `EventSummary`
+(projected from `EventCreated`/`EventDetailsUpdated`/`EventArchived`)
+gives the type editor an event picker without reading Event's models.
 
-1. **Slice 14 — Compliance completion + GDPR sweep**: consent UI, export
-   assembly, hybrid audit trail (D-BATCH: wildcard subscriber over
-   auditable-marked events **plus** explicit recorder contract), retention
-   rules incl. D-CPL-01 numbers (delivery log 12 months — Messaging's
-   `messaging_messages` + inbox are ready to be swept), DSR deadline
-   scheduler, anonymize-with-tombstone, and a `src/Gdpr/` handler in every
-   module. Compliance's `TODO.md` Backlog is the authoritative item list —
-   most design decisions are already settled in the decision log.
-   **Touches every module** — coordinate with any parallel work.
-2. **Slice 11 — GameOps**: still deliberately on hold (no infrastructure
-   to test provisioning against; owes Competition the catalogue contract).
-3. Slices 15–16 per `docs/ROADMAP.md`.
+Also: the admin sidebar's icon map gained the eight identifiers modules
+were already sending (mail, landmark, hard-drive, book-open-check,
+newspaper, message-square, ticket, gauge) — all had been silently
+falling back to the puzzle-piece icon.
 
-Messaging gaps deliberately left, all in its `TODO.md`: recipient
-timezone never populated (Identity events carry none); D-BATCH-7
-inactive-module filtering at inbox read (needs module attribution on
-topics); announcement audience narrowing (recipient read model knows no
-brand membership); suppression-list/log operator screens; provider bounce
-webhooks; a real-browser push pass.
+Verification at handoff: **856 PHP tests + 22 TS tests passing (1 PHP
+skip), PHPStan clean, pint clean, `npm run build` green.** Note the
+frontend caveat below about `vue-tsc` coverage.
+
+## Next up
+
+1. **Remaining UI-catalogue gaps**, if the UI pass continues: invitation
+   tokens and amendment admin (both belong on the new type editor —
+   amendment also needs a `registration.amend-registrations`
+   capability), participant "my registrations", the Admission operator
+   surface (checkpoint/device enrolment, check-in log, badge templates),
+   and the three gated modules whose domains shipped without screens
+   (Resources, Staffing, Competition).
+2. **Slice 14 — Compliance completion + GDPR sweep** (touches every
+   module; Compliance's `TODO.md` Backlog is the authoritative list).
+3. Slice 11 GameOps stays on hold; then 15–16.
+
+## Loose threads worth knowing about
+
+- **Module Vue files are not type-checked or linted.** `tsconfig.json`
+  includes only `resources/js/**`, so `vue-tsc` never sees
+  `app-modules/*/resources/js/**`, and ESLint's project service fails to
+  parse those files ("was not found by the project service") — which
+  also means the ADR-0008 palette rule never runs on them. Adding the
+  glob surfaces ~44 pre-existing errors across Event, Messaging and
+  Platform pages (mostly `string | null` into `Input`'s `model-value`,
+  plus `Cannot find namespace 'App'` in the media page). Both new page
+  sets in this session were verified by temporarily adding the glob and
+  are clean; the repo-wide fix is still owed.
+- Identity owes a **profile-replay command** (`identity:replay-profiles`):
+  Messaging's recipients and Content's authors both only see accounts
+  created after their projection existed, and neither module may read
+  Identity's tables. One replay closes both — it is in Identity's TODO.
+- A frozen registration type cannot be superseded from the console; the
+  replacement must be built by hand. A "duplicate this type" action is
+  in Registration's TODO.
+- Grants take a free-text `role`, so a typo becomes a badge nobody can
+  check in. A role picker needs a contract with Admission.
+- Registration's public form still posts `days`-less; invitation tokens
+  and amendment remain tinker-only.
+- Messaging gaps unchanged (recipient timezone, D-BATCH-7 inactive-module
+  filtering, announcement audience narrowing, suppression/log operator
+  screens, provider bounce webhooks, real-browser push pass).
+- `npm run lint` still reports pre-existing ADR-0008 violations in other
+  modules' Vue files.
 
 ## Resuming on another machine
 
@@ -169,13 +148,21 @@ assumes 80/5173/5432/6379/8090 free; `FORWARD_REVERB_PORT` dodges the
 Working conventions that matter mid-stream:
 
 - Read `CLAUDE_extra.md` and `.ai/rules/index.md` first — `listeners.md`
-  is new this session (explicit registration only; discovery is off and
-  must stay off).
+  matters most (explicit registration only; modular event discovery is
+  off and must stay off).
 - One slice per commit, push after each; end every slice with
   `pint --dirty`, `composer types:check`, the full `artisan test
   --compact`, `npm run build`, and TODO.md/SPEC.md updates in the same
   commit.
-- `composer types:generate` after touching `#[TypeScript]` Data classes.
+- `composer types:generate` after touching `#[TypeScript]` Data classes,
+  and `artisan wayfinder:generate --with-form` after adding routes (the
+  `--with-form` flag is not optional — plain `wayfinder:generate` drops
+  the `.form` variants and breaks `vue-tsc` across the auth pages).
+- New module pages need `npm run build` before their feature tests pass:
+  Inertia resolves them through the Vite manifest.
+- An admin-host request leaves **no resolved brand** behind, so a test
+  that needs a brand-scoped factory after such a request must create the
+  row before it.
 - The Boost `database-schema` MCP tool cannot reach pgsql from outside
   the containers — read migrations instead.
 - Tests run against a `testing` **Postgres** database, not SQLite:
@@ -185,23 +172,6 @@ Working conventions that matter mid-stream:
   `GenerateInvoiceDocument` executes and fails resolving brand context.
 - `BROADCAST_CONNECTION=null` and `MAIL_MAILER=array` in `phpunit.xml` —
   broadcasting and mail are safe to exercise for real in tests.
-
-## Loose threads worth knowing about
-
-- Registration's public form posts `days`-less; billing address enforced
-  for `settlement: invoice` only (`SubmitRegistration::guardBillingParty()`).
-- Invitation tokens and amendment have no operator UI (tinker only);
-  amendment also needs a `registration.amend-registrations` capability —
-  Registration TODO backlog, fold into one admin pass.
-- Amendment pricing is caller-supplied by design (grants carry no price).
-- A waitlisted-then-promoted `on_payment` registration re-emits settlement
-  at conversion with then-current prices — pricing-drift note in
-  Registration TODO.
-- Messaging recipients: accounts created before the projection existed
-  have no read-model row — backfill command still a Messaging TODO.
-- Event admin: the Edit form bypasses `RescheduleEvent`'s published-only
-  guard via `UpdateEventDetails` — Event TODO backlog.
-- Role/media admin screens show bare user ULIDs pending the planned
-  Platform identity read model (Platform TODO backlog).
-- `npm run lint` reports pre-existing ADR-0008 violations in other
-  modules' Vue files — untouched, repo-wide TODO.
+- The user works in parallel in the same working tree and testing
+  database: never commit their uncommitted files, and re-run a red (or
+  suspiciously slow) suite before believing it.
