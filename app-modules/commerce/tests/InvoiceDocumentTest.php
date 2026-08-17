@@ -227,3 +227,35 @@ it('refuses to repoint an invoice whose archived bytes no longer match the seal'
 
     expect($invoice->refresh()->document_disk)->toBe('invoices');
 });
+
+/**
+ * ADR-0043 point 9: retention is reported, never enforced. §147 AO runs ten
+ * years from the end of the calendar year of issue, an early deletion is
+ * unrecoverable, and no operator is near the limit — so there is deliberately
+ * no command that deletes.
+ */
+it('reports archived invoices past their retention window without touching them', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    $invoice = issuedInvoice();
+    (new GenerateInvoiceDocument($invoice->id, $brand->id))
+        ->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));
+
+    // Nothing is expired yet, and the report says so.
+    $this->artisan('commerce:invoice-retention')
+        ->expectsOutputToContain('1 archived document(s), 0 past retention')
+        ->assertSuccessful();
+
+    // With a one-year window the same invoice is past retention…
+    $invoice->refresh()->forceFill(['issued_on' => now()->subYears(3)])->save();
+
+    $this->artisan('commerce:invoice-retention', ['--years' => 1])
+        ->expectsOutputToContain('1 past retention')
+        ->assertSuccessful();
+
+    // …and is still exactly where it was.
+    Storage::disk('invoices')->assertExists($invoice->refresh()->document_path);
+    expect($invoice->document_path)->not->toBeNull();
+});

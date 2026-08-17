@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Providers;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Events\AdmissionCheckedIn;
+use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
@@ -134,11 +135,16 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // sweep that silently fails to register would look like "no invoices
         // are overdue" rather than like a bug.
         if ($this->app->runningInConsole()) {
-            $this->commands([RunDunningSweep::class]);
+            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command(RunDunningSweep::class)->dailyAt('07:00');
+
+            // Reports only (ADR-0043 point 9). Daily rather than at boot:
+            // under Octane "boot" is every worker start, which would make it
+            // noise instead of a control.
+            $schedule->command(ReportInvoiceRetention::class)->dailyAt('07:15');
         });
     }
 

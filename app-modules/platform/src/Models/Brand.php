@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Konventix\Platform\Database\Factories\BrandFactory;
+use Konventix\Platform\Jobs\PurgeBrandMedia;
 
 /**
  * A public identity of the operator: its own domains, theme, content, and
@@ -41,6 +42,14 @@ class Brand extends Model
     protected $hidden = ['reverb_app_secret'];
 
     /**
+     * Disks this brand's media lived on, captured in the `deleting` hook so
+     * the purge job still knows where to look once the rows are gone.
+     *
+     * @var list<string>
+     */
+    public array $mediaDisksInUse = [];
+
+    /**
      * Creating a brand provisions its websocket application (ADR-0025): the
      * brand's ULID is the Reverb app id, key and secret are generated here.
      * Deliberately a `creating` hook rather than a seeder concern, so every
@@ -51,6 +60,31 @@ class Brand extends Model
         static::creating(function (Brand $brand): void {
             $brand->reverb_app_key ??= Str::random(40);
             $brand->reverb_app_secret ??= Str::random(40);
+        });
+
+        // Media rows cascade with the brand; the files they name do not, and
+        // on object storage those are objects someone keeps paying for
+        // (ADR-0043). The disks are collected here, while the rows still
+        // exist — afterwards nothing knows where the brand's files lived.
+        // The invoice archive is untouched: statutory retention outlives the
+        // brand (ADR-0031).
+        static::deleting(function (Brand $brand): void {
+            $brand->mediaDisksInUse = array_values(array_map(
+                static fn (mixed $disk): string => (string) $disk,
+                MediaItem::withoutBrandScope()
+                    ->where('brand_id', $brand->getKey())
+                    ->distinct()
+                    ->pluck('disk')
+                    ->all(),
+            ));
+        });
+
+        static::deleted(function (Brand $brand): void {
+            if ($brand->mediaDisksInUse === []) {
+                return;
+            }
+
+            PurgeBrandMedia::dispatch($brand->getKey(), $brand->mediaDisksInUse);
         });
     }
 
