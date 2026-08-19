@@ -243,11 +243,20 @@ return [
         'notifiable' => Notifiable::class,
 
         'mail' => [
-            // Falls back to the operator's own contact address, which is the
-            // same address Compliance escalates statutory deadlines to. A
-            // backup that quietly stopped running is the kind of failure
-            // nobody notices until it matters.
-            'to' => env('BACKUP_NOTIFICATION_EMAIL') ?: env('MAIL_FROM_ADDRESS'),
+            // A backup that quietly stopped running is the kind of failure
+            // nobody notices until it matters, so this wants a real address in
+            // production — `BACKUP_NOTIFICATION_EMAIL`, typically the operator's
+            // own contact address, the same one Compliance escalates statutory
+            // deadlines to.
+            //
+            // The literal fallback is not decoration. `package:discover` runs
+            // during `composer install`, before the setup script has copied
+            // .env into place, so both env() calls are null on a fresh
+            // checkout — and this package rejects a null address by throwing,
+            // which fails the install itself rather than the backup.
+            'to' => env('BACKUP_NOTIFICATION_EMAIL')
+                ?: env('MAIL_FROM_ADDRESS')
+                ?: 'backups@konventix.invalid',
 
             'from' => [
                 'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
