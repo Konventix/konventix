@@ -4,32 +4,34 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use GdImage;
+use Closure;
+use Database\Seeders\Demo\DemoAdmissionSeeder;
+use Database\Seeders\Demo\DemoCommerceSeeder;
+use Database\Seeders\Demo\DemoCompetitionSeeder;
+use Database\Seeders\Demo\DemoComplianceSeeder;
+use Database\Seeders\Demo\DemoContentSeeder;
+use Database\Seeders\Demo\DemoEventSeeder;
+use Database\Seeders\Demo\DemoMediaSeeder;
+use Database\Seeders\Demo\DemoMessagingSeeder;
+use Database\Seeders\Demo\DemoPlatformSeeder;
+use Database\Seeders\Demo\DemoRegistrationSeeder;
+use Database\Seeders\Demo\DemoResourcesSeeder;
+use Database\Seeders\Demo\DemoStaffingSeeder;
+use Database\Seeders\Demo\DemoStaticPageSeeder;
+use Database\Seeders\Demo\DemoUserSeeder;
 use Illuminate\Console\Command;
-use Illuminate\Http\UploadedFile;
+use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Event as EventDispatcher;
 use Illuminate\Support\Str;
-use Konventix\Admission\Data\BadgeLayoutData;
-use Konventix\Admission\Models\BadgeTemplate;
-use Konventix\Commerce\Actions\BookManualPayment;
-use Konventix\Commerce\Models\Order;
 use Konventix\Event\Models\Event;
-use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
-use Konventix\Platform\Actions\StoreMediaUpload;
 use Konventix\Platform\Brands\BrandContext;
-use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\Operator;
-use Konventix\Platform\Models\StaticPage;
-use Konventix\Registration\Actions\ConfirmRegistration;
-use Konventix\Registration\Actions\SubmitRegistration;
-use Konventix\Registration\Data\SubmitRegistrationData;
-use Konventix\Registration\Enums\RegistrationSettlement;
-use Konventix\Registration\Models\Quota;
-use Konventix\Registration\Models\RegistrationType;
+use Konventix\Resources\Models\ResourceType;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\info;
@@ -41,42 +43,82 @@ use function Laravel\Prompts\text;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
- * Seeds a realistic demo dataset. `--default` takes the medium baseline
- * (3 brands, ~100 users, 2 events per brand) without asking; without it,
- * Laravel Prompts walks through the dimensions interactively.
+ * Seeds a realistic demo dataset covering every module that has a domain
+ * behind it. `--default` takes the medium baseline (3 brands, ~100 users,
+ * 2 events per brand) without asking; without it, Laravel Prompts walks
+ * through the dimensions interactively.
  *
- * The host command is the sanctioned place for cross-module composition
- * (like DatabaseSeeder); registrations run through the real Actions so the
- * demo data exercises the same paths as production, admissions, the media
- * library and the commerce settlement chain (orders, invoices, manual
- * payments) included.
+ * This command is the composition root and nothing else. Cross-module
+ * composition is sanctioned here and only here (like `DatabaseSeeder`) —
+ * modules may not import each other's models (ADR-0004), the host may — so
+ * each module's slice lives in its own class under
+ * `database/seeders/Demo/` and this file decides the order they run in.
+ *
+ * That order is not arbitrary:
+ *
+ * 1. Module activation before anything else, because a listener behind a
+ *    Pennant gate does nothing for a brand the feature is off for (ADR-0003).
+ * 2. Accounts before events: every account emits `UserRegistered`, and three
+ *    modules build their read model of people from it alone.
+ * 3. Media before events, because badge templates reference it by ULID.
+ * 4. Resource types before registrations, so a confirmed exhibitor's booth
+ *    claim has something to be fulfilled against.
+ * 5. Registrations before admission, staffing and competition, all of which
+ *    hang off people who actually hold one.
+ *
+ * Everything runs through the production Actions rather than writing rows,
+ * so the demo data is the output of the same code paths a real event uses.
  */
 class SeedDemoDataCommand extends Command
 {
-    /**
-     * Background colours for generated placeholder media, picked per file so
-     * a brand's library is visually distinguishable in the console grid.
-     *
-     * @var list<array{int, int, int}>
-     */
-    private const array MEDIA_PALETTE = [
-        [37, 99, 235],
-        [217, 70, 239],
-        [16, 185, 129],
-        [234, 88, 12],
-        [99, 102, 241],
-        [14, 165, 233],
-    ];
-
     protected $signature = 'konventix:seed
         {--default : Seed the default demo set without asking questions}
         {--fresh : Wipe and re-migrate the database first}';
 
-    protected $description = 'Seed demo data (brands, users, events, registrations) — interactive unless --default';
+    protected $description = 'Seed demo data across every module — interactive unless --default';
+
+    private DemoPlatformSeeder $platform;
+
+    private DemoUserSeeder $users;
+
+    private DemoMediaSeeder $media;
+
+    private DemoEventSeeder $events;
+
+    private DemoRegistrationSeeder $registrations;
+
+    private DemoCommerceSeeder $commerce;
+
+    private DemoAdmissionSeeder $admission;
+
+    private DemoResourcesSeeder $resources;
+
+    private DemoStaffingSeeder $staffing;
+
+    private DemoCompetitionSeeder $competition;
+
+    private DemoContentSeeder $content;
+
+    private DemoComplianceSeeder $compliance;
+
+    private DemoMessagingSeeder $messaging;
+
+    private DemoStaticPageSeeder $staticPages;
+
+    private BrandContext $brandContext;
+
+    /**
+     * The brand currently being seeded, re-pinned after every queued job (see
+     * `keepBrandPinnedAcrossJobs()`).
+     */
+    private ?Brand $currentBrand = null;
 
     public function handle(): int
     {
         intro('Konventix demo seed');
+
+        $this->resolveSeeders();
+        $this->keepBrandPinnedAcrossJobs();
 
         if ($this->option('fresh') && ! $this->wipeDatabase()) {
             return self::FAILURE;
@@ -89,13 +131,21 @@ class SeedDemoDataCommand extends Command
 
         $this->linkPublicStorage();
 
-        $brands = $this->seedBrands($brandCount);
+        $operator = Operator::query()->firstWhere('name', 'Konventix Dev Operator');
+        $admin = User::query()->firstWhere('email', 'admin@konventix.test');
 
-        foreach ($brands as $brand) {
-            $this->seedBrand($brand, $usersPerBrand, $eventsPerBrand, $registrationsPerEvent);
+        $brands = $this->seedBrands($brandCount, $operator);
+
+        foreach ($brands->values() as $index => $brand) {
+            $this->seedBrand($brand, $index, $usersPerBrand, $eventsPerBrand, $registrationsPerEvent, $admin, $operator);
         }
 
-        app(BrandContext::class)->forget();
+        // Console favorites are not brand-owned (ADR-0029), so they are
+        // seeded once, after every brand exists to point at.
+        $this->platform->seedFavorites($admin);
+
+        $this->currentBrand = null;
+        $this->brandContext->forget();
         app(PermissionRegistrar::class)->setPermissionsTeamId(null);
 
         outro(sprintf(
@@ -105,6 +155,32 @@ class SeedDemoDataCommand extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Resolved when the command runs, not when it is constructed. A console
+     * command object is built during kernel bootstrap, and a slice that
+     * captured a scoped service at that moment — `DiskResolver` memoizes the
+     * filesystems it builds — would keep serving the pre-bootstrap one for the
+     * whole run, past any later swap (a test's faked disk, for instance).
+     */
+    private function resolveSeeders(): void
+    {
+        $this->platform = app(DemoPlatformSeeder::class);
+        $this->users = app(DemoUserSeeder::class);
+        $this->media = app(DemoMediaSeeder::class);
+        $this->events = app(DemoEventSeeder::class);
+        $this->registrations = app(DemoRegistrationSeeder::class);
+        $this->commerce = app(DemoCommerceSeeder::class);
+        $this->admission = app(DemoAdmissionSeeder::class);
+        $this->resources = app(DemoResourcesSeeder::class);
+        $this->staffing = app(DemoStaffingSeeder::class);
+        $this->competition = app(DemoCompetitionSeeder::class);
+        $this->content = app(DemoContentSeeder::class);
+        $this->compliance = app(DemoComplianceSeeder::class);
+        $this->messaging = app(DemoMessagingSeeder::class);
+        $this->staticPages = app(DemoStaticPageSeeder::class);
+        $this->brandContext = app(BrandContext::class);
     }
 
     /**
@@ -163,11 +239,9 @@ class SeedDemoDataCommand extends Command
     /**
      * @return Collection<int, Brand>
      */
-    private function seedBrands(int $count): Collection
+    private function seedBrands(int $count, ?Operator $operator): Collection
     {
         $names = ['SXLan', 'Xpertise', 'Nordcon', 'Playa', 'Brickfest', 'Synthwave', 'Quizzity', 'Meeple'];
-
-        $operator = Operator::query()->firstWhere('name', 'Konventix Dev Operator');
 
         return collect(range(1, $count))->map(function (int $index) use ($names, $operator): Brand {
             $name = $names[$index - 1] ?? 'Brand '.$index;
@@ -193,508 +267,166 @@ class SeedDemoDataCommand extends Command
         });
     }
 
-    private function seedBrand(Brand $brand, int $users, int $events, int $registrationsPerEvent): void
-    {
+    private function seedBrand(
+        Brand $brand,
+        int $index,
+        int $users,
+        int $events,
+        int $registrationsPerEvent,
+        ?User $admin,
+        ?Operator $operator,
+    ): void {
         info("Seeding {$brand->name}…");
 
-        app(BrandContext::class)->set($brand);
-        app(PermissionRegistrar::class)->setPermissionsTeamId($brand->getKey());
+        // First: theme and module activation. A gated module's listeners
+        // short-circuit for a brand the feature is off for, so switching them
+        // on afterwards would leave every projection behind them empty.
+        $this->inBrand($brand, fn () => $this->platform->handle($brand));
 
-        $members = $this->seedUsers($brand, $users);
+        $members = $this->inBrand($brand, fn (): Collection => $this->seedUsers($brand, $users));
 
-        // Before the events: badge templates and the home page reference the
-        // brand's media by ULID, so the library has to exist first.
-        $media = $this->seedMedia($brand);
+        $this->inBrand($brand, fn () => $this->platform->seedRoles($brand, $members));
 
-        $seededEvents = collect(range(1, max(1, $events)))
-            ->map(fn (int $index): Event => $this->seedEvent($brand, $index, $members, $registrationsPerEvent, $media));
+        $media = $this->inBrand($brand, fn (): array => $this->media->handle($brand));
 
-        // Settlement dispatches queued jobs; on a sync queue driver their
-        // completion forgets the ambient brand context
-        // (PropagatesBrandContextToQueue), so re-assert it before seeding
-        // anything else brand-owned.
-        app(BrandContext::class)->set($brand);
+        $this->inBrand($brand, fn () => $this->admission->seedSigningKey($brand));
+        $this->inBrand($brand, fn () => $this->commerce->seedSettlementAccounts());
+        $this->inBrand($brand, fn () => $this->commerce->seedBookkeepingSettings($operator));
 
-        // The 'home' page's countdown/cards blocks want the brand's next
-        // event, not just "an" event — falls back to whatever exists if
-        // sorting by wall-clock start yields nothing (e.g. --default with
-        // 0 events requested still seeds 1 via max(1, $events) above).
-        $firstEvent = $seededEvents->sortBy(fn (Event $event): string => $event->starts_at->toDateTimeString())->first()
-            ?? Event::query()->orderBy('starts_at')->first();
+        // The first brand runs its own SMTP relay, the rest fall back to the
+        // application mailer (ADR-0028) — both paths visible in one seed.
+        $this->inBrand($brand, fn () => $this->messaging->handle($brand, $members, withOwnTransport: $index === 0));
 
-        $this->seedStaticPages($brand, $firstEvent, $media);
+        $seededEvents = $this->inBrand($brand, fn (): Collection => $this->events->handle($brand, $events));
+
+        foreach ($seededEvents as $event) {
+            $this->seedEvent($brand, $event, $members, $registrationsPerEvent, $media, $admin);
+        }
+
+        $firstEvent = $seededEvents->first();
+
+        $this->inBrand($brand, fn () => $this->compliance->handle($brand, $members));
+        $this->inBrand($brand, fn () => $this->content->handle($brand, $firstEvent, $members));
+        $this->inBrand($brand, fn () => $this->staticPages->handle($brand, $firstEvent, $media));
     }
 
     /**
-     * The brand's slice of the media library (ADR-0035): placeholder images
-     * pushed through the real StoreMediaUpload action, so the demo carries
-     * stored files, generated `thumb` variants and rows the operator console
-     * can list, search and refuse to delete.
+     * Runs one slice with the brand asserted in context.
      *
-     * Keyed by purpose — the hero lands in the home page's hero block and the
-     * logo/background in every event's badge template, which is what gives
-     * the library non-zero usage references to show; the sponsor logos stay
-     * unreferenced so the deletable case exists too.
+     * Re-asserted before *every* slice rather than once per brand, and that is
+     * the whole reason this helper exists: any slice may dispatch a queued job
+     * — a thumbnail, an invoice document, a notification fan-out — and on a
+     * sync queue `PropagatesBrandContextToQueue` clears the context the moment
+     * that job finishes. It has to: a long-lived worker may not leak one job's
+     * brand into the next. The next brand-owned create would then fail for
+     * want of a brand, and which slice happens to dispatch a job is not
+     * something the caller should have to know.
      *
-     * Idempotent per file rather than per brand: an item is looked up by its
-     * filename and only uploaded when missing, so re-runs — and databases
-     * seeded before this slice existed — top up instead of duplicating.
+     * The permission team id rides along for the same reason (ADR-0013).
      *
-     * @return array<string, MediaItem>
+     * @template TReturn
+     *
+     * @param  Closure(): TReturn  $slice
+     * @return TReturn
      */
-    private function seedMedia(Brand $brand): array
+    private function inBrand(Brand $brand, Closure $slice): mixed
     {
-        $slug = Str::slug($brand->name);
+        $this->currentBrand = $brand;
 
-        /** @var array<string, array{string, int, int, string, string}> $definitions */
-        $definitions = [
-            'logo' => ["{$slug}-logo.png", 640, 640, $brand->name, "{$brand->name} logo"],
-            'hero' => ["{$slug}-hero.jpg", 1600, 900, $brand->name, "The {$brand->name} main hall"],
-            'badge-background' => ["{$slug}-badge-background.png", 880, 1240, $brand->name, "{$brand->name} badge background"],
-            'sponsor-northwind' => ['sponsor-northwind.png', 720, 360, 'Northwind', 'Northwind Systems logo'],
-            'sponsor-hexatech' => ['sponsor-hexatech.png', 720, 360, 'Hexatech', 'Hexatech logo'],
-        ];
+        $this->pinBrand($brand);
 
-        // Uploads are attributed to the operator admin the console logs in
-        // as; the column is nullable, so a database without it is fine.
-        $uploader = User::query()->firstWhere('email', 'admin@konventix.test');
+        return $slice();
+    }
 
-        $store = app(StoreMediaUpload::class);
-
-        $media = [];
-
-        foreach ($definitions as $key => [$filename, $width, $height, $label, $altText]) {
-            // Brand context is set: the scope constrains the lookup (ADR-0010).
-            $existing = MediaItem::query()->firstWhere('original_filename', $filename);
-
-            if ($existing !== null) {
-                $media[$key] = $existing;
-
-                continue;
+    /**
+     * A seeding run is a console process, not a queue worker — but on a `sync`
+     * queue it looks like one to `PropagatesBrandContextToQueue`, which clears
+     * the brand context the moment a job finishes so a long-lived worker never
+     * leaks one job's brand into the next. Correct for a worker; fatal here,
+     * because the seed is still mid-brand and the next brand-owned create
+     * would have nothing to be stamped with.
+     *
+     * So the seed restores what it is doing after each job. This listener is
+     * registered after Platform's, therefore runs after it, and re-pins the
+     * brand the seed is currently working on. Nothing else in the process
+     * dispatches jobs, and the listener dies with the command.
+     */
+    private function keepBrandPinnedAcrossJobs(): void
+    {
+        EventDispatcher::listen(JobProcessed::class, function (): void {
+            if ($this->currentBrand !== null) {
+                $this->pinBrand($this->currentBrand);
             }
-
-            $upload = $this->placeholderUpload($filename, $width, $height, $label);
-
-            // Explicit brand ULID, not ambient context: uploads normally
-            // arrive on the brand-less operator host (ADR-0029).
-            $media[$key] = $store->handle(
-                brandId: $brand->getKey(),
-                file: $upload,
-                altText: $altText,
-                uploadedByUserId: $uploader?->getKey(),
-            );
-
-            @unlink($upload->getPathname());
-        }
-
-        return $media;
+        });
     }
 
     /**
-     * A generated placeholder image on disk, wrapped as an `UploadedFile` so
-     * it travels the production upload path untouched — which is also what
-     * produces the `thumb` variant. Drawn with bare GD, the same dependency
-     * ThumbnailGenerator already assumes, so no demo-only package appears.
+     * The brand for scoping (ADR-0010) and its permission team id (ADR-0013),
+     * which travel together everywhere.
      */
-    private function placeholderUpload(string $filename, int $width, int $height, string $label): UploadedFile
+    private function pinBrand(Brand $brand): void
     {
-        $image = imagecreatetruecolor(max(1, $width), max(1, $height));
-
-        [$red, $green, $blue] = self::MEDIA_PALETTE[abs(crc32($filename)) % count(self::MEDIA_PALETTE)];
-
-        imagefilledrectangle($image, 0, 0, $width, $height, $this->allocate($image, $red, $green, $blue));
-
-        // A darker footer band: flat colour swatches are hard to tell apart
-        // once the console scales them down to thumbnails.
-        imagefilledrectangle(
-            $image,
-            0,
-            (int) ($height * 0.78),
-            $width,
-            $height,
-            $this->allocate($image, (int) ($red * 0.6), (int) ($green * 0.6), (int) ($blue * 0.6)),
-        );
-
-        $this->stampLabel($image, $label, $width, (int) ($height * 0.78), $red, $green, $blue);
-
-        $path = (string) tempnam(sys_get_temp_dir(), 'konventix-media-');
-
-        if (str_ends_with($filename, '.jpg')) {
-            imagejpeg($image, $path, 82);
-        } else {
-            imagepng($image, $path);
-        }
-
-        // No imagedestroy(): deprecated as a no-op since PHP 8.0, and the
-        // GdImage goes out of scope here anyway.
-
-        // `test: true` skips the is_uploaded_file() check — the file comes
-        // from this process, not from a POST.
-        return new UploadedFile($path, $filename, test: true);
+        $this->brandContext->set($brand);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($brand->getKey());
     }
 
     /**
-     * Centres a label in the image's upper region. GD's built-in fonts top
-     * out at a few pixels, so the text is drawn once at font size on a canvas
-     * matching the background and then scaled up — big readable type with no
-     * font file to ship and no visible seam against the background.
-     */
-    private function stampLabel(GdImage $image, string $label, int $width, int $height, int $red, int $green, int $blue): void
-    {
-        $label = strtoupper(mb_substr($label, 0, 20));
-
-        $textWidth = max(1, imagefontwidth(5) * mb_strlen($label));
-        $textHeight = max(1, imagefontheight(5));
-
-        $canvas = imagecreatetruecolor($textWidth, $textHeight);
-        imagefilledrectangle($canvas, 0, 0, $textWidth, $textHeight, $this->allocate($canvas, $red, $green, $blue));
-        imagestring($canvas, 5, 0, 0, $label, $this->allocate($canvas, 255, 255, 255));
-
-        $scale = max(2, (int) floor(($width * 0.7) / $textWidth));
-        $scaledWidth = $textWidth * $scale;
-        $scaledHeight = $textHeight * $scale;
-
-        imagecopyresampled(
-            $image,
-            $canvas,
-            (int) (($width - $scaledWidth) / 2),
-            (int) (($height - $scaledHeight) / 2),
-            0,
-            0,
-            $scaledWidth,
-            $scaledHeight,
-            $textWidth,
-            $textHeight,
-        );
-    }
-
-    /**
-     * A palette entry as a GD colour index. Channels are clamped rather than
-     * trusted (the footer band scales them down), and an exhausted palette —
-     * `imagecolorallocate()` returning false — falls back to index 0 so a
-     * placeholder image is never worth failing the whole seed over.
-     */
-    private function allocate(GdImage $image, int $red, int $green, int $blue): int
-    {
-        $color = imagecolorallocate(
-            $image,
-            max(0, min(255, $red)),
-            max(0, min(255, $green)),
-            max(0, min(255, $blue)),
-        );
-
-        return $color === false ? 0 : $color;
-    }
-
-    /**
-     * The event's fallback badge template (D-ADM-05), pointing at the brand's
-     * media by ULID and never a path (ADR-0035). This is what puts genuine
-     * usage references in the library — a seeded badge PDF renders with the
-     * artwork, and the console refuses to delete a file the badge needs.
-     *
-     * Idempotent on the event's fallback template, like commerce is on the
-     * Supporter type: a database seeded before this slice gets topped up.
-     *
+     * @param  Collection<int, User>  $members
      * @param  array<string, MediaItem>  $media
      */
-    private function seedBadgeTemplate(Event $event, array $media): void
-    {
-        $alreadySeeded = BadgeTemplate::query()
-            ->where('event_id', $event->getKey())
-            ->whereNull('role')
-            ->exists();
+    private function seedEvent(
+        Brand $brand,
+        Event $event,
+        Collection $members,
+        int $registrationsPerEvent,
+        array $media,
+        ?User $admin,
+    ): void {
+        // Before registrations: a confirmed exhibitor's booth claim fails
+        // soft when the resource type does not exist yet, and the exhibitor
+        // would silently end up with no booth.
+        $boothType = $this->inBrand($brand, fn (): ResourceType => $this->resources->seedCatalogue($event));
 
-        if ($alreadySeeded) {
-            return;
-        }
+        $confirmed = $this->inBrand($brand, fn (): Collection => $this->registrations->handle(
+            $event,
+            $members,
+            $registrationsPerEvent,
+            $boothType,
+            $admin,
+        ));
 
-        $template = BadgeTemplate::factory()
-            ->forEvent($event->getKey())
-            ->withLayout(new BadgeLayoutData(
-                logoMediaId: ($media['logo'] ?? null)?->getKey(),
-                backgroundMediaId: ($media['badge-background'] ?? null)?->getKey(),
-                footerText: $event->name,
-            ))
-            ->create(['name' => "{$event->name} badge"]);
+        $this->inBrand($brand, fn () => $this->commerce->handle($brand, $event, $members, $registrationsPerEvent));
 
-        $library = app(MediaLibrary::class);
+        $this->inBrand($brand, fn () => $this->admission->handle($event, $media));
+        $this->inBrand($brand, fn () => $this->staffing->handle($event, $members));
+        $this->inBrand($brand, fn () => $this->competition->handle($event, $confirmed));
 
-        foreach ($template->layout->mediaIds() as $mediaId) {
-            $library->recordUsage($mediaId, 'admission', 'badge_template', $template->getKey());
-        }
+        $this->inBrand($brand, fn () => $this->resources->seedSeatBookings($event, $confirmed->pluck('id')));
     }
 
     /**
+     * The console half of user seeding. The bar lives here rather than in the
+     * seeder — a seeder that printed progress bars could not be called from
+     * anywhere but a command — and is sized from what the brand is actually
+     * missing, so a re-run that creates nobody shows no bar at all.
+     *
      * @return Collection<int, User>
      */
-    private function seedUsers(Brand $brand, int $count): Collection
+    private function seedUsers(Brand $brand, int $target): Collection
     {
-        // Idempotent: top up to the requested membership count instead of
-        // adding a fresh cohort on every run.
-        $existing = BrandMembership::query()->with('user')->get();
-        $count = max(0, $count - $existing->count());
+        $pending = $this->users->pendingCount($target);
 
-        if ($count === 0) {
-            return $existing->pluck('user')->filter()->values();
+        if ($pending === 0) {
+            return $this->users->handle($brand, $target);
         }
 
-        return collect(progress(
-            label: "Users for {$brand->name}",
-            steps: $count,
-            callback: function (): User {
-                $user = User::factory()->create();
+        $bar = progress(label: "Users for {$brand->name}", steps: $pending);
+        $bar->start();
 
-                // Brand context is set: the scope constrains the lookup and
-                // the BelongsToBrand hook stamps brand_id (ADR-0010).
-                BrandMembership::query()->firstOrCreate(
-                    ['user_id' => $user->getKey()],
-                    ['first_seen_at' => now()->subDays(random_int(0, 365))],
-                );
+        $members = $this->users->handle($brand, $target, fn () => $bar->advance());
 
-                return $user;
-            },
-        ))->merge($existing->pluck('user')->filter())->values();
-    }
+        $bar->finish();
 
-    /**
-     * @param  array<string, MediaItem>  $media
-     */
-    private function seedStaticPages(Brand $brand, ?Event $firstEvent, array $media): void
-    {
-        foreach (['imprint' => 'Imprint', 'about' => 'About'] as $slug => $title) {
-            // Scoped to the brand in context; idempotent on re-runs.
-            StaticPage::query()->firstOrCreate(
-                ['slug' => $slug],
-                [
-                    'title' => $title,
-                    'published_at' => now(),
-                    'blocks' => [
-                        ['type' => 'text', 'data' => ['heading' => $title, 'body' => fake()->paragraphs(2, true)]],
-                    ],
-                ],
-            );
-        }
-
-        // The '/' route (routes/web.php) renders this page through the block
-        // pipeline when it exists; brands without one fall back to Welcome.
-        $home = StaticPage::query()->firstOrCreate(
-            ['slug' => 'home'],
-            [
-                'title' => $brand->name,
-                'published_at' => now(),
-                'blocks' => $this->homeBlocks($brand, $firstEvent, $media),
-            ],
-        );
-
-        $hero = $media['hero'] ?? null;
-
-        if ($hero !== null) {
-            // The page references the file by ULID (ADR-0043) — recording the
-            // usage is what stops the console deleting it out from under the
-            // page. Idempotent, so a re-run does not stack references.
-            app(MediaLibrary::class)->recordUsage($hero->getKey(), 'platform', 'static_page', $home->getKey());
-        }
-    }
-
-    /**
-     * @param  array<string, MediaItem>  $media
-     * @return array<int, array{type: string, data: array<string, mixed>}>
-     */
-    private function homeBlocks(Brand $brand, ?Event $firstEvent, array $media): array
-    {
-        $hero = $media['hero'] ?? null;
-
-        $blocks = [
-            [
-                'type' => 'hero',
-                'data' => [
-                    'heading' => $brand->name,
-                    'subheading' => 'Event-agnostic event management, done right.',
-                    'ctaLabel' => $firstEvent !== null ? 'View the event' : null,
-                    'ctaUrl' => $firstEvent !== null ? '/events/'.$firstEvent->slug : null,
-                    // A media ULID, never a URL: the block resolves it
-                    // through MediaLibrary at render time (ADR-0043).
-                    'imageMediaId' => $hero?->getKey(),
-                ],
-            ],
-        ];
-
-        if ($firstEvent !== null) {
-            $blocks[] = [
-                'type' => 'countdown',
-                'data' => ['eventId' => $firstEvent->getKey(), 'label' => 'Doors open in'],
-            ];
-        }
-
-        $blocks[] = [
-            'type' => 'cards',
-            'data' => [
-                'cards' => [
-                    ['title' => 'Registration', 'body' => 'Sign up in minutes with flexible registration types.', 'icon' => 'ticket'],
-                    ['title' => 'Venue', 'body' => 'Everything you need to know before you arrive.', 'icon' => 'map-pin'],
-                    ['title' => 'Community', 'body' => 'Join a growing community across every event.', 'icon' => 'users'],
-                ],
-            ],
-        ];
-
-        $blocks[] = [
-            'type' => 'text',
-            'data' => ['heading' => 'About '.$brand->name, 'body' => fake()->paragraphs(2, true)],
-        ];
-
-        return $blocks;
-    }
-
-    /**
-     * @param  Collection<int, User>  $members
-     * @param  array<string, MediaItem>  $media
-     */
-    private function seedEvent(Brand $brand, int $index, Collection $members, int $registrations, array $media): Event
-    {
-        $slug = Str::slug($brand->name).'-'.(now()->year + ($index - 1));
-
-        $existing = Event::query()->where('slug', $slug)->first();
-
-        if ($existing !== null) {
-            // Already seeded on a previous run — registrations, quotas and
-            // admissions hang off the event, so skip the whole block rather
-            // than double-consume quotas. Still returned, so the 'home' page
-            // can reference it as the brand's next event. Commerce seeding is
-            // separately idempotent, so a database seeded before it existed
-            // still gets orders and invoices topped up. The badge template is
-            // separately idempotent for the same reason.
-            $this->seedCommerce($brand, $existing, $members, $registrations);
-            $this->seedBadgeTemplate($existing, $media);
-
-            return $existing;
-        }
-
-        $event = Event::factory()->published()->create([
-            'name' => "{$brand->name} ".(now()->year + ($index - 1)),
-            'slug' => $slug,
-        ]);
-
-        $quota = Quota::factory()->withCapacity(max($registrations * 2, 50))->create([
-            'name' => 'Visitor places',
-        ]);
-
-        $visitor = RegistrationType::factory()
-            ->forEvent($event->getKey())
-            ->create(['name' => 'Visitor']);
-        $visitor->quotas()->attach($quota);
-
-        $crew = RegistrationType::factory()
-            ->forEvent($event->getKey())
-            ->requiringApproval()
-            ->create(['name' => 'Crew']);
-
-        // Before the early return below: an event with no registrations still
-        // wants a badge design in the console.
-        $this->seedBadgeTemplate($event, $media);
-
-        if ($members->isEmpty() || $registrations === 0) {
-            return $event;
-        }
-
-        $submit = app(SubmitRegistration::class);
-        app(ConfirmRegistration::class);
-
-        // Through the real Actions: quotas consume, events fire, Admission
-        // issues — the demo data exercises the production path.
-        $members->random(min($registrations, $members->count()))
-            ->each(function (User $user) use ($submit, $visitor): void {
-                $submit->handle($visitor, $user->getKey(), new SubmitRegistrationData(
-                    organizationName: null,
-                    billingRecipientName: null,
-                    billingEmail: null,
-                ));
-            });
-
-        // A few pending crew applications for the approval queue.
-        $members->random(min(3, $members->count()))
-            ->each(function (User $user) use ($submit, $crew): void {
-                $submit->handle($crew, $user->getKey(), new SubmitRegistrationData(
-                    organizationName: null,
-                    billingRecipientName: null,
-                    billingEmail: null,
-                ));
-            });
-
-        $this->seedCommerce($brand, $event, $members, $registrations);
-
-        return $event;
-    }
-
-    /**
-     * The money-moving slice of the demo: a priced, invoice-settled
-     * "Supporter" type whose registrations flow through the real settlement
-     * chain — SubmitRegistration confirms, RequestSettlement emits, Commerce
-     * places the order and issues the invoice (ADR-0006) — then every second
-     * invoice gets a manual bank-transfer payment booked, leaving the rest
-     * open for the dunning/receivables views.
-     *
-     * Idempotent on the Supporter type's existence, mirroring how events are
-     * skipped wholesale: re-running must not double-submit registrations.
-     *
-     * @param  Collection<int, User>  $members
-     */
-    private function seedCommerce(Brand $brand, Event $event, Collection $members, int $registrations): void
-    {
-        $alreadySeeded = RegistrationType::query()
-            ->where('event_id', $event->getKey())
-            ->where('name', 'Supporter')
-            ->exists();
-
-        if ($alreadySeeded) {
-            return;
-        }
-
-        $supporter = RegistrationType::factory()
-            ->forEvent($event->getKey())
-            ->settlement(RegistrationSettlement::Invoice)
-            ->priced(unitAmountNet: '49.00')
-            ->create(['name' => 'Supporter', 'terms_days' => 14]);
-
-        if ($members->isEmpty() || $registrations === 0) {
-            return;
-        }
-
-        $submit = app(SubmitRegistration::class);
-        $bookPayment = app(BookManualPayment::class);
-
-        // Roughly a third of the visitor volume upgrades to a paid ticket.
-        $supporterCount = min(max(1, intdiv($registrations, 3)), $members->count());
-
-        $members->random($supporterCount)->values()
-            ->each(function (User $user, int $index) use ($submit, $bookPayment, $supporter, $brand): void {
-                // Each settled registration dispatches the invoice-document
-                // job; on a sync queue its completion forgets the ambient
-                // brand context, so re-assert it every iteration.
-                app(BrandContext::class)->set($brand);
-
-                // Invoice settlement requires the full billing party at
-                // submission (a legally valid invoice needs an address).
-                $registration = $submit->handle($supporter, $user->getKey(), new SubmitRegistrationData(
-                    organizationName: fake()->boolean(30) ? fake()->company() : null,
-                    billingRecipientName: $user->name,
-                    billingEmail: $user->email,
-                    billingAddressLine: fake()->streetAddress(),
-                    billingPostalCode: fake()->postcode(),
-                    billingCity: fake()->city(),
-                    billingCountryCode: 'DE',
-                ));
-
-                // Every second invoice is settled by bank transfer through
-                // the real adapter chain; the rest stay open receivables.
-                if ($index % 2 === 0) {
-                    $order = Order::query()
-                        ->where('settles_id', $registration->id)
-                        ->first();
-
-                    if ($order !== null) {
-                        $bookPayment->handle($order);
-                    }
-                }
-            });
+        return $members;
     }
 }

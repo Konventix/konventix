@@ -23,7 +23,10 @@ class ShiftRoleFactory extends Factory
     {
         return [
             'shift_id' => Shift::factory(),
-            'name' => fake()->unique()->randomElement(['Scanner', 'Runner', 'Lead', 'Support']).' '.fake()->randomNumber(3),
+            // The suffix is what makes the name unique, not `unique()` on the
+            // list: `unique()` over four options runs out after four roles and
+            // then throws, which is fewer than a single shift plan needs.
+            'name' => fake()->randomElement(['Scanner', 'Runner', 'Lead', 'Support']).' '.fake()->unique()->numerify('####'),
             'admission_role' => 'crew',
             'required_headcount' => 1,
         ];

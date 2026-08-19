@@ -46,3 +46,8 @@
 <!-- Move completed items here with the PR that finished them. -->
 
 - [x] Write `SPEC.md` — purpose, ownership boundary, event contract.
+- [x] `TeamFactory` and `ShiftRoleFactory` no longer wrap a four-item
+      `randomElement()` in `unique()`: it ran out after four rows and threw,
+      which is fewer than one shift plan needs. Uniqueness now comes from the
+      suffix, which is what it was always doing the work of. Found by the demo
+      seed, which builds several shifts per event.

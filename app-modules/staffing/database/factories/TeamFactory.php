@@ -25,7 +25,9 @@ class TeamFactory extends Factory
     {
         return [
             'event_id' => (string) Str::ulid(),
-            'name' => fake()->unique()->randomElement(['Entrance', 'Bar', 'Tech', 'Cleanup']).' '.Str::random(4),
+            // Uniqueness comes from the random suffix, not from `unique()` on
+            // a four-item list — that runs out after four teams and throws.
+            'name' => fake()->randomElement(['Entrance', 'Bar', 'Tech', 'Cleanup']).' '.Str::random(4),
             'area' => fake()->randomElement(['front-of-house', 'back-of-house', null]),
             'requires_approval' => false,
         ];
