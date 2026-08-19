@@ -23,6 +23,23 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
+        // TLS terminates at a reverse proxy that is not part of this
+        // application, so the forwarded headers are the only truth about what
+        // the visitor actually asked for. `X-Forwarded-Host` matters most:
+        // brands are resolved from the request host (ADR-0001), so without it
+        // every request resolves the proxy's own hostname — the wrong brand,
+        // or a 404. `X-Forwarded-Proto` is what makes `isSecure()` true, and
+        // therefore what makes secure session cookies, correctly signed URLs
+        // (Admission's entrance tokens, Compliance's export downloads) and
+        // ADR-0025's per-brand Reverb origins agree with reality.
+        //
+        // Which proxies to believe is config, not a literal — see
+        // config/trustedproxy.php for why it cannot be an env() call here.
+        $middleware->trustProxies(headers: Request::HEADER_X_FORWARDED_FOR
+            | Request::HEADER_X_FORWARDED_HOST
+            | Request::HEADER_X_FORWARDED_PORT
+            | Request::HEADER_X_FORWARDED_PROTO);
+
         $middleware->web(prepend: [
             // Every web request runs in a brand or 404s (ADR-0001). Wired here
             // rather than in PlatformServiceProvider because the kernel syncs
