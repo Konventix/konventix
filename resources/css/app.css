@@ -194,7 +194,7 @@
     --ring: hsl(0 0% 83.1%);
 
     --danger: hsl(0 84% 60%);
-    --danger-contrast: hsl(0 0% 98%);
+    --danger-contrast: hsl(0 0% 9%);
     --danger-surface: hsl(0 60% 12%);
     --success: hsl(142 60% 45%);
     --success-contrast: hsl(0 0% 9%);

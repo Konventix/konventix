@@ -29,6 +29,7 @@ class ThemeAdminController
         return Inertia::render('admin/themes/Edit', [
             'brand' => BrandSummaryData::fromModel($brand),
             'tokens' => $brand->themeTokens(),
+            'darkTokens' => $brand->darkThemeTokens(),
             'catalog' => ThemeCatalogData::fromCatalog(),
         ]);
     }

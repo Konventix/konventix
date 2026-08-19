@@ -11,8 +11,7 @@ depends on brand resolution and gating working.
 
 - [ ] Operator, Brand and BrandDomain models with migrations (ULID primary keys,
       ADR-0014) and factories; operator data as rows, not config (ADR-0001).
-- [ ] Tighten `brands.operator_id` to non-null once brand creation goes
-      through an Operator provisioning flow.
+
 - [ ] `BelongsToBrand` trait: global scope, automatic `brand_id` on create, and
       the `withoutBrandScope()` escape hatch behind `UseCrossBrandScope`
       (ADR-0010). Brand context serialized into queued jobs and restored in the
@@ -54,30 +53,48 @@ depends on brand resolution and gating working.
       Platform-maintained read model (display name/email, fed by Identity's
       events per ADR-0004) exists. The screens are usable — ULIDs copy from
       the Users page — but this is the planned UX completion.
-- [ ] Per-brand dark-mode token overrides. `Brand.theme_tokens` is one map
-      applied to `:root` only; the theme editor built for the light map does
-      not yet let a brand override `.dark` separately. Same mechanism
-      (TokenCatalog already carries both `light` and `dark` defaults per
-      token) — needs a second map column or a `{light, dark}` shape and a
-      tab in the editor.
-- [ ] Fix TokenCatalog's own light-mode defaults for the three status pairs:
-      `danger-contrast`/`danger` (3.61:1), `success-contrast`/`success`
-      (3.53:1) and `warning-contrast`/`warning` (2.52:1) all fall short of
-      the ADR-0008 4.5:1 minimum as currently hardcoded in
-      resources/css/app.css. Found while building UpdateBrandTheme's contrast
-      guard: checking every catalog pair unconditionally would refuse any
-      brand's save the moment it touched an unrelated token, since the
-      platform's own untouched defaults already fail three of six pairs. The
-      guard therefore only checks pairs the save actually touches (see its
-      doc comment) — a scoping decision, not a loophole, but it means the
-      starter-kit palette itself is still not BFSG-compliant out of the box.
-      This is separate from app.css's own "decide on the Konventix house
-      palette" TODO; whichever palette lands needs to pass all six pairs on
-      its own.
 
 ## Done
 
 <!-- Move completed items here with the PR that finished them. -->
+
+- [x] Per-brand dark-mode token overrides (slice 15b). A second column,
+      `theme_tokens_dark`, rather than reshaping `theme_tokens` into
+      `{light, dark}`: the tidier shape needed a data migration over every
+      brand's palette and changed the meaning of a column three places already
+      read, and for a colour map that trade was not worth it. The light map
+      still lands on `:root`, the dark one on `.dark`, and the editor's scheme
+      switch changes the defaults behind the inputs as well as the values in
+      them — judging a dark accent against the light default is how a brand
+      ends up with an unreadable dark mode.
+
+- [x] TokenCatalog's own defaults now pass BFSG in **both** schemes, and a test
+      holds them there. The three light status pairs this file used to list had
+      already been fixed; turning the same guard on the dark defaults for the
+      first time found `danger-contrast` on `danger` at 3.62:1 — white text on
+      a bright red, where `success` and `warning` had long since switched to
+      dark text on their bright fills. Dark `danger-contrast` now matches them
+      (4.74:1). app.css and TokenCatalog were edited together, as that file's
+      docblock requires.
+
+- [x] Operator settings page (slice 15b): `/admin/settings/operator`, behind a
+      new `platform.manage-operator` capability. The legal seller identity every
+      invoice is issued under (ADR-0030) existed only as a seeder row — Commerce
+      read it, ZUGFeRD printed it, and correcting a typo meant tinker. No
+      `{operator}` route parameter: the admin host resolves exactly one
+      (ADR-0001, ADR-0029), and a parameter would invent a way to edit another.
+      `admin_host` is deliberately not editable there — changing the address the
+      console answers on, from a page served on it, is how you lock yourself out.
+
+- [x] `brands.operator_id` is NOT NULL (slice 15b). It was nullable "until
+      provisioning exists"; provisioning exists. The nullability was not
+      harmless: a brand without an operator has no seller, so settlement threw
+      mid-invoice on a real order rather than when the brand was created. The
+      migration adopts any orphans into the single existing operator and refuses
+      to run if there are orphans and no operator — a row saying who invoices
+      come from is not something a migration may invent. `operator_id` stays out
+      of `$fillable` on purpose, so nothing from a request can move a brand to
+      another operator; the seeders associate through the relation instead.
 
 - [x] `Brands\BrandUrl` — the origin a brand answers on, so console screens
       can link into a brand's public site. The admin host resolves no brand

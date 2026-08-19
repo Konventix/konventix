@@ -149,9 +149,13 @@ interleave.
     subject without reading Registration — see Compliance's TODO), and the
     per-module anonymization log has no screen.
 15. Identity social login (**Steam only** — D-IDN-01 as amended 2026-08-19;
-    Google and Discord dropped) + Platform
-    polish (dark-mode token overrides, compliant default status colors,
-    operator provisioning tightens `brands.operator_id`).
+    Google and Discord dropped) + Platform polish (dark-mode token overrides,
+    operator settings page, `brands.operator_id` tightened to non-null).
+    **Done.** Steam landed as slice 15a and the Platform items as 15b, which
+    also fixed the dark palette's own `danger-contrast` pair (3.62:1) — the
+    first time ADR-0008's guard had been pointed at the platform defaults
+    rather than at a brand's overrides.
+
 16. Hardening + dry run: CI with PostgreSQL, `konventix:seed` for both
     event archetypes, BFSG pass, production Caddyfile, then SXLan and
     Xpertise rehearsed end-to-end on seeded data.
@@ -206,8 +210,8 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Module | Pages to build | LanCore precedent | Status |
 | --- | --- | --- | --- |
 | Platform | Admin shell, dashboard, Brands, Users, media library, role assignment, theme editor, block-based landing/static pages | admin shell, `themes/*`, `legal/*`, `Welcome`, `Countdown` | ✓ |
-| Platform | Dark-mode token overrides in the theme editor | `themes/Edit` (dark palette) | S15 |
-| Platform | Operator settings page (legal seller identity, provisioning) | `settings/Organization` | S15 |
+| Platform | Dark-mode token overrides in the theme editor | `themes/Edit` (dark palette) | ✓ |
+| Platform | Operator settings page (legal seller identity, provisioning) | `settings/Organization` | ✓ |
 | Identity | Auth flows, profile/security/appearance settings | `auth/*`, `settings/{Profile,Security,Appearance}` | ✓ |
 | Identity | Linked accounts + social onboarding (Steam signup completion) | `settings/LinkedAccounts`, `onboarding/Username`, `auth/CompleteSteamProfile` | ✓ — LanCore's separate username-pick and Steam-profile screens are one `auth/CompleteSocialSignup` |
 | Identity | Admin user detail page (memberships, sessions, states) | `users/Show` | P2 backlog |

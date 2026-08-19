@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Realtime\BrandApplicationProvider;
 use Laravel\Reverb\Exceptions\InvalidApplication;
 
@@ -12,7 +13,9 @@ use Laravel\Reverb\Exceptions\InvalidApplication;
  * credentials and origins asserted here.
  */
 it('provisions reverb credentials when a brand is created', function (): void {
-    $brand = Brand::query()->create(['name' => 'SXLan', 'slug' => 'sxlan']);
+    // Built through the relation because `brands.operator_id` is NOT NULL
+    // since slice 15b — a brand belongs to an operator by construction.
+    $brand = Operator::factory()->create()->brands()->create(['name' => 'SXLan', 'slug' => 'sxlan']);
 
     expect($brand->reverb_app_key)->toBeString()->not->toBe('')
         ->and($brand->reverb_app_secret)->toBeString()->not->toBe('');

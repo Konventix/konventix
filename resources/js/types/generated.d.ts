@@ -343,6 +343,7 @@ declare namespace Konventix {
             };
             export type BrandThemeData = {
                 tokens: Record<string, string>;
+                darkTokens: Record<string, string>;
             };
             export type MediaItemData = {
                 id: string;
@@ -356,6 +357,18 @@ declare namespace Konventix {
                 usageCount: number;
                 variantsPending: boolean;
                 uploadedAt: string | null;
+            };
+            export type OperatorSettingsData = {
+                readonly name: string;
+                readonly legalName: string;
+                readonly contactEmail: string | null;
+                readonly addressLine: string | null;
+                readonly postalCode: string | null;
+                readonly city: string | null;
+                readonly countryCode: string;
+                readonly vatId: string | null;
+                readonly taxNumber: string | null;
+                readonly smallBusinessScheme: boolean;
             };
             export type ThemeCatalogData = {
                 groups: Konventix.Platform.Data.ThemeTokenGroupData[];
@@ -425,7 +438,8 @@ declare namespace Konventix {
                 | 'platform.view-cross-brand'
                 | 'platform.view-media'
                 | 'platform.manage-media'
-                | 'platform.manage-storage-settings';
+                | 'platform.manage-storage-settings'
+                | 'platform.manage-operator';
         }
     }
     namespace Registration {

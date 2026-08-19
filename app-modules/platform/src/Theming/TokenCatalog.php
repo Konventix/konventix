@@ -15,10 +15,15 @@ namespace Konventix\Platform\Theming;
  * introspectable from PHP — so keep the two in sync BY HAND whenever
  * app.css's raw layer changes.
  *
- * Only the light defaults are used for contrast validation and as the
- * "effective value" fallback today: `Brand::theme_tokens` is a single map
- * applied to `:root` regardless of light/dark, so a brand cannot yet override
- * `.dark` separately (see UpdateBrandTheme, ADR-0008 backlog).
+ * Both sets are used for contrast validation: a brand's light overrides are
+ * judged against `lightDefaults()` and its dark overrides against
+ * `darkDefaults()`. Judging a dark palette by the light defaults would call a
+ * correct dark accent a failure and let a real dark failure through.
+ *
+ * Both sets pass every `contrastPairs()` entry on their own, and a test holds
+ * them to it. Dark `danger-contrast` on `danger` sat at 3.62:1 until slice 15b
+ * — white text on a bright red — and now matches what `success` and `warning`
+ * already did in dark mode: dark text on a bright fill (4.74:1).
  */
 final class TokenCatalog
 {
@@ -90,7 +95,7 @@ final class TokenCatalog
                 'label' => 'Status',
                 'tokens' => [
                     ['name' => 'danger', 'label' => 'Danger', 'light' => 'hsl(0 72% 42%)', 'dark' => 'hsl(0 84% 60%)'],
-                    ['name' => 'danger-contrast', 'label' => 'Danger (contrast)', 'light' => 'hsl(0 0% 98%)', 'dark' => 'hsl(0 0% 98%)'],
+                    ['name' => 'danger-contrast', 'label' => 'Danger (contrast)', 'light' => 'hsl(0 0% 98%)', 'dark' => 'hsl(0 0% 9%)'],
                     ['name' => 'danger-surface', 'label' => 'Danger (surface)', 'light' => 'hsl(0 86% 97%)', 'dark' => 'hsl(0 60% 12%)'],
                     ['name' => 'success', 'label' => 'Success', 'light' => 'hsl(142 72% 26%)', 'dark' => 'hsl(142 60% 45%)'],
                     ['name' => 'success-contrast', 'label' => 'Success (contrast)', 'light' => 'hsl(0 0% 98%)', 'dark' => 'hsl(0 0% 9%)'],

@@ -9,8 +9,9 @@
  * over the inherited :root cascade, so the panel previews the draft
  * regardless of what the operator's own light/dark preference is.
  *
- * Only the light map exists today (Brand.theme_tokens is one map applied to
- * :root) — see Edit.vue's note. This panel previews that single map.
+ * Previews whichever scheme the editor is on: the caller passes the effective
+ * tokens for that scheme, so a dark draft is judged against the dark defaults
+ * rather than against the light ones.
  */
 import { computed } from 'vue';
 

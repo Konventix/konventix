@@ -194,6 +194,15 @@ class PlatformServiceProvider extends ModuleServiceProvider
             ),
             new NavigationItem(
                 module: 'platform',
+                label: 'Operator',
+                url: '/admin/settings/operator',
+                icon: 'building',
+                order: 15,
+                permission: Permission::ManageOperator->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'platform',
                 label: 'Roles',
                 url: '/admin/roles',
                 icon: 'shield',

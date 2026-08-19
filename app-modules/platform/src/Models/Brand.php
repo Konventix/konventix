@@ -27,6 +27,7 @@ use Konventix\Platform\Jobs\PurgeBrandMedia;
  * @property string $slug
  * @property string $currency
  * @property array<string, string> $theme_tokens
+ * @property array<string, string>|null $theme_tokens_dark
  * @property string|null $reverb_app_key
  * @property string|null $reverb_app_secret
  * @property Carbon|null $created_at
@@ -37,7 +38,7 @@ class Brand extends Model
     /** @use HasFactory<BrandFactory> */
     use HasFactory, HasUlids;
 
-    protected $fillable = ['name', 'slug', 'currency', 'theme_tokens'];
+    protected $fillable = ['name', 'slug', 'currency', 'theme_tokens', 'theme_tokens_dark'];
 
     protected $hidden = ['reverb_app_secret'];
 
@@ -112,8 +113,9 @@ class Brand extends Model
     }
 
     /**
-     * Semantic design token overrides, injected server-side into the root
-     * template (ADR-0008). Keys are raw token names without the leading `--`.
+     * Semantic design token overrides for light mode, injected server-side
+     * into the root template's `:root` block (ADR-0008). Keys are raw token
+     * names without the leading `--`.
      *
      * @return array<string, string>
      */
@@ -123,12 +125,25 @@ class Brand extends Model
     }
 
     /**
+     * The same, for `.dark`. Empty for a brand that has not themed dark mode,
+     * which is the common case and renders no `.dark` block at all rather than
+     * an empty one.
+     *
+     * @return array<string, string>
+     */
+    public function darkThemeTokens(): array
+    {
+        return $this->theme_tokens_dark ?? [];
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
     {
         return [
             'theme_tokens' => 'array',
+            'theme_tokens_dark' => 'array',
         ];
     }
 

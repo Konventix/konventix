@@ -26,4 +26,5 @@ enum Permission: string
     case ViewMedia = 'platform.view-media';
     case ManageMedia = 'platform.manage-media';
     case ManageStorageSettings = 'platform.manage-storage-settings';
+    case ManageOperator = 'platform.manage-operator';
 }

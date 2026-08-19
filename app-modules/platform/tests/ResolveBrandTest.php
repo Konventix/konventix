@@ -58,7 +58,12 @@ it('resolves the brand owning the host, not the first brand in the table', funct
     // The wanted brand must not be the first row (the base TestCase's
     // localhost brand and the decoy both precede it), or the test proves
     // nothing about host-based lookup.
-    expect(Brand::query()->first()?->getKey())->not->toBe($wanted->getKey())
+    //
+    // Ordered explicitly: a bare `first()` has no ORDER BY, so it returned
+    // whatever Postgres happened to hand back first and this precondition
+    // passed by luck. ULIDs sort chronologically, so ordering by id is
+    // literally "the first brand in the table" as this test means it.
+    expect(Brand::query()->orderBy('id')->first()?->getKey())->not->toBe($wanted->getKey())
         ->and($decoy->getKey())->not->toBe($wanted->getKey());
 
     $this->get('http://wanted.test/brand-probe')->assertOk()->assertSee($wanted->name, escape: false);

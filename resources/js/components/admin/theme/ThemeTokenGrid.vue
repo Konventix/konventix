@@ -10,6 +10,12 @@ import { Label } from '@/components/ui/label';
 const props = defineProps<{
     groups: Konventix.Platform.Data.ThemeTokenGroupData[];
     modelValue: Record<string, string>;
+    /**
+     * Which colour scheme's defaults sit behind the inputs as placeholders.
+     * A dark accent is meant to look wrong next to the light default, so the
+     * grid has to show the default the operator is actually editing against.
+     */
+    scheme?: 'light' | 'dark';
 }>();
 
 const emit = defineEmits<{
@@ -60,7 +66,7 @@ function setToken(name: string, value: string): void {
                         :id="`token-${token.name}`"
                         :token-name="token.name"
                         :label="token.label"
-                        :fallback="token.light"
+                        :fallback="props.scheme === 'dark' ? token.dark : token.light"
                         :model-value="valueOf(token.name)"
                         @update:model-value="
                             (value) => setToken(token.name, value)

@@ -75,6 +75,7 @@ class ResolveBrand
         // token overrides (ADR-0008).
         $this->broadcasting->useBrand($brand);
         $this->view->share('brandTokens', $brand->themeTokens());
+        $this->view->share('brandTokensDark', $brand->darkThemeTokens());
 
         return $next($request);
     }

@@ -137,11 +137,12 @@ it('refuses a save whose contrast falls below the BFSG 4.5:1 minimum, naming the
 });
 
 it('does not refuse a save that never touches a pair the platform defaults already fail', function (): void {
-    // TokenCatalog's light defaults for danger/success/warning contrast fall
-    // short of 4.5:1 on their own (found while building this feature — the
-    // starter-kit palette was never accessibility-audited). A save that only
-    // touches the brand accent must not be blocked by that unrelated,
-    // pre-existing gap.
+    // The guard only judges pairs the save actually touches. That began as a
+    // workaround — the platform's own light defaults failed three pairs, so
+    // checking everything would have refused every save — and slice 15b fixed
+    // those defaults in both schemes. It stays as a scoping rule: this Action
+    // answers for the combinations an operator chose, and the platform palette
+    // answers for itself in BrandDarkThemeTest.
     [, $admin, $brand] = operatorWithThemeAdmin();
 
     $this->actingAs($admin)

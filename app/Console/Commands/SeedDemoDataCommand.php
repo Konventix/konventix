@@ -247,15 +247,18 @@ class SeedDemoDataCommand extends Command
             $name = $names[$index - 1] ?? 'Brand '.$index;
             $slug = Str::slug($name);
 
-            $brand = Brand::query()->firstOrCreate(
-                ['slug' => $slug],
-                ['name' => $name, 'theme_tokens' => []],
-            );
-
             // Settling money needs a legal seller identity: OperatorSettings
-            // refuses invoice issuance for a brand without an operator.
-            if ($brand->operator_id === null && $operator !== null) {
-                $brand->operator()->associate($operator)->save();
+            // refuses invoice issuance for a brand without an operator — and
+            // since slice 15b the database refuses the brand outright, so the
+            // operator is set before the insert rather than associated after.
+            // Through the relation, because `operator_id` is deliberately not
+            // mass-assignable.
+            $brand = Brand::query()->firstOrNew(['slug' => $slug]);
+
+            if (! $brand->exists) {
+                $brand->fill(['name' => $name, 'theme_tokens' => []]);
+                $brand->operator()->associate($operator);
+                $brand->save();
             }
 
             $brand->domains()->firstOrCreate(

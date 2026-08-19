@@ -43,8 +43,9 @@
             TODO(brand): implement the middleware that resolves the tenant and
             shares `$brandTokens`. Until then this renders nothing.
         --}}
-        @if (! empty($brandTokens ?? []))
+        @if (! empty($brandTokens ?? []) || ! empty($brandTokensDark ?? []))
             <style id="konventix-brand-tokens">
+                @if (! empty($brandTokens ?? []))
                 :root {
                     @foreach ($brandTokens as $token => $value)
                         {{-- Values are tenant-controlled: allow only token-shaped
@@ -55,6 +56,23 @@
                         --{{ $token }}: {{ $value }};
                     @endforeach
                 }
+                @endif
+
+                {{-- The dark map lands on `.dark` rather than `:root`, so the
+                     two never compete for the same declaration and a brand that
+                     themes only light mode says nothing about dark at all.
+                     Emitted only when there is something to say — an empty
+                     block would still override nothing, but it would suggest
+                     the brand had made a choice it has not made. --}}
+                @if (! empty($brandTokensDark ?? []))
+                .dark {
+                    @foreach ($brandTokensDark as $token => $value)
+                        @continue (! preg_match('/^[a-z0-9-]{1,64}$/', (string) $token))
+                        @continue (! preg_match('/^[#a-zA-Z0-9 ,.%()\/-]{1,64}$/', (string) $value))
+                        --{{ $token }}: {{ $value }};
+                    @endforeach
+                }
+                @endif
             </style>
         @endif
 

@@ -23,13 +23,17 @@ class BrandSeeder extends Seeder
             ['legal_name' => 'Konventix Dev Operator', 'contact_email' => 'operator@example.com'],
         );
 
-        $brand = Brand::query()->firstOrCreate(
-            ['slug' => 'dev'],
-            ['name' => 'Konventix Dev', 'theme_tokens' => []],
-        );
+        // The operator is set before the insert, not after: `brands.operator_id`
+        // is NOT NULL, so associating afterwards would never survive it. Via
+        // the relation rather than a mass-assigned `operator_id`, which stays
+        // out of `$fillable` deliberately — nothing arriving from a request
+        // should be able to move a brand to another operator.
+        $brand = Brand::query()->firstOrNew(['slug' => 'dev']);
 
-        if ($brand->operator_id === null) {
-            $brand->operator()->associate($operator)->save();
+        if (! $brand->exists) {
+            $brand->fill(['name' => 'Konventix Dev', 'theme_tokens' => []]);
+            $brand->operator()->associate($operator);
+            $brand->save();
         }
 
         // Explicit rather than relying on the model's `creating` hook: the
