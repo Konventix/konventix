@@ -11,11 +11,20 @@
     ],
     "sail": false,
     "skills": [
+        "infer-conventions",
         "fortify-development",
         "laravel-best-practices",
+        "configuring-horizon",
         "octane-development",
         "pennant-development",
+        "pulse-development",
         "socialite-development",
-        "tailwindcss-development"
+        "wayfinder-development",
+        "pest-testing",
+        "inertia-vue-development",
+        "echo-vue-development",
+        "echo-development",
+        "tailwindcss-development",
+        "modular"
     ]
 }
