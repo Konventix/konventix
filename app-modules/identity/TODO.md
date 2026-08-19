@@ -38,9 +38,42 @@ person behind it. The value here is in what is left out.
       Messaging's recipients and Content's authors both only see accounts
       created after their projection existed. One replay closes both, and
       every future read model inherits the fix.
-- [ ] `SocialProvider` driver contract plus a `social_identities` table, with
-      Steam as the first driver and at least one non-gaming driver to prove the
-      abstraction is not Steam-shaped.
+- [x] `SocialProvider` driver contract plus a `social_identities` table.
+      Steam is the only driver (D-IDN-01 as amended 2026-08-19 — Google and
+      Discord dropped, not deferred), so the "prove it is not Steam-shaped"
+      half of this item could not be discharged the way it was written. The
+      contract is instead modelled on the *hardest* case: it returns an
+      identity rather than a user, its email is nullable because Steam asserts
+      none, and it carries no notion of scopes or tokens. An OAuth2 driver fits
+      inside that without widening it. The registry is also the route's
+      whitelist, so an unregistered `{provider}` 404s before reaching Socialite.
+
+      Worth knowing, because it looks arbitrary otherwise: `users.password` is
+      now nullable (a Steam-first account genuinely has none, and a placeholder
+      hash would be a lie every later check had to decode), and the callback
+      decides the signed-in case *before* the identity-known case — otherwise
+      connecting somebody else's Steam account silently switches your session
+      into theirs.
+
+- [ ] Unlinking a provider is not re-authenticated. `password.confirm` was the
+      obvious gate and is the wrong one: a Steam-only account has no password
+      to confirm, so the middleware would dead-end the screen for precisely the
+      accounts social login creates. What protects the account today is the
+      lockout guard — the last way in cannot be removed at all. The right
+      confirmation is a fresh round-trip through the provider, which needs a
+      "re-authenticate, do not link" mode on the callback.
+
+- [ ] No preview of what a social signup will be called before it exists: the
+      display name is asked for, and a deployment with no Steam Web API key has
+      no suggestion to prefill it with. Harmless, but the reason the field
+      looks empty in dev is worth knowing.
+
+- [ ] A social signup naming an email that already exists is refused with an
+      ordinary "already taken" error rather than being offered a link. That is
+      deliberate — Steam asserts no address, so linking on a typed match would
+      be account takeover by typing — but it inherits the ADR-0016 disclosure
+      gap recorded below: the refusal reveals the address is in use. Both are
+      closed by the same fix.
 - [x] Two-factor enrolment, recovery codes, and the active session list with
       revocation. `Features::twoFactorAuthentication(['confirm' => true,
       'confirmPassword' => true])`; enrolment/confirm/disable/recovery-codes

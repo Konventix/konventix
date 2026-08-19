@@ -21,11 +21,15 @@ use Konventix\Identity\Actions\ResetUserPassword;
 use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Listeners\RecordBrandMembership;
+use Konventix\Identity\Social\SocialProviderRegistry;
+use Konventix\Identity\Social\SteamProvider;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
+use SocialiteProviders\Manager\SocialiteWasCalled;
+use SocialiteProviders\Steam\SteamExtendSocialite;
 
 /**
  * Kernel module. Owns authentication, the slim User, 2FA and sessions.
@@ -69,6 +73,33 @@ class IdentityServiceProvider extends ModuleServiceProvider
         Event::listen(Login::class, RecordBrandMembership::class);
         Event::listen(Registered::class, RecordBrandMembership::class);
         Event::listen(Registered::class, SendEmailVerificationNotification::class);
+
+        // Community Socialite providers are not auto-discovered the way the
+        // built-in ones are — they extend the manager by listening for this
+        // event. Registered explicitly here because modular event discovery is
+        // off and stays off (.ai/rules/listeners.md); without this line
+        // `Socialite::driver('steam')` raises "Driver [steam] not supported".
+        Event::listen(SocialiteWasCalled::class, [SteamExtendSocialite::class, 'handle']);
+    }
+
+    /**
+     * The social drivers this deployment offers (decision log D-IDN-01 as
+     * amended: Steam only). Registering a driver here is the whole cost of
+     * adding one — nothing downstream of `SocialProviderRegistry` names a
+     * provider.
+     *
+     * Safe as a singleton: the drivers hold no request state, resolving
+     * `request()` per call instead (see `SteamProvider::driver()`).
+     */
+    protected function registerBindings(): void
+    {
+        $this->app->singleton(SocialProviderRegistry::class, function ($app): SocialProviderRegistry {
+            $registry = new SocialProviderRegistry;
+
+            $registry->register($app->make(SteamProvider::class));
+
+            return $registry;
+        });
     }
 
     /**

@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -41,7 +42,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string $name
  * @property string $email
  * @property Carbon|null $email_verified_at
- * @property string $password
+ * @property string|null $password
  * @property string $locale
  * @property string $timezone
  * @property AccountState $state
@@ -74,6 +75,34 @@ class User extends Authenticatable implements MustVerifyEmail
             'preferences' => AccountPreferencesData::class.':default',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The ways into this account that are not an email and a password.
+     *
+     * The one relation on this model that points at another table, and it
+     * stays because it points at Identity's own — social login is
+     * authentication, which is what this module owns. It is not the thin end
+     * of the wedge the class docblock warns about; a relation to another
+     * *module's* table still belongs in that module's read model.
+     *
+     * @return HasMany<SocialIdentity, $this>
+     */
+    public function socialIdentities(): HasMany
+    {
+        return $this->hasMany(SocialIdentity::class);
+    }
+
+    /**
+     * Whether this account can be reached by password at all.
+     *
+     * False for an account created through a social provider and never given
+     * one. Callers use this rather than testing `password !== null` so the
+     * question reads the way it is meant: "is there a password login here?"
+     */
+    public function hasPassword(): bool
+    {
+        return $this->password !== null && $this->password !== '';
     }
 
     /**

@@ -94,8 +94,8 @@ event class lands.
 | `UserAuthenticationFailed` | A login attempt is rejected | `user_id` or `null`, `brand_id`, `reason_code` | proposed |
 | `UserAccountLocked` | The account is locked, manually or by policy (first lock only — re-locking emits nothing) | `user_id`, `reason_code`, `locked_at` | implemented |
 | `UserAccountUnlocked` | The lock is lifted | `user_id`, `unlocked_at` | implemented |
-| `SocialIdentityLinked` | A social provider identity is attached | `user_id`, `provider`, `provider_user_id` | proposed |
-| `SocialIdentityUnlinked` | A social provider identity is detached | `user_id`, `provider` | proposed |
+| `SocialIdentityLinked` | A social provider identity is attached | `user_id`, `provider`, `provider_user_id` | implemented |
+| `SocialIdentityUnlinked` | A social provider identity is detached | `user_id`, `provider` | implemented |
 | `TwoFactorEnabled` | 2FA enrolment is confirmed | `user_id`, `enabled_at` | proposed |
 | `TwoFactorDisabled` | 2FA is switched off or reset | `user_id`, `disabled_at` | proposed |
 | `UserAnonymized` | Identity's own records for a subject are scrubbed | `user_id`, `anonymized_at` | shipped |
@@ -155,8 +155,12 @@ login drivers a brand offers is per-brand configuration, not module activation.
   Mirrors Compliance's own settled deletion-default question.
 - ~~Which social drivers ship at release, and does a non-gaming brand ever
   need Steam at all? **Still open** — untouched by the Round 6 gate review.~~
-  **Decision log Round 7 (D-IDN-01):** Steam + Google + Discord at release,
-  all via Socialite behind the `SocialProvider` contract.
+  **Decision log Round 7 (D-IDN-01), amended 2026-08-19:** **Steam only** at
+  release, via Socialite behind the `SocialProvider` contract; ordinary
+  email/password signup is the other way in. Google and Discord are dropped
+  rather than deferred. Steam being OpenID 2.0 means no per-brand credentials
+  are needed at all, and `users.password` is nullable because an account
+  created this way has none.
 - ~~Where the role-assignment screen lives, since it touches both a Platform
   role and an Identity user (mirrored in Platform's open questions).~~
   **Decision log Round 6 (D-BATCH):** Platform owns the role-assignment

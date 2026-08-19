@@ -24,6 +24,7 @@ use Laravel\Octane\Listeners\FlushUploadedFiles;
 use Laravel\Octane\Listeners\ReportException;
 use Laravel\Octane\Listeners\StopWorkerIfNecessary;
 use Laravel\Octane\Octane;
+use Laravel\Socialite\Contracts\Factory;
 
 return [
 
@@ -137,7 +138,12 @@ return [
     ],
 
     'flush' => [
-        //
+        // Socialite's factory is a singleton that caches each driver, and a
+        // driver holds the request it was built for. Left warm, the second
+        // social login in a worker would verify the first one's parameters.
+        // `Identity\Social\SteamProvider` re-sets the request defensively as
+        // well; this covers anything else that reaches for Socialite directly.
+        Factory::class,
     ],
 
     /*

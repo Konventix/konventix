@@ -224,6 +224,19 @@ declare namespace Konventix {
                 locale: string;
                 timezone: string;
             };
+            export type CompleteSocialSignupData = {
+                readonly name: string;
+                readonly email: string;
+            };
+            export type LinkedAccountData = {
+                readonly provider: string;
+                readonly label: string;
+                readonly linked: boolean;
+                readonly nickname: string | null;
+                readonly avatarUrl: string | null;
+                readonly linkedAt: string | null;
+                readonly canUnlink: boolean;
+            };
             export type PasswordUpdateData = {
                 readonly current_password: string;
                 readonly password: string;
@@ -246,7 +259,7 @@ declare namespace Konventix {
             };
         }
         namespace Enums {
-            export type AccountState = 'active' | 'locked';
+            export type AccountState = 'active' | 'locked' | 'anonymized';
             export type Permission =
                 | 'identity.view-users'
                 | 'identity.manage-users'

@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { toUrl } from '@/lib/utils';
 import { edit as editAppearance } from '@/routes/appearance';
+import { edit as editLinkedAccounts } from '@/routes/linked-accounts';
 import { edit as editNotifications } from '@/routes/notification-preferences';
 import { edit as editPrivacy } from '@/routes/privacy';
 import { edit as editProfile } from '@/routes/profile';
@@ -20,6 +21,10 @@ const sidebarNavItems: NavItem[] = [
     {
         title: 'Security',
         href: editSecurity(),
+    },
+    {
+        title: 'Linked accounts',
+        href: editLinkedAccounts(),
     },
     {
         title: 'Notifications',

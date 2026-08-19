@@ -39,7 +39,15 @@ final class AuthenticateUser
             return null;
         }
 
-        if (! Hash::check((string) $request->input('password'), $user->password)) {
+        // A social-only account has no password at all (the column is
+        // nullable since slice 15a). It must fail the way a wrong password
+        // fails — generically — and it must never reach `Hash::check`, which
+        // would be handed a null hash.
+        if (! $user->hasPassword()) {
+            return null;
+        }
+
+        if (! Hash::check((string) $request->input('password'), (string) $user->password)) {
             return null;
         }
 

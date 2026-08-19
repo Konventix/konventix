@@ -11,6 +11,7 @@ use Konventix\Identity\Enums\AccountState;
 use Konventix\Identity\Events\UserAnonymized;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\Session;
+use Konventix\Identity\Models\SocialIdentity;
 use Konventix\Identity\Models\User;
 
 /**
@@ -92,6 +93,22 @@ final class IdentityGdprHandler implements GdprHandler
                     'last_activity' => $session->last_activity,
                 ])
                 ->all(),
+            // The ways into this account that are not a password. The
+            // provider's own identifier is included precisely because it is
+            // personal data: a SteamID64 is a durable handle on a natural
+            // person, and an export that omitted it would be answering a
+            // narrower question than the one that was asked.
+            'social_identities' => SocialIdentity::query()
+                ->where('user_id', $subjectId)
+                ->orderBy('linked_at')
+                ->get()
+                ->map(fn (SocialIdentity $identity): array => [
+                    'provider' => $identity->provider,
+                    'provider_user_id' => $identity->provider_user_id,
+                    'nickname' => $identity->nickname,
+                    'linked_at' => $identity->linked_at->toIso8601String(),
+                ])
+                ->all(),
         ];
     }
 
@@ -117,6 +134,14 @@ final class IdentityGdprHandler implements GdprHandler
         }
 
         Session::query()->where('user_id', $subjectId)->delete();
+
+        // Deleted outright, not tombstoned. The rest of the account survives
+        // as a tombstone so foreign ULIDs still resolve (Round 6 D-BATCH) —
+        // but nothing outside this module references a social identity, and
+        // the row's whole content is an identifier for the person who asked to
+        // be forgotten. Keeping it would also leave the provider login working
+        // against an anonymized account.
+        SocialIdentity::query()->where('user_id', $subjectId)->delete();
 
         $user->forceFill([
             'name' => 'Deleted account',

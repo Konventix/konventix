@@ -28,6 +28,39 @@ an ADR · `spec` — written into the module SPEC · `open` — not yet asked.
 | D-COM-08 | Door payment | **Door is a Commerce POS.** Separate, separately authorized POS screen; payment → `OrderPaid` → confirmation → admission → scan. No combined endpoint. | adr → ADR-0018 |
 | D-CMP-01 | LanBrackets | **Absorb into Competition.** Supersedes ADR-0012's "remains external, integrated via webhooks". | adr → ADR-0019 |
 
+### D-IDN-01 amended (2026-08-19): Steam only
+
+Round 7 recorded Steam + Google + Discord. That is now **Steam alone**, with
+ordinary email/password signup and login as the other — and universal — way
+into an account.
+
+Google and Discord are **dropped, not deferred**. Nothing is waiting on them;
+if either is wanted later it is a new decision, and the `SocialProvider`
+contract exists so that decision costs a driver class and a line of
+registration rather than a rewrite.
+
+What the narrowing changed in the build:
+
+- **No per-brand credentials.** Steam is OpenID 2.0: no app registration, no
+  client id, no secret. The ADR-0028 pattern (encrypted per-brand rows) that
+  Google and Discord would each have needed is not required at all — a brand's
+  own domain is the entire configuration. The one optional credential is a
+  Steam Web API key, for display name and avatar.
+- **We supply the CSRF nonce.** OpenID 2.0 has no OAuth `state` parameter, so
+  the driver is stateless and the protection against account-linking CSRF is
+  ours: a nonce issued at redirect, carried in the signed `return_to`, and
+  consumed once at the callback.
+- **`users.password` is nullable.** A Steam-first account genuinely has no
+  password; storing an unusable hash instead would be a lie every later "can
+  this person log in by mail?" question would have to decode.
+- **No auto-linking by email.** Steam asserts no address, so a typed address
+  that matches an existing account proves nothing — linking on a match would be
+  account takeover by typing.
+
+The contract kept its shape despite one driver: `SocialProvider` is modelled on
+the *hardest* case (no email, no profile, no state) so an OAuth2 provider fits
+inside it rather than forcing it wider.
+
 ### Consequences already known
 
 - **D-IDP-01** — email uniqueness becomes operator-global, so every "email already
@@ -123,7 +156,7 @@ per-module modelling questions that gate the remaining Phase 2 slices.
 | D-CNT-08 | Announcement contract | **Content declares intent only** — urgency (`normal`/`urgent`) + audience (`everyone`/`logged-in`) on `AnnouncementPublished`; Messaging alone maps intent to channels/timing (urgent bypasses digests and quiet hours). | spec (Content, Messaging) |
 | D-CPL-01 | Infrastructure-record retention | **Compliance-published rules: delivery log 12 months, audit trail 36 months**, enforced by the retention machinery — one place to adjust. | spec (Compliance, Messaging) |
 | D-CNT-09 | Content revisions | **No revision history at release.** The audit trail records who published what when. | spec (Content) |
-| D-IDN-01 | Social drivers at release | **Steam + Google + Discord** (user chose broadest option over the recommended two), all via Socialite behind the `SocialProvider` contract. | spec (Identity) |
+| D-IDN-01 | Social drivers at release | ~~Steam + Google + Discord~~ → **Steam only** (amended 2026-08-19, see below), via Socialite behind the `SocialProvider` contract. | spec (Identity) |
 | D-BATCH-7 | Accepted defaults | **Comments require an account · deactivated-module blocks silently omitted at render, editor shows a warning badge · canonical domain = `is_primary` row · brand tokens standalone, no operator inheritance · in-app notifications filtered at render for inactive modules · GameOps credentials as encrypted per-brand rows (ADR-0028 pattern), provisioning jobs on a dedicated queue with idempotency keys per `MatchScheduled` · resource bookings minute-precision half-open ranges, whole-event as degenerate case · template payload Data changes additive-only, breaking shape ⇒ new template key · ranking/points as typed per-discipline config Data objects.** | spec (various) |
 
 ### Consequences already known

@@ -148,7 +148,8 @@ interleave.
     data. Left standing: Commerce has no handler (an order cannot resolve a
     subject without reading Registration — see Compliance's TODO), and the
     per-module anonymization log has no screen.
-15. Identity social login (Steam + Google + Discord, D-IDN-01) + Platform
+15. Identity social login (**Steam only** — D-IDN-01 as amended 2026-08-19;
+    Google and Discord dropped) + Platform
     polish (dark-mode token overrides, compliant default status colors,
     operator provisioning tightens `brands.operator_id`).
 16. Hardening + dry run: CI with PostgreSQL, `konventix:seed` for both
@@ -208,7 +209,7 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Platform | Dark-mode token overrides in the theme editor | `themes/Edit` (dark palette) | S15 |
 | Platform | Operator settings page (legal seller identity, provisioning) | `settings/Organization` | S15 |
 | Identity | Auth flows, profile/security/appearance settings | `auth/*`, `settings/{Profile,Security,Appearance}` | ✓ |
-| Identity | Linked accounts + social onboarding (Steam profile completion, username pick) | `settings/LinkedAccounts`, `onboarding/Username`, `auth/CompleteSteamProfile` | S15 |
+| Identity | Linked accounts + social onboarding (Steam signup completion) | `settings/LinkedAccounts`, `onboarding/Username`, `auth/CompleteSteamProfile` | ✓ — LanCore's separate username-pick and Steam-profile screens are one `auth/CompleteSocialSignup` |
 | Identity | Admin user detail page (memberships, sessions, states) | `users/Show` | P2 backlog |
 | Event | Event index/edit/dashboard/lifecycle, venue admin, public landing | `events/*`, `venues/*` | ✓ |
 | Compliance | Policy admin CRUD; user-facing consent pages; privacy settings | `admin/policies/*`, `policies/{Required,Show}`, `settings/Privacy` | ✓ |

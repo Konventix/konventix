@@ -61,6 +61,21 @@ return [
         'admin_token' => env('GARAGE_ADMIN_TOKEN'),
     ],
 
+    // Steam is OpenID 2.0, not OAuth2 (decision log D-IDN-01 as amended): there
+    // is no app to register, so `client_id` and `redirect` exist only because
+    // Socialite's config contract expects them. `client_secret` is the Steam
+    // Web API key and is genuinely optional — without it a Steam login still
+    // works and simply carries no nickname or avatar (`Social\SteamProvider`).
+    //
+    // `redirect` stays null on purpose: the callback is built per request so it
+    // lands on the brand domain the person actually came from. A value here
+    // would send every brand's users back to one host.
+    'steam' => [
+        'client_id' => null,
+        'client_secret' => env('STEAM_API_KEY'),
+        'redirect' => null,
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
