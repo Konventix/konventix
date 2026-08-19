@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Providers\AppServiceProvider;
+use App\Providers\ObservabilityServiceProvider;
 use App\Providers\TypeScriptTransformerServiceProvider;
 
 /*
@@ -14,5 +15,6 @@ use App\Providers\TypeScriptTransformerServiceProvider;
  */
 return [
     AppServiceProvider::class,
+    ObservabilityServiceProvider::class,
     TypeScriptTransformerServiceProvider::class,
 ];

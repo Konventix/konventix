@@ -27,4 +27,18 @@ enum Permission: string
     case ManageMedia = 'platform.manage-media';
     case ManageStorageSettings = 'platform.manage-storage-settings';
     case ManageOperator = 'platform.manage-operator';
+
+    /**
+     * Pulse and Horizon: how the system is behaving, and the queues. Read-only
+     * metrics plus Horizon's retry/delete controls.
+     */
+    case ViewDiagnostics = 'platform.view-diagnostics';
+
+    /**
+     * Telescope, held apart from the rest deliberately. It records request
+     * bodies, so holding this is the power to read other people's personal
+     * data — registrations, subject requests, invoice recipients — not just to
+     * see that the system is slow.
+     */
+    case ViewRequestLog = 'platform.view-request-log';
 }

@@ -6,6 +6,19 @@
 
 ## Next
 
+- [ ] Two stores of personal data now sit outside the retention machinery:
+      Telescope's request bodies (development only — a `require-dev` package
+      that never reaches production) and Pulse's user-keyed aggregates. Both
+      are bounded today only by their own schedules —
+      `telescope:prune --hours=48` and an hourly `pulse:trim` — which is a
+      window, not a rule anybody can see or audit. D-CPL-01 named the delivery
+      log and the audit trail; these are the same question asked about
+      operational telemetry, and the answer may well be "these are not
+      personal data we hold on purpose, so the short window is the rule" —
+      but it should be written down as a decision rather than left as a
+      default in a service provider.
+
+
 Phase 1 needs only consent capture, so the registration flow is lawful. The
 fan-out machinery is Phase 2, but the handler contract should exist early — every
 module built before it will otherwise be retrofitted.

@@ -18,6 +18,15 @@ parameters:
     # only false positives. Add the plugin, then drop these exclusions.
     excludePaths:
         - app-modules/*/tests/*
+        # Vendor code we publish rather than write. Horizon's and Pulse's
+        # configs and Pulse's migration are copied verbatim from their
+        # packages, and their loose `env()` handling and driver `match`
+        # arms are upstream's to fix. Editing them here to satisfy level 7
+        # would mean carrying a private diff through every package upgrade,
+        # for files we do not own and do not change.
+        - config/horizon.php
+        - config/pulse.php
+        - database/migrations/*_create_pulse_tables.php
 
     level: 7
 

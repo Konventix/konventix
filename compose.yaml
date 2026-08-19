@@ -59,11 +59,17 @@ services:
             redis:
                 condition: service_healthy
 
-    # Role: queue worker. `--tries=1` surfaces job failures immediately in dev;
-    # workers restart themselves when code changes via `sail restart queue`.
+    # Role: queue worker, supervised by Horizon. Horizon reads its own
+    # supervisor/retry configuration from config/horizon.php rather than from
+    # flags here, which is the whole point of it — one place that describes how
+    # the queues are worked, visible in the dashboard.
+    #
+    # Horizon only supervises Redis queues; `QUEUE_CONNECTION=database` makes
+    # this container do nothing at all. Workers still restart on code changes
+    # via `sail restart queue`.
     queue:
         image: sail-8.5/app
-        command: ['php', 'artisan', 'queue:work', '--tries=1', '--timeout=90']
+        command: ['php', 'artisan', 'horizon']
         environment:
             WWWUSER: '${WWWUSER}'
             LARAVEL_SAIL: 1
@@ -76,6 +82,30 @@ services:
                 condition: service_completed_successfully
             laravel.test:
                 condition: service_started
+            pgsql:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        restart: unless-stopped
+
+    # Role: Pulse ingest drain. With PULSE_INGEST_DRIVER=redis, Pulse writes
+    # entries to a Redis stream instead of into the request's own database
+    # transaction; this drains that stream into Postgres. Without it the
+    # dashboard is silently empty — the data is being collected and nobody is
+    # writing it down, which looks exactly like "Pulse is not working".
+    pulse:
+        image: sail-8.5/app
+        command: ['php', 'artisan', 'pulse:work']
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            migrate:
+                condition: service_completed_successfully
             pgsql:
                 condition: service_healthy
             redis:
