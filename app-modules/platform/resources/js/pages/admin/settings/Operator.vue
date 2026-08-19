@@ -25,16 +25,20 @@ const props = defineProps<{
     operator: Konventix.Platform.Data.OperatorSettingsData;
 }>();
 
+// Nullable columns arrive as null and bind to text inputs as empty strings —
+// an <input> has no concept of null. `UpdateOperatorSettings` turns them back
+// into nulls on the way in, so a cleared field ends up null in the database
+// rather than an empty string that reads as "set to nothing".
 const form = useForm({
     name: props.operator.name,
     legalName: props.operator.legalName,
-    contactEmail: props.operator.contactEmail,
-    addressLine: props.operator.addressLine,
-    postalCode: props.operator.postalCode,
-    city: props.operator.city,
+    contactEmail: props.operator.contactEmail ?? '',
+    addressLine: props.operator.addressLine ?? '',
+    postalCode: props.operator.postalCode ?? '',
+    city: props.operator.city ?? '',
     countryCode: props.operator.countryCode,
-    vatId: props.operator.vatId,
-    taxNumber: props.operator.taxNumber,
+    vatId: props.operator.vatId ?? '',
+    taxNumber: props.operator.taxNumber ?? '',
     smallBusinessScheme: props.operator.smallBusinessScheme,
 });
 

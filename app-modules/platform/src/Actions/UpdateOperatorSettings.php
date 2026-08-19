@@ -29,17 +29,31 @@ final class UpdateOperatorSettings
             $operator->update([
                 'name' => $data->name,
                 'legal_name' => $data->legalName,
-                'contact_email' => $data->contactEmail,
-                'address_line' => $data->addressLine,
-                'postal_code' => $data->postalCode,
-                'city' => $data->city,
+                'contact_email' => $this->orNull($data->contactEmail),
+                'address_line' => $this->orNull($data->addressLine),
+                'postal_code' => $this->orNull($data->postalCode),
+                'city' => $this->orNull($data->city),
                 'country_code' => strtoupper($data->countryCode),
-                'vat_id' => $data->vatId,
-                'tax_number' => $data->taxNumber,
+                'vat_id' => $this->orNull($data->vatId),
+                'tax_number' => $this->orNull($data->taxNumber),
                 'small_business_scheme' => $data->smallBusinessScheme,
             ]);
 
             return $operator->refresh();
         });
+    }
+
+    /**
+     * A text input cannot submit null, so a field the operator cleared arrives
+     * as an empty string. Stored as-is it would read as "deliberately set to
+     * nothing", and `contactEmailForBrand()` would hand Compliance an empty
+     * address to escalate a statutory deadline to — which fails silently
+     * rather than loudly. Empty means absent.
+     */
+    private function orNull(?string $value): ?string
+    {
+        $trimmed = trim((string) $value);
+
+        return $trimmed === '' ? null : $trimmed;
     }
 }

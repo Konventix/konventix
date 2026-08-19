@@ -5,7 +5,6 @@ import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import AuthLayout from '@/layouts/AuthLayout.vue';
 import { login } from '@/routes';
 import { store } from '@/routes/social/complete';
 
@@ -24,15 +23,25 @@ const props = defineProps<{
     suggestedName: string | null;
 }>();
 
-defineOptions({ layout: null });
+// Layout props, the way every other auth page declares itself — the shell is
+// applied by the layout resolver rather than imported here. `layout: null`
+// opts out of a layout entirely, which is a different thing and not what this
+// page wants.
+defineOptions({
+    layout: {
+        title: 'Finish setting up your account',
+        description: 'We still need an email address so you can verify your account and recover it later.',
+    },
+});
 </script>
 
 <template>
-    <AuthLayout
-        title="Finish setting up your account"
-        :description="`${props.providerLabel} verified who you are. We still need an email address so you can verify your account and recover it later.`"
-    >
+    <div class="flex flex-col gap-6">
         <Head title="Finish setting up your account" />
+
+        <p class="text-sm text-text-muted">
+            {{ props.providerLabel }} verified who you are.
+        </p>
 
         <Form
             v-bind="store(props.provider)"
@@ -85,5 +94,5 @@ defineOptions({ layout: null });
                 afterwards.
             </p>
         </Form>
-    </AuthLayout>
+    </div>
 </template>
