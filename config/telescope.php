@@ -216,6 +216,12 @@ return [
         ],
 
         Watchers\ScheduleWatcher::class => env('TELESCOPE_SCHEDULE_WATCHER', true),
-        Watchers\ViewWatcher::class => env('TELESCOPE_VIEW_WATCHER', true),
+        // Off. It crashes formatting this application's view composers —
+        // `get_class()` on a composer registered as a class-string — which
+        // takes `wayfinder:generate` down with it and so breaks `npm run
+        // build` outright. Nothing is lost: this is an Inertia application
+        // with a single Blade template, so there are no view renders worth
+        // watching.
+        Watchers\ViewWatcher::class => env('TELESCOPE_VIEW_WATCHER', false),
     ],
 ];

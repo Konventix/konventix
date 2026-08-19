@@ -27,6 +27,7 @@ parameters:
         - config/horizon.php
         - config/pulse.php
         - database/migrations/*_create_pulse_tables.php
+        - database/migrations/*_create_health_tables.php
 
     level: 7
 

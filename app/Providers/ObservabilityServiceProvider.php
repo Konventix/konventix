@@ -13,6 +13,14 @@ use Konventix\Platform\Enums\Permission;
 use Laravel\Horizon\Horizon;
 use Laravel\Telescope\Telescope;
 use Laravel\Telescope\TelescopeServiceProvider;
+use Spatie\Health\Checks\Checks\CacheCheck;
+use Spatie\Health\Checks\Checks\DatabaseCheck;
+use Spatie\Health\Checks\Checks\DebugModeCheck;
+use Spatie\Health\Checks\Checks\HorizonCheck;
+use Spatie\Health\Checks\Checks\RedisCheck;
+use Spatie\Health\Checks\Checks\ScheduleCheck;
+use Spatie\Health\Checks\Checks\UsedDiskSpaceCheck;
+use Spatie\Health\Facades\Health;
 
 /**
  * Wiring for the operations dashboards — Pulse, Horizon and, in development,
@@ -78,7 +86,36 @@ class ObservabilityServiceProvider extends ServiceProvider
         $this->authorizePulse();
         $this->authorizeHorizon();
         $this->authorizeTelescope();
+        $this->registerHealthChecks();
         $this->scheduleHousekeeping();
+    }
+
+    /**
+     * What `/up` cannot tell you.
+     *
+     * Laravel's built-in health route proves PHP answered, which is exactly
+     * the failure mode that never happens: the interesting outage is Postgres
+     * refusing connections, Redis full, the scheduler dead, or the disk
+     * finished — every one of which leaves the web role answering `/up`
+     * cheerfully.
+     *
+     * `ScheduleCheck` needs `health:schedule-check-heartbeat` running on the
+     * schedule to have anything to report, which is wired below; without it it
+     * reports the scheduler as down, correctly, since nothing is ticking.
+     */
+    private function registerHealthChecks(): void
+    {
+        Health::checks([
+            DatabaseCheck::new(),
+            RedisCheck::new(),
+            CacheCheck::new(),
+            ScheduleCheck::new()->heartbeatMaxAgeInMinutes(5),
+            HorizonCheck::new(),
+            UsedDiskSpaceCheck::new()->warnWhenUsedSpaceIsAbovePercentage(80)->failWhenUsedSpaceIsAbovePercentage(90),
+            // Debug mode in production leaks stack traces, environment and
+            // query contents to whoever triggers an error.
+            DebugModeCheck::new(),
+        ]);
     }
 
     /**
@@ -106,6 +143,18 @@ class ObservabilityServiceProvider extends ServiceProvider
             if (class_exists(Telescope::class)) {
                 $schedule->command('telescope:prune --hours=48')->daily();
             }
+
+            // Health results are stored, not computed on request: an external
+            // monitor polling every thirty seconds must not run a disk scan
+            // and a Redis round-trip each time.
+            $schedule->command('health:check')->everyFiveMinutes();
+            $schedule->command('health:schedule-check-heartbeat')->everyMinute();
+
+            // Off-site copies. GoBD keeps archived invoices for ten years
+            // (ADR-0031, §147 AO), which is far longer than any single disk
+            // should be trusted with them.
+            $schedule->command('backup:clean')->dailyAt('01:00');
+            $schedule->command('backup:run')->dailyAt('01:30');
         });
     }
 

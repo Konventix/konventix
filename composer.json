@@ -58,14 +58,18 @@
         "league/flysystem-aws-s3-v3": "^3.35",
         "minishlink/web-push": "^9.0",
         "mollie/mollie-api-php": "^3.13",
+        "sentry/sentry-laravel": "^4.27",
         "socialiteproviders/steam": "^4.4",
+        "spatie/laravel-backup": "^10.3",
         "spatie/laravel-data": "^4.23",
+        "spatie/laravel-health": "^1.40",
         "spatie/laravel-permission": "^8.3",
         "spatie/laravel-typescript-transformer": "^3.3",
         "stripe/stripe-php": "^21.2",
         "unzerdev/php-sdk": "^4.0"
     },
     "require-dev": {
+        "barryvdh/laravel-debugbar": "^4.4",
         "fakerphp/faker": "^1.24",
         "larastan/larastan": "^3.9",
         "laravel/boost": "^2.2",

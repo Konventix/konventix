@@ -5,7 +5,10 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Konventix\Platform\Blocks\StaticPageRenderer;
+use Konventix\Platform\Enums\Permission;
+use Konventix\Platform\Http\Middleware\EnsureOperatorHost;
 use Konventix\Platform\Models\StaticPage;
+use Spatie\Health\Http\Controllers\HealthCheckResultsController;
 
 /*
  * Host-level routes only. Every module registers its own routes from
@@ -33,6 +36,14 @@ Route::get('/', function (StaticPageRenderer $renderer) {
         'blocks' => $renderer->render($home),
     ]);
 })->name('home');
+
+// Health results, in two shapes for two readers.
+//
+// The dashboard is part of the console: operator host, diagnostics capability,
+// same rules as Pulse and Horizon (ADR-0029, ADR-0013).
+Route::middleware(['web', EnsureOperatorHost::class, 'auth', 'can:'.Permission::ViewDiagnostics->value])
+    ->get('admin/health', HealthCheckResultsController::class)
+    ->name('admin.health');
 
 Route::middleware(['auth', 'verified'])->group(function (): void {
     // Brand hosts have no dashboard — the brand landing page is the hub
