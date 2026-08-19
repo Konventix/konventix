@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ArrowLeft } from '@lucide/vue';
+import { ArrowLeft, ExternalLink } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
@@ -37,6 +37,8 @@ type Props = {
         state: Konventix.Content.Enums.PublicationState;
         publishedAt: string | null;
         brandName: string;
+        /** Absent while the entry is not live — a draft has no reader-facing page. */
+        publicUrl: string | null;
     };
     types: Konventix.Content.Enums.ContentType[];
     audiences: Konventix.Content.Enums.Audience[];
@@ -121,6 +123,20 @@ function archive(): void {
             >
                 {{ props.entry.state }}
             </span>
+            <Button
+                v-if="props.entry.publicUrl"
+                variant="outline"
+                as-child
+            >
+                <a
+                    :href="props.entry.publicUrl"
+                    target="_blank"
+                    rel="noopener"
+                >
+                    <ExternalLink class="size-4" />
+                    View
+                </a>
+            </Button>
             <Button variant="outline" as-child>
                 <Link :href="contentIndex().url">
                     <ArrowLeft class="size-4" />

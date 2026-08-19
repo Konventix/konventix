@@ -21,6 +21,7 @@ use Konventix\Content\Enums\PublicationState;
 use Konventix\Content\Enums\Urgency;
 use Konventix\Content\Models\ContentComment;
 use Konventix\Content\Models\ContentEntry;
+use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
 
@@ -40,7 +41,7 @@ class ContentAdminController
 {
     use HasDataTableQuery;
 
-    public function index(Request $request): Response
+    public function index(Request $request, BrandUrl $brandUrl): Response
     {
         Gate::authorize(Permission::ViewEntries->value);
 
@@ -76,6 +77,9 @@ class ContentAdminController
         /** @var array<string, string> $brandNames */
         $brandNames = $brands->pluck('name', 'id')->all();
 
+        // One lookup for the page, not one per row.
+        $brandBases = $brandUrl->basesFor($brands);
+
         return Inertia::render('admin/content/Index', [
             'entries' => $entries->through(fn (ContentEntry $entry): array => [
                 'id' => $entry->getKey(),
@@ -86,6 +90,7 @@ class ContentAdminController
                 'state' => $entry->state->value,
                 'publishedAt' => $entry->published_at?->toDateTimeString(),
                 'updatedAt' => $entry->updated_at?->toDateTimeString(),
+                'publicUrl' => $this->publicUrl($entry, $brandBases[$entry->brand_id] ?? null),
             ]),
             'brands' => $this->brandOptions($brands),
             'types' => array_map(fn (ContentType $case): string => $case->value, ContentType::cases()),
@@ -115,18 +120,25 @@ class ContentAdminController
         return to_route('admin.content.edit', $entry->getKey());
     }
 
-    public function edit(string $entry): Response
+    public function edit(string $entry, BrandUrl $brandUrl): Response
     {
         Gate::authorize(Permission::ManageEntries->value);
 
         $model = $this->find($entry);
+
+        /** @var Brand|null $brand */
+        $brand = Brand::query()->whereKey($model->brand_id)->first(['id', 'name']);
 
         return Inertia::render('admin/content/Edit', [
             'entry' => [
                 'id' => $model->getKey(),
                 'state' => $model->state->value,
                 'publishedAt' => $model->published_at?->toDateTimeString(),
-                'brandName' => Brand::query()->whereKey($model->brand_id)->value('name') ?? '—',
+                'brandName' => $brand === null ? '—' : $brand->name,
+                'publicUrl' => $this->publicUrl(
+                    $model,
+                    $brand === null ? null : $brandUrl->baseFor($brand),
+                ),
                 ...ContentEntryData::fromModel($model)->toArray(),
             ],
             'types' => array_map(fn (ContentType $case): string => $case->value, ContentType::cases()),
@@ -150,6 +162,29 @@ class ContentAdminController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Entry saved.')]);
 
         return to_route('admin.content.edit', $model->getKey());
+    }
+
+    /**
+     * Where a reader would find this entry, or null when there is nothing to
+     * look at yet.
+     *
+     * Two ways to be null, and both are honest: a brand with no domain has
+     * nowhere to serve it from, and an entry that is not live has no public
+     * page at all. Offering a link that 404s would be worse than offering
+     * none — the console has no preview surface for drafts (Content's
+     * TODO.md), and pretending otherwise is how an editor learns to distrust
+     * the button.
+     *
+     * The path comes from the route rather than from a string spelled out
+     * here; the brand's origin is the only part the console has to supply.
+     */
+    private function publicUrl(ContentEntry $entry, ?string $brandBase): ?string
+    {
+        if ($brandBase === null || ! $entry->isLive()) {
+            return null;
+        }
+
+        return $brandBase.route('content.show', ['slug' => $entry->slug], absolute: false);
     }
 
     private function find(string $entry): ContentEntry

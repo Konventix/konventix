@@ -343,3 +343,51 @@ it('403s moderation without the moderate-comments capability', function (): void
 
     expect($comment->refresh()->state)->toBe(CommentState::Approved);
 });
+
+/**
+ * The console runs on the admin host and resolves no brand (ADR-0029), so a
+ * "look at it" link has to name the brand's own domain — `route()` here would
+ * point back at the console. Proved from both surfaces the editor uses.
+ */
+it('links a live entry at its own brand\'s domain, from the index and the editor', function (): void {
+    [, $admin] = contentOperator();
+
+    // The base TestCase's brand answers on `localhost`.
+    $this->withBrand();
+    $entry = ContentEntry::factory()->published()->create(['slug' => 'doors-open-late']);
+
+    $expected = 'http://localhost/news/doors-open-late';
+
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('entries.data.0.publicUrl', $expected));
+
+    $this->actingAs($admin)
+        ->get("http://admin.content.test/admin/content/{$entry->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('entry.publicUrl', $expected));
+});
+
+it('offers no public link for an entry no reader can reach yet', function (): void {
+    [, $admin] = contentOperator();
+
+    $this->withBrand();
+    // A draft has no public page at all, and a link that 404s is worse than
+    // no link: the console has no preview surface to offer instead.
+    $entry = ContentEntry::factory()->create(['slug' => 'after-show-report']);
+
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('entries.data.0.publicUrl', null));
+
+    $this->actingAs($admin)
+        ->get("http://admin.content.test/admin/content/{$entry->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('entry.publicUrl', null));
+});

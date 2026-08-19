@@ -11,6 +11,13 @@
       "Participant". Identity owes a profile-replay command — Messaging's
       recipient read model has exactly the same gap, and one replay would
       close both.
+
+- [ ] No preview for an entry that is not live. The console links to the
+      public page only once it is published, because that is the only URL
+      that exists — reviewing a draft means publishing it. A signed preview
+      route on the brand's domain would close this; it needs a decision on
+      who may hold such a link and for how long.
+
 - [ ] Bodies are plain text rendered with preserved line breaks. Rich text
       (or Markdown) needs a sanitizer chosen first: the public entry body is
       the one field on the site that would become an XSS sink.
@@ -109,5 +116,12 @@
       articles were newest the day an editor dropped it in.
 
 - [x] Write `SPEC.md` — purpose, ownership boundary, event contract.
+
+- [x] "View" link from the console to the entry's own page, on both the index
+      and the editor. The console resolves no brand (ADR-0029), so the link is
+      built from the brand's primary domain via Platform's new
+      `Brands\BrandUrl`, not from `route()`. Shown only for a live entry: a
+      draft has no public page, and a link that 404s teaches an editor to
+      distrust the button.
 
 <!-- Move completed items here with the PR that finished them. -->

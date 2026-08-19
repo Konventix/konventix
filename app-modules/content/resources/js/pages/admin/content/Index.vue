@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { MessageSquare, Plus } from '@lucide/vue';
+import { ExternalLink, MessageSquare, Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import { computed, h, ref, watch } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -47,6 +47,8 @@ type EntryRow = {
     state: Konventix.Content.Enums.PublicationState;
     publishedAt: string | null;
     updatedAt: string | null;
+    /** Absent while the entry is not live — a draft has no reader-facing page. */
+    publicUrl: string | null;
 };
 
 interface PaginatedEntries {
@@ -118,11 +120,29 @@ const columns: ColumnDef<EntryRow>[] = [
                     },
                     () => row.original.title,
                 ),
-                h(
-                    'span',
-                    { class: 'text-xs text-text-muted' },
-                    row.original.slug,
-                ),
+                row.original.publicUrl
+                    ? h(
+                          'a',
+                          {
+                              href: row.original.publicUrl,
+                              target: '_blank',
+                              rel: 'noopener',
+                              class: 'inline-flex w-fit items-center gap-1 text-xs text-text-muted hover:text-accent',
+                              // The row already links to the editor, so this
+                              // one must not also trigger it.
+                              onClick: (event: MouseEvent) =>
+                                  event.stopPropagation(),
+                          },
+                          () => [
+                              row.original.slug,
+                              h(ExternalLink, { class: 'size-3' }),
+                          ],
+                      )
+                    : h(
+                          'span',
+                          { class: 'text-xs text-text-muted' },
+                          row.original.slug,
+                      ),
             ]),
     },
     {

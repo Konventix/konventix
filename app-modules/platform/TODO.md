@@ -79,6 +79,13 @@ depends on brand resolution and gating working.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] `Brands\BrandUrl` — the origin a brand answers on, so console screens
+      can link into a brand's public site. The admin host resolves no brand
+      (ADR-0029), so `route()` there points back at the console; this reads
+      the brand's primary domain and carries the current request's scheme and
+      port, and resolves a whole page of brands in one query. First consumer
+      is Content's editorial console.
+
 - [x] Module-local Inertia page resolution (Slice 1): a custom `resolve`
       callback in `resources/js/app.ts` merges the host's
       `resources/js/pages` with every module's
