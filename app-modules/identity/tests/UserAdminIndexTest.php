@@ -35,7 +35,13 @@ function usersAdminOperator(array $permissions = ['platform.access-admin', 'iden
     ]);
     $role->givePermissionTo($permissions);
 
-    $admin = User::factory()->create();
+    // Named rather than faked: the search test counts matches, and a faker
+    // name that happened to contain the search term ("Nadja" for "ada") made
+    // the suite fail on some runs and not others.
+    $admin = User::factory()->create([
+        'name' => 'Console Operator',
+        'email' => 'console-operator@usersidx.test',
+    ]);
     $admin->assignRole($role);
 
     $registrar->setPermissionsTeamId(null);
