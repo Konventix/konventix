@@ -4,11 +4,11 @@ import { Plus, Star, Trash2 } from '@lucide/vue';
 import { ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
-import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import {
     show as showEvent,
     update as updateEvent,

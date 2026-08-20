@@ -60,9 +60,11 @@ function runTransition(transition: string): void {
 
     if (transition === 'cancel') {
         const reason = window.prompt('Reason code for the cancellation:');
+
         if (!reason) {
             return;
         }
+
         payload.reason_code = reason;
     }
 

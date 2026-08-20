@@ -16,7 +16,9 @@ withDefaults(
 // Messaging's bell (ADR-0041 point 6), resolved through the module
 // component registry so the shell holds no module import — a build without
 // the messaging module simply renders no bell.
-const NotificationBell = resolveRegisteredComponent('messaging/NotificationBell');
+const NotificationBell = resolveRegisteredComponent(
+    'messaging/NotificationBell',
+);
 </script>
 
 <template>

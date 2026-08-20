@@ -4,13 +4,17 @@ import { useVModel } from "@vueuse/core"
 import { cn } from "@/lib/utils"
 
 const props = defineProps<{
-  defaultValue?: string | number
-  modelValue?: string | number
+  defaultValue?: string | number | null
+  // Null, not just undefined: these inputs are bound to form fields backed by
+  // nullable columns, and a cleared value legitimately arrives as null. An
+  // <input> renders it as empty either way; refusing the type only forced
+  // every caller to launder it first.
+  modelValue?: string | number | null
   class?: HTMLAttributes["class"]
 }>()
 
 const emits = defineEmits<{
-  (e: "update:modelValue", payload: string | number): void
+  (e: "update:modelValue", payload: string | number | null): void
 }>()
 
 const modelValue = useVModel(props, "modelValue", emits, {

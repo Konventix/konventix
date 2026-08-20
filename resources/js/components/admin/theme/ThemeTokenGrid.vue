@@ -66,7 +66,9 @@ function setToken(name: string, value: string): void {
                         :id="`token-${token.name}`"
                         :token-name="token.name"
                         :label="token.label"
-                        :fallback="props.scheme === 'dark' ? token.dark : token.light"
+                        :fallback="
+                            props.scheme === 'dark' ? token.dark : token.light
+                        "
                         :model-value="valueOf(token.name)"
                         @update:model-value="
                             (value) => setToken(token.name, value)

@@ -77,18 +77,44 @@ const pagination = computed(() => ({
 const open = ref(false);
 const editing = ref<string | null>(null);
 
-const form = useForm({
+/**
+ * Declared rather than inferred. `openingTimes: [] as unknown[]` gave the
+ * inferred shape a `never[] & unknown[]` field, which collapsed the whole form
+ * type to `FormDataType<unknown>` — and with it every `form.name`,
+ * `form.city`, `errors.postalCode` on this page. Twenty type errors from one
+ * empty array.
+ */
+type VenueForm = {
+    brand_id: string;
+    name: string;
+    addressLine1: string;
+    addressLine2: string | null;
+    postalCode: string;
+    city: string;
+    countryCode: string;
+    latitude: number | null;
+    longitude: number | null;
+    accessNotes: string | null;
+    // The venue opening-times editor is not built yet; the field exists so the
+    // endpoint receives the key it validates. Mirrors Event's
+    // `Data\OpeningPeriodData`, spelled out here because that class carries no
+    // `#[TypeScript]` attribute — add one and point at the generated type when
+    // the editor lands, rather than letting these two drift.
+    openingTimes: Array<{ dayOfWeek: number; opensAt: string; closesAt: string }>;
+};
+
+const form = useForm<VenueForm>({
     brand_id: props.brands[0]?.id ?? '',
     name: '',
     addressLine1: '',
-    addressLine2: null as string | null,
+    addressLine2: null,
     postalCode: '',
     city: '',
     countryCode: 'DE',
-    latitude: null as number | null,
-    longitude: null as number | null,
-    accessNotes: null as string | null,
-    openingTimes: [] as unknown[],
+    latitude: null,
+    longitude: null,
+    accessNotes: null,
+    openingTimes: [],
 });
 
 function openCreate(): void {

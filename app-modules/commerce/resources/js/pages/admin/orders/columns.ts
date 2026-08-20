@@ -68,6 +68,7 @@ export const columns: ColumnDef<OrderRow>[] = [
         enableSorting: true,
         cell: ({ row }) => {
             const status = row.getValue<string>('status');
+
             return h(
                 'span',
                 {

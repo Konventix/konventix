@@ -29,7 +29,7 @@ defineProps<{
                     class="size-4 shrink-0 text-text-muted"
                 />
             </div>
-            <div class="text-3xl font-semibold tabular-nums text-text">
+            <div class="text-3xl font-semibold text-text tabular-nums">
                 {{ value }}
             </div>
             <div v-if="subtext" class="text-xs text-text-muted">

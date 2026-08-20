@@ -90,6 +90,7 @@ function toggleSelection(id: string): void {
     } else {
         selected.value.add(id);
     }
+
     selected.value = new Set(selected.value);
 }
 
@@ -159,6 +160,7 @@ const columns: ColumnDef<RegistrationRow>[] = [
         enableSorting: true,
         cell: ({ row }) => {
             const status = row.getValue<string>('status');
+
             return h(
                 'span',
                 {

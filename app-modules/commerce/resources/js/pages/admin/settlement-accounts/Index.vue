@@ -47,6 +47,10 @@ const props = defineProps<Props>();
 const connectingBrandId = ref<string | null>(null);
 
 const form = useForm({
+    // Overwritten by `transform()` on submit, but declared here so the key
+    // exists on the form's type — the server validates `brand_id` and its
+    // error had nowhere to land otherwise.
+    brand_id: '',
     provider: 'stripe',
     contact_email: '',
     api_key: '',
@@ -63,6 +67,7 @@ function beginConnect(brandId: string): void {
 
 function submitConnect(): void {
     const brandId = connectingBrandId.value;
+
     if (brandId === null) {
         return;
     }

@@ -15,7 +15,9 @@ if ('serviceWorker' in navigator) {
     // Registered by hand rather than by the plugin's virtual module, so the
     // scope stays pinned to /entrance and a failure here degrades to "no
     // offline shell" rather than breaking the app.
-    navigator.serviceWorker.register('/entrance-sw.js', { scope: '/entrance' }).catch(() => {
-        // Intentionally silent: a door with no service worker still scans.
-    });
+    navigator.serviceWorker
+        .register('/entrance-sw.js', { scope: '/entrance' })
+        .catch(() => {
+            // Intentionally silent: a door with no service worker still scans.
+        });
 }

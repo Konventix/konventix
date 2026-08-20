@@ -1,8 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { checkedInKey, evaluateScan     } from './lib/evaluate';
-import type {Decision, EventDay, LocalState, ReentryPolicy} from './lib/evaluate';
-import { allDeltaEntries, bufferScan, getState, markSynced, pendingScans, putDeltaEntry, putState } from './lib/store';
+import { checkedInKey, evaluateScan } from './lib/evaluate';
+import type {
+    Decision,
+    EventDay,
+    LocalState,
+    ReentryPolicy,
+} from './lib/evaluate';
+import {
+    allDeltaEntries,
+    bufferScan,
+    getState,
+    markSynced,
+    pendingScans,
+    putDeltaEntry,
+    putState,
+} from './lib/store';
 import { EntranceApi, isStale } from './lib/sync';
 import type { SigningKey } from './lib/token';
 
@@ -19,9 +32,13 @@ import type { SigningKey } from './lib/token';
  *   because a closed door ruins an event.
  */
 
-const deviceToken = ref((localStorage.getItem('entrance.device_token') ?? '').trim());
+const deviceToken = ref(
+    (localStorage.getItem('entrance.device_token') ?? '').trim(),
+);
 const eventId = ref(localStorage.getItem('entrance.event_id') ?? '');
-const enrolling = computed(() => deviceToken.value === '' || eventId.value === '');
+const enrolling = computed(
+    () => deviceToken.value === '' || eventId.value === '',
+);
 
 const keys = ref<SigningKey[]>([]);
 const days = ref<EventDay[]>([]);
@@ -37,12 +54,16 @@ const pendingCount = ref(0);
 const manualToken = ref('');
 const lastDecision = ref<Decision | null>(null);
 
-const stale = computed(() => isStale(lastSyncedAt.value, staleAfterSeconds.value, now.value));
+const stale = computed(() =>
+    isStale(lastSyncedAt.value, staleAfterSeconds.value, now.value),
+);
 
 let timer: number | undefined;
 let clock: number | undefined;
 
-const api = computed(() => new EntranceApi(window.location.origin, deviceToken.value));
+const api = computed(
+    () => new EntranceApi(window.location.origin, deviceToken.value),
+);
 
 function localState(): LocalState {
     return {
@@ -58,17 +79,25 @@ function localState(): LocalState {
 async function hydrate(): Promise<void> {
     keys.value = (await getState<SigningKey[]>('keys')) ?? [];
     days.value = (await getState<EventDay[]>('days')) ?? [];
-    reentryPolicy.value = (await getState<ReentryPolicy>('reentry_policy')) ?? 'unlimited';
+    reentryPolicy.value =
+        (await getState<ReentryPolicy>('reentry_policy')) ?? 'unlimited';
     cursor.value = (await getState<number>('cursor')) ?? 0;
     pollSeconds.value = (await getState<number>('poll_seconds')) ?? 30;
-    staleAfterSeconds.value = (await getState<number>('stale_after_seconds')) ?? 900;
+    staleAfterSeconds.value =
+        (await getState<number>('stale_after_seconds')) ?? 900;
 
     const syncedAt = await getState<string>('last_synced_at');
     lastSyncedAt.value = syncedAt === undefined ? null : new Date(syncedAt);
 
     const entries = await allDeltaEntries();
-    revoked.value = new Set(entries.filter((e) => e.kind === 'revoked').map((e) => e.admission_id));
-    checkedIn.value = new Set(entries.filter((e) => e.kind === 'checked_in').map((e) => e.admission_id));
+    revoked.value = new Set(
+        entries.filter((e) => e.kind === 'revoked').map((e) => e.admission_id),
+    );
+    checkedIn.value = new Set(
+        entries
+            .filter((e) => e.kind === 'checked_in')
+            .map((e) => e.admission_id),
+    );
 
     pendingCount.value = (await pendingScans()).length;
 }
@@ -143,7 +172,9 @@ async function flush(): Promise<void> {
             })),
         );
 
-        await markSynced(response.results.map((result) => result.client_scan_id));
+        await markSynced(
+            response.results.map((result) => result.client_scan_id),
+        );
         pendingCount.value = (await pendingScans()).length;
     } catch {
         // Still buffered; the next pass tries again.
@@ -154,7 +185,10 @@ async function flush(): Promise<void> {
  * Decides locally, records locally, uploads later. The decision shown to door
  * staff is never delayed on the network.
  */
-async function scan(token: string, direction: 'in' | 'out' = 'in'): Promise<void> {
+async function scan(
+    token: string,
+    direction: 'in' | 'out' = 'in',
+): Promise<void> {
     const at = new Date();
     const decision = evaluateScan(token, localState(), at);
 
@@ -163,7 +197,13 @@ async function scan(token: string, direction: 'in' | 'out' = 'in'): Promise<void
     if (decision.accepted) {
         // Remembered immediately so a second scan at THIS lane is caught even
         // before the delta has told the others.
-        checkedIn.value.add(checkedInKey(decision.admissionId, reentryPolicy.value, decision.dayId));
+        checkedIn.value.add(
+            checkedInKey(
+                decision.admissionId,
+                reentryPolicy.value,
+                decision.dayId,
+            ),
+        );
     }
 
     await bufferScan({
@@ -217,24 +257,48 @@ onUnmounted(() => {
             <span :class="['pill', stale ? 'pill-warn' : 'pill-ok']">
                 {{ stale ? 'Signature-only (feed stale)' : 'Synced' }}
             </span>
-            <span v-if="pendingCount > 0" class="pill pill-info">{{ pendingCount }} buffered</span>
+            <span v-if="pendingCount > 0" class="pill pill-info"
+                >{{ pendingCount }} buffered</span
+            >
         </header>
 
         <section v-if="enrolling" class="panel">
             <h1>Enrol this device</h1>
-            <p>Paste the device token issued when this scanner was registered, and the event it serves.</p>
-            <input v-model="deviceToken" class="field" placeholder="Device token" autocomplete="off" />
-            <input v-model="eventId" class="field" placeholder="Event ID" autocomplete="off" />
+            <p>
+                Paste the device token issued when this scanner was registered,
+                and the event it serves.
+            </p>
+            <input
+                v-model="deviceToken"
+                class="field"
+                placeholder="Device token"
+                autocomplete="off"
+            />
+            <input
+                v-model="eventId"
+                class="field"
+                placeholder="Event ID"
+                autocomplete="off"
+            />
             <button class="btn" @click="enrol">Enrol</button>
         </section>
 
         <section v-else class="panel">
-            <div v-if="lastDecision" :class="['verdict', lastDecision.accepted ? 'ok' : 'no']">
-                <strong>{{ lastDecision.accepted ? 'ADMIT' : 'REFUSE' }}</strong>
-                <span v-if="!lastDecision.accepted" class="reason">{{ lastDecision.reason }}</span>
+            <div
+                v-if="lastDecision"
+                :class="['verdict', lastDecision.accepted ? 'ok' : 'no']"
+            >
+                <strong>{{
+                    lastDecision.accepted ? 'ADMIT' : 'REFUSE'
+                }}</strong>
+                <span v-if="!lastDecision.accepted" class="reason">{{
+                    lastDecision.reason
+                }}</span>
                 <!-- No name is shown, and none can be: ADR-0033 keeps the
                      device PII-free, so the id is all the door has. -->
-                <span v-if="lastDecision.admissionId" class="ref">{{ lastDecision.admissionId }}</span>
+                <span v-if="lastDecision.admissionId" class="ref">{{
+                    lastDecision.admissionId
+                }}</span>
             </div>
 
             <input

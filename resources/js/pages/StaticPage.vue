@@ -20,7 +20,6 @@ const props = defineProps<{
     title: string;
     blocks: RenderableBlock[];
 }>();
-
 </script>
 
 <template>

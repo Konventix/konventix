@@ -47,7 +47,9 @@ function open(): Promise<IDBDatabase> {
             }
 
             if (!db.objectStoreNames.contains(STORE_SCANS)) {
-                const scans = db.createObjectStore(STORE_SCANS, { keyPath: 'client_scan_id' });
+                const scans = db.createObjectStore(STORE_SCANS, {
+                    keyPath: 'client_scan_id',
+                });
                 scans.createIndex('synced', 'synced');
             }
         };
@@ -57,11 +59,17 @@ function open(): Promise<IDBDatabase> {
     });
 }
 
-function tx<T>(store: string, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+function tx<T>(
+    store: string,
+    mode: IDBTransactionMode,
+    run: (s: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
     return open().then(
         (db) =>
             new Promise<T>((resolve, reject) => {
-                const request = run(db.transaction(store, mode).objectStore(store));
+                const request = run(
+                    db.transaction(store, mode).objectStore(store),
+                );
                 request.onsuccess = () => resolve(request.result);
                 request.onerror = () => reject(request.error);
             }),
@@ -73,15 +81,31 @@ export function putState<T>(key: string, value: T): Promise<IDBValidKey> {
 }
 
 export function getState<T>(key: string): Promise<T | undefined> {
-    return tx<T | undefined>(STORE_STATE, 'readonly', (s) => s.get(key) as IDBRequest<T | undefined>);
+    return tx<T | undefined>(
+        STORE_STATE,
+        'readonly',
+        (s) => s.get(key) as IDBRequest<T | undefined>,
+    );
 }
 
-export function putDeltaEntry(entry: { admission_id: string; kind: string }): Promise<IDBValidKey> {
+export function putDeltaEntry(entry: {
+    admission_id: string;
+    kind: string;
+}): Promise<IDBValidKey> {
     return tx(STORE_DELTA, 'readwrite', (s) => s.put(entry));
 }
 
-export function allDeltaEntries(): Promise<Array<{ admission_id: string; kind: string }>> {
-    return tx(STORE_DELTA, 'readonly', (s) => s.getAll() as IDBRequest<Array<{ admission_id: string; kind: string }>>);
+export function allDeltaEntries(): Promise<
+    Array<{ admission_id: string; kind: string }>
+> {
+    return tx(
+        STORE_DELTA,
+        'readonly',
+        (s) =>
+            s.getAll() as IDBRequest<
+                Array<{ admission_id: string; kind: string }>
+            >,
+    );
 }
 
 export function bufferScan(scan: BufferedScan): Promise<IDBValidKey> {
@@ -89,9 +113,11 @@ export function bufferScan(scan: BufferedScan): Promise<IDBValidKey> {
 }
 
 export function pendingScans(): Promise<BufferedScan[]> {
-    return tx(STORE_SCANS, 'readonly', (s) => s.getAll() as IDBRequest<BufferedScan[]>).then((scans) =>
-        scans.filter((scan) => scan.synced === 0),
-    );
+    return tx(
+        STORE_SCANS,
+        'readonly',
+        (s) => s.getAll() as IDBRequest<BufferedScan[]>,
+    ).then((scans) => scans.filter((scan) => scan.synced === 0));
 }
 
 /**
@@ -101,14 +127,20 @@ export function pendingScans(): Promise<BufferedScan[]> {
  */
 export async function markSynced(ids: string[]): Promise<void> {
     const db = await open();
-    const store = db.transaction(STORE_SCANS, 'readwrite').objectStore(STORE_SCANS);
+    const store = db
+        .transaction(STORE_SCANS, 'readwrite')
+        .objectStore(STORE_SCANS);
 
     for (const id of ids) {
-        const existing = await new Promise<BufferedScan | undefined>((resolve, reject) => {
-            const request = store.get(id) as IDBRequest<BufferedScan | undefined>;
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
+        const existing = await new Promise<BufferedScan | undefined>(
+            (resolve, reject) => {
+                const request = store.get(id) as IDBRequest<
+                    BufferedScan | undefined
+                >;
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            },
+        );
 
         if (existing !== undefined) {
             store.put({ ...existing, synced: 1 });

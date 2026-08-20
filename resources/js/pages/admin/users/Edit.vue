@@ -73,7 +73,9 @@ function submitUnlock(): void {
             :title="user.name"
             :description="`Account since ${user.createdAt ?? 'unknown'}`"
         >
-            <Badge :variant="user.state === 'locked' ? 'destructive' : 'secondary'">
+            <Badge
+                :variant="user.state === 'locked' ? 'destructive' : 'secondary'"
+            >
                 {{ user.state }}
             </Badge>
             <Badge v-if="user.verified" variant="secondary">Verified</Badge>
@@ -94,17 +96,25 @@ function submitUnlock(): void {
                         </div>
                         <div class="grid gap-2">
                             <Label for="user-email">Email</Label>
-                            <Input id="user-email" v-model="form.email" type="email" />
+                            <Input
+                                id="user-email"
+                                v-model="form.email"
+                                type="email"
+                            />
                             <p class="text-xs text-text-muted">
-                                Changing the address un-verifies it — the
-                                person confirms the new one on next login.
+                                Changing the address un-verifies it — the person
+                                confirms the new one on next login.
                             </p>
                             <InputError :message="form.errors.email" />
                         </div>
                         <div class="grid gap-4 sm:grid-cols-2">
                             <div class="grid gap-2">
                                 <Label for="user-locale">Locale</Label>
-                                <Input id="user-locale" v-model="form.locale" placeholder="de" />
+                                <Input
+                                    id="user-locale"
+                                    v-model="form.locale"
+                                    placeholder="de"
+                                />
                                 <InputError :message="form.errors.locale" />
                             </div>
                             <div class="grid gap-2">
@@ -141,10 +151,13 @@ function submitUnlock(): void {
                     <CardContent class="flex flex-col gap-4">
                         <template v-if="user.state !== 'locked'">
                             <p class="text-sm text-text-muted">
-                                Locking refuses the next login attempt.
-                                Existing sessions are not revoked here.
+                                Locking refuses the next login attempt. Existing
+                                sessions are not revoked here.
                             </p>
-                            <form class="flex flex-col gap-3" @submit.prevent="submitLock">
+                            <form
+                                class="flex flex-col gap-3"
+                                @submit.prevent="submitLock"
+                            >
                                 <div class="grid gap-2">
                                     <Label for="lock-reason">Reason</Label>
                                     <Input
@@ -152,7 +165,9 @@ function submitUnlock(): void {
                                         v-model="lockForm.reason"
                                         placeholder="Why this account is being locked"
                                     />
-                                    <InputError :message="lockForm.errors.reason" />
+                                    <InputError
+                                        :message="lockForm.errors.reason"
+                                    />
                                 </div>
                                 <Button
                                     type="submit"
@@ -188,8 +203,13 @@ function submitUnlock(): void {
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div>
-                            <span class="text-xs font-medium text-text-muted">Member of</span>
-                            <p v-if="memberships.length === 0" class="text-sm text-text-muted">
+                            <span class="text-xs font-medium text-text-muted"
+                                >Member of</span
+                            >
+                            <p
+                                v-if="memberships.length === 0"
+                                class="text-sm text-text-muted"
+                            >
                                 No brand memberships recorded yet.
                             </p>
                             <ul v-else class="mt-1 flex flex-col gap-1 text-sm">
@@ -206,8 +226,13 @@ function submitUnlock(): void {
                             </ul>
                         </div>
                         <div>
-                            <span class="text-xs font-medium text-text-muted">Roles</span>
-                            <p v-if="roles.length === 0" class="text-sm text-text-muted">
+                            <span class="text-xs font-medium text-text-muted"
+                                >Roles</span
+                            >
+                            <p
+                                v-if="roles.length === 0"
+                                class="text-sm text-text-muted"
+                            >
                                 No roles — assign them on the Roles page.
                             </p>
                             <div v-else class="mt-1 flex flex-wrap gap-2">

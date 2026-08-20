@@ -59,9 +59,9 @@ const rows = computed(() =>
             </li>
         </ul>
         <p class="text-[11px] text-text-muted">
-            Estimate only — the server re-checks every pair the save touches
-            on submit and refuses a non-compliant save rather than warning
-            about it.
+            Estimate only — the server re-checks every pair the save touches on
+            submit and refuses a non-compliant save rather than warning about
+            it.
         </p>
     </div>
 </template>

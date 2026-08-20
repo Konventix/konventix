@@ -93,7 +93,10 @@ export function kidOf(token: string): string | null {
  * re-pointed at another key by rewriting that segment — the PHP side asserts
  * the same thing.
  */
-export function verifyToken(token: string, keys: SigningKey[]): AdmissionTokenPayload | null {
+export function verifyToken(
+    token: string,
+    keys: SigningKey[],
+): AdmissionTokenPayload | null {
     const parts = token.split('.');
 
     if (parts.length !== 4 || parts[0] !== TOKEN_PREFIX) {
@@ -111,11 +114,18 @@ export function verifyToken(token: string, keys: SigningKey[]): AdmissionTokenPa
     const rawSignature = base64UrlDecode(signature);
     const publicKey = base64Decode(key.public_key);
 
-    if (rawSignature === null || publicKey === null || rawSignature.length !== 64 || publicKey.length !== 32) {
+    if (
+        rawSignature === null ||
+        publicKey === null ||
+        rawSignature.length !== 64 ||
+        publicKey.length !== 32
+    ) {
         return null;
     }
 
-    const signingInput = new TextEncoder().encode(`${TOKEN_PREFIX}.${kid}.${body}`);
+    const signingInput = new TextEncoder().encode(
+        `${TOKEN_PREFIX}.${kid}.${body}`,
+    );
 
     let valid: boolean;
 
@@ -136,7 +146,9 @@ export function verifyToken(token: string, keys: SigningKey[]): AdmissionTokenPa
     }
 
     try {
-        const parsed = JSON.parse(new TextDecoder().decode(decoded)) as Partial<AdmissionTokenPayload>;
+        const parsed = JSON.parse(
+            new TextDecoder().decode(decoded),
+        ) as Partial<AdmissionTokenPayload>;
 
         return {
             tid: String(parsed.tid ?? ''),
@@ -152,7 +164,10 @@ export function verifyToken(token: string, keys: SigningKey[]): AdmissionTokenPa
 }
 
 /** Whether the token admits on a given event day. Empty `days` = whole event. */
-export function admitsOnDay(payload: AdmissionTokenPayload, dayId: string | null): boolean {
+export function admitsOnDay(
+    payload: AdmissionTokenPayload,
+    dayId: string | null,
+): boolean {
     if (payload.days.length === 0) {
         return true;
     }
@@ -160,6 +175,9 @@ export function admitsOnDay(payload: AdmissionTokenPayload, dayId: string | null
     return dayId !== null && payload.days.includes(dayId);
 }
 
-export function isExpired(payload: AdmissionTokenPayload, nowSeconds: number): boolean {
+export function isExpired(
+    payload: AdmissionTokenPayload,
+    nowSeconds: number,
+): boolean {
     return payload.exp <= nowSeconds;
 }

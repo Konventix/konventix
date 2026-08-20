@@ -2,6 +2,7 @@
 import { Head } from '@inertiajs/vue3';
 import { CalendarDays, MapPin } from '@lucide/vue';
 import PublicTopbar from '@/components/PublicTopbar.vue';
+import { noLayout } from '@/lib/layout';
 
 /**
  * Public event landing page. Times are the organizer's promised wall-clock
@@ -28,7 +29,7 @@ type Props = {
 
 const props = defineProps<Props>();
 
-defineOptions({ layout: null });
+defineOptions({ layout: noLayout });
 </script>
 
 <template>

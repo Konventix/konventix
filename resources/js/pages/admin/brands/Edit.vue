@@ -91,7 +91,10 @@ function moduleLabel(module: string): string {
                     <CardTitle>Details</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <form class="flex flex-col gap-4" @submit.prevent="submitDetails">
+                    <form
+                        class="flex flex-col gap-4"
+                        @submit.prevent="submitDetails"
+                    >
                         <div class="grid gap-2">
                             <Label for="brand-name">Name</Label>
                             <Input id="brand-name" v-model="form.name" />
@@ -172,7 +175,10 @@ function moduleLabel(module: string): string {
                     <CardTitle>Modules</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <form class="flex flex-col gap-4" @submit.prevent="submitModules">
+                    <form
+                        class="flex flex-col gap-4"
+                        @submit.prevent="submitModules"
+                    >
                         <p class="text-sm text-text-muted">
                             What this brand offers. Switching a module off hides
                             its routes, navigation and UI contributions for this
@@ -187,10 +193,13 @@ function moduleLabel(module: string): string {
                             >
                                 <Checkbox
                                     :id="`module-${entry.module}`"
-                                    :model-value="modulesForm.modules[entry.module]"
+                                    :model-value="
+                                        modulesForm.modules[entry.module]
+                                    "
                                     @update:model-value="
                                         (value: boolean | 'indeterminate') => {
-                                            modulesForm.modules[entry.module] = value === true;
+                                            modulesForm.modules[entry.module] =
+                                                value === true;
                                         }
                                     "
                                 />

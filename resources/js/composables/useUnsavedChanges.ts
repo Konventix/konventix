@@ -33,7 +33,9 @@ export function useUnsavedChanges(isDirty: () => boolean): void {
 
             return (
                 !isDirty() ||
-                confirm('You have unsaved changes. Leave this page without saving?')
+                confirm(
+                    'You have unsaved changes. Leave this page without saving?',
+                )
             );
         });
 

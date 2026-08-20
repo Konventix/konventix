@@ -25,7 +25,7 @@ import {
     store as storeMedia,
 } from '@/routes/admin/media';
 
-type MediaRow = App.Data.MediaItemData;
+type MediaRow = Konventix.Platform.Data.MediaItemData;
 
 interface PaginatedMedia {
     data: MediaRow[];

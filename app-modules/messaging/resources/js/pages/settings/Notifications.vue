@@ -76,10 +76,21 @@ const pushEnabled = ref(false);
 const pushDenied = ref(false);
 const pushBusy = ref(false);
 
-function urlBase64ToUint8Array(base64: string): Uint8Array {
+/**
+ * Returns a `Uint8Array<ArrayBuffer>` rather than the `ArrayBufferLike` that
+ * `Uint8Array.from` infers: `applicationServerKey` takes a `BufferSource`, and
+ * a shared-memory-backed view is not one.
+ */
+function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
     const padding = '='.repeat((4 - (base64.length % 4)) % 4);
     const raw = window.atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
-    return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+    const bytes = new Uint8Array(new ArrayBuffer(raw.length));
+
+    for (let index = 0; index < raw.length; index += 1) {
+        bytes[index] = raw.charCodeAt(index);
+    }
+
+    return bytes;
 }
 
 async function pushRequest(url: string, method: 'POST' | 'DELETE', body: Record<string, unknown>): Promise<void> {
@@ -126,6 +137,7 @@ async function enablePush(): Promise<void> {
     try {
         if ((await Notification.requestPermission()) !== 'granted') {
             pushDenied.value = Notification.permission === 'denied';
+
             return;
         }
 

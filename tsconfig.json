@@ -119,7 +119,10 @@
     "include": [
         "resources/js/**/*.ts",
         "resources/js/**/*.d.ts",
-        "resources/js/**/*.tsx", 
-        "resources/js/**/*.vue"
+        "resources/js/**/*.tsx",
+        "resources/js/**/*.vue",
+        "app-modules/*/resources/js/**/*.ts",
+        "app-modules/*/resources/js/**/*.d.ts",
+        "app-modules/*/resources/js/**/*.vue"
     ]
 }

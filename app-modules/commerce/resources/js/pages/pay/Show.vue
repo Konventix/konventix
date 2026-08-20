@@ -5,6 +5,7 @@ import { computed, ref } from 'vue';
 import PublicTopbar from '@/components/PublicTopbar.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { noLayout } from '@/lib/layout';
 import { start as startCheckout } from '@/routes/commerce/pay';
 
 /**
@@ -30,7 +31,7 @@ type Props = {
 
 const props = defineProps<Props>();
 
-defineOptions({ layout: null });
+defineOptions({ layout: noLayout });
 
 const starting = ref(false);
 

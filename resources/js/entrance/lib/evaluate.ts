@@ -1,5 +1,5 @@
-import { admitsOnDay, isExpired, verifyToken  } from './token';
-import type {SigningKey} from './token';
+import { admitsOnDay, isExpired, verifyToken } from './token';
+import type { SigningKey } from './token';
 
 /**
  * The door's local decision (ADR-0033). Positive decisions come from the
@@ -53,7 +53,12 @@ export type LocalState = {
 
 export type Decision =
     | { accepted: true; admissionId: string; dayId: string | null }
-    | { accepted: false; admissionId: string | null; dayId: string | null; reason: RejectionReason };
+    | {
+          accepted: false;
+          admissionId: string | null;
+          dayId: string | null;
+          reason: RejectionReason;
+      };
 
 /**
  * The event day covering a moment, compared as plain `YYYY-MM-DD` in the
@@ -72,7 +77,10 @@ export function dayCovering(days: EventDay[], at: Date): EventDay | null {
     return days.find((day) => day.date === stamp) ?? null;
 }
 
-export function admitsAgain(policy: ReentryPolicy, alreadyCheckedIn: boolean): boolean {
+export function admitsAgain(
+    policy: ReentryPolicy,
+    alreadyCheckedIn: boolean,
+): boolean {
     // `once_per_day` is enforced against the *day-scoped* checked-in set the
     // caller supplies, so both bounded policies reduce to the same question
     // here — which keeps this in step with the server, where the day id is
@@ -80,19 +88,38 @@ export function admitsAgain(policy: ReentryPolicy, alreadyCheckedIn: boolean): b
     return policy === 'unlimited' ? true : !alreadyCheckedIn;
 }
 
-export function evaluateScan(token: string, state: LocalState, at: Date): Decision {
+export function evaluateScan(
+    token: string,
+    state: LocalState,
+    at: Date,
+): Decision {
     const payload = verifyToken(token, state.keys);
 
     if (payload === null) {
-        return { accepted: false, admissionId: null, dayId: null, reason: REJECTION.InvalidSignature };
+        return {
+            accepted: false,
+            admissionId: null,
+            dayId: null,
+            reason: REJECTION.InvalidSignature,
+        };
     }
 
     if (isExpired(payload, Math.floor(at.getTime() / 1000))) {
-        return { accepted: false, admissionId: null, dayId: null, reason: REJECTION.TokenExpired };
+        return {
+            accepted: false,
+            admissionId: null,
+            dayId: null,
+            reason: REJECTION.TokenExpired,
+        };
     }
 
     if (payload.evt !== state.eventId) {
-        return { accepted: false, admissionId: null, dayId: null, reason: REJECTION.WrongEvent };
+        return {
+            accepted: false,
+            admissionId: null,
+            dayId: null,
+            reason: REJECTION.WrongEvent,
+        };
     }
 
     const day = dayCovering(state.days, at);
@@ -102,24 +129,47 @@ export function evaluateScan(token: string, state: LocalState, at: Date): Decisi
     // admission is valid *on a day* (D-ADM-04). An event with no calendar at
     // all is not day-scoped, so it passes — same rule as the server.
     if (state.days.length > 0 && dayId === null) {
-        return { accepted: false, admissionId: payload.tid, dayId: null, reason: REJECTION.OutsideEventDay };
+        return {
+            accepted: false,
+            admissionId: payload.tid,
+            dayId: null,
+            reason: REJECTION.OutsideEventDay,
+        };
     }
 
     if (!admitsOnDay(payload, dayId)) {
-        return { accepted: false, admissionId: payload.tid, dayId, reason: REJECTION.NotValidOnThisDay };
+        return {
+            accepted: false,
+            admissionId: payload.tid,
+            dayId,
+            reason: REJECTION.NotValidOnThisDay,
+        };
     }
 
     // The delta's negative facts. A stale feed means these sets are merely
     // older, never absent — the door degrades to signature-only, it never
     // closes (ADR-0033).
     if (state.revoked.has(payload.tid)) {
-        return { accepted: false, admissionId: payload.tid, dayId, reason: REJECTION.AdmissionNotValid };
+        return {
+            accepted: false,
+            admissionId: payload.tid,
+            dayId,
+            reason: REJECTION.AdmissionNotValid,
+        };
     }
 
-    const key = state.reentryPolicy === 'once_per_day' && dayId !== null ? `${payload.tid}:${dayId}` : payload.tid;
+    const key =
+        state.reentryPolicy === 'once_per_day' && dayId !== null
+            ? `${payload.tid}:${dayId}`
+            : payload.tid;
 
     if (!admitsAgain(state.reentryPolicy, state.checkedIn.has(key))) {
-        return { accepted: false, admissionId: payload.tid, dayId, reason: REJECTION.ReentryNotPermitted };
+        return {
+            accepted: false,
+            admissionId: payload.tid,
+            dayId,
+            reason: REJECTION.ReentryNotPermitted,
+        };
     }
 
     return { accepted: true, admissionId: payload.tid, dayId };
@@ -129,6 +179,12 @@ export function evaluateScan(token: string, state: LocalState, at: Date): Decisi
  * The key under which an accepted entry is remembered locally, matching the
  * lookup `evaluateScan` performs.
  */
-export function checkedInKey(admissionId: string, policy: ReentryPolicy, dayId: string | null): string {
-    return policy === 'once_per_day' && dayId !== null ? `${admissionId}:${dayId}` : admissionId;
+export function checkedInKey(
+    admissionId: string,
+    policy: ReentryPolicy,
+    dayId: string | null,
+): string {
+    return policy === 'once_per_day' && dayId !== null
+        ? `${admissionId}:${dayId}`
+        : admissionId;
 }

@@ -1,9 +1,9 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { describe, expect, it } from 'vitest';
-import { REJECTION, checkedInKey, dayCovering, evaluateScan  } from './evaluate';
-import type {LocalState} from './evaluate';
-import { kidOf, verifyToken   } from './token';
-import type {AdmissionTokenPayload, SigningKey} from './token';
+import { REJECTION, checkedInKey, dayCovering, evaluateScan } from './evaluate';
+import type { LocalState } from './evaluate';
+import { kidOf, verifyToken } from './token';
+import type { AdmissionTokenPayload, SigningKey } from './token';
 
 /**
  * The door's offline decision (ADR-0033).
@@ -21,10 +21,16 @@ function base64(bytes: Uint8Array): string {
 }
 
 function base64Url(input: string): string {
-    return btoa(input).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return btoa(input)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
 }
 
-function mintToken(payload: Partial<AdmissionTokenPayload>, kid = 'testkid'): { token: string; key: SigningKey } {
+function mintToken(
+    payload: Partial<AdmissionTokenPayload>,
+    kid = 'testkid',
+): { token: string; key: SigningKey } {
     const secret = ed25519.utils.randomSecretKey();
     const publicKey = ed25519.getPublicKey(secret);
 
@@ -40,11 +46,19 @@ function mintToken(payload: Partial<AdmissionTokenPayload>, kid = 'testkid'): { 
         }),
     );
 
-    const signature = ed25519.sign(new TextEncoder().encode(`KVX1.${kid}.${body}`), secret);
+    const signature = ed25519.sign(
+        new TextEncoder().encode(`KVX1.${kid}.${body}`),
+        secret,
+    );
 
     return {
         token: `KVX1.${kid}.${body}.${base64(signature).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`,
-        key: { kid, alg: 'Ed25519', public_key: base64(publicKey), expires_at: '2030-01-01T00:00:00+00:00' },
+        key: {
+            kid,
+            alg: 'Ed25519',
+            public_key: base64(publicKey),
+            expires_at: '2030-01-01T00:00:00+00:00',
+        },
     };
 }
 
@@ -73,7 +87,12 @@ describe('token verification', () => {
     it('rejects a token whose body was swapped', () => {
         const { token, key } = mintToken({});
         const parts = token.split('.');
-        const forged = [parts[0], parts[1], base64Url(JSON.stringify({ tid: 'OTHER' })), parts[3]].join('.');
+        const forged = [
+            parts[0],
+            parts[1],
+            base64Url(JSON.stringify({ tid: 'OTHER' })),
+            parts[3],
+        ].join('.');
 
         expect(verifyToken(forged, [key])).toBeNull();
     });
@@ -82,7 +101,11 @@ describe('token verification', () => {
         const { token, key } = mintToken({});
         const parts = token.split('.');
 
-        expect(verifyToken([parts[0], 'elsewhere', parts[2], parts[3]].join('.'), [key])).toBeNull();
+        expect(
+            verifyToken([parts[0], 'elsewhere', parts[2], parts[3]].join('.'), [
+                key,
+            ]),
+        ).toBeNull();
     });
 
     it('rejects a kid it holds no key for', () => {
@@ -106,7 +129,13 @@ describe('offline decision', () => {
     it('rejects a forged token as invalid_signature', () => {
         const { key } = mintToken({});
 
-        expect(evaluateScan('KVX1.testkid.bogus.bogus', state({ keys: [key] }), NOW)).toMatchObject({
+        expect(
+            evaluateScan(
+                'KVX1.testkid.bogus.bogus',
+                state({ keys: [key] }),
+                NOW,
+            ),
+        ).toMatchObject({
             accepted: false,
             reason: REJECTION.InvalidSignature,
         });
@@ -130,9 +159,13 @@ describe('offline decision', () => {
 
     it('rejects a scan outside every event day', () => {
         const { token, key } = mintToken({});
-        const days = [{ day_id: 'd1', date: '2026-08-20', sequence: 1, label: null }];
+        const days = [
+            { day_id: 'd1', date: '2026-08-20', sequence: 1, label: null },
+        ];
 
-        expect(evaluateScan(token, state({ keys: [key], days }), NOW)).toMatchObject({
+        expect(
+            evaluateScan(token, state({ keys: [key], days }), NOW),
+        ).toMatchObject({
             reason: REJECTION.OutsideEventDay,
         });
     });
@@ -144,7 +177,9 @@ describe('offline decision', () => {
         ];
         const { token, key } = mintToken({ days: ['d2'] });
 
-        expect(evaluateScan(token, state({ keys: [key], days }), NOW)).toMatchObject({
+        expect(
+            evaluateScan(token, state({ keys: [key], days }), NOW),
+        ).toMatchObject({
             reason: REJECTION.NotValidOnThisDay,
         });
     });
@@ -153,7 +188,9 @@ describe('offline decision', () => {
         const { token, key } = mintToken({});
         const revoked = new Set(['01ADMISSION']);
 
-        expect(evaluateScan(token, state({ keys: [key], revoked }), NOW)).toMatchObject({
+        expect(
+            evaluateScan(token, state({ keys: [key], revoked }), NOW),
+        ).toMatchObject({
             reason: REJECTION.AdmissionNotValid,
         });
     });
@@ -162,7 +199,13 @@ describe('offline decision', () => {
         const { token, key } = mintToken({});
         const checkedIn = new Set(['01ADMISSION']);
 
-        expect(evaluateScan(token, state({ keys: [key], reentryPolicy: 'once_only', checkedIn }), NOW)).toMatchObject({
+        expect(
+            evaluateScan(
+                token,
+                state({ keys: [key], reentryPolicy: 'once_only', checkedIn }),
+                NOW,
+            ),
+        ).toMatchObject({
             reason: REJECTION.ReentryNotPermitted,
         });
     });
@@ -176,14 +219,28 @@ describe('offline decision', () => {
         const checkedIn = new Set(['01ADMISSION:d1']);
 
         expect(
-            evaluateScan(token, state({ keys: [key], days, reentryPolicy: 'once_per_day', checkedIn }), NOW),
+            evaluateScan(
+                token,
+                state({
+                    keys: [key],
+                    days,
+                    reentryPolicy: 'once_per_day',
+                    checkedIn,
+                }),
+                NOW,
+            ),
         ).toMatchObject({ reason: REJECTION.ReentryNotPermitted });
 
         // Next day, same admission: a fresh allowance.
         expect(
             evaluateScan(
                 token,
-                state({ keys: [key], days, reentryPolicy: 'once_per_day', checkedIn }),
+                state({
+                    keys: [key],
+                    days,
+                    reentryPolicy: 'once_per_day',
+                    checkedIn,
+                }),
                 new Date('2026-08-13T09:00:00'),
             ),
         ).toMatchObject({ accepted: true, dayId: 'd2' });
@@ -193,7 +250,9 @@ describe('offline decision', () => {
         const { token, key } = mintToken({});
         const checkedIn = new Set(['01ADMISSION']);
 
-        expect(evaluateScan(token, state({ keys: [key], checkedIn }), NOW)).toMatchObject({ accepted: true });
+        expect(
+            evaluateScan(token, state({ keys: [key], checkedIn }), NOW),
+        ).toMatchObject({ accepted: true });
     });
 
     it('checks signature before anything the delta could say', () => {
@@ -202,7 +261,13 @@ describe('offline decision', () => {
         const revoked = new Set(['01ADMISSION']);
         const { key } = mintToken({});
 
-        expect(evaluateScan('KVX1.testkid.x.y', state({ keys: [key], revoked }), NOW)).toMatchObject({
+        expect(
+            evaluateScan(
+                'KVX1.testkid.x.y',
+                state({ keys: [key], revoked }),
+                NOW,
+            ),
+        ).toMatchObject({
             reason: REJECTION.InvalidSignature,
             admissionId: null,
         });

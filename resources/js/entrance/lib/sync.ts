@@ -49,13 +49,19 @@ export class EntranceApi {
     ) {}
 
     async signingKeys(): Promise<SigningKey[]> {
-        const response = await this.request('GET', '/api/entrance/signing-keys');
+        const response = await this.request(
+            'GET',
+            '/api/entrance/signing-keys',
+        );
 
         return ((await response.json()) as { keys: SigningKey[] }).keys;
     }
 
     async delta(since: number): Promise<DeltaResponse> {
-        const response = await this.request('GET', `/api/entrance/delta?since=${since}`);
+        const response = await this.request(
+            'GET',
+            `/api/entrance/delta?since=${since}`,
+        );
 
         return (await response.json()) as DeltaResponse;
     }
@@ -66,24 +72,34 @@ export class EntranceApi {
      * its whole buffer rejected.
      */
     async submitScans(scans: ScanSubmission[]): Promise<SyncResponse> {
-        const response = await this.request('POST', '/api/entrance/scans', { scans: scans.slice(0, 500) });
+        const response = await this.request('POST', '/api/entrance/scans', {
+            scans: scans.slice(0, 500),
+        });
 
         return (await response.json()) as SyncResponse;
     }
 
-    private async request(method: string, path: string, body?: unknown): Promise<Response> {
+    private async request(
+        method: string,
+        path: string,
+        body?: unknown,
+    ): Promise<Response> {
         const response = await fetch(`${this.baseUrl}${path}`, {
             method,
             headers: {
                 Authorization: `Bearer ${this.deviceToken}`,
                 Accept: 'application/json',
-                ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+                ...(body === undefined
+                    ? {}
+                    : { 'Content-Type': 'application/json' }),
             },
             body: body === undefined ? undefined : JSON.stringify(body),
         });
 
         if (!response.ok) {
-            throw new Error(`Entrance API ${method} ${path} failed with ${response.status}`);
+            throw new Error(
+                `Entrance API ${method} ${path} failed with ${response.status}`,
+            );
         }
 
         return response;
@@ -97,7 +113,11 @@ export class EntranceApi {
  * which ADR-0033 is explicit about: "it never degrades to a closed door". The
  * only thing that changes is what door staff are told.
  */
-export function isStale(lastSyncedAt: Date | null, staleAfterSeconds: number, now: Date): boolean {
+export function isStale(
+    lastSyncedAt: Date | null,
+    staleAfterSeconds: number,
+    now: Date,
+): boolean {
     if (lastSyncedAt === null) {
         return true;
     }

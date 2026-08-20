@@ -22,10 +22,24 @@ import {
  * visit (lessons-from-lancore #5) — and `notification.received` pushes over
  * Reverb keep it current in between.
  */
-type Notification = Konventix.Messaging.Data.NotificationData;
+/**
+ * A mutable copy of the generated shape. laravel-data emits every field
+ * `readonly`, which is right for a server payload and wrong for this list:
+ * marking a notification read updates it in place and lets the request catch
+ * up afterwards.
+ */
+type Notification = {
+    -readonly [K in keyof Konventix.Messaging.Data.NotificationData]: Konventix.Messaging.Data.NotificationData[K];
+};
 
 const page = usePage();
-const userId = computed(() => page.props.auth?.user?.id as string | undefined);
+// Converted rather than cast: the shared auth prop types the id as a number,
+// while every id in this application is a ULID string (ADR-0014).
+const userId = computed<string | undefined>(() => {
+    const id = page.props.auth?.user?.id;
+
+    return id === undefined || id === null ? undefined : String(id);
+});
 
 const notifications = ref<Notification[]>([]);
 const unread = ref(0);

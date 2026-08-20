@@ -111,6 +111,7 @@ const columns: ColumnDef<EventRow>[] = [
         enableSorting: true,
         cell: ({ row }) => {
             const state = row.getValue<string>('state');
+
             return h(
                 'span',
                 {

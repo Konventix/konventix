@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import { FileText, Landmark } from '@lucide/vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Badge } from '@/components/ui/badge';

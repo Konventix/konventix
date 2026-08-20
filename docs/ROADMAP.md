@@ -17,10 +17,26 @@ Cleared.
 
 Proven:
 - [x] Multi-domain brand resolution: ResolveBrand fronts the `web` group
-      (every request runs in a brand or 404s), Caddy on-demand TLS `ask`
-      endpoint refuses unknown hosts, dev web role runs FrankenPHP via
-      Octane. Outstanding: the production Caddyfile wiring `on_demand_tls`
-      to `/caddy/ask` (deployment config, lands with the prod image).
+      (every request runs in a brand or 404s), dev web role runs FrankenPHP
+      via Octane.
+
+      **TLS is out of scope (decided 2026-08-19).** Konventix runs behind a
+      reverse proxy that terminates TLS and is not part of this application,
+      so the production Caddyfile wiring `on_demand_tls` to `/caddy/ask` is
+      no longer owed — and no such endpoint was ever built. Certificate
+      issuance for a newly added brand domain becomes that proxy's business.
+
+      What the application owes instead is already done: it trusts the
+      proxy's forwarded headers (`config/trustedproxy.php`), including
+      `X-Forwarded-Host`, without which brand resolution reads the proxy's
+      internal hostname and every request gets the wrong brand or a 404. The
+      trusted list is not a wildcard by default, precisely because a
+      spoofable host would let a direct caller choose which brand it is
+      talking to.
+
+      Still owed by the deployment, not by this repo: the proxy must forward
+      `Host` unmodified, and must be able to obtain a certificate for each
+      brand domain.
 - [x] Brand-scoped sessions (per-brand cookie names) + brand context
       serialized into queued jobs and restored in workers
 - [x] Pennant module gating at all four points (routes, nav, slots,
@@ -156,9 +172,16 @@ interleave.
     first time ADR-0008's guard had been pointed at the platform defaults
     rather than at a brand's overrides.
 
-16. Hardening + dry run: CI with PostgreSQL, `konventix:seed` for both
-    event archetypes, BFSG pass, production Caddyfile, then SXLan and
-    Xpertise rehearsed end-to-end on seeded data.
+16. Hardening + dry run: `konventix:seed` for both event archetypes, BFSG
+    pass, then SXLan and Xpertise rehearsed end-to-end on seeded data.
+
+    CI with PostgreSQL is **done** (2026-08-20) — and it was not a
+    formality. The pipeline had been failing on every commit for a long
+    time: `composer setup` migrates, and no database service was defined.
+    It now runs Postgres and Redis services and the whole `ci:check` chain
+    (eslint, prettier, vue-tsc, pint, PHPStan, the Pest suite) against a
+    built frontend. The production Caddyfile left this slice with the TLS
+    decision above.
 17. Object storage backends (ADR-0043): media ULIDs in page blocks (the
     `hero` block stores a resolved URL today and would rot on any disk
     change — prerequisite for everything below), S3 driver on the `media`

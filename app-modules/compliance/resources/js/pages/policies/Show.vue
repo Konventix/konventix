@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import PublicTopbar from '@/components/PublicTopbar.vue';
+import { noLayout } from '@/lib/layout';
 
 /**
  * One policy's currently published text, on the brand's own domain.
@@ -25,7 +26,7 @@ type Props = {
 
 const props = defineProps<Props>();
 
-defineOptions({ layout: null });
+defineOptions({ layout: noLayout });
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'long' });
 

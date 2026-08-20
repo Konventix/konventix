@@ -4,8 +4,9 @@ import { ref } from 'vue';
 import PublicTopbar from '@/components/PublicTopbar.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { show as showPolicy } from '@/routes/policies';
+import { noLayout } from '@/lib/layout';
 import { store as storeConsent } from '@/routes/consents';
+import { show as showPolicy } from '@/routes/policies';
 
 /**
  * Where the `require-consent` gate lands: every policy this account still
@@ -30,7 +31,7 @@ type PolicyVersionRow = {
 
 const props = defineProps<{ versions: PolicyVersionRow[] }>();
 
-defineOptions({ layout: null });
+defineOptions({ layout: noLayout });
 
 const accepted = ref<Record<string, boolean>>(
     Object.fromEntries(props.versions.map((version) => [version.id, false])),
