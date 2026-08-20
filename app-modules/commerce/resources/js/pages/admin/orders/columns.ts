@@ -85,7 +85,11 @@ export const columns: ColumnDef<OrderRow>[] = [
         enableSorting: true,
         cell: ({ row }) =>
             h('span', { class: 'tabular-nums' }, [
-                h('span', {}, `${row.original.totalGross} ${row.original.currency}`),
+                h(
+                    'span',
+                    {},
+                    `${row.original.totalGross} ${row.original.currency}`,
+                ),
                 h(
                     'span',
                     { class: 'ml-1 text-xs text-text-muted' },
@@ -112,6 +116,10 @@ export const columns: ColumnDef<OrderRow>[] = [
         header: 'Placed',
         enableSorting: true,
         cell: ({ row }) =>
-            h('span', { class: 'text-text-muted' }, row.original.createdAt ?? '—'),
+            h(
+                'span',
+                { class: 'text-text-muted' },
+                row.original.createdAt ?? '—',
+            ),
     },
 ];

@@ -30,7 +30,8 @@ const props = defineProps<{
 defineOptions({
     layout: {
         title: 'Finish setting up your account',
-        description: 'We still need an email address so you can verify your account and recover it later.',
+        description:
+            'We still need an email address so you can verify your account and recover it later.',
     },
 });
 </script>
@@ -78,11 +79,7 @@ defineOptions({
                     </p>
                 </div>
 
-                <Button
-                    type="submit"
-                    class="w-full"
-                    :disabled="processing"
-                >
+                <Button type="submit" class="w-full" :disabled="processing">
                     Create account
                 </Button>
             </div>

@@ -132,7 +132,10 @@ function promoteVenue(venueId: string): void {
                     </div>
                     <div class="grid gap-2">
                         <Label for="edit-description">Description</Label>
-                        <Input id="edit-description" v-model="form.description" />
+                        <Input
+                            id="edit-description"
+                            v-model="form.description"
+                        />
                         <InputError :message="form.errors.description" />
                     </div>
                     <div class="grid grid-cols-3 gap-4">
@@ -172,7 +175,9 @@ function promoteVenue(venueId: string): void {
                                 class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                             >
                                 <option value="unlimited">Unlimited</option>
-                                <option value="once_per_day">Once per day</option>
+                                <option value="once_per_day">
+                                    Once per day
+                                </option>
                                 <option value="once_only">Once only</option>
                             </select>
                         </div>
@@ -196,7 +201,9 @@ function promoteVenue(venueId: string): void {
                         <Input
                             :model-value="day.label ?? ''"
                             placeholder="Label (optional)"
-                            @update:model-value="day.label = String($event) || null"
+                            @update:model-value="
+                                day.label = String($event) || null
+                            "
                         />
                         <Button
                             type="button"
@@ -238,7 +245,10 @@ function promoteVenue(venueId: string): void {
         <Card class="border-border bg-surface">
             <CardHeader><CardTitle>Venues</CardTitle></CardHeader>
             <CardContent class="flex flex-col gap-4">
-                <p v-if="props.venues.length === 0" class="text-sm text-text-muted">
+                <p
+                    v-if="props.venues.length === 0"
+                    class="text-sm text-text-muted"
+                >
                     No venue assigned — online-only event.
                 </p>
                 <div
@@ -247,7 +257,9 @@ function promoteVenue(venueId: string): void {
                     class="flex items-center gap-3"
                 >
                     <span class="font-medium">{{ venue.name }}</span>
-                    <span class="text-sm text-text-muted">{{ venue.city }}</span>
+                    <span class="text-sm text-text-muted">{{
+                        venue.city
+                    }}</span>
                     <span
                         v-if="venue.isPrimary"
                         class="rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent"
@@ -280,7 +292,9 @@ function promoteVenue(venueId: string): void {
                     @submit.prevent="submitVenue"
                 >
                     <div class="grid flex-1 gap-1">
-                        <Label for="assign-venue" class="text-xs">Assign venue</Label>
+                        <Label for="assign-venue" class="text-xs"
+                            >Assign venue</Label
+                        >
                         <select
                             id="assign-venue"
                             v-model="venueToAssign"
@@ -295,7 +309,9 @@ function promoteVenue(venueId: string): void {
                             </option>
                         </select>
                     </div>
-                    <label class="flex items-center gap-1 pb-2 text-sm text-text-muted">
+                    <label
+                        class="flex items-center gap-1 pb-2 text-sm text-text-muted"
+                    >
                         <input v-model="assignAsPrimary" type="checkbox" />
                         primary
                     </label>

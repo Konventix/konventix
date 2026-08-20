@@ -7,7 +7,10 @@ import {
     download as downloadArchive,
     store as storeDataRequest,
 } from '@/routes/data-requests';
-import { required as requiredPolicies, show as showPolicy } from '@/routes/policies';
+import {
+    required as requiredPolicies,
+    show as showPolicy,
+} from '@/routes/policies';
 import { edit } from '@/routes/privacy';
 
 /**

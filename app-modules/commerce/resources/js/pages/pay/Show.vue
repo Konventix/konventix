@@ -49,7 +49,9 @@ const awaitingConfirmation = computed(
     () => !paid.value && props.paymentStatus === 'pending',
 );
 const lastAttemptFailed = computed(
-    () => !paid.value && (props.paymentStatus === 'failed' || props.paymentStatus === 'expired'),
+    () =>
+        !paid.value &&
+        (props.paymentStatus === 'failed' || props.paymentStatus === 'expired'),
 );
 </script>
 
@@ -59,7 +61,9 @@ const lastAttemptFailed = computed(
     <div class="flex min-h-screen flex-col bg-surface text-text">
         <PublicTopbar :name="$page.props.name" />
 
-        <main class="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 p-6 lg:p-8">
+        <main
+            class="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 p-6 lg:p-8"
+        >
             <h1 class="text-2xl font-semibold">Payment</h1>
 
             <Card class="border-border bg-surface">
@@ -73,14 +77,23 @@ const lastAttemptFailed = computed(
                         class="flex items-center justify-between"
                     >
                         <span>{{ line.quantity }}× {{ line.label }}</span>
-                        <span>{{ line.lineGross }} {{ props.order.currency }}</span>
+                        <span
+                            >{{ line.lineGross }}
+                            {{ props.order.currency }}</span
+                        >
                     </div>
-                    <div class="mt-2 flex items-center justify-between border-t border-border pt-2 font-semibold">
+                    <div
+                        class="mt-2 flex items-center justify-between border-t border-border pt-2 font-semibold"
+                    >
                         <span>Total</span>
-                        <span>{{ props.order.totalGross }} {{ props.order.currency }}</span>
+                        <span
+                            >{{ props.order.totalGross }}
+                            {{ props.order.currency }}</span
+                        >
                     </div>
                     <p class="text-xs text-text-muted">
-                        includes {{ props.order.totalTax }} {{ props.order.currency }} tax
+                        includes {{ props.order.totalTax }}
+                        {{ props.order.currency }} tax
                     </p>
                 </CardContent>
             </Card>
@@ -123,7 +136,11 @@ const lastAttemptFailed = computed(
                     @click="pay"
                 >
                     <CreditCard class="size-4" />
-                    {{ lastAttemptFailed || awaitingConfirmation ? 'Try again' : 'Pay now' }}
+                    {{
+                        lastAttemptFailed || awaitingConfirmation
+                            ? 'Try again'
+                            : 'Pay now'
+                    }}
                 </Button>
 
                 <p v-else class="text-sm text-text-muted">

@@ -270,7 +270,9 @@ const columns: ColumnDef<MediaRow>[] = [
                                 <InputError :message="form.errors.file" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="media-alt">Alt text (optional)</Label>
+                                <Label for="media-alt"
+                                    >Alt text (optional)</Label
+                                >
                                 <Input id="media-alt" v-model="form.alt_text" />
                                 <InputError :message="form.errors.alt_text" />
                             </div>

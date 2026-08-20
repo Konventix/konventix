@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import PublicTopbar from '@/components/PublicTopbar.vue';
 import { Button } from '@/components/ui/button';
+import { noLayout } from '@/lib/layout';
 import { show as showEntry } from '@/routes/content';
 
 /**
@@ -37,6 +38,14 @@ function goToPage(page: number): void {
         { preserveScroll: true, preserveState: true },
     );
 }
+
+/**
+ * A public page: it brings its own `PublicTopbar` and must not also be wrapped
+ * in the authenticated app shell. Event's `Landing.vue` has always opted out
+ * this way; these two never did, so a reader arriving from a search result got
+ * the signed-in chrome around a page meant for anyone.
+ */
+defineOptions({ layout: noLayout });
 </script>
 
 <template>

@@ -35,7 +35,9 @@ defineProps<{ brands: BrandRow[] }>();
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead>
-                        <tr class="border-b border-border text-left text-text-muted">
+                        <tr
+                            class="border-b border-border text-left text-text-muted"
+                        >
                             <th class="p-3 font-medium">Brand</th>
                             <th class="p-3 font-medium">Sender</th>
                             <th class="p-3 font-medium">Transport</th>
@@ -63,8 +65,18 @@ defineProps<{ brands: BrandRow[] }>();
                                 </span>
                             </td>
                             <td class="p-3">
-                                <Badge :variant="brand.customTransport ? 'default' : 'secondary'">
-                                    {{ brand.customTransport ? 'Own SMTP' : 'Default mailer' }}
+                                <Badge
+                                    :variant="
+                                        brand.customTransport
+                                            ? 'default'
+                                            : 'secondary'
+                                    "
+                                >
+                                    {{
+                                        brand.customTransport
+                                            ? 'Own SMTP'
+                                            : 'Default mailer'
+                                    }}
                                 </Badge>
                             </td>
                             <td class="p-3 text-text-muted">
@@ -72,12 +84,17 @@ defineProps<{ brands: BrandRow[] }>();
                             </td>
                             <td class="p-3 text-right" @click.stop>
                                 <Button as-child variant="outline" size="sm">
-                                    <Link :href="editMailSettings(brand.id)">Edit</Link>
+                                    <Link :href="editMailSettings(brand.id)"
+                                        >Edit</Link
+                                    >
                                 </Button>
                             </td>
                         </tr>
                         <tr v-if="brands.length === 0">
-                            <td colspan="5" class="p-6 text-center text-text-muted">
+                            <td
+                                colspan="5"
+                                class="p-6 text-center text-text-muted"
+                            >
                                 No brands yet.
                             </td>
                         </tr>

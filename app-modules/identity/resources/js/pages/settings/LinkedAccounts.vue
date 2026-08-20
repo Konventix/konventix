@@ -60,10 +60,7 @@ defineOptions({
                                 · since {{ account.linkedAt }}
                             </span>
                         </p>
-                        <p
-                            v-else
-                            class="text-xs text-text-muted"
-                        >
+                        <p v-else class="text-xs text-text-muted">
                             Not connected
                         </p>
                     </div>
@@ -99,11 +96,7 @@ defineOptions({
                         </Button>
                     </Form>
 
-                    <Button
-                        v-if="!account.linked"
-                        as-child
-                        variant="outline"
-                    >
+                    <Button v-if="!account.linked" as-child variant="outline">
                         <a :href="socialRedirect(account.provider).url">
                             Connect
                         </a>
@@ -112,12 +105,9 @@ defineOptions({
             </li>
         </ul>
 
-        <p
-            v-if="!props.hasPassword"
-            class="text-sm text-text-muted"
-        >
-            This account has no password yet. You can set one from the
-            security settings to add a second way to sign in.
+        <p v-if="!props.hasPassword" class="text-sm text-text-muted">
+            This account has no password yet. You can set one from the security
+            settings to add a second way to sign in.
         </p>
     </div>
 </template>

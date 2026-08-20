@@ -24,9 +24,8 @@ defineProps<{
         class="flex flex-col items-center gap-4 text-center"
     >
         <p class="text-sm font-medium tracking-wide text-text-muted uppercase">
-            {{ label ?? 'Countdown' }}<template v-if="eventName">
-                — {{ eventName }}</template
-            >
+            {{ label ?? 'Countdown'
+            }}<template v-if="eventName"> — {{ eventName }}</template>
         </p>
         <CountdownTimer :target-iso="targetIso" />
     </section>

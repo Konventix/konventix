@@ -141,7 +141,11 @@ const columns: ColumnDef<PolicyRow>[] = [
         id: 'versions',
         header: 'Versions',
         cell: ({ row }) =>
-            h('span', { class: 'text-text-muted' }, String(row.original.versions)),
+            h(
+                'span',
+                { class: 'text-text-muted' },
+                String(row.original.versions),
+            ),
     },
 ];
 

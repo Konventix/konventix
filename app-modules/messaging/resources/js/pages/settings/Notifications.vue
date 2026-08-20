@@ -7,7 +7,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { edit, update } from '@/routes/notification-preferences';
-import { destroy as pushDestroy, store as pushStore } from '@/routes/push-subscriptions';
+import {
+    destroy as pushDestroy,
+    store as pushStore,
+} from '@/routes/push-subscriptions';
 
 /**
  * Rendered from the topic registry (ADR-0041): a new notification kind
@@ -22,7 +25,10 @@ type TopicRow = {
     channels: TopicChannel[];
 };
 
-const props = defineProps<{ topics: TopicRow[]; vapidPublicKey: string | null }>();
+const props = defineProps<{
+    topics: TopicRow[];
+    vapidPublicKey: string | null;
+}>();
 
 defineOptions({
     layout: {
@@ -54,7 +60,9 @@ const form = useForm({
 useUnsavedChanges(() => form.isDirty);
 
 function entry(topic: string, channel: string) {
-    return form.preferences.find((p) => p.topic === topic && p.channel === channel);
+    return form.preferences.find(
+        (p) => p.topic === topic && p.channel === channel,
+    );
 }
 
 function submit(): void {
@@ -83,7 +91,9 @@ const pushBusy = ref(false);
  */
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
     const padding = '='.repeat((4 - (base64.length % 4)) % 4);
-    const raw = window.atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
+    const raw = window.atob(
+        (base64 + padding).replace(/-/g, '+').replace(/_/g, '/'),
+    );
     const bytes = new Uint8Array(new ArrayBuffer(raw.length));
 
     for (let index = 0; index < raw.length; index += 1) {
@@ -93,7 +103,11 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
     return bytes;
 }
 
-async function pushRequest(url: string, method: 'POST' | 'DELETE', body: Record<string, unknown>): Promise<void> {
+async function pushRequest(
+    url: string,
+    method: 'POST' | 'DELETE',
+    body: Record<string, unknown>,
+): Promise<void> {
     const xsrf = document.cookie
         .split('; ')
         .find((row) => row.startsWith('XSRF-TOKEN='))
@@ -123,7 +137,8 @@ onMounted(async () => {
 
     pushDenied.value = Notification.permission === 'denied';
 
-    const registration = await navigator.serviceWorker.getRegistration('/push-sw.js');
+    const registration =
+        await navigator.serviceWorker.getRegistration('/push-sw.js');
     pushEnabled.value = !!(await registration?.pushManager.getSubscription());
 });
 
@@ -141,7 +156,8 @@ async function enablePush(): Promise<void> {
             return;
         }
 
-        const registration = await navigator.serviceWorker.register('/push-sw.js');
+        const registration =
+            await navigator.serviceWorker.register('/push-sw.js');
         const subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(props.vapidPublicKey),
@@ -164,11 +180,14 @@ async function disablePush(): Promise<void> {
     pushBusy.value = true;
 
     try {
-        const registration = await navigator.serviceWorker.getRegistration('/push-sw.js');
+        const registration =
+            await navigator.serviceWorker.getRegistration('/push-sw.js');
         const subscription = await registration?.pushManager.getSubscription();
 
         if (subscription) {
-            await pushRequest(pushDestroy().url, 'DELETE', { endpoint: subscription.endpoint });
+            await pushRequest(pushDestroy().url, 'DELETE', {
+                endpoint: subscription.endpoint,
+            });
             await subscription.unsubscribe();
         }
 
@@ -218,31 +237,47 @@ async function disablePush(): Promise<void> {
                     >
                         <Checkbox
                             :id="`${topic.key}-${channel.channel}`"
-                            :model-value="entry(topic.key, channel.channel)?.enabled"
+                            :model-value="
+                                entry(topic.key, channel.channel)?.enabled
+                            "
                             :disabled="!topic.suppressible"
                             @update:model-value="
                                 (value: boolean | 'indeterminate') => {
-                                    const row = entry(topic.key, channel.channel);
+                                    const row = entry(
+                                        topic.key,
+                                        channel.channel,
+                                    );
                                     if (row) row.enabled = value === true;
                                 }
                             "
                         />
                         <Label :for="`${topic.key}-${channel.channel}`">
-                            {{ channelNames[channel.channel] ?? channel.channel }}
+                            {{
+                                channelNames[channel.channel] ?? channel.channel
+                            }}
                         </Label>
                     </div>
                 </div>
             </fieldset>
 
             <div class="flex items-center gap-3">
-                <Button type="submit" :disabled="form.processing">Save preferences</Button>
-                <span v-if="form.isDirty" role="status" class="text-sm text-warning">
+                <Button type="submit" :disabled="form.processing"
+                    >Save preferences</Button
+                >
+                <span
+                    v-if="form.isDirty"
+                    role="status"
+                    class="text-sm text-warning"
+                >
                     Unsaved changes
                 </span>
             </div>
         </form>
 
-        <div v-if="pushSupported" class="flex flex-col gap-2 rounded-md border border-border p-4">
+        <div
+            v-if="pushSupported"
+            class="flex flex-col gap-2 rounded-md border border-border p-4"
+        >
             <h2 class="text-sm font-medium text-text">Push on this device</h2>
             <p class="text-xs text-text-muted">
                 Browser notifications reach this device even while the site is

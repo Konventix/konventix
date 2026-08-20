@@ -113,17 +113,17 @@ watch(
                                     {{ type.name }}
                                 </td>
                                 <td
-                                    class="p-3 text-right tabular-nums text-text-muted"
+                                    class="p-3 text-right text-text-muted tabular-nums"
                                 >
                                     {{ type.sold }}
                                 </td>
                                 <td
-                                    class="p-3 text-right tabular-nums text-text-muted"
+                                    class="p-3 text-right text-text-muted tabular-nums"
                                 >
                                     {{ type.capacity ?? '—' }}
                                 </td>
                                 <td
-                                    class="p-3 text-right tabular-nums text-text-muted"
+                                    class="p-3 text-right text-text-muted tabular-nums"
                                 >
                                     {{ type.remaining ?? '—' }}
                                 </td>

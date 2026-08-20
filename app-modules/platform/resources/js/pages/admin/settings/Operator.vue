@@ -58,10 +58,7 @@ function submit(): void {
             description="The legal entity running this instance. Its identity appears on every invoice."
         />
 
-        <form
-            class="grid max-w-3xl gap-6"
-            @submit.prevent="submit"
-        >
+        <form class="grid max-w-3xl gap-6" @submit.prevent="submit">
             <Card>
                 <CardHeader>
                     <CardTitle>Identity</CardTitle>
@@ -170,9 +167,8 @@ function submit(): void {
                             </Label>
                             <p class="text-xs text-text-muted">
                                 No VAT is shown on invoices, and each carries
-                                the §19 note instead. This is an
-                                operator-level election in law, so it applies
-                                to every brand.
+                                the §19 note instead. This is an operator-level
+                                election in law, so it applies to every brand.
                             </p>
                         </div>
                         <InputError

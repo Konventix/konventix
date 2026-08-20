@@ -38,7 +38,9 @@ function toggle(permission: string, value: boolean): void {
     if (value && !isGranted(permission)) {
         form.permissions.push(permission);
     } else if (!value) {
-        form.permissions = form.permissions.filter((name) => name !== permission);
+        form.permissions = form.permissions.filter(
+            (name) => name !== permission,
+        );
     }
 }
 
@@ -122,7 +124,11 @@ function submit(): void {
                 <Button type="submit" :disabled="form.processing">
                     Save role
                 </Button>
-                <span v-if="form.isDirty" role="status" class="text-sm text-warning">
+                <span
+                    v-if="form.isDirty"
+                    role="status"
+                    class="text-sm text-warning"
+                >
                     Unsaved changes
                 </span>
             </div>

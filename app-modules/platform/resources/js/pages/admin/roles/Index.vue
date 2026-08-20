@@ -118,10 +118,16 @@ function submitCreate(): void {
                     <DialogHeader>
                         <DialogTitle>Create role</DialogTitle>
                     </DialogHeader>
-                    <form class="flex flex-col gap-4" @submit.prevent="submitCreate">
+                    <form
+                        class="flex flex-col gap-4"
+                        @submit.prevent="submitCreate"
+                    >
                         <div class="grid gap-2">
                             <Label for="new-role-name">Name</Label>
-                            <Input id="new-role-name" v-model="createForm.name" />
+                            <Input
+                                id="new-role-name"
+                                v-model="createForm.name"
+                            />
                             <InputError :message="createForm.errors.name" />
                         </div>
                         <p class="text-xs text-text-muted">
@@ -174,7 +180,7 @@ function submitCreate(): void {
 
                 <div class="flex flex-col gap-2">
                     <span
-                        class="text-xs font-medium uppercase tracking-wide text-text-muted"
+                        class="text-xs font-medium tracking-wide text-text-muted uppercase"
                     >
                         Members
                     </span>
@@ -189,7 +195,9 @@ function submitCreate(): void {
                         :key="member"
                         class="flex items-center gap-2"
                     >
-                        <code class="rounded bg-subtle px-2 py-1 font-mono text-xs">
+                        <code
+                            class="rounded bg-subtle px-2 py-1 font-mono text-xs"
+                        >
                             {{ member }}
                         </code>
                         <Button

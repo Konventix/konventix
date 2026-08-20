@@ -75,7 +75,9 @@ type Props = {
 
 const props = defineProps<Props>();
 
-function statusVariant(status: string): 'default' | 'secondary' | 'destructive' {
+function statusVariant(
+    status: string,
+): 'default' | 'secondary' | 'destructive' {
     if (status === 'paid') {
         return 'default';
     }
@@ -96,7 +98,9 @@ function submitBookPayment(): void {
             :title="`Order · ${order.settlesType} ${order.settlesId}`"
             :description="`${order.brand} — created ${order.createdAt ?? 'unknown'}`"
         >
-            <Badge :variant="statusVariant(order.status)">{{ order.status }}</Badge>
+            <Badge :variant="statusVariant(order.status)">{{
+                order.status
+            }}</Badge>
             <Button
                 v-if="!order.paidAt && order.status !== 'cancelled'"
                 variant="outline"
@@ -113,15 +117,27 @@ function submitBookPayment(): void {
                     <CardTitle>Lines</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div class="overflow-x-auto rounded-md border border-border">
+                    <div
+                        class="overflow-x-auto rounded-md border border-border"
+                    >
                         <table class="w-full text-sm">
                             <thead>
-                                <tr class="border-b border-border text-left text-text-muted">
+                                <tr
+                                    class="border-b border-border text-left text-text-muted"
+                                >
                                     <th class="p-3 font-medium">Item</th>
-                                    <th class="p-3 text-right font-medium">Qty</th>
-                                    <th class="p-3 text-right font-medium">Unit net</th>
-                                    <th class="p-3 text-right font-medium">Tax %</th>
-                                    <th class="p-3 text-right font-medium">Gross</th>
+                                    <th class="p-3 text-right font-medium">
+                                        Qty
+                                    </th>
+                                    <th class="p-3 text-right font-medium">
+                                        Unit net
+                                    </th>
+                                    <th class="p-3 text-right font-medium">
+                                        Tax %
+                                    </th>
+                                    <th class="p-3 text-right font-medium">
+                                        Gross
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -131,10 +147,18 @@ function submitBookPayment(): void {
                                     class="border-b border-border last:border-0"
                                 >
                                     <td class="p-3">{{ line.label }}</td>
-                                    <td class="p-3 text-right">{{ line.quantity }}</td>
-                                    <td class="p-3 text-right">{{ line.unitAmountNet }}</td>
-                                    <td class="p-3 text-right">{{ line.taxRate }}</td>
-                                    <td class="p-3 text-right">{{ line.lineGross }}</td>
+                                    <td class="p-3 text-right">
+                                        {{ line.quantity }}
+                                    </td>
+                                    <td class="p-3 text-right">
+                                        {{ line.unitAmountNet }}
+                                    </td>
+                                    <td class="p-3 text-right">
+                                        {{ line.taxRate }}
+                                    </td>
+                                    <td class="p-3 text-right">
+                                        {{ line.lineGross }}
+                                    </td>
                                 </tr>
                             </tbody>
                             <tfoot>
@@ -144,7 +168,8 @@ function submitBookPayment(): void {
                                         + {{ order.totalTax }} tax
                                     </td>
                                     <td class="p-3 text-right">
-                                        {{ order.totalGross }} {{ order.currency }}
+                                        {{ order.totalGross }}
+                                        {{ order.currency }}
                                     </td>
                                 </tr>
                             </tfoot>
@@ -167,7 +192,9 @@ function submitBookPayment(): void {
                     <CardContent class="flex flex-col gap-3 text-sm">
                         <template v-if="invoice">
                             <div class="flex items-center justify-between">
-                                <span class="font-medium">{{ invoice.number }}</span>
+                                <span class="font-medium">{{
+                                    invoice.number
+                                }}</span>
                                 <Button
                                     v-if="invoice.documentReady"
                                     as-child
@@ -182,16 +209,23 @@ function submitBookPayment(): void {
                             </div>
                             <dl class="grid grid-cols-2 gap-1 text-text-muted">
                                 <dt>Issued</dt>
-                                <dd class="text-right text-text">{{ invoice.issuedOn }}</dd>
+                                <dd class="text-right text-text">
+                                    {{ invoice.issuedOn }}
+                                </dd>
                                 <dt>Due</dt>
-                                <dd class="text-right text-text">{{ invoice.dueOn }}</dd>
+                                <dd class="text-right text-text">
+                                    {{ invoice.dueOn }}
+                                </dd>
                                 <dt>Amount</dt>
                                 <dd class="text-right text-text">
-                                    {{ invoice.totalGross }} {{ order.currency }}
+                                    {{ invoice.totalGross }}
+                                    {{ order.currency }}
                                 </dd>
                             </dl>
                             <div class="border-t border-border pt-2">
-                                <span class="text-xs font-medium text-text-muted">
+                                <span
+                                    class="text-xs font-medium text-text-muted"
+                                >
                                     Billing party
                                 </span>
                                 <p>{{ invoice.billingParty.name }}</p>
@@ -208,7 +242,10 @@ function submitBookPayment(): void {
                                             .join(', ') || '—'
                                     }}
                                 </p>
-                                <p v-if="invoice.billingParty.vatId" class="text-text-muted">
+                                <p
+                                    v-if="invoice.billingParty.vatId"
+                                    class="text-text-muted"
+                                >
                                     VAT {{ invoice.billingParty.vatId }}
                                 </p>
                             </div>
@@ -235,7 +272,10 @@ function submitBookPayment(): void {
                                     {{ note.reasonCode }} · {{ note.issuedOn }}
                                 </p>
                             </div>
-                            <span>-{{ note.totalGross }} {{ order.currency }}</span>
+                            <span
+                                >-{{ note.totalGross }}
+                                {{ order.currency }}</span
+                            >
                         </div>
                     </CardContent>
                 </Card>
@@ -250,13 +290,20 @@ function submitBookPayment(): void {
                 <p v-if="payments.length === 0" class="text-sm text-text-muted">
                     No payment attempts yet.
                 </p>
-                <div v-else class="overflow-x-auto rounded-md border border-border">
+                <div
+                    v-else
+                    class="overflow-x-auto rounded-md border border-border"
+                >
                     <table class="w-full text-sm">
                         <thead>
-                            <tr class="border-b border-border text-left text-text-muted">
+                            <tr
+                                class="border-b border-border text-left text-text-muted"
+                            >
                                 <th class="p-3 font-medium">Provider</th>
                                 <th class="p-3 font-medium">Status</th>
-                                <th class="p-3 text-right font-medium">Amount</th>
+                                <th class="p-3 text-right font-medium">
+                                    Amount
+                                </th>
                                 <th class="p-3 font-medium">Reference</th>
                                 <th class="p-3 font-medium">When</th>
                             </tr>
@@ -294,7 +341,11 @@ function submitBookPayment(): void {
                                     {{ payment.externalId ?? '—' }}
                                 </td>
                                 <td class="p-3 text-text-muted">
-                                    {{ payment.receivedAt ?? payment.failedAt ?? '—' }}
+                                    {{
+                                        payment.receivedAt ??
+                                        payment.failedAt ??
+                                        '—'
+                                    }}
                                 </td>
                             </tr>
                         </tbody>

@@ -103,7 +103,11 @@ const columns: ColumnDef<EventRow>[] = [
         header: 'Slug',
         enableSorting: true,
         cell: ({ row }) =>
-            h('span', { class: 'text-text-muted' }, row.getValue<string>('slug')),
+            h(
+                'span',
+                { class: 'text-text-muted' },
+                row.getValue<string>('slug'),
+            ),
     },
     {
         accessorKey: 'state',
@@ -188,7 +192,10 @@ function submit(): void {
                         <DialogHeader>
                             <DialogTitle>Create event</DialogTitle>
                         </DialogHeader>
-                        <form class="flex flex-col gap-4" @submit.prevent="submit">
+                        <form
+                            class="flex flex-col gap-4"
+                            @submit.prevent="submit"
+                        >
                             <div class="grid gap-2">
                                 <Label for="event-brand">Brand</Label>
                                 <select
@@ -218,13 +225,17 @@ function submit(): void {
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div class="grid gap-2">
-                                    <Label for="event-starts">Starts (local)</Label>
+                                    <Label for="event-starts"
+                                        >Starts (local)</Label
+                                    >
                                     <Input
                                         id="event-starts"
                                         v-model="form.startsAt"
                                         placeholder="2027-05-14 18:00:00"
                                     />
-                                    <InputError :message="form.errors.startsAt" />
+                                    <InputError
+                                        :message="form.errors.startsAt"
+                                    />
                                 </div>
                                 <div class="grid gap-2">
                                     <Label for="event-ends">Ends (local)</Label>

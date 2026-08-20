@@ -27,7 +27,10 @@ const imageAltText = computed(() => props.imageAlt ?? props.heading);
                 >
                     {{ heading }}
                 </h1>
-                <p v-if="subheading" class="max-w-prose text-lg text-text-muted">
+                <p
+                    v-if="subheading"
+                    class="max-w-prose text-lg text-text-muted"
+                >
                     {{ subheading }}
                 </p>
                 <div v-if="ctaLabel && ctaUrl">

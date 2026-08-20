@@ -100,7 +100,11 @@ type VenueForm = {
     // `Data\OpeningPeriodData`, spelled out here because that class carries no
     // `#[TypeScript]` attribute — add one and point at the generated type when
     // the editor lands, rather than letting these two drift.
-    openingTimes: Array<{ dayOfWeek: number; opensAt: string; closesAt: string }>;
+    openingTimes: Array<{
+        dayOfWeek: number;
+        opensAt: string;
+        closesAt: string;
+    }>;
 };
 
 const form = useForm<VenueForm>({
@@ -174,7 +178,11 @@ const columns: ColumnDef<VenueRow>[] = [
         header: 'City',
         enableSorting: true,
         cell: ({ row }) =>
-            h('span', { class: 'text-text-muted' }, row.getValue<string>('city')),
+            h(
+                'span',
+                { class: 'text-text-muted' },
+                row.getValue<string>('city'),
+            ),
     },
     {
         id: 'actions',
@@ -262,13 +270,19 @@ const columns: ColumnDef<VenueRow>[] = [
                     </div>
                     <div class="grid gap-2">
                         <Label for="venue-address1">Street and number</Label>
-                        <Input id="venue-address1" v-model="form.addressLine1" />
+                        <Input
+                            id="venue-address1"
+                            v-model="form.addressLine1"
+                        />
                         <InputError :message="form.errors.addressLine1" />
                     </div>
                     <div class="grid grid-cols-3 gap-2">
                         <div class="grid gap-2">
                             <Label for="venue-postal">Postal code</Label>
-                            <Input id="venue-postal" v-model="form.postalCode" />
+                            <Input
+                                id="venue-postal"
+                                v-model="form.postalCode"
+                            />
                             <InputError :message="form.errors.postalCode" />
                         </div>
                         <div class="col-span-2 grid gap-2">

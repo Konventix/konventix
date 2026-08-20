@@ -128,7 +128,11 @@ const columns: ColumnDef<OrderRow>[] = [
                 );
             }
 
-            return h('div', { class: 'flex items-center justify-end gap-3' }, cells);
+            return h(
+                'div',
+                { class: 'flex items-center justify-end gap-3' },
+                cells,
+            );
         },
     },
 ];
@@ -178,9 +182,9 @@ const columns: ColumnDef<OrderRow>[] = [
                             bookingOrder?.invoice?.number ?? bookingOrder?.id
                         }}</span>
                         ({{ bookingOrder?.totalGross }}
-                        {{ bookingOrder?.currency }}) as paid by bank
-                        transfer? Registration will be notified and an
-                        on-payment confirmation completes immediately.
+                        {{ bookingOrder?.currency }}) as paid by bank transfer?
+                        Registration will be notified and an on-payment
+                        confirmation completes immediately.
                     </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>

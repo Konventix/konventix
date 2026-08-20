@@ -16,7 +16,10 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { store as storeRule, update as updateRule } from '@/routes/admin/retention';
+import {
+    store as storeRule,
+    update as updateRule,
+} from '@/routes/admin/retention';
 
 /**
  * How long each category of data may be kept.
@@ -167,7 +170,9 @@ function toggleActive(rule: RuleRow): void {
                                         {{ clock }}
                                     </option>
                                 </select>
-                                <InputError :message="form.errors.clock_start" />
+                                <InputError
+                                    :message="form.errors.clock_start"
+                                />
                             </div>
                         </div>
                         <div class="grid gap-2">
@@ -187,7 +192,9 @@ function toggleActive(rule: RuleRow): void {
         </AdminPageHeader>
 
         <p class="text-sm text-text-muted">
-            {{ props.clocks }} concluded event{{ props.clocks === 1 ? '' : 's' }}
+            {{ props.clocks }} concluded event{{
+                props.clocks === 1 ? '' : 's'
+            }}
             currently counting for event-scoped rules.
         </p>
 
@@ -205,7 +212,10 @@ function toggleActive(rule: RuleRow): void {
                                 : 'the end of the event'
                         }}
                     </p>
-                    <p v-if="rule.currentCutoff" class="text-xs text-text-muted">
+                    <p
+                        v-if="rule.currentCutoff"
+                        class="text-xs text-text-muted"
+                    >
                         Next sweep removes everything before
                         {{ rule.currentCutoff }}.
                     </p>

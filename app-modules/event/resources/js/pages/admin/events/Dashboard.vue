@@ -129,7 +129,9 @@ function refresh(): void {
                 <Button
                     v-for="transition in props.transitions"
                     :key="transition"
-                    :variant="transition === 'cancel' ? 'destructive' : 'secondary'"
+                    :variant="
+                        transition === 'cancel' ? 'destructive' : 'secondary'
+                    "
                     size="sm"
                     @click="runTransition(transition)"
                 >
@@ -147,7 +149,10 @@ function refresh(): void {
                     :disabled="refreshing"
                     @click="refresh"
                 >
-                    <RefreshCw class="size-4" :class="{ 'animate-spin': refreshing }" />
+                    <RefreshCw
+                        class="size-4"
+                        :class="{ 'animate-spin': refreshing }"
+                    />
                     Refresh
                 </Button>
             </div>

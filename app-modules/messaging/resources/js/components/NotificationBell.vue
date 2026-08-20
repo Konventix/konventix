@@ -29,7 +29,9 @@ import {
  * up afterwards.
  */
 type Notification = {
-    -readonly [K in keyof Konventix.Messaging.Data.NotificationData]: Konventix.Messaging.Data.NotificationData[K];
+    -readonly [
+        K in keyof Konventix.Messaging.Data.NotificationData
+    ]: Konventix.Messaging.Data.NotificationData[K];
 };
 
 const page = usePage();
@@ -44,7 +46,10 @@ const userId = computed<string | undefined>(() => {
 const notifications = ref<Notification[]>([]);
 const unread = ref(0);
 
-async function fetchJson(url: string, method: 'get' | 'post' = 'get'): Promise<unknown> {
+async function fetchJson(
+    url: string,
+    method: 'get' | 'post' = 'get',
+): Promise<unknown> {
     const xsrf = document.cookie
         .split('; ')
         .find((row) => row.startsWith('XSRF-TOKEN='))
@@ -55,7 +60,9 @@ async function fetchJson(url: string, method: 'get' | 'post' = 'get'): Promise<u
         headers: {
             Accept: 'application/json',
             'X-Requested-With': 'XMLHttpRequest',
-            ...(method === 'post' && xsrf ? { 'X-XSRF-TOKEN': decodeURIComponent(xsrf) } : {}),
+            ...(method === 'post' && xsrf
+                ? { 'X-XSRF-TOKEN': decodeURIComponent(xsrf) }
+                : {}),
         },
         credentials: 'same-origin',
     });
@@ -103,7 +110,10 @@ async function markRead(notification: Notification): Promise<void> {
     unread.value = Math.max(0, unread.value - 1);
 
     try {
-        await fetchJson(notificationsRead({ notification: notification.id }).url, 'post');
+        await fetchJson(
+            notificationsRead({ notification: notification.id }).url,
+            'post',
+        );
     } catch {
         // Optimistically marked; the server state catches up on next load.
     }
@@ -134,11 +144,16 @@ function open(notification: Notification): void {
 <template>
     <DropdownMenu v-if="userId">
         <DropdownMenuTrigger as-child>
-            <Button variant="ghost" size="icon" class="relative" aria-label="Notifications">
+            <Button
+                variant="ghost"
+                size="icon"
+                class="relative"
+                aria-label="Notifications"
+            >
                 <Bell class="size-5" />
                 <span
                     v-if="unread > 0"
-                    class="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-medium text-accent-foreground"
+                    class="text-accent-foreground absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-medium"
                     role="status"
                 >
                     {{ unread > 9 ? '9+' : unread }}
@@ -146,7 +161,9 @@ function open(notification: Notification): void {
             </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" class="w-80 p-0">
-            <div class="flex items-center justify-between border-b border-border px-3 py-2">
+            <div
+                class="flex items-center justify-between border-b border-border px-3 py-2"
+            >
                 <span class="text-sm font-medium">Notifications</span>
                 <Button
                     v-if="unread > 0"
@@ -159,7 +176,10 @@ function open(notification: Notification): void {
                 </Button>
             </div>
             <div class="max-h-96 overflow-y-auto">
-                <p v-if="notifications.length === 0" class="px-3 py-6 text-center text-sm text-text-muted">
+                <p
+                    v-if="notifications.length === 0"
+                    class="px-3 py-6 text-center text-sm text-text-muted"
+                >
                     Nothing here yet.
                 </p>
                 <button
@@ -172,13 +192,29 @@ function open(notification: Notification): void {
                     <span class="flex items-start gap-2">
                         <span
                             class="mt-1.5 size-2 shrink-0 rounded-full"
-                            :class="notification.readAt ? 'bg-transparent' : 'bg-accent'"
+                            :class="
+                                notification.readAt
+                                    ? 'bg-transparent'
+                                    : 'bg-accent'
+                            "
                         />
                         <span class="min-w-0">
-                            <span class="block truncate text-sm" :class="notification.readAt ? 'text-text-muted' : 'font-medium'">
+                            <span
+                                class="block truncate text-sm"
+                                :class="
+                                    notification.readAt
+                                        ? 'text-text-muted'
+                                        : 'font-medium'
+                                "
+                            >
                                 {{ notification.title }}
                             </span>
-                            <span class="block truncate text-xs text-text-muted" v-text="notification.body.replace(/<[^>]*>/g, '')" />
+                            <span
+                                class="block truncate text-xs text-text-muted"
+                                v-text="
+                                    notification.body.replace(/<[^>]*>/g, '')
+                                "
+                            />
                         </span>
                     </span>
                 </button>

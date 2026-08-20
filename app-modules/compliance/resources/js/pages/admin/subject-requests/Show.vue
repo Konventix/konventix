@@ -171,7 +171,9 @@ function refuse(): void {
                     </CardContent>
                 </Card>
 
-                <Card v-if="props.request.archiveAvailable && props.canDownload">
+                <Card
+                    v-if="props.request.archiveAvailable && props.canDownload"
+                >
                     <CardHeader>
                         <CardTitle>Export archive</CardTitle>
                     </CardHeader>
@@ -204,8 +206,8 @@ function refuse(): void {
                             <p class="text-xs text-text-muted">
                                 Re-runs every module's handler, not only the
                                 failed ones — handlers are idempotent by
-                                contract, and Compliance never learns which
-                                rows one already touched.
+                                contract, and Compliance never learns which rows
+                                one already touched.
                             </p>
                         </div>
 

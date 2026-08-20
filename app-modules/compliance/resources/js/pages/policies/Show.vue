@@ -56,7 +56,10 @@ function formatDate(value: string | null): string {
             </header>
 
             <!-- eslint-disable-next-line vue/no-v-html -->
-            <article class="policy-prose flex flex-col gap-4" v-html="props.policy.html" />
+            <article
+                class="policy-prose flex flex-col gap-4"
+                v-html="props.policy.html"
+            />
         </main>
     </div>
 </template>

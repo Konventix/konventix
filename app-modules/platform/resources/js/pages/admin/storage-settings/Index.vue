@@ -35,7 +35,9 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead>
-                        <tr class="border-b border-border text-left text-text-muted">
+                        <tr
+                            class="border-b border-border text-left text-text-muted"
+                        >
                             <th class="p-3 font-medium">Brand</th>
                             <th class="p-3 font-medium">New uploads go to</th>
                             <th class="p-3 font-medium">Delivery</th>
@@ -65,7 +67,11 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
                             <td class="p-3">
                                 <Badge
                                     v-if="brand.bucket"
-                                    :variant="brand.publicDirect ? 'default' : 'secondary'"
+                                    :variant="
+                                        brand.publicDirect
+                                            ? 'default'
+                                            : 'secondary'
+                                    "
                                 >
                                     {{
                                         brand.publicDirect
@@ -78,7 +84,7 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
                             <!-- Existing files keep the disk recorded on their
                                  own row, so this can be non-zero even after
                                  storage is switched back off. -->
-                            <td class="p-3 tabular-nums text-text-muted">
+                            <td class="p-3 text-text-muted tabular-nums">
                                 {{ brand.itemsInOwnBucket }}
                             </td>
                             <td class="p-3 text-right" @click.stop>
@@ -90,7 +96,10 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
                             </td>
                         </tr>
                         <tr v-if="brands.length === 0">
-                            <td colspan="5" class="p-6 text-center text-text-muted">
+                            <td
+                                colspan="5"
+                                class="p-6 text-center text-text-muted"
+                            >
                                 No brands yet.
                             </td>
                         </tr>

@@ -123,16 +123,8 @@ function archive(): void {
             >
                 {{ props.entry.state }}
             </span>
-            <Button
-                v-if="props.entry.publicUrl"
-                variant="outline"
-                as-child
-            >
-                <a
-                    :href="props.entry.publicUrl"
-                    target="_blank"
-                    rel="noopener"
-                >
+            <Button v-if="props.entry.publicUrl" variant="outline" as-child>
+                <a :href="props.entry.publicUrl" target="_blank" rel="noopener">
                     <ExternalLink class="size-4" />
                     View
                 </a>

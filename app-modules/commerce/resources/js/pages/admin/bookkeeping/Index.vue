@@ -16,7 +16,11 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
-import { datev, journal, settings as settingsRoute } from '@/routes/admin/bookkeeping';
+import {
+    datev,
+    journal,
+    settings as settingsRoute,
+} from '@/routes/admin/bookkeeping';
 
 /**
  * Monthly hand-over to the tax advisor (ADR-0040): a DATEV Buchungsstapel
@@ -44,7 +48,9 @@ const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 const year = ref(String(previousMonth.getFullYear()));
 const month = ref(String(previousMonth.getMonth() + 1));
 
-const years = Array.from({ length: 4 }, (_, i) => String(now.getFullYear() - i));
+const years = Array.from({ length: 4 }, (_, i) =>
+    String(now.getFullYear() - i),
+);
 const months = Array.from({ length: 12 }, (_, i) => String(i + 1));
 
 const period = computed(() => ({ year: year.value, month: month.value }));
@@ -84,10 +90,9 @@ function submit(): void {
             </CardHeader>
             <CardContent class="flex flex-col gap-4">
                 <p class="max-w-2xl text-sm text-text-muted">
-                    One export per month, covering every brand of this
-                    operator: invoices and credit notes only — payments are
-                    booked by the advisor from the bank and provider
-                    statements.
+                    One export per month, covering every brand of this operator:
+                    invoices and credit notes only — payments are booked by the
+                    advisor from the bank and provider statements.
                 </p>
 
                 <div class="flex flex-wrap items-end gap-4">
@@ -98,7 +103,12 @@ function submit(): void {
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem v-for="m in months" :key="m" :value="m">{{ m }}</SelectItem>
+                                <SelectItem
+                                    v-for="m in months"
+                                    :key="m"
+                                    :value="m"
+                                    >{{ m }}</SelectItem
+                                >
                             </SelectContent>
                         </Select>
                     </div>
@@ -109,7 +119,12 @@ function submit(): void {
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem v-for="y in years" :key="y" :value="y">{{ y }}</SelectItem>
+                                <SelectItem
+                                    v-for="y in years"
+                                    :key="y"
+                                    :value="y"
+                                    >{{ y }}</SelectItem
+                                >
                             </SelectContent>
                         </Select>
                     </div>
@@ -135,47 +150,97 @@ function submit(): void {
                 <CardTitle>DATEV settings</CardTitle>
             </CardHeader>
             <CardContent>
-                <form class="flex max-w-xl flex-col gap-4" @submit.prevent="submit">
+                <form
+                    class="flex max-w-xl flex-col gap-4"
+                    @submit.prevent="submit"
+                >
                     <div class="grid grid-cols-2 gap-4">
                         <div class="flex flex-col gap-2">
                             <Label for="consultant_number">Beraternummer</Label>
-                            <Input id="consultant_number" v-model="form.consultant_number" type="number" />
-                            <InputError :message="form.errors.consultant_number" />
+                            <Input
+                                id="consultant_number"
+                                v-model="form.consultant_number"
+                                type="number"
+                            />
+                            <InputError
+                                :message="form.errors.consultant_number"
+                            />
                         </div>
                         <div class="flex flex-col gap-2">
                             <Label for="client_number">Mandantennummer</Label>
-                            <Input id="client_number" v-model="form.client_number" type="number" />
+                            <Input
+                                id="client_number"
+                                v-model="form.client_number"
+                                type="number"
+                            />
                             <InputError :message="form.errors.client_number" />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <Label for="gl_account_length">Sachkontenlänge</Label>
-                            <Input id="gl_account_length" v-model="form.gl_account_length" type="number" min="4" max="8" />
-                            <InputError :message="form.errors.gl_account_length" />
+                            <Label for="gl_account_length"
+                                >Sachkontenlänge</Label
+                            >
+                            <Input
+                                id="gl_account_length"
+                                v-model="form.gl_account_length"
+                                type="number"
+                                min="4"
+                                max="8"
+                            />
+                            <InputError
+                                :message="form.errors.gl_account_length"
+                            />
                         </div>
                         <div class="flex flex-col gap-2">
                             <Label for="debtor_account">Sammeldebitor</Label>
-                            <Input id="debtor_account" v-model="form.debtor_account" />
+                            <Input
+                                id="debtor_account"
+                                v-model="form.debtor_account"
+                            />
                             <InputError :message="form.errors.debtor_account" />
                         </div>
                         <div class="flex flex-col gap-2">
                             <Label for="revenue_standard">Erlöse 19 %</Label>
-                            <Input id="revenue_standard" v-model="form.revenue_standard" />
-                            <InputError :message="form.errors.revenue_standard" />
+                            <Input
+                                id="revenue_standard"
+                                v-model="form.revenue_standard"
+                            />
+                            <InputError
+                                :message="form.errors.revenue_standard"
+                            />
                         </div>
                         <div class="flex flex-col gap-2">
                             <Label for="revenue_reduced">Erlöse 7 %</Label>
-                            <Input id="revenue_reduced" v-model="form.revenue_reduced" />
-                            <InputError :message="form.errors.revenue_reduced" />
+                            <Input
+                                id="revenue_reduced"
+                                v-model="form.revenue_reduced"
+                            />
+                            <InputError
+                                :message="form.errors.revenue_reduced"
+                            />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <Label for="revenue_reverse_charge">Erlöse Reverse Charge</Label>
-                            <Input id="revenue_reverse_charge" v-model="form.revenue_reverse_charge" />
-                            <InputError :message="form.errors.revenue_reverse_charge" />
+                            <Label for="revenue_reverse_charge"
+                                >Erlöse Reverse Charge</Label
+                            >
+                            <Input
+                                id="revenue_reverse_charge"
+                                v-model="form.revenue_reverse_charge"
+                            />
+                            <InputError
+                                :message="form.errors.revenue_reverse_charge"
+                            />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <Label for="revenue_small_business">Erlöse §19 UStG</Label>
-                            <Input id="revenue_small_business" v-model="form.revenue_small_business" />
-                            <InputError :message="form.errors.revenue_small_business" />
+                            <Label for="revenue_small_business"
+                                >Erlöse §19 UStG</Label
+                            >
+                            <Input
+                                id="revenue_small_business"
+                                v-model="form.revenue_small_business"
+                            />
+                            <InputError
+                                :message="form.errors.revenue_small_business"
+                            />
                         </div>
                     </div>
 
@@ -186,8 +251,14 @@ function submit(): void {
                     </p>
 
                     <div class="flex items-center gap-3">
-                        <Button type="submit" :disabled="form.processing">Save settings</Button>
-                        <span v-if="form.isDirty" role="status" class="text-sm text-warning">
+                        <Button type="submit" :disabled="form.processing"
+                            >Save settings</Button
+                        >
+                        <span
+                            v-if="form.isDirty"
+                            role="status"
+                            class="text-sm text-warning"
+                        >
                             Unsaved changes
                         </span>
                     </div>

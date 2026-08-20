@@ -72,17 +72,26 @@ function submitConnect(): void {
         return;
     }
 
-    const done = { preserveScroll: true, onSuccess: () => (connectingBrandId.value = null) };
+    const done = {
+        preserveScroll: true,
+        onSuccess: () => (connectingBrandId.value = null),
+    };
 
     if (form.provider === 'stripe') {
-        form.transform((data) => ({ brand_id: brandId, contact_email: data.contact_email }))
-            .post(connectStripe().url, done);
+        form.transform((data) => ({
+            brand_id: brandId,
+            contact_email: data.contact_email,
+        })).post(connectStripe().url, done);
     } else if (form.provider === 'mollie') {
-        form.transform((data) => ({ brand_id: brandId, api_key: data.api_key }))
-            .post(connectMollie().url, done);
+        form.transform((data) => ({
+            brand_id: brandId,
+            api_key: data.api_key,
+        })).post(connectMollie().url, done);
     } else {
-        form.transform((data) => ({ brand_id: brandId, private_key: data.private_key }))
-            .post(connectUnzer().url, done);
+        form.transform((data) => ({
+            brand_id: brandId,
+            private_key: data.private_key,
+        })).post(connectUnzer().url, done);
     }
 }
 
@@ -115,8 +124,8 @@ const providerNames: Record<string, string> = {
 
         <p class="max-w-2xl text-sm text-text-muted">
             Money flows directly from the participant into the organizer's own
-            provider account — the platform never holds funds. A brand without
-            a connected account settles manually.
+            provider account — the platform never holds funds. A brand without a
+            connected account settles manually.
         </p>
 
         <Card
@@ -127,19 +136,32 @@ const providerNames: Record<string, string> = {
             <CardHeader class="flex flex-row items-center justify-between">
                 <CardTitle>{{ brand.name }}</CardTitle>
                 <Badge v-if="brand.account" variant="secondary">
-                    {{ providerNames[brand.account.provider] ?? brand.account.provider }}
+                    {{
+                        providerNames[brand.account.provider] ??
+                        brand.account.provider
+                    }}
                 </Badge>
                 <Badge v-else variant="outline">manual</Badge>
             </CardHeader>
 
             <CardContent class="flex flex-col gap-4">
                 <template v-if="brand.account">
-                    <div class="flex flex-wrap items-center gap-4 text-sm text-text-muted">
-                        <span v-if="brand.account.label">{{ brand.account.label }}</span>
-                        <span v-if="brand.account.providerAccountId" class="font-mono">
+                    <div
+                        class="flex flex-wrap items-center gap-4 text-sm text-text-muted"
+                    >
+                        <span v-if="brand.account.label">{{
+                            brand.account.label
+                        }}</span>
+                        <span
+                            v-if="brand.account.providerAccountId"
+                            class="font-mono"
+                        >
                             {{ brand.account.providerAccountId }}
                         </span>
-                        <Badge v-if="brand.account.pendingOnboarding" variant="destructive">
+                        <Badge
+                            v-if="brand.account.pendingOnboarding"
+                            variant="destructive"
+                        >
                             onboarding not finished
                         </Badge>
                         <span v-else-if="brand.account.connectedAt">
@@ -159,7 +181,10 @@ const providerNames: Record<string, string> = {
                 </template>
 
                 <template v-else-if="connectingBrandId === brand.id">
-                    <form class="flex max-w-md flex-col gap-4" @submit.prevent="submitConnect">
+                    <form
+                        class="flex max-w-md flex-col gap-4"
+                        @submit.prevent="submitConnect"
+                    >
                         <div class="flex flex-col gap-2">
                             <Label for="provider">Provider</Label>
                             <Select v-model="form.provider">
@@ -167,15 +192,24 @@ const providerNames: Record<string, string> = {
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="stripe">Stripe</SelectItem>
-                                    <SelectItem value="mollie">Mollie</SelectItem>
+                                    <SelectItem value="stripe"
+                                        >Stripe</SelectItem
+                                    >
+                                    <SelectItem value="mollie"
+                                        >Mollie</SelectItem
+                                    >
                                     <SelectItem value="unzer">Unzer</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
 
-                        <div v-if="form.provider === 'stripe'" class="flex flex-col gap-2">
-                            <Label for="contact_email">Contact email for the Stripe account</Label>
+                        <div
+                            v-if="form.provider === 'stripe'"
+                            class="flex flex-col gap-2"
+                        >
+                            <Label for="contact_email"
+                                >Contact email for the Stripe account</Label
+                            >
                             <Input
                                 id="contact_email"
                                 v-model="form.contact_email"
@@ -184,38 +218,69 @@ const providerNames: Record<string, string> = {
                             />
                             <InputError :message="form.errors.contact_email" />
                             <p class="text-xs text-text-muted">
-                                Connecting opens Stripe's hosted onboarding for the
-                                organizer's own account.
+                                Connecting opens Stripe's hosted onboarding for
+                                the organizer's own account.
                             </p>
                         </div>
 
-                        <div v-if="form.provider === 'mollie'" class="flex flex-col gap-2">
+                        <div
+                            v-if="form.provider === 'mollie'"
+                            class="flex flex-col gap-2"
+                        >
                             <Label for="api_key">Mollie API key</Label>
-                            <Input id="api_key" v-model="form.api_key" type="password" autocomplete="off" />
+                            <Input
+                                id="api_key"
+                                v-model="form.api_key"
+                                type="password"
+                                autocomplete="off"
+                            />
                             <InputError :message="form.errors.api_key" />
                         </div>
 
-                        <div v-if="form.provider === 'unzer'" class="flex flex-col gap-2">
+                        <div
+                            v-if="form.provider === 'unzer'"
+                            class="flex flex-col gap-2"
+                        >
                             <Label for="private_key">Unzer private key</Label>
-                            <Input id="private_key" v-model="form.private_key" type="password" autocomplete="off" />
+                            <Input
+                                id="private_key"
+                                v-model="form.private_key"
+                                type="password"
+                                autocomplete="off"
+                            />
                             <InputError :message="form.errors.private_key" />
                         </div>
 
                         <InputError :message="form.errors.brand_id" />
 
                         <div class="flex items-center gap-3">
-                            <Button type="submit" :disabled="form.processing">Connect</Button>
-                            <Button type="button" variant="ghost" @click="connectingBrandId = null">
+                            <Button type="submit" :disabled="form.processing"
+                                >Connect</Button
+                            >
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                @click="connectingBrandId = null"
+                            >
                                 Cancel
                             </Button>
-                            <span v-if="form.isDirty" role="status" class="text-sm text-warning">
+                            <span
+                                v-if="form.isDirty"
+                                role="status"
+                                class="text-sm text-warning"
+                            >
                                 Unsaved changes
                             </span>
                         </div>
                     </form>
                 </template>
 
-                <Button v-else class="self-start" size="sm" @click="beginConnect(brand.id)">
+                <Button
+                    v-else
+                    class="self-start"
+                    size="sm"
+                    @click="beginConnect(brand.id)"
+                >
                     Connect a provider
                 </Button>
             </CardContent>

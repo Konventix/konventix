@@ -242,7 +242,7 @@ export default defineConfigWithVueTs(
         },
     },
     {
-        files: ['resources/js/**/*.{vue,ts,js}'],
+        files: ['resources/js/**/*.{vue,ts,js}', 'app-modules/*/resources/js/**/*.{vue,ts,js}'],
         plugins: {
             konventix: konventixPlugin,
         },

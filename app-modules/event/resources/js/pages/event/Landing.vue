@@ -38,7 +38,9 @@ defineOptions({ layout: noLayout });
     <div class="flex min-h-screen flex-col bg-surface text-text">
         <PublicTopbar :name="$page.props.name" />
 
-        <main class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-10 p-6 lg:p-8">
+        <main
+            class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-10 p-6 lg:p-8"
+        >
             <header class="flex flex-col gap-3">
                 <p
                     v-if="props.event.state === 'cancelled'"
@@ -52,7 +54,10 @@ defineOptions({ layout: noLayout });
                     {{ props.event.startsAt }} – {{ props.event.endsAt }}
                     <span class="text-xs">({{ props.event.timezone }})</span>
                 </p>
-                <p v-if="props.event.description" class="max-w-prose text-text-muted">
+                <p
+                    v-if="props.event.description"
+                    class="max-w-prose text-text-muted"
+                >
                     {{ props.event.description }}
                 </p>
             </header>
@@ -65,7 +70,9 @@ defineOptions({ layout: noLayout });
                         :key="day.date"
                         class="flex items-baseline gap-3 text-text-muted"
                     >
-                        <span class="font-medium text-text">Day {{ day.sequence }}</span>
+                        <span class="font-medium text-text"
+                            >Day {{ day.sequence }}</span
+                        >
                         <span>{{ day.date }}</span>
                         <span v-if="day.label">— {{ day.label }}</span>
                     </li>
@@ -87,7 +94,10 @@ defineOptions({ layout: noLayout });
                             <p class="font-medium">
                                 {{ venue.name }}
                                 <span
-                                    v-if="venue.isPrimary && props.venues.length > 1"
+                                    v-if="
+                                        venue.isPrimary &&
+                                        props.venues.length > 1
+                                    "
                                     class="ml-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs text-accent"
                                 >
                                     Main venue

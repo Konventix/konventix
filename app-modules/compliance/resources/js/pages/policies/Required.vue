@@ -64,8 +64,8 @@ function submit(): void {
             <header class="flex flex-col gap-2">
                 <h1 class="text-2xl font-semibold">Before you continue</h1>
                 <p class="text-sm text-text-muted">
-                    These documents changed, or you have not agreed to them
-                    yet. Please read and confirm each one.
+                    These documents changed, or you have not agreed to them yet.
+                    Please read and confirm each one.
                 </p>
             </header>
 

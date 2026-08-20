@@ -48,13 +48,11 @@ const segments = computed(() => [
             class="rounded-lg border border-border bg-surface-raised px-4 py-6 text-center shadow-sm"
         >
             <div
-                class="text-4xl font-semibold tabular-nums text-text sm:text-5xl"
+                class="text-4xl font-semibold text-text tabular-nums sm:text-5xl"
             >
                 {{ segment.value.toString().padStart(2, '0') }}
             </div>
-            <div
-                class="mt-2 text-xs tracking-wider text-text-muted uppercase"
-            >
+            <div class="mt-2 text-xs tracking-wider text-text-muted uppercase">
                 {{ segment.label }}
             </div>
         </div>

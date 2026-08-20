@@ -243,7 +243,9 @@ function openVersion(id: string): void {
                                         :disabled="!props.selected.editable"
                                     />
                                     <InputError
-                                        :message="versionForm.errors.effectiveAt"
+                                        :message="
+                                            versionForm.errors.effectiveAt
+                                        "
                                     />
                                 </div>
                             </div>

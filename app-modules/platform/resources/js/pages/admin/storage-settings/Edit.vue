@@ -58,7 +58,9 @@ function submit(): void {
         ...data,
         secretAccessKey:
             data.secretAccessKey === '' ? null : data.secretAccessKey,
-    })).put(updateStorageSettings(props.brand.id).url, { preserveScroll: true });
+    })).put(updateStorageSettings(props.brand.id).url, {
+        preserveScroll: true,
+    });
 }
 </script>
 

@@ -124,7 +124,8 @@ function submit(): void {
                                 :model-value="form.useCustomTransport"
                                 @update:model-value="
                                     (value: boolean | 'indeterminate') => {
-                                        form.useCustomTransport = value === true;
+                                        form.useCustomTransport =
+                                            value === true;
                                     }
                                 "
                             />
@@ -133,18 +134,23 @@ function submit(): void {
                             </Label>
                         </div>
                         <p class="text-xs text-text-muted">
-                            Unchecked, the brand sends through the
-                            application's default mailer. Deliverability and
-                            reputation are per sending domain — a brand with
-                            its own domain should bring its own transport.
+                            Unchecked, the brand sends through the application's
+                            default mailer. Deliverability and reputation are
+                            per sending domain — a brand with its own domain
+                            should bring its own transport.
                         </p>
 
                         <template v-if="form.useCustomTransport">
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <div class="grid gap-2">
                                     <Label for="smtp-host">Host</Label>
-                                    <Input id="smtp-host" v-model="form.smtpHost" />
-                                    <InputError :message="form.errors.smtpHost" />
+                                    <Input
+                                        id="smtp-host"
+                                        v-model="form.smtpHost"
+                                    />
+                                    <InputError
+                                        :message="form.errors.smtpHost"
+                                    />
                                 </div>
                                 <div class="grid gap-2">
                                     <Label for="smtp-port">Port</Label>
@@ -153,13 +159,20 @@ function submit(): void {
                                         v-model.number="form.smtpPort"
                                         type="number"
                                     />
-                                    <InputError :message="form.errors.smtpPort" />
+                                    <InputError
+                                        :message="form.errors.smtpPort"
+                                    />
                                 </div>
                             </div>
                             <div class="grid gap-2">
                                 <Label for="smtp-username">Username</Label>
-                                <Input id="smtp-username" v-model="form.smtpUsername" />
-                                <InputError :message="form.errors.smtpUsername" />
+                                <Input
+                                    id="smtp-username"
+                                    v-model="form.smtpUsername"
+                                />
+                                <InputError
+                                    :message="form.errors.smtpUsername"
+                                />
                             </div>
                             <div class="grid gap-2">
                                 <Label for="smtp-password">Password</Label>
@@ -174,7 +187,9 @@ function submit(): void {
                                     "
                                     autocomplete="new-password"
                                 />
-                                <InputError :message="form.errors.smtpPassword" />
+                                <InputError
+                                    :message="form.errors.smtpPassword"
+                                />
                             </div>
                             <div class="grid gap-2">
                                 <Label for="smtp-scheme">Scheme</Label>
@@ -184,7 +199,9 @@ function submit(): void {
                                     class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
                                 >
                                     <option :value="null">Automatic</option>
-                                    <option value="smtp">smtp (STARTTLS)</option>
+                                    <option value="smtp">
+                                        smtp (STARTTLS)
+                                    </option>
                                     <option value="smtps">smtps (TLS)</option>
                                 </select>
                                 <InputError :message="form.errors.smtpScheme" />
@@ -198,7 +215,11 @@ function submit(): void {
                 <Button type="submit" :disabled="form.processing">
                     Save mail settings
                 </Button>
-                <span v-if="form.isDirty" role="status" class="text-sm text-warning">
+                <span
+                    v-if="form.isDirty"
+                    role="status"
+                    class="text-sm text-warning"
+                >
                     Unsaved changes
                 </span>
             </div>

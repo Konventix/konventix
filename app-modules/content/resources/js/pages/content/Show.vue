@@ -4,6 +4,7 @@ import { ArrowLeft, Flag } from '@lucide/vue';
 import InputError from '@/components/InputError.vue';
 import PublicTopbar from '@/components/PublicTopbar.vue';
 import { Button } from '@/components/ui/button';
+import { noLayout } from '@/lib/layout';
 import { index as newsIndex } from '@/routes/content';
 import { report, store as storeComment } from '@/routes/content/comments';
 
@@ -49,6 +50,14 @@ function reportComment(commentId: string): void {
         { preserveScroll: true },
     );
 }
+
+/**
+ * A public page: it brings its own `PublicTopbar` and must not also be wrapped
+ * in the authenticated app shell. Event's `Landing.vue` has always opted out
+ * this way; these two never did, so a reader arriving from a search result got
+ * the signed-in chrome around a page meant for anyone.
+ */
+defineOptions({ layout: noLayout });
 </script>
 
 <template>
