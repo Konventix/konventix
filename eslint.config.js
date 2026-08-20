@@ -225,7 +225,11 @@ export default defineConfigWithVueTs(
             'public',
             'bootstrap/ssr',
             'tailwind.config.js',
+            // Build tooling, not application source: neither is in
+            // tsconfig's `include`, so the typed-lint project service has
+            // no program to check them against.
             'vite.config.ts',
+            'vitest.config.ts',
             'resources/js/actions/**',
             'resources/js/routes/**',
             'resources/js/wayfinder/**',
