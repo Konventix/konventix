@@ -122,6 +122,9 @@ it('installs sentry inert, so nothing leaves a development machine', function ()
     // Installed and wired into the exception handler, but with no DSN it
     // reports nowhere — which is the correct state until the data-protection
     // question behind a production DSN has an answer.
-    expect(config('sentry.dsn'))->toBeNull()
+    // Empty rather than strictly null: .env.example ships `SENTRY_LARAVEL_DSN=`,
+    // which reaches config as an empty string. Both mean the same thing —
+    // Sentry is wired in and reporting nowhere.
+    expect(config('sentry.dsn'))->toBeEmpty()
         ->and(config('sentry.send_default_pii'))->toBeFalse();
 });

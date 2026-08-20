@@ -60,16 +60,23 @@ final class DemoMessagingSeeder
 
         $factory = BrandMailSettings::factory();
 
-        // A brand on its own SMTP relay: the transport is shaped exactly like
-        // a `config('mail.mailers.*')` entry, which is what MailChannel hands
-        // to the mailer.
+        // A brand on its own relay (ADR-0028). What the demo has to show is
+        // that the *row* exists and that MailChannel sends through it rather
+        // than the application default — not any particular host.
+        //
+        // So the transport is a copy of whatever mailer this environment
+        // actually has, shaped exactly like the `config('mail.mailers.*')`
+        // entry MailChannel hands to the mailer. Hardcoding `mailpit:1025`
+        // made the seed dial a host that exists only in the dev compose
+        // stack: CI has no Mailpit, and every seed test died on a
+        // TransportException the moment the first message went out.
         if ($withOwnTransport) {
-            $factory = $factory->withTransport([
-                'transport' => 'smtp',
-                'host' => 'mailpit',
-                'port' => 1025,
-                'encryption' => null,
-            ]);
+            $default = (string) config('mail.default');
+
+            /** @var array<string, mixed> $transport */
+            $transport = config("mail.mailers.{$default}", ['transport' => 'array']);
+
+            $factory = $factory->withTransport($transport);
         }
 
         $factory->create([
