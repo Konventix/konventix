@@ -1,7 +1,12 @@
 <script setup lang="ts" generic="TData">
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from '@lucide/vue';
 import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table';
-import type { ColumnDef, SortingState, Updater } from '@tanstack/vue-table';
+import type {
+    Column,
+    ColumnDef,
+    SortingState,
+    Updater,
+} from '@tanstack/vue-table';
 import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 
@@ -29,7 +34,15 @@ const props = withDefaults(
         emptyMessage?: string;
         pagination?: DataTablePagination;
         itemsLabel?: string;
-        /** Highlights rows on hover and shows a pointer cursor when the parent listens for `rowClick`. */
+        /**
+         * Highlights rows on hover and shows a pointer cursor when the parent
+         * listens for `rowClick`.
+         *
+         * The row click is a mouse convenience and never the only way in: a
+         * `<tr>` cannot take focus, so a page that sets this must also render
+         * a real link to the same destination in one of the row's cells, or
+         * the destination is unreachable by keyboard (WCAG 2.1.1).
+         */
         rowClickable?: boolean;
     }>(),
     {
@@ -76,6 +89,26 @@ const table = useVueTable({
 });
 
 const hasPagination = computed(() => props.pagination !== undefined);
+
+/**
+ * `aria-sort` for a header cell. Only the sortable ones carry it at all —
+ * on a column that cannot be sorted the attribute would claim an
+ * unsorted-but-sortable column, which is a different statement.
+ */
+function ariaSort(
+    column: Column<TData, unknown>,
+): 'ascending' | 'descending' | 'none' | undefined {
+    if (!column.getCanSort()) {
+        return undefined;
+    }
+
+    return (
+        {
+            asc: 'ascending' as const,
+            desc: 'descending' as const,
+        }[column.getIsSorted() as 'asc' | 'desc'] ?? 'none'
+    );
+}
 </script>
 
 <template>
@@ -91,27 +124,29 @@ const hasPagination = computed(() => props.pagination !== undefined);
                         <th
                             v-for="header in headerGroup.headers"
                             :key="header.id"
+                            scope="col"
                             class="p-3 font-medium"
-                            :class="
-                                header.column.getCanSort()
-                                    ? 'cursor-pointer select-none'
-                                    : ''
-                            "
-                            @click="
-                                header.column.getCanSort()
-                                    ? header.column.toggleSorting()
-                                    : undefined
-                            "
+                            :aria-sort="ariaSort(header.column)"
                         >
-                            <span
-                                v-if="!header.isPlaceholder"
-                                class="inline-flex items-center gap-1"
-                            >
-                                <FlexRender
-                                    :render="header.column.columnDef.header"
-                                    :props="header.getContext()"
-                                />
-                                <template v-if="header.column.getCanSort()">
+                            <template v-if="!header.isPlaceholder">
+                                <!--
+                                    A sortable header is a button, not a
+                                    clickable cell: a `th` carrying a click
+                                    handler cannot be reached or fired from
+                                    the keyboard at all (WCAG 2.1.1), and
+                                    `aria-sort` on the cell is what announces
+                                    which way the column is ordered.
+                                -->
+                                <button
+                                    v-if="header.column.getCanSort()"
+                                    type="button"
+                                    class="inline-flex cursor-pointer items-center gap-1 select-none"
+                                    @click="header.column.toggleSorting()"
+                                >
+                                    <FlexRender
+                                        :render="header.column.columnDef.header"
+                                        :props="header.getContext()"
+                                    />
                                     <ChevronUp
                                         v-if="
                                             header.column.getIsSorted() ===
@@ -126,8 +161,17 @@ const hasPagination = computed(() => props.pagination !== undefined);
                                         "
                                         class="size-3.5"
                                     />
-                                </template>
-                            </span>
+                                </button>
+                                <span
+                                    v-else
+                                    class="inline-flex items-center gap-1"
+                                >
+                                    <FlexRender
+                                        :render="header.column.columnDef.header"
+                                        :props="header.getContext()"
+                                    />
+                                </span>
+                            </template>
                         </th>
                     </tr>
                 </thead>
@@ -189,6 +233,7 @@ const hasPagination = computed(() => props.pagination !== undefined);
                     @click="emit('update:page', pagination.currentPage - 1)"
                 >
                     <ChevronLeft class="size-4" />
+                    <span class="sr-only">Previous page</span>
                 </Button>
                 <span class="px-2 text-xs text-text-muted">
                     {{ pagination.currentPage }} / {{ pagination.lastPage }}
@@ -200,6 +245,7 @@ const hasPagination = computed(() => props.pagination !== undefined);
                     @click="emit('update:page', pagination.currentPage + 1)"
                 >
                     <ChevronRight class="size-4" />
+                    <span class="sr-only">Next page</span>
                 </Button>
             </div>
         </div>

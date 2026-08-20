@@ -38,11 +38,15 @@ defineProps<{ brands: BrandRow[] }>();
                         <tr
                             class="border-b border-border text-left text-text-muted"
                         >
-                            <th class="p-3 font-medium">Brand</th>
-                            <th class="p-3 font-medium">Sender</th>
-                            <th class="p-3 font-medium">Transport</th>
-                            <th class="p-3 font-medium">Timezone</th>
-                            <th class="p-3"></th>
+                            <th scope="col" class="p-3 font-medium">Brand</th>
+                            <th scope="col" class="p-3 font-medium">Sender</th>
+                            <th scope="col" class="p-3 font-medium">
+                                Transport
+                            </th>
+                            <th scope="col" class="p-3 font-medium">
+                                Timezone
+                            </th>
+                            <th scope="col" class="p-3"></th>
                         </tr>
                     </thead>
                     <tbody>

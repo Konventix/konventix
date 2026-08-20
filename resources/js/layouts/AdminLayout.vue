@@ -11,6 +11,7 @@ import { usePage } from '@inertiajs/vue3';
 import AdminSidebar from '@/components/admin/AdminSidebar.vue';
 import AppContent from '@/components/AppContent.vue';
 import AppSidebarHeader from '@/components/AppSidebarHeader.vue';
+import SkipToContent from '@/components/SkipToContent.vue';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/sonner';
 import type { BreadcrumbItem } from '@/types';
@@ -29,6 +30,7 @@ const isOpen = usePage().props.sidebarOpen;
 
 <template>
     <SidebarProvider :default-open="isOpen">
+        <SkipToContent />
         <AdminSidebar />
         <AppContent variant="sidebar" class="overflow-x-hidden">
             <AppSidebarHeader :breadcrumbs="breadcrumbs" />

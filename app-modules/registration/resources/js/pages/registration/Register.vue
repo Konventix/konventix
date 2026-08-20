@@ -42,6 +42,7 @@ const needsBillingAddress = props.settlement === 'invoice';
         <Card class="border-border bg-surface">
             <CardContent class="space-y-6 pt-6">
                 <Heading
+                    as="h1"
                     :title="props.name"
                     description="Complete the form below to submit your registration."
                 />

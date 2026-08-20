@@ -27,7 +27,17 @@ const { isCurrentUrl } = useCurrentUrl();
                     :is-active="isCurrentUrl(item.href)"
                     :tooltip="item.title"
                 >
-                    <Link :href="item.href">
+                    <!--
+                        `is-active` sets data-active, which styles the row and
+                        says nothing to a screen reader; aria-current is what
+                        announces "you are here" (WCAG 1.3.1).
+                    -->
+                    <Link
+                        :href="item.href"
+                        :aria-current="
+                            isCurrentUrl(item.href) ? 'page' : undefined
+                        "
+                    >
                         <component :is="item.icon" />
                         <span>{{ item.title }}</span>
                     </Link>

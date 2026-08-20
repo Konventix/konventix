@@ -187,6 +187,16 @@ interleave.
     same run, and it is the test that fails if an archetype ever grows a code
     path of its own inside a module.
 
+    The BFSG pass is **done** (2026-08-20), and it was not the contrast
+    sweep it sounded like — ADR-0008 had already put a guard on the tokens in
+    both schemes. What it found was keyboard access, concentrated in the
+    shared `DataTable`: no way to sort a column, unnamed pager arrows, and
+    three tables whose rows were reachable by mouse only. Fixed there, plus a
+    skip link in both shells, `aria-current` on the sidebar, and
+    `prefers-reduced-motion` in app.css. `.ai/rules/js.md` carries the rules
+    forward. Still owed: an assistive-technology run over the public pages,
+    which no amount of static reading substitutes for.
+
     CI with PostgreSQL is **done** (2026-08-20) — and it was not a
     formality. The pipeline had been failing on every commit for a long
     time: `composer setup` migrates, and no database service was defined.

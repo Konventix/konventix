@@ -94,10 +94,14 @@ watch(
                         <tr
                             class="border-b border-border text-left text-text-muted"
                         >
-                            <th class="p-3 font-medium">Type</th>
-                            <th class="p-3 text-right font-medium">Sold</th>
-                            <th class="p-3 text-right font-medium">Quota</th>
-                            <th class="p-3 text-right font-medium">
+                            <th scope="col" class="p-3 font-medium">Type</th>
+                            <th scope="col" class="p-3 text-right font-medium">
+                                Sold
+                            </th>
+                            <th scope="col" class="p-3 text-right font-medium">
+                                Quota
+                            </th>
+                            <th scope="col" class="p-3 text-right font-medium">
                                 Remaining
                             </th>
                         </tr>

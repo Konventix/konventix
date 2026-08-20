@@ -77,6 +77,21 @@ depends on brand resolution and gating working.
       (4.74:1). app.css and TokenCatalog were edited together, as that file's
       docblock requires.
 
+- [x] BFSG keyboard pass over the console (slice 16). Contrast had a guard
+      (ADR-0008) and nothing else did, and the gaps were all in one place: the
+      shared `DataTable`. Sortable column headers were `@click` on a `<th>` —
+      no keyboard access to sorting anywhere in the console; the pager's arrows
+      were icon-only `Button`s a screen reader announced as "button"; and
+      `rowClickable` was the *only* way into a brand, a user or an order,
+      which a `<tr>` cannot offer a keyboard at all. Sorting is a `<button>`
+      inside a `scope="col"` header with `aria-sort` now, the pager arrows have
+      names, and the three tables' first column is a real `<Link>` — which also
+      buys middle-click and open-in-new-tab. Both shells gained a skip link
+      (WCAG 2.4.1) over a `<main id="main-content" tabindex="-1">`, sidebar rows
+      announce `aria-current="page"`, and app.css honours
+      `prefers-reduced-motion`. Recorded in `.ai/rules/js.md`, because these are
+      the mistakes that get made again.
+
 - [x] Operator settings page (slice 15b): `/admin/settings/operator`, behind a
       new `platform.manage-operator` capability. The legal seller identity every
       invoice is issued under (ADR-0030) existed only as a seeder row — Commerce

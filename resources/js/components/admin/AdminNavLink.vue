@@ -31,7 +31,12 @@ const isActive = computed(() => isCurrentUrl(props.url));
 <template>
     <SidebarMenuItem>
         <SidebarMenuButton as-child :is-active="isActive" :tooltip="label">
-            <Link :href="url">
+            <!--
+                `is-active` sets data-active, which styles the row and says
+                nothing to a screen reader; aria-current is what announces
+                "you are here" (WCAG 1.3.1).
+            -->
+            <Link :href="url" :aria-current="isActive ? 'page' : undefined">
                 <component :is="icon" />
                 <span>{{ label }}</span>
             </Link>

@@ -251,3 +251,24 @@
         @apply bg-surface text-text;
     }
 }
+
+/*
+    Motion is a preference, not a decoration (WCAG 2.3.3 / prefers-reduced-motion
+    — BFSG). Transitions and the spinner/pulse keyframes run everywhere in the
+    console; a reader who has asked their system for less motion gets one frame
+    instead of none, because `animation: none` would freeze a loading spinner
+    mid-state and leave it looking broken rather than still.
+
+    `!important` is deliberate: these have to beat Tailwind's own utility
+    declarations, which are what set the durations in the first place.
+*/
+@media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

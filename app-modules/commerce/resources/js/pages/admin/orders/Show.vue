@@ -125,17 +125,31 @@ function submitBookPayment(): void {
                                 <tr
                                     class="border-b border-border text-left text-text-muted"
                                 >
-                                    <th class="p-3 font-medium">Item</th>
-                                    <th class="p-3 text-right font-medium">
+                                    <th scope="col" class="p-3 font-medium">
+                                        Item
+                                    </th>
+                                    <th
+                                        scope="col"
+                                        class="p-3 text-right font-medium"
+                                    >
                                         Qty
                                     </th>
-                                    <th class="p-3 text-right font-medium">
+                                    <th
+                                        scope="col"
+                                        class="p-3 text-right font-medium"
+                                    >
                                         Unit net
                                     </th>
-                                    <th class="p-3 text-right font-medium">
+                                    <th
+                                        scope="col"
+                                        class="p-3 text-right font-medium"
+                                    >
                                         Tax %
                                     </th>
-                                    <th class="p-3 text-right font-medium">
+                                    <th
+                                        scope="col"
+                                        class="p-3 text-right font-medium"
+                                    >
                                         Gross
                                     </th>
                                 </tr>
@@ -299,13 +313,24 @@ function submitBookPayment(): void {
                             <tr
                                 class="border-b border-border text-left text-text-muted"
                             >
-                                <th class="p-3 font-medium">Provider</th>
-                                <th class="p-3 font-medium">Status</th>
-                                <th class="p-3 text-right font-medium">
+                                <th scope="col" class="p-3 font-medium">
+                                    Provider
+                                </th>
+                                <th scope="col" class="p-3 font-medium">
+                                    Status
+                                </th>
+                                <th
+                                    scope="col"
+                                    class="p-3 text-right font-medium"
+                                >
                                     Amount
                                 </th>
-                                <th class="p-3 font-medium">Reference</th>
-                                <th class="p-3 font-medium">When</th>
+                                <th scope="col" class="p-3 font-medium">
+                                    Reference
+                                </th>
+                                <th scope="col" class="p-3 font-medium">
+                                    When
+                                </th>
                             </tr>
                         </thead>
                         <tbody>

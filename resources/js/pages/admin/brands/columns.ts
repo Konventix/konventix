@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
+import { edit as editBrand } from '@/routes/admin/brands';
 import { edit as editBrandTheme } from '@/routes/admin/brands/theme';
 
 export type BrandRow = {
@@ -19,8 +20,18 @@ export const columns: ColumnDef<BrandRow>[] = [
         accessorKey: 'name',
         header: 'Name',
         enableSorting: true,
+        // A link, not a span: the table's row click opens this same page,
+        // and a `<tr>` cannot take focus — without a real link here the
+        // brand is unreachable by keyboard (WCAG 2.1.1).
         cell: ({ row }) =>
-            h('span', { class: 'font-medium' }, row.getValue<string>('name')),
+            h(
+                Link,
+                {
+                    href: editBrand(row.original.id).url,
+                    class: 'font-medium underline-offset-4 hover:underline',
+                },
+                () => row.getValue<string>('name'),
+            ),
     },
     {
         accessorKey: 'slug',

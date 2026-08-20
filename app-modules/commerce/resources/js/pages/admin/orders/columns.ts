@@ -1,5 +1,7 @@
+import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
+import { show as showOrder } from '@/routes/admin/orders';
 
 export type OrderRow = {
     id: string;
@@ -41,11 +43,19 @@ export const columns: ColumnDef<OrderRow>[] = [
         id: 'invoice',
         header: 'Invoice',
         enableSorting: false,
+        // A link, not a span: the table's row click opens this same page,
+        // and a `<tr>` cannot take focus — without a real link here the
+        // order is unreachable by keyboard (WCAG 2.1.1). An order without an
+        // invoice yet still needs the way in, so the number falls back to the
+        // label the row would otherwise show nothing for.
         cell: ({ row }) =>
             h(
-                'span',
-                { class: 'font-medium' },
-                row.original.invoice?.number ?? '—',
+                Link,
+                {
+                    href: showOrder(row.original.id).url,
+                    class: 'font-medium underline-offset-4 hover:underline',
+                },
+                () => row.original.invoice?.number ?? 'Open order',
             ),
     },
     {

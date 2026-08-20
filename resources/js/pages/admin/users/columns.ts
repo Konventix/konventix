@@ -1,6 +1,8 @@
+import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
 import { Badge } from '@/components/ui/badge';
+import { edit as editUser } from '@/routes/admin/users';
 
 export type UserRow = {
     id: string;
@@ -20,8 +22,18 @@ export const columns: ColumnDef<UserRow>[] = [
         accessorKey: 'name',
         header: 'Name',
         enableSorting: true,
+        // A link, not a span: the table's row click opens this same page,
+        // and a `<tr>` cannot take focus — without a real link here the
+        // account is unreachable by keyboard (WCAG 2.1.1).
         cell: ({ row }) =>
-            h('span', { class: 'font-medium' }, row.getValue<string>('name')),
+            h(
+                Link,
+                {
+                    href: editUser(row.original.id).url,
+                    class: 'font-medium underline-offset-4 hover:underline',
+                },
+                () => row.getValue<string>('name'),
+            ),
     },
     {
         accessorKey: 'email',

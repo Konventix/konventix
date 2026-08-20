@@ -38,11 +38,17 @@ defineProps<{ brands: BrandRow[]; deploymentDisk: string }>();
                         <tr
                             class="border-b border-border text-left text-text-muted"
                         >
-                            <th class="p-3 font-medium">Brand</th>
-                            <th class="p-3 font-medium">New uploads go to</th>
-                            <th class="p-3 font-medium">Delivery</th>
-                            <th class="p-3 font-medium">Files in own bucket</th>
-                            <th class="p-3"></th>
+                            <th scope="col" class="p-3 font-medium">Brand</th>
+                            <th scope="col" class="p-3 font-medium">
+                                New uploads go to
+                            </th>
+                            <th scope="col" class="p-3 font-medium">
+                                Delivery
+                            </th>
+                            <th scope="col" class="p-3 font-medium">
+                                Files in own bucket
+                            </th>
+                            <th scope="col" class="p-3"></th>
                         </tr>
                     </thead>
                     <tbody>
