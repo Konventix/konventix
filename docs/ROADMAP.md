@@ -23,8 +23,15 @@ Proven:
       **TLS is out of scope (decided 2026-08-19).** Konventix runs behind a
       reverse proxy that terminates TLS and is not part of this application,
       so the production Caddyfile wiring `on_demand_tls` to `/caddy/ask` is
-      no longer owed — and no such endpoint was ever built. Certificate
-      issuance for a newly added brand domain becomes that proxy's business.
+      no longer owed. Certificate issuance for a newly added brand domain
+      becomes that proxy's business.
+
+      The `/caddy/ask` endpoint itself does exist and stays
+      (`CaddyAskController`, tested): it answers 200 for a host some brand or
+      the operator console actually answers on and 404 for everything else,
+      which is what stops a server from minting certificates for any domain
+      pointed at it. A proxy that wants on-demand TLS can use it; writing
+      that proxy's config is not this repository's job.
 
       What the application owes instead is already done: it trusts the
       proxy's forwarded headers (`config/trustedproxy.php`), including
@@ -174,12 +181,13 @@ interleave.
 
 16. Hardening + dry run: `konventix:seed` for both event archetypes, BFSG
     pass, then SXLan and Xpertise rehearsed end-to-end on seeded data.
+    **Done** (2026-08-20).
 
-    Both archetypes are **done** (2026-08-20). `EventArchetype` gives every
-    seeded brand one of two shapes — a LAN party or a trade fair — and the
-    difference between them is configuration only: which gateable modules are
-    on, what the venues and days are called, what the registration catalogue
-    offers, and what is bookable on the floor. SXLan seeds Players and
+    The archetypes: `EventArchetype` gives every seeded brand one of two
+    shapes — a LAN party or a trade fair — and the difference between them is
+    configuration only: which gateable modules are on, what the venues and
+    days are called, what the registration catalogue offers, and what is
+    bookable on the floor. SXLan seeds Players and
     Sponsors against a seat grid with tournaments; Xpertise seeds Visitors and
     Exhibitors against booth rows and meeting rooms with Competition switched
     off, which is the first time the seed has demonstrated the ADR-0003 gate
@@ -187,8 +195,7 @@ interleave.
     same run, and it is the test that fails if an archetype ever grows a code
     path of its own inside a module.
 
-    The BFSG pass is **done** (2026-08-20), and it was not the contrast
-    sweep it sounded like — ADR-0008 had already put a guard on the tokens in
+    The BFSG pass was not the contrast sweep it sounded like — ADR-0008 had already put a guard on the tokens in
     both schemes. What it found was keyboard access, concentrated in the
     shared `DataTable`: no way to sort a column, unnamed pager arrows, and
     three tables whose rows were reachable by mouse only. Fixed there, plus a
@@ -196,6 +203,29 @@ interleave.
     `prefers-reduced-motion` in app.css. `.ai/rules/js.md` carries the rules
     forward. Still owed: an assistive-technology run over the public pages,
     which no amount of static reading substitutes for.
+
+    The dry run is a test rather than a session of clicking, so it stays
+    true. `tests/Feature/DryRunTest.php`
+    seeds both archetypes and then requests every named GET route the router
+    holds: the console once (it is the operator's, not a brand's), the public
+    and account screens once per archetype. Route parameters are resolved from
+    the seeded data, so the pages are rendered against what the real Actions
+    produced rather than against fixtures written to suit them.
+
+    Two details make it worth more than a smoke test. The route table is the
+    input, not a list somebody maintains, so a screen added without a thought
+    for seeded data fails the day it lands; and the console is pinned to 200
+    exactly, because the operator admin holds every capability and a redirect
+    there is an authorization refusal wearing a success code — which is what a
+    renamed permission looks like from the outside. Everything skipped is
+    skipped by name with the reason beside it: the Steam round trip, the
+    device-token entrance API, the proxy's certificate ask, the emailed
+    one-time links, and the packages' own dashboards.
+
+    It found no broken screen on its first honest run. What it did find was
+    that two exports need a period before they will answer and the checkout
+    page 404s for a registration that never produced an order — both correct
+    behaviour, both now written down in the test rather than rediscovered.
 
     CI with PostgreSQL is **done** (2026-08-20) — and it was not a
     formality. The pipeline had been failing on every commit for a long

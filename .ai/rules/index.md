@@ -16,4 +16,4 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/**, app-modules/*/resources/** | .ai/rules/resources.md |
 | app-modules/*/src/Social/** | .ai/rules/social.md |
 | app-modules/** | .ai/rules/src.md |
-| app-modules/*/tests/** | .ai/rules/tests.md |
+| app-modules/*/tests/**, tests/** | .ai/rules/tests.md |
