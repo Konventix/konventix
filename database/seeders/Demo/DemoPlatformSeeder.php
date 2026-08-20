@@ -22,10 +22,10 @@ use Konventix\Platform\Modules\ModuleGate;
  * tokens, per-brand module activation, the brand's own roles with real
  * capability grants, and the operator admin's console favorites.
  *
- * Module activation is seeded, not assumed (ADR-0003): a gateable module
- * with domain code behind it is switched on so its data is reachable, and
- * the placeholder modules stay off — which is also what makes the gate
- * demonstrable, since the brand page then shows both states.
+ * Module activation is seeded, not assumed (ADR-0003): the archetype says
+ * which gateable modules a brand runs, and the placeholder modules stay off
+ * — which is also what makes the gate demonstrable, since the brand page
+ * then shows both states, and the two seeded brands do not agree on them.
  *
  * Brand storage settings are deliberately NOT seeded. `Storage\DiskResolver`
  * routes a brand's media to its configured bucket, so a seeded S3/Garage
@@ -35,14 +35,6 @@ use Konventix\Platform\Modules\ModuleGate;
  */
 final class DemoPlatformSeeder
 {
-    /**
-     * Gateable modules with a domain behind them (the rest are scaffolds).
-     * Kernel and Core modules are always on and never appear here.
-     *
-     * @var list<string>
-     */
-    private const array ACTIVE_MODULES = ['competition', 'resources', 'staffing'];
-
     /**
      * Accent colours per brand slug, so the seeded brands are visually
      * distinct the moment you switch domains. Values are checked against the
@@ -70,10 +62,10 @@ final class DemoPlatformSeeder
         private readonly ModuleGate $gate,
     ) {}
 
-    public function handle(Brand $brand): void
+    public function handle(Brand $brand, EventArchetype $archetype): void
     {
         $this->seedTheme($brand);
-        $this->seedModuleActivation($brand);
+        $this->seedModuleActivation($brand, $archetype);
     }
 
     /**
@@ -171,14 +163,21 @@ final class DemoPlatformSeeder
         ]));
     }
 
-    private function seedModuleActivation(Brand $brand): void
+    /**
+     * Which gateable modules are on is the archetype's call: a trade fair
+     * runs no tournaments, so Competition stays off for it and every
+     * listener behind that gate short-circuits (ADR-0003). Modules without a
+     * domain behind them are off everywhere.
+     */
+    private function seedModuleActivation(Brand $brand, EventArchetype $archetype): void
     {
         $gateable = $this->gate->gateableModuleNames();
+        $active = $archetype->activeModules();
 
         $this->updateModules->handle($brand, array_combine(
             $gateable,
             array_map(
-                fn (string $module): bool => in_array($module, self::ACTIVE_MODULES, true),
+                fn (string $module): bool => in_array($module, $active, true),
                 $gateable,
             ),
         ));

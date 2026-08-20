@@ -16,10 +16,11 @@ use Konventix\Resources\Models\ResourceEventWindow;
 use Konventix\Resources\Models\ResourceType;
 
 /**
- * The bookable inventory: seats on the floor, exhibitor booths, and a
- * quantity-mode locker bank — one of each capacity mode (ADR-0034), because
- * the two are enforced by different mechanisms and a demo that only shows
- * `unit` hides half the module.
+ * The bookable inventory the archetype declares: a LAN's seat grid, a fair's
+ * booth rows and meeting rooms, and a quantity-mode locker bank in both —
+ * every catalogue carries each capacity mode (ADR-0034), because the two are
+ * enforced by different mechanisms and a demo that only shows `unit` hides
+ * half the module.
  *
  * The catalogue is seeded *before* registrations on purpose. A confirmed
  * registration whose type grants a `resource_claim` books its resource
@@ -34,44 +35,69 @@ use Konventix\Resources\Models\ResourceType;
  */
 final class DemoResourcesSeeder
 {
-    private const int SEAT_COUNT = 24;
-
-    private const int BOOTH_COUNT = 6;
-
     public function __construct(
         private readonly HoldResourceBooking $hold,
         private readonly ConfirmResourceBooking $confirm,
     ) {}
 
     /**
-     * The booth type, which the exhibitor registration type grants a claim
-     * on. Seats and lockers are seeded too but nothing references them by
-     * id — they exist to be booked from the plan.
+     * The claimed type — a booth in both archetypes — which the trade
+     * registration type grants a claim on. Everything else in the catalogue
+     * is seeded too but nothing references it by id: those exist to be booked
+     * from the plan.
      */
-    public function seedCatalogue(Event $event): ResourceType
+    public function seedCatalogue(Event $event, EventArchetype $archetype): ResourceType
     {
-        $seats = $this->resourceType($event, 'Seat', CapacityMode::Unit, holdMinutes: 20);
-        $this->seedUnits($seats, self::SEAT_COUNT, fn (int $index): string => sprintf(
-            '%s-%02d',
-            $this->rowLetter(intdiv($index - 1, 8)),
-            (($index - 1) % 8) + 1,
-        ));
+        $types = [];
 
-        $booths = $this->resourceType($event, 'Booth', CapacityMode::Unit, holdMinutes: 60);
-        $this->seedUnits($booths, self::BOOTH_COUNT, fn (int $index): string => 'Booth '.$index);
+        foreach ($archetype->resourceCatalogue() as $definition) {
+            $type = $this->resourceType(
+                $event,
+                $definition['name'],
+                $definition['mode'],
+                holdMinutes: $definition['holdMinutes'],
+            );
 
-        // Quantity mode: one row carrying capacity, guarded by a summed
-        // overlap check rather than by exclusivity.
-        $lockers = $this->resourceType($event, 'Locker', CapacityMode::Quantity, holdMinutes: 30);
-        $this->seedUnits($lockers, 1, fn (): string => 'Locker bank', capacity: 50);
+            $this->seedUnits(
+                $type,
+                $definition['count'],
+                $this->labeller($definition['name'], $definition['labels']),
+                capacity: $definition['capacity'],
+            );
 
-        return $booths;
+            $types[$definition['name']] = $type;
+        }
+
+        // Every catalogue carries the claimed type; the archetype enum is
+        // what guarantees it, so a missing one is a programming error rather
+        // than a state the seed should paper over.
+        return $types[$archetype->claimedResourceTypeName()];
+    }
+
+    /**
+     * How a type's units are named. A seat grid reads as rows and numbers, a
+     * booth row as a running count, and a quantity-mode row is a single
+     * bank whose capacity is the interesting number.
+     *
+     * @return callable(int): string
+     */
+    private function labeller(string $name, string $style): callable
+    {
+        return match ($style) {
+            'grid' => fn (int $index): string => sprintf(
+                '%s-%02d',
+                $this->rowLetter(intdiv($index - 1, 8)),
+                (($index - 1) % 8) + 1,
+            ),
+            'bank' => fn (): string => $name.' bank',
+            default => fn (int $index): string => $name.' '.$index,
+        };
     }
 
     /**
      * The row letter for a seat grid line. Wraps at `Z` rather than walking
      * off the end of the alphabet into control characters, so the label stays
-     * a label whatever `SEAT_COUNT` is set to.
+     * a label whatever the catalogue's seat count is.
      */
     private function rowLetter(int $row): string
     {
@@ -81,13 +107,14 @@ final class DemoResourcesSeeder
     }
 
     /**
-     * A handful of seat bookings for real registrations, so the plan is not
-     * uniformly free. Confirmed and held are both represented: a held
+     * A handful of bookings on the archetype's floor plan — seats at a LAN,
+     * meeting rooms at a fair — held by real registrations, so the plan is
+     * not uniformly free. Confirmed and held are both represented: a held
      * booking is what the hold-expiry sweep exists for.
      *
      * @param  Collection<int, string>  $registrationIds
      */
-    public function seedSeatBookings(Event $event, Collection $registrationIds): void
+    public function seedFloorPlanBookings(Event $event, Collection $registrationIds, EventArchetype $archetype): void
     {
         $window = ResourceEventWindow::forEvent($event->brand_id, $event->getKey());
 
@@ -95,7 +122,10 @@ final class DemoResourcesSeeder
             return;
         }
 
-        $type = ResourceType::query()->firstWhere('slug', $this->slug($event, 'Seat'));
+        $type = ResourceType::query()->firstWhere(
+            'slug',
+            $this->slug($event, $archetype->floorPlanResourceTypeName()),
+        );
 
         if ($type === null) {
             return;
@@ -113,11 +143,11 @@ final class DemoResourcesSeeder
         $holders = $registrationIds->values();
 
         $free->take($holders->count())->each(
-            function (Resource $seat, int $index) use ($holders, $window): void {
+            function (Resource $bookable, int $index) use ($holders, $window): void {
                 $registrationId = (string) $holders->get($index);
 
                 $booking = $this->hold->handle(
-                    resource: $seat,
+                    resource: $bookable,
                     holderType: ResourceBooking::HOLDER_REGISTRATION,
                     holderId: $registrationId,
                     startsAt: $window->starts_at,

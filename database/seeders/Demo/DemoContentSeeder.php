@@ -50,7 +50,7 @@ final class DemoContentSeeder
     /**
      * @param  Collection<int, User>  $members
      */
-    public function handle(Brand $brand, ?Event $event, Collection $members): void
+    public function handle(Brand $brand, ?Event $event, Collection $members, EventArchetype $archetype): void
     {
         $author = $members->first();
 
@@ -58,12 +58,14 @@ final class DemoContentSeeder
             return;
         }
 
+        $leadStory = $archetype->leadStory($brand->name);
+
         $lineup = $this->seedEntry(
             $brand,
             $author,
             type: ContentType::News,
-            title: 'The '.$brand->name.' line-up is live',
-            teaser: 'Three days, two halls, one very long weekend.',
+            title: $leadStory['title'],
+            teaser: $leadStory['teaser'],
             eventId: $event?->getKey(),
             commentsEnabled: true,
             publish: true,

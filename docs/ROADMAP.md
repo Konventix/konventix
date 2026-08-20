@@ -175,6 +175,18 @@ interleave.
 16. Hardening + dry run: `konventix:seed` for both event archetypes, BFSG
     pass, then SXLan and Xpertise rehearsed end-to-end on seeded data.
 
+    Both archetypes are **done** (2026-08-20). `EventArchetype` gives every
+    seeded brand one of two shapes — a LAN party or a trade fair — and the
+    difference between them is configuration only: which gateable modules are
+    on, what the venues and days are called, what the registration catalogue
+    offers, and what is bookable on the floor. SXLan seeds Players and
+    Sponsors against a seat grid with tournaments; Xpertise seeds Visitors and
+    Exhibitors against booth rows and meeting rooms with Competition switched
+    off, which is the first time the seed has demonstrated the ADR-0003 gate
+    rather than just described it. A test asserts both shapes come out of the
+    same run, and it is the test that fails if an archetype ever grows a code
+    path of its own inside a module.
+
     CI with PostgreSQL is **done** (2026-08-20) — and it was not a
     formality. The pipeline had been failing on every commit for a long
     time: `composer setup` migrates, and no database service was defined.

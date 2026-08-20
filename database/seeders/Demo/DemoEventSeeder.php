@@ -61,47 +61,31 @@ final class DemoEventSeeder
      *
      * @return Collection<int, Event>
      */
-    public function handle(Brand $brand, int $eventCount): Collection
+    public function handle(Brand $brand, int $eventCount, EventArchetype $archetype): Collection
     {
-        $venues = $this->seedVenues($brand);
+        $venues = $this->seedVenues($brand, $archetype);
 
         $live = collect(range(1, max(1, $eventCount)))
-            ->map(fn (int $index): Event => $this->seedLiveEvent($brand, $venues, $index))
+            ->map(fn (int $index): Event => $this->seedLiveEvent($brand, $venues, $index, $archetype))
             ->sortBy(fn (Event $event): string => $event->starts_at->toDateTimeString())
             ->values();
 
-        $this->seedConcludedEvent($brand, $venues);
-        $this->seedDraftEvent($brand, $venues);
+        $this->seedConcludedEvent($brand, $venues, $archetype);
+        $this->seedDraftEvent($brand, $venues, $archetype);
 
         return $live;
     }
 
     /**
-     * Two venues per brand: the main hall every event is assigned to, and a
-     * second one so the venue picker has a choice to make.
+     * Two venues per brand, named by the archetype: the main hall every
+     * event is assigned to, and a second one so the venue picker has a
+     * choice to make.
      *
      * @return Collection<int, Venue>
      */
-    private function seedVenues(Brand $brand): Collection
+    private function seedVenues(Brand $brand, EventArchetype $archetype): Collection
     {
-        $definitions = [
-            [
-                'name' => "{$brand->name} Messehalle",
-                'addressLine1' => 'Messeplatz 1',
-                'postalCode' => '30521',
-                'city' => 'Hannover',
-                'accessNotes' => 'Loading bay on the north side, open from 06:00.',
-            ],
-            [
-                'name' => "{$brand->name} Kulturzentrum",
-                'addressLine1' => 'Bahnhofstraße 12',
-                'postalCode' => '20095',
-                'city' => 'Hamburg',
-                'accessNotes' => null,
-            ],
-        ];
-
-        return collect($definitions)->map(function (array $definition) use ($brand): Venue {
+        return collect($archetype->venues($brand->name))->map(function (array $definition) use ($brand): Venue {
             $existing = Venue::query()->firstWhere('name', $definition['name']);
 
             if ($existing !== null) {
@@ -125,7 +109,7 @@ final class DemoEventSeeder
     /**
      * @param  Collection<int, Venue>  $venues
      */
-    private function seedLiveEvent(Brand $brand, Collection $venues, int $index): Event
+    private function seedLiveEvent(Brand $brand, Collection $venues, int $index, EventArchetype $archetype): Event
     {
         $year = now()->year + ($index - 1);
         $isCurrent = $index === 1;
@@ -145,7 +129,8 @@ final class DemoEventSeeder
             name: "{$brand->name} {$year}",
             slug: Str::slug($brand->name).'-'.$year,
             startsAt: $startsAt,
-            description: "The {$year} edition — three days of {$brand->name}.",
+            description: $archetype->eventDescription($brand->name, $year),
+            archetype: $archetype,
         );
 
         if ($event->state === EventLifecycleState::Draft) {
@@ -168,7 +153,7 @@ final class DemoEventSeeder
      *
      * @param  Collection<int, Venue>  $venues
      */
-    private function seedConcludedEvent(Brand $brand, Collection $venues): void
+    private function seedConcludedEvent(Brand $brand, Collection $venues, EventArchetype $archetype): void
     {
         $year = now()->year - 1;
 
@@ -178,6 +163,7 @@ final class DemoEventSeeder
             slug: Str::slug($brand->name).'-'.$year,
             startsAt: now()->subMonths(9)->startOfDay()->setTime(10, 0),
             description: "The {$year} edition — wrapped, archived, and remembered fondly.",
+            archetype: $archetype,
         );
 
         $this->assignPrimaryVenue($event, $venues);
@@ -202,7 +188,7 @@ final class DemoEventSeeder
      *
      * @param  Collection<int, Venue>  $venues
      */
-    private function seedDraftEvent(Brand $brand, Collection $venues): void
+    private function seedDraftEvent(Brand $brand, Collection $venues, EventArchetype $archetype): void
     {
         $year = now()->year + 5;
 
@@ -212,6 +198,7 @@ final class DemoEventSeeder
             slug: Str::slug($brand->name).'-'.$year,
             startsAt: now()->addYears(5)->startOfDay()->setTime(10, 0),
             description: 'Pencilled in. Nothing announced yet.',
+            archetype: $archetype,
             visibility: EventVisibility::Unlisted,
         );
 
@@ -228,6 +215,7 @@ final class DemoEventSeeder
         string $slug,
         CarbonInterface $startsAt,
         string $description,
+        EventArchetype $archetype,
         EventVisibility $visibility = EventVisibility::Public,
     ): Event {
         $existing = Event::query()->firstWhere('slug', $slug);
@@ -250,19 +238,20 @@ final class DemoEventSeeder
                 visibility: $visibility,
                 reentryPolicy: ReentryPolicy::Unlimited,
             ),
-            $this->days($startsAt),
+            $this->days($startsAt, $archetype),
         );
     }
 
     /**
-     * One row per calendar day, labelled the way a programme would be — the
-     * day set Admission binds per-day validity and check-ins to.
+     * One row per calendar day, labelled the way the archetype's programme
+     * would name them — the day set Admission binds per-day validity and
+     * check-ins to.
      *
      * @return list<array{date: string, label: string|null}>
      */
-    private function days(CarbonInterface $startsAt): array
+    private function days(CarbonInterface $startsAt, EventArchetype $archetype): array
     {
-        $labels = ['Opening day', 'Main day', 'Finals & teardown'];
+        $labels = $archetype->dayLabels();
 
         return array_map(
             fn (int $offset): array => [

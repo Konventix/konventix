@@ -85,10 +85,10 @@ function mediaDiskNameForTest(): string
  *
  * Helper name prefixed — Pest helpers are process-global (.ai/rules/tests.md).
  */
-function seedDemoDataForTest(object $test, int $registrations = 12, int $events = 1): void
+function seedDemoDataForTest(object $test, int $registrations = 12, int $events = 1, int $brands = 1): void
 {
     $test->artisan('konventix:seed')
-        ->expectsQuestion('How many brands (besides the dev brand)?', '1')
+        ->expectsQuestion('How many brands (besides the dev brand)?', (string) $brands)
         ->expectsQuestion('How many users per brand?', '20')
         ->expectsQuestion('How many events per brand?', (string) $events)
         ->expectsQuestion('How many registrations per event?', (string) $registrations)
@@ -110,6 +110,11 @@ function seededDemoBrandForTest(): Brand
     return Brand::query()->firstWhere('slug', 'sxlan');
 }
 
+function seededDemoFairBrandForTest(): Brand
+{
+    return Brand::query()->firstWhere('slug', 'xpertise');
+}
+
 /**
  * @return Builder<Event>
  */
@@ -122,8 +127,9 @@ function seededDemoEventsForTest(Brand $brand)
  * The demo seed's commerce slice runs through the real settlement chain
  * (ADR-0006): a priced Supporter registration must yield an order and an
  * invoice, and the alternating manual payment must leave both paid and
- * pending orders behind. Invoice-settled Exhibitor registrations add their
- * own orders on top, and one paid order carries a credit note.
+ * pending orders behind. The archetype's invoice-settled trade type — Sponsor
+ * at a LAN — adds its own orders on top, and one paid order carries a credit
+ * note.
  */
 it('seeds orders, invoices and payments through the settlement chain', function () {
     releaseLocalhostForTest();
@@ -135,7 +141,7 @@ it('seeds orders, invoices and payments through the settlement chain', function 
         ->and($brand->operator_id)->not->toBeNull();
 
     // 6 registrations / 3 = 2 supporters (index 0 paid, index 1 pending),
-    // plus 2 invoice-settled exhibitors.
+    // plus 2 invoice-settled sponsors.
     $orders = Order::withoutBrandScope()->where('brand_id', $brand->getKey())->get();
     expect($orders)->toHaveCount(4)
         ->and($orders->where('status', OrderStatus::Paid))->toHaveCount(1)
@@ -164,6 +170,92 @@ it('seeds orders, invoices and payments through the settlement chain', function 
             ->where('brand_id', $brand->getKey())
             ->where('name', 'Supporter')
             ->count())->toBe(1);
+});
+
+/**
+ * The definition of done names two events, and they are not the same shape:
+ * SXLan is a LAN party, Xpertise a trade fair. Both must come out of the same
+ * seed with no code path of their own — everything that differs between them
+ * is configuration a brand's own operator could enter by hand
+ * (`EventArchetype`).
+ *
+ * This is the test that would fail if an archetype ever grew a branch inside
+ * a module instead of a value in the enum.
+ */
+it('seeds a LAN party and a trade fair from the same code', function () {
+    releaseLocalhostForTest();
+
+    seedDemoDataForTest($this, registrations: 12, brands: 2);
+
+    $lan = seededDemoBrandForTest();
+    $fair = seededDemoFairBrandForTest();
+
+    expect($lan)->not->toBeNull()
+        ->and($fair)->not->toBeNull();
+
+    // Module activation is the one structural difference (ADR-0003): a trade
+    // fair runs no tournaments, so the gate is closed for it — which is also
+    // the only way a seed demonstrates the gate at all.
+    $gate = app(ModuleGate::class);
+    expect(Feature::for($lan)->active($gate->featureName('competition')))->toBeTrue()
+        ->and(Feature::for($fair)->active($gate->featureName('competition')))->toBeFalse()
+        // Everything else they agree on.
+        ->and(Feature::for($fair)->active($gate->featureName('resources')))->toBeTrue()
+        ->and(Feature::for($fair)->active($gate->featureName('staffing')))->toBeTrue();
+
+    // Nothing was seeded behind the closed gate.
+    expect(Entrant::withoutBrandScope()->where('brand_id', $fair->getKey())->count())->toBe(0)
+        ->and(Entrant::withoutBrandScope()->where('brand_id', $lan->getKey())->count())->toBeGreaterThan(0);
+
+    $lanEvent = seededDemoEventsForTest($lan)->firstWhere('state', EventLifecycleState::Running);
+    $fairEvent = seededDemoEventsForTest($fair)->firstWhere('state', EventLifecycleState::Running);
+
+    // The catalogue: players and sponsors against visitors and exhibitors.
+    $lanTypes = RegistrationType::withoutBrandScope()->where('event_id', $lanEvent->getKey())->pluck('name');
+    $fairTypes = RegistrationType::withoutBrandScope()->where('event_id', $fairEvent->getKey())->pluck('name');
+
+    expect($lanTypes)->toContain('Player', 'Sponsor')
+        ->and($lanTypes)->not->toContain('Visitor', 'Exhibitor')
+        ->and($fairTypes)->toContain('Visitor', 'Exhibitor')
+        ->and($fairTypes)->not->toContain('Player', 'Sponsor')
+        // The shared half of the catalogue is shared.
+        ->and($lanTypes)->toContain('Crew', 'Late bird', 'Supporter')
+        ->and($fairTypes)->toContain('Crew', 'Late bird', 'Supporter');
+
+    // The floor: a seat grid against booth rows and meeting rooms. Both carry
+    // a booth, because that is what the trade type's resource claim binds to.
+    $lanResources = ResourceType::withoutBrandScope()->where('event_id', $lanEvent->getKey())->pluck('name');
+    $fairResources = ResourceType::withoutBrandScope()->where('event_id', $fairEvent->getKey())->pluck('name');
+
+    expect($lanResources)->toContain('Seat', 'Booth', 'Locker')
+        ->and($fairResources)->toContain('Booth', 'Meeting room', 'Locker')
+        ->and($fairResources)->not->toContain('Seat');
+
+    // A claim was fulfilled on both floors, whatever the noun.
+    expect(ResourceBooking::withoutBrandScope()
+        ->where('brand_id', $fair->getKey())
+        ->whereNotNull('registration_id')
+        ->count())->toBeGreaterThan(0);
+
+    // Venues and day labels read like the event they belong to.
+    expect(Venue::withoutBrandScope()->where('brand_id', $lan->getKey())->pluck('name'))
+        ->toContain('SXLan Arena')
+        ->and(Venue::withoutBrandScope()->where('brand_id', $fair->getKey())->pluck('name'))
+        ->toContain('Xpertise Messehalle');
+
+    expect(EventDay::withoutBrandScope()->where('event_id', $lanEvent->getKey())->pluck('label'))
+        ->toContain('Doors & seating')
+        ->and(EventDay::withoutBrandScope()->where('event_id', $fairEvent->getKey())->pluck('label'))
+        ->toContain('Public day');
+
+    // The roster's second team is the one that differs.
+    expect(Team::withoutBrandScope()->where('event_id', $lanEvent->getKey())->pluck('name'))
+        ->toContain('Entrance', 'Bar')
+        ->and(Team::withoutBrandScope()->where('event_id', $fairEvent->getKey())->pluck('name'))
+        ->toContain('Entrance', 'Info desk');
+
+    // Both fairs settle money through the same chain; only the price differs.
+    expect(Invoice::withoutBrandScope()->where('brand_id', $fair->getKey())->count())->toBeGreaterThan(0);
 });
 
 /**
@@ -320,7 +412,9 @@ it('seeds registration states, waitlists and invitation tokens', function () {
         ->where('event_id', $live->getKey())
         ->pluck('name');
 
-    expect($types)->toContain('Visitor', 'Crew', 'Exhibitor', 'Late bird', 'Supporter');
+    // SXLan seeds as the LAN archetype: players and sponsors, not visitors
+    // and exhibitors. The machinery behind them is the same either way.
+    expect($types)->toContain('Player', 'Crew', 'Sponsor', 'Late bird', 'Supporter');
 
     $registrations = Registration::withoutBrandScope()->where('event_id', $live->getKey())->get();
 
@@ -391,12 +485,14 @@ it('seeds resources, staffing and a played tournament', function () {
     $brand = seededDemoBrandForTest();
     $live = seededDemoEventsForTest($brand)->firstWhere('state', EventLifecycleState::Running);
 
-    // Both capacity modes, and seats booked through the real hold/confirm pair.
-    expect(Resource::withoutBrandScope()->where('brand_id', $brand->getKey())->count())->toBe(31);
+    // The LAN catalogue: a 24-seat grid, four sponsor booths and one
+    // quantity-mode locker bank — both capacity modes, seats booked through
+    // the real hold/confirm pair.
+    expect(Resource::withoutBrandScope()->where('brand_id', $brand->getKey())->count())->toBe(29);
 
     $bookings = ResourceBooking::withoutBrandScope()->where('brand_id', $brand->getKey())->get();
     expect($bookings)->not->toBeEmpty()
-        // The exhibitor's booth came from a resource_claim grant, not from here.
+        // The sponsor's booth came from a resource_claim grant, not from here.
         ->and($bookings->whereNotNull('registration_id'))->not->toBeEmpty();
 
     // Two teams, three shifts, and people signed up for them.

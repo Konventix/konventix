@@ -19,6 +19,7 @@ use Database\Seeders\Demo\DemoResourcesSeeder;
 use Database\Seeders\Demo\DemoStaffingSeeder;
 use Database\Seeders\Demo\DemoStaticPageSeeder;
 use Database\Seeders\Demo\DemoUserSeeder;
+use Database\Seeders\Demo\EventArchetype;
 use Illuminate\Console\Command;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Support\Collection;
@@ -65,6 +66,12 @@ use Spatie\Permission\PermissionRegistrar;
  *    claim has something to be fulfilled against.
  * 5. Registrations before admission, staffing and competition, all of which
  *    hang off people who actually hold one.
+ *
+ * Each brand is seeded as one of two archetypes (`EventArchetype`) — a LAN
+ * party or a trade fair, the two shapes the definition of done names. Only
+ * configuration differs between them; if a slice below ever needs a branch
+ * of its own, that is a modelling failure to fix in the module rather than
+ * here.
  *
  * Everything runs through the production Actions rather than writing rows,
  * so the demo data is the output of the same code paths a real event uses.
@@ -137,7 +144,16 @@ class SeedDemoDataCommand extends Command
         $brands = $this->seedBrands($brandCount, $operator);
 
         foreach ($brands->values() as $index => $brand) {
-            $this->seedBrand($brand, $index, $usersPerBrand, $eventsPerBrand, $registrationsPerEvent, $admin, $operator);
+            $this->seedBrand(
+                $brand,
+                $index,
+                EventArchetype::forBrandSlug($brand->slug, $index),
+                $usersPerBrand,
+                $eventsPerBrand,
+                $registrationsPerEvent,
+                $admin,
+                $operator,
+            );
         }
 
         // Console favorites are not brand-owned (ADR-0029), so they are
@@ -273,18 +289,19 @@ class SeedDemoDataCommand extends Command
     private function seedBrand(
         Brand $brand,
         int $index,
+        EventArchetype $archetype,
         int $users,
         int $events,
         int $registrationsPerEvent,
         ?User $admin,
         ?Operator $operator,
     ): void {
-        info("Seeding {$brand->name}…");
+        info("Seeding {$brand->name} ({$archetype->label()})…");
 
         // First: theme and module activation. A gated module's listeners
         // short-circuit for a brand the feature is off for, so switching them
         // on afterwards would leave every projection behind them empty.
-        $this->inBrand($brand, fn () => $this->platform->handle($brand));
+        $this->inBrand($brand, fn () => $this->platform->handle($brand, $archetype));
 
         $members = $this->inBrand($brand, fn (): Collection => $this->seedUsers($brand, $users));
 
@@ -300,16 +317,16 @@ class SeedDemoDataCommand extends Command
         // application mailer (ADR-0028) — both paths visible in one seed.
         $this->inBrand($brand, fn () => $this->messaging->handle($brand, $members, withOwnTransport: $index === 0));
 
-        $seededEvents = $this->inBrand($brand, fn (): Collection => $this->events->handle($brand, $events));
+        $seededEvents = $this->inBrand($brand, fn (): Collection => $this->events->handle($brand, $events, $archetype));
 
         foreach ($seededEvents as $event) {
-            $this->seedEvent($brand, $event, $members, $registrationsPerEvent, $media, $admin);
+            $this->seedEvent($brand, $event, $archetype, $members, $registrationsPerEvent, $media, $admin);
         }
 
         $firstEvent = $seededEvents->first();
 
         $this->inBrand($brand, fn () => $this->compliance->handle($brand, $members));
-        $this->inBrand($brand, fn () => $this->content->handle($brand, $firstEvent, $members));
+        $this->inBrand($brand, fn () => $this->content->handle($brand, $firstEvent, $members, $archetype));
         $this->inBrand($brand, fn () => $this->staticPages->handle($brand, $firstEvent, $media));
     }
 
@@ -380,6 +397,7 @@ class SeedDemoDataCommand extends Command
     private function seedEvent(
         Brand $brand,
         Event $event,
+        EventArchetype $archetype,
         Collection $members,
         int $registrationsPerEvent,
         array $media,
@@ -388,7 +406,7 @@ class SeedDemoDataCommand extends Command
         // Before registrations: a confirmed exhibitor's booth claim fails
         // soft when the resource type does not exist yet, and the exhibitor
         // would silently end up with no booth.
-        $boothType = $this->inBrand($brand, fn (): ResourceType => $this->resources->seedCatalogue($event));
+        $boothType = $this->inBrand($brand, fn (): ResourceType => $this->resources->seedCatalogue($event, $archetype));
 
         $confirmed = $this->inBrand($brand, fn (): Collection => $this->registrations->handle(
             $event,
@@ -396,15 +414,26 @@ class SeedDemoDataCommand extends Command
             $registrationsPerEvent,
             $boothType,
             $admin,
+            $archetype,
         ));
 
         $this->inBrand($brand, fn () => $this->commerce->handle($brand, $event, $members, $registrationsPerEvent));
 
         $this->inBrand($brand, fn () => $this->admission->handle($event, $media));
-        $this->inBrand($brand, fn () => $this->staffing->handle($event, $members));
-        $this->inBrand($brand, fn () => $this->competition->handle($event, $confirmed));
+        $this->inBrand($brand, fn () => $this->staffing->handle($event, $members, $archetype));
 
-        $this->inBrand($brand, fn () => $this->resources->seedSeatBookings($event, $confirmed->pluck('id')));
+        // A trade fair runs no tournaments, and the module is off for it
+        // (ADR-0003) — seeding one anyway would produce rows behind a closed
+        // gate that no screen in the console can reach.
+        if ($archetype->runsCompetition()) {
+            $this->inBrand($brand, fn () => $this->competition->handle($event, $confirmed));
+        }
+
+        $this->inBrand($brand, fn () => $this->resources->seedFloorPlanBookings(
+            $event,
+            $confirmed->pluck('id'),
+            $archetype,
+        ));
     }
 
     /**

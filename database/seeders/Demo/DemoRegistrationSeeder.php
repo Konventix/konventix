@@ -36,12 +36,17 @@ use Konventix\Resources\Models\ResourceType;
  * type whose quota runs out so the waitlist has a reason to exist. The
  * priced/invoice-settled axis lives in the commerce slice next door.
  *
+ * Two of the four are named by the archetype: a LAN sells seats to Players
+ * and a corner to Sponsors, a fair lets Visitors in and sells floor space to
+ * Exhibitors. The machinery underneath is the same either way, which is
+ * exactly the claim the two seeded brands exist to make.
+ *
  * The end state is deliberately messy: pending approvals, a rejection, a
  * cancellation, an amendment and a queued waitlist. A screen full of
  * uniformly confirmed rows demonstrates nothing.
  *
- * Idempotent per event: the whole block is skipped when the Visitor type is
- * already there, because re-running would double-consume quota.
+ * Idempotent per event: each block is skipped when its type is already
+ * there, because re-running would double-consume quota.
  */
 final class DemoRegistrationSeeder
 {
@@ -71,19 +76,20 @@ final class DemoRegistrationSeeder
         int $registrations,
         ?ResourceType $boothType,
         ?User $approver,
+        EventArchetype $archetype,
     ): Collection {
-        $visitor = $this->visitorType($event, $registrations);
+        $attendee = $this->attendeeType($event, $registrations, $archetype);
 
         if ($members->isEmpty() || $registrations === 0) {
             return collect();
         }
 
-        $this->seedVisitors($visitor, $members, $registrations);
+        $this->seedAttendees($attendee, $members, $registrations);
         $this->seedCrew($event, $members, $approver);
-        $this->seedExhibitors($event, $members, $boothType);
+        $this->seedTradeRegistrations($event, $members, $boothType, $archetype);
         $this->seedLateBirds($event, $members);
-        $this->seedAmendment($visitor);
-        $this->seedCancellation($visitor, $approver);
+        $this->seedAmendment($attendee, $archetype);
+        $this->seedCancellation($attendee, $approver);
 
         return Registration::query()
             ->where('event_id', $event->getKey())
@@ -92,14 +98,17 @@ final class DemoRegistrationSeeder
     }
 
     /**
-     * The plain public type, plus the event's headline quota. Returned even
-     * when it already existed, since the later slices key off it.
+     * The plain public type — Player or Visitor, by archetype — plus the
+     * event's headline quota. Returned even when it already existed, since
+     * the later slices key off it.
      */
-    private function visitorType(Event $event, int $registrations): RegistrationType
+    private function attendeeType(Event $event, int $registrations, EventArchetype $archetype): RegistrationType
     {
+        $catalogue = $archetype->registrationCatalogue();
+
         $existing = RegistrationType::query()
             ->where('event_id', $event->getKey())
-            ->firstWhere('name', 'Visitor');
+            ->firstWhere('name', $catalogue['attendeeType']);
 
         if ($existing !== null) {
             return $existing;
@@ -107,24 +116,24 @@ final class DemoRegistrationSeeder
 
         $quota = Quota::factory()
             ->withCapacity(max($registrations * 2, 50))
-            ->create(['name' => 'Visitor places']);
+            ->create(['name' => $catalogue['attendeeQuota']]);
 
-        $visitor = RegistrationType::factory()
+        $attendee = RegistrationType::factory()
             ->forEvent($event->getKey())
-            ->create(['name' => 'Visitor']);
+            ->create(['name' => $catalogue['attendeeType']]);
 
-        $visitor->quotas()->attach($quota);
+        $attendee->quotas()->attach($quota);
 
-        return $visitor;
+        return $attendee;
     }
 
     /**
      * @param  Collection<int, User>  $members
      */
-    private function seedVisitors(RegistrationType $visitor, Collection $members, int $registrations): void
+    private function seedAttendees(RegistrationType $attendee, Collection $members, int $registrations): void
     {
         $alreadySubmitted = Registration::query()
-            ->where('registration_type_id', $visitor->getKey())
+            ->where('registration_type_id', $attendee->getKey())
             ->exists();
 
         if ($alreadySubmitted) {
@@ -132,7 +141,7 @@ final class DemoRegistrationSeeder
         }
 
         $members->random(min($registrations, $members->count()))
-            ->each(fn (User $user) => $this->submit->handle($visitor, $user->getKey(), $this->plainForm()));
+            ->each(fn (User $user) => $this->submit->handle($attendee, $user->getKey(), $this->plainForm()));
     }
 
     /**
@@ -176,22 +185,30 @@ final class DemoRegistrationSeeder
     /**
      * Invite-only, invoice-settled, and granting a booth: the one type that
      * exercises invitation tokens, a billing party and a resource claim at
-     * once. Two tokens are seeded — one single-use and already spent, one
-     * open — so the token screen shows both halves of the lifecycle.
+     * once. A fair calls them Exhibitors and charges accordingly; a LAN
+     * calls them Sponsors. Two tokens are seeded — one single-use and
+     * already spent, one open — so the token screen shows both halves of the
+     * lifecycle.
      *
      * @param  Collection<int, User>  $members
      */
-    private function seedExhibitors(Event $event, Collection $members, ?ResourceType $boothType): void
-    {
+    private function seedTradeRegistrations(
+        Event $event,
+        Collection $members,
+        ?ResourceType $boothType,
+        EventArchetype $archetype,
+    ): void {
+        $catalogue = $archetype->registrationCatalogue();
+
         $existing = RegistrationType::query()
             ->where('event_id', $event->getKey())
-            ->firstWhere('name', 'Exhibitor');
+            ->firstWhere('name', $catalogue['tradeType']);
 
         if ($existing !== null) {
             return;
         }
 
-        $grants = [new GrantData(kind: GrantKind::Admission, role: 'exhibitor', quantity: 2)];
+        $grants = [new GrantData(kind: GrantKind::Admission, role: $catalogue['tradeRole'], quantity: 2)];
 
         if ($boothType !== null) {
             $grants[] = new GrantData(
@@ -202,32 +219,32 @@ final class DemoRegistrationSeeder
             );
         }
 
-        $exhibitor = RegistrationType::factory()
+        $tradeType = RegistrationType::factory()
             ->forEvent($event->getKey())
             ->inviteOnly()
             ->settlement(RegistrationSettlement::Invoice)
-            ->priced(unitAmountNet: '450.00')
+            ->priced(unitAmountNet: $catalogue['tradePriceNet'])
             ->withGrants($grants)
-            ->create(['name' => 'Exhibitor', 'terms_days' => 30]);
+            ->create(['name' => $catalogue['tradeType'], 'terms_days' => 30]);
 
         // One personal single-use invite that the seed then spends, and one
         // open multi-use invite that stays live — the two halves of the
         // token lifecycle, both visible on the type's screen.
-        $personal = InvitationToken::factory()->forType($exhibitor)->singleUse()->create([
+        $personal = InvitationToken::factory()->forType($tradeType)->singleUse()->create([
             'label' => 'Musterfirma GmbH',
         ]);
 
-        $open = InvitationToken::factory()->forType($exhibitor)->create([
-            'label' => 'Open exhibitor invite',
+        $open = InvitationToken::factory()->forType($tradeType)->create([
+            'label' => 'Open '.$catalogue['tradeRole'].' invite',
             'expires_at' => now()->addMonths(2),
         ]);
 
         // Invite-only means invite-only: every submission carries a token,
         // exactly as the public form would.
         $members->random(min(2, $members->count()))->values()
-            ->each(function (User $user, int $index) use ($exhibitor, $personal, $open): void {
+            ->each(function (User $user, int $index) use ($tradeType, $personal, $open): void {
                 $this->submit->handle(
-                    $exhibitor,
+                    $tradeType,
                     $user->getKey(),
                     $this->billingForm($user, organization: fake()->company()),
                     invitationToken: $index === 0 ? $personal->token : $open->token,
@@ -288,11 +305,11 @@ final class DemoRegistrationSeeder
      * charge. Free on purpose — a priced amendment opens a second order, and
      * commerce's own slice covers that path.
      */
-    private function seedAmendment(RegistrationType $visitor): void
+    private function seedAmendment(RegistrationType $attendee, EventArchetype $archetype): void
     {
         /** @var Registration|null $registration */
         $registration = Registration::query()
-            ->where('registration_type_id', $visitor->getKey())
+            ->where('registration_type_id', $attendee->getKey())
             ->where('status', RegistrationStatus::Confirmed)
             ->first();
 
@@ -310,7 +327,11 @@ final class DemoRegistrationSeeder
 
         $this->amend->handle(
             $registration,
-            [new GrantData(kind: GrantKind::Admission, role: 'visitor', quantity: 1)],
+            [new GrantData(
+                kind: GrantKind::Admission,
+                role: strtolower($archetype->registrationCatalogue()['attendeeType']),
+                quantity: 1,
+            )],
             note: 'Partner badge added at the registrant\'s request.',
         );
     }
@@ -319,14 +340,14 @@ final class DemoRegistrationSeeder
      * One cancellation, so the quota-release path has run at least once and
      * the registrations list is not uniformly confirmed.
      */
-    private function seedCancellation(RegistrationType $visitor, ?User $actor): void
+    private function seedCancellation(RegistrationType $attendee, ?User $actor): void
     {
         if ($actor === null) {
             return;
         }
 
         $alreadyCancelled = Registration::query()
-            ->where('registration_type_id', $visitor->getKey())
+            ->where('registration_type_id', $attendee->getKey())
             ->where('status', RegistrationStatus::Cancelled)
             ->exists();
 
@@ -336,7 +357,7 @@ final class DemoRegistrationSeeder
 
         /** @var Registration|null $registration */
         $registration = Registration::query()
-            ->where('registration_type_id', $visitor->getKey())
+            ->where('registration_type_id', $attendee->getKey())
             ->where('status', RegistrationStatus::Confirmed)
             ->latest('submitted_at')
             ->first();

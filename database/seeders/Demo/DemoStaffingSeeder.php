@@ -21,9 +21,10 @@ use Konventix\Staffing\Models\Team;
  * The two teams differ on the one axis that matters (D-STF-01): the entrance
  * team is self-service, so a claim is accepted immediately and emits
  * `AssignmentAccepted` — which is what makes Admission issue a crew badge
- * without any registration behind it. The bar team requires approval, so its
- * claims sit as offers until a lead confirms them, and one is left
- * outstanding so the approval queue is not empty.
+ * without any registration behind it. The second team requires approval, so
+ * its claims sit as offers until a lead confirms them, and one is left
+ * outstanding so the approval queue is not empty. Which team that is comes
+ * from the archetype: a LAN staffs a bar, a fair staffs an info desk.
  *
  * Everything goes through `ClaimShiftRole`, headcount guard included: an
  * over-subscribed role refuses, exactly as it does on the sign-up page.
@@ -40,34 +41,36 @@ final class DemoStaffingSeeder
     /**
      * @param  Collection<int, User>  $members
      */
-    public function handle(Event $event, Collection $members): void
+    public function handle(Event $event, Collection $members, EventArchetype $archetype): void
     {
         if (Team::query()->where('event_id', $event->getKey())->exists()) {
             return;
         }
+
+        $plan = $archetype->staffingPlan();
 
         $entrance = Team::factory()->forEvent($event->getKey())->create([
             'name' => 'Entrance',
             'area' => 'front-of-house',
         ]);
 
-        $bar = Team::factory()->forEvent($event->getKey())->requiringApproval()->create([
-            'name' => 'Bar',
+        $support = Team::factory()->forEvent($event->getKey())->requiringApproval()->create([
+            'name' => $plan['supportTeam'],
             'area' => 'front-of-house',
         ]);
 
-        $selfService = $this->seedShift($entrance, $event, 'Doors — opening day', dayOffset: 0, roles: [
+        $selfService = $this->seedShift($entrance, $event, $plan['doorsShift'], dayOffset: 0, roles: [
             ['name' => 'Scanner', 'admission_role' => 'crew', 'required_headcount' => 3],
             ['name' => 'Queue lead', 'admission_role' => 'crew', 'required_headcount' => 1],
         ]);
 
-        $approved = $this->seedShift($bar, $event, 'Evening bar', dayOffset: 1, roles: [
-            ['name' => 'Bartender', 'admission_role' => 'crew', 'required_headcount' => 2],
+        $approved = $this->seedShift($support, $event, $plan['supportShift'], dayOffset: 1, roles: [
+            ['name' => $plan['supportRole'], 'admission_role' => 'crew', 'required_headcount' => 2],
         ]);
 
         // A shift nobody can sign up for yet: drafting a plan before
         // publishing it is the normal way a lead works.
-        $this->seedShift($bar, $event, 'Teardown', dayOffset: 2, published: false, roles: [
+        $this->seedShift($support, $event, 'Teardown', dayOffset: 2, published: false, roles: [
             ['name' => 'Runner', 'admission_role' => 'crew', 'required_headcount' => 4],
         ]);
 
