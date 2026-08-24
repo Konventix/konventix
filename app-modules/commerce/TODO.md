@@ -24,10 +24,6 @@
 - [ ] Mollie/Unzer key validation at connect time: the key is stored and
       trusted; a typo surfaces at the first checkout, not in the connect
       form. Validate with a cheap authenticated API call before saving.
-- [ ] Nothing surfaces the pay link (`/pay/registration/{ulid}`) to the
-      payer yet: Registration's post-submit page and the Messaging
-      confirmation mail should carry it for `instant` types. Registration
-      needs only the ULID it already has.
 - [ ] The checkout page pays the *latest* order for a registration
       (ADR-0036): if an unpaid initial order coexists with an unpaid
       amendment delta, only the newest is reachable. Fine while amendments
@@ -73,6 +69,30 @@
       ranges.
 
 ## Done
+
+- [x] The pay link and the invoice reach the person who owes for them.
+      `/pay/registration/{ulid}` and the archived PDF both worked and
+      neither had an inbound route in the UI. Commerce contributes them to
+      Registration's own account page through the `registration.mine.show`
+      slot, which is the only direction the boundary allows: an order is
+      keyed by `settles_type`/`settles_id`, so this module cannot resolve
+      "whose orders are these" without reading Registration's tables
+      (ADR-0004) — but asked about one registration whose ownership the
+      caller has already checked, it can answer completely. The PDF
+      download is a temporary signed link minted during that same render,
+      because the download is a separate request Commerce could not
+      authorize on its own.
+
+- [ ] The confirmation mail still does not carry the pay link. The account
+      page does now (see Done), but a payer who never comes back to the site
+      has nothing to click — and `instant` settlement is exactly the case
+      where they might not.
+
+- [ ] A standalone "my orders/invoices" list is still not buildable, and
+      for the same reason the GDPR handler below is not: it needs the payer
+      read model, which is the open decision the ROADMAP carries. The slot
+      above answers "what did this registration cost"; nothing yet answers
+      "show me everything I owe".
 
 - [x] Slice 7c — bookkeeping export (ADR-0040). Interview decisions: both
       formats (DATEV Buchungsstapel + readable CSV journal), SKR03

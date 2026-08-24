@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { CircleUser, LogOut, Settings } from '@lucide/vue';
+import { computed } from 'vue';
 import {
     DropdownMenuGroup,
     DropdownMenuItem,
@@ -8,6 +9,7 @@ import {
     DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import UserInfo from '@/components/UserInfo.vue';
+import { iconFor } from '@/lib/navIcons';
 import { logout } from '@/routes';
 import { edit as editProfile } from '@/routes/profile';
 import { index as settingsIndex } from '@/routes/settings';
@@ -31,10 +33,27 @@ const { variant = 'menu' } = defineProps<Props>();
 
 const emit = defineEmits<{ logout: [] }>();
 
-const entries = [
+const page = usePage();
+
+/**
+ * Two static entries the host owns, and whatever the modules contributed to
+ * `AREA_ACCOUNT` — "my registrations", "my orders". The module entries come
+ * first: they are the reason someone opens this menu, and the profile and
+ * settings forms are the housekeeping underneath them.
+ *
+ * They carry no capability of their own, and need none: this menu renders
+ * only for a signed-in user, and each destination authorizes against that
+ * user's own rows.
+ */
+const entries = computed(() => [
+    ...(page.props.accountNav ?? []).map((item) => ({
+        label: item.label,
+        href: item.url,
+        icon: iconFor(item.icon),
+    })),
     { label: 'Account', href: editProfile(), icon: CircleUser },
     { label: 'Settings', href: settingsIndex(), icon: Settings },
-];
+]);
 </script>
 
 <template>

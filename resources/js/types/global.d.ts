@@ -20,6 +20,7 @@ declare module '@inertiajs/core' {
             name: string;
             brand: Konventix.Platform.Data.BrandIdentityData;
             nav: BrandNavItem[];
+            accountNav: BrandNavItem[];
             footer: {
                 links: Konventix.Platform.Data.FooterLinkData[];
                 version: string | null;

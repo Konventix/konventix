@@ -6,12 +6,17 @@ namespace Konventix\Commerce\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\URL;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
+use Konventix\Commerce\Data\RegistrationSettlementData;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
 use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
+use Konventix\Commerce\Models\Invoice;
+use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\ManualSettlementAdapter;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
@@ -31,6 +36,7 @@ use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
 use RuntimeException;
@@ -182,6 +188,69 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
             defaultLocale: 'de',
         ));
+    }
+
+    /**
+     * What a registration cost and whether it is settled, contributed to
+     * Registration's own account page.
+     *
+     * This is the only direction that works. An order is keyed by
+     * `settles_type`/`settles_id`, so Commerce cannot resolve "which orders
+     * belong to this person" without reading Registration's tables (ADR-0004
+     * forbids it — the same boundary that leaves this module without a GDPR
+     * handler). Asked about one registration whose ownership the caller has
+     * already established, it can answer completely. A standalone "my
+     * invoices" list still cannot be built this way and still needs the
+     * payer read model the ROADMAP carries as an open decision.
+     *
+     * `static` because SlotRegistry is a singleton that outlives the request
+     * under Octane, and a closure capturing `$this` would pin this provider
+     * in memory with it.
+     */
+    protected function registerSlots(): void
+    {
+        $this->app->make(SlotRegistry::class)->add(
+            slot: 'registration.mine.show',
+            module: 'commerce',
+            component: 'commerce/RegistrationSettlement',
+            props: static function (array $context): array {
+                // ADR-0036 made "one order per registration" false; the one
+                // that matters to the payer is the newest.
+                $order = Order::query()
+                    ->where('settles_type', 'registration')
+                    ->where('settles_id', $context['registrationId'])
+                    ->latest('created_at')
+                    ->first();
+
+                if ($order === null) {
+                    // Free settlement creates no order at all (ADR-0026), so
+                    // "nothing here" is the correct and common answer.
+                    return ['settlement' => null];
+                }
+
+                $invoice = Invoice::query()
+                    ->where('order_id', $order->getKey())
+                    ->latest('issued_on')
+                    ->first();
+
+                return [
+                    'settlement' => RegistrationSettlementData::ofOrder(
+                        $order,
+                        $invoice,
+                        payUrl: $order->status === OrderStatus::Pending
+                            ? route('commerce.pay.show', ['registration' => $context['registrationId']], absolute: false)
+                            : null,
+                        documentUrl: $invoice?->document_path === null ? null : URL::temporarySignedRoute(
+                            'commerce.my.invoice.document',
+                            now()->addMinutes(30),
+                            ['invoice' => $invoice->getKey()],
+                            absolute: false,
+                        ),
+                    )->toArray(),
+                ];
+            },
+            order: 10,
+        );
     }
 
     protected function registerNavigation(): void

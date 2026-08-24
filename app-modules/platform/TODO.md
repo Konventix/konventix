@@ -67,6 +67,12 @@ depends on brand resolution and gating working.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] A third navigation area, `AREA_ACCOUNT`, for the signed-in account's
+      own things — rendered in the account menu rather than the topbar, and
+      shared only when there is a user to render it for. A separate area
+      rather than a flag on the brand one: these entries need no capability
+      precisely because the menu holding them never renders for a guest.
+
 - [x] `SlotRegistry` contributions may pass a closure instead of a literal
       prop-bag, which the rendering controller resolves with that page's
       context. The admin dashboards' cards fetch their own data client-side

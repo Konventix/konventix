@@ -17,13 +17,22 @@ class NavigationItem
     public const AREA_ADMIN = 'admin';
 
     /**
+     * The signed-in account's own things — "my registrations", "my orders".
+     * A third area rather than a flag on the brand one: these entries belong
+     * in the account menu, not the topbar, and they are only ever rendered
+     * for a user who is already signed in, which is what makes it safe for
+     * them to carry no `permission` of their own.
+     */
+    public const AREA_ACCOUNT = 'account';
+
+    /**
      * @param  string  $module  the owning module, used to gate visibility
      * @param  string  $label  translation key or literal label
      * @param  string  $url  resolved URL; build it with Wayfinder helpers
      * @param  string|null  $icon  icon identifier the shell understands
      * @param  int  $order  lower sorts first
      * @param  string|null  $permission  capability required to see the entry
-     * @param  string  $area  which shell shows it: brand app or operator admin (ADR-0029)
+     * @param  string  $area  which shell shows it: brand topbar, account menu, or operator admin (ADR-0029)
      */
     public function __construct(
         public readonly string $module,

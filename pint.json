@@ -11,5 +11,8 @@
         "bootstrap/cache",
         "storage",
         "vendor"
+    ],
+    "notName": [
+        "frankenphp-worker.php"
     ]
 }

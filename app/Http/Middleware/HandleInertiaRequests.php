@@ -77,6 +77,15 @@ class HandleInertiaRequests extends Middleware
                     ->map(fn (NavigationItem $item): array => $item->toArray())
                     ->all()
                 : [],
+            // The signed-in account's own entries, rendered in the account
+            // menu rather than the topbar. Empty for a guest, so the menu
+            // that never renders for one costs no queries either.
+            'accountNav' => $request->user() !== null && app(BrandContext::class)->current() !== null
+                ? app(NavigationRegistry::class)
+                    ->visible(NavigationItem::AREA_ACCOUNT)
+                    ->map(fn (NavigationItem $item): array => $item->toArray())
+                    ->all()
+                : [],
             // Operator console shell data (ADR-0029): only present on the
             // admin host, capability-filtered by the registry.
             'admin' => app(OperatorContext::class)->hasOperator() ? [

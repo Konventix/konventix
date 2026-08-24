@@ -90,6 +90,18 @@ class RegistrationServiceProvider extends ModuleServiceProvider
     protected function registerNavigation(): void
     {
         $this->app->make(NavigationRegistry::class)->add(
+            // The registrant's own, in the account menu. No `permission`,
+            // and none is missing: the menu renders only for a signed-in
+            // user and the controller authorizes on ownership, which is not
+            // a capability anybody can be granted.
+            new NavigationItem(
+                module: 'registration',
+                label: 'My registrations',
+                url: '/my/registrations',
+                icon: 'ticket',
+                order: 10,
+                area: NavigationItem::AREA_ACCOUNT,
+            ),
             new NavigationItem(
                 module: 'registration',
                 label: 'Registrations',

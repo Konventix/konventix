@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
@@ -84,6 +85,12 @@ function dryRunSkippedRoutes(): array
         // Their own tests mint one.
         'password.reset' => 'needs a password-reset token',
         'verification.verify' => 'needs a signed verification link',
+
+        // Same shape: the signature *is* the authorization, minted during a
+        // render that established ownership (see MyInvoiceDocumentController).
+        // A URL built from route parameters alone cannot carry one.
+        // `RegistrationSettlementSlotTest` follows a real minted link.
+        'commerce.my.invoice.document' => 'needs a signed download link',
     ];
 }
 
@@ -151,23 +158,36 @@ function dryRunSeed(object $test): void
  * @return array<string, mixed>|null
  */
 /**
- * The seeded subject request whose archive can actually be downloaded, and
- * the only one the dry run addresses — see the `subjectRequest` case below.
+ * Seeded subject requests whose archive can actually be downloaded. Anything
+ * else answers 404 on the download route rather than rendering the screen
+ * under test.
+ *
+ * @return Builder<DataSubjectRequest>
  */
-function dryRunDownloadableRequest(Brand $brand): ?DataSubjectRequest
+function dryRunDownloadableRequests(Brand $brand): Builder
 {
     return DataSubjectRequest::withoutBrandScope()
         ->where('brand_id', $brand->getKey())
         ->whereNotNull('archive_path')
         ->whereNotNull('archive_disk')
-        ->where(fn ($query) => $query->whereNull('archive_expires_at')->orWhere('archive_expires_at', '>', now()))
-        ->orderBy('id')
-        ->first();
+        ->where(fn (Builder $query) => $query->whereNull('archive_expires_at')->orWhere('archive_expires_at', '>', now()));
 }
 
-function dryRunParameters(RoutingRoute $route, Brand $brand): ?array
+function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = null): ?array
 {
     $name = (string) $route->getName();
+
+    // The registrant's own registration: the controller authorizes on
+    // ownership and 403s for anyone else, so this may not be "any
+    // registration of this brand" the way the console's screens are.
+    if ($name === 'registration.mine.show' && $member !== null) {
+        $own = Registration::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->where('registrant_user_id', $member->getKey())
+            ->first();
+
+        return $own === null ? null : ['registration' => $own];
+    }
     $eventQuery = fn () => Event::withoutBrandScope()->where('brand_id', $brand->getKey());
 
     // The public form takes both halves of one pair: the type must belong to
@@ -206,14 +226,13 @@ function dryRunParameters(RoutingRoute $route, Brand $brand): ?array
             $parameter === 'variant' => 'thumb',
             $parameter === 'entry' => ContentEntry::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'policy' => Policy::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
-            // Both readers of this route — the operator's console download
-            // and the subject's own — need an archive that is actually
-            // there, or they answer 404 rather than the screen under test.
-            // Ordered, because the subject's route additionally 403s for
-            // anyone but its owner, and the caller pins the acting member to
-            // this same row: two unordered `first()` calls agreeing about
-            // which person they mean is luck, and it eventually runs out.
-            $parameter === 'subjectRequest' => dryRunDownloadableRequest($brand),
+            // The archive has to be there, or the download answers 404
+            // rather than rendering the screen under test — and when a
+            // member is walking, it has to be *theirs*, because the
+            // subject's own route 403s for everyone else.
+            $parameter === 'subjectRequest' => dryRunDownloadableRequests($brand)
+                ->when($member !== null, fn (Builder $query) => $query->where('subject_id', $member->getKey()))
+                ->first(),
             $parameter === 'order' => Order::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'invoice' => Invoice::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'account' => SettlementAccount::withoutBrandScope()
@@ -343,18 +362,24 @@ it('serves every public and account screen for both archetypes', function (strin
 
     $brand = Brand::query()->firstWhere('slug', $slug);
     $host = $brand->domains()->value('host');
-    // `data-requests.download` serves the subject their *own* archive and
-    // 403s for anybody else, so the member who walks these screens has to be
-    // the one the seeded request belongs to. Any brand member will do for
-    // every other account screen, which is the fallback for a brand that
-    // seeded no request at all.
-    $subjectId = dryRunDownloadableRequest($brand)?->subject_id;
-
+    // One member walks every account screen, so they have to own the rows
+    // those screens are about: their own registration, and the data-subject
+    // request whose archive `data-requests.download` streams. Both routes
+    // authorize on ownership and 403 for anybody else, and picking the
+    // member and the rows with separate unordered `first()` calls only ever
+    // agreed about which person they meant by luck of row order.
+    //
+    // `firstOrFail` rather than a fallback: a seed that produces no such
+    // person means these screens go unwalked, and a dry run that quietly
+    // skips them is worth less than one that says so.
     $member = User::query()
-        ->when($subjectId !== null, fn ($query) => $query->whereKey($subjectId))
         ->whereIn('id', BrandMembership::withoutBrandScope()
             ->where('brand_id', $brand->getKey())
             ->select('user_id'))
+        ->whereIn('id', Registration::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->select('registrant_user_id'))
+        ->whereIn('id', dryRunDownloadableRequests($brand)->select('subject_id'))
         ->firstOrFail();
 
     $routes = dryRunRoutes()->reject(dryRunIsConsoleRoute(...));
@@ -364,7 +389,7 @@ it('serves every public and account screen for both archetypes', function (strin
     $unresolved = [];
 
     foreach ($routes as $route) {
-        $parameters = dryRunParameters($route, $brand);
+        $parameters = dryRunParameters($route, $brand, $member);
 
         if ($parameters === null) {
             $unresolved[] = $route->getName();

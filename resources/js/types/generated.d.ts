@@ -42,6 +42,19 @@ declare namespace Konventix {
         }
     }
     namespace Commerce {
+        namespace Data {
+            export type RegistrationSettlementData = {
+                readonly orderId: string;
+                readonly status: string;
+                readonly currency: string;
+                readonly totalGross: string;
+                readonly payUrl: string | null;
+                readonly invoiceNumber: string | null;
+                readonly issuedOn: string | null;
+                readonly dueOn: string | null;
+                readonly documentUrl: string | null;
+            };
+        }
         namespace Enums {
             export type OrderStatus =
                 'pending' | 'paid' | 'cancelled' | 'refunded';
@@ -473,6 +486,17 @@ declare namespace Konventix {
                 readonly role: string;
                 readonly quantity: number;
                 readonly resourceTypeId: string | null;
+            };
+            export type MyRegistrationData = {
+                readonly id: string;
+                readonly eventId: string;
+                readonly eventName: string;
+                readonly typeName: string;
+                readonly status: string;
+                readonly paymentStatus: string;
+                readonly organizationName: string | null;
+                readonly submittedAt: string;
+                readonly confirmedAt: string | null;
             };
             export type PriceDeclarationData = {
                 readonly unitAmountNet: string;

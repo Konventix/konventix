@@ -16,6 +16,7 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Registration\Http\Controllers\MyRegistrationsController;
 use Konventix\Registration\Http\Controllers\RegistrationController;
 use Konventix\Registration\Http\Controllers\WaitlistController;
 
@@ -37,6 +38,16 @@ Route::middleware(['auth'])->group(function (): void {
         Route::post('/events/{event_ulid}/register/{type}', [RegistrationController::class, 'store'])
             ->name('registration.store');
     });
+
+    // The registrant's own registrations, reached from the account menu.
+    // No `require-consent` here: reading back what you already agreed to is
+    // not a new contract, and a consent wall in front of it would lock a
+    // registrant out of the record of their own registration.
+    Route::get('/my/registrations', [MyRegistrationsController::class, 'index'])
+        ->name('registration.mine.index');
+
+    Route::get('/my/registrations/{registration}', [MyRegistrationsController::class, 'show'])
+        ->name('registration.mine.show');
 
     // Waitlist offer claim (D-REG-12): the offer mail's temporary signed
     // link — signature expiry equals the offer's own; the controller

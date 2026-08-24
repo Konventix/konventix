@@ -50,6 +50,18 @@
 
 ## Done
 
+- [x] Participant "my registrations": a list and a detail page at
+      `/my/registrations`, reached from the account menu. Authorization is
+      ownership rather than a capability — there is no role that grants
+      "see your own things" — and the brand scope holds on top of it, so an
+      account that is a member of two brands sees each brand's registrations
+      only on that brand's host (ADR-0016). The event is named from this
+      module's own `EventSummary` projection, never Event's tables
+      (ADR-0004). Deliberately offers no actions: amendment, transfer and
+      cancellation (ADR-0036) are organizer-side Actions with no
+      self-service path yet, and a button that filed a support request in
+      disguise would be worse than none.
+
 - [x] The public form is reachable from the site. `/events/{event}/register/{type}`
       had no inbound link anywhere in the UI — it worked, and nobody could
       find it. `PublicOfferData` + a contribution to Event's `event.landing`

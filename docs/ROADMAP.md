@@ -264,10 +264,17 @@ not a slice — it is each module registering what it owns:
       event" is not a boot-time constant) and Content contributes `/news`.
 - [x] Registration contributes the landing page's call to action through a
       new `event.landing` UI slot, whose props it resolves server-side.
-- [ ] The member's own surfaces, which is where the hole is deepest: after
-      login an account lands on `/` and finds nothing addressed to it. "My
-      registrations" and "my orders/invoices" both have finished backends
-      and are listed as P2 backlog below.
+- [x] The member's own surfaces. `NavigationRegistry` grew a third area,
+      `AREA_ACCOUNT`, rendered in the account menu; Registration contributes
+      "my registrations" (list and detail), and Commerce contributes the pay
+      link and the invoice PDF onto that detail page through a
+      `registration.mine.show` slot.
+- [ ] A standalone "my orders/invoices" list, which the slot above does
+      *not* provide and cannot: an order is keyed by
+      `settles_type`/`settles_id`, so Commerce can answer "what did this
+      registration cost" but not "show me everything I owe". That needs the
+      payer read model — the same prerequisite as Commerce's missing GDPR
+      handler, and the same open decision, recorded under Known gaps below.
 
 ## Phase 3 — post-release
 
@@ -371,12 +378,12 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Module | Pages to build | LanCore precedent | Status |
 | --- | --- | --- | --- |
 | Registration | RegistrationType admin CRUD (axes, price declaration, quotas, grants) | `ticket-types/*`, `ticket-categories/*`, `ticket-addons/*` | P2 backlog |
-| Registration | Participant "my registrations" (list + detail, amendment entry point) | `tickets/{Index,Show}` | P2 backlog |
+| Registration | Participant "my registrations" (list + detail) | `tickets/{Index,Show}` | ✓ — the amendment entry point is not there: ADR-0036 is organizer-side only so far |
 | Registration | Amendment admin UI (ADR-0036), invitation-token management (D-COM-02), waitlist admin | — (new concepts) | P2 backlog |
 | Registration | Purchase constraints | `purchase-requirements/*`, `global-purchase-conditions/*`, `payment-provider-conditions/*`, `settings/TicketDiscovery` | absorbed — type axes, quotas and invitation tokens replace LanCore's constraint system; no 1:1 port |
 | Admission | Checkpoint/device enrolment, badge template designer (D-ADM-05), claim-link management (ADR-0032), entrance POS screen (ADR-0018) | — (LanEntrance satellite had no admin UI) | P2 backlog |
 | Commerce | Orders admin index, settlement-account console, bookkeeping export, public checkout | `orders/Index`, `shop/Settings`, `cart/Checkout` | ✓ |
-| Commerce | Order/invoice admin detail page; participant "my orders/invoices"; invoice-prefix settings | `orders/Show`, `my-orders/*` | P2 backlog |
+| Commerce | Order/invoice admin detail page; participant "my orders/invoices"; invoice-prefix settings | `orders/Show`, `my-orders/*` | P2 backlog — the per-registration half (pay link, invoice PDF) ships on Registration's account page; the standalone list needs the payer read model |
 | Commerce | Voucher CRUD + redemption view | `vouchers/*` | P2 backlog (SPEC-owned, unscheduled) |
 | Content | Entry editor + admin index, public listing/detail, comment moderation, announcements (+ public banner) | `news/*`, `announcements/*` | ✓ |
 | Content | Knowledge-base content type | LanHelp `kb/*` | P3 — lands with Support (ADR-0022) |

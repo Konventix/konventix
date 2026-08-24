@@ -1,0 +1,97 @@
+<script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
+import { CreditCard, FileText } from '@lucide/vue';
+
+/**
+ * Commerce's contribution to Registration's account page: what this
+ * registration cost, whether it is settled, and the invoice if one was
+ * issued. Until this existed the pay link had no inbound route in the UI at
+ * all — the checkout page worked and nobody could reach it.
+ *
+ * `settlement` is null for a free registration, which creates no order at
+ * all (ADR-0026), and that is the common case rather than an error state —
+ * so it renders nothing rather than "no payment required", which would put
+ * a money heading on a page about a free ticket.
+ *
+ * The invoice download is a temporary signed link minted server-side. It
+ * expires; a page left open long enough will need a reload, which is the
+ * correct trade for a document carrying a billing address.
+ */
+type Settlement = Konventix.Commerce.Data.RegistrationSettlementData;
+
+const props = defineProps<{
+    settlement: Settlement | null;
+}>();
+
+const statusTone: Record<string, string> = {
+    paid: 'bg-success/15 text-success',
+    cancelled: 'bg-danger/15 text-danger',
+    refunded: 'bg-danger/15 text-danger',
+    pending: 'bg-warning/15 text-warning-contrast',
+};
+</script>
+
+<template>
+    <section
+        v-if="props.settlement"
+        class="flex flex-col gap-3"
+        aria-labelledby="registration-settlement"
+    >
+        <h2 id="registration-settlement" class="text-lg font-medium">
+            Payment
+        </h2>
+
+        <div
+            class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-surface-raised p-4"
+        >
+            <span class="text-lg font-medium">
+                {{ props.settlement.totalGross }}
+                {{ props.settlement.currency }}
+            </span>
+            <span
+                class="rounded-full px-2 py-0.5 text-xs font-medium capitalize"
+                :class="
+                    statusTone[props.settlement.status] ?? 'bg-subtle text-text'
+                "
+            >
+                {{ props.settlement.status }}
+            </span>
+
+            <span class="flex-1" />
+
+            <Link
+                v-if="props.settlement.payUrl"
+                :href="props.settlement.payUrl"
+                class="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent/90"
+            >
+                <CreditCard class="size-4" />
+                Pay now
+            </Link>
+        </div>
+
+        <dl
+            v-if="props.settlement.invoiceNumber"
+            class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[10rem_1fr]"
+        >
+            <dt class="text-text-muted">Invoice</dt>
+            <dd>{{ props.settlement.invoiceNumber }}</dd>
+            <dt class="text-text-muted">Issued</dt>
+            <dd>{{ props.settlement.issuedOn }}</dd>
+            <dt class="text-text-muted">Due</dt>
+            <dd>{{ props.settlement.dueOn }}</dd>
+        </dl>
+
+        <!--
+            A plain anchor, not an Inertia <Link>: this streams a PDF, and an
+            Inertia visit would expect a page component back.
+        -->
+        <a
+            v-if="props.settlement.documentUrl"
+            :href="props.settlement.documentUrl"
+            class="inline-flex w-fit items-center gap-2 text-sm text-text-muted underline underline-offset-4 hover:text-text"
+        >
+            <FileText class="size-4" />
+            Download invoice (PDF)
+        </a>
+    </section>
+</template>

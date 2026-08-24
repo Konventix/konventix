@@ -30,10 +30,10 @@ class NavigationRegistry
     }
 
     /**
-     * Entries visible for the current context, in display order. Brand-area
-     * entries gate on module activation; admin-area entries (ADR-0029) skip
-     * the brand gate — there is no brand on the admin host — and rely on
-     * their capability.
+     * Entries visible for the current context, in display order. Brand- and
+     * account-area entries gate on module activation; admin-area entries
+     * (ADR-0029) skip the brand gate — there is no brand on the admin host —
+     * and rely on their capability.
      *
      * @return Collection<int, NavigationItem>
      */
