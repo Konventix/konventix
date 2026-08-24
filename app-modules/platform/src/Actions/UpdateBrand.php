@@ -9,6 +9,7 @@ use Illuminate\Validation\ValidationException;
 use Konventix\Platform\Data\UpdateBrandData;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\BrandDomain;
+use Konventix\Platform\Models\MediaItem;
 
 /**
  * Updates a brand's identity fields and syncs its hosts. The first host in
@@ -22,11 +23,15 @@ final class UpdateBrand
     {
         return DB::transaction(function () use ($brand, $data): Brand {
             $this->guardUniqueness($brand, $data);
+            $this->guardOwnedMedia($brand, $data);
 
             $brand->update([
                 'name' => $data->name,
                 'slug' => $data->slug,
                 'currency' => $data->currency,
+                'logo_media_id' => $data->logoMediaId,
+                'logo_dark_media_id' => $data->logoDarkMediaId,
+                'favicon_media_id' => $data->faviconMediaId,
             ]);
 
             $hosts = array_values(array_map(mb_strtolower(...), $data->hosts));
@@ -42,6 +47,43 @@ final class UpdateBrand
 
             return $brand->refresh();
         });
+    }
+
+    /**
+     * A brand may only wear its own media. The library is brand-owned
+     * (ADR-0035) and resolution ignores brand scope on purpose, so nothing
+     * downstream would notice a ULID borrowed from another brand — and the
+     * borrowed file would vanish the day that brand is deleted.
+     */
+    private function guardOwnedMedia(Brand $brand, UpdateBrandData $data): void
+    {
+        $fields = [
+            'logoMediaId' => $data->logoMediaId,
+            'logoDarkMediaId' => $data->logoDarkMediaId,
+            'faviconMediaId' => $data->faviconMediaId,
+        ];
+
+        $ids = array_filter($fields);
+
+        if ($ids === []) {
+            return;
+        }
+
+        // The admin host resolves no brand, so BrandScope would harden this
+        // to zero rows without the explicit escape (ADR-0029).
+        $owned = MediaItem::withoutBrandScope()
+            ->whereIn('id', $ids)
+            ->where('brand_id', $brand->getKey())
+            ->pluck('id')
+            ->all();
+
+        foreach ($fields as $field => $id) {
+            if ($id !== null && ! in_array($id, $owned, true)) {
+                throw ValidationException::withMessages([
+                    $field => 'That file belongs to a different brand.',
+                ]);
+            }
+        }
     }
 
     private function guardUniqueness(Brand $brand, UpdateBrandData $data): void

@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import PublicTopbar from '@/components/PublicTopbar.vue';
-import { noLayout } from '@/lib/layout';
 
 /**
  * One policy's currently published text, on the brand's own domain.
@@ -26,8 +24,6 @@ type Props = {
 
 const props = defineProps<Props>();
 
-defineOptions({ layout: noLayout });
-
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'long' });
 
 function formatDate(value: string | null): string {
@@ -38,29 +34,25 @@ function formatDate(value: string | null): string {
 <template>
     <Head :title="props.policy.name" />
 
-    <div class="flex min-h-screen flex-col bg-surface text-text">
-        <PublicTopbar :name="$page.props.name" />
+    <div
+        class="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6 text-text lg:p-8"
+    >
+        <header class="flex flex-col gap-2">
+            <h1 class="text-3xl font-semibold">{{ props.policy.name }}</h1>
+            <p class="text-sm text-text-muted">
+                Version {{ props.policy.version }}
+                <template v-if="props.policy.effectiveAt">
+                    · in effect since
+                    {{ formatDate(props.policy.effectiveAt) }}
+                </template>
+            </p>
+        </header>
 
-        <main
-            class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6 lg:p-8"
-        >
-            <header class="flex flex-col gap-2">
-                <h1 class="text-3xl font-semibold">{{ props.policy.name }}</h1>
-                <p class="text-sm text-text-muted">
-                    Version {{ props.policy.version }}
-                    <template v-if="props.policy.effectiveAt">
-                        · in effect since
-                        {{ formatDate(props.policy.effectiveAt) }}
-                    </template>
-                </p>
-            </header>
-
-            <!-- eslint-disable-next-line vue/no-v-html -->
-            <article
-                class="policy-prose flex flex-col gap-4"
-                v-html="props.policy.html"
-            />
-        </main>
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <article
+            class="policy-prose flex flex-col gap-4"
+            v-html="props.policy.html"
+        />
     </div>
 </template>
 

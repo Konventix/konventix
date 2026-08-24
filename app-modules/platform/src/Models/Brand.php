@@ -28,6 +28,9 @@ use Konventix\Platform\Jobs\PurgeBrandMedia;
  * @property string $currency
  * @property array<string, string> $theme_tokens
  * @property array<string, string>|null $theme_tokens_dark
+ * @property string|null $logo_media_id
+ * @property string|null $logo_dark_media_id
+ * @property string|null $favicon_media_id
  * @property string|null $reverb_app_key
  * @property string|null $reverb_app_secret
  * @property Carbon|null $created_at
@@ -38,7 +41,16 @@ class Brand extends Model
     /** @use HasFactory<BrandFactory> */
     use HasFactory, HasUlids;
 
-    protected $fillable = ['name', 'slug', 'currency', 'theme_tokens', 'theme_tokens_dark'];
+    protected $fillable = [
+        'name',
+        'slug',
+        'currency',
+        'theme_tokens',
+        'theme_tokens_dark',
+        'logo_media_id',
+        'logo_dark_media_id',
+        'favicon_media_id',
+    ];
 
     protected $hidden = ['reverb_app_secret'];
 

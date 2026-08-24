@@ -3,7 +3,7 @@ import { configureEcho } from '@laravel/echo-vue';
 import type { DefineComponent } from 'vue';
 import { initializeTheme } from '@/composables/useAppearance';
 import AdminLayout from '@/layouts/AdminLayout.vue';
-import AppLayout from '@/layouts/AppLayout.vue';
+import AppTopbarLayout from '@/layouts/AppTopbarLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
@@ -36,7 +36,22 @@ configureEcho({
     key: brandReverbKey() ?? import.meta.env.VITE_REVERB_APP_KEY,
 });
 
-const appName = import.meta.env.VITE_APP_NAME || 'Konventix';
+/**
+ * The document-title suffix is the resolved brand's name, not the
+ * deployment's (ADR-0001) — a visitor on a brand host must never read the
+ * operator's application name in their browser tab.
+ *
+ * `resolve()` is the earliest hook that sees the page, and it runs before
+ * the head is rendered, on the server for the initial response and again on
+ * every client visit. It is assigned synchronously, before the page chunk is
+ * awaited, because `createInertiaApp` runs once per SSR *process* rather
+ * than once per request: two brands rendering concurrently share this
+ * module. Narrowing the window to zero would mean Inertia handing the page
+ * to the title callback, which it does not do — so the fallback below is the
+ * only thing at stake, and it is only ever another brand of the same
+ * operator.
+ */
+let documentTitleSuffix = import.meta.env.VITE_APP_NAME || 'Konventix';
 
 /**
  * Module-local Inertia page resolution (.ai/rules/resources.md): a page
@@ -70,42 +85,59 @@ for (const [path, loader] of Object.entries(modulePages)) {
     pageLoaders.set(name, loader);
 }
 
+/**
+ * Two shells, and a page belongs to exactly one of them: the operator
+ * console keeps its sidebar (ADR-0029), every brand-facing page — landing
+ * page, static pages, member pages alike — wears the one topbar. Auth pages
+ * keep their own bare shell, since a login form has nothing to navigate.
+ *
+ * Handed to Inertia as the *default* layout rather than assigned onto the
+ * resolved page component. The distinction is not cosmetic: a page that
+ * declares layout props — `defineOptions({ layout: { breadcrumbs } })`,
+ * which every auth and settings page does — has a `layout` that is neither
+ * undefined nor a component, so assigning "only when undefined" skipped all
+ * of them and they rendered with no shell at all. As a default, Inertia
+ * merges those props into the layout it picks here, which is what the
+ * option is for.
+ *
+ * A page still overrides this by naming a component (see settings/Index),
+ * and only by naming one: an explicit `layout: null` falls through to this
+ * default, so opting out of the shell entirely is no longer expressible —
+ * nothing needs it, since the bare-page cases are auth pages, which have a
+ * shell of their own.
+ */
 function layoutFor(name: string) {
     switch (true) {
-        case name === 'Welcome':
-        case name === 'StaticPage':
-            return null;
         case name.startsWith('admin/'):
             return AdminLayout;
         case name.startsWith('auth/'):
             return AuthLayout;
         case name.startsWith('settings/'):
-            return [AppLayout, SettingsLayout];
+            return [AppTopbarLayout, SettingsLayout];
         default:
-            return AppLayout;
+            return AppTopbarLayout;
     }
 }
 
 createInertiaApp({
-    title: (title) => (title ? `${title} - ${appName}` : appName),
-    resolve: async (name) => {
+    title: (title) =>
+        title ? `${title} - ${documentTitleSuffix}` : documentTitleSuffix,
+    resolve: async (name, visit) => {
+        const brandName = visit?.props?.name;
+
+        if (typeof brandName === 'string' && brandName !== '') {
+            documentTitleSuffix = brandName;
+        }
+
         const loader = pageLoaders.get(name);
 
         if (!loader) {
             throw new Error(`Inertia page not found: ${name}`);
         }
 
-        const page = await loader();
-
-        // A page that sets its own `layout` keeps it — including an explicit
-        // `null` (no layout, e.g. public pages via defineOptions); only a
-        // page saying nothing gets the name-based default.
-        if (page.default.layout === undefined) {
-            page.default.layout = layoutFor(name);
-        }
-
-        return page;
+        return loader();
     },
+    layout: (name: string) => layoutFor(name),
     progress: {
         // Semantic token, not a palette value — the brand accent re-colors the
         // progress bar along with everything else (ADR-0008).

@@ -18,6 +18,13 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Event\Http\Controllers\EventLandingController;
 
+// The brand's public event list — the topbar's "Events" entry (registered in
+// EventServiceProvider) points here. It enumerates only what
+// `Event::scopeListedPublicly()` allows: unlisted events keep their landing
+// page and stay out of this list.
+Route::get('/events', [EventLandingController::class, 'index'])
+    ->name('event.index');
+
 // The public event landing page, resolved on the brand's own domain
 // (SPEC.md "Event visibility"). `{event:slug}` binds by slug for a readable
 // public URL; the model's primary key stays the ULID (ADR-0014) — this is a

@@ -26,6 +26,10 @@ class UpdateBrandData extends Data
         #[Regex('/^[A-Z]{3}$/')]
         public string $currency,
         public array $hosts,
+        /** Media ULIDs (ADR-0035); null means "fall back to the bundled mark". */
+        public ?string $logoMediaId = null,
+        public ?string $logoDarkMediaId = null,
+        public ?string $faviconMediaId = null,
     ) {}
 
     /**
@@ -39,6 +43,12 @@ class UpdateBrandData extends Data
             'currency' => ['required', 'string', 'size:3'],
             'hosts' => ['required', 'array', 'min:1'],
             'hosts.*' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9.-]+$/'],
+            // Existence only; that the item belongs to THIS brand is a
+            // cross-record invariant and is guarded in the action, where the
+            // brand is known.
+            'logoMediaId' => ['nullable', 'ulid', 'exists:media_items,id'],
+            'logoDarkMediaId' => ['nullable', 'ulid', 'exists:media_items,id'],
+            'faviconMediaId' => ['nullable', 'ulid', 'exists:media_items,id'],
         ];
     }
 }

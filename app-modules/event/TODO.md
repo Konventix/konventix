@@ -22,6 +22,20 @@
 
 ## Done
 
+- [x] A public event list at `/events` (`event.index`), and the topbar entry
+      that points at it. Until this landed a brand's events were reachable
+      only by knowing a slug. Its rule is `Event::scopeListedPublicly()`,
+      deliberately not `isVisibleOnLanding()`: unlisted means reachable by
+      link and *not* enumerated, archived means put away, and cancelled
+      stays listed because someone planned around it. Upcoming and past are
+      split in PHP over `endsAtInstant()` — the stored values are wall-clock
+      (ADR-0027), so SQL cannot do it.
+
+- [x] The landing page has a call to action. It is not Event's: Registration
+      contributes its offers through the new `event.landing` slot, so this
+      module still imports nothing from it, and a gateable module can join
+      the same page later without Event learning it exists.
+
 - [x] Slice 3 — Event completion. Multi-venue (D-EVT-15): `event_venues`
       M:N with primary flag via the `EventVenue` ULID pivot replaces
       `events.venue_id` (existing assignments migrated as primary);

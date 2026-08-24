@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
 import { useEcho } from '@laravel/echo-vue';
-import { Bell } from '@lucide/vue';
+import { Bell, Check } from '@lucide/vue';
 import { computed, onMounted, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { edit as notificationSettings } from '@/routes/notification-preferences';
 import {
+    feed as notificationsFeed,
     index as notificationsIndex,
     read as notificationsRead,
     readAll as notificationsReadAll,
@@ -80,7 +81,7 @@ onMounted(async () => {
     }
 
     try {
-        const data = (await fetchJson(notificationsIndex().url)) as {
+        const data = (await fetchJson(notificationsFeed().url)) as {
             unread: number;
             notifications: Notification[];
         };
@@ -182,49 +183,80 @@ function open(notification: Notification): void {
                 >
                     Nothing here yet.
                 </p>
-                <button
+                <div
                     v-for="notification in notifications"
                     :key="notification.id"
-                    type="button"
-                    class="block w-full border-b border-border px-3 py-2 text-left last:border-b-0 hover:bg-subtle"
-                    @click="open(notification)"
+                    class="flex items-start gap-1 border-b border-border last:border-b-0 hover:bg-subtle"
                 >
-                    <span class="flex items-start gap-2">
-                        <span
-                            class="mt-1.5 size-2 shrink-0 rounded-full"
-                            :class="
-                                notification.readAt
-                                    ? 'bg-transparent'
-                                    : 'bg-accent'
-                            "
-                        />
-                        <span class="min-w-0">
+                    <button
+                        type="button"
+                        class="min-w-0 flex-1 px-3 py-2 text-left"
+                        @click="open(notification)"
+                    >
+                        <span class="flex items-start gap-2">
                             <span
-                                class="block truncate text-sm"
+                                class="mt-1.5 size-2 shrink-0 rounded-full"
                                 :class="
                                     notification.readAt
-                                        ? 'text-text-muted'
-                                        : 'font-medium'
-                                "
-                            >
-                                {{ notification.title }}
-                            </span>
-                            <span
-                                class="block truncate text-xs text-text-muted"
-                                v-text="
-                                    notification.body.replace(/<[^>]*>/g, '')
+                                        ? 'bg-transparent'
+                                        : 'bg-accent'
                                 "
                             />
+                            <span class="min-w-0">
+                                <span
+                                    class="block truncate text-sm"
+                                    :class="
+                                        notification.readAt
+                                            ? 'text-text-muted'
+                                            : 'font-medium'
+                                    "
+                                >
+                                    {{ notification.title }}
+                                </span>
+                                <span
+                                    class="block truncate text-xs text-text-muted"
+                                    v-text="
+                                        notification.body.replace(
+                                            /<[^>]*>/g,
+                                            '',
+                                        )
+                                    "
+                                />
+                            </span>
                         </span>
-                    </span>
-                </button>
+                    </button>
+                    <!--
+                        Dismissing one entry without opening it. Icon-only, so
+                        it carries its own accessible name (BFSG/WCAG 4.1.2)
+                        and names WHICH notification it clears — a list of
+                        twenty identical "Mark as read" buttons tells a screen
+                        reader user nothing.
+                    -->
+                    <button
+                        v-if="!notification.readAt"
+                        type="button"
+                        class="mt-1.5 mr-2 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-text-muted transition hover:bg-surface-muted hover:text-text"
+                        :aria-label="`Mark &quot;${notification.title}&quot; as read`"
+                        @click="markRead(notification)"
+                    >
+                        <Check class="size-4" />
+                    </button>
+                </div>
             </div>
-            <div class="border-t border-border px-3 py-2 text-center">
+            <div
+                class="flex items-center justify-between border-t border-border px-3 py-2"
+            >
+                <Link
+                    :href="notificationsIndex()"
+                    class="text-xs font-medium text-text hover:underline"
+                >
+                    All notifications
+                </Link>
                 <Link
                     :href="notificationSettings()"
                     class="text-xs text-text-muted hover:text-text"
                 >
-                    Notification settings
+                    Settings
                 </Link>
             </div>
         </DropdownMenuContent>

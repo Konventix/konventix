@@ -49,18 +49,22 @@ class EventServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * Operator-console entry (ADR-0029) for the per-event admin dashboard
-     * skeleton. Kept as its own method, separate from `registerBlockTypes()`
-     * above, so the two hooks never collide when touched independently.
-     *
-     * `icon: 'calendar'` is a deliberate deviation: `AdminLayout`'s
-     * `iconMap` is out of scope for this change, so the entry renders
-     * without an icon until that map is extended — the template already
-     * tolerates an unknown icon key.
+     * Two shells, one registry (ADR-0029): the brand topbar gets the public
+     * event list, the operator console gets event and venue management. The
+     * brand entry carries no `permission` because the list it points at is
+     * public — a visitor with no account must see it.
      */
     protected function registerNavigation(): void
     {
         $this->app->make(NavigationRegistry::class)->add(
+            new NavigationItem(
+                module: 'event',
+                label: 'Events',
+                url: '/events',
+                icon: 'calendar',
+                order: 10,
+                area: NavigationItem::AREA_BRAND,
+            ),
             new NavigationItem(
                 module: 'event',
                 label: 'Events',

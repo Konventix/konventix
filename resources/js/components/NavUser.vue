@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { usePage } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 import { ChevronsUpDown } from '@lucide/vue';
 import { computed } from 'vue';
 import {
@@ -19,6 +19,14 @@ import UserMenuContent from '@/components/UserMenuContent.vue';
 const page = usePage();
 const user = computed(() => page.props.auth.user);
 const { isMobile, state } = useSidebar();
+
+/**
+ * Inertia caches the rendered page tree per history entry; logging out has
+ * to drop it, or the back button shows the previous user's page.
+ */
+function handleLogout(): void {
+    router.flushAll();
+}
 </script>
 
 <template>
@@ -47,7 +55,7 @@ const { isMobile, state } = useSidebar();
                     align="end"
                     :side-offset="4"
                 >
-                    <UserMenuContent :user="user" />
+                    <UserMenuContent :user="user" @logout="handleLogout" />
                 </DropdownMenuContent>
             </DropdownMenu>
         </SidebarMenuItem>

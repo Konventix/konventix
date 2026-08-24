@@ -16,10 +16,17 @@ Route::middleware(['auth'])->group(function (): void {
     Route::put('settings/notifications', [NotificationPreferencesController::class, 'update'])
         ->name('notification-preferences.update');
 
-    // The bell's JSON endpoints (ADR-0041 point 6): fetched by the
-    // persistent layout, live-updated over Reverb.
-    Route::get('notifications', [NotificationsController::class, 'index'])
+    // The inbox as a page: everything the bell's short list leaves out,
+    // paginated. Holds the `/notifications` path because that is what a
+    // person following a link expects to land on; the bell's feed moved a
+    // level deeper.
+    Route::get('notifications', [NotificationsController::class, 'page'])
         ->name('notifications.index');
+
+    // The bell's JSON endpoint (ADR-0041 point 6): fetched once per browser
+    // page load by the persistent layout, live-updated over Reverb.
+    Route::get('notifications/feed', [NotificationsController::class, 'index'])
+        ->name('notifications.feed');
     Route::post('notifications/read-all', [NotificationsController::class, 'readAll'])
         ->name('notifications.read-all');
     Route::post('notifications/{notification}/read', [NotificationsController::class, 'read'])

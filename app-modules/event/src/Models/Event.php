@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Event\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -142,6 +143,32 @@ class Event extends Model
         }
 
         return $this->state !== EventLifecycleState::Draft;
+    }
+
+    /**
+     * The events the public index (`event.index`) may enumerate. Stricter
+     * than `isVisibleOnLanding()` on purpose, in both directions:
+     *
+     * - `Unlisted` means reachable by direct link and *not* listed. An
+     *   unlisted event that appeared in the index would make the word mean
+     *   nothing.
+     * - `Archived` has been deliberately put away by the organizer, so it
+     *   leaves the index while its landing page keeps resolving for anyone
+     *   holding the link.
+     *
+     * `Cancelled` stays listed: a visitor who planned around an event needs
+     * to be told it is off, and the landing page says so.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeListedPublicly(Builder $query): Builder
+    {
+        return $query->where('visibility', EventVisibility::Public)
+            ->whereNotIn('state', [
+                EventLifecycleState::Draft,
+                EventLifecycleState::Archived,
+            ]);
     }
 
     /**

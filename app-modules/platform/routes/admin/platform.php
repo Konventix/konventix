@@ -12,6 +12,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Platform\Http\Controllers\Admin\AdminDashboardController;
 use Konventix\Platform\Http\Controllers\Admin\BrandAdminController;
+use Konventix\Platform\Http\Controllers\Admin\FooterLinksAdminController;
 use Konventix\Platform\Http\Controllers\Admin\OperatorAdminController;
 
 Route::get('/', AdminDashboardController::class)->name('admin.dashboard');
@@ -22,6 +23,11 @@ Route::get('/', AdminDashboardController::class)->name('admin.dashboard');
 // somebody else's.
 Route::get('/settings/operator', [OperatorAdminController::class, 'edit'])->name('admin.settings.operator.edit');
 Route::put('/settings/operator', [OperatorAdminController::class, 'update'])->name('admin.settings.operator.update');
+
+// The footer of every brand-facing page (see FooterLinkKind for what an
+// entry may do). Operator-wide, like the operator's own identity above.
+Route::get('/settings/footer', [FooterLinksAdminController::class, 'edit'])->name('admin.settings.footer.edit');
+Route::put('/settings/footer', [FooterLinksAdminController::class, 'update'])->name('admin.settings.footer.update');
 
 Route::get('/brands', [BrandAdminController::class, 'index'])->name('admin.brands.index');
 Route::post('/brands', [BrandAdminController::class, 'store'])->name('admin.brands.store');

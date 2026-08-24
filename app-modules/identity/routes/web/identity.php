@@ -39,7 +39,11 @@ Route::middleware(['guest', 'require-consent'])->group(function (): void {
 });
 
 Route::middleware(['auth'])->group(function (): void {
-    Route::redirect('settings', '/settings/profile');
+    // The account hub. Was a redirect to /settings/profile; it is a page of
+    // its own now because the topbar's Account menu points at "Settings" as
+    // a destination, and dropping someone straight into the profile form
+    // hides that anything else lives here.
+    Route::inertia('settings', 'settings/Index')->name('settings.index');
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');

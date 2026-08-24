@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Content\Enums\CommentState;
 use Konventix\Content\Enums\ContentType;
 use Konventix\Content\Enums\Urgency;
@@ -256,4 +257,21 @@ it('keeps login-required announcements out of a guest banner', function (): void
     ContentEntry::factory()->announcement(Urgency::Urgent)->published()->loggedInOnly()->create();
 
     expect($this->getJson('/announcements')->json('announcements'))->toHaveCount(0);
+});
+
+/**
+ * `/news` had no route into it from anywhere in the UI: readers arrived only
+ * from a link somebody else sent them. Content contributes the entry itself
+ * (ADR-0003), so the topbar stays free of module knowledge.
+ */
+it('offers the news listing from the brand topbar', function (): void {
+    $this->withBrand();
+
+    $this->get('/')
+        ->assertInertia(function (AssertableInertia $page): void {
+            $entry = collect($page->toArray()['props']['nav'])->firstWhere('label', 'News');
+
+            expect($entry)->not->toBeNull()
+                ->and($entry['url'])->toBe('/news');
+        });
 });

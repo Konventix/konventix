@@ -21,7 +21,9 @@ use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Console\ExpireWaitlistOffersCommand;
+use Konventix\Registration\Data\PublicOfferData;
 use Konventix\Registration\Enums\Permission;
+use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Events\QuotaReleased;
 use Konventix\Registration\Gdpr\RegistrationGdprHandler;
 use Konventix\Registration\Listeners\MarkInvoicedOnInvoiceIssued;
@@ -29,6 +31,7 @@ use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Listeners\ProjectRegistrant;
 use Konventix\Registration\Listeners\PromoteOnQuotaReleased;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
+use Konventix\Registration\Models\RegistrationType;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -161,19 +164,50 @@ class RegistrationServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * Contributes the `registration/EventStatsCard` card to Event's
-     * `event.admin.dashboard` UI slot (ADR-0003 enforcement point 3,
-     * docs/decisions/0003). The component fetches its own numbers from
-     * `RegistrationStatsController` — Event never queries this module's
-     * models directly.
+     * Two contributions to Event's UI slots (ADR-0003 enforcement point 3,
+     * docs/decisions/0003). Event never queries this module's models in
+     * either case — it hands over a slot and a context, and what comes back
+     * is Registration's business.
+     *
+     * They differ in how they get their data, because their pages differ.
+     * The admin card fetches its own numbers client-side, so an organizer
+     * can refresh them without reloading. The landing page's offers are
+     * resolved server-side through the closure prop-bag: it is the call to
+     * action on a public page, and a call to action that appears one network
+     * round trip after the page is not one.
+     *
+     * The closure is `static` deliberately — `SlotRegistry` is a singleton
+     * that outlives the request under Octane, and a closure capturing `$this`
+     * would pin this provider in memory with it.
      */
     protected function registerSlots(): void
     {
-        $this->app->make(SlotRegistry::class)->add(
+        $slots = $this->app->make(SlotRegistry::class);
+
+        $slots->add(
             slot: 'event.admin.dashboard',
             module: 'registration',
             component: 'registration/EventStatsCard',
             props: [],
+            order: 10,
+        );
+
+        $slots->add(
+            slot: 'event.landing',
+            module: 'registration',
+            component: 'registration/EventOffers',
+            props: static fn (array $context): array => [
+                'offers' => RegistrationType::query()
+                    // Only `Public` types: `Link` and `InviteOnly` are
+                    // reachable with a token and must not be advertised to
+                    // someone who does not hold one (D-COM-02).
+                    ->where('event_id', $context['eventId'])
+                    ->where('visibility', RegistrationVisibility::Public)
+                    ->orderBy('name')
+                    ->get()
+                    ->map(fn (RegistrationType $type): array => PublicOfferData::ofType($type)->toArray())
+                    ->all(),
+            ],
             order: 10,
         );
     }

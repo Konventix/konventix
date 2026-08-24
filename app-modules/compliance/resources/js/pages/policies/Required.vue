@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
-import PublicTopbar from '@/components/PublicTopbar.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { noLayout } from '@/lib/layout';
 import { store as storeConsent } from '@/routes/consents';
 import { show as showPolicy } from '@/routes/policies';
 
@@ -31,8 +29,6 @@ type PolicyVersionRow = {
 
 const props = defineProps<{ versions: PolicyVersionRow[] }>();
 
-defineOptions({ layout: noLayout });
-
 const accepted = ref<Record<string, boolean>>(
     Object.fromEntries(props.versions.map((version) => [version.id, false])),
 );
@@ -55,74 +51,70 @@ function submit(): void {
 <template>
     <Head title="Before you continue" />
 
-    <div class="flex min-h-screen flex-col bg-surface text-text">
-        <PublicTopbar :name="$page.props.name" />
+    <div
+        class="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6 text-text lg:p-8"
+    >
+        <header class="flex flex-col gap-2">
+            <h1 class="text-2xl font-semibold">Before you continue</h1>
+            <p class="text-sm text-text-muted">
+                These documents changed, or you have not agreed to them yet.
+                Please read and confirm each one.
+            </p>
+        </header>
 
-        <main
-            class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6 lg:p-8"
-        >
-            <header class="flex flex-col gap-2">
-                <h1 class="text-2xl font-semibold">Before you continue</h1>
-                <p class="text-sm text-text-muted">
-                    These documents changed, or you have not agreed to them yet.
-                    Please read and confirm each one.
-                </p>
-            </header>
-
-            <form class="flex flex-col gap-6" @submit.prevent="submit">
-                <section
-                    v-for="version in props.versions"
-                    :key="version.id"
-                    class="flex flex-col gap-3 rounded-lg border border-border p-4"
-                >
-                    <div class="flex items-baseline justify-between gap-4">
-                        <h2 class="text-lg font-medium">{{ version.name }}</h2>
-                        <Link
-                            :href="showPolicy(version.slug).url"
-                            class="text-xs text-text-muted underline hover:text-text"
-                            target="_blank"
-                        >
-                            Open in a new tab
-                        </Link>
-                    </div>
-
-                    <!-- eslint-disable-next-line vue/no-v-html -->
-                    <article
-                        class="policy-prose max-h-72 overflow-y-auto rounded-md bg-surface-muted p-3 text-sm"
-                        v-html="version.html"
-                    />
-
-                    <label class="flex items-center gap-2 text-sm">
-                        <Checkbox
-                            :model-value="accepted[version.id]"
-                            :aria-label="`I agree to ${version.name}`"
-                            @update:model-value="
-                                (value: boolean | 'indeterminate') => {
-                                    accepted[version.id] = value === true;
-                                }
-                            "
-                        />
-                        I agree to {{ version.name }} ({{ version.version }})
-                    </label>
-                </section>
-
-                <div class="flex items-center gap-3">
-                    <Button
-                        type="submit"
-                        :disabled="!allAccepted() || form.processing"
+        <form class="flex flex-col gap-6" @submit.prevent="submit">
+            <section
+                v-for="version in props.versions"
+                :key="version.id"
+                class="flex flex-col gap-3 rounded-lg border border-border p-4"
+            >
+                <div class="flex items-baseline justify-between gap-4">
+                    <h2 class="text-lg font-medium">{{ version.name }}</h2>
+                    <Link
+                        :href="showPolicy(version.slug).url"
+                        class="text-xs text-text-muted underline hover:text-text"
+                        target="_blank"
                     >
-                        Agree and continue
-                    </Button>
-                    <span
-                        v-if="!allAccepted()"
-                        role="status"
-                        class="text-sm text-text-muted"
-                    >
-                        Confirm every document to continue.
-                    </span>
+                        Open in a new tab
+                    </Link>
                 </div>
-            </form>
-        </main>
+
+                <!-- eslint-disable-next-line vue/no-v-html -->
+                <article
+                    class="policy-prose max-h-72 overflow-y-auto rounded-md bg-surface-muted p-3 text-sm"
+                    v-html="version.html"
+                />
+
+                <label class="flex items-center gap-2 text-sm">
+                    <Checkbox
+                        :model-value="accepted[version.id]"
+                        :aria-label="`I agree to ${version.name}`"
+                        @update:model-value="
+                            (value: boolean | 'indeterminate') => {
+                                accepted[version.id] = value === true;
+                            }
+                        "
+                    />
+                    I agree to {{ version.name }} ({{ version.version }})
+                </label>
+            </section>
+
+            <div class="flex items-center gap-3">
+                <Button
+                    type="submit"
+                    :disabled="!allAccepted() || form.processing"
+                >
+                    Agree and continue
+                </Button>
+                <span
+                    v-if="!allAccepted()"
+                    role="status"
+                    class="text-sm text-text-muted"
+                >
+                    Confirm every document to continue.
+                </span>
+            </div>
+        </form>
     </div>
 </template>
 

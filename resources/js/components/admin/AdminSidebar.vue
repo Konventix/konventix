@@ -5,30 +5,6 @@
 // live client-side search filter and pinned favorites the user can drag into
 // their own order (ADR-0042).
 import { Link, usePage } from '@inertiajs/vue3';
-import {
-    BookOpenCheck,
-    Calendar,
-    ClipboardList,
-    FileSearch,
-    Gauge,
-    HardDrive,
-    Image,
-    Landmark,
-    LayoutGrid,
-    Mail,
-    MapPin,
-    MessageSquare,
-    Newspaper,
-    Puzzle,
-    Receipt,
-    ScrollText,
-    Shield,
-    Store,
-    Ticket,
-    Timer,
-    Users,
-} from '@lucide/vue';
-import type { Component } from 'vue';
 import { computed, ref } from 'vue';
 import AdminFavoritesNav from '@/components/admin/AdminFavoritesNav.vue';
 import AdminNavGroup from '@/components/admin/AdminNavGroup.vue';
@@ -46,6 +22,7 @@ import {
     SidebarFooter,
 } from '@/components/ui/sidebar';
 import { useAdminFavorites } from '@/composables/useAdminFavorites';
+import { iconFor } from '@/lib/navIcons';
 import { dashboard } from '@/routes/admin';
 
 type AdminNavItem = {
@@ -55,34 +32,6 @@ type AdminNavItem = {
     icon: string | null;
     order: number;
 };
-
-/** Icon identifiers a module's NavigationItem may send; unknown ones fall back to Puzzle. */
-const iconMap: Record<string, Component> = {
-    'book-open-check': BookOpenCheck,
-    'clipboard-list': ClipboardList,
-    'file-search': FileSearch,
-    'hard-drive': HardDrive,
-    'layout-grid': LayoutGrid,
-    'map-pin': MapPin,
-    'message-square': MessageSquare,
-    'scroll-text': ScrollText,
-    calendar: Calendar,
-    gauge: Gauge,
-    image: Image,
-    landmark: Landmark,
-    mail: Mail,
-    newspaper: Newspaper,
-    receipt: Receipt,
-    shield: Shield,
-    store: Store,
-    ticket: Ticket,
-    timer: Timer,
-    users: Users,
-};
-
-function iconFor(icon: string | null): Component {
-    return (icon !== null && iconMap[icon]) || Puzzle;
-}
 
 /** 'game-ops' -> 'Game Ops' — group label from the module's kebab-case name. */
 function humanizeModule(module: string): string {

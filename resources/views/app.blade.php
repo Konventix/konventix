@@ -76,10 +76,22 @@
             </style>
         @endif
 
-        {{-- TODO(brand): replace these starter-kit icons with Konventix artwork. --}}
-        <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        {{--
+            The resolved brand's favicon when it has uploaded one, the bundled
+            artwork otherwise. `$brandIdentity` is shared by ResolveBrand; the
+            null guard covers responses rendered before it runs (an early
+            error page), which fall back to the bundled set.
+
+            TODO(brand): the bundled icons are still starter-kit artwork.
+        --}}
+        @if (($brandIdentity->faviconUrl ?? null) !== null)
+            <link rel="icon" href="{{ $brandIdentity->faviconUrl }}">
+            <link rel="apple-touch-icon" href="{{ $brandIdentity->faviconUrl }}">
+        @else
+            <link rel="icon" href="/favicon.ico" sizes="any">
+            <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+            <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        @endif
 
         @fonts
 
@@ -90,7 +102,9 @@
             \Konventix\Platform\Modules\InertiaPageChunk::path($page['component']),
         ])))
         <x-inertia::head>
-            <title>{{ config('app.name', 'Konventix') }}</title>
+            {{-- The brand's name, not the deployment's: a visitor on a brand
+                 host never sees the operator's application name (ADR-0001). --}}
+            <title>{{ $brandIdentity->name ?? config('app.name', 'Konventix') }}</title>
         </x-inertia::head>
     </head>
     <body class="font-sans antialiased">

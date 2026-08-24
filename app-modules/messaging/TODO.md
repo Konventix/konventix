@@ -95,6 +95,13 @@ the natural first consumer and would register the first real template.
 
 ## Done
 
+- [x] The inbox as a page (`/notifications`), paginated, read and unread
+      together; the bell's JSON feed moved to `/notifications/feed` so the
+      human-facing path is the one a link lands on. Both write endpoints now
+      answer either reader — JSON to the bell's `fetch`, a redirect back to
+      the page's Inertia visit. The bell gained a per-item mark-read control
+      and a link to the page; there is deliberately no dismiss/archive
+      concept and no schema change behind it.
 - [x] Mail-settings console (`/admin/mail-settings`, gated by
       `ManageSenderIdentity`): per-brand sender identity, quiet-hours
       timezone (ADR-0041) and optional own SMTP transport (ADR-0028) —

@@ -150,6 +150,21 @@ function dryRunSeed(object $test): void
  *
  * @return array<string, mixed>|null
  */
+/**
+ * The seeded subject request whose archive can actually be downloaded, and
+ * the only one the dry run addresses — see the `subjectRequest` case below.
+ */
+function dryRunDownloadableRequest(Brand $brand): ?DataSubjectRequest
+{
+    return DataSubjectRequest::withoutBrandScope()
+        ->where('brand_id', $brand->getKey())
+        ->whereNotNull('archive_path')
+        ->whereNotNull('archive_disk')
+        ->where(fn ($query) => $query->whereNull('archive_expires_at')->orWhere('archive_expires_at', '>', now()))
+        ->orderBy('id')
+        ->first();
+}
+
 function dryRunParameters(RoutingRoute $route, Brand $brand): ?array
 {
     $name = (string) $route->getName();
@@ -191,9 +206,14 @@ function dryRunParameters(RoutingRoute $route, Brand $brand): ?array
             $parameter === 'variant' => 'thumb',
             $parameter === 'entry' => ContentEntry::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'policy' => Policy::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
-            $parameter === 'subjectRequest' => DataSubjectRequest::withoutBrandScope()
-                ->where('brand_id', $brand->getKey())
-                ->first(),
+            // Both readers of this route — the operator's console download
+            // and the subject's own — need an archive that is actually
+            // there, or they answer 404 rather than the screen under test.
+            // Ordered, because the subject's route additionally 403s for
+            // anyone but its owner, and the caller pins the acting member to
+            // this same row: two unordered `first()` calls agreeing about
+            // which person they mean is luck, and it eventually runs out.
+            $parameter === 'subjectRequest' => dryRunDownloadableRequest($brand),
             $parameter === 'order' => Order::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'invoice' => Invoice::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'account' => SettlementAccount::withoutBrandScope()
@@ -323,7 +343,15 @@ it('serves every public and account screen for both archetypes', function (strin
 
     $brand = Brand::query()->firstWhere('slug', $slug);
     $host = $brand->domains()->value('host');
+    // `data-requests.download` serves the subject their *own* archive and
+    // 403s for anybody else, so the member who walks these screens has to be
+    // the one the seeded request belongs to. Any brand member will do for
+    // every other account screen, which is the fallback for a brand that
+    // seeded no request at all.
+    $subjectId = dryRunDownloadableRequest($brand)?->subject_id;
+
     $member = User::query()
+        ->when($subjectId !== null, fn ($query) => $query->whereKey($subjectId))
         ->whereIn('id', BrandMembership::withoutBrandScope()
             ->where('brand_id', $brand->getKey())
             ->select('user_id'))
@@ -350,7 +378,7 @@ it('serves every public and account screen for both archetypes', function (strin
 
         // Not pinned to 200 the way the console is: a signed-in visitor is
         // *meant* to be redirected away from the login and registration
-        // forms, and `/settings` is a redirect to the first settings page.
+        // forms.
         expect($status)->toBeLessThan(400, "{$route->getName()} ({$url}) answered {$status} for {$slug}");
     }
 

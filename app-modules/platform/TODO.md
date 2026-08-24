@@ -45,6 +45,15 @@ depends on brand resolution and gating working.
 - [x] Queued prefix cleanup on brand deletion (ADR-0043): `PurgeBrandMedia`,
       with the disks collected in Brand's `deleting` hook while the rows
       still exist. Media only — never the invoice archive.
+- [ ] Brand assets record no `MediaUsage` row. Everything else that
+      references media registers usage, and the orphan-cleanup job below
+      will one day read those rows — a brand's logo must be in them before
+      that job can be trusted to delete anything.
+
+- [ ] Real Konventix artwork. `AppLogoIcon.vue` and `public/favicon.*` are
+      still the Laravel starter mark, and they are now the fallback every
+      brand without its own logo wears.
+
 - [ ] Orphan media cleanup job (ADR-0035 defers it): usage references exist,
       the job that garbage-collects unreferenced items after a grace period
       does not.
@@ -57,6 +66,42 @@ depends on brand resolution and gating working.
 ## Done
 
 <!-- Move completed items here with the PR that finished them. -->
+
+- [x] `SlotRegistry` contributions may pass a closure instead of a literal
+      prop-bag, which the rendering controller resolves with that page's
+      context. The admin dashboards' cards fetch their own data client-side
+      and needed none; a *public* page cannot work that way, because a call
+      to action that appears one network round trip after the page is not
+      one. Resolution happens after the activation filter, so an inactive
+      module's closure never runs — it is the half that queries.
+
+- [x] Brand identity assets: `logo_media_id`, `logo_dark_media_id` and
+      `favicon_media_id` on `brands`, all media-library references
+      (ADR-0035), resolved per request by `BrandIdentityResolver` and shared
+      as the `brand` Inertia prop plus a `$brandIdentity` view variable —
+      the root template's favicon and `<title>` are no longer `TODO(brand)`.
+      One fallback level only, the bundled artwork: operator-wide defaults
+      were considered and dropped, because media rows are brand-owned and
+      the operator owns no brand. Light/dark marks swap by CSS, so the right
+      one is in the markup before hydration.
+
+- [x] The brand shell is a topbar, not a sidebar. `AppTopbarLayout` replaces
+      `AppLayout`/`AppSidebarLayout` and absorbs `PublicTopbar`, so the
+      landing page, static pages and member pages all wear one chrome; the
+      operator console keeps its sidebar and gains no topbar. Its navigation
+      is the first consumer of `NavigationRegistry`'s `AREA_BRAND`, which
+      until now nothing read — the hardcoded "Home" array is gone and any
+      module can contribute brand navigation from its own provider.
+
+- [x] Operator footer (`/admin/settings/footer`, gated by
+      `ManageFooterLinks`): `footer_links` rows the operator edits as one
+      ordered list, rendered by `AppFooter` on every brand-facing page
+      beside the version and the Konventix credit. Entries are operator-wide
+      — one legal entity answers for all its brands — and a nullable
+      `brand_id` can be added later without reshaping anything. A `dialog`
+      link kind reserves the cookie-settings slot: it resolves through the
+      module component registry and renders nothing until something ships
+      under that key.
 
 - [x] Per-brand dark-mode token overrides (slice 15b). A second column,
       `theme_tokens_dark`, rather than reshaping `theme_tokens` into

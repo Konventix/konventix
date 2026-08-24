@@ -27,6 +27,7 @@ enum Permission: string
     case ManageMedia = 'platform.manage-media';
     case ManageStorageSettings = 'platform.manage-storage-settings';
     case ManageOperator = 'platform.manage-operator';
+    case ManageFooterLinks = 'platform.manage-footer-links';
 
     /**
      * Pulse and Horizon: how the system is behaving, and the queues. Read-only

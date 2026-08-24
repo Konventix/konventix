@@ -123,6 +123,22 @@ person behind it. The value here is in what is left out.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] Auth and settings pages were rendering with **no layout at all**, and
+      had been since layout props arrived: `defineOptions({ layout: { ... } })`
+      declares props for the layout, not a layout, so `app.ts`'s
+      "assign a layout when the page declares none" test never matched them.
+      Fixed at the resolver — `createInertiaApp({ layout })` is Inertia's own
+      default-layout hook and merges those props into the layout it picks.
+      Guarded by `SettingsLayoutTest`, which asserts against rendered HTML
+      because the failure is invisible in the Inertia props: right status,
+      right component, no shell.
+
+- [x] `/settings` is a page rather than a redirect into the profile form: an
+      account hub listing every section with what it covers, reached from the
+      topbar's Account menu. The section list moved to
+      `resources/js/lib/settingsSections.ts`, so the hub and the sub-navigation
+      beside every settings page read one list instead of two copies.
+
 - [x] Account scope settled — no new ADR needed: ADR-0016 already decided one
       account across the operator's brands. SPEC.md updated to say so.
 - [x] `brand_memberships` (ADR-0016): model, migration, factory, and the

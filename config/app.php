@@ -19,6 +19,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Version
+    |--------------------------------------------------------------------------
+    |
+    | Shown in the footer of every brand-facing page, so that a bug report
+    | can name the build it came from. Set it at deploy time — from a tag or
+    | a commit — because nothing inside the container can work it out: there
+    | is no git checkout in a built image.
+    |
+    */
+
+    'version' => env('APP_VERSION', 'dev'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

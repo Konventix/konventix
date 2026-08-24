@@ -54,7 +54,8 @@ class ContentServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * Operator-console entries (ADR-0029). Moderation is a separate entry
+     * The reader's entry in the brand topbar, and the operator-console
+     * entries (ADR-0029). Moderation is a separate console entry
      * rather than a tab on the editorial screen, because it is a separate
      * capability and often a separate person: a community moderator who may
      * hide an abusive comment has no business publishing the front page.
@@ -62,6 +63,17 @@ class ContentServiceProvider extends ModuleServiceProvider
     protected function registerNavigation(): void
     {
         $this->app->make(NavigationRegistry::class)->add(
+            // The reader's entry point. No `permission`: `/news` is open to
+            // anyone, and the entry has to be visible to a visitor with no
+            // account for the page to be reachable at all.
+            new NavigationItem(
+                module: 'content',
+                label: 'News',
+                url: '/news',
+                icon: 'newspaper',
+                order: 20,
+                area: NavigationItem::AREA_BRAND,
+            ),
             new NavigationItem(
                 module: 'content',
                 label: 'Content',

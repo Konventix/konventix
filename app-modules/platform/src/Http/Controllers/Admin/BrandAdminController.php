@@ -13,10 +13,14 @@ use Konventix\Platform\Actions\CreateBrand;
 use Konventix\Platform\Actions\UpdateBrand;
 use Konventix\Platform\Actions\UpdateBrandModules;
 use Konventix\Platform\Data\BrandData;
+use Konventix\Platform\Data\MediaItemData;
 use Konventix\Platform\Data\UpdateBrandData;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
+use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Operators\OperatorContext;
 use Laravel\Pennant\Feature;
@@ -29,6 +33,13 @@ use Laravel\Pennant\Feature;
 class BrandAdminController
 {
     use HasDataTableQuery;
+
+    /**
+     * How many images the asset pickers offer. A cap rather than pagination:
+     * the picker is a shortcut for a brand's handful of marks, and the media
+     * library page is where a large collection is actually browsed.
+     */
+    private const PICKABLE_MEDIA = 200;
 
     public function index(Request $request): Response
     {
@@ -74,7 +85,7 @@ class BrandAdminController
         return to_route('admin.brands.index');
     }
 
-    public function edit(Brand $brand, ModuleGate $gate): Response
+    public function edit(Brand $brand, ModuleGate $gate, MediaLibrary $library): Response
     {
         Gate::authorize(Permission::ViewBrands->value);
 
@@ -87,7 +98,27 @@ class BrandAdminController
                 'slug' => $brand->slug,
                 'currency' => $brand->currency,
                 'hosts' => $brand->domains()->orderByDesc('is_primary')->pluck('host')->all(),
+                'logoMediaId' => $brand->logo_media_id,
+                'logoDarkMediaId' => $brand->logo_dark_media_id,
+                'faviconMediaId' => $brand->favicon_media_id,
             ],
+            // What the asset pickers choose from. Brand-owned media only —
+            // a brand may not wear another brand's file, and the escape
+            // hatch is needed because the admin host resolves no brand
+            // (ADR-0029).
+            'media' => MediaItem::withoutBrandScope()
+                // Counted here rather than per row: MediaItemData falls back
+                // to its own query when the count is missing, which would be
+                // 200 of them. The inner escape is mandatory on the admin
+                // host, where BrandScope hardens the subquery to zero.
+                ->withCount(['usages' => fn ($query) => $query->withoutGlobalScope(BrandScope::class)])
+                ->where('brand_id', $brand->getKey())
+                ->where('mime_type', 'like', 'image/%')
+                ->latest()
+                ->limit(self::PICKABLE_MEDIA)
+                ->get()
+                ->map(fn (MediaItem $item): MediaItemData => MediaItemData::fromModel($item, $library))
+                ->all(),
             // Per-brand module activation (ADR-0003): gateable modules with
             // their Pennant state for THIS brand; everything else is always
             // on and only listed so the page tells the whole story.

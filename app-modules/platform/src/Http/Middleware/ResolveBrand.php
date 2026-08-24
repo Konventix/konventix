@@ -9,6 +9,7 @@ use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Konventix\Platform\Branding\BrandIdentityResolver;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -34,6 +35,7 @@ class ResolveBrand
         private readonly BrandContext $context,
         private readonly OperatorContext $operatorContext,
         private readonly BrandBroadcasting $broadcasting,
+        private readonly BrandIdentityResolver $identity,
         private readonly ViewFactory $view,
         private readonly ConfigRepository $config,
         private readonly PermissionRegistrar $permissions,
@@ -77,6 +79,11 @@ class ResolveBrand
         $this->view->share('brandTokens', $brand->themeTokens());
         $this->view->share('brandTokensDark', $brand->darkThemeTokens());
 
+        // The root template needs the identity before Inertia has any props
+        // to read: the favicon is a <head> element and the document title is
+        // rendered server-side.
+        $this->view->share('brandIdentity', $this->identity->forBrand($brand));
+
         return $next($request);
     }
 
@@ -97,6 +104,7 @@ class ResolveBrand
         );
 
         $this->view->share('brandTokens', []);
+        $this->view->share('brandIdentity', $this->identity->forOperator($operator));
 
         return $next($request);
     }

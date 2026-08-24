@@ -241,8 +241,33 @@ interleave.
     declares it, proxied private downloads, queued variant generation,
     brand-scoped disk resolution (ADR-0028 shape, per-brand buckets later),
     `storage:migrate` with verification, a storage doctor command, and
-    Garage behind a compose profile as the development backend. May
-    interleave with 8–15; the block change should land early regardless.
+    Garage behind a compose profile as the development backend.
+    **Done** — landed as 17a–17f; see Platform's `TODO.md` for what each
+    letter covered.
+
+**Slice 11 (GameOps) is the only slice of the build order not started.**
+`app-modules/game-ops/` is still the scaffold `make:module` produced: no
+migrations, no models, no tests. It blocks Competition's `Discipline`
+catalogue read model, which that module's `TODO.md` carries as blocked.
+Slices 8 and 9 shipped their domains only — Resources and Staffing have
+models, Actions, events and tests but no controllers, routes or pages, which
+is what the page catalogue below records as "P2 backlog".
+
+**The gap the slices did not cover** is that a brand's public site had almost
+nothing to navigate. Every slice built its own screens and each was correct
+in isolation, while `/news`, `/events/{slug}` and the registration form were
+reachable only by typed URL: the brand topbar's navigation held one entry,
+"Home", and no module had ever contributed to `AREA_BRAND`. Closing it is
+not a slice — it is each module registering what it owns:
+
+- [x] Event contributes `/events` (a real public list, since "the current
+      event" is not a boot-time constant) and Content contributes `/news`.
+- [x] Registration contributes the landing page's call to action through a
+      new `event.landing` UI slot, whose props it resolves server-side.
+- [ ] The member's own surfaces, which is where the hole is deepest: after
+      login an account lands on `/` and finds nothing addressed to it. "My
+      registrations" and "my orders/invoices" both have finished backends
+      and are listed as P2 backlog below.
 
 ## Phase 3 — post-release
 
@@ -332,7 +357,7 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Identity | Auth flows, profile/security/appearance settings | `auth/*`, `settings/{Profile,Security,Appearance}` | ✓ |
 | Identity | Linked accounts + social onboarding (Steam signup completion) | `settings/LinkedAccounts`, `onboarding/Username`, `auth/CompleteSteamProfile` | ✓ — LanCore's separate username-pick and Steam-profile screens are one `auth/CompleteSocialSignup` |
 | Identity | Admin user detail page (memberships, sessions, states) | `users/Show` | P2 backlog |
-| Event | Event index/edit/dashboard/lifecycle, venue admin, public landing | `events/*`, `venues/*` | ✓ |
+| Event | Event index/edit/dashboard/lifecycle, venue admin, public event list + landing | `events/*`, `venues/*` | ✓ |
 | Compliance | Policy admin CRUD; user-facing consent pages; privacy settings | `admin/policies/*`, `policies/{Required,Show}`, `settings/Privacy` | ✓ |
 | Compliance | DSR console: export/deletion requests with their per-module fan-out; self-service request + download on the privacy page | `admin/data-lifecycle/*`, `account/{Delete,DeletionPending}` | ✓ |
 | Compliance | Retention-policy admin | `admin/data-lifecycle/*` | ✓ |

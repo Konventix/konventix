@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Palette, Trash2 } from '@lucide/vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import MediaPicker from '@/components/admin/MediaPicker.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +27,12 @@ type Props = {
         slug: string;
         currency: string;
         hosts: string[];
+        logoMediaId: string | null;
+        logoDarkMediaId: string | null;
+        faviconMediaId: string | null;
     };
+    /** This brand's images, offered to the asset pickers (ADR-0035). */
+    media: Konventix.Platform.Data.MediaItemData[];
     modules: { module: string; active: boolean }[];
     alwaysOn: string[];
 };
@@ -38,6 +44,9 @@ const form = useForm({
     slug: props.brand.slug,
     currency: props.brand.currency,
     hosts: [...props.brand.hosts],
+    logoMediaId: props.brand.logoMediaId,
+    logoDarkMediaId: props.brand.logoDarkMediaId,
+    faviconMediaId: props.brand.faviconMediaId,
 });
 
 const modulesForm = useForm({
@@ -157,6 +166,74 @@ function moduleLabel(module: string): string {
                         <div class="flex items-center gap-3">
                             <Button type="submit" :disabled="form.processing">
                                 Save details
+                            </Button>
+                            <span
+                                v-if="form.isDirty"
+                                role="status"
+                                class="text-sm text-warning"
+                            >
+                                Unsaved changes
+                            </span>
+                        </div>
+                    </form>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Appearance</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <form
+                        class="flex flex-col gap-6"
+                        @submit.prevent="submitDetails"
+                    >
+                        <p class="text-sm text-text-muted">
+                            The mark in this brand's topbar and the icon in the
+                            browser tab. Anything left unset falls back to the
+                            bundled Konventix artwork. Files come from this
+                            brand's media library.
+                        </p>
+
+                        <MediaPicker
+                            v-model="form.logoMediaId"
+                            label="Logo (light mode)"
+                            :media="media"
+                        />
+                        <InputError :message="form.errors.logoMediaId" />
+
+                        <MediaPicker
+                            v-model="form.logoDarkMediaId"
+                            label="Logo (dark mode)"
+                            :media="media"
+                            described-by="logo-dark-hint"
+                        />
+                        <p
+                            id="logo-dark-hint"
+                            class="-mt-4 text-xs text-text-muted"
+                        >
+                            Optional. Without one, the light mark is used in
+                            both themes.
+                        </p>
+                        <InputError :message="form.errors.logoDarkMediaId" />
+
+                        <MediaPicker
+                            v-model="form.faviconMediaId"
+                            label="Favicon"
+                            :media="media"
+                            described-by="favicon-hint"
+                        />
+                        <p
+                            id="favicon-hint"
+                            class="-mt-4 text-xs text-text-muted"
+                        >
+                            A square PNG or SVG.
+                        </p>
+                        <InputError :message="form.errors.faviconMediaId" />
+
+                        <div class="flex items-center gap-3">
+                            <Button type="submit" :disabled="form.processing">
+                                Save appearance
                             </Button>
                             <span
                                 v-if="form.isDirty"

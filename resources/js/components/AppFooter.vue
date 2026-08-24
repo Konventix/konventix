@@ -1,0 +1,102 @@
+<script setup lang="ts">
+import { Link, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+
+/**
+ * The footer of every brand-facing page: the operator's own entries, the
+ * running version, and who made this.
+ *
+ * Entries are operator-wide (see the `footer_links` migration) and arrive as
+ * data on the shared `footer` prop, so this component knows no destinations
+ * of its own. A `dialog` entry opens a component the module registry
+ * resolves by key — the seam the notification bell and the announcement
+ * banner already use — and is skipped entirely when nothing ships under that
+ * key, which is how "Cookie settings" can be configured before the dialog
+ * behind it exists.
+ */
+const page = usePage();
+
+const version = computed(() => page.props.footer?.version ?? null);
+
+/** Which dialog key, if any, the visitor has opened. */
+const openDialog = ref<string | null>(null);
+
+const links = computed(() =>
+    (page.props.footer?.links ?? []).filter(
+        (link) =>
+            link.kind === 'url' ||
+            resolveRegisteredComponent(`platform/dialogs/${link.dialogKey}`) !==
+                null,
+    ),
+);
+
+function dialogComponent(key: string | null) {
+    return key === null
+        ? null
+        : resolveRegisteredComponent(`platform/dialogs/${key}`);
+}
+</script>
+
+<template>
+    <footer class="mt-auto border-t border-border bg-surface">
+        <div
+            class="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-6 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between"
+        >
+            <nav
+                v-if="links.length > 0"
+                class="flex flex-wrap items-center gap-x-4 gap-y-2"
+                aria-label="Legal and policies"
+            >
+                <template v-for="link in links" :key="link.label">
+                    <a
+                        v-if="link.kind === 'url' && link.opensInNewTab"
+                        :href="link.url ?? undefined"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="hover:text-text"
+                    >
+                        {{ link.label }}
+                    </a>
+                    <Link
+                        v-else-if="link.kind === 'url'"
+                        :href="link.url ?? '#'"
+                        class="hover:text-text"
+                    >
+                        {{ link.label }}
+                    </Link>
+                    <button
+                        v-else
+                        type="button"
+                        class="hover:text-text"
+                        @click="openDialog = link.dialogKey"
+                    >
+                        {{ link.label }}
+                    </button>
+                </template>
+            </nav>
+
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <span v-if="version">Version {{ version }}</span>
+                <span>
+                    Built on
+                    <a
+                        href="https://github.com/konventix/konventix"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="underline underline-offset-4 hover:text-text"
+                    >
+                        Konventix
+                    </a>
+                </span>
+            </div>
+        </div>
+
+        <component
+            :is="dialogComponent(openDialog)"
+            v-if="dialogComponent(openDialog)"
+            :open="true"
+            @close="openDialog = null"
+        />
+    </footer>
+</template>

@@ -27,9 +27,6 @@
 - [ ] The entry list and moderation queue still show bare author ULIDs — the
       operator console reads no author names yet, though the read model now
       exists to give it them.
-- [ ] Nothing in the public navigation points at `/news`; readers arrive
-      through the latest-news block or the banner. A public nav contribution
-      needs a shell mechanism (PublicTopbar hardcodes its links today).
 - [ ] Reporting a comment is not deduplicated per reader — a second click
       raises the counter again. Accepted while the counter is only a queue
       ordering hint; revisit if it is ever used as a moderation threshold.
@@ -54,6 +51,12 @@
       this to Registration state.
 
 ## Done
+
+- [x] `/news` is in the brand topbar. Readers used to arrive only through the
+      latest-news block, the banner, or a link somebody sent them — the
+      shell mechanism this was waiting on is `NavigationRegistry`'s
+      `AREA_BRAND`, so Content registers the entry from its own provider and
+      the topbar keeps knowing nothing about news.
 
 - [x] Public pages — `/news` listing, `/news/{slug}` detail with comments,
       the urgent-announcement banner, and the `LatestNewsBlock` Vue component

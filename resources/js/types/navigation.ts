@@ -12,3 +12,16 @@ export type NavItem = {
     icon?: LucideIcon;
     isActive?: boolean;
 };
+
+/**
+ * A brand-shell navigation entry as the backend's NavigationRegistry emits
+ * it (ADR-0003): the icon arrives as a name, not a component, because a
+ * module contributes entries from PHP and knows nothing about the shell.
+ */
+export type BrandNavItem = {
+    module: string;
+    label: string;
+    url: string;
+    icon: string | null;
+    order: number;
+};

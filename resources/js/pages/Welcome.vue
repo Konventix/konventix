@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import AppLogoIcon from '@/components/AppLogoIcon.vue';
-import PublicTopbar from '@/components/PublicTopbar.vue';
+import AppLogo from '@/components/AppLogo.vue';
 
 /**
  * Fallback landing page, rendered by the `/` route (routes/web.php) when the
@@ -14,18 +13,13 @@ import PublicTopbar from '@/components/PublicTopbar.vue';
 <template>
     <Head title="Welcome" />
 
-    <div class="flex min-h-screen flex-col bg-surface text-text">
-        <PublicTopbar :name="$page.props.name" />
-
-        <main
-            class="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center lg:p-8"
-        >
-            <!-- TODO(brand): swap the placeholder mark for the Konventix logo. -->
-            <AppLogoIcon class="size-10 fill-current text-text" />
-            <h1 class="text-2xl font-semibold">{{ $page.props.name }}</h1>
-            <p class="max-w-prose text-sm text-text-muted">
-                Event-agnostic event management platform.
-            </p>
-        </main>
+    <div
+        class="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-6 text-center text-text lg:p-8"
+    >
+        <AppLogo :show-name="false" />
+        <h1 class="text-2xl font-semibold">{{ $page.props.name }}</h1>
+        <p class="max-w-prose text-sm text-text-muted">
+            Event-agnostic event management platform.
+        </p>
     </div>
 </template>

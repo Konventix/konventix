@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import PublicTopbar from '@/components/PublicTopbar.vue';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 
 /**
@@ -25,34 +24,30 @@ const props = defineProps<{
 <template>
     <Head :title="title" />
 
-    <div class="flex min-h-screen flex-col bg-surface text-text">
-        <PublicTopbar :name="$page.props.name" />
-
-        <main
-            class="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 p-6 lg:p-8"
-        >
-            <!--
+    <div
+        class="mx-auto flex w-full max-w-5xl flex-col gap-10 p-6 text-text lg:p-8"
+    >
+        <!--
                 A hero block already carries a prominent heading, so the page
                 title is not repeated above it — plain pages (imprint, about)
                 have no hero and keep the title as their only heading.
             -->
-            <h1
-                v-if="props.blocks[0]?.key !== 'hero'"
-                class="text-3xl font-semibold text-text"
-            >
-                {{ title }}
-            </h1>
+        <h1
+            v-if="props.blocks[0]?.key !== 'hero'"
+            class="text-3xl font-semibold text-text"
+        >
+            {{ title }}
+        </h1>
 
-            <template
-                v-for="(block, index) in props.blocks"
-                :key="`${block.key}-${index}`"
-            >
-                <component
-                    :is="resolveRegisteredComponent(block.component)"
-                    v-if="resolveRegisteredComponent(block.component)"
-                    v-bind="block.props"
-                />
-            </template>
-        </main>
+        <template
+            v-for="(block, index) in props.blocks"
+            :key="`${block.key}-${index}`"
+        >
+            <component
+                :is="resolveRegisteredComponent(block.component)"
+                v-if="resolveRegisteredComponent(block.component)"
+                v-bind="block.props"
+            />
+        </template>
     </div>
 </template>

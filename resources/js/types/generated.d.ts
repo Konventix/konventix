@@ -324,6 +324,13 @@ declare namespace Konventix {
                 slug: string;
                 hosts: string[];
             };
+            export type BrandIdentityData = {
+                name: string;
+                logoUrl: string | null;
+                logoDarkUrl: string | null;
+                logoAlt: string | null;
+                faviconUrl: string | null;
+            };
             export type BrandStorageSettingsData = {
                 useOwnStorage: boolean;
                 bucket: string | null;
@@ -344,6 +351,16 @@ declare namespace Konventix {
             export type BrandThemeData = {
                 tokens: Record<string, string>;
                 darkTokens: Record<string, string>;
+            };
+            export type FooterLinkData = {
+                label: string;
+                kind: Konventix.Platform.Enums.FooterLinkKind;
+                url: string | null;
+                dialogKey: string | null;
+                opensInNewTab: boolean;
+            };
+            export type FooterLinksData = {
+                links: Konventix.Platform.Data.FooterLinkData[];
             };
             export type MediaItemData = {
                 id: string;
@@ -394,6 +411,9 @@ declare namespace Konventix {
                 slug: string;
                 currency: string;
                 hosts: string[];
+                logoMediaId: string | null;
+                logoDarkMediaId: string | null;
+                faviconMediaId: string | null;
             };
             namespace Blocks {
                 export type CardItemData = {
@@ -426,6 +446,7 @@ declare namespace Konventix {
             }
         }
         namespace Enums {
+            export type FooterLinkKind = 'url' | 'dialog';
             export type Permission =
                 | 'platform.access-admin'
                 | 'platform.view-brands'
@@ -439,7 +460,10 @@ declare namespace Konventix {
                 | 'platform.view-media'
                 | 'platform.manage-media'
                 | 'platform.manage-storage-settings'
-                | 'platform.manage-operator';
+                | 'platform.manage-operator'
+                | 'platform.manage-footer-links'
+                | 'platform.view-diagnostics'
+                | 'platform.view-request-log';
         }
     }
     namespace Registration {
@@ -454,6 +478,13 @@ declare namespace Konventix {
                 readonly unitAmountNet: string;
                 readonly taxClass: Konventix.Registration.Enums.TaxClass;
                 readonly display: Konventix.Registration.Enums.PriceDisplay;
+            };
+            export type PublicOfferData = {
+                readonly registrationTypeId: string;
+                readonly name: string;
+                readonly url: string;
+                readonly price: Konventix.Registration.Data.PriceDeclarationData | null;
+                readonly requiresApproval: boolean;
             };
             export type QuotaData = {
                 readonly name: string;

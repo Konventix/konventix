@@ -1,4 +1,5 @@
 import type { Auth } from '@/types/auth';
+import type { BrandNavItem } from '@/types/navigation';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {
@@ -17,6 +18,12 @@ declare module '@inertiajs/core' {
     export interface InertiaConfig {
         sharedPageProps: {
             name: string;
+            brand: Konventix.Platform.Data.BrandIdentityData;
+            nav: BrandNavItem[];
+            footer: {
+                links: Konventix.Platform.Data.FooterLinkData[];
+                version: string | null;
+            };
             auth: Auth;
             sidebarOpen: boolean;
             [key: string]: unknown;

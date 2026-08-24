@@ -109,7 +109,9 @@ it('serves the bell feed with the unread count', function (): void {
     InboxNotification::factory()->create(['brand_id' => $brand->getKey()]);
 
     $this->actingAs($user)
-        ->getJson('/notifications')
+        // The bell's endpoint moved a level deeper when `/notifications`
+        // became the inbox page a person opens.
+        ->getJson('/notifications/feed')
         ->assertOk()
         ->assertJsonPath('unread', 2)
         ->assertJsonCount(3, 'notifications');

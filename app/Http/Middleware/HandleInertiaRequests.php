@@ -6,8 +6,12 @@ namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use Konventix\Platform\Branding\BrandIdentityResolver;
 use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Data\BrandIdentityData;
+use Konventix\Platform\Data\FooterLinkData;
 use Konventix\Platform\Models\AdminFavorite;
+use Konventix\Platform\Models\FooterLink;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\OperatorContext;
@@ -42,9 +46,17 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $identity = $this->identity();
+
         return [
             ...parent::share($request),
-            'name' => config('app.name'),
+            // The resolved brand's name on a brand host, the operator's on
+            // the admin host — never the deployment's application name,
+            // which is nobody's public identity (ADR-0001).
+            'name' => $identity->name,
+            // Logo and favicon URLs for the shell; every one of them may be
+            // null, and the shell falls back to the bundled mark.
+            'brand' => $identity,
             'auth' => [
                 'user' => $request->user(),
             ],
@@ -54,6 +66,17 @@ class HandleInertiaRequests extends Middleware
             'reverb' => [
                 'key' => app(BrandContext::class)->current()?->reverb_app_key,
             ],
+            // The brand shell's primary navigation: modules contribute
+            // entries from their own providers and the registry filters by
+            // module activation and capability at render time (ADR-0003,
+            // enforcement point 2). Absent on the admin host, which has its
+            // own `admin.navigation`.
+            'nav' => app(BrandContext::class)->current() !== null
+                ? app(NavigationRegistry::class)
+                    ->visible(NavigationItem::AREA_BRAND)
+                    ->map(fn (NavigationItem $item): array => $item->toArray())
+                    ->all()
+                : [],
             // Operator console shell data (ADR-0029): only present on the
             // admin host, capability-filtered by the registry.
             'admin' => app(OperatorContext::class)->hasOperator() ? [
@@ -76,7 +99,59 @@ class HandleInertiaRequests extends Middleware
                         ->all()
                     : [],
             ] : null,
+            // The operator's footer, rendered by the brand shell on every
+            // page (the operator console has its own chrome and renders
+            // none of this).
+            'footer' => [
+                'links' => $this->footerLinks(),
+                'version' => config('app.version'),
+            ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
+    }
+
+    /**
+     * The footer entries of the operator behind the resolved brand.
+     *
+     * Empty off a brand host: the operator console renders no footer, and
+     * asking for one there would be a query for markup nobody emits.
+     *
+     * @return array<int, FooterLinkData>
+     */
+    private function footerLinks(): array
+    {
+        $brand = app(BrandContext::class)->current();
+
+        if ($brand === null || $brand->operator_id === null) {
+            return [];
+        }
+
+        return FooterLink::query()
+            ->where('operator_id', $brand->operator_id)
+            ->inDisplayOrder()
+            ->get()
+            ->map(fn (FooterLink $link): FooterLinkData => FooterLinkData::ofModel($link))
+            ->all();
+    }
+
+    /**
+     * Whoever this request resolved to. Shared props are built for every
+     * response, including ones rendered before ResolveBrand has run, so the
+     * unresolved case has to be an answer rather than an exception.
+     */
+    private function identity(): BrandIdentityData
+    {
+        $resolver = app(BrandIdentityResolver::class);
+        $brand = app(BrandContext::class)->current();
+
+        if ($brand !== null) {
+            return $resolver->forBrand($brand);
+        }
+
+        $operator = app(OperatorContext::class)->current();
+
+        return $operator !== null
+            ? $resolver->forOperator($operator)
+            : $resolver->fallback();
     }
 }

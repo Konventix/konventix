@@ -9,6 +9,7 @@ use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Blocks\Types\CardsBlock;
 use Konventix\Platform\Blocks\Types\HeroBlock;
 use Konventix\Platform\Blocks\Types\TextBlock;
+use Konventix\Platform\Branding\BrandIdentityResolver;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Brands\PropagatesBrandContextToQueue;
 use Konventix\Platform\Enums\Permission;
@@ -125,6 +126,11 @@ class PlatformServiceProvider extends ModuleServiceProvider
         // including a brand's own bucket (ADR-0043 point 6) — and those must
         // not survive into the next request an Octane worker serves.
         $this->app->scoped(DiskResolver::class);
+
+        // Scoped for the same reason: it memoizes resolved media URLs, which
+        // depend on the brand's storage settings and must not outlive the
+        // request that resolved them.
+        $this->app->scoped(BrandIdentityResolver::class);
     }
 
     /**
@@ -200,6 +206,26 @@ class PlatformServiceProvider extends ModuleServiceProvider
                 order: 15,
                 permission: Permission::ManageOperator->value,
                 area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'platform',
+                label: 'Footer',
+                url: '/admin/settings/footer',
+                icon: 'scroll-text',
+                order: 16,
+                permission: Permission::ManageFooterLinks->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            // The brand shell's own navigation. Registered here so the
+            // topbar has a source rather than a hardcoded array; other
+            // modules add their brand-facing entries the same way.
+            new NavigationItem(
+                module: 'platform',
+                label: 'Home',
+                url: '/',
+                icon: 'house',
+                order: 0,
+                area: NavigationItem::AREA_BRAND,
             ),
             new NavigationItem(
                 module: 'platform',

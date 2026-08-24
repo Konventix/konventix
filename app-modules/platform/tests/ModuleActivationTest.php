@@ -89,11 +89,20 @@ it('hides navigation entries for inactive modules', function (): void {
         new NavigationItem(module: 'identity', label: 'Profile', url: '/settings/profile'),
     );
 
-    expect($registry->visible()->pluck('label')->all())->toBe(['Profile']);
+    // Narrowed to the two entries under test: the brand area carries real
+    // registrations of its own now (the topbar's navigation), and this test
+    // is about gating rather than about everything in the registry.
+    $underTest = fn (): array => $registry->visible()
+        ->pluck('label')
+        ->intersect(['Shifts', 'Profile'])
+        ->values()
+        ->all();
+
+    expect($underTest())->toBe(['Profile']);
 
     Feature::for($brand)->activate(app(ModuleGate::class)->featureName('staffing'));
 
-    expect($registry->visible()->pluck('label')->all())->toEqualCanonicalizing(['Profile', 'Shifts']);
+    expect($underTest())->toEqualCanonicalizing(['Profile', 'Shifts']);
 });
 
 it('hides UI slot contributions for inactive modules', function (): void {
@@ -110,4 +119,70 @@ it('hides UI slot contributions for inactive modules', function (): void {
 
     expect($slots->for('event.sidebar')->pluck('component')->all())
         ->toEqualCanonicalizing(['LatestNews', 'ShiftSummary']);
+});
+
+/**
+ * A public page's slot contributions have to be *in* the first paint, so a
+ * contributing module hands over a closure instead of a literal prop-bag and
+ * the rendering controller resolves it with that page's context.
+ */
+it('resolves a closure prop-bag against the render context', function (): void {
+    $brand = Brand::factory()->create();
+    app(BrandContext::class)->set($brand);
+
+    $slots = app(SlotRegistry::class);
+    $slots->add(
+        slot: 'test.props.slot',
+        module: 'content',
+        component: 'LatestNews',
+        props: static fn (array $context): array => ['for' => $context['eventId']],
+    );
+
+    expect($slots->for('test.props.slot', ['eventId' => 'evt-1'])->first()['props'])
+        ->toBe(['for' => 'evt-1']);
+});
+
+it('leaves a literal prop-bag exactly as it was registered', function (): void {
+    $brand = Brand::factory()->create();
+    app(BrandContext::class)->set($brand);
+
+    $slots = app(SlotRegistry::class);
+    $slots->add('test.props.slot', 'content', 'LatestNews', ['limit' => 3]);
+
+    expect($slots->for('test.props.slot', ['eventId' => 'evt-1'])->first()['props'])
+        ->toBe(['limit' => 3]);
+});
+
+/**
+ * The closure is the expensive half of a contribution — it queries. An
+ * inactive module's must never run at all, which is why resolution happens
+ * after the activation filter rather than alongside it.
+ */
+it('never runs an inactive module\'s closure', function (): void {
+    $brand = Brand::factory()->create();
+    app(BrandContext::class)->set($brand);
+
+    $ran = false;
+
+    $slots = app(SlotRegistry::class);
+    $slots->add(
+        slot: 'test.props.slot',
+        module: 'staffing',
+        component: 'ShiftSummary',
+        props: static function (array $context) use (&$ran): array {
+            $ran = true;
+
+            return [];
+        },
+    );
+
+    $slots->for('test.props.slot', ['eventId' => 'evt-1'])->all();
+
+    expect($ran)->toBeFalse();
+
+    Feature::for($brand)->activate(app(ModuleGate::class)->featureName('staffing'));
+
+    $slots->for('test.props.slot', ['eventId' => 'evt-1'])->all();
+
+    expect($ran)->toBeTrue();
 });

@@ -50,6 +50,14 @@
 
 ## Done
 
+- [x] The public form is reachable from the site. `/events/{event}/register/{type}`
+      had no inbound link anywhere in the UI — it worked, and nobody could
+      find it. `PublicOfferData` + a contribution to Event's `event.landing`
+      slot puts the brand's public types on the landing page with their
+      declared price and whether a reviewer stands in the way. Only `Public`
+      types are listed: advertising a `Link` or `InviteOnly` type to someone
+      holding no token would defeat the point of the axis (D-COM-02).
+
 - [x] Registration-type and quota console (ADR-0029) — the offer had no screen
       at all: types were created by seeder or tinker, which made the central
       object of the product the one thing an operator could not touch. The

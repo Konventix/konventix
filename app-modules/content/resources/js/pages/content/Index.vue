@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import PublicTopbar from '@/components/PublicTopbar.vue';
 import { Button } from '@/components/ui/button';
-import { noLayout } from '@/lib/layout';
 import { show as showEntry } from '@/routes/content';
 
 /**
@@ -38,96 +36,84 @@ function goToPage(page: number): void {
         { preserveScroll: true, preserveState: true },
     );
 }
-
-/**
- * A public page: it brings its own `PublicTopbar` and must not also be wrapped
- * in the authenticated app shell. Event's `Landing.vue` has always opted out
- * this way; these two never did, so a reader arriving from a search result got
- * the signed-in chrome around a page meant for anyone.
- */
-defineOptions({ layout: noLayout });
 </script>
 
 <template>
     <Head title="News" />
 
-    <div class="flex min-h-screen flex-col bg-surface text-text">
-        <PublicTopbar :name="$page.props.name" />
+    <div
+        class="mx-auto flex w-full max-w-3xl flex-col gap-8 p-6 text-text lg:p-8"
+    >
+        <h1 class="text-3xl font-semibold">News</h1>
 
-        <main
-            class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 p-6 lg:p-8"
+        <p
+            v-if="props.entries.data.length === 0"
+            class="text-sm text-text-muted"
         >
-            <h1 class="text-3xl font-semibold">News</h1>
+            Nothing published yet.
+        </p>
 
-            <p
-                v-if="props.entries.data.length === 0"
-                class="text-sm text-text-muted"
+        <article
+            v-for="entry in props.entries.data"
+            :key="entry.slug"
+            class="flex flex-col gap-2 border-b border-border pb-6 last:border-b-0"
+        >
+            <div
+                class="flex items-center gap-2 text-xs tracking-wide text-text-muted uppercase"
             >
-                Nothing published yet.
+                <span
+                    v-if="entry.type === 'announcement'"
+                    class="rounded-full bg-accent/15 px-2 py-0.5 text-accent"
+                >
+                    Announcement
+                </span>
+                <time :datetime="entry.publishedAt ?? undefined">
+                    {{ formatDate(entry.publishedAt) }}
+                </time>
+            </div>
+
+            <h2 class="text-xl font-semibold">
+                <Link
+                    :href="showEntry(entry.slug).url"
+                    class="hover:text-accent"
+                >
+                    {{ entry.title }}
+                </Link>
+            </h2>
+
+            <p v-if="entry.teaser" class="text-sm text-text-muted">
+                {{ entry.teaser }}
             </p>
 
-            <article
-                v-for="entry in props.entries.data"
-                :key="entry.slug"
-                class="flex flex-col gap-2 border-b border-border pb-6 last:border-b-0"
+            <p v-if="entry.authorName" class="text-xs text-text-muted">
+                by {{ entry.authorName }}
+            </p>
+        </article>
+
+        <div
+            v-if="props.entries.last_page > 1"
+            class="flex items-center justify-between"
+        >
+            <Button
+                variant="outline"
+                :disabled="props.entries.current_page <= 1"
+                @click="goToPage(props.entries.current_page - 1)"
             >
-                <div
-                    class="flex items-center gap-2 text-xs tracking-wide text-text-muted uppercase"
-                >
-                    <span
-                        v-if="entry.type === 'announcement'"
-                        class="rounded-full bg-accent/15 px-2 py-0.5 text-accent"
-                    >
-                        Announcement
-                    </span>
-                    <time :datetime="entry.publishedAt ?? undefined">
-                        {{ formatDate(entry.publishedAt) }}
-                    </time>
-                </div>
-
-                <h2 class="text-xl font-semibold">
-                    <Link
-                        :href="showEntry(entry.slug).url"
-                        class="hover:text-accent"
-                    >
-                        {{ entry.title }}
-                    </Link>
-                </h2>
-
-                <p v-if="entry.teaser" class="text-sm text-text-muted">
-                    {{ entry.teaser }}
-                </p>
-
-                <p v-if="entry.authorName" class="text-xs text-text-muted">
-                    by {{ entry.authorName }}
-                </p>
-            </article>
-
-            <div
-                v-if="props.entries.last_page > 1"
-                class="flex items-center justify-between"
+                Newer
+            </Button>
+            <span class="text-sm text-text-muted">
+                Page {{ props.entries.current_page }} of
+                {{ props.entries.last_page }}
+            </span>
+            <Button
+                variant="outline"
+                :disabled="
+                    props.entries.current_page >= props.entries.last_page
+                "
+                @click="goToPage(props.entries.current_page + 1)"
             >
-                <Button
-                    variant="outline"
-                    :disabled="props.entries.current_page <= 1"
-                    @click="goToPage(props.entries.current_page - 1)"
-                >
-                    Newer
-                </Button>
-                <span class="text-sm text-text-muted">
-                    Page {{ props.entries.current_page }} of
-                    {{ props.entries.last_page }}
-                </span>
-                <Button
-                    variant="outline"
-                    :disabled="
-                        props.entries.current_page >= props.entries.last_page
-                    "
-                    @click="goToPage(props.entries.current_page + 1)"
-                >
-                    Older
-                </Button>
-            </div>
-        </main>
+                Older
+            </Button>
+        </div>
     </div>
 </template>
