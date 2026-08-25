@@ -315,7 +315,7 @@ in the owning module's `TODO.md` when it lands.
   18 needs one declared shape — a controller names its filters and their
   allowed values, the toolbar renders them, the CSV export re-reads the
   same set — before a brand or event filter can be added to every list
-  without writing it seven times.
+  without writing it seven times. **Done.**
 
 18. **Console context: brand and event selectors, and the filters they
     prefill.** Platform, with each module's list controller. A brand
@@ -348,7 +348,9 @@ in the owning module's `TODO.md` when it lands.
     is the power to read request bodies. Linking it makes the retention
     decision Compliance's `TODO.md` carries ("Telescope and Pulse hold
     personal data outside the retention machinery") more urgent, not less.
-    Needs P3.
+    Needs P3. **Done** (the diagnostics card, the selectors, and the
+    brand/event filters on every cross-brand list; Content's event filter
+    waits on its event read model).
 
 19. **Default role sets, shipped by the modules that own the
     capabilities.** Platform for the mechanism, each module for its sets.
@@ -459,6 +461,8 @@ in the owning module's `TODO.md` when it lands.
     because slice 26 will want to react to a gallery item and the comment
     table's hard FK to `content_entries` is already the reason gallery
     comments cannot reuse it. Needs P1 for the names to be complete.
+    **First half done**: names and links in the queue and the entry list;
+    reactions still owed.
 
 23. **More than one live settlement account per brand.** Commerce. This
     reverses a shipped decision and must say so: `ConnectSettlementAccount`

@@ -7,15 +7,12 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import { Button } from '@/components/ui/button';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import type { DataTableFilters } from '@/composables/useDataTable';
-import { useDataTable } from '@/composables/useDataTable';
+import { useConsoleSelection } from '@/composables/useConsoleSelection';
+import type {
+    DataTableFilterDef,
+    DataTableFilters,
+} from '@/composables/useDataTable';
+import { seedSelectionFilter, useDataTable } from '@/composables/useDataTable';
 import { edit as editEntry } from '@/routes/admin/content';
 import {
     index as commentsIndex,
@@ -30,12 +27,17 @@ import {
  * Reject and hide are separate buttons on purpose: rejecting turns down a
  * submission nobody saw, hiding removes something that was already public,
  * and a moderator reviewing their own history needs to know which they did.
+ *
+ * Authors are named, not spelled out as ULIDs: the name comes from Content's
+ * own author read model and the link points at Identity's account page.
  */
 type CommentRow = {
     id: string;
     entryId: string;
     entryTitle: string;
-    authorUserId: string;
+    authorName: string;
+    /** Identity's account page for this author. */
+    authorUrl: string;
     body: string;
     state: Konventix.Content.Enums.CommentState;
     reportCount: number;
@@ -55,12 +57,57 @@ interface PaginatedComments {
 
 const props = defineProps<{
     comments: PaginatedComments;
+    brands: { id: string; name: string }[];
     states: Konventix.Content.Enums.CommentState[];
-    filters: DataTableFilters;
+    filters: DataTableFilters & {
+        brand: string | null;
+        state: string | null;
+    };
 }>();
 
-const { filters, setSearch, toggleSort, setPerPage, setPage, navigate } =
-    useDataTable(() => commentsIndex().url, props.filters);
+const selection = useConsoleSelection();
+
+const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
+    useDataTable(() => commentsIndex().url, {
+        ...props.filters,
+        // An absent `state` means "the queue", so a cleared state filter has
+        // to keep sending `all` — the same reason `seedSelectionFilter`
+        // exists for the brand, with a constant default instead of a pick.
+        state: props.filters.state ?? 'all',
+        brand: seedSelectionFilter(
+            props.filters.brand,
+            selection.value?.brandId,
+        ),
+    });
+
+/**
+ * `attention` is not a `CommentState` — it is the queue, and this list's
+ * default — so it sits among the states as its own option, and `clearValue`
+ * makes "All comments" survive the next search instead of falling back to
+ * the queue. The brand filter defaults to the console selection the same way.
+ */
+const filterDefs = computed<DataTableFilterDef[]>(() => [
+    {
+        name: 'state',
+        label: 'Comments',
+        value: props.filters.state,
+        options: [
+            { value: 'attention', label: 'Needs attention' },
+            ...props.states.map((state) => ({ value: state, label: state })),
+        ],
+        clearValue: 'all',
+    },
+    {
+        name: 'brand',
+        label: 'Brands',
+        value: props.filters.brand,
+        options: props.brands.map((brand) => ({
+            value: brand.id,
+            label: brand.name,
+        })),
+        clearValue: 'all',
+    },
+]);
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -70,11 +117,6 @@ function onSortingChange(next: SortingState): void {
     if (next.length > 0) {
         toggleSort(next[0].id);
     }
-}
-
-function setState(value: string): void {
-    filters.state = value;
-    navigate({ page: undefined });
 }
 
 const pagination = computed(() => ({
@@ -129,11 +171,13 @@ const columns: ColumnDef<CommentRow>[] = [
                             () => row.original.entryTitle,
                         ),
                         h('span', '·'),
-                        // Bare ULID until Platform's identity read model lands.
                         h(
-                            'span',
-                            { class: 'font-mono' },
-                            row.original.authorUserId,
+                            Link,
+                            {
+                                href: row.original.authorUrl,
+                                class: 'underline-offset-4 hover:text-accent hover:underline',
+                            },
+                            () => row.original.authorName,
                         ),
                     ],
                 ),
@@ -235,34 +279,12 @@ const columns: ColumnDef<CommentRow>[] = [
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
+            :filters="filterDefs"
             search-placeholder="Search comment text…"
             @update:search="setSearch"
             @update:per-page="setPerPage"
-        >
-            <template #actions>
-                <Select
-                    :model-value="(filters.state as string) ?? 'attention'"
-                    @update:model-value="(value) => setState(String(value))"
-                >
-                    <SelectTrigger class="w-44" aria-label="Filter by state">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="attention">
-                            Needs attention
-                        </SelectItem>
-                        <SelectItem value="all">All comments</SelectItem>
-                        <SelectItem
-                            v-for="state in props.states"
-                            :key="state"
-                            :value="state"
-                        >
-                            {{ state }}
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
-            </template>
-        </DataTableToolbar>
+            @update:filter="setFilter"
+        />
 
         <DataTable
             data-test="comments-table"

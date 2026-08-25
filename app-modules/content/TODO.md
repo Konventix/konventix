@@ -18,9 +18,6 @@
 - [ ] Event association is a raw ULID field in the editor: Content may not
       import Event's models (ADR-0004), so an event picker needs an event read
       model here, fed by Event's contract events.
-- [ ] The entry list and moderation queue still show bare author ULIDs — the
-      operator console reads no author names yet, though the read model now
-      exists to give it them.
 - [ ] Reporting a comment is not deduplicated per reader — a second click
       raises the counter again. Accepted while the counter is only a queue
       ordering hint; revisit if it is ever used as a moderation threshold.
@@ -45,6 +42,15 @@
       this to Registration state.
 
 ## Done
+
+- [x] The entry list and the moderation queue name their authors. Both read
+      `content_authors` — one keyed lookup per page, never one per row — and
+      fall back to "Participant" exactly as the public page does for an
+      account the projection has not seen. The queue's author cell is a real
+      link to Identity's account page, by route name: a URL, not a model.
+      In the same pass the queue's state filter moved onto the declared
+      filter contract and its brand filter onto the console selection, so no
+      console list hand-rolls a select any more.
 
 - [x] The entry list defaults its brand filter from the console selection, and
       the operator clears it per list with `brand=all` — the type and state

@@ -11,6 +11,7 @@ use Konventix\Content\Events\AnnouncementPublished;
 use Konventix\Content\Events\ContentEntryPublished;
 use Konventix\Content\Models\ContentComment;
 use Konventix\Content\Models\ContentEntry;
+use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -432,4 +433,121 @@ it('defaults the brand filter to the console selection and lets the list clear i
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('filters.brand', null)
             ->count('entries.data', 2));
+});
+
+/**
+ * Slice 22: the console named people by their ULID. Content keeps its own
+ * author read model for exactly this — Identity's tables stay out of reach
+ * (ADR-0004) — so the queue and the entry list read from it, and the test
+ * fills it the only way anything ever does: Identity's event.
+ */
+it('shows the moderation queue an author name and a link to the account, never a bare ULID', function (): void {
+    [, $admin] = contentOperator();
+
+    $brand = $this->withBrand();
+    $author = User::factory()->create();
+
+    event(new UserRegistered(
+        userId: $author->id,
+        brandId: (string) $brand->getKey(),
+        email: $author->email,
+        displayName: 'Ada Lovelace',
+        locale: 'de',
+        registeredAt: now()->toIso8601String(),
+    ));
+
+    $entry = ContentEntry::factory()->published()->withComments()->create([
+        'author_user_id' => $author->id,
+    ]);
+    ContentComment::factory()->pending()->create([
+        'content_entry_id' => $entry->id,
+        'author_user_id' => $author->id,
+    ]);
+
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content-comments')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('comments.data.0.authorName', 'Ada Lovelace')
+            ->where('comments.data.0.authorUrl', route('admin.users.edit', $author->id, absolute: false)));
+
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('entries.data.0.authorName', 'Ada Lovelace'));
+});
+
+it('names an author the projection never saw "Participant" rather than showing the ULID', function (): void {
+    // An account older than the projection, until `identity:replay-profiles`
+    // has run for it. The public page reads the same way, so the console
+    // does not invent a second vocabulary for the same gap.
+    [, $admin] = contentOperator();
+
+    $this->withBrand();
+    $author = User::factory()->create();
+
+    $entry = ContentEntry::factory()->published()->withComments()->create([
+        'author_user_id' => null,
+    ]);
+    ContentComment::factory()->pending()->create([
+        'content_entry_id' => $entry->id,
+        'author_user_id' => $author->id,
+    ]);
+
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content-comments')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('comments.data.0.authorName', 'Participant')
+            ->where('comments.data.0.authorUrl', route('admin.users.edit', $author->id, absolute: false)));
+
+    // An entry credited to nobody says nothing, rather than crediting a
+    // "Participant" who does not exist.
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('entries.data.0.authorName', null));
+});
+
+it('moves the moderation state filter onto the declared contract and defaults the brand from the selection', function (): void {
+    [, $admin] = contentOperator();
+
+    $sxlan = $this->withBrand(Brand::factory()->create(['name' => 'SXLan']));
+    $sxlanEntry = ContentEntry::factory()->published()->withComments()->create(['title' => 'SXLan piece']);
+    ContentComment::factory()->pending()->create(['content_entry_id' => $sxlanEntry->id]);
+
+    $this->withBrand(Brand::factory()->create(['name' => 'Xpertise']));
+    $xpertiseEntry = ContentEntry::factory()->published()->withComments()->create(['title' => 'Xpertise piece']);
+    ContentComment::factory()->pending()->create(['content_entry_id' => $xpertiseEntry->id]);
+
+    // Nonsense in the query string is dropped by the contract rather than
+    // reaching the query — and it is dropped, not silently corrected.
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content-comments?state=bogus')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.state', null)
+            ->count('comments.data', 2));
+
+    $this->actingAs($admin)
+        ->put('http://admin.content.test/admin/selection', ['brandId' => $sxlan->getKey(), 'eventId' => null])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content-comments')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', $sxlan->getKey())
+            ->count('comments.data', 1)
+            ->where('comments.data.0.entryTitle', 'SXLan piece'));
+
+    // A default, not a scope: the queue spans every brand when asked to.
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content-comments?brand=all')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', null)
+            ->count('comments.data', 2));
 });

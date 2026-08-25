@@ -49,6 +49,8 @@ type EntryRow = {
     brandName: string;
     title: string;
     slug: string;
+    /** Null where the entry is credited to nobody. */
+    authorName: string | null;
     type: Konventix.Content.Enums.ContentType;
     state: Konventix.Content.Enums.PublicationState;
     publishedAt: string | null;
@@ -214,6 +216,16 @@ const columns: ColumnDef<EntryRow>[] = [
         header: 'Brand',
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, row.original.brandName),
+    },
+    {
+        id: 'author',
+        header: 'Author',
+        cell: ({ row }) =>
+            h(
+                'span',
+                { class: 'text-text-muted' },
+                row.original.authorName ?? '—',
+            ),
     },
     {
         accessorKey: 'published_at',

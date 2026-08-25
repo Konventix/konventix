@@ -12,9 +12,11 @@ use Inertia\Response;
 use Konventix\Content\Actions\ModerateComment;
 use Konventix\Content\Enums\CommentState;
 use Konventix\Content\Enums\Permission;
+use Konventix\Content\Models\Author;
 use Konventix\Content\Models\ContentComment;
 use Konventix\Content\Models\ContentEntry;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
+use Konventix\Platform\Operators\ConsoleSelection;
 
 /**
  * Operator console: the comment moderation queue (ADR-0029).
@@ -38,7 +40,10 @@ class CommentModerationController
 {
     use HasDataTableQuery;
 
-    public function index(Request $request): Response
+    /** The queue itself: pending plus anything reported, and no `CommentState`. */
+    private const ATTENTION = 'attention';
+
+    public function index(Request $request, ConsoleSelection $selection): Response
     {
         Gate::authorize(Permission::ModerateComments->value);
 
@@ -53,7 +58,24 @@ class CommentModerationController
             $sort['direction'] = 'desc';
         }
 
-        $state = $this->resolveState($request);
+        $filters = $this->resolveFilters($request, [
+            'state' => [...$this->stateValues(), self::ATTENTION],
+        ]);
+
+        // `attention` is not a `CommentState`: it is the queue — pending plus
+        // anything reported — which is what a moderator opens this page for,
+        // so an absent `state` means that rather than "every comment ever
+        // posted". A value the contract does not know is dropped, not
+        // quietly corrected back to the default: the operator asked for
+        // something, and the page should show them it got nothing.
+        if (! $request->has('state')) {
+            $filters['state'] = self::ATTENTION;
+        }
+
+        // The console's pick is this list's default, cleared per list with
+        // `brand=all` (ADR-0029). An event filter is owed here too, but
+        // Content has no event read model yet — see TODO.md.
+        $filters['brand'] = $this->resolveSelectionFilter($request, 'brand', $selection->brandId());
 
         $comments = ContentComment::withoutBrandScope()
             ->when($request->filled('search'), function ($query) use ($request): void {
@@ -61,10 +83,14 @@ class CommentModerationController
 
                 $query->where('body', 'ilike', $term);
             })
-            ->when($state === 'attention', fn ($query) => $query->where(
+            ->when($filters['brand'] !== null, fn ($query) => $query->forBrand($filters['brand']))
+            ->when($filters['state'] === self::ATTENTION, fn ($query) => $query->where(
                 fn ($inner) => $inner->where('state', CommentState::Pending)->orWhere('report_count', '>', 0),
             ))
-            ->when($state !== null && $state !== 'attention', fn ($query) => $query->where('state', $state))
+            ->when(
+                $filters['state'] !== null && $filters['state'] !== self::ATTENTION,
+                fn ($query) => $query->where('state', $filters['state']),
+            )
             ->orderBy($sort['column'], $sort['direction'])
             ->paginate($perPage)
             ->withQueryString();
@@ -75,23 +101,33 @@ class CommentModerationController
             ->pluck('title', 'id')
             ->all();
 
+        // One lookup for the page, never one per row. `content_authors` is
+        // Content's own read model (ADR-0004) and is not brand-owned, so
+        // unlike the entry titles it needs no escape from `BrandScope`.
+        /** @var array<string, string> $authorNames */
+        $authorNames = Author::query()
+            ->whereIn('id', $comments->getCollection()->pluck('author_user_id')->unique())
+            ->pluck('display_name', 'id')
+            ->all();
+
         return Inertia::render('admin/content/comments/Index', [
             'comments' => $comments->through(fn (ContentComment $comment): array => [
                 'id' => $comment->getKey(),
                 'entryId' => $comment->content_entry_id,
                 'entryTitle' => $entryTitles[$comment->content_entry_id] ?? '—',
-                'authorUserId' => $comment->author_user_id,
+                // An account the projection has not seen yet reads the same
+                // here as it does on the public page.
+                'authorName' => $authorNames[$comment->author_user_id] ?? __('Participant'),
+                'authorUrl' => route('admin.users.edit', $comment->author_user_id, absolute: false),
                 'body' => $comment->body,
                 'state' => $comment->state->value,
                 'reportCount' => $comment->report_count,
                 'postedAt' => $comment->created_at?->toDateTimeString(),
                 'moderatedAt' => $comment->moderated_at?->toDateTimeString(),
             ]),
-            'states' => array_map(fn (CommentState $case): string => $case->value, CommentState::cases()),
-            'filters' => [
-                ...$this->currentFilters($request, $sort, $perPage),
-                'state' => $state,
-            ],
+            'brands' => $this->brandOptions(),
+            'states' => $this->stateValues(),
+            'filters' => $this->currentFilters($request, $sort, $perPage, $filters),
         ]);
     }
 
@@ -118,20 +154,10 @@ class CommentModerationController
     }
 
     /**
-     * `attention` is the default and is not a `CommentState`: it is the queue
-     * — pending plus anything reported — which is what a moderator opens this
-     * page for.
+     * @return list<string>
      */
-    private function resolveState(Request $request): ?string
+    private function stateValues(): array
     {
-        $value = $request->string('state')->toString();
-
-        if ($value === 'all') {
-            return null;
-        }
-
-        $allowed = ['attention', ...array_map(fn (CommentState $case): string => $case->value, CommentState::cases())];
-
-        return in_array($value, $allowed, true) ? $value : 'attention';
+        return array_map(fn (CommentState $case): string => $case->value, CommentState::cases());
     }
 }

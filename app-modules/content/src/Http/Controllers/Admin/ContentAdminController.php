@@ -19,6 +19,7 @@ use Konventix\Content\Enums\ContentType;
 use Konventix\Content\Enums\Permission;
 use Konventix\Content\Enums\PublicationState;
 use Konventix\Content\Enums\Urgency;
+use Konventix\Content\Models\Author;
 use Konventix\Content\Models\ContentComment;
 use Konventix\Content\Models\ContentEntry;
 use Konventix\Platform\Brands\BrandUrl;
@@ -90,12 +91,24 @@ class ContentAdminController
         // One lookup for the page, not one per row.
         $brandBases = $brandUrl->basesFor($brands);
 
+        // Content's own author read model (ADR-0004), and not brand-owned,
+        // so it needs no escape from `BrandScope`. Entries may be credited
+        // to nobody, and a null has no name to look up.
+        /** @var array<string, string> $authorNames */
+        $authorNames = Author::query()
+            ->whereIn('id', $entries->getCollection()->pluck('author_user_id')->filter()->unique())
+            ->pluck('display_name', 'id')
+            ->all();
+
         return Inertia::render('admin/content/Index', [
             'entries' => $entries->through(fn (ContentEntry $entry): array => [
                 'id' => $entry->getKey(),
                 'brandName' => $brandNames[$entry->brand_id] ?? '—',
                 'title' => $entry->title,
                 'slug' => $entry->slug,
+                'authorName' => $entry->author_user_id === null
+                    ? null
+                    : ($authorNames[$entry->author_user_id] ?? __('Participant')),
                 'type' => $entry->type->value,
                 'state' => $entry->state->value,
                 'publishedAt' => $entry->published_at?->toDateTimeString(),
