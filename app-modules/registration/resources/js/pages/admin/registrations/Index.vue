@@ -40,12 +40,11 @@ interface PaginatedRegistrations {
 const props = defineProps<{
     registrations: PaginatedRegistrations;
     filters: DataTableFilters & { status: string | null; event: string | null };
+    statuses: string[];
 }>();
 
-const { filters, setSearch, toggleSort, setPerPage, setPage } = useDataTable(
-    () => registrationsIndex().url,
-    props.filters,
-);
+const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
+    useDataTable(() => registrationsIndex().url, props.filters);
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -64,23 +63,6 @@ const pagination = computed(() => ({
     from: props.registrations.from,
     to: props.registrations.to,
 }));
-
-function setStatus(event: Event): void {
-    const status = (event.target as HTMLSelectElement).value || undefined;
-    router.get(
-        registrationsIndex().url,
-        { ...routeQuery(), status },
-        { preserveState: false },
-    );
-}
-
-function routeQuery(): Record<string, string | undefined> {
-    return {
-        search: filters.search || undefined,
-        status: props.filters.status ?? undefined,
-        event: props.filters.event ?? undefined,
-    };
-}
 
 const selected = ref<Set<string>>(new Set());
 
@@ -201,23 +183,23 @@ const columns: ColumnDef<RegistrationRow>[] = [
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
+            :filters="[
+                {
+                    name: 'status',
+                    label: 'Status',
+                    value: props.filters.status,
+                    options: props.statuses.map((s) => ({
+                        value: s,
+                        label: s,
+                    })),
+                },
+            ]"
             search-placeholder="Search registrant, organization, email…"
             @update:search="setSearch"
             @update:per-page="setPerPage"
+            @update:filter="setFilter"
         >
             <template #actions>
-                <select
-                    class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
-                    :value="props.filters.status ?? ''"
-                    @change="setStatus"
-                >
-                    <option value="">All statuses</option>
-                    <option value="submitted">Submitted</option>
-                    <option value="approved">Approved</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="cancelled">Cancelled</option>
-                </select>
                 <Button
                     v-if="selected.size > 0"
                     variant="secondary"

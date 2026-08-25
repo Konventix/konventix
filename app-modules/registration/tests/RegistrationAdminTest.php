@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Events\InvoiceIssued;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Identity\Events\UserRegistered;
@@ -129,4 +130,15 @@ it('exports and anonymizes a subject through the GDPR handler, keeping the tombs
     expect($registration->organization_name)->toBeNull()
         ->and($registration->billing_email)->toBeNull()
         ->and(Registration::query()->whereKey($registration->id)->exists())->toBeTrue();
+});
+
+it('drops a status filter value the enum does not know instead of querying it', function (): void {
+    [, $admin] = registrationsOperator();
+
+    $this->actingAs($admin)
+        ->get('http://admin.regs.test/admin/registrations?status=bogus')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.status', null)
+            ->has('statuses'));
 });

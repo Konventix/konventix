@@ -16,6 +16,31 @@ export interface DataTableFilters {
     [key: string]: string | number | undefined;
 }
 
+export interface DataTableFilterOption {
+    value: string;
+    label: string;
+}
+
+/**
+ * One declared filter, as `HasDataTableQuery::resolveFilters()` declares it
+ * on the backend: the toolbar renders this and nothing else, so a filter
+ * exists in exactly one place per list.
+ */
+export interface DataTableFilterDef {
+    /** query-param name */
+    name: string;
+    /** accessible label, also the "all" option's text: `All ${label.toLowerCase()}` */
+    label: string;
+    /** current value; null = not filtering */
+    value: string | null;
+    options: DataTableFilterOption[];
+    /**
+     * sent instead of null when the user picks "All" — for filters whose
+     * absence means "use the console default"
+     */
+    clearValue?: string;
+}
+
 export function useDataTable(
     routeUrl: () => string,
     initialFilters: DataTableFilters = {},
@@ -62,6 +87,11 @@ export function useDataTable(
         navigate({ page: undefined });
     }
 
+    function setFilter(name: string, value: string | null): void {
+        filters[name] = value ?? undefined;
+        navigate({ page: undefined });
+    }
+
     function setPerPage(perPage: number): void {
         filters.per_page = perPage;
         navigate({ page: undefined });
@@ -74,6 +104,7 @@ export function useDataTable(
     return {
         filters,
         setSearch,
+        setFilter,
         toggleSort,
         setPerPage,
         setPage,

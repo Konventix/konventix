@@ -62,6 +62,18 @@ depends on brand resolution and gating working.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] A filter contract for the operator console's lists.
+      `HasDataTableQuery` knew `search`, `sort`, `dir` and `per_page`; every
+      other filter was a hand-rolled query parameter and a hand-rolled
+      `<select>`, three pages in. `resolveFilters()` declares a list's
+      filters and, where the values are a closed set, the values each
+      accepts — anything else in the query string is dropped there instead
+      of reaching the query — and `currentFilters()` echoes the resolved set
+      back to the page, where `DataTableToolbar` renders that same
+      declaration. Registrations is the first list on it, status resolved
+      from `RegistrationStatus` rather than five hand-typed `<option>`s; the
+      brand and event filters that follow need no page of their own.
+
 - [x] A brand's marks are usage references. `UpdateBrand` records a
       `MediaUsage` row per item the brand wears and releases the ones it
       takes off, diffed as sets rather than per field because one file may

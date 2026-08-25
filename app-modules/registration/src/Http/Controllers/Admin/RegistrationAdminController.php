@@ -44,7 +44,9 @@ class RegistrationAdminController
             $sort['direction'] = 'desc';
         }
 
-        $registrations = $this->filteredQuery($request)
+        $filters = $this->declaredFilters($request);
+
+        $registrations = $this->filteredQuery($request, $filters)
             ->orderBy($sort['column'], $sort['direction'])
             ->paginate($perPage)
             ->withQueryString();
@@ -71,11 +73,8 @@ class RegistrationAdminController
                     'approvable' => $registration->status === RegistrationStatus::Submitted,
                 ];
             }),
-            'filters' => [
-                ...$this->currentFilters($request, $sort, $perPage),
-                'status' => $request->string('status')->toString() ?: null,
-                'event' => $request->string('event')->toString() ?: null,
-            ],
+            'filters' => $this->currentFilters($request, $sort, $perPage, $filters),
+            'statuses' => $this->statusValues(),
         ]);
     }
 
@@ -138,7 +137,9 @@ class RegistrationAdminController
     {
         Gate::authorize(Permission::ExportRegistrations->value);
 
-        $query = $this->filteredQuery($request)->orderBy('submitted_at');
+        $filters = $this->declaredFilters($request);
+
+        $query = $this->filteredQuery($request, $filters)->orderBy('submitted_at');
 
         // The audit trail's explicit half (Round 6 D-BATCH): pulling every
         // registrant's name and email out of the system changes nothing, so
@@ -148,8 +149,8 @@ class RegistrationAdminController
         $auditRecorder->record(
             action: 'registration.registrations.exported',
             context: [
-                'event' => $request->string('event')->toString() ?: null,
-                'status' => $request->string('status')->toString() ?: null,
+                'event' => $filters['event'],
+                'status' => $filters['status'],
                 'search' => $request->string('search')->toString() ?: null,
                 'rows' => (clone $query)->count(),
             ],
@@ -193,13 +194,39 @@ class RegistrationAdminController
     }
 
     /**
+     * The list's declared filters (P3, `HasDataTableQuery`): the status
+     * enum's own cases are the closed set of allowed values, `event` is any
+     * ULID the query string carries. Both the list and the export read this
+     * one declaration, so a value the enum does not know never reaches the
+     * query from either.
+     *
+     * @return array<string, string|null>
+     */
+    private function declaredFilters(Request $request): array
+    {
+        return $this->resolveFilters($request, [
+            'status' => $this->statusValues(),
+            'event' => null,
+        ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function statusValues(): array
+    {
+        return array_map(fn (RegistrationStatus $case): string => $case->value, RegistrationStatus::cases());
+    }
+
+    /**
+     * @param  array<string, string|null>  $filters
      * @return Builder<Registration>
      */
-    private function filteredQuery(Request $request)
+    private function filteredQuery(Request $request, array $filters)
     {
         return Registration::withoutBrandScope()
-            ->when($request->filled('event'), fn ($query) => $query->where('event_id', $request->string('event')->toString()))
-            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
+            ->when($filters['event'] !== null, fn ($query) => $query->where('event_id', $filters['event']))
+            ->when($filters['status'] !== null, fn ($query) => $query->where('status', $filters['status']))
             ->when($request->filled('search'), function ($query) use ($request): void {
                 $term = '%'.$request->string('search')->trim().'%';
 
