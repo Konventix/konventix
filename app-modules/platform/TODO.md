@@ -45,11 +45,6 @@ depends on brand resolution and gating working.
 - [x] Queued prefix cleanup on brand deletion (ADR-0043): `PurgeBrandMedia`,
       with the disks collected in Brand's `deleting` hook while the rows
       still exist. Media only — never the invoice archive.
-- [ ] Brand assets record no `MediaUsage` row. Everything else that
-      references media registers usage, and the orphan-cleanup job below
-      will one day read those rows — a brand's logo must be in them before
-      that job can be trusted to delete anything.
-
 - [ ] Real Konventix artwork. `AppLogoIcon.vue` and `public/favicon.*` are
       still the Laravel starter mark, and they are now the fallback every
       brand without its own logo wears.
@@ -66,6 +61,16 @@ depends on brand resolution and gating working.
 ## Done
 
 <!-- Move completed items here with the PR that finished them. -->
+
+- [x] A brand's marks are usage references. `UpdateBrand` records a
+      `MediaUsage` row per item the brand wears and releases the ones it
+      takes off, diffed as sets rather than per field because one file may
+      be both logo and favicon. Before this the media admin could delete a
+      logo out from under every page — `DeleteMediaItem` refuses only while a
+      usage row exists, and until now nothing outside the test suite wrote
+      one. That makes Brand the first real writer of the usage table; the
+      page blocks that reference media still record nothing, which the
+      orphan-cleanup job in the backlog has to wait for as well.
 
 - [x] A third navigation area, `AREA_ACCOUNT`, for the signed-in account's
       own things — rendered in the account menu rather than the topbar, and

@@ -7,6 +7,7 @@ namespace Konventix\Platform\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Platform\Data\UpdateBrandData;
+use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\BrandDomain;
 use Konventix\Platform\Models\MediaItem;
@@ -19,11 +20,15 @@ use Konventix\Platform\Models\MediaItem;
  */
 final class UpdateBrand
 {
+    public function __construct(private readonly MediaLibrary $media) {}
+
     public function handle(Brand $brand, UpdateBrandData $data): Brand
     {
         return DB::transaction(function () use ($brand, $data): Brand {
             $this->guardUniqueness($brand, $data);
             $this->guardOwnedMedia($brand, $data);
+
+            $worn = $this->marksWornBy($brand);
 
             $brand->update([
                 'name' => $data->name,
@@ -45,8 +50,44 @@ final class UpdateBrand
                 );
             }
 
+            $this->syncMarkUsages($brand, $worn, $this->marksWornBy($brand));
+
             return $brand->refresh();
         });
+    }
+
+    /**
+     * The brand is a media consumer like any other (ADR-0035): each mark it
+     * wears is a usage reference, which is what stops the media admin from
+     * deleting a logo out from under every page. Diffed as sets rather than
+     * per field, because one file may serve as both logo and favicon and a
+     * usage is per item — releasing it on the logo's account would drop the
+     * favicon's too.
+     *
+     * @param  list<string>  $before
+     * @param  list<string>  $after
+     */
+    private function syncMarkUsages(Brand $brand, array $before, array $after): void
+    {
+        foreach (array_diff($before, $after) as $released) {
+            $this->media->releaseUsage($released, 'platform', 'brand', $brand->getKey());
+        }
+
+        foreach (array_diff($after, $before) as $worn) {
+            $this->media->recordUsage($worn, 'platform', 'brand', $brand->getKey());
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function marksWornBy(Brand $brand): array
+    {
+        return array_values(array_unique(array_filter([
+            $brand->logo_media_id,
+            $brand->logo_dark_media_id,
+            $brand->favicon_media_id,
+        ])));
     }
 
     /**

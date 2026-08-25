@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
+use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Actions\DeleteMediaItem;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Models\MediaUsage;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
@@ -199,4 +202,85 @@ it('refuses a mark belonging to a different brand', function (): void {
         ->assertSessionHasErrors('logoMediaId');
 
     expect($brand->refresh()->logo_media_id)->toBeNull();
+});
+
+it('registers its marks as usages so the library refuses to delete them', function (): void {
+    [, $admin] = brandIdentityAdmin('admin.usedassets.test');
+
+    $brand = $this->withBrand();
+    $brand->domains()->create(['host' => 'usedassets.test', 'is_primary' => true]);
+    $logo = MediaItem::factory()->create();
+
+    $this->actingAs($admin)
+        ->put("http://admin.usedassets.test/admin/brands/{$brand->getKey()}", [
+            'name' => $brand->name,
+            'slug' => $brand->slug,
+            'currency' => 'EUR',
+            'hosts' => ['usedassets.test'],
+            'logoMediaId' => $logo->getKey(),
+        ])
+        ->assertRedirect();
+
+    expect(MediaUsage::withoutBrandScope()->where('media_item_id', $logo->getKey())->get())
+        ->toHaveCount(1)
+        ->first()->module->toBe('platform')
+        ->first()->entity_type->toBe('brand')
+        ->first()->entity_id->toBe($brand->getKey());
+
+    // The reference is what stands between the media admin and the file:
+    // without it the delete succeeds and every page wears a broken image.
+    expect(fn () => app(DeleteMediaItem::class)->handle($logo))
+        ->toThrow(ValidationException::class);
+});
+
+it('releases a mark it no longer wears and keeps one it still does', function (): void {
+    [, $admin] = brandIdentityAdmin('admin.swapassets.test');
+
+    $brand = $this->withBrand();
+    $brand->domains()->create(['host' => 'swapassets.test', 'is_primary' => true]);
+    $shared = MediaItem::factory()->create();
+    $replacement = MediaItem::factory()->create();
+
+    $payload = fn (array $marks): array => [
+        'name' => $brand->name,
+        'slug' => $brand->slug,
+        'currency' => 'EUR',
+        'hosts' => ['swapassets.test'],
+        ...$marks,
+    ];
+
+    $usagesOf = fn (MediaItem $item): int => MediaUsage::withoutBrandScope()
+        ->where('media_item_id', $item->getKey())
+        ->count();
+
+    // One file wearing two hats: the usage is per item, not per field.
+    $this->actingAs($admin)
+        ->put("http://admin.swapassets.test/admin/brands/{$brand->getKey()}", $payload([
+            'logoMediaId' => $shared->getKey(),
+            'faviconMediaId' => $shared->getKey(),
+        ]))
+        ->assertRedirect();
+
+    expect($usagesOf($shared))->toBe(1);
+
+    // Swapping the logo out must not release a file the favicon still uses.
+    $this->actingAs($admin)
+        ->put("http://admin.swapassets.test/admin/brands/{$brand->getKey()}", $payload([
+            'logoMediaId' => $replacement->getKey(),
+            'faviconMediaId' => $shared->getKey(),
+        ]))
+        ->assertRedirect();
+
+    expect($usagesOf($shared))->toBe(1)
+        ->and($usagesOf($replacement))->toBe(1);
+
+    // Dropping the last reference releases it.
+    $this->actingAs($admin)
+        ->put("http://admin.swapassets.test/admin/brands/{$brand->getKey()}", $payload([
+            'logoMediaId' => $replacement->getKey(),
+        ]))
+        ->assertRedirect();
+
+    expect($usagesOf($shared))->toBe(0)
+        ->and($usagesOf($replacement))->toBe(1);
 });
