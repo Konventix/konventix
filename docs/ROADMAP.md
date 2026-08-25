@@ -276,11 +276,327 @@ not a slice — it is each module registering what it owns:
       payer read model — the same prerequisite as Commerce's missing GDPR
       handler, and the same open decision, recorded under Known gaps below.
 
+### Second build order — requested 2026-08-25
+
+Fourteen features asked for after the brand site got its shell. Sorted here
+into nine slices the way the first build order was: by what each one needs
+to exist first, cheapest enabler earliest, and with every place where a
+request reverses a decision already written down named as a reversal rather
+than slipped in. Three prerequisites are not features anyone asked for, but
+six of the fourteen items block on them, so they come first. The page
+catalogue below is not re-audited for these; each slice lands its own rows
+in the owning module's `TODO.md` when it lands.
+
+**Prerequisites (owed before the slices that name them):**
+
+- **P1 — `identity:replay-profiles` and a wider `UserProfileUpdated`.** The
+  event carries `userId, email, displayName, locale, updatedAt` and nothing
+  else, and no replay exists, so Content's `content_authors` and Messaging's
+  recipients only know accounts created after their projection did. Every
+  profile field added below (username, avatar, tagline) has to travel in
+  this payload, and every read model that shows it has to be rebuildable
+  from it — that is what ADR-0004 promises. One replay closes the existing
+  Known gap and slices 22, 25 and 26 at once. (Identity's `TODO.md`.)
+- **P2 — the Commerce payer read model.** An order is keyed by
+  `settles_type`/`settles_id`; Commerce cannot answer "what does this person
+  owe" without reading Registration's tables. This is the open decision
+  behind the unchecked "my orders/invoices" item above and behind the
+  missing GDPR handler, and a shop (slice 24) makes it unavoidable: a cart
+  belongs to a person before it belongs to any registration. The decision
+  is which of the two shapes recorded under Known gaps — a subject read
+  model in Commerce, or Registration's export carrying invoice references —
+  and it should be an ADR, because it fixes the data flow for everything
+  Commerce sells that is not a registration.
+- **P3 — a filter contract for the shared table.** `HasDataTableQuery`
+  knows `search`, `sort`, `dir` and `per_page`; the toolbar has a search
+  box and a page-size select and no filter slot. Registration and Content
+  each hand-roll their own `event`/`status`/`type` query parameters. Slice
+  18 needs one declared shape — a controller names its filters and their
+  allowed values, the toolbar renders them, the CSV export re-reads the
+  same set — before a brand or event filter can be added to every list
+  without writing it seven times.
+
+18. **Console context: brand and event selectors, and the filters they
+    prefill.** Platform, with each module's list controller. A brand
+    selector and an event selector in the admin shell, held in the session
+    for the operator (never in a brand cookie — the console has no brand,
+    ADR-0029), and every list that spans brands or events reads them as the
+    default value of its own brand/event filter — a filter the user can
+    still clear, because "all brands" is a legitimate view of an operator
+    console. The brand filter is a filter in the ADR-0015 sense, over a
+    set the capability check has already authorized; it is not
+    `where('brand_id', …)` as a scoping mechanism, which ADR-0010 forbids
+    and which the `withoutBrandScope()` escape in every admin controller
+    is precisely the alternative to. The event selector is harder than the
+    brand one for a reason worth stating: Registration owns an
+    `EventSummary` read model and can offer an event picker from it;
+    Content, Commerce and Admission do not, so an event filter on their
+    lists needs each of them to project the same summary from Event's
+    contract events (ADR-0004; Content's `TODO.md` records this for its
+    editor). The one existing brand picker — the roles page's native
+    `<select>` — is the pattern to lift into the shell and then delete.
+    Favorites already store a URL, so a favorite can pin a filtered view
+    the day the filters are query parameters (ADR-0042). Same slice, since
+    it is the same page: the admin dashboard gets an `admin.dashboard` UI
+    slot like the per-event dashboard already has, and Platform
+    contributes a diagnostics card linking Pulse, Horizon, the health
+    dashboard and — outside production only — Telescope. Pulse and Horizon
+    are in the sidebar already under `ViewDiagnostics`; `/admin/health` has
+    a route and no link; Telescope has neither and stays behind
+    `ViewRequestLog`, which is a separate capability on purpose because it
+    is the power to read request bodies. Linking it makes the retention
+    decision Compliance's `TODO.md` carries ("Telescope and Pulse hold
+    personal data outside the retention machinery") more urgent, not less.
+    Needs P3.
+
+19. **Default role sets, shipped by the modules that own the
+    capabilities.** Platform for the mechanism, each module for its sets.
+    Today the only role any code creates is "Operator Admin", and
+    `OperatorAdminSeeder` builds it by granting every permission row that
+    exists — a brand gets no roles at all until someone opens the editor
+    and assembles one capability at a time from twelve enums. ADR-0013
+    says roles are data, and this does not change that: a module declares
+    its *defaults* in code (a `defaultRoles()` hook beside its `Permission`
+    enum — "Registration Desk", "Content Editor", "Entrance Staff",
+    "Tournament Admin"), `permissions:sync` materializes them per brand as
+    ordinary editable rows, and it never overwrites a role the operator has
+    since touched: a default is a starting point, and a sync that reset a
+    brand's edited roles would be the LanCore failure of config pretending
+    to be data. Two consequences to write down: a module activated on a
+    brand later (ADR-0003) gets its roles on activation, not only on
+    deploy; and a role set is per brand scope only, since the operator
+    scope already has its one role. Same slice: the four Permission enums
+    whose docblocks still say they are "not wired to `permissions:sync`"
+    and the two TODOs claiming the command does not exist get corrected,
+    and Competition, Resources and Staffing get the capability enums their
+    TODOs owe.
+
+20. **Compliance: a public request page, and withdrawal as a policy
+    setting.** Two items, one module, one slice.
+
+    The public data-subject request page. `POST /data-requests` lives
+    behind `auth` today and answers with a toast, not a mail; an export
+    request gets no acknowledgement at all, only a deletion does. The
+    public page is not simply the same form without `auth`: a subject
+    without an account has no `subject_id`, and a request filed by anyone
+    who can type an address is a way to have a stranger's data deleted. So
+    the page captures an email, sends a verification link, and the request
+    opens only when the link is followed — at which point the
+    acknowledgement mail ("we received your request, the deadline is the
+    24th") goes out instantly and the 30-day clock starts. That
+    verification mail is the acknowledgement for a subject with no
+    account. Both mails are Messaging templates with no topic, like the
+    three Compliance already registers, because a legal notice is not a
+    notification anyone may switch off (ADR-0041). Two things this
+    reopens: the request is still brand-scoped while Round 6 settled it
+    spans the operator (Known gaps) — a public page on one brand's host
+    makes the two-archives problem visible to the public, so that decision
+    lands here; and holding an address for a subject who may have no
+    account is the copy-of-personal-data-for-deletion question Compliance's
+    `TODO.md` already refuses to answer with code alone. It needs a
+    retention rule for unverified requests (hours, then gone) written into
+    the same ADR.
+
+    Withdrawal as a per-policy setting. `WithdrawConsent` is
+    unconditionally self-service: `DELETE /consents/{consent}` checks
+    ownership and withdraws. The request is a boolean on `PolicyVersion`
+    beside `requires_consent` — `withdrawal` in `{self_service,
+    operator_approved}` — so that a policy the operator cannot let a
+    person leave unilaterally (a photo release already acted on, a
+    liability waiver for an event that has happened) turns the withdrawal
+    into a request the operator accepts or refuses, with a reason, in the
+    same console the subject requests use. Not a second queue: a
+    withdrawal request is a `DataSubjectRequest` of a new type, so the
+    deadline watcher, the audit trail and the refusal notice all apply
+    unchanged. The privacy page already knows a consent is "required" and
+    warns that withdrawing it re-raises the gate; it learns one more state,
+    "withdrawal pending". The word "withdrawal" is already taken in the
+    SPEC for something else — `PolicyWithdrawn` is a *policy* being
+    retired — so the enum and the event are named for consent explicitly.
+    The legal footing is worth one sentence in the ADR: GDPR Art. 7(3)
+    makes withdrawal of consent as easy as giving it, so operator approval
+    is only defensible for a policy whose basis is *not* consent — which
+    means the setting is really "this policy's basis is contract or
+    legitimate interest, and leaving it is a request, not a right", and
+    the UI should say that rather than offer a switch that reads as
+    optional.
+
+21. **Footer content.** Platform. The link list, its editor and the
+    `dialog` kind shipped on 2026-08-24; what is missing is content. Three
+    additions, in order: the nullable `brand_id` the table was designed for
+    (a brand's own social links beside the operator's imprint, which stays
+    operator-wide because one legal entity answers for all its brands,
+    ADR-0001); a content block per footer column — address, a short
+    operator blurb, social icons — as a small block composition reusing
+    the page-block registry rather than a rich-text field, so it is the
+    same editing model as the landing page and inherits the media library
+    (ADR-0035) and the token rule (ADR-0008); and the first dialog under a
+    `dialog` key, cookie settings, which the `dialog` kind has reserved a
+    slot for since it landed. The editor already owes ADR-0038's dirty
+    guard; the reorder should become a drag like the favorites (ADR-0042)
+    rather than stay a submit-in-list-order.
+
+22. **Comments: names, links, reactions.** Content. The first half is a
+    bug with a known fix: the moderation queue renders `author_user_id`
+    raw because the controller never joins `content_authors`, though the
+    read model exists and the same controller already does exactly the
+    right keyed-`pluck` lookup for entry titles. Name and link land in a
+    day; the link's target is Identity's admin user detail page, which the
+    catalogue carries as P2 backlog and which becomes this slice's second
+    deliverable. Accounts older than the projection still read
+    "Participant" until P1 runs. Reactions are the larger half and need
+    one decision first: the SPEC draws the line at "comments on an
+    editorial entry are Content's, conversation between participants is
+    not" (D-CNT-02), and a like is on the participant side of it — but a
+    like on a news comment with no Community module installed is a Content
+    feature or nothing. Ship it in Content as a per-`(user, comment)` row
+    with a denormalized count on the comment — not the `report_count`
+    shape, which is deliberately not deduplicated per reader and could not
+    be trusted as a like count — behind a `CommentReacted` contract event,
+    and make the reaction subject a `(module, entity_type, entity_id)`
+    triple from day one rather than a foreign key to `content_comments`,
+    because slice 26 will want to react to a gallery item and the comment
+    table's hard FK to `content_entries` is already the reason gallery
+    comments cannot reuse it. Needs P1 for the names to be complete.
+
+23. **More than one live settlement account per brand.** Commerce. This
+    reverses a shipped decision and must say so: `ConnectSettlementAccount`
+    refuses a second live account, a partial unique index enforces it, and
+    the exception's own docblock explains why — "which account settles a
+    brand's money is always a single answer". What replaces the single
+    answer is a *payment method* offered to the payer: a brand connects
+    Stripe and Mollie and PayPal-via-Mollie, each still the brand's own
+    account with the platform never in the flow of funds (ADR-0007), and
+    the checkout page shows the methods the live accounts provide and lets
+    the payer choose; the chosen account is recorded on the `Payment` row,
+    which is already keyed per `(provider, external_id)` (ADR-0039), so
+    webhook replays still converge. What stays single: one account per
+    provider per brand, and one account per *order* once a checkout has
+    started. Refunds go back through the account that took the payment,
+    which the `Payment` row now names, so ADR-0037's check-in block is
+    untouched. The bookkeeping export gains a provider column. The
+    operator console's settlement-account page turns from "the account"
+    into a list, and the Stripe `card_payments.status` check Commerce's
+    `TODO.md` owes becomes the rule for whether a method is *offered*, not
+    only whether it is connected.
+
+24. **The shop: products, a cart, and a door for the rush.** Commerce
+    with Registration for the entitlement-bearing half, gated per brand
+    behind a new Pennant feature rather than a new module, since Commerce
+    is Core and cannot be switched off. D-COM-10 already decided the
+    split: an add-on that grants an entitlement is a RegistrationType with
+    prerequisites, a pure good is a Commerce product — and deferred the
+    product half past release. This slice is that half. `Product` and
+    `ProductVariant` with the ADR-0030 VAT treatment, stock as a quota in
+    the Registration sense (all-or-nothing under `lockForUpdate()`, which
+    `ConsumesQuotas` already does), a `Cart` owned by a person (P2) that
+    holds product lines and, where Registration contributes them,
+    registration intents — so one checkout can settle a ticket and a
+    T-shirt in one order, which is the whole reason a cart exists. The
+    cart reserves stock for a bounded time and releases it on expiry, the
+    same sweep the waitlist offers already run every fifteen minutes.
+    Checkout stays hosted-only with webhooks as the only truth (ADR-0039)
+    and picks a method per slice 23.
+
+    The high-demand mode is a separate switch on the same feature, off by
+    default, and it is a *waiting room*, not the sold-out waitlist
+    Registration owns (that one queues for a place that does not exist
+    yet; this one queues for a page that exists but must not be hit by a
+    thousand people at once). When on, arrivals at the shop get a
+    signed, position-numbered token in Redis and a holding page that polls
+    its position; the shop admits a configured number per interval and a
+    token past the head of the queue opens the cart with its stock
+    reservation. Redis is the right home because it is the only shared
+    state fast enough and because Octane workers must not hold it in
+    process; the flag in `.env.example` that says "flip SESSION_DRIVER and
+    CACHE_STORE to Redis once …" gets flipped by this slice, because a
+    database-backed session under that load is the first thing to fall
+    over. What this does not do: it is not a fairness guarantee against
+    bots and does not pretend to be one — a signed token, a per-account
+    cap and Horizon-visible admission rates are the honest scope; anything
+    beyond that is a product in its own right. Load-tested before it is
+    called done, against the seeded LAN archetype, with the number in the
+    definition of done being the one the request names: a thousand
+    concurrent arrivals with no 5xx and no double-sold stock. Needs P2 and
+    slice 23; the standalone "my orders" list falls out of P2 and closes
+    the last open item of the first build order.
+
+25. **Profiles, and a page for them.** Identity for the account of
+    record, Community for the page — which pulls Community forward from
+    Phase 3, and the section below says so. Identity's `User` stays slim
+    (ADR-0004: the LanCore god object is the named anti-pattern), so the
+    additions are the profile-of-record and nothing more: `username`,
+    unique operator-wide because the account is (ADR-0016), so it is the
+    public handle on every brand; a tagline with a hard length; a status
+    emoji; social links as a small validated map; `avatar_media_id` and
+    `banner_media_id`. The Steam option is a copy, not a link: the linked
+    identity already stores `avatar_url`, and "use my Steam avatar" fetches
+    it into the media library once, because a profile picture that changes
+    when Steam's CDN does is not the person's. Two things this surfaces
+    that no other media consumer has hit: media rows are brand-owned and
+    accounts are not, so an avatar is the first `media_items` row with no
+    brand to belong to — either a nullable `brand_id` on media with an
+    operator-owned disk, or the avatar lives per brand membership; that is
+    a decision for the ADR, and the second shape is defensible (a person
+    may want a different face at a LAN than at a trade fair). And the
+    shared `auth.user` prop still serializes the whole model; it becomes
+    the four-field shape Identity's SPEC promised — ULID, display name,
+    avatar URL, locale — before an avatar reaches the topbar. The public
+    profile page is Community's (`u/{username}`, LanCore's `u/Show`),
+    visible to signed-in members of the brand only, showing the read model
+    Community's SPEC already describes plus what the person chose to show,
+    with comments through slice 22's generic reaction/comment subject. It
+    is where "invite to a group" will go; groups and clans are Community's
+    next slice after this one and are not designed here. Needs P1, which
+    is what gives every existing account a profile on day one.
+
+26. **Galleries.** Platform for the storage, Community for the feed. The
+    media library stores raster images up to 10 MB and generates
+    thumbnails; it stores no video and generates no poster frame, so the
+    first deliverable is media-library work with no gallery in sight: a
+    video mime allowlist, a size ceiling that means something on object
+    storage, a queued poster-frame and transcode job beside
+    `GenerateMediaVariants`, and usage rows written by the page blocks
+    that reference media, which still record nothing (Platform's
+    `TODO.md`) and which an orphan sweep needs before a gallery's uploads
+    can be trusted to it. Then `Gallery` and `GalleryItem` in Community —
+    brand-scoped, ordered, each item a media ULID (ADR-0035) — an operator
+    editor over the existing picker, and the public surface: a tile feed
+    at `/gallery` contributed to `AREA_BRAND`, a detail view with the
+    reactions and comments of slice 22 and a share link that is the
+    canonical URL and nothing more clever. Three visibilities: public,
+    signed-in, and attended-this-event. The third reopens a decision on
+    purpose: Content's `Audience` has exactly two values because
+    participant-gating would couple Content to Registration state
+    (D-CNT-07). It does not couple here: "attended" is Admission's fact,
+    and Community learns it the way Commerce already does for ADR-0037 —
+    an `AttendedEvent` read model projected from `AdmissionCheckedIn`,
+    never a read of Admission's tables. ADR-0043 then does the rest of the
+    work: an attendee-only image cannot be served by the object store's
+    public branch, so non-public galleries stream through
+    `MediaFileController` with the visibility check in front, and a gallery
+    flipped from public to members-only has to invalidate what the direct
+    branch already handed out — a URL that keeps working after the rule
+    changed is the failure this design has to name. Needs slices 22 and
+    25, and P1.
+
+Left out on purpose, so it is not read as forgotten: the Steam avatar is
+copied, not hot-linked; groups/clans are named as the slice after 25 and
+not designed; the waiting room is not an anti-bot system; the multi-provider
+slice keeps one account per provider. Each of 19, 20, 23, 25 and 26 reverses
+or extends a written decision and gets its own ADR before code, which is
+what "settled, do not re-litigate in code" costs when a decision is
+revisited on purpose.
+
 ## Phase 3 — post-release
 
 Community, Agenda, Sponsoring, Newsletter, Extensibility (external
 webhook/OAuth API only after internal contracts are stable), BFSG audit pass,
 optional multi-operator groundwork.
+
+Community is no longer entirely here: slices 25 and 26 of the second build
+order pull its profile read model, the profile page and galleries forward.
+Chat, presence, achievements and groups stay post-release.
 
 Also deferred here by decision, not by omission:
 
