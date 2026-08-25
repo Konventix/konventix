@@ -10,6 +10,11 @@
 
 ## Backlog
 
+- [ ] The console event source (`registerConsoleEventSources`) is
+      unbounded — every unarchived event across every brand on every admin
+      response. Bounded in practice by `archived_at`; add a limit or an
+      `Inertia::optional()` wrapper if an operator ever runs hundreds.
+
 - [ ] Reschedule flow in the admin UI calls `UpdateEventDetails`, which
       emits `EventRescheduled` on any schedule change regardless of
       lifecycle state — `RescheduleEvent` (which guards on Published) is now

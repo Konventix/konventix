@@ -22,6 +22,13 @@
 
 ## Backlog (Phase 2 — release scope)
 
+- [ ] Follow-ups from the filter-contract review (2026-08-25), none blocking:
+      `export()`'s audit context now records resolved filter values and that
+      path is untested; the registrations list clears `filters.event` to
+      `undefined` on a brand change while the def's `clearValue` is `'all'` —
+      two spellings of "no event"; `registration-types/Index.vue` still uses
+      native `<select>`s where the console lists moved to shadcn Select.
+
 - [ ] Waitlist prerequisite follow-up from the settlement build: decide how
       a waitlisted-then-promoted registration interacts with the
       gate-dependent settlement emission (promotion happens long after

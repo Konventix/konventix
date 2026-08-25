@@ -24,6 +24,15 @@
 
 ## Backlog (Phase 2 — release scope)
 
+- [ ] Follow-ups from the moderation-queue review (2026-08-25), none
+      blocking: no test covers a comment whose author account has since been
+      anonymized (the link still resolves; Identity never hard-deletes); the
+      state filter's toolbar label reads "Comments" so the option says "All
+      comments" — "States" would name the control better but misdescribe the
+      `attention` option; `admin/policies/Index.vue` (Compliance) keeps a
+      native `<select>` in its dialog, the last of that idiom beside
+      Registration's type editor.
+
 - [ ] "Comments allowed" is per entry today; make it a per-brand default the
       entry can override, and decide where pre-moderation is switched on —
       `PostComment` already takes the flag, but nothing sets it.

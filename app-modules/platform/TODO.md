@@ -20,6 +20,23 @@ depends on brand resolution and gating working.
 
 ## Backlog
 
+- [ ] Follow-ups from the console-selection review (tranche 1 of the second
+      build order, 2026-08-25), none blocking: a selected brand that has since
+      been deleted is not reconciled — `ConsoleSelection::brandId()` keeps
+      returning it, the lists come up empty and the trigger renders blank;
+      `AdminSelectionBar` never reads `page.props.errors`, so a refused
+      selection is silent; the selection controller's docblock should say the
+      body is the whole selection, not a patch; `ConsoleEventSources` should
+      say it deliberately skips `ModuleGate` (the console has no brand);
+      `HandleInertiaRequests` queries brands and every event source on every
+      admin response and the list pages query brands again; the toolbar's
+      `id="per-page"` / `filter-<name>` and the card's
+      `id="diagnostics-heading"` are page-global; `Dashboard.vue` resolves
+      each slot component twice; the toolbar's `value === clearValue` arm is
+      unreachable today; the Telescope link test cannot force the production
+      branch; the nav icons `activity`, `list-checks` and `building` are
+      absent from `navIcons.ts` and fall back to the generic mark.
+
 - [x] Object storage for the media library (ADR-0043, ROADMAP slice 17):
       `hero` blocks reference media by ULID and resolve at render (17a); the
       `media_s3` disk plus a `public_direct` delivery branch in
