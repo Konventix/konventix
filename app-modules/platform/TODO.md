@@ -62,6 +62,17 @@ depends on brand resolution and gating working.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] The operator dashboard is composed through the `admin.dashboard` UI slot
+      (ADR-0003 enforcement point 3), like the per-event dashboard already
+      was, and Platform contributes the first card on it: Pulse, Horizon and
+      the health dashboard behind `ViewDiagnostics`; Telescope behind
+      `ViewRequestLog`, and only where it is installed and outside
+      production, because a request log is the power to read other people's
+      request bodies. The slot's closure receives the viewing user as
+      context, so a module filters its own card by capability without the
+      console knowing what it filtered. Health also joined the console
+      sidebar, which had the route and no link.
+
 - [x] Every cross-brand list defaults its brand filter from the console
       selection: `HasDataTableQuery::resolveSelectionFilter()` is the one
       place that says how (absent → the selection, `all` → no filter), and

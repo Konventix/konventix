@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Providers;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Gate;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Blocks\Types\CardsBlock;
 use Konventix\Platform\Blocks\Types\HeroBlock;
@@ -29,6 +31,7 @@ use Konventix\Platform\Storage\MediaStorageMigration;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Laravel\Pennant\Feature;
 use Laravel\Reverb\ApplicationManager;
+use Laravel\Telescope\Telescope;
 
 /**
  * Kernel module. Owns brand resolution and scoping, the module gate, and the
@@ -249,6 +252,15 @@ class PlatformServiceProvider extends ModuleServiceProvider
             ),
             new NavigationItem(
                 module: 'platform',
+                label: 'Health',
+                url: '/admin/health',
+                icon: 'heart-pulse',
+                order: 92,
+                permission: Permission::ViewDiagnostics->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'platform',
                 label: 'Roles',
                 url: '/admin/roles',
                 icon: 'shield',
@@ -257,6 +269,77 @@ class PlatformServiceProvider extends ModuleServiceProvider
                 area: NavigationItem::AREA_ADMIN,
             ),
         );
+    }
+
+    /**
+     * Platform's own card on the operator dashboard's `admin.dashboard` slot
+     * (ADR-0003 enforcement point 3) — the console composes its landing page
+     * the same way the per-event dashboard does.
+     *
+     * `static` because SlotRegistry is a singleton that outlives the request
+     * under Octane, and a closure capturing `$this` would pin this provider
+     * in memory with it.
+     */
+    protected function registerSlots(): void
+    {
+        $this->app->make(SlotRegistry::class)->add(
+            slot: 'admin.dashboard',
+            module: 'platform',
+            component: 'platform/DiagnosticsCard',
+            props: static fn (array $context): array => [
+                'links' => self::diagnosticsLinks($context['user'] ?? null),
+            ],
+            order: 90,
+        );
+    }
+
+    /**
+     * The packages' own dashboards, each behind the capability it needs.
+     * Telescope is held apart on purpose (Permission::ViewRequestLog): it
+     * records request bodies, so linking it is the power to read other
+     * people's personal data — and it is a dev dependency, so it is only
+     * offered where it is installed and outside production.
+     *
+     * @return list<array{label: string, url: string, description: string}>
+     */
+    private static function diagnosticsLinks(?Authenticatable $user): array
+    {
+        if ($user === null) {
+            return [];
+        }
+
+        $gate = Gate::forUser($user);
+        $links = [];
+
+        if ($gate->allows(Permission::ViewDiagnostics->value)) {
+            $links[] = [
+                'label' => 'Pulse',
+                'url' => '/'.config('pulse.path'),
+                'description' => 'How the application is behaving right now',
+            ];
+            $links[] = [
+                'label' => 'Horizon',
+                'url' => '/'.config('horizon.path'),
+                'description' => 'The queues, and what is stuck in them',
+            ];
+            $links[] = [
+                'label' => 'Health',
+                'url' => route('admin.health', absolute: false),
+                'description' => 'Database, Redis, cache, scheduler and disk checks',
+            ];
+        }
+
+        if ($gate->allows(Permission::ViewRequestLog->value)
+            && class_exists(Telescope::class)
+            && ! app()->isProduction()) {
+            $links[] = [
+                'label' => 'Telescope',
+                'url' => '/'.config('telescope.path'),
+                'description' => 'Request log — records request bodies, so it is a separate capability',
+            ];
+        }
+
+        return $links;
     }
 
     /**
