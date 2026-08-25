@@ -7,11 +7,12 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import { Button } from '@/components/ui/button';
+import { useConsoleSelection } from '@/composables/useConsoleSelection';
 import type {
     DataTableFilterDef,
     DataTableFilters,
 } from '@/composables/useDataTable';
-import { useDataTable } from '@/composables/useDataTable';
+import { seedSelectionFilter, useDataTable } from '@/composables/useDataTable';
 import {
     bulkApprove,
     exportMethod as exportRegistrations,
@@ -52,16 +53,21 @@ const props = defineProps<{
     events: { id: string; name: string }[];
 }>();
 
-/**
- * A cleared selection-backed filter is seeded as its clear value rather than
- * dropped: `navigate()` omits nulls, so an absent `brand` would let the
- * console selection come back on the next search or sort.
- */
+const selection = useConsoleSelection();
+
+// `seedSelectionFilter` carries a cleared filter forward as `all` — but only
+// when the shell has a pick to have cleared.
 const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
     useDataTable(() => registrationsIndex().url, {
         ...props.filters,
-        brand: props.filters.brand ?? 'all',
-        event: props.filters.event ?? 'all',
+        brand: seedSelectionFilter(
+            props.filters.brand,
+            selection.value?.brandId,
+        ),
+        event: seedSelectionFilter(
+            props.filters.event,
+            selection.value?.eventId,
+        ),
     });
 
 /**

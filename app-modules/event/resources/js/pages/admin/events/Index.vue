@@ -24,11 +24,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useConsoleSelection } from '@/composables/useConsoleSelection';
 import type {
     DataTableFilterDef,
     DataTableFilters,
 } from '@/composables/useDataTable';
-import { useDataTable } from '@/composables/useDataTable';
+import { seedSelectionFilter, useDataTable } from '@/composables/useDataTable';
 import {
     index as eventsIndex,
     show as showEvent,
@@ -60,15 +61,17 @@ const props = defineProps<{
     filters: DataTableFilters & { brand: string | null };
 }>();
 
-/**
- * A cleared selection-backed filter is seeded as its clear value rather than
- * dropped: `navigate()` omits nulls, so an absent `brand` would let the
- * console selection come back on the next search or sort.
- */
+const selection = useConsoleSelection();
+
+// `seedSelectionFilter` carries a cleared filter forward as `all` — but only
+// when the shell has a pick to have cleared.
 const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
     useDataTable(() => eventsIndex().url, {
         ...props.filters,
-        brand: props.filters.brand ?? 'all',
+        brand: seedSelectionFilter(
+            props.filters.brand,
+            selection.value?.brandId,
+        ),
     });
 
 /**

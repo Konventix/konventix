@@ -6,7 +6,7 @@ vi.mock('@inertiajs/vue3', () => ({
     router: { get: (...args: unknown[]) => routerGet(...args) },
 }));
 
-const { useDataTable } = await import('./useDataTable');
+const { seedSelectionFilter, useDataTable } = await import('./useDataTable');
 
 /**
  * A console list whose brand filter defaults to the operator's console
@@ -56,6 +56,30 @@ describe('useDataTable — a cleared selection-backed filter', () => {
             event: 'all',
             status: 'approved',
         });
+    });
+
+    it('carries what `seedSelectionFilter` produces for a shell with a pick', () => {
+        const { toggleSort } = useDataTable(() => '/admin/orders', {
+            // The server echoed null for a brand the operator cleared, and
+            // the shell still holds the selection it was cleared against.
+            brand: seedSelectionFilter(null, '01k-sxlan'),
+        });
+
+        toggleSort('status');
+
+        expect(paramsOfLastVisit()).toMatchObject({ brand: 'all' });
+    });
+
+    it('sends no brand at all when the shell has nothing selected', () => {
+        // Nothing to clear, so nothing to pin: a brand picked in the shell
+        // later must still reach this list.
+        const { toggleSort } = useDataTable(() => '/admin/orders', {
+            brand: seedSelectionFilter(null, null),
+        });
+
+        toggleSort('status');
+
+        expect(paramsOfLastVisit()).not.toHaveProperty('brand');
     });
 
     it('drops the filter entirely when it is cleared to null instead', () => {

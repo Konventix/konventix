@@ -4,8 +4,7 @@
  * for the session; every cross-brand list reads it as its default filter.
  * Renders nothing but the brand select when no module offers events.
  */
-import { router, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { router } from '@inertiajs/vue3';
 import {
     Select,
     SelectContent,
@@ -13,24 +12,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { useConsoleSelection } from '@/composables/useConsoleSelection';
 import { update as updateSelection } from '@/routes/admin/selection';
-
-type Selection = {
-    brandId: string | null;
-    eventId: string | null;
-    brands: { id: string; name: string }[];
-    events: { id: string; name: string; brandId: string }[];
-    eventsAvailable: boolean;
-};
 
 const ALL = '__all__';
 
-const page = usePage();
-const selection = computed(
-    () =>
-        (page.props.admin as { selection?: Selection } | null)?.selection ??
-        null,
-);
+const selection = useConsoleSelection();
 
 function submit(brandId: string | null, eventId: string | null): void {
     router.put(

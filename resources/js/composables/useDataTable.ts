@@ -46,6 +46,33 @@ export interface DataTableFilterDef {
     clearValue?: string;
 }
 
+/**
+ * The seed value for a filter whose default is the console selection.
+ *
+ * Two things have to be told apart, and the server echoes `null` for both:
+ * the operator cleared this list ("all brands", a legitimate console view),
+ * and the shell simply has no selection to default from. `navigate()` omits
+ * nulls, so seeding null would drop the parameter on the next search or sort
+ * — and an absent `brand` means "never chose", which hands the selection
+ * back. Seeding the clear value fixes that, but only the first case is a
+ * clearing: there is nothing to clear when the shell has no pick, and
+ * pinning `all` there would make a later pick in the shell look ignored.
+ *
+ * So: an echoed value stands; a null with a selection behind it is a
+ * clearing and keeps carrying `all`; a null with nothing behind it is simply
+ * absent.
+ */
+export function seedSelectionFilter(
+    echoed: string | null,
+    selected: string | null | undefined,
+): string | undefined {
+    if (echoed !== null) {
+        return echoed;
+    }
+
+    return selected ? 'all' : undefined;
+}
+
 export function useDataTable(
     routeUrl: () => string,
     initialFilters: DataTableFilters = {},
