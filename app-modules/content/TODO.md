@@ -6,12 +6,6 @@
 
 ## Next
 
-- [ ] Author backfill: `content_authors` fills from Identity events, so
-      accounts that existed before the projection have no row and read as
-      "Participant". Identity owes a profile-replay command — Messaging's
-      recipient read model has exactly the same gap, and one replay would
-      close both.
-
 - [ ] No preview for an entry that is not live. The console links to the
       public page only once it is published, because that is the only URL
       that exists — reviewing a draft means publishing it. A signed preview
@@ -51,6 +45,12 @@
       this to Registration state.
 
 ## Done
+
+- [x] Author backfill closed: `identity:replay-profiles` re-emits
+      `UserProfileUpdated` for every account, so an account that existed
+      before `content_authors` did — and read as "Participant" — now
+      projects a real byline. Identity's command, not Content's; Messaging's
+      recipient read model had the same gap and the one replay closes both.
 
 - [x] `/news` is in the brand topbar. Readers used to arrive only through the
       latest-news block, the banner, or a link somebody sent them — the

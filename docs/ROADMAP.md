@@ -297,6 +297,7 @@ in the owning module's `TODO.md` when it lands.
   this payload, and every read model that shows it has to be rebuildable
   from it — that is what ADR-0004 promises. One replay closes the existing
   Known gap and slices 22, 25 and 26 at once. (Identity's `TODO.md`.)
+  **Done** (replay only — the payload widens with slice 25's fields).
 - **P2 — the Commerce payer read model.** An order is keyed by
   `settles_type`/`settles_id`; Commerce cannot answer "what does this person
   owe" without reading Registration's tables. This is the open decision
@@ -642,10 +643,6 @@ so they are not rediscovered.
 - **Telescope and Pulse hold personal data outside the retention machinery**,
   bounded only by their own prune schedules — a window, not a rule anybody can
   audit. (Compliance's `TODO.md`.)
-- **Identity owes `identity:replay-profiles`.** Messaging's recipients and
-  Content's authors only see accounts created after their projection existed,
-  so a subject with no recipient row gets no notice. One replay closes both
-  and every future read model inherits the fix. (Identity's `TODO.md`.)
 - **Unlinking a social provider is not re-authenticated.** `password.confirm`
   is unsatisfiable for the passwordless accounts social login creates; the
   lockout guard is what protects the account today. (Identity's `TODO.md`.)

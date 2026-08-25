@@ -31,13 +31,6 @@ person behind it. The value here is in what is left out.
 
 ## Backlog
 
-- [ ] Profile replay command (`identity:replay-profiles`): re-emit
-      `UserProfileUpdated` for every account so downstream read models can be
-      rebuilt from the event contract, which is what ADR-0004 promises they
-      can be. Two modules need it and neither may read this module's tables —
-      Messaging's recipients and Content's authors both only see accounts
-      created after their projection existed. One replay closes both, and
-      every future read model inherits the fix.
 - [x] `SocialProvider` driver contract plus a `social_identities` table.
       Steam is the only driver (D-IDN-01 as amended 2026-08-19 — Google and
       Discord dropped, not deferred), so the "prove it is not Steam-shaped"
@@ -122,6 +115,13 @@ person behind it. The value here is in what is left out.
 ## Done
 
 <!-- Move completed items here with the PR that finished them. -->
+
+- [x] Profile replay command (`identity:replay-profiles {--chunk=500}`):
+      re-emits `UserProfileUpdated` for every account with the row's current
+      values, chunked, idempotent because every consumer upserts. Closes the
+      gap Messaging's recipients and Content's authors both had — neither
+      saw an account created before its projection existed — and is what
+      ADR-0004 promised the read models could always be rebuilt from.
 
 - [x] Auth and settings pages were rendering with **no layout at all**, and
       had been since layout props arrived: `defineOptions({ layout: { ... } })`

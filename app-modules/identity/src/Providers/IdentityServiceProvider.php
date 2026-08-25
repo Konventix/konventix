@@ -18,6 +18,7 @@ use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Identity\Actions\AuthenticateUser;
 use Konventix\Identity\Actions\CreateNewUser;
 use Konventix\Identity\Actions\ResetUserPassword;
+use Konventix\Identity\Console\ReplayProfilesCommand;
 use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Listeners\RecordBrandMembership;
@@ -59,6 +60,8 @@ class IdentityServiceProvider extends ModuleServiceProvider
         $this->configureFortifyActions();
         $this->configureFortifyViews();
         $this->configureRateLimiting();
+
+        $this->commands([ReplayProfilesCommand::class]);
     }
 
     /**

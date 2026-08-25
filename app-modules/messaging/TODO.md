@@ -10,11 +10,8 @@ Phase 3 candidate: wire a real caller. Nothing in the platform calls
 `SendMessage` yet — Identity's password reset / registration confirmation is
 the natural first consumer and would register the first real template.
 
-- [ ] Backfill for accounts created before the recipient projection existed:
-      the read model only sees events from now on; a `messaging:rebuild-recipients`
-      path (or an Identity replay) is needed before relying on
-      id-only sends for old accounts. `UserAnonymized` is also still
-      unconsumed — it lands with Identity's GDPR handler.
+- [ ] `UserAnonymized` is still unconsumed by the recipient read model — it
+      lands with Identity's GDPR handler.
 - [ ] Suppression-list and message-log operator screens: `AddSuppression`/
       `LiftSuppression` exist with `ViewSuppressionList`/`ManageSuppressionList`
       catalogued, but lifting means tinker; the delivery log likewise has no
@@ -94,6 +91,13 @@ the natural first consumer and would register the first real template.
       query-ergonomics question, not a correctness one.
 
 ## Done
+
+- [x] Backfill for accounts created before the recipient projection existed
+      closed: `identity:replay-profiles` re-emits `UserProfileUpdated` for
+      every account, so a subject with no recipient row now gets one, and
+      id-only sends work for old accounts too. Identity's command rather
+      than a `messaging:rebuild-recipients` of our own — Content's author
+      read model had the same gap and one replay closes both.
 
 - [x] The inbox as a page (`/notifications`), paginated, read and unread
       together; the bell's JSON feed moved to `/notifications/feed` so the
