@@ -12,10 +12,16 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Platform\Http\Controllers\Admin\AdminDashboardController;
 use Konventix\Platform\Http\Controllers\Admin\BrandAdminController;
+use Konventix\Platform\Http\Controllers\Admin\ConsoleSelectionController;
 use Konventix\Platform\Http\Controllers\Admin\FooterLinksAdminController;
 use Konventix\Platform\Http\Controllers\Admin\OperatorAdminController;
 
 Route::get('/', AdminDashboardController::class)->name('admin.dashboard');
+
+// Which brand and event the operator is looking at (ROADMAP slice 18). Held in
+// the session on this host — the console has no brand, so never a brand cookie
+// (ADR-0029). No capability of its own: looking is not an operation.
+Route::put('/selection', [ConsoleSelectionController::class, 'update'])->name('admin.selection.update');
 
 // The operator's own identity, including the legal seller every invoice is
 // issued under (ADR-0030). No `{operator}` parameter: the admin host resolves

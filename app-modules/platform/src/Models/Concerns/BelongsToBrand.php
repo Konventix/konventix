@@ -45,6 +45,22 @@ trait BelongsToBrand
     }
 
     /**
+     * A brand *filter* over a query that has already escaped the brand
+     * scope — the operator console narrowing a cross-brand list to one
+     * brand the user chose (ADR-0015: reads are filters). Not a scoping
+     * mechanism: the request-time BrandScope is, and ADR-0010 forbids
+     * hand-written `where('brand_id', …)` for that job. Greppable for the
+     * same reason `withoutBrandScope()` is.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeForBrand(Builder $query, string $brandId): Builder
+    {
+        return $query->where($query->qualifyColumn('brand_id'), $brandId);
+    }
+
+    /**
      * The named, greppable escape hatch for deliberate cross-brand queries.
      * Callers are responsible for checking an operator-level permission first;
      * if you are reaching for this inside a normal request, you have a bug.

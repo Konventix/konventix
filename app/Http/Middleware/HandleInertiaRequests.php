@@ -11,9 +11,12 @@ use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Data\BrandIdentityData;
 use Konventix\Platform\Data\FooterLinkData;
 use Konventix\Platform\Models\AdminFavorite;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\FooterLink;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Operators\ConsoleEventSources;
+use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Platform\Operators\OperatorContext;
 
 class HandleInertiaRequests extends Middleware
@@ -107,6 +110,7 @@ class HandleInertiaRequests extends Middleware
                         ])
                         ->all()
                     : [],
+                'selection' => $this->consoleSelection(),
             ] : null,
             // The operator's footer, rendered by the brand shell on every
             // page (the operator console has its own chrome and renders
@@ -116,6 +120,31 @@ class HandleInertiaRequests extends Middleware
                 'version' => config('app.version'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+        ];
+    }
+
+    /**
+     * The operator's brand/event pick for the console shell (slice 18):
+     * the pick itself, the brands to pick from, and the events some module
+     * offered for the picked brand.
+     *
+     * @return array{brandId: string|null, eventId: string|null, brands: list<array{id: string, name: string}>, events: list<array{id: string, name: string, brandId: string}>, eventsAvailable: bool}
+     */
+    private function consoleSelection(): array
+    {
+        $selection = app(ConsoleSelection::class);
+        $sources = app(ConsoleEventSources::class);
+
+        return [
+            'brandId' => $selection->brandId(),
+            'eventId' => $selection->eventId(),
+            'brands' => array_values(
+                Brand::query()->orderBy('name')->get(['id', 'name'])
+                    ->map(fn (Brand $brand): array => ['id' => (string) $brand->getKey(), 'name' => $brand->name])
+                    ->all(),
+            ),
+            'events' => $sources->hasAny() ? $sources->eventsFor($selection->brandId()) : [],
+            'eventsAvailable' => $sources->hasAny(),
         ];
     }
 

@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Konventix\Event\Providers;
 
+use Illuminate\Database\Eloquent\Builder;
 use Konventix\Event\Blocks\CountdownBlock;
 use Konventix\Event\Blocks\EventHeroBlock;
 use Konventix\Event\Enums\Permission;
+use Konventix\Event\Models\Event;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Operators\ConsoleEventSources;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -82,6 +85,30 @@ class EventServiceProvider extends ModuleServiceProvider
                 order: 16,
                 permission: Permission::ViewVenues->value,
                 area: NavigationItem::AREA_ADMIN,
+            ),
+        );
+    }
+
+    /**
+     * The console's event selector (slice 18). Unarchived events only —
+     * archived means put away — newest first, so the event an operator is
+     * working on is at the top.
+     */
+    protected function registerConsoleEventSources(): void
+    {
+        $this->app->make(ConsoleEventSources::class)->add(
+            fn (?string $brandId): array => array_values(
+                Event::withoutBrandScope()
+                    ->whereNull('archived_at')
+                    ->when($brandId !== null, fn (Builder $query) => $query->forBrand($brandId))
+                    ->orderByDesc('starts_at')
+                    ->get(['id', 'name', 'brand_id'])
+                    ->map(fn (Event $event): array => [
+                        'id' => (string) $event->getKey(),
+                        'name' => $event->name,
+                        'brandId' => (string) $event->brand_id,
+                    ])
+                    ->all(),
             ),
         );
     }

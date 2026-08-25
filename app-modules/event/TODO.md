@@ -22,6 +22,14 @@
 
 ## Done
 
+- [x] Event contributes the console's event selector. The options come from
+      this module's own provider through Platform's `ConsoleEventSources`
+      registry — the same unconditional boot-time pattern the block types
+      use — so Platform can offer an event selector while importing nothing
+      from here (ADR-0004). Unarchived events only, since archived means put
+      away, newest first so the event somebody is working on is at the top,
+      and narrowed with `forBrand()` when the operator has picked a brand.
+
 - [x] A public event list at `/events` (`event.index`), and the topbar entry
       that points at it. Until this landed a brand's events were reachable
       only by knowing a slug. Its rule is `Event::scopeListedPublicly()`,

@@ -56,6 +56,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerFeatures();
         $this->registerBlockTypes();
         $this->registerSlots();
+        $this->registerConsoleEventSources();
         $this->registerMessageTemplates();
         $this->registerMessageTopics();
         $this->registerSchedule();
@@ -223,6 +224,14 @@ abstract class ModuleServiceProvider extends ServiceProvider
      * neither slot names nor contributions.
      */
     protected function registerSlots(): void {}
+
+    /**
+     * Options for the console's event selector — see
+     * `Operators\ConsoleEventSources`. Same unconditional boot-time pattern
+     * as `registerSlots()`: the module that owns events contributes them,
+     * because Platform owns the selector but may not read Event's tables.
+     */
+    protected function registerConsoleEventSources(): void {}
 
     /**
      * Per-module GDPR export/anonymization handlers, registered with Compliance.

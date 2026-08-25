@@ -365,6 +365,10 @@ declare namespace Konventix {
                 tokens: Record<string, string>;
                 darkTokens: Record<string, string>;
             };
+            export type ConsoleSelectionData = {
+                readonly brandId: string | null;
+                readonly eventId: string | null;
+            };
             export type FooterLinkData = {
                 label: string;
                 kind: Konventix.Platform.Enums.FooterLinkKind;

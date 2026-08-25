@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AdminSelectionBar from '@/components/admin/AdminSelectionBar.vue';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
@@ -32,6 +33,7 @@ const NotificationBell = resolveRegisteredComponent(
             </template>
         </div>
         <div class="ml-auto flex items-center gap-2">
+            <AdminSelectionBar />
             <component :is="NotificationBell" v-if="NotificationBell" />
         </div>
     </header>

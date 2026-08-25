@@ -20,6 +20,7 @@ use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Operators\ConsoleEventSources;
 use Konventix\Platform\Operators\OperatorContext;
 use Konventix\Platform\Realtime\BrandApplicationProvider;
 use Konventix\Platform\Slots\SlotRegistry;
@@ -120,6 +121,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->app->singleton(NavigationRegistry::class);
         $this->app->singleton(SlotRegistry::class);
         $this->app->singleton(BlockRegistry::class);
+        $this->app->singleton(ConsoleEventSources::class);
         $this->app->singleton(StorageMigrationRegistry::class);
 
         // Scoped, not singleton: DiskResolver memoizes built filesystems —

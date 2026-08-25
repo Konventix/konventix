@@ -62,6 +62,21 @@ depends on brand resolution and gating working.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] The console remembers which brand and event the operator is looking at.
+      `ConsoleSelection` reads and writes two session keys on the admin host —
+      the console has no brand, so this is never a brand cookie (ADR-0029) —
+      and holds no state of its own, which is what lets a long-lived Octane
+      worker resolve it fresh per request instead of leaking one operator's
+      pick into the next. Platform owns the selector but may not read Event's
+      tables, so the options arrive through `ConsoleEventSources`, a registry
+      modules push into from their own provider via the new
+      `registerConsoleEventSources()` hook; no source registered means no event
+      selector at all, which is what a build without the Event module gets.
+      `BelongsToBrand::scopeForBrand()` is the one greppable brand *filter*
+      over a query that has already escaped the scope (ADR-0015: reads are
+      filters), kept deliberately apart from the scoping mechanism ADR-0010
+      forbids writing by hand. Nothing reads the pick yet — the lists follow.
+
 - [x] A filter contract for the operator console's lists.
       `HasDataTableQuery` knew `search`, `sort`, `dir` and `per_page`; every
       other filter was a hand-rolled query parameter and a hand-rolled
