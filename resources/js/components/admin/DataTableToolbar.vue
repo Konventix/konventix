@@ -68,7 +68,11 @@ const ALL = '__all__';
                 {{ filter.label }}
             </label>
             <Select
-                :model-value="filter.value ?? ALL"
+                :model-value="
+                    filter.value == null || filter.value === filter.clearValue
+                        ? ALL
+                        : filter.value
+                "
                 @update:model-value="
                     (value) =>
                         emit(

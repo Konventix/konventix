@@ -248,21 +248,48 @@ it('defaults the event filter to the console selection, offering names from its 
             ->count('registrations.data', 2));
 });
 
-it('exports only the rows the query string names, brand and status included', function (): void {
+it('exports only the rows the query string names — brand, event and status alike', function (): void {
     [, $admin] = registrationsOperator();
 
     $sxlan = $this->withBrand(Brand::factory()->create(['name' => 'SXLan']));
-    Registration::factory()->forType(RegistrationType::factory()->create())->create(['organization_name' => 'SXLan Crew']);
+    $thisYear = registrationsAdminEvent($sxlan->getKey(), 'sxlan-2027', 'SXLan 2027');
+    $nextYear = registrationsAdminEvent($sxlan->getKey(), 'sxlan-2028', 'SXLan 2028');
+
+    Registration::factory()
+        ->forType(RegistrationType::factory()->forEvent($thisYear)->create())
+        ->create(['organization_name' => 'SXLan Crew']);
+    Registration::factory()
+        ->forType(RegistrationType::factory()->forEvent($nextYear)->create())
+        ->create(['organization_name' => 'SXLan Next Year']);
+    Registration::factory()
+        ->forType(RegistrationType::factory()->forEvent($thisYear)->create())
+        ->create(['organization_name' => 'SXLan Withdrawn', 'status' => RegistrationStatus::Cancelled]);
 
     $this->withBrand(Brand::factory()->create(['name' => 'Xpertise']));
     Registration::factory()->forType(RegistrationType::factory()->create())->create(['organization_name' => 'Xpertise Crew']);
 
-    $response = $this->actingAs($admin)
-        ->get("http://admin.regs.test/admin/registrations/export?brand={$sxlan->getKey()}&status=submitted")
-        ->assertOk();
+    $this->actingAs($admin)
+        ->put('http://admin.regs.test/admin/selection', ['brandId' => $sxlan->getKey(), 'eventId' => null])
+        ->assertRedirect();
 
-    $csv = $response->streamedContent();
+    $csv = $this->actingAs($admin)
+        ->get("http://admin.regs.test/admin/registrations/export?brand={$sxlan->getKey()}&event={$thisYear}&status=submitted")
+        ->assertOk()
+        ->streamedContent();
 
     expect($csv)->toContain('SXLan Crew')
+        ->and($csv)->not->toContain('SXLan Next Year')
+        ->and($csv)->not->toContain('SXLan Withdrawn')
         ->and($csv)->not->toContain('Xpertise Crew');
+
+    // The cleared filter has to reach the export too: an operator looking at
+    // "all brands" who exports must not silently download one brand's rows.
+    $everything = $this->actingAs($admin)
+        ->get('http://admin.regs.test/admin/registrations/export?brand=all&event=all')
+        ->assertOk()
+        ->streamedContent();
+
+    expect($everything)->toContain('SXLan Crew')
+        ->and($everything)->toContain('SXLan Next Year')
+        ->and($everything)->toContain('Xpertise Crew');
 });

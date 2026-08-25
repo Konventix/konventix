@@ -157,16 +157,6 @@ class RegistrationTypeAdminController
     }
 
     /**
-     * @return list<array{id: string, name: string}>
-     */
-    private function brandOptions(): array
-    {
-        return array_values(Brand::query()->orderBy('name')->get(['id', 'name'])
-            ->map(fn (Brand $brand): array => ['id' => (string) $brand->getKey(), 'name' => $brand->name])
-            ->all());
-    }
-
-    /**
      * Archived events are not offered — but one already referenced by the
      * type stays in the list, or editing that type's name would silently
      * move it to another event.

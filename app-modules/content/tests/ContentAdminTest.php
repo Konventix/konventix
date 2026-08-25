@@ -422,4 +422,14 @@ it('defaults the brand filter to the console selection and lets the list clear i
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('filters.brand', null)
             ->count('entries.data', 2));
+
+    // And it stays cleared while the operator keeps working: the toolbar
+    // carries `brand=all` into every later search or sort, because an absent
+    // `brand` would mean "never chose" and hand the selection back.
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content?brand=all&search=news')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', null)
+            ->count('entries.data', 2));
 });

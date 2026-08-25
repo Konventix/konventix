@@ -52,8 +52,17 @@ const props = defineProps<{
     events: { id: string; name: string }[];
 }>();
 
+/**
+ * A cleared selection-backed filter is seeded as its clear value rather than
+ * dropped: `navigate()` omits nulls, so an absent `brand` would let the
+ * console selection come back on the next search or sort.
+ */
 const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
-    useDataTable(() => registrationsIndex().url, props.filters);
+    useDataTable(() => registrationsIndex().url, {
+        ...props.filters,
+        brand: props.filters.brand ?? 'all',
+        event: props.filters.event ?? 'all',
+    });
 
 /**
  * Brand and event default to the console selection; `clearValue: 'all'` makes

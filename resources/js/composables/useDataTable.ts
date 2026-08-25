@@ -13,7 +13,12 @@ export interface DataTableFilters {
     sort?: string;
     dir?: 'asc' | 'desc';
     per_page?: number;
-    [key: string]: string | number | undefined;
+    /**
+     * `null` is in the union because that is what the server echoes for a
+     * filter that is not filtering; `navigate()` leaves both null and
+     * undefined out of the query string.
+     */
+    [key: string]: string | number | null | undefined;
 }
 
 export interface DataTableFilterOption {

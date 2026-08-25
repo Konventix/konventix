@@ -90,7 +90,7 @@ class PolicyAdminController
                     'effectiveAt' => $published?->effective_at?->toDateString(),
                 ];
             }),
-            'brands' => $this->brandOptions($brands),
+            'brands' => $this->brandOptionsFrom($brands),
             'filters' => $this->currentFilters($request, $sort, $perPage),
         ]);
     }
@@ -199,10 +199,14 @@ class PolicyAdminController
     }
 
     /**
+     * The trait's `brandOptions()` would re-query; this page already holds
+     * the brand models, so it maps those. Named apart from the trait method
+     * on purpose — an incompatible signature must not shadow it.
+     *
      * @param  Collection<int, Brand>  $brands
      * @return list<array{id: string, name: string}>
      */
-    private function brandOptions(Collection $brands): array
+    private function brandOptionsFrom(Collection $brands): array
     {
         return array_values($brands
             ->map(fn (Brand $brand): array => ['id' => (string) $brand->getKey(), 'name' => $brand->name])
