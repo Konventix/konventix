@@ -5,7 +5,10 @@ import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
-import type { DataTableFilters } from '@/composables/useDataTable';
+import type {
+    DataTableFilterDef,
+    DataTableFilters,
+} from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
 import { edit as editUser, index as usersIndex } from '@/routes/admin/users';
 import { columns } from './columns';
@@ -23,13 +26,30 @@ interface PaginatedUsers {
 
 const props = defineProps<{
     users: PaginatedUsers;
-    filters: DataTableFilters;
+    brands: { id: string; name: string }[];
+    filters: DataTableFilters & { brand: string | null };
 }>();
 
-const { filters, setSearch, toggleSort, setPerPage, setPage } = useDataTable(
-    () => usersIndex().url,
-    props.filters,
-);
+const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
+    useDataTable(() => usersIndex().url, props.filters);
+
+/**
+ * Accounts are operator-global, so the brand filter narrows by membership.
+ * It defaults to the console selection; `clearValue: 'all'` makes "All
+ * brands" survive the next visit instead of falling back to the selection.
+ */
+const filterDefs = computed<DataTableFilterDef[]>(() => [
+    {
+        name: 'brand',
+        label: 'Brands',
+        value: props.filters.brand,
+        options: props.brands.map((brand) => ({
+            value: brand.id,
+            label: brand.name,
+        })),
+        clearValue: 'all',
+    },
+]);
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -62,9 +82,11 @@ const pagination = computed(() => ({
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
+            :filters="filterDefs"
             search-placeholder="Search users…"
             @update:search="setSearch"
             @update:per-page="setPerPage"
+            @update:filter="setFilter"
         />
 
         <DataTable

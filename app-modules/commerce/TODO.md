@@ -70,6 +70,10 @@
 
 ## Done
 
+- [x] The orders list defaults its brand filter from the console selection,
+      cleared per list with `brand=all` — no event filter, because an order
+      settles a registration and the list carries no event column.
+
 - [x] The pay link and the invoice reach the person who owes for them.
       `/pay/registration/{ulid}` and the archived PDF both worked and
       neither had an inbound route in the UI. Commerce contributes them to

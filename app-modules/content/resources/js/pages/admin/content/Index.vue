@@ -24,7 +24,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import type { DataTableFilters } from '@/composables/useDataTable';
+import type {
+    DataTableFilterDef,
+    DataTableFilters,
+} from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
 import {
     edit as editEntry,
@@ -34,9 +37,11 @@ import {
 import { index as commentsIndex } from '@/routes/admin/content/comments';
 
 /**
- * Editorial entries across every brand. Type and state are server-side
- * filters rather than client-side ones, so a page of 15 rows is a page of the
- * 15 rows that matched — the same contract every other console index keeps.
+ * Editorial entries across every brand. Brand, type and state are
+ * server-side filters rather than client-side ones, so a page of 15 rows is a
+ * page of the 15 rows that matched — the same contract every other console
+ * index keeps. Brand defaults to the console selection; there is no event
+ * filter yet, because Content has no event read model (see its TODO.md).
  */
 type EntryRow = {
     id: string;
@@ -66,12 +71,46 @@ const props = defineProps<{
     brands: { id: string; name: string }[];
     types: Konventix.Content.Enums.ContentType[];
     states: Konventix.Content.Enums.PublicationState[];
-    filters: DataTableFilters;
+    filters: DataTableFilters & {
+        brand: string | null;
+        type: string | null;
+        state: string | null;
+    };
     pendingComments: number;
 }>();
 
-const { filters, setSearch, toggleSort, setPerPage, setPage, navigate } =
+const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
     useDataTable(() => contentIndex().url, props.filters);
+
+/**
+ * The brand filter defaults to the console selection; `clearValue: 'all'`
+ * makes "All brands" survive the next visit instead of falling back to the
+ * selection again. Type and state have no default, so they clear to nothing.
+ */
+const filterDefs = computed<DataTableFilterDef[]>(() => [
+    {
+        name: 'brand',
+        label: 'Brands',
+        value: props.filters.brand,
+        options: props.brands.map((brand) => ({
+            value: brand.id,
+            label: brand.name,
+        })),
+        clearValue: 'all',
+    },
+    {
+        name: 'type',
+        label: 'Types',
+        value: props.filters.type,
+        options: props.types.map((type) => ({ value: type, label: type })),
+    },
+    {
+        name: 'state',
+        label: 'States',
+        value: props.filters.state,
+        options: props.states.map((state) => ({ value: state, label: state })),
+    },
+]);
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -81,12 +120,6 @@ function onSortingChange(next: SortingState): void {
     if (next.length > 0) {
         toggleSort(next[0].id);
     }
-}
-
-/** 'all' is the absent filter — Select has no empty-value option. */
-function setFilter(key: 'type' | 'state', value: string): void {
-    filters[key] = value === 'all' ? undefined : value;
-    navigate({ page: undefined });
 }
 
 const pagination = computed(() => ({
@@ -255,53 +288,13 @@ function submit(): void {
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
+            :filters="filterDefs"
             search-placeholder="Search title or slug…"
             @update:search="setSearch"
             @update:per-page="setPerPage"
+            @update:filter="setFilter"
         >
             <template #actions>
-                <Select
-                    :model-value="(filters.type as string) ?? 'all'"
-                    @update:model-value="
-                        (value) => setFilter('type', String(value))
-                    "
-                >
-                    <SelectTrigger class="w-36" aria-label="Filter by type">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All types</SelectItem>
-                        <SelectItem
-                            v-for="type in props.types"
-                            :key="type"
-                            :value="type"
-                        >
-                            {{ type }}
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
-
-                <Select
-                    :model-value="(filters.state as string) ?? 'all'"
-                    @update:model-value="
-                        (value) => setFilter('state', String(value))
-                    "
-                >
-                    <SelectTrigger class="w-36" aria-label="Filter by state">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All states</SelectItem>
-                        <SelectItem
-                            v-for="state in props.states"
-                            :key="state"
-                            :value="state"
-                        >
-                            {{ state }}
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
-
                 <Dialog v-model:open="open">
                     <DialogTrigger as-child>
                         <Button>
@@ -319,36 +312,38 @@ function submit(): void {
                         >
                             <div class="grid gap-2">
                                 <Label for="entry-brand">Brand</Label>
-                                <select
-                                    id="entry-brand"
-                                    v-model="form.brand_id"
-                                    class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
-                                >
-                                    <option
-                                        v-for="brand in props.brands"
-                                        :key="brand.id"
-                                        :value="brand.id"
-                                    >
-                                        {{ brand.name }}
-                                    </option>
-                                </select>
+                                <Select v-model="form.brand_id">
+                                    <SelectTrigger id="entry-brand">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem
+                                            v-for="brand in props.brands"
+                                            :key="brand.id"
+                                            :value="brand.id"
+                                        >
+                                            {{ brand.name }}
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <InputError :message="form.errors.brand_id" />
                             </div>
                             <div class="grid gap-2">
                                 <Label for="entry-type">Type</Label>
-                                <select
-                                    id="entry-type"
-                                    v-model="form.type"
-                                    class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
-                                >
-                                    <option
-                                        v-for="type in props.types"
-                                        :key="type"
-                                        :value="type"
-                                    >
-                                        {{ type }}
-                                    </option>
-                                </select>
+                                <Select v-model="form.type">
+                                    <SelectTrigger id="entry-type">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem
+                                            v-for="type in props.types"
+                                            :key="type"
+                                            :value="type"
+                                        >
+                                            {{ type }}
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <InputError :message="form.errors.type" />
                             </div>
                             <div class="grid gap-2">

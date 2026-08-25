@@ -62,6 +62,12 @@ depends on brand resolution and gating working.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] Every cross-brand list defaults its brand filter from the console
+      selection: `HasDataTableQuery::resolveSelectionFilter()` is the one
+      place that says how (absent → the selection, `all` → no filter), and
+      the roles page reads the same pick as its required brand. The
+      DataTableToolbar's per-page select finally has a label.
+
 - [x] The console remembers which brand and event the operator is looking at.
       `ConsoleSelection` reads and writes two session keys on the admin host —
       the console has no brand, so this is never a brand cookie (ADR-0029) —

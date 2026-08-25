@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Content\Enums\CommentState;
 use Konventix\Content\Enums\ContentType;
 use Konventix\Content\Enums\PublicationState;
@@ -11,6 +12,7 @@ use Konventix\Content\Events\ContentEntryPublished;
 use Konventix\Content\Models\ContentComment;
 use Konventix\Content\Models\ContentEntry;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
@@ -390,4 +392,34 @@ it('offers no public link for an entry no reader can reach yet', function (): vo
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->where('entry.publicUrl', null));
+});
+
+it('defaults the brand filter to the console selection and lets the list clear it', function (): void {
+    [, $admin] = contentOperator();
+
+    $sxlan = $this->withBrand(Brand::factory()->create(['name' => 'SXLan']));
+    ContentEntry::factory()->create(['title' => 'SXLan news']);
+
+    $this->withBrand(Brand::factory()->create(['name' => 'Xpertise']));
+    ContentEntry::factory()->create(['title' => 'Xpertise news']);
+
+    $this->actingAs($admin)
+        ->put('http://admin.content.test/admin/selection', ['brandId' => $sxlan->getKey(), 'eventId' => null])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', $sxlan->getKey())
+            ->count('entries.data', 1)
+            ->where('entries.data.0.title', 'SXLan news'));
+
+    // A default, not a scope: "all brands" is a legitimate console view.
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content?brand=all')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', null)
+            ->count('entries.data', 2));
 });

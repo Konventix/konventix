@@ -24,6 +24,7 @@ use Konventix\Content\Models\ContentEntry;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\ConsoleSelection;
 
 /**
  * Operator console: editorial entries (ADR-0029). Route middleware already
@@ -41,7 +42,7 @@ class ContentAdminController
 {
     use HasDataTableQuery;
 
-    public function index(Request $request, BrandUrl $brandUrl): Response
+    public function index(Request $request, BrandUrl $brandUrl, ConsoleSelection $selection): Response
     {
         Gate::authorize(Permission::ViewEntries->value);
 
@@ -56,8 +57,16 @@ class ContentAdminController
             $sort['direction'] = 'desc';
         }
 
-        $type = $this->filterValue($request, 'type', ContentType::cases());
-        $state = $this->filterValue($request, 'state', PublicationState::cases());
+        $filters = [
+            ...$this->resolveFilters($request, [
+                'type' => $this->typeValues(),
+                'state' => $this->stateValues(),
+            ]),
+            // The console's pick is this list's default, cleared per list
+            // with `brand=all` (ADR-0029). An event filter is owed too, but
+            // Content has no event read model yet — see TODO.md.
+            'brand' => $this->resolveSelectionFilter($request, 'brand', $selection->brandId()),
+        ];
 
         $entries = ContentEntry::withoutBrandScope()
             ->when($request->filled('search'), function ($query) use ($request): void {
@@ -67,8 +76,9 @@ class ContentAdminController
                     $inner->where('title', 'ilike', $term)->orWhere('slug', 'ilike', $term);
                 });
             })
-            ->when($type !== null, fn ($query) => $query->where('type', $type))
-            ->when($state !== null, fn ($query) => $query->where('state', $state))
+            ->when($filters['brand'] !== null, fn ($query) => $query->forBrand($filters['brand']))
+            ->when($filters['type'] !== null, fn ($query) => $query->where('type', $filters['type']))
+            ->when($filters['state'] !== null, fn ($query) => $query->where('state', $filters['state']))
             ->orderBy($sort['column'], $sort['direction'])
             ->paginate($perPage)
             ->withQueryString();
@@ -92,14 +102,10 @@ class ContentAdminController
                 'updatedAt' => $entry->updated_at?->toDateTimeString(),
                 'publicUrl' => $this->publicUrl($entry, $brandBases[$entry->brand_id] ?? null),
             ]),
-            'brands' => $this->brandOptions($brands),
-            'types' => array_map(fn (ContentType $case): string => $case->value, ContentType::cases()),
-            'states' => array_map(fn (PublicationState $case): string => $case->value, PublicationState::cases()),
-            'filters' => [
-                ...$this->currentFilters($request, $sort, $perPage),
-                'type' => $type,
-                'state' => $state,
-            ],
+            'brands' => $this->brandOptionsFrom($brands),
+            'types' => $this->typeValues(),
+            'states' => $this->stateValues(),
+            'filters' => $this->currentFilters($request, $sort, $perPage, $filters),
             'pendingComments' => ContentComment::withoutBrandScope()
                 ->where('state', CommentState::Pending)
                 ->count(),
@@ -141,7 +147,7 @@ class ContentAdminController
                 ),
                 ...ContentEntryData::fromModel($model)->toArray(),
             ],
-            'types' => array_map(fn (ContentType $case): string => $case->value, ContentType::cases()),
+            'types' => $this->typeValues(),
             'audiences' => array_map(fn (Audience $case): string => $case->value, Audience::cases()),
             'urgencies' => array_map(fn (Urgency $case): string => $case->value, Urgency::cases()),
             // Exactly the transitions the lifecycle Actions will accept, so
@@ -194,14 +200,19 @@ class ContentAdminController
     }
 
     /**
-     * @param  array<int, ContentType|PublicationState>  $cases
+     * @return list<string>
      */
-    private function filterValue(Request $request, string $key, array $cases): ?string
+    private function typeValues(): array
     {
-        $value = $request->string($key)->toString();
-        $allowed = array_map(fn (ContentType|PublicationState $case): string => $case->value, $cases);
+        return array_map(fn (ContentType $case): string => $case->value, ContentType::cases());
+    }
 
-        return in_array($value, $allowed, true) ? $value : null;
+    /**
+     * @return list<string>
+     */
+    private function stateValues(): array
+    {
+        return array_map(fn (PublicationState $case): string => $case->value, PublicationState::cases());
     }
 
     /**
@@ -218,10 +229,13 @@ class ContentAdminController
     }
 
     /**
+     * The trait's `brandOptions()` would re-query; this page already holds
+     * the brand models for the public-URL bases, so it maps those.
+     *
      * @param  Collection<int, Brand>  $brands
      * @return list<array{id: string, name: string}>
      */
-    private function brandOptions(Collection $brands): array
+    private function brandOptionsFrom(Collection $brands): array
     {
         return array_values($brands
             ->map(fn (Brand $brand): array => ['id' => (string) $brand->getKey(), 'name' => $brand->name])

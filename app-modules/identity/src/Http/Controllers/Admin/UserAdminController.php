@@ -19,6 +19,7 @@ use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\ConsoleSelection;
 
 /**
  * Operator console: user administration (ADR-0029). Accounts are
@@ -30,14 +31,23 @@ class UserAdminController
 {
     use HasDataTableQuery;
 
-    public function index(Request $request): Response
+    public function index(Request $request, ConsoleSelection $selection): Response
     {
         Gate::authorize(Permission::ViewUsers->value);
 
         $perPage = $this->resolvePerPage($request);
         $sort = $this->resolveSort($request, allowedSorts: ['name', 'email', 'created_at'], default: 'name');
 
+        // Accounts are operator-global (ADR-0016), so the console's pick
+        // narrows this list through brand membership rather than through the
+        // account itself. A default, cleared per list with `brand=all`.
+        $brand = $this->resolveSelectionFilter($request, 'brand', $selection->brandId());
+
         $users = User::query()
+            ->when($brand !== null, fn ($query) => $query->whereIn(
+                'id',
+                BrandMembership::withoutBrandScope()->forBrand($brand)->select('user_id'),
+            ))
             ->when($request->filled('search'), function ($query) use ($request): void {
                 $term = '%'.$request->string('search')->trim().'%';
 
@@ -65,7 +75,8 @@ class UserAdminController
                 'verified' => $user->email_verified_at !== null,
                 'brandCount' => (int) ($membershipCounts[$user->getKey()] ?? 0),
             ]),
-            'filters' => $this->currentFilters($request, $sort, $perPage),
+            'brands' => $this->brandOptions(),
+            'filters' => $this->currentFilters($request, $sort, $perPage, ['brand' => $brand]),
         ]);
     }
 

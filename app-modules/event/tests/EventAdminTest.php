@@ -225,3 +225,34 @@ it('lists assigned venues on the admin edit page', function (): void {
             ->where('venues.0.id', $venue->id)
             ->where('venues.0.isPrimary', true));
 });
+
+it('defaults the brand filter to the console selection and lets the list clear it', function (): void {
+    [, $admin] = eventsAdminOperator();
+
+    $sxlan = $this->withBrand(Brand::factory()->create(['name' => 'SXLan']));
+    Event::factory()->create(['name' => 'SXLan 2027']);
+
+    $this->withBrand(Brand::factory()->create(['name' => 'Xpertise']));
+    Event::factory()->create(['name' => 'Xpertise 2027']);
+
+    $this->actingAs($admin)
+        ->put('http://admin.eventsadmin.test/admin/selection', ['brandId' => $sxlan->getKey(), 'eventId' => null])
+        ->assertRedirect();
+
+    // The events list is what the event selector points into, so only the
+    // brand half of the selection applies to it.
+    $this->actingAs($admin)
+        ->get('http://admin.eventsadmin.test/admin/events')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', $sxlan->getKey())
+            ->count('events.data', 1)
+            ->where('events.data.0.name', 'SXLan 2027'));
+
+    $this->actingAs($admin)
+        ->get('http://admin.eventsadmin.test/admin/events?brand=all')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', null)
+            ->count('events.data', 2));
+});

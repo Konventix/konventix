@@ -16,6 +16,7 @@ use Konventix\Platform\Actions\SaveRole;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Role;
+use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Platform\Permissions\PermissionCatalog;
 
 /**
@@ -29,13 +30,15 @@ use Konventix\Platform\Permissions\PermissionCatalog;
  */
 class RoleAssignmentController
 {
-    public function index(Request $request): Response
+    public function index(Request $request, ConsoleSelection $selection): Response
     {
         Gate::authorize(Permission::ManageRoles->value);
 
         $brands = Brand::query()->orderBy('name')->get(['id', 'name']);
 
-        $brandId = $request->string('brand')->toString() ?: $brands->first()?->getKey();
+        // This page requires a brand, so the console's pick is a default and
+        // not a filter — there is no "all brands" role list to fall back to.
+        $brandId = $request->string('brand')->toString() ?: ($selection->brandId() ?? $brands->first()?->getKey());
 
         $teamKey = (string) config('permission.column_names.team_foreign_key');
 

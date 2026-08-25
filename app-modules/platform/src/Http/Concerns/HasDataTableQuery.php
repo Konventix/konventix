@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Platform\Http\Concerns;
 
 use Illuminate\Http\Request;
+use Konventix\Platform\Models\Brand;
 
 /**
  * Shared server-side data-table query handling for operator-console index
@@ -67,6 +68,42 @@ trait HasDataTableQuery
         }
 
         return $resolved;
+    }
+
+    /**
+     * A filter whose default is the console selection (ADR-0029): absent
+     * from the query string → the selection; the literal `all` → no filter,
+     * because the user cleared it for this list; anything else → that value.
+     *
+     * The selection is a default, never a scope — "all brands" is a
+     * legitimate view of an operator console, so a cleared filter has to
+     * survive the next visit, which is why clearing sends `all` rather than
+     * dropping the parameter.
+     */
+    protected function resolveSelectionFilter(Request $request, string $name, ?string $selected): ?string
+    {
+        if (! $request->has($name)) {
+            return $selected;
+        }
+
+        $value = $request->string($name)->toString();
+
+        return ($value === '' || $value === 'all') ? null : $value;
+    }
+
+    /**
+     * The brand filter's options, for a list whose brand filter defaults
+     * from the console selection. Every such list offers the same set — the
+     * operator's brands, by name — so it is stated once here rather than
+     * copied into each controller.
+     *
+     * @return list<array{id: string, name: string}>
+     */
+    protected function brandOptions(): array
+    {
+        return array_values(Brand::query()->orderBy('name')->get(['id', 'name'])
+            ->map(fn (Brand $brand): array => ['id' => (string) $brand->getKey(), 'name' => $brand->name])
+            ->all());
     }
 
     /**

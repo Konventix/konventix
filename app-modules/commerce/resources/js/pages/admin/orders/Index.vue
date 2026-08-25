@@ -16,7 +16,10 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import type { DataTableFilters } from '@/composables/useDataTable';
+import type {
+    DataTableFilterDef,
+    DataTableFilters,
+} from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
 import {
@@ -39,13 +42,30 @@ interface PaginatedOrders {
 
 const props = defineProps<{
     orders: PaginatedOrders;
-    filters: DataTableFilters;
+    brands: { id: string; name: string }[];
+    filters: DataTableFilters & { brand: string | null };
 }>();
 
-const { filters, setSearch, toggleSort, setPerPage, setPage } = useDataTable(
-    () => ordersIndex().url,
-    props.filters,
-);
+const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
+    useDataTable(() => ordersIndex().url, props.filters);
+
+/**
+ * The brand filter defaults to the console selection; `clearValue: 'all'`
+ * makes "All brands" survive the next visit instead of falling back to the
+ * selection again.
+ */
+const filterDefs = computed<DataTableFilterDef[]>(() => [
+    {
+        name: 'brand',
+        label: 'Brands',
+        value: props.filters.brand,
+        options: props.brands.map((brand) => ({
+            value: brand.id,
+            label: brand.name,
+        })),
+        clearValue: 'all',
+    },
+]);
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -150,9 +170,11 @@ const columns: ColumnDef<OrderRow>[] = [
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
+            :filters="filterDefs"
             search-placeholder="Search by invoice number or registration…"
             @update:search="setSearch"
             @update:per-page="setPerPage"
+            @update:filter="setFilter"
         />
 
         <DataTable

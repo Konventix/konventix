@@ -50,6 +50,12 @@
 
 ## Done
 
+- [x] The registration list defaults both its brand and its event filter from
+      the console selection, each cleared per list with `brand=all` /
+      `event=all`; the event names come from this module's own `EventSummary`
+      projection. The CSV export link now carries the filters the list is
+      showing, so it exports what the operator is looking at.
+
 - [x] Participant "my registrations": a list and a detail page at
       `/my/registrations`, reached from the account menu. Authorization is
       ownership rather than a capability — there is no role that grants

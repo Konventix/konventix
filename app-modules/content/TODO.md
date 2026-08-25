@@ -46,6 +46,12 @@
 
 ## Done
 
+- [x] The entry list defaults its brand filter from the console selection, and
+      the operator clears it per list with `brand=all` — the type and state
+      selects moved onto the shared toolbar in the same pass, so the page
+      hand-rolls no filter of its own any more. No event filter yet: that
+      still waits on the event read model this file already owes.
+
 - [x] Author backfill closed: `identity:replay-profiles` re-emits
       `UserProfileUpdated` for every account, so an account that existed
       before `content_authors` did — and read as "Participant" — now

@@ -17,7 +17,17 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { DataTableFilters } from '@/composables/useDataTable';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import type {
+    DataTableFilterDef,
+    DataTableFilters,
+} from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
 import {
     index as eventsIndex,
@@ -47,13 +57,29 @@ interface PaginatedEvents {
 const props = defineProps<{
     events: PaginatedEvents;
     brands: { id: string; name: string }[];
-    filters: DataTableFilters;
+    filters: DataTableFilters & { brand: string | null };
 }>();
 
-const { filters, setSearch, toggleSort, setPerPage, setPage } = useDataTable(
-    () => eventsIndex().url,
-    props.filters,
-);
+const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
+    useDataTable(() => eventsIndex().url, props.filters);
+
+/**
+ * Brand only: this list is what the console's event selector points into, so
+ * the event half of the selection deliberately does not apply. `clearValue:
+ * 'all'` makes "All brands" survive the next visit.
+ */
+const filterDefs = computed<DataTableFilterDef[]>(() => [
+    {
+        name: 'brand',
+        label: 'Brands',
+        value: props.filters.brand,
+        options: props.brands.map((brand) => ({
+            value: brand.id,
+            label: brand.name,
+        })),
+        clearValue: 'all',
+    },
+]);
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -176,9 +202,11 @@ function submit(): void {
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
+            :filters="filterDefs"
             search-placeholder="Search events…"
             @update:search="setSearch"
             @update:per-page="setPerPage"
+            @update:filter="setFilter"
         >
             <template #actions>
                 <Dialog v-model:open="open">
@@ -198,19 +226,20 @@ function submit(): void {
                         >
                             <div class="grid gap-2">
                                 <Label for="event-brand">Brand</Label>
-                                <select
-                                    id="event-brand"
-                                    v-model="form.brand_id"
-                                    class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
-                                >
-                                    <option
-                                        v-for="brand in props.brands"
-                                        :key="brand.id"
-                                        :value="brand.id"
-                                    >
-                                        {{ brand.name }}
-                                    </option>
-                                </select>
+                                <Select v-model="form.brand_id">
+                                    <SelectTrigger id="event-brand">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem
+                                            v-for="brand in props.brands"
+                                            :key="brand.id"
+                                            :value="brand.id"
+                                        >
+                                            {{ brand.name }}
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <InputError :message="form.errors.brand_id" />
                             </div>
                             <div class="grid gap-2">

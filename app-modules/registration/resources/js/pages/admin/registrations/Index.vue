@@ -7,7 +7,10 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import { Button } from '@/components/ui/button';
-import type { DataTableFilters } from '@/composables/useDataTable';
+import type {
+    DataTableFilterDef,
+    DataTableFilters,
+} from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
 import {
     bulkApprove,
@@ -39,12 +42,70 @@ interface PaginatedRegistrations {
 
 const props = defineProps<{
     registrations: PaginatedRegistrations;
-    filters: DataTableFilters & { status: string | null; event: string | null };
+    filters: DataTableFilters & {
+        status: string | null;
+        brand: string | null;
+        event: string | null;
+    };
     statuses: string[];
+    brands: { id: string; name: string }[];
+    events: { id: string; name: string }[];
 }>();
 
 const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
     useDataTable(() => registrationsIndex().url, props.filters);
+
+/**
+ * Brand and event default to the console selection; `clearValue: 'all'` makes
+ * "All brands" / "All events" survive the next visit instead of falling back
+ * to the selection again. Event names come from Registration's own read model.
+ */
+const filterDefs = computed<DataTableFilterDef[]>(() => [
+    {
+        name: 'brand',
+        label: 'Brands',
+        value: props.filters.brand,
+        options: props.brands.map((brand) => ({
+            value: brand.id,
+            label: brand.name,
+        })),
+        clearValue: 'all',
+    },
+    {
+        name: 'event',
+        label: 'Events',
+        value: props.filters.event,
+        options: props.events.map((event) => ({
+            value: event.id,
+            label: event.name,
+        })),
+        clearValue: 'all',
+    },
+    {
+        name: 'status',
+        label: 'Status',
+        value: props.filters.status,
+        options: props.statuses.map((status) => ({
+            value: status,
+            label: status,
+        })),
+    },
+]);
+
+/**
+ * The export honours the same filters the list is showing, so the link has to
+ * carry them — an unqualified href would quietly export everything.
+ */
+const exportHref = computed(() =>
+    exportRegistrations.url({
+        query: {
+            search: filters.search,
+            status: filters.status,
+            brand: filters.brand,
+            event: filters.event,
+        },
+    }),
+);
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -183,17 +244,7 @@ const columns: ColumnDef<RegistrationRow>[] = [
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
-            :filters="[
-                {
-                    name: 'status',
-                    label: 'Status',
-                    value: props.filters.status,
-                    options: props.statuses.map((s) => ({
-                        value: s,
-                        label: s,
-                    })),
-                },
-            ]"
+            :filters="filterDefs"
             search-placeholder="Search registrant, organization, email…"
             @update:search="setSearch"
             @update:per-page="setPerPage"
@@ -208,7 +259,7 @@ const columns: ColumnDef<RegistrationRow>[] = [
                     <Check class="size-4" />
                     Approve {{ selected.size }}
                 </Button>
-                <a :href="exportRegistrations().url">
+                <a :href="exportHref">
                     <Button variant="outline">
                         <Download class="size-4" />
                         CSV

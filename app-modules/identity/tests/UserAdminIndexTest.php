@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use Illuminate\Support\Collection;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
@@ -104,4 +106,38 @@ it('still enforces the view-users capability under query filtering', function ()
     $this->actingAs($admin)
         ->get('http://admin.usersidx.test/admin/users?search=anything')
         ->assertForbidden();
+});
+
+it('defaults the brand filter to the console selection and lets the list clear it', function (): void {
+    [, $admin] = usersAdminOperator();
+
+    // Accounts are operator-global (ADR-0016) — a brand narrows the list
+    // through membership, not through the account itself.
+    $sxlan = $this->withBrand(Brand::factory()->create(['name' => 'SXLan']));
+    $ada = User::factory()->create(['name' => 'Ada Lovelace', 'email' => 'ada@example.test']);
+    BrandMembership::factory()->create(['user_id' => $ada->getKey()]);
+
+    $this->withBrand(Brand::factory()->create(['name' => 'Xpertise']));
+    $grace = User::factory()->create(['name' => 'Grace Hopper', 'email' => 'grace@example.test']);
+    BrandMembership::factory()->create(['user_id' => $grace->getKey()]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.usersidx.test/admin/selection', ['brandId' => $sxlan->getKey(), 'eventId' => null])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->get('http://admin.usersidx.test/admin/users')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', $sxlan->getKey())
+            ->count('users.data', 1)
+            ->where('users.data.0.email', 'ada@example.test'));
+
+    // A default, not a scope: "all brands" is a legitimate console view.
+    $this->actingAs($admin)
+        ->get('http://admin.usersidx.test/admin/users?brand=all')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', null)
+            ->count('users.data', 3));
 });

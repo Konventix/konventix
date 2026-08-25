@@ -18,6 +18,7 @@ use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\ConsoleSelection;
 
 /**
  * Operator console: orders and their invoices (ADR-0029). Route middleware
@@ -32,7 +33,7 @@ class OrderAdminController
 {
     use HasDataTableQuery;
 
-    public function index(Request $request): Response
+    public function index(Request $request, ConsoleSelection $selection): Response
     {
         Gate::authorize(Permission::ViewOrders->value);
 
@@ -47,7 +48,13 @@ class OrderAdminController
             $sort['direction'] = 'desc';
         }
 
+        // The console's pick is this list's default, cleared per list with
+        // `brand=all` (ADR-0029). No event filter: an order settles a
+        // registration, and the list carries no event column to filter on.
+        $brand = $this->resolveSelectionFilter($request, 'brand', $selection->brandId());
+
         $orders = Order::withoutBrandScope()
+            ->when($brand !== null, fn ($query) => $query->forBrand($brand))
             ->when($request->filled('search'), function ($query) use ($request): void {
                 $term = '%'.$request->string('search')->trim().'%';
 
@@ -91,7 +98,8 @@ class OrderAdminController
                     ],
                 ];
             }),
-            'filters' => $this->currentFilters($request, $sort, $perPage),
+            'brands' => $this->brandOptions(),
+            'filters' => $this->currentFilters($request, $sort, $perPage, ['brand' => $brand]),
         ]);
     }
 

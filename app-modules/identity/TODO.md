@@ -116,6 +116,11 @@ person behind it. The value here is in what is left out.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] The user list defaults its brand filter from the console selection,
+      cleared per list with `brand=all`. Accounts are operator-global
+      (ADR-0016), so the filter narrows through `BrandMembership` rather than
+      through the account itself.
+
 - [x] Profile replay command (`identity:replay-profiles {--chunk=500}`):
       re-emits `UserProfileUpdated` for every account with the row's current
       values, chunked, idempotent because every consumer upserts. Closes the

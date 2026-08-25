@@ -22,6 +22,10 @@
 
 ## Done
 
+- [x] The events list defaults its brand filter from the console selection,
+      cleared per list with `brand=all`. Only the brand half applies: this
+      list is what the console's event selector points into.
+
 - [x] Event contributes the console's event selector. The options come from
       this module's own provider through Platform's `ConsoleEventSources`
       registry — the same unconditional boot-time pattern the block types

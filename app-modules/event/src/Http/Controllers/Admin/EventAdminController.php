@@ -18,8 +18,8 @@ use Konventix\Event\Models\Event;
 use Konventix\Event\Models\EventDay;
 use Konventix\Event\Models\Venue;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
-use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Scopes\BrandScope;
+use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Platform\Slots\SlotRegistry;
 
 /**
@@ -41,7 +41,7 @@ class EventAdminController
 
     public function __construct(private readonly SlotRegistry $slots) {}
 
-    public function index(Request $request): Response
+    public function index(Request $request, ConsoleSelection $selection): Response
     {
         Gate::authorize(Permission::ViewEvents->value);
 
@@ -52,7 +52,13 @@ class EventAdminController
             $sort['direction'] = 'desc';
         }
 
+        // Only the brand half of the console selection applies here: an
+        // events list is what the event selector points into, so filtering it
+        // by the selected event would leave one row and no way back.
+        $brand = $this->resolveSelectionFilter($request, 'brand', $selection->brandId());
+
         $events = Event::withoutBrandScope()
+            ->when($brand !== null, fn ($query) => $query->forBrand($brand))
             ->when($request->filled('search'), function ($query) use ($request): void {
                 $term = '%'.$request->string('search')->trim().'%';
 
@@ -74,7 +80,7 @@ class EventAdminController
                 'timezone' => $event->timezone,
             ]),
             'brands' => $this->brandOptions(),
-            'filters' => $this->currentFilters($request, $sort, $perPage),
+            'filters' => $this->currentFilters($request, $sort, $perPage, ['brand' => $brand]),
         ]);
     }
 
@@ -210,15 +216,5 @@ class EventAdminController
             'concluded' => ['archive'],
             default => [],
         };
-    }
-
-    /**
-     * @return list<array{id: string, name: string}>
-     */
-    private function brandOptions(): array
-    {
-        return array_values(Brand::query()->orderBy('name')->get(['id', 'name'])
-            ->map(fn (Brand $brand): array => ['id' => (string) $brand->getKey(), 'name' => $brand->name])
-            ->all());
     }
 }

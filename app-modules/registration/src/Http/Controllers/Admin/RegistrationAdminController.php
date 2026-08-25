@@ -12,9 +12,11 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
+use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Registration\Actions\ApproveRegistration;
 use Konventix\Registration\Enums\Permission;
 use Konventix\Registration\Enums\RegistrationStatus;
+use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Registrant;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
@@ -33,7 +35,7 @@ class RegistrationAdminController
 {
     use HasDataTableQuery;
 
-    public function index(Request $request): Response
+    public function index(Request $request, ConsoleSelection $selection): Response
     {
         Gate::authorize(Permission::ViewRegistrations->value);
 
@@ -44,7 +46,7 @@ class RegistrationAdminController
             $sort['direction'] = 'desc';
         }
 
-        $filters = $this->declaredFilters($request);
+        $filters = $this->declaredFilters($request, $selection);
 
         $registrations = $this->filteredQuery($request, $filters)
             ->orderBy($sort['column'], $sort['direction'])
@@ -75,6 +77,8 @@ class RegistrationAdminController
             }),
             'filters' => $this->currentFilters($request, $sort, $perPage, $filters),
             'statuses' => $this->statusValues(),
+            'brands' => $this->brandOptions(),
+            'events' => $this->eventOptions($filters['brand']),
         ]);
     }
 
@@ -133,11 +137,11 @@ class RegistrationAdminController
      * CSV export of the current filter set (TODO.md). Streams — an
      * exhibitor list is small, a visitor list may not be.
      */
-    public function export(Request $request, AuditRecorder $auditRecorder): StreamedResponse
+    public function export(Request $request, AuditRecorder $auditRecorder, ConsoleSelection $selection): StreamedResponse
     {
         Gate::authorize(Permission::ExportRegistrations->value);
 
-        $filters = $this->declaredFilters($request);
+        $filters = $this->declaredFilters($request, $selection);
 
         $query = $this->filteredQuery($request, $filters)->orderBy('submitted_at');
 
@@ -149,6 +153,7 @@ class RegistrationAdminController
         $auditRecorder->record(
             action: 'registration.registrations.exported',
             context: [
+                'brand' => $filters['brand'],
                 'event' => $filters['event'],
                 'status' => $filters['status'],
                 'search' => $request->string('search')->toString() ?: null,
@@ -195,19 +200,43 @@ class RegistrationAdminController
 
     /**
      * The list's declared filters (P3, `HasDataTableQuery`): the status
-     * enum's own cases are the closed set of allowed values, `event` is any
-     * ULID the query string carries. Both the list and the export read this
-     * one declaration, so a value the enum does not know never reaches the
-     * query from either.
+     * enum's own cases are the closed set of allowed values. Both the list
+     * and the export read this one declaration, so a value the enum does not
+     * know never reaches the query from either.
+     *
+     * `brand` and `event` default to whatever the operator picked in the
+     * console shell (ADR-0029) — a default, not a scope, cleared per list
+     * with `brand=all` / `event=all`.
      *
      * @return array<string, string|null>
      */
-    private function declaredFilters(Request $request): array
+    private function declaredFilters(Request $request, ConsoleSelection $selection): array
     {
-        return $this->resolveFilters($request, [
-            'status' => $this->statusValues(),
-            'event' => null,
-        ]);
+        return [
+            ...$this->resolveFilters($request, ['status' => $this->statusValues()]),
+            'brand' => $this->resolveSelectionFilter($request, 'brand', $selection->brandId()),
+            'event' => $this->resolveSelectionFilter($request, 'event', $selection->eventId()),
+        ];
+    }
+
+    /**
+     * The event filter's options, from this module's own read model — never
+     * Event's tables (ADR-0004). Narrowed by the brand filter, so picking a
+     * brand does not leave another brand's events on offer.
+     *
+     * @return list<array{id: string, name: string}>
+     */
+    private function eventOptions(?string $brand): array
+    {
+        return array_values(EventSummary::withoutBrandScope()
+            ->when($brand !== null, fn ($query) => $query->forBrand($brand))
+            ->orderBy('name')
+            ->get(['event_id', 'name'])
+            ->map(fn (EventSummary $summary): array => [
+                'id' => $summary->event_id,
+                'name' => $summary->name,
+            ])
+            ->all());
     }
 
     /**
@@ -225,6 +254,7 @@ class RegistrationAdminController
     private function filteredQuery(Request $request, array $filters)
     {
         return Registration::withoutBrandScope()
+            ->when($filters['brand'] !== null, fn ($query) => $query->forBrand($filters['brand']))
             ->when($filters['event'] !== null, fn ($query) => $query->where('event_id', $filters['event']))
             ->when($filters['status'] !== null, fn ($query) => $query->where('status', $filters['status']))
             ->when($request->filled('search'), function ($query) use ($request): void {

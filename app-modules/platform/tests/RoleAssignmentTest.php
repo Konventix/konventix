@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\DB;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
@@ -141,4 +143,36 @@ it('403s role assignment without the manage-roles capability', function (): void
             'user_id' => User::factory()->create()->id,
         ])
         ->assertForbidden();
+});
+
+it('defaults the brand to the console selection when the page carries none', function (): void {
+    [, $admin] = rolesOperator();
+
+    // Named so the alphabetical fallback is deterministic: the suite's own
+    // brand would otherwise sort at random against the selected one.
+    $this->withBrand()->forceFill(['name' => 'Aardvark Brand'])->save();
+    $selected = Brand::factory()->create(['name' => 'Zeta Brand']);
+
+    $this->actingAs($admin)
+        ->get('http://admin.roles.test/admin/roles')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('selectedBrandId', Brand::query()->orderBy('name')->value('id')));
+
+    $this->actingAs($admin)
+        ->put('http://admin.roles.test/admin/selection', ['brandId' => $selected->getKey(), 'eventId' => null])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->get('http://admin.roles.test/admin/roles')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('selectedBrandId', $selected->getKey()));
+
+    // The page's own select still wins — it is a required choice, not a filter.
+    $this->actingAs($admin)
+        ->get('http://admin.roles.test/admin/roles?brand='.Brand::query()->orderBy('name')->value('id'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('selectedBrandId', Brand::query()->orderBy('name')->value('id')));
 });

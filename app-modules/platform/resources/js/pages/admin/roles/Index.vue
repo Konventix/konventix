@@ -16,6 +16,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     assign as assignRole,
     edit as editRole,
     index as rolesIndex,
@@ -41,9 +48,17 @@ const props = defineProps<{
     roles: RoleRow[];
 }>();
 
-function switchBrand(event: Event): void {
-    const brand = (event.target as HTMLSelectElement).value;
-    router.get(rolesIndex().url, { brand }, { preserveState: false });
+/**
+ * The brand this page is looking at. Not a filter — roles only exist per
+ * brand — so it defaults to the console selection server-side and there is
+ * no "all brands" option to choose.
+ */
+function switchBrand(value: unknown): void {
+    router.get(
+        rolesIndex().url,
+        { brand: String(value) },
+        { preserveState: false },
+    );
 }
 
 const form = useForm({
@@ -93,19 +108,24 @@ function submitCreate(): void {
             title="Roles"
             description="Per-brand roles and who holds them"
         >
-            <select
-                class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
-                :value="props.selectedBrandId ?? ''"
-                @change="switchBrand"
+            <label for="roles-brand" class="sr-only">Brand</label>
+            <Select
+                :model-value="props.selectedBrandId ?? undefined"
+                @update:model-value="switchBrand"
             >
-                <option
-                    v-for="brand in props.brands"
-                    :key="brand.id"
-                    :value="brand.id"
-                >
-                    {{ brand.name }}
-                </option>
-            </select>
+                <SelectTrigger id="roles-brand" class="w-56">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem
+                        v-for="brand in props.brands"
+                        :key="brand.id"
+                        :value="brand.id"
+                    >
+                        {{ brand.name }}
+                    </SelectItem>
+                </SelectContent>
+            </Select>
 
             <Dialog v-model:open="createOpen">
                 <DialogTrigger as-child>

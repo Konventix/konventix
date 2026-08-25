@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Models\CreditNote;
@@ -11,6 +12,7 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
@@ -151,4 +153,34 @@ it('403s the order detail without the view-orders capability', function (): void
     $this->actingAs($admin)
         ->get("http://admin.commerce.test/admin/orders/{$order->id}")
         ->assertForbidden();
+});
+
+it('defaults the brand filter to the console selection and lets the list clear it', function (): void {
+    [, $admin] = commerceOperator();
+
+    $sxlan = $this->withBrand(Brand::factory()->create(['name' => 'SXLan']));
+    $sxlanOrder = Order::factory()->create();
+
+    $this->withBrand(Brand::factory()->create(['name' => 'Xpertise']));
+    Order::factory()->create();
+
+    $this->actingAs($admin)
+        ->put('http://admin.commerce.test/admin/selection', ['brandId' => $sxlan->getKey(), 'eventId' => null])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->get('http://admin.commerce.test/admin/orders')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', $sxlan->getKey())
+            ->count('orders.data', 1)
+            ->where('orders.data.0.id', $sxlanOrder->id));
+
+    // A default, not a scope: "all brands" is a legitimate console view.
+    $this->actingAs($admin)
+        ->get('http://admin.commerce.test/admin/orders?brand=all')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', null)
+            ->count('orders.data', 2));
 });

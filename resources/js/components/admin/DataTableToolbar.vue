@@ -98,13 +98,14 @@ const ALL = '__all__';
             </Select>
         </div>
 
+        <label for="per-page" class="sr-only">Rows per page</label>
         <Select
             :model-value="String(perPage)"
             @update:model-value="
                 (value) => emit('update:perPage', Number(value))
             "
         >
-            <SelectTrigger class="w-28">
+            <SelectTrigger id="per-page" class="w-28">
                 <SelectValue />
             </SelectTrigger>
             <SelectContent>
