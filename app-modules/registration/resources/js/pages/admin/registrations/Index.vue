@@ -71,6 +71,21 @@ const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
     });
 
 /**
+ * Picking a brand in the toolbar drops the event filter, exactly as
+ * `AdminSelectionBar.pickBrand` drops it in the shell: the event belonged to
+ * the brand that was just replaced. Left standing it would ask for
+ * `brand=Y AND event=E` — no rows, and a blank event trigger, because Y's
+ * options never contain E. `setFilter` stays generic; this is the list's rule.
+ */
+function onFilterChange(name: string, value: string | null): void {
+    if (name === 'brand') {
+        filters.event = undefined;
+    }
+
+    setFilter(name, value);
+}
+
+/**
  * Brand and event default to the console selection; `clearValue: 'all'` makes
  * "All brands" / "All events" survive the next visit instead of falling back
  * to the selection again. Event names come from Registration's own read model.
@@ -102,7 +117,7 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
         value: props.filters.status,
         options: props.statuses.map((status) => ({
             value: status,
-            label: status,
+            label: status[0].toUpperCase() + status.slice(1),
         })),
     },
 ]);
@@ -263,7 +278,7 @@ const columns: ColumnDef<RegistrationRow>[] = [
             search-placeholder="Search registrant, organization, email…"
             @update:search="setSearch"
             @update:per-page="setPerPage"
-            @update:filter="setFilter"
+            @update:filter="onFilterChange"
         >
             <template #actions>
                 <Button

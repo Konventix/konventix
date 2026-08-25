@@ -97,7 +97,7 @@ class EventServiceProvider extends ModuleServiceProvider
     protected function registerConsoleEventSources(): void
     {
         $this->app->make(ConsoleEventSources::class)->add(
-            fn (?string $brandId): array => array_values(
+            static fn (?string $brandId): array => array_values(
                 Event::withoutBrandScope()
                     ->whereNull('archived_at')
                     ->when($brandId !== null, fn (Builder $query) => $query->forBrand($brandId))

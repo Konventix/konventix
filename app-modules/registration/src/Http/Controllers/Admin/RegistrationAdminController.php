@@ -208,14 +208,24 @@ class RegistrationAdminController
      * console shell (ADR-0029) — a default, not a scope, cleared per list
      * with `brand=all` / `event=all`.
      *
+     * The two defaults are not independent: the selection's event belongs to
+     * the selection's brand, so a query string naming a different brand must
+     * not still inherit it. Defaulting both would filter
+     * `brand=Y AND event=E` and return nothing, with the event Select blank
+     * because `eventOptions('Y')` never contains E. So the event defaults
+     * from the selection only while the brand filter still agrees with it.
+     *
      * @return array<string, string|null>
      */
     private function declaredFilters(Request $request, ConsoleSelection $selection): array
     {
+        $brand = $this->resolveSelectionFilter($request, 'brand', $selection->brandId());
+        $eventDefault = ($brand === null || $brand === $selection->brandId()) ? $selection->eventId() : null;
+
         return [
             ...$this->resolveFilters($request, ['status' => $this->statusValues()]),
-            'brand' => $this->resolveSelectionFilter($request, 'brand', $selection->brandId()),
-            'event' => $this->resolveSelectionFilter($request, 'event', $selection->eventId()),
+            'brand' => $brand,
+            'event' => $this->resolveSelectionFilter($request, 'event', $eventDefault),
         ];
     }
 

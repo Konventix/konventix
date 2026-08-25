@@ -70,6 +70,29 @@ describe('useDataTable — a cleared selection-backed filter', () => {
         expect(paramsOfLastVisit()).toMatchObject({ brand: 'all' });
     });
 
+    it('does not pin an echoed brand that is merely the shell’s own pick', () => {
+        // The server echoed the selection because the parameter was absent,
+        // not because anyone chose it here. Pinning it would let a later
+        // pick in the shell land on a URL that overrules it.
+        const { toggleSort } = useDataTable(() => '/admin/orders', {
+            brand: seedSelectionFilter('01k-sxlan', '01k-sxlan'),
+        });
+
+        toggleSort('status');
+
+        expect(paramsOfLastVisit()).not.toHaveProperty('brand');
+    });
+
+    it('keeps an echoed brand the operator chose against the shell', () => {
+        const { toggleSort } = useDataTable(() => '/admin/orders', {
+            brand: seedSelectionFilter('01k-xpertise', '01k-sxlan'),
+        });
+
+        toggleSort('status');
+
+        expect(paramsOfLastVisit()).toMatchObject({ brand: '01k-xpertise' });
+    });
+
     it('sends no brand at all when the shell has nothing selected', () => {
         // Nothing to clear, so nothing to pin: a brand picked in the shell
         // later must still reach this list.

@@ -47,27 +47,41 @@ export interface DataTableFilterDef {
 }
 
 /**
- * The seed value for a filter whose default is the console selection.
+ * The seed value for a filter whose default is the console selection — the
+ * one place the whole selection/filter contract is stated.
  *
- * Two things have to be told apart, and the server echoes `null` for both:
- * the operator cleared this list ("all brands", a legitimate console view),
- * and the shell simply has no selection to default from. `navigate()` omits
- * nulls, so seeding null would drop the parameter on the next search or sort
- * — and an absent `brand` means "never chose", which hands the selection
- * back. Seeding the clear value fixes that, but only the first case is a
- * clearing: there is nothing to clear when the shell has no pick, and
- * pinning `all` there would make a later pick in the shell look ignored.
+ * The server's half (`HasDataTableQuery::resolveSelectionFilter`): an absent
+ * parameter means "never chose" and takes the shell's selection; the literal
+ * `all` means the operator cleared this list; anything else is that value.
+ * `navigate()` omits `undefined` and `null` alike, so whatever this function
+ * returns decides what the next search, sort or page carries — and therefore
+ * which of those three the server sees next time.
  *
- * So: an echoed value stands; a null with a selection behind it is a
- * clearing and keeps carrying `all`; a null with nothing behind it is simply
- * absent.
+ * The four arms, and why each is what it is:
+ *
+ * - echoed value ≠ the current selection → keep it. The operator chose this
+ *   brand in the list's own toolbar (or arrived on a bookmarked link), and
+ *   that choice has to survive the next sort instead of snapping back.
+ * - echoed value = the current selection → seed nothing. The server only
+ *   handed this back because the parameter was absent and it filled in the
+ *   selection; it is not a choice, and pinning it into the URL would make a
+ *   later pick in the shell look ignored — the shell redirects back to this
+ *   list, the explicit parameter would win, and the console's brand selector
+ *   would appear to do nothing on this page.
+ * - `null` with a selection behind it → `all`. The operator cleared the
+ *   filter ("all brands", a legitimate console view); seeding nothing would
+ *   drop the parameter and hand the selection straight back on the next
+ *   visit, so the clearing has to keep being said out loud.
+ * - `null` with nothing behind it → nothing. There was no selection to
+ *   clear, so there is nothing to pin, and a brand picked in the shell later
+ *   must still reach this list.
  */
 export function seedSelectionFilter(
     echoed: string | null,
     selected: string | null | undefined,
 ): string | undefined {
     if (echoed !== null) {
-        return echoed;
+        return echoed === selected ? undefined : echoed;
     }
 
     return selected ? 'all' : undefined;

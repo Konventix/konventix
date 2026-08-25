@@ -93,7 +93,10 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
         value: props.filters.state,
         options: [
             { value: 'attention', label: 'Needs attention' },
-            ...props.states.map((state) => ({ value: state, label: state })),
+            ...props.states.map((state) => ({
+                value: state,
+                label: state[0].toUpperCase() + state.slice(1),
+            })),
         ],
         clearValue: 'all',
     },

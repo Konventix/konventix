@@ -248,6 +248,42 @@ it('defaults the event filter to the console selection, offering names from its 
             ->count('registrations.data', 2));
 });
 
+it('drops the selection event when the list asks for a different brand', function (): void {
+    [, $admin] = registrationsOperator();
+
+    $sxlan = $this->withBrand(Brand::factory()->create(['name' => 'SXLan']));
+    $sxlanEvent = registrationsAdminEvent($sxlan->getKey(), 'sxlan-2027', 'SXLan 2027');
+    Registration::factory()
+        ->forType(RegistrationType::factory()->forEvent($sxlanEvent)->create())
+        ->create(['organization_name' => 'SXLan Crew']);
+
+    $xpertise = $this->withBrand(Brand::factory()->create(['name' => 'Xpertise']));
+    Registration::factory()
+        ->forType(RegistrationType::factory()->create())
+        ->create(['organization_name' => 'Xpertise Crew']);
+
+    app(ConsoleEventSources::class)->add(fn (?string $brandId): array => [
+        ['id' => $sxlanEvent, 'name' => 'SXLan 2027', 'brandId' => $sxlan->getKey()],
+    ]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.regs.test/admin/selection', ['brandId' => $sxlan->getKey(), 'eventId' => $sxlanEvent])
+        ->assertRedirect();
+
+    // The shell holds SXLan and its 2027 event; the list is asked for
+    // Xpertise. The event belongs to the brand that was just replaced, so it
+    // must not still filter: `brand=Xpertise AND event=SXLan 2027` is no rows
+    // at all, under an event Select that cannot even show what it filtered by.
+    $this->actingAs($admin)
+        ->get("http://admin.regs.test/admin/registrations?brand={$xpertise->getKey()}")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.brand', $xpertise->getKey())
+            ->where('filters.event', null)
+            ->count('registrations.data', 1)
+            ->where('registrations.data.0.organization', 'Xpertise Crew'));
+});
+
 it('exports only the rows the query string names — brand, event and status alike', function (): void {
     [, $admin] = registrationsOperator();
 

@@ -65,9 +65,10 @@ class CommentModerationController
         // `attention` is not a `CommentState`: it is the queue — pending plus
         // anything reported — which is what a moderator opens this page for,
         // so an absent `state` means that rather than "every comment ever
-        // posted". A value the contract does not know is dropped, not
-        // quietly corrected back to the default: the operator asked for
-        // something, and the page should show them it got nothing.
+        // posted". A `state` the contract does not know is dropped like any
+        // other declared filter's unknown value, which leaves the list
+        // unfiltered — the queue default applies only when `state` is absent
+        // altogether, never as a correction of a value that was sent.
         if (! $request->has('state')) {
             $filters['state'] = self::ATTENTION;
         }
