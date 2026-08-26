@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/sidebar';
 import type { AdminFavorite } from '@/composables/useAdminFavorites';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
+import { useDragReorder } from '@/composables/useDragReorder';
 
 const props = defineProps<{
     favorites: AdminFavorite[];
@@ -43,22 +44,6 @@ watch(
     },
 );
 
-/** Index of the row currently being dragged, tracked as it moves. */
-const draggingIndex = ref<number | null>(null);
-
-function moveLocally(from: number, to: number): boolean {
-    if (to < 0 || to >= items.value.length || from === to) {
-        return false;
-    }
-
-    const next = [...items.value];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    items.value = next;
-
-    return true;
-}
-
 function persistOrder(): void {
     const ids = items.value.map((favorite) => favorite.id);
     const stored = props.favorites.map((favorite) => favorite.id);
@@ -73,56 +58,18 @@ function persistOrder(): void {
     emit('reorder', ids);
 }
 
-function onDragStart(index: number, event: DragEvent): void {
-    draggingIndex.value = index;
-
-    if (event.dataTransfer) {
-        event.dataTransfer.effectAllowed = 'move';
-        // Firefox refuses to start a drag without payload.
-        event.dataTransfer.setData('text/plain', items.value[index].id);
-    }
-}
-
-function onDragEnter(index: number): void {
-    if (draggingIndex.value === null) {
-        return;
-    }
-
-    if (moveLocally(draggingIndex.value, index)) {
-        draggingIndex.value = index;
-    }
-}
-
-function onDrop(): void {
-    draggingIndex.value = null;
-    persistOrder();
-}
-
-function onDragEnd(): void {
-    if (draggingIndex.value === null) {
-        return;
-    }
-
-    // Dropped outside the list: keep what the user saw rather than snapping
-    // back, so the gesture is never silently lost.
-    draggingIndex.value = null;
-    persistOrder();
-}
-
-function onHandleKeydown(index: number, event: KeyboardEvent): void {
-    const offset =
-        event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
-
-    if (offset === 0) {
-        return;
-    }
-
-    event.preventDefault();
-
-    if (moveLocally(index, index + offset)) {
-        persistOrder();
-    }
-}
+const {
+    draggingIndex,
+    onDragStart,
+    onDragEnter,
+    onDrop,
+    onDragEnd,
+    onHandleKeydown,
+} = useDragReorder<AdminFavorite>({
+    get: () => items.value,
+    set: (next) => (items.value = next),
+    onSettled: persistOrder,
+});
 </script>
 
 <template>

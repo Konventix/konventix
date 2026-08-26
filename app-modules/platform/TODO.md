@@ -79,6 +79,39 @@ depends on brand resolution and gating working.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] Slice 21a — the static-page editor. A page's block composition is
+      now written and edited, not just seeded: every shipped block type
+      (`text`, `hero`, `cards`, Event's `event-hero`/`countdown`,
+      Content's `latest-news`) implements the new `HasBlockEditor`
+      interface, naming the label, editor component and default data the
+      composer's "Add block" menu needs without a field-schema DSL;
+      `ValidatesBlockComposition` validates a submitted block list against
+      each type's data class on every write, with the page's brand in
+      context since the admin host resolves none; `SaveStaticPage` diffs a
+      page's media references before and after a save and calls
+      `MediaLibrary::recordUsage`/`releaseUsage` for what changed, closing
+      the gap the media-usage entry above left open — a page's blocks now
+      record what they reference, same as a brand's marks. Frontend:
+      `BlockComposer.vue` knows how to add, reorder (drag or the grip's
+      arrow keys, ADR-0042) and remove a block and hand each one to the
+      editor its type named through `resolveRegisteredComponent`, and
+      knows no field of any block itself; the new
+      `composables/useDragReorder.ts` factors the reorder gesture out of
+      `AdminFavoritesNav.vue` so the composer and the sidebar favorites
+      share one implementation. Six editors ship behind it —
+      `platform/blocks/editors/{Text,Hero,Cards}Editor`,
+      `event/blocks/editors/{EventHero,Countdown}Editor`,
+      `content/blocks/editors/LatestNewsEditor` — each `defineProps<BlockEditorProps<T>>()`
+      knowing only its own type's data shape, `MediaPicker` for the hero
+      image, and a native `<select>` over the console's event sources for
+      the two Event blocks. `admin/pages/{Index,Edit}.vue` replace Task
+      10's stub pages: the index is the `DataTable`/`DataTableToolbar`
+      pattern with a brand filter seeded from the console selection, the
+      editor is one `useForm` covering title/slug/published/blocks behind
+      the ADR-0038 unsaved-changes guard, with the block errors the server
+      keys `blocks.{i}.data.{field}` stripped per block before reaching
+      each editor's own `errors` prop.
+
 - [x] Slice 19 — default role sets (ADR-0045). A module declares its
       defaults beside its `Permission` enum through the `defaultRoles()`
       hook on `ModuleServiceProvider` and Platform's new `DefaultRole` value
@@ -159,9 +192,7 @@ depends on brand resolution and gating working.
       be both logo and favicon. Before this the media admin could delete a
       logo out from under every page — `DeleteMediaItem` refuses only while a
       usage row exists, and until now nothing outside the test suite wrote
-      one. That makes Brand the first real writer of the usage table; the
-      page blocks that reference media still record nothing, which the
-      orphan-cleanup job in the backlog has to wait for as well.
+      one. That makes Brand the first real writer of the usage table.
 
 - [x] A third navigation area, `AREA_ACCOUNT`, for the signed-in account's
       own things — rendered in the account menu rather than the topbar, and

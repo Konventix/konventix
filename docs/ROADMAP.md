@@ -668,7 +668,7 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 
 | Module | Pages to build | LanCore precedent | Status |
 | --- | --- | --- | --- |
-| Platform | Admin shell, dashboard, Brands, Users, media library, role assignment, theme editor, block-based landing/static pages | admin shell, `themes/*`, `legal/*`, `Welcome`, `Countdown` | ✓ |
+| Platform | Admin shell, dashboard, Brands, Users, media library, role assignment, theme editor, block-based landing/static pages | admin shell, `themes/*`, `legal/*`, `Welcome`, `Countdown` | ✓ — static-page editor ✓ (slice 21a) |
 | Platform | Dark-mode token overrides in the theme editor | `themes/Edit` (dark palette) | ✓ |
 | Platform | Operator settings page (legal seller identity, provisioning) | `settings/Organization` | ✓ |
 | Identity | Auth flows, profile/security/appearance settings | `auth/*`, `settings/{Profile,Security,Appearance}` | ✓ |
