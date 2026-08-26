@@ -412,6 +412,14 @@ declare namespace Konventix {
                 readonly slug: string;
                 readonly brandId: string | null;
             };
+            export type FooterColumnData = {
+                heading: string | null;
+                blocks: Konventix.Platform.Data.Blocks.BlockData[];
+            };
+            export type FooterColumnsData = {
+                brandId: string | null;
+                columns: Konventix.Platform.Data.FooterColumnData[];
+            };
             export type FooterLinkData = {
                 label: string;
                 kind: Konventix.Platform.Enums.FooterLinkKind;
@@ -534,6 +542,14 @@ declare namespace Konventix {
                     readonly ctaUrl: string | null;
                     readonly imageUrl: string | null;
                     readonly imageAlt: string | null;
+                };
+                export type SocialLinkData = {
+                    readonly network: string;
+                    readonly url: string;
+                    readonly label: string | null;
+                };
+                export type SocialLinksBlockData = {
+                    readonly links: Konventix.Platform.Data.Blocks.SocialLinkData[];
                 };
                 export type TextBlockData = {
                     heading: string | null;

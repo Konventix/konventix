@@ -23,6 +23,14 @@ declare module '@inertiajs/core' {
             accountNav: BrandNavItem[];
             footer: {
                 links: Konventix.Platform.Data.FooterLinkData[];
+                columns: {
+                    heading: string | null;
+                    blocks: {
+                        key: string;
+                        component: string;
+                        props: Record<string, unknown>;
+                    }[];
+                }[];
                 version: string | null;
             };
             auth: Auth;

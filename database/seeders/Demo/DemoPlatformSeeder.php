@@ -11,8 +11,12 @@ use Konventix\Platform\Actions\MaterializeDefaultRoles;
 use Konventix\Platform\Actions\UpdateBrandModules;
 use Konventix\Platform\Actions\UpdateBrandTheme;
 use Konventix\Platform\Data\BrandThemeData;
+use Konventix\Platform\Enums\FooterLinkKind;
 use Konventix\Platform\Models\AdminFavorite;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\FooterColumn;
+use Konventix\Platform\Models\FooterLink;
+use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Role;
 use Konventix\Platform\Modules\ModuleGate;
 
@@ -110,6 +114,84 @@ final class DemoPlatformSeeder
                 ['label' => $favorite['label'], 'position' => $favorite['position']],
             );
         }
+    }
+
+    /**
+     * The operator's demo footer: a couple of legal links, and two columns
+     * built from blocks so the block pipeline has something real to render
+     * on every seeded brand's pages. Not brand-owned — one operator-wide
+     * footer for every brand it runs (ADR-0001) — so this runs once per
+     * seed, like `seedFavorites()`.
+     */
+    public function seedFooter(Operator $operator): void
+    {
+        if (FooterLink::query()->where('operator_id', $operator->getKey())->exists()) {
+            return;
+        }
+
+        $this->createFooterLink($operator, [
+            'label' => 'Imprint',
+            'kind' => FooterLinkKind::Url,
+            'url' => '/pages/imprint',
+            'position' => 0,
+        ]);
+
+        $this->createFooterLink($operator, [
+            'label' => 'Privacy',
+            'kind' => FooterLinkKind::Url,
+            'url' => '/pages/privacy',
+            'position' => 1,
+        ]);
+
+        $this->createFooterLink($operator, [
+            'label' => 'Cookie settings',
+            'kind' => FooterLinkKind::Dialog,
+            'dialog_key' => 'cookie-settings',
+            'position' => 2,
+        ]);
+
+        $address = collect([
+            $operator->address_line,
+            trim(sprintf('%s %s', $operator->postal_code, $operator->city)),
+        ])->filter(fn (?string $line): bool => $line !== null && trim($line) !== '')->implode("\n");
+
+        $this->createFooterColumn($operator, [
+            'heading' => 'Contact',
+            'blocks' => [['type' => 'text', 'data' => ['heading' => null, 'body' => $address]]],
+            'position' => 0,
+        ]);
+
+        $this->createFooterColumn($operator, [
+            'heading' => 'Follow us',
+            'blocks' => [['type' => 'social-links', 'data' => ['links' => [
+                ['network' => 'github', 'url' => 'https://github.com/konventix', 'label' => null],
+            ]]]],
+            'position' => 1,
+        ]);
+    }
+
+    /**
+     * `operator_id` is stamped directly rather than mass-assigned — it is
+     * deliberately not fillable, the same guard `UpdateFooterLinks` relies
+     * on to keep it out of a submitted form.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function createFooterLink(Operator $operator, array $attributes): void
+    {
+        $link = new FooterLink($attributes);
+        $link->operator_id = $operator->getKey();
+        $link->save();
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function createFooterColumn(Operator $operator, array $attributes): void
+    {
+        $column = new FooterColumn($attributes);
+        $column->operator_id = $operator->getKey();
+        $column->save();
     }
 
     private function seedTheme(Brand $brand): void

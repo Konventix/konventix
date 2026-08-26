@@ -35,6 +35,7 @@ Route::put('/settings/operator', [OperatorAdminController::class, 'update'])->na
 // entry may do). Operator-wide, like the operator's own identity above.
 Route::get('/settings/footer', [FooterLinksAdminController::class, 'edit'])->name('admin.settings.footer.edit');
 Route::put('/settings/footer', [FooterLinksAdminController::class, 'update'])->name('admin.settings.footer.update');
+Route::put('/settings/footer/columns', [FooterLinksAdminController::class, 'updateColumns'])->name('admin.settings.footer.columns.update');
 
 Route::get('/brands', [BrandAdminController::class, 'index'])->name('admin.brands.index');
 Route::post('/brands', [BrandAdminController::class, 'store'])->name('admin.brands.store');

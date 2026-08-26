@@ -6,12 +6,14 @@ namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use Konventix\Platform\Blocks\BlockCompositionRenderer;
 use Konventix\Platform\Branding\BrandIdentityResolver;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Data\BrandIdentityData;
 use Konventix\Platform\Data\FooterLinkData;
 use Konventix\Platform\Models\AdminFavorite;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\FooterColumn;
 use Konventix\Platform\Models\FooterLink;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -117,6 +119,7 @@ class HandleInertiaRequests extends Middleware
             // none of this).
             'footer' => [
                 'links' => $this->footerLinks(),
+                'columns' => $this->footerColumns(),
                 'version' => config('app.version'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
@@ -175,6 +178,36 @@ class HandleInertiaRequests extends Middleware
             ->orderBy('label')
             ->get()
             ->map(fn (FooterLink $link): FooterLinkData => FooterLinkData::ofModel($link))
+            ->all();
+    }
+
+    /**
+     * The footer columns of the operator behind the resolved brand: its
+     * operator-wide columns plus this brand's own, rendered through the
+     * same block pipeline a static page uses.
+     *
+     * @return array<int, array{heading: string|null, blocks: list<array{key: string, component: string, props: array<string, mixed>}>}>
+     */
+    private function footerColumns(): array
+    {
+        $brand = app(BrandContext::class)->current();
+
+        if ($brand === null || $brand->operator_id === null) {
+            return [];
+        }
+
+        $renderer = app(BlockCompositionRenderer::class);
+
+        return FooterColumn::query()
+            ->where('operator_id', $brand->operator_id)
+            ->where(fn ($query) => $query->whereNull('brand_id')->orWhere('brand_id', $brand->getKey()))
+            ->orderByRaw('brand_id IS NOT NULL')
+            ->orderBy('position')
+            ->get()
+            ->map(fn (FooterColumn $column): array => [
+                'heading' => $column->heading,
+                'blocks' => $renderer->render($column->blocks?->toArray() ?? []),
+            ])
             ->all();
     }
 

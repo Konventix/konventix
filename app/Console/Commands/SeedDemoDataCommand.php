@@ -160,6 +160,12 @@ class SeedDemoDataCommand extends Command
         // seeded once, after every brand exists to point at.
         $this->platform->seedFavorites($admin);
 
+        // The footer is operator-wide too (ADR-0001): one legal entity
+        // answers for every brand it runs.
+        if ($operator !== null) {
+            $this->platform->seedFooter($operator);
+        }
+
         $this->currentBrand = null;
         $this->brandContext->forget();
         app(PermissionRegistrar::class)->setPermissionsTeamId(null);

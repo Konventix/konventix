@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Gate;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Blocks\Types\CardsBlock;
 use Konventix\Platform\Blocks\Types\HeroBlock;
+use Konventix\Platform\Blocks\Types\SocialLinksBlock;
 use Konventix\Platform\Blocks\Types\TextBlock;
 use Konventix\Platform\Branding\BrandIdentityResolver;
 use Konventix\Platform\Brands\BrandContext;
@@ -163,6 +164,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $registry->register(new TextBlock);
         $registry->register(new HeroBlock);
         $registry->register(new CardsBlock);
+        $registry->register(new SocialLinksBlock);
     }
 
     /**

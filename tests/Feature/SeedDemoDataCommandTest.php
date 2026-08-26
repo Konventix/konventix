@@ -44,6 +44,7 @@ use Konventix\Messaging\Models\Suppression;
 use Konventix\Platform\Models\AdminFavorite;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\BrandDomain;
+use Konventix\Platform\Models\FooterLink;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\MediaUsage;
 use Konventix\Platform\Models\Role;
@@ -349,6 +350,10 @@ it('seeds brand theming, module activation, roles and favorites', function () {
         ->and($roles->firstWhere('name', 'Content Editor')->users()->count())->toBeGreaterThan(0);
 
     expect(AdminFavorite::query()->count())->toBe(3);
+
+    // The operator's footer (ADR-0001) — seeded once, and idempotent on
+    // re-run, like the favorites above.
+    expect(FooterLink::query()->where('kind', 'dialog')->exists())->toBeTrue();
 
     // Every account emits UserRegistered, which is the only thing that feeds
     // the three read models of people (ADR-0004).

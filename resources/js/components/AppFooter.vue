@@ -19,6 +19,8 @@ const page = usePage();
 
 const version = computed(() => page.props.footer?.version ?? null);
 
+const columns = computed(() => page.props.footer?.columns ?? []);
+
 /** Which dialog key, if any, the visitor has opened. */
 const openDialog = ref<string | null>(null);
 
@@ -40,6 +42,30 @@ function dialogComponent(key: string | null) {
 
 <template>
     <footer class="mt-auto border-t border-border bg-surface">
+        <div
+            v-if="columns.length > 0"
+            class="mx-auto grid max-w-7xl gap-8 border-b border-border px-6 py-8 sm:grid-cols-2 lg:grid-cols-4"
+        >
+            <section v-for="(column, index) in columns" :key="index">
+                <h2
+                    v-if="column.heading"
+                    class="mb-3 text-sm font-semibold text-text"
+                >
+                    {{ column.heading }}
+                </h2>
+                <template
+                    v-for="(block, blockIndex) in column.blocks"
+                    :key="`${block.key}-${blockIndex}`"
+                >
+                    <component
+                        :is="resolveRegisteredComponent(block.component)"
+                        v-if="resolveRegisteredComponent(block.component)"
+                        v-bind="block.props"
+                    />
+                </template>
+            </section>
+        </div>
+
         <div
             class="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-6 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between"
         >

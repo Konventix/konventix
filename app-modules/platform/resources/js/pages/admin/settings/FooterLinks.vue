@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import FooterColumnsForm from '../../../components/admin/FooterColumnsForm.vue';
 import FooterLinkListForm from '../../../components/admin/FooterLinkListForm.vue';
 
 /**
@@ -9,13 +10,21 @@ import FooterLinkListForm from '../../../components/admin/FooterLinkListForm.vue
  * entries are not per brand. A brand's own list joins it once the console
  * has a brand picked (ConsoleSelection); each list is its own form and its
  * own submit.
+ *
+ * Footer columns (slice 21b) follow the same operator-wide / brand-own
+ * split, edited with the block composer rather than a fixed set of fields.
  */
 type FooterLink = Konventix.Platform.Data.FooterLinkData;
+type FooterColumn = Konventix.Platform.Data.FooterColumnData;
+type TypeOption = Konventix.Platform.Data.Blocks.BlockTypeOptionData;
 
 const props = defineProps<{
     operatorLinks: FooterLink[];
     brand: { id: string; name: string } | null;
     brandLinks: FooterLink[] | null;
+    operatorColumns: FooterColumn[];
+    brandColumns: FooterColumn[] | null;
+    types: TypeOption[];
 }>();
 </script>
 
@@ -54,5 +63,23 @@ const props = defineProps<{
         <p v-else class="text-sm text-text-muted">
             Pick a brand in the console selector to edit that brand's own links.
         </p>
+
+        <FooterColumnsForm
+            title="Operator-wide columns"
+            description="Footer columns shown on every brand, built from blocks"
+            :columns="props.operatorColumns"
+            :brand-id="null"
+            :types="props.types"
+        />
+
+        <FooterColumnsForm
+            v-if="props.brand"
+            :key="`${props.brand.id}-columns`"
+            :title="`${props.brand.name} columns`"
+            description="Footer columns shown only on this brand, after the operator-wide ones"
+            :columns="props.brandColumns ?? []"
+            :brand-id="props.brand.id"
+            :types="props.types"
+        />
     </div>
 </template>
