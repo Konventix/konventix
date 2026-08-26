@@ -125,6 +125,30 @@ it('saves a validated composition, records media usages, and publishes', functio
         ->and(MediaUsage::withoutBrandScope()->where('media_item_id', $image->getKey())->exists())->toBeFalse();
 });
 
+it('refuses a hero block that references another brand\'s media', function (): void {
+    [, $admin] = pagesOperator();
+    $brand = Brand::factory()->create(['slug' => 'pg-foreign']);
+    $page = pageOf($brand);
+    $foreign = Brand::factory()->create(['slug' => 'pg-foreign-other']);
+    $image = MediaItem::factory()->make();
+    $image->brand_id = $foreign->getKey();
+    $image->save();
+
+    $this->actingAs($admin)
+        ->from("http://admin.pages.test/admin/pages/{$page->getKey()}/edit")
+        ->put("http://admin.pages.test/admin/pages/{$page->getKey()}", [
+            'title' => 'x',
+            'slug' => 'x',
+            'published' => false,
+            'blocks' => [
+                ['type' => 'hero', 'data' => ['heading' => 'Hi', 'subheading' => null, 'ctaLabel' => null, 'ctaUrl' => null, 'imageMediaId' => $image->getKey()]],
+            ],
+        ])
+        ->assertSessionHasErrors('blocks');
+
+    expect(MediaUsage::withoutBrandScope()->where('media_item_id', $image->getKey())->exists())->toBeFalse();
+});
+
 it('keys a block validation error to the block that caused it', function (): void {
     [, $admin] = pagesOperator();
     $brand = Brand::factory()->create(['slug' => 'pg-invalid']);
@@ -226,12 +250,29 @@ it('deletes a page and releases what it referenced', function (): void {
     [, $admin] = pagesOperator();
     $brand = Brand::factory()->create(['slug' => 'pg-delete']);
     $page = pageOf($brand);
+    $image = MediaItem::factory()->make();
+    $image->brand_id = $brand->getKey();
+    $image->save();
+
+    $this->actingAs($admin)
+        ->put("http://admin.pages.test/admin/pages/{$page->getKey()}", [
+            'title' => 'Welcome',
+            'slug' => $page->slug,
+            'published' => false,
+            'blocks' => [
+                ['type' => 'hero', 'data' => ['heading' => 'Hi', 'subheading' => null, 'ctaLabel' => null, 'ctaUrl' => null, 'imageMediaId' => $image->getKey()]],
+            ],
+        ])
+        ->assertRedirect();
+
+    expect(MediaUsage::withoutBrandScope()->where('media_item_id', $image->getKey())->exists())->toBeTrue();
 
     $this->actingAs($admin)
         ->delete("http://admin.pages.test/admin/pages/{$page->getKey()}")
         ->assertRedirect('http://admin.pages.test/admin/pages');
 
-    expect(StaticPage::withoutBrandScope()->whereKey($page->getKey())->exists())->toBeFalse();
+    expect(StaticPage::withoutBrandScope()->whereKey($page->getKey())->exists())->toBeFalse()
+        ->and(MediaUsage::withoutBrandScope()->where('media_item_id', $image->getKey())->exists())->toBeFalse();
 });
 
 it('requires view-static-pages to read and manage-static-pages to write', function (): void {

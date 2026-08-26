@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { GripVertical, Plus, Trash2 } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, useId } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -34,6 +34,10 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ 'update:modelValue': [value: Block[]] }>();
+
+// Unique per instance: two composers render on the footer page, and a
+// static id would give both their handles the same `aria-describedby`.
+const reorderHintId = useId();
 
 const field = computed(() => props.field ?? 'blocks');
 
@@ -99,7 +103,7 @@ function editorFor(block: Block) {
 
 <template>
     <div class="flex flex-col gap-4">
-        <p id="block-composer-reorder-hint" class="sr-only">
+        <p :id="reorderHintId" class="sr-only">
             Drag a block to reorder it, or focus its reorder handle and press
             the up or down arrow key.
         </p>
@@ -126,7 +130,7 @@ function editorFor(block: Block) {
                 <button
                     type="button"
                     class="cursor-grab rounded p-1 text-text-muted hover:text-text active:cursor-grabbing"
-                    aria-describedby="block-composer-reorder-hint"
+                    :aria-describedby="reorderHintId"
                     @keydown="onHandleKeydown(index, $event)"
                 >
                     <GripVertical class="size-4" />

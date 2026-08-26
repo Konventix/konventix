@@ -24,6 +24,7 @@ type Props = {
     entry: Konventix.Content.Data.PublicEntryData;
     comments: Konventix.Content.Data.PublicCommentData[];
     canComment: boolean;
+    canReact: boolean;
 };
 
 const props = defineProps<Props>();
@@ -145,7 +146,7 @@ function toggleReaction(
                     </span>
                     <span class="flex items-center gap-3">
                         <button
-                            v-if="props.canComment && !comment.isMine"
+                            v-if="props.canReact && !comment.isMine"
                             type="button"
                             class="inline-flex items-center gap-1 hover:text-accent"
                             :class="comment.hasReacted && 'text-accent'"

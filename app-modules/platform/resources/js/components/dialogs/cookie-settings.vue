@@ -12,6 +12,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { clearFunctionalStorage } from '@/lib/cookiePreferences';
 import { store as storePreferences } from '@/routes/platform/cookie-preferences';
 
 /**
@@ -33,7 +34,15 @@ const form = useForm({ functional: page.props.cookies.functional !== false });
 function save(): void {
     form.post(storePreferences().url, {
         preserveScroll: true,
-        onSuccess: () => emit('close'),
+        onSuccess: () => {
+            // Refusing functional storage must clear what it already holds,
+            // not merely stop adding to it (Art. 7(3) GDPR).
+            if (!form.functional) {
+                clearFunctionalStorage();
+            }
+
+            emit('close');
+        },
     });
 }
 </script>

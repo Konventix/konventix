@@ -26,6 +26,7 @@ use Konventix\Compliance\Models\RetentionRule;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Listeners\PruneDeliveryLog;
 use Konventix\Platform\Models\Brand;
+use Konventix\Registration\Models\Registration;
 
 /**
  * The lawful-basis paperwork: the policies a registrant agrees to, the
@@ -79,7 +80,7 @@ final class DemoComplianceSeeder
 
         $this->seedConsents($members, $currentTerms, $photo);
         $this->seedRetentionRules($brand);
-        $this->seedSubjectRequests($members);
+        $this->seedSubjectRequests($brand, $members);
     }
 
     private function seedPolicy(Brand $brand, string $slug, string $name, bool $requiresConsent): Policy
@@ -206,11 +207,28 @@ final class DemoComplianceSeeder
      * per registered module handler by `OpenSubjectRequest` itself, so the
      * per-module response table fills in without any help from here.
      *
+     * The dry run walks one member's account screens end to end, including
+     * the download this seeds — which means that member has to be a
+     * registrant on this brand too. Registration seeds its registrants with
+     * `$members->random(...)`, so picking subjects by plain array order (the
+     * first three of `$members`) only agreed with that draw by luck of row
+     * order. Preferring members who already hold a registration here closes
+     * that gap; falling back to the first three keeps this seeder honest
+     * when a brand has fewer than three registered members of its own
+     * (registrations run before this in `SeedDemoDataCommand::seedBrand()`,
+     * so the registered set is already final by the time this runs).
+     *
      * @param  Collection<int, User>  $members
      */
-    private function seedSubjectRequests(Collection $members): void
+    private function seedSubjectRequests(Brand $brand, Collection $members): void
     {
-        $subjects = $members->take(3)->values();
+        $registered = Registration::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->pluck('registrant_user_id');
+
+        $eligible = $members->whereIn('id', $registered)->values();
+
+        $subjects = ($eligible->count() >= 3 ? $eligible : $members)->take(3)->values();
 
         if ($subjects->count() < 3) {
             return;

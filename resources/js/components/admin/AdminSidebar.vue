@@ -12,6 +12,7 @@ import AdminNavLink from '@/components/admin/AdminNavLink.vue';
 import AdminSidebarSearch from '@/components/admin/AdminSidebarSearch.vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import NavUser from '@/components/NavUser.vue';
+import { Button } from '@/components/ui/button';
 import {
     Sidebar,
     SidebarContent,
@@ -22,6 +23,7 @@ import {
     SidebarFooter,
 } from '@/components/ui/sidebar';
 import { useAdminFavorites } from '@/composables/useAdminFavorites';
+import { useCookieSettingsDialog } from '@/composables/useCookieSettingsDialog';
 import { iconFor } from '@/lib/navIcons';
 import { dashboard } from '@/routes/admin';
 
@@ -54,6 +56,7 @@ const admin = computed(
 );
 
 const { favorites, isPinned, toggle, reorder } = useAdminFavorites();
+const { open: openCookieSettings } = useCookieSettingsDialog();
 
 const searchQuery = ref('');
 const searchActive = computed(() => searchQuery.value.trim().length > 0);
@@ -139,6 +142,15 @@ const groups = computed(() => {
         </SidebarContent>
 
         <SidebarFooter>
+            <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="justify-start text-text-muted"
+                @click="openCookieSettings()"
+            >
+                Cookie settings
+            </Button>
             <NavUser />
         </SidebarFooter>
     </Sidebar>

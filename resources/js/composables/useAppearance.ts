@@ -59,9 +59,17 @@ const getStoredAppearance = () => {
         return null;
     }
 
-    return functionalCookiesAllowed()
-        ? (localStorage.getItem('appearance') as Appearance | null)
-        : (readCookie('appearance') as Appearance | null);
+    if (!functionalCookiesAllowed()) {
+        return readCookie('appearance') as Appearance | null;
+    }
+
+    try {
+        return localStorage.getItem('appearance') as Appearance | null;
+    } catch {
+        // Site data blocked or unavailable — fall back to the cookie rather
+        // than breaking the toggle.
+        return readCookie('appearance') as Appearance | null;
+    }
 };
 
 const prefersDark = (): boolean => {
@@ -115,11 +123,17 @@ export function useAppearance(): UseAppearanceReturn {
 
         // Store in localStorage for client-side persistence, but only once
         // functional storage is allowed — otherwise this outlives the
-        // session it was meant to be scoped to.
-        if (functionalCookiesAllowed()) {
-            localStorage.setItem('appearance', value);
-        } else {
-            localStorage.removeItem('appearance');
+        // session it was meant to be scoped to. Wrapped: a browser that
+        // blocks site data throws on access, and that must not break the
+        // toggle.
+        try {
+            if (functionalCookiesAllowed()) {
+                localStorage.setItem('appearance', value);
+            } else {
+                localStorage.removeItem('appearance');
+            }
+        } catch {
+            // Nothing persisted; the cookie below still carries the choice.
         }
 
         // Store in cookie for SSR...

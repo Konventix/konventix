@@ -17,7 +17,7 @@ it('declares every cookie the platform sets, grouped by category', function (): 
 
     expect(collect($grouped['necessary'])->pluck('name')->all())->toContain('XSRF-TOKEN', 'cookie_preferences')
         ->and(collect($grouped['functional'])->pluck('name')->all())->toBe(['appearance', 'sidebar_state'])
-        ->and(collect($grouped['necessary'])->pluck('name')->all())->toContain('remember_web');
+        ->and(collect($grouped['necessary'])->pluck('name')->all())->toContain('remember_web_*');
 });
 
 it('stores the choice and expires the functional cookies when they are disabled', function (): void {

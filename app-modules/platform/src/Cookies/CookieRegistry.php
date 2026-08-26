@@ -11,6 +11,10 @@ use Konventix\Platform\Data\CookieDeclarationData;
  * (ADR-0003: registration is module-local). The cookie-settings dialog
  * renders from this, so an undeclared cookie is a bug you can see on the
  * page rather than one a regulator finds. Boot-time only — Octane-safe.
+ *
+ * Scope: browser cookies only. Other device storage — the entrance client's
+ * device token in `localStorage`, for instance — is out of this registry's
+ * reach and, if it is declared anywhere, declared elsewhere.
  */
 final class CookieRegistry
 {

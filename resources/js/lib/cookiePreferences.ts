@@ -32,3 +32,17 @@ export function readCookie(name: string): string | null {
 
     return match ? decodeURIComponent(match[1]) : null;
 }
+
+/**
+ * Withdraws functional storage immediately (Art. 7(3) GDPR: as easy to take
+ * back as it was to give). `localStorage.removeItem` throws in a browser
+ * that blocks site data, so the removal is best-effort — the appearance
+ * toggle falls back to the cookie/`system` either way.
+ */
+export function clearFunctionalStorage(): void {
+    try {
+        localStorage.removeItem('appearance');
+    } catch {
+        // Site data blocked or unavailable — nothing was persisted to clear.
+    }
+}

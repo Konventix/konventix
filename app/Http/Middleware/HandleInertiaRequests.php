@@ -182,9 +182,7 @@ class HandleInertiaRequests extends Middleware
             ->where('operator_id', $brand->operator_id)
             ->where(fn ($query) => $query->whereNull('brand_id')->orWhere('brand_id', $brand->getKey()))
             // Operator-wide rows first, then the brand's own, each in order.
-            ->orderByRaw('brand_id IS NOT NULL')
-            ->orderBy('position')
-            ->orderBy('label')
+            ->inDisplayOrder()
             ->get()
             ->map(fn (FooterLink $link): FooterLinkData => FooterLinkData::ofModel($link))
             ->all();

@@ -659,6 +659,13 @@ so they are not rediscovered.
 - **`Data\OpeningPeriodData` carries no `#[TypeScript]` attribute**, so the
   venues form spells its shape out by hand and the two can drift. Add the
   attribute when the opening-times editor lands.
+- **Console controllers resolve brand-owned rows across operators**:
+  `StaticPageAdminController`, `ContentAdminController`, `BrandAdminController`
+  and siblings look a row up with `withoutBrandScope()->findOrFail()` and
+  never check that the row's brand belongs to the acting operator. Harmless
+  while every deployment has one operator (ADR-0029's premise); a
+  multi-operator deployment needs an operator-ownership check in one shared
+  place before any of these screens are exposed.
 
 ## UI page catalogue (LanCore port map, audited 2026-08-16)
 

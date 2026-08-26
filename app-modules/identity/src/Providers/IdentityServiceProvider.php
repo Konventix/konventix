@@ -115,7 +115,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
     protected function registerCookies(): void
     {
         $this->app->make(CookieRegistry::class)->register(
-            new CookieDeclaration('remember_web', 'Keeps you signed in across browser sessions — set only when you tick "remember me".', CookieCategory::Necessary, '5 years', 'identity'),
+            new CookieDeclaration('remember_web_*', 'Keeps you signed in across browser sessions — set only when you tick "remember me". The real cookie name carries a hash suffix Laravel generates per guard, hence the wildcard.', CookieCategory::Necessary, '5 years', 'identity'),
         );
     }
 

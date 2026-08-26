@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Monitor, Moon, Sun } from '@lucide/vue';
 import { useAppearance } from '@/composables/useAppearance';
+import { useCookieSettingsDialog } from '@/composables/useCookieSettingsDialog';
 
 const { appearance, updateAppearance } = useAppearance();
+const { open } = useCookieSettingsDialog();
 
 const tabs = [
     { value: 'light', Icon: Sun, label: 'Light' },
@@ -32,8 +34,15 @@ const tabs = [
 
         <p class="mt-2 text-xs text-text-muted">
             Your choice is kept in a cookie for a year so it survives closing
-            the browser — you can turn that off under “Cookie settings” in the
-            footer.
+            the browser — you can turn that off under
+            <button
+                type="button"
+                class="underline underline-offset-4 hover:text-text"
+                @click="open()"
+            >
+                Cookie settings
+            </button>
+            .
         </p>
     </div>
 </template>

@@ -14,6 +14,8 @@ import AppSidebarHeader from '@/components/AppSidebarHeader.vue';
 import SkipToContent from '@/components/SkipToContent.vue';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/sonner';
+import { useCookieSettingsDialog } from '@/composables/useCookieSettingsDialog';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import type { BreadcrumbItem } from '@/types';
 
 withDefaults(
@@ -26,6 +28,16 @@ withDefaults(
 );
 
 const isOpen = usePage().props.sidebarOpen;
+
+// The console's own way to withdraw functional storage (WP194 §3.6): the
+// only host where `sidebar_state` is written, so it is the only host that
+// needs a way to say "stop remembering that too" without leaving for a
+// brand page. Rendered only when the dialog shipped — same skip the footer
+// already uses for a not-yet-built dialog behind a footer entry.
+const cookieSettings = useCookieSettingsDialog();
+const cookieSettingsDialog = resolveRegisteredComponent(
+    'platform/dialogs/cookie-settings',
+);
 </script>
 
 <template>
@@ -39,5 +51,11 @@ const isOpen = usePage().props.sidebarOpen;
             </div>
         </AppContent>
         <Toaster />
+        <component
+            :is="cookieSettingsDialog"
+            v-if="cookieSettingsDialog"
+            :open="cookieSettings.isOpen.value"
+            @close="cookieSettings.close()"
+        />
     </SidebarProvider>
 </template>

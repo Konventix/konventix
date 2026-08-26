@@ -171,6 +171,26 @@ it('keeps a brand\'s own entries beside the operator-wide ones', function (): vo
         ->and($rows->firstWhere('label', 'Imprint')->brand_id)->toBeNull();
 });
 
+it('replaces only the operator-wide list, leaving a brand\'s own rows untouched', function (): void {
+    [$operator, $admin] = footerOperator('admin.footerwidereplace.test');
+    $brand = Brand::factory()->create(['slug' => 'ft-widereplace']);
+    $brand->forceFill(['operator_id' => $operator->getKey()])->save();
+
+    FooterLink::factory()->create(['operator_id' => $operator->getKey(), 'label' => 'Old operator-wide']);
+    FooterLink::factory()->create(['operator_id' => $operator->getKey(), 'brand_id' => $brand->getKey(), 'label' => 'Brand-only']);
+
+    $this->actingAs($admin)
+        ->put('http://admin.footerwidereplace.test/admin/settings/footer', [
+            'links' => [['label' => 'New operator-wide', 'kind' => 'url', 'url' => '/pages/x']],
+        ])
+        ->assertRedirect();
+
+    $rows = FooterLink::query()->where('operator_id', $operator->getKey())->inDisplayOrder()->get();
+
+    expect($rows->pluck('label')->all())->toBe(['New operator-wide', 'Brand-only'])
+        ->and($rows->firstWhere('label', 'Brand-only')->brand_id)->toBe($brand->getKey());
+});
+
 it('refuses a brand that is not the operator\'s', function (): void {
     [, $admin] = footerOperator('admin.footerforeign.test');
     $foreign = Brand::factory()->create(['slug' => 'ft-foreign']);

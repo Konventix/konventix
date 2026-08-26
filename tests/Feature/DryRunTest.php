@@ -63,7 +63,7 @@ function dryRunSkippedRoutes(): array
         'platform.caddy-ask' => 'proxy endpoint, not a page',
 
         // Steam's OpenID round trip: redirecting away, and coming back with a
-        // signature this test cannot mint (ADR-0044).
+        // signature this test cannot mint (D-IDN-01).
         'social.redirect' => 'hands off to Steam',
         'social.callback' => 'requires a signed Steam response',
         'social.complete' => 'requires a pending social signup in session',

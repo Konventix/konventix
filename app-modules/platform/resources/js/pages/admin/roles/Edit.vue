@@ -91,9 +91,9 @@ function submit(): void {
                             "
                             class="text-xs text-text-muted"
                         >
-                            This is the {{ defaultModule }} module's default
-                            role. Once you save an edit, permissions:sync will
-                            not change it again.
+                            This is {{ moduleLabel(defaultModule ?? '') }}'s
+                            default role. Once you save an edit,
+                            permissions:sync will not change it again.
                         </p>
                     </div>
                 </CardContent>

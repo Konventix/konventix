@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import { useCookieSettingsDialog } from '@/composables/useCookieSettingsDialog';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 
 /**
@@ -21,8 +22,11 @@ const version = computed(() => page.props.footer?.version ?? null);
 
 const columns = computed(() => page.props.footer?.columns ?? []);
 
-/** Which dialog key, if any, the visitor has opened. */
+/** Which dialog key, if any, the visitor has opened — except cookie-settings,
+ *  which shares state with every other surface that can open it. */
 const openDialog = ref<string | null>(null);
+
+const cookieSettings = useCookieSettingsDialog();
 
 const links = computed(() =>
     (page.props.footer?.links ?? []).filter(
@@ -32,6 +36,16 @@ const links = computed(() =>
                 null,
     ),
 );
+
+function openLinkDialog(key: string | null): void {
+    if (key === 'cookie-settings') {
+        cookieSettings.open();
+
+        return;
+    }
+
+    openDialog.value = key;
+}
 
 function dialogComponent(key: string | null) {
     return key === null
@@ -95,7 +109,7 @@ function dialogComponent(key: string | null) {
                         v-else
                         type="button"
                         class="hover:text-text"
-                        @click="openDialog = link.dialogKey"
+                        @click="openLinkDialog(link.dialogKey)"
                     >
                         {{ link.label }}
                     </button>
@@ -120,9 +134,15 @@ function dialogComponent(key: string | null) {
 
         <component
             :is="dialogComponent(openDialog)"
-            v-if="dialogComponent(openDialog)"
+            v-if="openDialog !== null && dialogComponent(openDialog)"
             :open="true"
             @close="openDialog = null"
+        />
+        <component
+            :is="dialogComponent('cookie-settings')"
+            v-if="dialogComponent('cookie-settings')"
+            :open="cookieSettings.isOpen.value"
+            @close="cookieSettings.close()"
         />
     </footer>
 </template>

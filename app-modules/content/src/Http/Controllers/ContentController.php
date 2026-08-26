@@ -104,6 +104,10 @@ final class ContentController
                 )->toArray())
                 ->all(),
             'canComment' => $entry->comments_enabled && $viewerId !== null,
+            // Liking is not a comment: a signed-in reader who is not the
+            // author may like an existing comment even once the entry has
+            // stopped taking new ones. Reporting stays tied to `canComment`.
+            'canReact' => $viewerId !== null,
         ]);
     }
 
