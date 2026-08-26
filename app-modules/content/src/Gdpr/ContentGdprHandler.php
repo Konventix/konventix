@@ -8,6 +8,7 @@ use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Content\Models\Author;
 use Konventix\Content\Models\ContentComment;
+use Konventix\Content\Models\ContentReaction;
 
 /**
  * Content's contribution to GDPR export and deletion.
@@ -46,6 +47,18 @@ final class ContentGdprHandler implements GdprHandler
                     'posted_at' => $comment->created_at?->toIso8601String(),
                 ])
                 ->all(),
+            'reactions' => ContentReaction::withoutBrandScope()
+                ->where('brand_id', $brandId)
+                ->where('user_id', $subjectId)
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn (ContentReaction $reaction): array => [
+                    'module' => $reaction->module,
+                    'entity_type' => $reaction->entity_type,
+                    'entity_id' => $reaction->entity_id,
+                    'reacted_at' => $reaction->created_at?->toIso8601String(),
+                ])
+                ->all(),
             'display_name' => Author::query()->whereKey($subjectId)->value('display_name'),
         ];
     }
@@ -55,5 +68,21 @@ final class ContentGdprHandler implements GdprHandler
         // The read model row survives with its ULID so a comment still has an
         // author to render — a tombstone, like everywhere else.
         Author::query()->whereKey($subjectId)->update(['display_name' => 'Deleted account']);
+
+        // A reaction is an opinion, not retained data: gone in both modes,
+        // and the comments it counted towards are recounted.
+        $reactions = ContentReaction::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('user_id', $subjectId)
+            ->get();
+
+        $commentIds = $reactions
+            ->filter(fn (ContentReaction $reaction): bool => $reaction->entity_type === ContentReaction::ENTITY_COMMENT)
+            ->pluck('entity_id');
+
+        ContentReaction::withoutBrandScope()->whereKey($reactions->pluck('id'))->delete();
+
+        ContentComment::withoutBrandScope()->whereKey($commentIds)->get()
+            ->each(fn (ContentComment $comment) => $comment->forceFill(['reaction_count' => ContentReaction::countFor($comment)])->save());
     }
 }

@@ -4,12 +4,20 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
+use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Content\Actions\ReactToComment;
 use Konventix\Content\Actions\UnreactToComment;
+use Konventix\Content\Enums\CommentState;
 use Konventix\Content\Events\CommentReacted;
 use Konventix\Content\Events\CommentReactionRemoved;
+use Konventix\Content\Gdpr\ContentGdprHandler;
 use Konventix\Content\Models\ContentComment;
+use Konventix\Content\Models\ContentEntry;
 use Konventix\Content\Models\ContentReaction;
+use Konventix\Identity\Models\User;
+
+use function Pest\Laravel\actingAs;
 
 /**
  * A like on an editorial comment is Content's (D-CNT-02 as the roadmap
@@ -62,4 +70,56 @@ it('removes the reaction and recounts, once', function (): void {
         ->and(ContentReaction::query()->where('user_id', $ada)->exists())->toBeFalse();
 
     Event::assertDispatchedTimes(CommentReactionRemoved::class, 1);
+});
+
+it('likes and unlikes through the reader endpoints', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    $entry = ContentEntry::factory()->published()->withComments()->create(['slug' => 'liked']);
+    $comment = ContentComment::factory()->create(['content_entry_id' => $entry->id]);
+
+    actingAs($user)->post("/news/liked/comments/{$comment->id}/reaction")->assertRedirect();
+    expect($comment->refresh()->reaction_count)->toBe(1);
+
+    actingAs($user)
+        ->get('/news/liked')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('comments.0.reactionCount', 1)
+            ->where('comments.0.hasReacted', true));
+
+    actingAs($user)->delete("/news/liked/comments/{$comment->id}/reaction")->assertRedirect();
+    expect($comment->refresh()->reaction_count)->toBe(0);
+});
+
+it('refuses a guest, the author, and a comment that is not public', function (): void {
+    $this->withBrand();
+    $author = User::factory()->create();
+    $entry = ContentEntry::factory()->published()->withComments()->create(['slug' => 'guarded']);
+    $own = ContentComment::factory()->create(['content_entry_id' => $entry->id, 'author_user_id' => $author->id]);
+    $hidden = ContentComment::factory()->create(['content_entry_id' => $entry->id, 'state' => CommentState::Hidden]);
+
+    $this->post("/news/guarded/comments/{$own->id}/reaction")->assertRedirect('/login');
+
+    actingAs($author)->post("/news/guarded/comments/{$own->id}/reaction")->assertSessionHasErrors('comment');
+
+    actingAs($author)->post("/news/guarded/comments/{$hidden->id}/reaction")->assertNotFound();
+
+    expect(ContentReaction::query()->count())->toBe(0);
+});
+
+it('exports a subject\'s reactions and removes them on deletion, recounting', function (): void {
+    $brand = $this->withBrand();
+    $user = User::factory()->create();
+    $comment = ContentComment::factory()->create();
+    app(ReactToComment::class)->handle($comment, $user->id);
+    app(ReactToComment::class)->handle($comment, (string) Str::ulid());
+
+    $handler = new ContentGdprHandler;
+
+    expect($handler->exportFor($user->id, $brand->getKey())['reactions'])->toHaveCount(1);
+
+    $handler->delete($user->id, $brand->getKey(), DeletionMode::Erase);
+
+    expect(ContentReaction::query()->where('user_id', $user->id)->exists())->toBeFalse()
+        ->and($comment->refresh()->reaction_count)->toBe(1);
 });

@@ -551,3 +551,19 @@ it('moves the moderation state filter onto the declared contract and defaults th
             ->where('filters.brand', null)
             ->count('comments.data', 2));
 });
+
+it('sorts the moderation queue by reaction_count', function (): void {
+    [, $admin] = contentOperator();
+
+    $this->withBrand();
+    $entry = ContentEntry::factory()->published()->withComments()->create();
+    $liked = ContentComment::factory()->create(['content_entry_id' => $entry->id, 'reaction_count' => 5]);
+    ContentComment::factory()->create(['content_entry_id' => $entry->id, 'reaction_count' => 1]);
+
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content-comments?state=all&sort=reaction_count&dir=desc')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('comments.data.0.id', $liked->id)
+            ->where('comments.data.0.reactionCount', 5));
+});

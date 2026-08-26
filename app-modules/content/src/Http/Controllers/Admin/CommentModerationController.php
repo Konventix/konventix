@@ -50,7 +50,7 @@ class CommentModerationController
         $perPage = $this->resolvePerPage($request);
         $sort = $this->resolveSort(
             $request,
-            allowedSorts: ['created_at', 'state', 'report_count'],
+            allowedSorts: ['created_at', 'state', 'report_count', 'reaction_count'],
             default: 'created_at',
         );
 
@@ -123,6 +123,7 @@ class CommentModerationController
                 'body' => $comment->body,
                 'state' => $comment->state->value,
                 'reportCount' => $comment->report_count,
+                'reactionCount' => $comment->reaction_count,
                 'postedAt' => $comment->created_at?->toDateTimeString(),
                 'moderatedAt' => $comment->moderated_at?->toDateTimeString(),
             ]),

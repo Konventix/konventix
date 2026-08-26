@@ -169,6 +169,8 @@ declare namespace Konventix {
                 readonly authorName: string;
                 readonly postedAt: string;
                 readonly isMine: boolean;
+                readonly reactionCount: number;
+                readonly hasReacted: boolean;
             };
             export type PublicEntryData = {
                 readonly slug: string;

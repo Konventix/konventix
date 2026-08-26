@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, Flag } from '@lucide/vue';
+import { ArrowLeft, Flag, Heart } from '@lucide/vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { index as newsIndex } from '@/routes/content';
-import { report, store as storeComment } from '@/routes/content/comments';
+import {
+    react,
+    report,
+    store as storeComment,
+    unreact,
+} from '@/routes/content/comments';
 
 /**
  * One entry and its approved comments.
@@ -47,6 +52,18 @@ function reportComment(commentId: string): void {
         {},
         { preserveScroll: true },
     );
+}
+
+function toggleReaction(
+    comment: Konventix.Content.Data.PublicCommentData,
+): void {
+    const params = { slug: props.entry.slug, comment: comment.id };
+
+    if (comment.hasReacted) {
+        router.delete(unreact(params).url, { preserveScroll: true });
+    } else {
+        router.post(react(params).url, {}, { preserveScroll: true });
+    }
 }
 </script>
 
@@ -126,15 +143,39 @@ function reportComment(commentId: string): void {
                         · {{ formatDate(comment.postedAt) }}
                         <span v-if="comment.isMine">· you</span>
                     </span>
-                    <button
-                        v-if="props.canComment && !comment.isMine"
-                        type="button"
-                        class="inline-flex items-center gap-1 hover:text-danger"
-                        @click="reportComment(comment.id)"
-                    >
-                        <Flag class="size-3.5" />
-                        Report
-                    </button>
+                    <span class="flex items-center gap-3">
+                        <button
+                            v-if="props.canComment && !comment.isMine"
+                            type="button"
+                            class="inline-flex items-center gap-1 hover:text-accent"
+                            :class="comment.hasReacted && 'text-accent'"
+                            :aria-pressed="comment.hasReacted"
+                            :aria-label="`${comment.hasReacted ? 'Unlike' : 'Like'} (${comment.reactionCount})`"
+                            @click="toggleReaction(comment)"
+                        >
+                            <Heart
+                                class="size-3.5"
+                                :class="comment.hasReacted && 'fill-current'"
+                            />
+                            {{ comment.reactionCount }}
+                        </button>
+                        <span
+                            v-else-if="comment.reactionCount > 0"
+                            class="inline-flex items-center gap-1"
+                        >
+                            <Heart class="size-3.5" />
+                            {{ comment.reactionCount }}
+                        </span>
+                        <button
+                            v-if="props.canComment && !comment.isMine"
+                            type="button"
+                            class="inline-flex items-center gap-1 hover:text-danger"
+                            @click="reportComment(comment.id)"
+                        >
+                            <Flag class="size-3.5" />
+                            Report
+                        </button>
+                    </span>
                 </div>
                 <p class="text-sm whitespace-pre-line">
                     {{ comment.body }}

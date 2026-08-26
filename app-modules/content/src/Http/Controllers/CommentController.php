@@ -10,6 +10,8 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Konventix\Content\Actions\ModerateComment;
 use Konventix\Content\Actions\PostComment;
+use Konventix\Content\Actions\ReactToComment;
+use Konventix\Content\Actions\UnreactToComment;
 use Konventix\Content\Data\PostCommentData;
 use Konventix\Content\Enums\Audience;
 use Konventix\Content\Enums\CommentState;
@@ -55,20 +57,30 @@ final class CommentController
      */
     public function report(Request $request, string $slug, string $comment, ModerateComment $moderateComment): RedirectResponse
     {
-        $entry = $this->findReadableEntry($request, $slug);
-
-        /** @var ContentComment|null $model */
-        $model = ContentComment::query()
-            ->where('content_entry_id', $entry->getKey())
-            ->where('state', CommentState::Approved)
-            ->whereKey($comment)
-            ->first();
-
-        abort_if($model === null, 404);
+        $model = $this->findPublicComment($request, $slug, $comment);
 
         $moderateComment->report($model);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Reported. A moderator will look at it.')]);
+
+        return back();
+    }
+
+    public function react(Request $request, string $slug, string $comment, ReactToComment $react): RedirectResponse
+    {
+        $model = $this->findPublicComment($request, $slug, $comment);
+        $this->guardNotOwn($request, $model);
+
+        $react->handle($model, (string) $request->user()->getKey());
+
+        return back();
+    }
+
+    public function unreact(Request $request, string $slug, string $comment, UnreactToComment $unreact): RedirectResponse
+    {
+        $model = $this->findPublicComment($request, $slug, $comment);
+
+        $unreact->handle($model, (string) $request->user()->getKey());
 
         return back();
     }
@@ -86,5 +98,33 @@ final class CommentController
         abort_if($entry->audience === Audience::LoggedIn && $request->user() === null, 404);
 
         return $entry;
+    }
+
+    /**
+     * An approved comment on an entry the reader may see — the same 404 the
+     * report endpoint gives, because a hidden comment must not confirm it
+     * exists by refusing differently.
+     */
+    private function findPublicComment(Request $request, string $slug, string $comment): ContentComment
+    {
+        $entry = $this->findReadableEntry($request, $slug);
+
+        /** @var ContentComment|null $model */
+        $model = ContentComment::query()
+            ->where('content_entry_id', $entry->getKey())
+            ->where('state', CommentState::Approved)
+            ->whereKey($comment)
+            ->first();
+
+        abort_if($model === null, 404);
+
+        return $model;
+    }
+
+    private function guardNotOwn(Request $request, ContentComment $comment): void
+    {
+        if ($comment->author_user_id === (string) $request->user()->getKey()) {
+            throw ValidationException::withMessages(['comment' => __('You cannot react to your own comment.')]);
+        }
     }
 }

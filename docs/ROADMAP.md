@@ -461,8 +461,8 @@ in the owning module's `TODO.md` when it lands.
     because slice 26 will want to react to a gallery item and the comment
     table's hard FK to `content_entries` is already the reason gallery
     comments cannot reuse it. Needs P1 for the names to be complete.
-    **First half done**: names and links in the queue and the entry list;
-    reactions still owed.
+    **Done** (names and links in tranche 1; reactions in tranche 2 on a
+    subject triple).
 
 23. **More than one live settlement account per brand.** Commerce. This
     reverses a shipped decision and must say so: `ConnectSettlementAccount`

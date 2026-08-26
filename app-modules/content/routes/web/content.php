@@ -36,4 +36,8 @@ Route::middleware('auth')->group(function (): void {
         ->name('content.comments.store');
     Route::post('/news/{slug}/comments/{comment}/report', [CommentController::class, 'report'])
         ->name('content.comments.report');
+    Route::post('/news/{slug}/comments/{comment}/reaction', [CommentController::class, 'react'])
+        ->name('content.comments.react');
+    Route::delete('/news/{slug}/comments/{comment}/reaction', [CommentController::class, 'unreact'])
+        ->name('content.comments.unreact');
 });

@@ -17,6 +17,7 @@ use Konventix\Content\Enums\Urgency;
 use Konventix\Content\Models\Author;
 use Konventix\Content\Models\ContentComment;
 use Konventix\Content\Models\ContentEntry;
+use Konventix\Content\Models\ContentReaction;
 
 /**
  * The brand's public editorial surface, resolved on the brand's own domain.
@@ -82,6 +83,16 @@ final class ContentController
             ...$comments->pluck('author_user_id')->all(),
         ]);
 
+        // One lookup for the page — which of these comments the reader has
+        // already liked — never one per row.
+        $reacted = $viewerId === null || $comments->isEmpty() ? [] : ContentReaction::query()
+            ->where('user_id', $viewerId)
+            ->where('module', ContentReaction::MODULE_CONTENT)
+            ->where('entity_type', ContentReaction::ENTITY_COMMENT)
+            ->whereIn('entity_id', $comments->pluck('id'))
+            ->pluck('entity_id')
+            ->all();
+
         return Inertia::render('content/Show', [
             'entry' => PublicEntryData::ofModel($entry, $authors[$entry->author_user_id] ?? null)->toArray(),
             'comments' => $comments
@@ -89,6 +100,7 @@ final class ContentController
                     $comment,
                     $authors[$comment->author_user_id] ?? null,
                     $viewerId,
+                    in_array($comment->getKey(), $reacted, true),
                 )->toArray())
                 ->all(),
             'canComment' => $entry->comments_enabled && $viewerId !== null,

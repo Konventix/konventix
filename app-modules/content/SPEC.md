@@ -55,7 +55,7 @@ block) rather than reimplementing page composition.
 | The programme, schedule, sessions, and talks | **Agenda** — a talk description is programme data, not an editorial post |
 | Newsletter campaigns, subscriber lists, and sending | **Newsletter** for campaigns, **Messaging** for delivery. Content publishes; it never sends |
 | Push or in-app notification of an announcement | **Messaging** — Content emits an event, Messaging decides how it reaches people |
-| Chat, activity feeds, and social interaction between participants | **Community** — comments on an editorial entry are Content's, conversation between participants is not |
+| Chat, activity feeds, and social interaction between participants | **Community** — comments on an editorial entry are Content's, conversation between participants is not. A like on an editorial comment is Content's; Community reacts through the same `(module, entity_type, entity_id)` subject triple (slice 26) |
 | Author accounts, profiles, and authentication | **Identity** — Content keeps an author read model (ADR-0004) |
 | Editorial permissions granted per brand | Capabilities are declared here; the **roles** that grant them are per-brand data (ADR-0013) |
 | Event dates and metadata an entry refers to | **Event** — Content keeps a read model for display |
@@ -106,8 +106,9 @@ data, not code (ADR-0013).
 The catalog covers: creating and editing entries, publishing and unpublishing
 (deliberately separate from creating — an author is not automatically an
 editor), viewing unpublished and scheduled entries, managing content types and
-taxonomy, posting comments, and moderating comments. Content never references
-another module's `Permission` enum.
+taxonomy, posting comments, moderating comments, and reacting to comments (no
+capability: any signed-in reader who is not the author). Content never
+references another module's `Permission` enum.
 
 ## Activation
 

@@ -41,6 +41,7 @@ type CommentRow = {
     body: string;
     state: Konventix.Content.Enums.CommentState;
     reportCount: number;
+    reactionCount: number;
     postedAt: string | null;
     moderatedAt: string | null;
 };
@@ -214,6 +215,17 @@ const columns: ColumnDef<CommentRow>[] = [
                       ],
                   )
                 : h('span', { class: 'text-text-muted' }, '—'),
+    },
+    {
+        accessorKey: 'reaction_count',
+        header: 'Likes',
+        enableSorting: true,
+        cell: ({ row }) =>
+            h(
+                'span',
+                { class: 'text-text-muted' },
+                String(row.original.reactionCount),
+            ),
     },
     {
         accessorKey: 'created_at',
