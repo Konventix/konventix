@@ -36,7 +36,7 @@ block) rather than reimplementing page composition.
 - **Optional event association** — an entry may be scoped to a specific event
   by ULID (an announcement about SXLan) or be brand-wide.
 - **Comments and moderation** — posting, approval queues, rejection, hiding,
-  reporting, and the moderation record.
+  reporting, reactions, and the moderation record.
 - **Media attached to an entry** — inline images and downloads belonging to
   that entry, until a shared media library exists in Platform (see open
   questions).
@@ -82,6 +82,8 @@ firm up as the first content types are built.
 | `CommentApproved` (proposed) | A moderator releases a comment | `comment_id`, `entry_id`, `moderated_by_user_id`, `approved_at` |
 | `CommentRejected` (proposed) | A moderator refuses or hides a comment | `comment_id`, `entry_id`, `moderated_by_user_id`, `reason_code`, `rejected_at` |
 | `CommentReported` (proposed) | A reader reports a comment | `comment_id`, `entry_id`, `reported_by_user_id`, `reason_code`, `reported_at` |
+| `CommentReacted` | A reader likes a comment for the first time (a repeated click is silent) | `comment_id`, `entry_id`, `brand_id`, `user_id`, `occurred_at` |
+| `CommentReactionRemoved` | A reader withdraws their like (a repeated unlike is silent) | `comment_id`, `entry_id`, `brand_id`, `user_id`, `occurred_at` |
 
 ## Consumes
 

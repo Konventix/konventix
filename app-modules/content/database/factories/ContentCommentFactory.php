@@ -31,6 +31,7 @@ class ContentCommentFactory extends Factory
             'moderated_by_user_id' => null,
             'moderated_at' => null,
             'report_count' => 0,
+            'reaction_count' => 0,
         ];
     }
 

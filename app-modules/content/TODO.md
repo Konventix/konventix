@@ -52,6 +52,18 @@
 
 ## Done
 
+- [x] Reactions (ROADMAP slice 22), storage half: `content_reactions` keyed by
+      a `(module, entity_type, entity_id)` subject triple — the shape
+      `media_usages` already uses, so a gallery item can react through the
+      same table later (slice 26) without the comment table's hard FK to
+      `content_entries` getting in the way. `ReactToComment` and
+      `UnreactToComment` are idempotent per `(user, subject)`: the unique
+      index is the truth, `ContentComment::reaction_count` is recounted from
+      it rather than incremented, and `CommentReacted` /
+      `CommentReactionRemoved` fire only when a row actually appeared or
+      disappeared — a double click or a repeated unlike is silent. HTTP
+      endpoints, the Vue button, and the moderation column are task 8.
+
 - [x] The entry list and the moderation queue name their authors. Both read
       `content_authors` — one keyed lookup per page, never one per row — and
       fall back to "Participant" exactly as the public page does for an

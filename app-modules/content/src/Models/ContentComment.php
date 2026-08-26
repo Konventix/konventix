@@ -20,6 +20,9 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * oversight: comments require an account (D-BATCH-7, Round 7), so there is no
  * pseudonymous author to model.
  *
+ * `reaction_count` is recounted from `content_reactions` by the reaction
+ * Actions and the GDPR handler — never incremented.
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $content_entry_id
@@ -29,6 +32,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $moderated_by_user_id
  * @property Carbon|null $moderated_at
  * @property int $report_count
+ * @property int $reaction_count
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -47,6 +51,7 @@ class ContentComment extends Model
         'moderated_by_user_id',
         'moderated_at',
         'report_count',
+        'reaction_count',
     ];
 
     public function isVisible(): bool
@@ -71,6 +76,7 @@ class ContentComment extends Model
             'state' => CommentState::class,
             'moderated_at' => 'datetime',
             'report_count' => 'integer',
+            'reaction_count' => 'integer',
         ];
     }
 
