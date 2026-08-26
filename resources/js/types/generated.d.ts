@@ -407,6 +407,16 @@ declare namespace Konventix {
                 readonly brandId: string | null;
                 readonly eventId: string | null;
             };
+            export type CookieDeclarationData = {
+                name: string;
+                purpose: string;
+                category: Konventix.Platform.Enums.CookieCategory;
+                lifetime: string;
+                module: string;
+            };
+            export type CookiePreferencesData = {
+                readonly functional: boolean;
+            };
             export type CreateStaticPageData = {
                 readonly title: string;
                 readonly slug: string;
@@ -558,6 +568,7 @@ declare namespace Konventix {
             }
         }
         namespace Enums {
+            export type CookieCategory = 'necessary' | 'functional';
             export type FooterLinkKind = 'url' | 'dialog';
             export type Permission =
                 | 'platform.access-admin'

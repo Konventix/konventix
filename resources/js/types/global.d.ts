@@ -35,6 +35,13 @@ declare module '@inertiajs/core' {
             };
             auth: Auth;
             sidebarOpen: boolean;
+            cookies: {
+                functional: boolean | null;
+                declared: {
+                    necessary: Konventix.Platform.Data.CookieDeclarationData[];
+                    functional: Konventix.Platform.Data.CookieDeclarationData[];
+                };
+            };
             [key: string]: unknown;
         };
     }

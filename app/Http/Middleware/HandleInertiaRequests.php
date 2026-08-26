@@ -9,6 +9,8 @@ use Inertia\Middleware;
 use Konventix\Platform\Blocks\BlockCompositionRenderer;
 use Konventix\Platform\Branding\BrandIdentityResolver;
 use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Cookies\CookiePreferences;
+use Konventix\Platform\Cookies\CookieRegistry;
 use Konventix\Platform\Data\BrandIdentityData;
 use Konventix\Platform\Data\FooterLinkData;
 use Konventix\Platform\Models\AdminFavorite;
@@ -123,6 +125,13 @@ class HandleInertiaRequests extends Middleware
                 'version' => config('app.version'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            // What the visitor decided about storage on their device
+            // (slice 21b), and what each module declares it stores — the
+            // cookie-settings dialog renders from this and nothing else.
+            'cookies' => [
+                'functional' => CookiePreferences::fromRequest($request),
+                'declared' => app(CookieRegistry::class)->grouped(),
+            ],
         ];
     }
 

@@ -18,6 +18,7 @@ const { isMobile, state, toggleSidebar } = useSidebar()
     data-slot="sidebar-trigger"
     variant="ghost"
     size="icon"
+    title="Kept as a cookie for a week"
     :class="cn('h-7 w-7', props.class)"
     @click="toggleSidebar"
   >

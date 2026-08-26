@@ -24,6 +24,9 @@ use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Social\SocialProviderRegistry;
 use Konventix\Identity\Social\SteamProvider;
+use Konventix\Platform\Cookies\CookieDeclaration;
+use Konventix\Platform\Cookies\CookieRegistry;
+use Konventix\Platform\Enums\CookieCategory;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -103,6 +106,17 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
             return $registry;
         });
+    }
+
+    /**
+     * The "remember me" cookie — set only when a person ticks the box, since
+     * that tick is what makes persistent login not exempt under WP194 §3.2.
+     */
+    protected function registerCookies(): void
+    {
+        $this->app->make(CookieRegistry::class)->register(
+            new CookieDeclaration('remember_web', 'Keeps you signed in across browser sessions — set only when you tick "remember me".', CookieCategory::Necessary, '5 years', 'identity'),
+        );
     }
 
     /**

@@ -15,6 +15,10 @@ use Konventix\Platform\Blocks\Types\TextBlock;
 use Konventix\Platform\Branding\BrandIdentityResolver;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Brands\PropagatesBrandContextToQueue;
+use Konventix\Platform\Cookies\CookieDeclaration;
+use Konventix\Platform\Cookies\CookiePreferences;
+use Konventix\Platform\Cookies\CookieRegistry;
+use Konventix\Platform\Enums\CookieCategory;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Http\Controllers\CaddyAskController;
 use Konventix\Platform\Http\Controllers\MediaFileController;
@@ -140,6 +144,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->app->singleton(BlockRegistry::class);
         $this->app->singleton(ConsoleEventSources::class);
         $this->app->singleton(StorageMigrationRegistry::class);
+        $this->app->singleton(CookieRegistry::class);
 
         // Scoped, not singleton: DiskResolver memoizes built filesystems —
         // including a brand's own bucket (ADR-0043 point 6) — and those must
@@ -165,6 +170,23 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $registry->register(new HeroBlock);
         $registry->register(new CardsBlock);
         $registry->register(new SocialLinksBlock);
+    }
+
+    /**
+     * The cookies Platform itself sets. `config('session.cookie')` is a
+     * brand-prefixed pattern resolved at request time (`Str::slug(APP_NAME)
+     * .'-session'` at boot) — declared here as the boot-time value, and the
+     * purpose text says the actual name carries the brand.
+     */
+    protected function registerCookies(): void
+    {
+        $this->app->make(CookieRegistry::class)->register(
+            new CookieDeclaration(config('session.cookie'), 'Keeps you signed in and holds what you are doing on this site between two clicks.', CookieCategory::Necessary, 'session', 'platform'),
+            new CookieDeclaration('XSRF-TOKEN', 'Protects forms against being submitted by another site on your behalf.', CookieCategory::Necessary, 'session', 'platform'),
+            new CookieDeclaration(CookiePreferences::COOKIE, 'Remembers the choice you make in this dialog.', CookieCategory::Necessary, '1 year', 'platform'),
+            new CookieDeclaration('appearance', 'Remembers whether you chose the light or dark appearance.', CookieCategory::Functional, '1 year', 'platform'),
+            new CookieDeclaration('sidebar_state', 'Remembers whether you collapsed the console sidebar.', CookieCategory::Functional, '7 days', 'platform'),
+        );
     }
 
     /**

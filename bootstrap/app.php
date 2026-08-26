@@ -38,7 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+        $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'cookie_preferences']);
 
         // TLS terminates at a reverse proxy that is not part of this
         // application, so the forwarded headers are the only truth about what

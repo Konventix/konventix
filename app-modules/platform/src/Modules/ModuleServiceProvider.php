@@ -55,6 +55,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerListeners();
         $this->registerNavigation();
         $this->registerFeatures();
+        $this->registerCookies();
         $this->registerBlockTypes();
         $this->registerSlots();
         $this->registerConsoleEventSources();
@@ -221,6 +222,13 @@ abstract class ModuleServiceProvider extends ServiceProvider
      * here so the four enforcement points have something to resolve.
      */
     protected function registerFeatures(): void {}
+
+    /**
+     * Cookies this module sets on the visitor's device, declared for the
+     * cookie-settings dialog. A module that sets a cookie and declares
+     * nothing is lying to the person about what is on their device.
+     */
+    protected function registerCookies(): void {}
 
     /**
      * Static-page block types this module contributes to Platform's block

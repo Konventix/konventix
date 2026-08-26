@@ -3,6 +3,7 @@ import type { HTMLAttributes, Ref } from "vue"
 import { defaultDocument, useEventListener, useMediaQuery, useVModel } from "@vueuse/core"
 import { TooltipProvider } from "reka-ui"
 import { computed, ref } from "vue"
+import { functionalCookiesAllowed } from "@/lib/cookiePreferences"
 import { cn } from "@/lib/utils"
 import { provideSidebarContext, SIDEBAR_COOKIE_MAX_AGE, SIDEBAR_COOKIE_NAME, SIDEBAR_KEYBOARD_SHORTCUT, SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON } from "./utils"
 
@@ -30,8 +31,9 @@ const open = useVModel(props, "open", emits, {
 function setOpen(value: boolean) {
   open.value = value // emits('update:open', value)
 
-  // This sets the cookie to keep the sidebar state.
-  document.cookie = `${SIDEBAR_COOKIE_NAME}=${open.value}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+  // This sets the cookie to keep the sidebar state — persisted only once
+  // functional storage is allowed, a session cookie otherwise (WP194 §3.6).
+  document.cookie = `${SIDEBAR_COOKIE_NAME}=${open.value}; path=/;${functionalCookiesAllowed() ? ` max-age=${SIDEBAR_COOKIE_MAX_AGE};` : ''}`
 }
 
 function setOpenMobile(value: boolean) {

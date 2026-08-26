@@ -16,8 +16,13 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Platform\Http\Controllers\CookiePreferencesController;
 use Konventix\Platform\Http\Controllers\StaticPageController;
 
 Route::get('/pages/{slug}', [StaticPageController::class, 'show'])
     ->where('slug', '[a-z0-9-]+')
     ->name('platform.pages.show');
+
+// The cookie-settings dialog's one write. No auth: a guest's choice about
+// their own device is theirs to make (§ 25 TDDDG).
+Route::post('/cookie-preferences', CookiePreferencesController::class)->name('platform.cookie-preferences.store');

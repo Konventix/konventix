@@ -7,6 +7,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\View;
+use Konventix\Platform\Cookies\CookiePreferences;
 use Symfony\Component\HttpFoundation\Response;
 
 class HandleAppearance
@@ -18,7 +19,12 @@ class HandleAppearance
      */
     public function handle(Request $request, Closure $next): Response
     {
-        View::share('appearance', $request->cookie('appearance') ?? 'system');
+        // Functional storage refused: the `appearance` cookie is not trusted
+        // even if one is still sitting on the device from before the choice
+        // was made — `system` renders until the visitor opts back in.
+        View::share('appearance', CookiePreferences::fromRequest($request) === false
+            ? 'system'
+            : ($request->cookie('appearance') ?? 'system'));
 
         return $next($request);
     }

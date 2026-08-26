@@ -1,5 +1,6 @@
 import type { ComputedRef, Ref } from 'vue';
 import { computed, onMounted, ref } from 'vue';
+import { functionalCookiesAllowed, readCookie } from '@/lib/cookiePreferences';
 import type { Appearance, ResolvedAppearance } from '@/types';
 
 export type { Appearance, ResolvedAppearance };
@@ -35,9 +36,14 @@ const setCookie = (name: string, value: string, days = 365) => {
         return;
     }
 
-    const maxAge = days * 24 * 60 * 60;
+    // Functional storage refused: a session cookie only (exempt as
+    // short-term UI customisation, WP194 §3.6) — the choice resets when
+    // the browser closes rather than breaking the appearance toggle.
+    const persistence = functionalCookiesAllowed()
+        ? `max-age=${days * 24 * 60 * 60};`
+        : '';
 
-    document.cookie = `${name}=${value};path=/;max-age=${maxAge};SameSite=Lax`;
+    document.cookie = `${name}=${value};path=/;${persistence}SameSite=Lax`;
 };
 
 const mediaQuery = () => {
@@ -53,7 +59,9 @@ const getStoredAppearance = () => {
         return null;
     }
 
-    return localStorage.getItem('appearance') as Appearance | null;
+    return functionalCookiesAllowed()
+        ? (localStorage.getItem('appearance') as Appearance | null)
+        : (readCookie('appearance') as Appearance | null);
 };
 
 const prefersDark = (): boolean => {
@@ -87,9 +95,7 @@ const appearance = ref<Appearance>('system');
 
 export function useAppearance(): UseAppearanceReturn {
     onMounted(() => {
-        const savedAppearance = localStorage.getItem(
-            'appearance',
-        ) as Appearance | null;
+        const savedAppearance = getStoredAppearance();
 
         if (savedAppearance) {
             appearance.value = savedAppearance;
@@ -107,8 +113,14 @@ export function useAppearance(): UseAppearanceReturn {
     function updateAppearance(value: Appearance) {
         appearance.value = value;
 
-        // Store in localStorage for client-side persistence...
-        localStorage.setItem('appearance', value);
+        // Store in localStorage for client-side persistence, but only once
+        // functional storage is allowed — otherwise this outlives the
+        // session it was meant to be scoped to.
+        if (functionalCookiesAllowed()) {
+            localStorage.setItem('appearance', value);
+        } else {
+            localStorage.removeItem('appearance');
+        }
 
         // Store in cookie for SSR...
         setCookie('appearance', value);
