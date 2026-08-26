@@ -27,7 +27,7 @@ trait ValidatesBlockComposition
     {
         $validated = [];
 
-        foreach (array_values($blocks) as $index => $block) {
+        foreach ($blocks as $index => $block) {
             $type = $registry->resolveActive((string) ($block['type'] ?? ''));
 
             if (! $type instanceof HasBlockEditor || ($allowedKeys !== null && ! in_array($type->key(), $allowedKeys, true))) {

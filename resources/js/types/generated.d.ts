@@ -407,6 +407,11 @@ declare namespace Konventix {
                 readonly brandId: string | null;
                 readonly eventId: string | null;
             };
+            export type CreateStaticPageData = {
+                readonly title: string;
+                readonly slug: string;
+                readonly brandId: string | null;
+            };
             export type FooterLinkData = {
                 label: string;
                 kind: Konventix.Platform.Enums.FooterLinkKind;
@@ -442,6 +447,24 @@ declare namespace Konventix {
                 readonly taxNumber: string | null;
                 readonly smallBusinessScheme: boolean;
             };
+            export type StaticPageData = {
+                readonly id: string;
+                readonly brandId: string;
+                readonly brandName: string;
+                readonly title: string;
+                readonly slug: string;
+                readonly published: boolean;
+                readonly publicUrl: string | null;
+                readonly blocks: Konventix.Platform.Data.Blocks.BlockData[];
+            };
+            export type StaticPageRowData = {
+                readonly id: string;
+                readonly title: string;
+                readonly slug: string;
+                readonly brandName: string;
+                readonly published: boolean;
+                readonly updatedAt: string | null;
+            };
             export type ThemeCatalogData = {
                 groups: Konventix.Platform.Data.ThemeTokenGroupData[];
                 contrastPairs: Konventix.Platform.Data.ThemeContrastPairData[];
@@ -469,6 +492,12 @@ declare namespace Konventix {
                 logoMediaId: string | null;
                 logoDarkMediaId: string | null;
                 faviconMediaId: string | null;
+            };
+            export type UpdateStaticPageData = {
+                readonly title: string;
+                readonly slug: string;
+                readonly published: boolean;
+                readonly blocks: Konventix.Platform.Data.Blocks.BlockData[];
             };
             namespace Blocks {
                 export type BlockData = {
@@ -520,6 +549,7 @@ declare namespace Konventix {
                 | 'platform.manage-brand-domains'
                 | 'platform.manage-brand-theme'
                 | 'platform.manage-module-activation'
+                | 'platform.view-static-pages'
                 | 'platform.manage-static-pages'
                 | 'platform.manage-roles'
                 | 'platform.view-cross-brand'

@@ -30,13 +30,3 @@ parameters:
         - database/migrations/*_create_health_tables.php
 
     level: 7
-
-    ignoreErrors:
-        # The block-composition validation trait (ROADMAP slice 21a) is
-        # consumed by the admin block editor's CRUD, which does not exist
-        # before Task 10; until then its only user is a test's anonymous
-        # class, which PHPStan does not count. Drop this once a real Action
-        # or controller uses it.
-        -
-            identifier: trait.unused
-            path: app-modules/platform/src/Blocks/ValidatesBlockComposition.php

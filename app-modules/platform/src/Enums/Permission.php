@@ -20,6 +20,7 @@ enum Permission: string
     case ManageBrandDomains = 'platform.manage-brand-domains';
     case ManageBrandTheme = 'platform.manage-brand-theme';
     case ManageModuleActivation = 'platform.manage-module-activation';
+    case ViewStaticPages = 'platform.view-static-pages';
     case ManageStaticPages = 'platform.manage-static-pages';
     case ManageRoles = 'platform.manage-roles';
     case ViewCrossBrand = 'platform.view-cross-brand';

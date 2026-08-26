@@ -31,6 +31,8 @@ use Spatie\LaravelData\DataCollection;
  * @property string $title
  * @property DataCollection<int, BlockData>|null $blocks
  * @property Carbon|null $published_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class StaticPage extends Model
 {

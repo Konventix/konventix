@@ -126,7 +126,7 @@ data, not code (ADR-0013).
 
 Proposed catalogue: `ViewBrands`, `ManageBrands`, `ManageBrandDomains`,
 `ManageBrandTheme`, `ManageModuleActivation`, `ViewStaticPages`,
-`ManageStaticPages`, `PublishStaticPages`, `ManageRoles`, `ViewOperator`,
+`ManageStaticPages`, `ManageRoles`, `ViewOperator`,
 `ManageOperator`, and the operator-level `UseCrossBrandScope` that unlocks
 `withoutBrandScope()` (ADR-0010).
 

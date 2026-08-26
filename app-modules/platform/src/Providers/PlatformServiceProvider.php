@@ -200,6 +200,15 @@ class PlatformServiceProvider extends ModuleServiceProvider
             ),
             new NavigationItem(
                 module: 'platform',
+                label: 'Pages',
+                url: '/admin/pages',
+                icon: 'file-text',
+                order: 11,
+                permission: Permission::ViewStaticPages->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'platform',
                 label: 'Media',
                 url: '/admin/media',
                 icon: 'image',

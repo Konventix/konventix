@@ -15,6 +15,7 @@ use Konventix\Platform\Http\Controllers\Admin\BrandAdminController;
 use Konventix\Platform\Http\Controllers\Admin\ConsoleSelectionController;
 use Konventix\Platform\Http\Controllers\Admin\FooterLinksAdminController;
 use Konventix\Platform\Http\Controllers\Admin\OperatorAdminController;
+use Konventix\Platform\Http\Controllers\Admin\StaticPageAdminController;
 
 Route::get('/', AdminDashboardController::class)->name('admin.dashboard');
 
@@ -40,3 +41,12 @@ Route::post('/brands', [BrandAdminController::class, 'store'])->name('admin.bran
 Route::get('/brands/{brand}/edit', [BrandAdminController::class, 'edit'])->name('admin.brands.edit');
 Route::put('/brands/{brand}', [BrandAdminController::class, 'update'])->name('admin.brands.update');
 Route::put('/brands/{brand}/modules', [BrandAdminController::class, 'updateModules'])->name('admin.brands.modules.update');
+
+// A brand's static pages, composed of registered block types (slice 21a).
+// `{page}` is a plain string: the admin host resolves no brand, so an
+// implicitly bound brand-scoped model would 404 (ADR-0029).
+Route::get('/pages', [StaticPageAdminController::class, 'index'])->name('admin.pages.index');
+Route::post('/pages', [StaticPageAdminController::class, 'store'])->name('admin.pages.store');
+Route::get('/pages/{page}/edit', [StaticPageAdminController::class, 'edit'])->name('admin.pages.edit');
+Route::put('/pages/{page}', [StaticPageAdminController::class, 'update'])->name('admin.pages.update');
+Route::delete('/pages/{page}', [StaticPageAdminController::class, 'destroy'])->name('admin.pages.destroy');

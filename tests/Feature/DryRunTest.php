@@ -223,6 +223,7 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             $parameter === 'user' => User::query()->firstWhere('email', 'admin@konventix.test'),
             $parameter === 'role' => Role::query()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'media' => MediaItem::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
+            $parameter === 'page' => StaticPage::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'variant' => 'thumb',
             $parameter === 'entry' => ContentEntry::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'policy' => Policy::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
