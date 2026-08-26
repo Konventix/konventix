@@ -15,6 +15,7 @@ use Konventix\Platform\Actions\DeleteStaticPage;
 use Konventix\Platform\Actions\SaveStaticPage;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Data\Blocks\BlockTypeOptionData;
 use Konventix\Platform\Data\CreateStaticPageData;
 use Konventix\Platform\Data\MediaItemData;
@@ -96,7 +97,7 @@ class StaticPageAdminController
         return to_route('admin.pages.edit', $page->getKey());
     }
 
-    public function edit(string $page, BlockRegistry $registry, MediaLibrary $library, ConsoleEventSources $events, BrandContext $brandContext): Response
+    public function edit(string $page, BlockRegistry $registry, MediaLibrary $library, ConsoleEventSources $events, BrandContext $brandContext, BrandUrl $brandUrl): Response
     {
         Gate::authorize(Permission::ViewStaticPages->value);
 
@@ -104,7 +105,7 @@ class StaticPageAdminController
         $brand = Brand::query()->findOrFail($model->brand_id);
 
         return Inertia::render('admin/pages/Edit', [
-            'page' => StaticPageData::ofModel($model, $brand->name, $model->published_at === null ? null : $this->publicUrl($brand, $model))->toArray(),
+            'page' => StaticPageData::ofModel($model, $brand->name, $model->published_at === null ? null : $this->publicUrl($brandUrl->baseFor($brand), $model))->toArray(),
             // Editable types are resolved with the page's brand in context:
             // the gate answers per brand, and the admin host has none.
             'types' => $brandContext->withBrand($brand, fn (): array => array_values(array_map(
@@ -149,10 +150,12 @@ class StaticPageAdminController
         return to_route('admin.pages.index');
     }
 
-    private function publicUrl(Brand $brand, StaticPage $page): ?string
+    /**
+     * The brand's own origin plus this page's path — never the admin host's,
+     * which is what `route()` would build here (ADR-0029).
+     */
+    private function publicUrl(?string $base, StaticPage $page): ?string
     {
-        $host = $brand->domains()->orderByDesc('is_primary')->value('host');
-
-        return $host === null ? null : 'http://'.$host.($page->slug === 'home' ? '/' : '/pages/'.$page->slug);
+        return $base === null ? null : $base.($page->slug === 'home' ? '/' : '/pages/'.$page->slug);
     }
 }

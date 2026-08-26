@@ -7,6 +7,7 @@ use Konventix\Identity\Models\User;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Blocks\BlockType;
 use Konventix\Platform\Blocks\HasBlockEditor;
+use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Data\Blocks\TextBlockData;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\MediaItem;
@@ -200,8 +201,9 @@ it('refuses a block of a module that is not active for the brand', function (): 
 
 it('hands the editor the brand\'s images, the console\'s events and the editable types', function (): void {
     [, $admin] = pagesOperator();
-    $brand = Brand::factory()->create(['slug' => 'pg-edit']);
-    $page = pageOf($brand);
+    $brand = Brand::factory()->withDomain('pages-edit.test')->create(['slug' => 'pg-edit']);
+    $page = pageOf($brand, ['published_at' => now()]);
+    $home = pageOf($brand, ['slug' => 'home', 'published_at' => now()]);
 
     $this->actingAs($admin)
         ->get("http://admin.pages.test/admin/pages/{$page->getKey()}/edit")
@@ -209,9 +211,15 @@ it('hands the editor the brand\'s images, the console\'s events and the editable
         ->assertInertia(fn (AssertableInertia $response) => $response
             ->component('admin/pages/Edit')
             ->where('page.id', $page->getKey())
+            ->where('page.publicUrl', app(BrandUrl::class)->baseFor($brand).'/pages/'.$page->slug)
             ->has('types')
             ->has('context.media')
             ->has('context.events'));
+
+    // The `home` slug links to the brand's root, not `/pages/home`.
+    $this->actingAs($admin)
+        ->get("http://admin.pages.test/admin/pages/{$home->getKey()}/edit")
+        ->assertInertia(fn (AssertableInertia $response) => $response->where('page.publicUrl', app(BrandUrl::class)->baseFor($brand).'/'));
 });
 
 it('deletes a page and releases what it referenced', function (): void {
