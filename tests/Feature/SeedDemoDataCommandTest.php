@@ -302,7 +302,7 @@ it('seeds the media library with referenced and unreferenced files', function ()
     // The home page hero references the seeded image by ULID (ADR-0043),
     // never by a resolved URL.
     $home = StaticPage::withoutBrandScope()->where('brand_id', $brand->getKey())->firstWhere('slug', 'home');
-    expect($home->blocks[0]['data']['imageMediaId'])->toBe($media['sxlan-hero.jpg']->getKey());
+    expect($home->blocks[0]->data['imageMediaId'])->toBe($media['sxlan-hero.jpg']->getKey());
 
     $usages = MediaUsage::withoutBrandScope()->where('brand_id', $brand->getKey())->get();
     expect($usages)->toHaveCount(3)
