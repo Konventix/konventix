@@ -55,8 +55,12 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
   (ADR-0013). Platform owns the mechanism, never another module's enum. Each
   module declares its own starting roles through the `defaultRoles()`
   provider hook (ADR-0045) — the same declare-only pattern as
-  `registerBlockTypes()`/`registerSlots()` — and Platform materializes them
-  per brand.
+  `registerBlockTypes()`/`registerSlots()`/`registerCookies()` — and Platform
+  materializes them per brand.
+- **Cookie registry.** Every cookie the platform sets, declared by the
+  module that sets it through the `registerCookies()` provider hook, so the
+  cookie-settings dialog renders from that declaration and an undeclared
+  cookie is a gap the dialog itself makes visible.
 
 ## Does not own
 

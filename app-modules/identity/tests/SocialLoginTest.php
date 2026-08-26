@@ -162,3 +162,35 @@ it('starts a signup when nobody is signed in and nobody is recognised', function
     expect(auth()->check())->toBeFalse()
         ->and(session('identity.social.pending'))->toBeArray();
 });
+
+/**
+ * WP194 §3.2: a persistent login cookie is not exempt from consent; the
+ * "remember me" checkbox is the consent. Steam used to remember everyone.
+ */
+it('does not set a remember cookie unless the sign-in started with remember me', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    SocialIdentity::factory()->for($user)->create(['provider' => 'steam', 'provider_user_id' => '76561198000000050']);
+
+    identityCallbackFrom($this, '76561198000000050')
+        ->assertCookieMissing(auth()->guard('web')->getRecallerName());
+});
+
+it('sets the remember cookie when the redirect carried remember=1', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    SocialIdentity::factory()->for($user)->create(['provider' => 'steam', 'provider_user_id' => '76561198000000051']);
+
+    $this->withSession(['identity.social.remember' => true]);
+
+    identityCallbackFrom($this, '76561198000000051')
+        ->assertCookie(auth()->guard('web')->getRecallerName());
+});
+
+it('records the remember choice when the sign-in starts', function (): void {
+    $this->withBrand();
+
+    $this->get('/auth/steam/redirect?remember=1')
+        ->assertRedirect()
+        ->assertSessionHas('identity.social.remember', true);
+});

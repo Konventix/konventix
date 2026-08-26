@@ -79,6 +79,47 @@ depends on brand resolution and gating working.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] Slice 21b — footer content, closing what 21a left as a reserved slot.
+      A brand's own social links now sit beside the operator's imprint
+      (`footer_links.brand_id`, nullable, exactly the column the table was
+      designed to grow — the operator-wide rows still answer for every
+      brand, ADR-0001); footer columns (`footer_columns`) are small block
+      compositions rather than a rich-text field, reusing the 21a
+      composer and `ValidatesBlockComposition` so a column edits the same
+      way the landing page does and inherits the media library (ADR-0035)
+      and the token rule (ADR-0008); and a new `social-links` block type
+      gives a column something to hold besides text and a hero image.
+      The cookie-settings dialog fills the slot the `dialog` link kind
+      reserved: `Cookies\CookieRegistry` is a boot-time registry every
+      module declares its own cookies into through the new
+      `registerCookies()` provider hook, the same declare-only pattern as
+      `registerBlockTypes()`/`registerSlots()`/`defaultRoles()`, and the
+      dialog renders from that registry rather than from a hand-maintained
+      list — so a module that ships a cookie and forgets to declare it is
+      a gap the dialog itself makes visible, not one only a regulator
+      finds.
+      The legal reading: § 25 Abs. 2 Nr. 2 TDDDG exempts a cookie only when
+      it is strictly necessary for a service the person explicitly
+      requested, which a persistent UI preference is not on its own; the
+      DSK's Orientierungshilfe Telemedien is explicit that consent must
+      precede setting anything beyond that exemption. WP194 draws the
+      line the dialog implements: §3.6 treats a UI-customisation cookie
+      (dark mode, sidebar state) as exempt for the duration of one
+      session, and needing consent only once it persists longer — which
+      is why disabling functional storage clears `appearance` and
+      `sidebar_state` and the next choice sets a session-only cookie
+      instead; §3.2 is explicit that a persistent login is never in that
+      exempt set, which is the Steam fix in Identity's own `TODO.md`
+      entry above. The consequence worth stating plainly: a module that
+      sets a cookie and declares nothing is a bug the dialog makes
+      visible.
+      One correction alongside it: the roadmap's slice 21 entry said "the
+      editor already owes ADR-0038's dirty guard" as something still
+      owed — it was stale, the footer editors already had the guard
+      before this slice touched them (`FooterLinkListForm.vue`,
+      `FooterColumnsForm.vue`), fixed in `docs/ROADMAP.md` rather than
+      repeated here.
+
 - [x] Slice 21a — the static-page editor. A page's block composition is
       now written and edited, not just seeded: every shipped block type
       (`text`, `hero`, `cards`, Event's `event-hero`/`countdown`,
@@ -231,10 +272,7 @@ depends on brand resolution and gating working.
       ordered list, rendered by `AppFooter` on every brand-facing page
       beside the version and the Konventix credit. Entries are operator-wide
       — one legal entity answers for all its brands — and a nullable
-      `brand_id` can be added later without reshaping anything. A `dialog`
-      link kind reserves the cookie-settings slot: it resolves through the
-      module component registry and renders nothing until something ships
-      under that key.
+      `brand_id` can be added later without reshaping anything.
 
 - [x] Per-brand dark-mode token overrides (slice 15b). A second column,
       `theme_tokens_dark`, rather than reshaping `theme_tokens` into

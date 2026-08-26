@@ -55,7 +55,11 @@ function displayName(network: string): string {
                     !link.label ? displayName(link.network) : undefined
                 "
             >
-                <Globe v-if="link.network === 'website'" class="size-4" />
+                <Globe
+                    v-if="link.network === 'website'"
+                    class="size-4"
+                    aria-hidden="true"
+                />
                 <svg
                     v-else
                     class="size-4"

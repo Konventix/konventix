@@ -30,7 +30,7 @@ final class DemoStaticPageSeeder
      */
     public function handle(Brand $brand, ?Event $firstEvent, array $media): void
     {
-        foreach (['imprint' => 'Imprint', 'about' => 'About'] as $slug => $title) {
+        foreach (['imprint' => 'Imprint', 'about' => 'About', 'privacy' => 'Privacy'] as $slug => $title) {
             // Scoped to the brand in context; idempotent on re-runs.
             StaticPage::query()->firstOrCreate(
                 ['slug' => $slug],

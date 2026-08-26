@@ -38,6 +38,8 @@ module built before it will otherwise be retrofitted.
 
 ## Backlog
 
+- [ ] The privacy policy text should link the footer's cookie settings and
+      match its declarations (DSK: banner and policy must agree).
 - [ ] `UserDeletionCompleted` still notifies nobody, and cannot: by then the
       address is scrubbed. If a "your deletion is done" notice is ever
       required, it needs an address captured at request time and held outside

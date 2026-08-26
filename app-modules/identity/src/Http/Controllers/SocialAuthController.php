@@ -42,8 +42,15 @@ final class SocialAuthController
      */
     public const PENDING_SESSION_KEY = 'identity.social.pending';
 
-    public function redirect(string $provider, SocialProviderRegistry $registry): RedirectResponse
+    /** Whether the person asked to stay signed in when they started (WP194 §3.2). */
+    public const REMEMBER_SESSION_KEY = 'identity.social.remember';
+
+    public function redirect(Request $request, string $provider, SocialProviderRegistry $registry): RedirectResponse
     {
+        // A persistent login is not exempt from consent; the checkbox is the
+        // consent, and it has to travel through the provider round trip.
+        $request->session()->put(self::REMEMBER_SESSION_KEY, $request->boolean('remember'));
+
         return $this->provider($provider, $registry)->redirect();
     }
 
@@ -145,7 +152,7 @@ final class SocialAuthController
 
         $request->session()->forget(self::PENDING_SESSION_KEY);
 
-        Auth::login($user, remember: true);
+        Auth::login($user, remember: (bool) $request->session()->pull(self::REMEMBER_SESSION_KEY, false));
 
         $request->session()->regenerate();
 
@@ -185,7 +192,9 @@ final class SocialAuthController
      *
      * Reuses the same refusals the password path applies — a locked or
      * anonymized account must not become reachable just because it once linked
-     * a Steam login.
+     * a Steam login. Remembers the session only if the redirect that started
+     * this round trip carried `remember=1` (WP194 §3.2) — the stashed choice
+     * is pulled, never assumed.
      */
     private function logIn(User $user, Request $request): RedirectResponse
     {
@@ -201,7 +210,7 @@ final class SocialAuthController
 
         // Fires `Login`, which is what records the brand membership
         // (ADR-0016) — the same wiring the password path uses, unchanged.
-        Auth::login($user, remember: true);
+        Auth::login($user, remember: (bool) $request->session()->pull(self::REMEMBER_SESSION_KEY, false));
 
         $request->session()->regenerate();
 

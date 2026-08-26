@@ -112,9 +112,27 @@ person behind it. The value here is in what is left out.
       default provider already covers `Features::resetPasswords()` and manual
       password changes.
 
+- [ ] No "Sign in with Steam" button exists on the login page yet — Steam
+      sign-in today only starts from `LinkedAccounts.vue`, which links an
+      account and does not authenticate. When one lands, it must pass the
+      login form's own remember checkbox through the redirect:
+      `{ query: { remember: form.remember ? 1 : 0 } }`, matching what
+      `SocialAuthController::redirect()` now reads.
+
 ## Done
 
 <!-- Move completed items here with the PR that finished them. -->
+
+- [x] Steam remembers only when asked (WP194 §3.2). Both `Auth::login()`
+      calls in `SocialAuthController` (`store()` for a fresh signup,
+      `logIn()` for a recognised identity) unconditionally passed
+      `remember: true` — every Steam sign-in got a persistent cookie whether
+      or not the person asked for one, which a checkbox-free "remember me"
+      is not. `redirect()` now stashes the redirect's `remember` query flag
+      in the session before handing off to the provider, since nothing else
+      survives the round trip to Steam and back; both login calls pull it
+      back out (default `false`) and it is gone from the session either way.
+      `tests/SocialLoginTest.php`.
 
 - [x] The user list defaults its brand filter from the console selection,
       cleared per list with `brand=all`. Accounts are operator-global

@@ -438,6 +438,13 @@ in the owning module's `TODO.md` when it lands.
     slot for since it landed. The editor already owes ADR-0038's dirty
     guard; the reorder should become a drag like the favorites (ADR-0042)
     rather than stay a submit-in-list-order.
+    **Done** — brand rows, columns as block compositions on the slice-21a
+    composer, the `social-links` block, and the cookie-settings dialog.
+    The dialog has no banner on purpose: nothing functional is stored
+    before the person acts on a labelled control (WP194 §3.6), and the
+    choice can be withdrawn from every footer. The dirty-guard remark
+    above was stale — the editor had it. Steam's unconditional persistent
+    login was a WP194 §3.2 finding and is fixed (Identity).
 
 22. **Comments: names, links, reactions.** Content. The first half is a
     bug with a known fix: the moderation queue renders `author_user_id`
@@ -588,7 +595,9 @@ in the owning module's `TODO.md` when it lands.
 Left out on purpose, so it is not read as forgotten: the Steam avatar is
 copied, not hot-linked; groups/clans are named as the slice after 25 and
 not designed; the waiting room is not an anti-bot system; the multi-provider
-slice keeps one account per provider. Each of 19, 20, 23, 25 and 26 reverses
+slice keeps one account per provider; the cookie dialog is transparency
+plus one functional switch, not a consent-management platform. Each of
+19, 20, 23, 25 and 26 reverses
 or extends a written decision and gets its own ADR before code, which is
 what "settled, do not re-litigate in code" costs when a decision is
 revisited on purpose.
