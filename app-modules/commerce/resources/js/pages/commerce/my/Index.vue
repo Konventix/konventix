@@ -1,0 +1,99 @@
+<script setup lang="ts">
+import { Head, Link } from '@inertiajs/vue3';
+import { FileText } from '@lucide/vue';
+import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
+import { show as showRegistration } from '@/routes/registration/mine';
+
+/**
+ * "What do I owe" — the payer's own list (ADR-0044). The per-registration
+ * page already shows one registration's settlement through Commerce's slot;
+ * this is the other direction, everything on this brand under one account.
+ */
+type Order = Konventix.Commerce.Data.MyOrderData;
+
+const props = defineProps<{ orders: Order[] }>();
+
+const statusTone: Record<string, string> = {
+    paid: 'bg-success/15 text-success',
+    pending: 'bg-warning/15 text-warning-contrast',
+    cancelled: 'bg-danger/15 text-danger',
+    refunded: 'bg-subtle text-text',
+};
+
+const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+</script>
+
+<template>
+    <Head title="My orders" />
+
+    <div class="mx-auto w-full max-w-3xl px-4 py-6">
+        <Heading
+            as="h1"
+            title="My orders"
+            description="Everything you have been charged for with this brand"
+        />
+
+        <p v-if="props.orders.length === 0" class="text-sm text-text-muted">
+            You have no orders on this brand yet.
+        </p>
+
+        <ul v-else class="flex flex-col gap-3">
+            <li
+                v-for="order in props.orders"
+                :key="order.id"
+                class="flex flex-col gap-3 rounded-xl border border-border bg-surface-raised p-4 sm:flex-row sm:items-center"
+            >
+                <div class="flex min-w-0 flex-1 flex-col gap-1">
+                    <Link
+                        v-if="order.settlesType === 'registration'"
+                        :href="showRegistration(order.settlesId).url"
+                        class="font-medium text-text underline-offset-4 hover:underline"
+                    >
+                        {{ order.settlesLabel }}
+                    </Link>
+                    <span v-else class="font-medium text-text">
+                        {{ order.settlesLabel }}
+                    </span>
+                    <span class="text-sm text-text-muted">
+                        {{ dateFormat.format(new Date(order.placedAt)) }}
+                        <template v-if="order.invoiceNumber">
+                            · Invoice {{ order.invoiceNumber }}
+                        </template>
+                    </span>
+                    <span class="flex flex-wrap items-center gap-2 pt-1">
+                        <span
+                            class="rounded-full px-2 py-0.5 text-xs font-medium capitalize"
+                            :class="
+                                statusTone[order.status] ??
+                                'bg-subtle text-text'
+                            "
+                        >
+                            {{ order.status }}
+                        </span>
+                        <span class="text-sm font-medium text-text">
+                            {{ order.totalGross }} {{ order.currency }}
+                        </span>
+                    </span>
+                </div>
+
+                <div class="flex shrink-0 items-center gap-2">
+                    <Button v-if="order.payUrl" as-child size="sm">
+                        <a :href="order.payUrl">Pay now</a>
+                    </Button>
+                    <Button
+                        v-if="order.documentUrl"
+                        as-child
+                        variant="secondary"
+                        size="sm"
+                    >
+                        <a :href="order.documentUrl">
+                            <FileText class="size-4" />
+                            Invoice PDF
+                        </a>
+                    </Button>
+                </div>
+            </li>
+        </ul>
+    </div>
+</template>

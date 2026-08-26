@@ -269,12 +269,11 @@ not a slice — it is each module registering what it owns:
       "my registrations" (list and detail), and Commerce contributes the pay
       link and the invoice PDF onto that detail page through a
       `registration.mine.show` slot.
-- [ ] A standalone "my orders/invoices" list, which the slot above does
+- [x] A standalone "my orders/invoices" list, which the slot above does
       *not* provide and cannot: an order is keyed by
       `settles_type`/`settles_id`, so Commerce can answer "what did this
-      registration cost" but not "show me everything I owe". That needs the
-      payer read model — the same prerequisite as Commerce's missing GDPR
-      handler, and the same open decision, recorded under Known gaps below.
+      registration cost" but not "show me everything I owe" — that needed
+      the payer read model — landed with ADR-0044 (P2).
 
 ### Second build order — requested 2026-08-25
 
@@ -308,6 +307,7 @@ in the owning module's `TODO.md` when it lands.
   model in Commerce, or Registration's export carrying invoice references —
   and it should be an ADR, because it fixes the data flow for everything
   Commerce sells that is not a registration.
+  **Done** (ADR-0044: `payer_user_id` on every order, `/my/orders`, Commerce's GDPR handler).
 - **P3 — a filter contract for the shared table.** `HasDataTableQuery`
   knows `search`, `sort`, `dir` and `per_page`; the toolbar has a search
   box and a page-size select and no filter slot. Registration and Content
@@ -693,7 +693,7 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Registration | Purchase constraints | `purchase-requirements/*`, `global-purchase-conditions/*`, `payment-provider-conditions/*`, `settings/TicketDiscovery` | absorbed — type axes, quotas and invitation tokens replace LanCore's constraint system; no 1:1 port |
 | Admission | Checkpoint/device enrolment, badge template designer (D-ADM-05), claim-link management (ADR-0032), entrance POS screen (ADR-0018) | — (LanEntrance satellite had no admin UI) | P2 backlog |
 | Commerce | Orders admin index, settlement-account console, bookkeeping export, public checkout | `orders/Index`, `shop/Settings`, `cart/Checkout` | ✓ |
-| Commerce | Order/invoice admin detail page; participant "my orders/invoices"; invoice-prefix settings | `orders/Show`, `my-orders/*` | P2 backlog — the per-registration half (pay link, invoice PDF) ships on Registration's account page; the standalone list needs the payer read model |
+| Commerce | Order/invoice admin detail page; participant "my orders/invoices"; invoice-prefix settings | `orders/Show`, `my-orders/*` | P2 backlog for the admin detail; the participant list is ✓ (ADR-0044) |
 | Commerce | Voucher CRUD + redemption view | `vouchers/*` | P2 backlog (SPEC-owned, unscheduled) |
 | Content | Entry editor + admin index, public listing/detail, comment moderation, announcements (+ public banner) | `news/*`, `announcements/*` | ✓ |
 | Content | Knowledge-base content type | LanHelp `kb/*` | P3 — lands with Support (ADR-0022) |

@@ -18,6 +18,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Commerce\Http\Controllers\CheckoutController;
 use Konventix\Commerce\Http\Controllers\MyInvoiceDocumentController;
+use Konventix\Commerce\Http\Controllers\MyOrdersController;
 
 // Public checkout for `instant` settlement (ADR-0039), addressed by the
 // registration ULID — the only identifier the payer's flow carries.
@@ -41,3 +42,10 @@ Route::get('/my/invoices/{invoice}/document', MyInvoiceDocumentController::class
     ->whereUlid('invoice')
     ->middleware(['auth', 'signed:relative'])
     ->name('commerce.my.invoice.document');
+
+// The payer's own orders (ADR-0044). `auth` only — no `require-consent`,
+// for the reason Registration gives on `/my/registrations`: reading back what
+// you already owe is not a new contract.
+Route::middleware(['auth'])->group(function (): void {
+    Route::get('/my/orders', [MyOrdersController::class, 'index'])->name('commerce.mine.index');
+});

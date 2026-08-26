@@ -297,5 +297,19 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 area: NavigationItem::AREA_ADMIN,
             ),
         );
+
+        // The account menu (ADR-0044). No `permission`, and none is missing:
+        // the menu renders only for a signed-in user and the controller
+        // authorizes on ownership, which is not a capability anybody holds.
+        $registry->add(
+            new NavigationItem(
+                module: 'commerce',
+                label: 'My orders',
+                url: '/my/orders',
+                icon: 'receipt',
+                order: 20,
+                area: NavigationItem::AREA_ACCOUNT,
+            ),
+        );
     }
 }

@@ -43,6 +43,19 @@ declare namespace Konventix {
     }
     namespace Commerce {
         namespace Data {
+            export type MyOrderData = {
+                readonly id: string;
+                readonly placedAt: string;
+                readonly settlesType: string;
+                readonly settlesId: string;
+                readonly settlesLabel: string;
+                readonly status: Konventix.Commerce.Enums.OrderStatus;
+                readonly currency: string;
+                readonly totalGross: string;
+                readonly invoiceNumber: string | null;
+                readonly payUrl: string | null;
+                readonly documentUrl: string | null;
+            };
             export type RegistrationSettlementData = {
                 readonly orderId: string;
                 readonly status: string;

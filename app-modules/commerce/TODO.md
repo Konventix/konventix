@@ -106,11 +106,14 @@
       has nothing to click — and `instant` settlement is exactly the case
       where they might not.
 
-- [ ] A standalone "my orders/invoices" list is still not buildable, and
-      for the same reason the GDPR handler below is not: it needs the payer
-      read model, which is the open decision the ROADMAP carries. The slot
-      above answers "what did this registration cost"; nothing yet answers
-      "show me everything I owe".
+- [x] The standalone "my orders/invoices" list, now that the payer read
+      model exists (ADR-0044). `GET /my/orders` (`commerce.mine.index`)
+      lists every order `payer_user_id` names on this brand, each with its
+      pay link and, once one is archived, a temporary signed link to its
+      invoice PDF — `MyOrderData::ofOrder()` mints both the same way the
+      `registration.mine.show` slot does. Reached from a new "My orders"
+      account-menu item; no `permission`, because ownership is what
+      authorizes it, not a capability anybody can be granted.
 
 - [x] Slice 7c — bookkeeping export (ADR-0040). Interview decisions: both
       formats (DATEV Buchungsstapel + readable CSV journal), SKR03
