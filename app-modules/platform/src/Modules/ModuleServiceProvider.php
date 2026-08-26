@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use InterNACHI\Modular\Support\ModuleRegistry;
 use Konventix\Platform\Http\Middleware\EnsureOperatorHost;
+use Konventix\Platform\Permissions\DefaultRole;
 
 /**
  * Base class every module's ServiceProvider extends.
@@ -70,6 +71,20 @@ abstract class ModuleServiceProvider extends ServiceProvider
     public function isGateable(): bool
     {
         return $this->gateable;
+    }
+
+    /**
+     * Default roles this module ships (ADR-0045): starting points an operator
+     * gets per brand without assembling capabilities by hand. Materialized
+     * by `permissions:sync` and on module activation; a row the operator has
+     * edited is never rewritten. Declared beside the module's `Permission`
+     * enum and only ever over that enum's cases.
+     *
+     * @return list<DefaultRole>
+     */
+    public function defaultRoles(): array
+    {
+        return [];
     }
 
     /**

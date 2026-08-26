@@ -19,6 +19,7 @@ use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Console\ExpireWaitlistOffersCommand;
 use Konventix\Registration\Data\PublicOfferData;
@@ -53,6 +54,24 @@ class RegistrationServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'registration';
+    }
+
+    /**
+     * @return list<DefaultRole>
+     */
+    public function defaultRoles(): array
+    {
+        return [
+            DefaultRole::of(
+                'registration.desk',
+                'Registration Desk',
+                Permission::ViewRegistrations,
+                Permission::ApproveRegistrations,
+                Permission::RejectRegistrations,
+                Permission::CancelRegistrations,
+                Permission::ExportRegistrations,
+            ),
+        ];
     }
 
     /**

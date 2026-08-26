@@ -24,6 +24,7 @@ use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\ConsoleEventSources;
 use Konventix\Platform\Operators\OperatorContext;
+use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Realtime\BrandApplicationProvider;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Platform\Storage\DiskResolver;
@@ -55,6 +56,18 @@ class PlatformServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'platform';
+    }
+
+    /**
+     * The one cross-module default (ADR-0045): everything in the catalogue,
+     * for the person who runs the brand. Platform owns the catalogue, so this
+     * names no other module's enum.
+     *
+     * @return list<DefaultRole>
+     */
+    public function defaultRoles(): array
+    {
+        return [DefaultRole::everything('platform.brand-admin', 'Brand Admin')];
     }
 
     public function boot(): void

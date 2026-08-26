@@ -93,7 +93,10 @@ final class SaveRole
             $this->guardName((string) $role->getAttribute('brand_id'), $name, $role->getKey());
             $granted = $this->guardPermissions($permissions);
 
-            $role->update(['name' => $name]);
+            // The operator touched it: from now on `permissions:sync` leaves
+            // this row alone (ADR-0045). Stamped on every edit, not only on a
+            // change — intent is recorded, never inferred from the grants.
+            $role->forceFill(['name' => $name, 'customized_at' => now()])->save();
             $role->syncPermissions($granted);
 
             app(PermissionRegistrar::class)->forgetCachedPermissions();

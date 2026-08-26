@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Konventix\Platform\Permissions;
 
 use BackedEnum;
+use Illuminate\Support\Str;
 use InterNACHI\Modular\Support\ModuleRegistry;
+use InvalidArgumentException;
+use Konventix\Platform\Modules\ModuleServiceProvider;
 
 /**
  * The platform's capability catalogue (ADR-0013): every case of every
@@ -66,5 +69,42 @@ class PermissionCatalog
         }
 
         return $grouped;
+    }
+
+    /**
+     * Every module's default roles, keyed by module (ADR-0045). Discovered
+     * the same way the enum is — by resolving the module's provider class
+     * from the registry — so a console command needs no boot ordering.
+     *
+     * @return array<string, list<DefaultRole>>
+     */
+    public function defaultRoles(): array
+    {
+        $sets = [];
+
+        foreach ($this->modules->modules() as $module) {
+            $provider = $module->qualify('Providers\\'.Str::studly($module->name).'ServiceProvider');
+
+            if (! class_exists($provider) || ! is_subclass_of($provider, ModuleServiceProvider::class)) {
+                continue;
+            }
+
+            /** @var list<DefaultRole> $roles */
+            $roles = (new $provider(app()))->defaultRoles();
+
+            foreach ($roles as $role) {
+                if ($role->module() !== $module->name) {
+                    throw new InvalidArgumentException(
+                        "Module [{$module->name}] declares default role [{$role->key}] under another module's prefix."
+                    );
+                }
+            }
+
+            if ($roles !== []) {
+                $sets[$module->name] = $roles;
+            }
+        }
+
+        return $sets;
     }
 }
