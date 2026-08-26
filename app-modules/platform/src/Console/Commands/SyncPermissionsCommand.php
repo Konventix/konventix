@@ -6,6 +6,8 @@ namespace Konventix\Platform\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
+use Konventix\Platform\Actions\MaterializeDefaultRoles;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Permission;
 use Konventix\Platform\Permissions\PermissionCatalog;
 use Spatie\Permission\PermissionRegistrar;
@@ -15,15 +17,19 @@ use Spatie\Permission\PermissionRegistrar;
  * module's `src/Enums/Permission.php` capability catalog and upserts one
  * permission row per case. Rows that no enum declares any more are REPORTED as
  * orphans, never deleted — deleting is an operator decision, because role
- * grants hang off those rows.
+ * grants hang off those rows. ADR-0045: default roles are materialized per
+ * brand in the same run, so a deploy that adds a capability to an enum
+ * reaches every brand's untouched roles.
  */
 class SyncPermissionsCommand extends Command
 {
-    protected $signature = 'permissions:sync {--guard=web : The auth guard the permissions belong to}';
+    protected $signature = 'permissions:sync
+        {--guard=web : The auth guard the permissions belong to}
+        {--no-roles : Upsert capabilities only; leave every brand\'s default roles alone}';
 
-    protected $description = 'Upsert permission rows from every module\'s Permission enum and report orphans';
+    protected $description = 'Upsert permission rows from every module\'s Permission enum, report orphans, and materialize default roles per brand';
 
-    public function handle(PermissionCatalog $catalog, PermissionRegistrar $registrar): int
+    public function handle(PermissionCatalog $catalog, PermissionRegistrar $registrar, MaterializeDefaultRoles $materialize): int
     {
         $guard = (string) $this->option('guard');
 
@@ -62,6 +68,22 @@ class SyncPermissionsCommand extends Command
 
         foreach ($orphans as $orphan) {
             $this->warn("Orphaned permission row [{$orphan}] — no enum declares it. Review before removing.");
+        }
+
+        if ($this->option('no-roles')) {
+            return self::SUCCESS;
+        }
+
+        // ADR-0045: defaults are materialized here so a deploy that adds a
+        // capability to an enum reaches every brand's untouched roles.
+        foreach (Brand::query()->orderBy('name')->get() as $brand) {
+            $report = $materialize->handle($brand);
+
+            $this->line(sprintf('Default roles for [%s]: %s', $brand->name, $report->summary()));
+
+            foreach ($report->skippedCollision as $name) {
+                $this->warn("  Skipped [{$name}] on [{$brand->name}] — an operator-made role already carries that name.");
+            }
         }
 
         return self::SUCCESS;

@@ -17,7 +17,10 @@ use Laravel\Pennant\Feature;
  */
 final class UpdateBrandModules
 {
-    public function __construct(private readonly ModuleGate $gate) {}
+    public function __construct(
+        private readonly ModuleGate $gate,
+        private readonly MaterializeDefaultRoles $materialize,
+    ) {}
 
     /**
      * @param  array<string, bool>  $modules  module name => active
@@ -35,6 +38,9 @@ final class UpdateBrandModules
 
             if ($active) {
                 Feature::for($brand)->activate($feature);
+                // A module switched on later gets its roles now, not on the
+                // next deploy (ADR-0045, ADR-0003).
+                $this->materialize->handle($brand, $module);
             } else {
                 Feature::for($brand)->deactivate($feature);
             }

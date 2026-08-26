@@ -132,3 +132,19 @@ it('requires manage-roles for the editor', function (): void {
         ->get("http://admin.roleedit.test/admin/roles/{$role->getKey()}/edit")
         ->assertForbidden();
 });
+
+it('stamps a role as customized the moment the operator edits it', function (): void {
+    [, $admin] = roleEditorOperator();
+    $brand = Brand::factory()->create(['slug' => 're-stamp']);
+
+    $role = Role::query()->create(['name' => 'Door Crew', 'guard_name' => 'web', 'brand_id' => $brand->getKey(), 'default_key' => 'admission.entrance-staff']);
+
+    $this->actingAs($admin)
+        ->put("http://admin.roleedit.test/admin/roles/{$role->getKey()}", [
+            'name' => 'Door Crew',
+            'permissions' => ['admission.scan-check-in'],
+        ])
+        ->assertRedirect();
+
+    expect($role->refresh()->customized_at)->not->toBeNull();
+});

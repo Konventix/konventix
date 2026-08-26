@@ -21,9 +21,11 @@ use Konventix\Platform\Models\Operator;
  */
 final class CreateBrand
 {
+    public function __construct(private readonly MaterializeDefaultRoles $materialize) {}
+
     public function handle(Operator $operator, BrandData $data): Brand
     {
-        return DB::transaction(function () use ($operator, $data): Brand {
+        $brand = DB::transaction(function () use ($operator, $data): Brand {
             $this->guardUniqueness($data);
 
             /** @var Brand $brand */
@@ -42,6 +44,13 @@ final class CreateBrand
 
             return $brand;
         });
+
+        // Kernel and Core modules are always on, so their defaults exist from
+        // the first minute (ADR-0045). Outside the transaction: it sets its
+        // own brand context and team id, and nothing here depends on it.
+        $this->materialize->handle($brand);
+
+        return $brand;
     }
 
     private function guardUniqueness(BrandData $data): void
