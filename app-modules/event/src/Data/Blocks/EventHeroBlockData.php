@@ -8,6 +8,7 @@ use Konventix\Event\Blocks\EventHeroBlock;
 use Spatie\LaravelData\Attributes\Validation\Required;
 use Spatie\LaravelData\Attributes\Validation\Ulid;
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * Stored payload of the `event-hero` static-page block: just the event's
@@ -16,6 +17,7 @@ use Spatie\LaravelData\Data;
  * {@see EventHeroBlock::resolve()} into
  * {@see EventHeroResolvedData}, never handed to the frontend as a raw model.
  */
+#[TypeScript]
 final class EventHeroBlockData extends Data
 {
     public function __construct(

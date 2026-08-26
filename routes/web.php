@@ -24,7 +24,7 @@ use Spatie\Health\Http\Controllers\HealthCheckResultsController;
 Route::get('/', function (StaticPageRenderer $renderer) {
     $home = StaticPage::query()
         ->where('slug', 'home')
-        ->whereNotNull('published_at')
+        ->published()
         ->first();
 
     if ($home === null) {

@@ -9,6 +9,7 @@ use Konventix\Content\Enums\ContentType;
 use Konventix\Content\Enums\PublicationState;
 use Konventix\Content\Models\ContentEntry;
 use Konventix\Platform\Blocks\BlockType;
+use Konventix\Platform\Blocks\HasBlockEditor;
 use Konventix\Platform\Blocks\ResolvesBlockProps;
 
 /**
@@ -21,7 +22,7 @@ use Konventix\Platform\Blocks\ResolvesBlockProps;
  * were newest the day an editor dropped it in, and the block would quietly
  * become a list of old news.
  */
-final class LatestNewsBlock implements BlockType, ResolvesBlockProps
+final class LatestNewsBlock implements BlockType, HasBlockEditor, ResolvesBlockProps
 {
     public function key(): string
     {
@@ -69,5 +70,23 @@ final class LatestNewsBlock implements BlockType, ResolvesBlockProps
             ->all();
 
         return ['heading' => $config->heading, 'entries' => $entries];
+    }
+
+    public function label(): string
+    {
+        return 'Latest news';
+    }
+
+    public function editorComponent(): string
+    {
+        return 'content/blocks/editors/LatestNewsEditor';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function defaultData(): array
+    {
+        return ['heading' => null, 'limit' => 3];
     }
 }

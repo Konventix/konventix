@@ -8,6 +8,7 @@ use Konventix\Event\Data\Blocks\CountdownBlockData;
 use Konventix\Event\Data\Blocks\CountdownResolvedData;
 use Konventix\Event\Models\Event;
 use Konventix\Platform\Blocks\BlockType;
+use Konventix\Platform\Blocks\HasBlockEditor;
 use Konventix\Platform\Blocks\ResolvesBlockProps;
 
 /**
@@ -17,7 +18,7 @@ use Konventix\Platform\Blocks\ResolvesBlockProps;
  * instant is computed here via `startsAtInstant()` (ADR-0027) — never a raw
  * `Carbon::parse()` of the wall-clock column, and never in the frontend.
  */
-final class CountdownBlock implements BlockType, ResolvesBlockProps
+final class CountdownBlock implements BlockType, HasBlockEditor, ResolvesBlockProps
 {
     public function key(): string
     {
@@ -57,5 +58,23 @@ final class CountdownBlock implements BlockType, ResolvesBlockProps
             eventName: $event?->name,
             targetIso: $event?->startsAtInstant()->toIso8601String(),
         )->toArray();
+    }
+
+    public function label(): string
+    {
+        return 'Countdown';
+    }
+
+    public function editorComponent(): string
+    {
+        return 'event/blocks/editors/CountdownEditor';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function defaultData(): array
+    {
+        return ['eventId' => '', 'label' => null];
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Platform\Blocks\Types;
 
 use Konventix\Platform\Blocks\BlockType;
+use Konventix\Platform\Blocks\HasBlockEditor;
 use Konventix\Platform\Blocks\ResolvesBlockProps;
 use Konventix\Platform\Data\Blocks\HeroBlockData;
 use Konventix\Platform\Data\Blocks\HeroResolvedData;
@@ -19,7 +20,7 @@ use Konventix\Platform\Media\MediaLibrary;
  * something renderable (ADR-0035), and the URL it produces depends on which
  * disk the media lives on — which is deployment state, not page content.
  */
-class HeroBlock implements BlockType, ResolvesBlockProps
+class HeroBlock implements BlockType, HasBlockEditor, ResolvesBlockProps
 {
     public function key(): string
     {
@@ -66,5 +67,29 @@ class HeroBlock implements BlockType, ResolvesBlockProps
             imageUrl: $image['url'] ?? null,
             imageAlt: $image['altText'] ?? null,
         ))->toArray();
+    }
+
+    public function label(): string
+    {
+        return 'Hero';
+    }
+
+    public function editorComponent(): string
+    {
+        return 'platform/blocks/editors/HeroEditor';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function defaultData(): array
+    {
+        return [
+            'heading' => '',
+            'subheading' => null,
+            'ctaLabel' => null,
+            'ctaUrl' => null,
+            'imageMediaId' => null,
+        ];
     }
 }

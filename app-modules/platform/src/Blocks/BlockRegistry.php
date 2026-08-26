@@ -58,4 +58,23 @@ class BlockRegistry
 
         return $type;
     }
+
+    /**
+     * The types an editor may add: active for the current brand and
+     * implementing {@see HasBlockEditor}, in registration order.
+     *
+     * @return array<string, BlockType&HasBlockEditor>
+     */
+    public function editable(): array
+    {
+        $editable = [];
+
+        foreach ($this->types as $key => $type) {
+            if ($type instanceof HasBlockEditor && $this->resolveActive($key) !== null) {
+                $editable[$key] = $type;
+            }
+        }
+
+        return $editable;
+    }
 }

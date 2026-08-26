@@ -25,7 +25,7 @@ class StaticPageController
         /** @var StaticPage $page */
         $page = StaticPage::query()
             ->where('slug', $slug)
-            ->whereNotNull('published_at')
+            ->published()
             ->firstOrFail();
 
         return Inertia::render('StaticPage', [

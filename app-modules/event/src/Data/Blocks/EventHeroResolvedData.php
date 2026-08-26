@@ -6,6 +6,7 @@ namespace Konventix\Event\Data\Blocks;
 
 use Konventix\Event\Models\Event;
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * Server-resolved props for the `event-hero` block's Vue component.
@@ -15,6 +16,7 @@ use Spatie\LaravelData\Data;
  * than reinterpreting them through `new Date(...)`, which would silently
  * shift them into the visitor's browser timezone.
  */
+#[TypeScript]
 final class EventHeroResolvedData extends Data
 {
     public function __construct(

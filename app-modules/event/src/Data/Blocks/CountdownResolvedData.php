@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Event\Data\Blocks;
 
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * Server-resolved props for the `countdown` block's Vue component.
@@ -14,6 +15,7 @@ use Spatie\LaravelData\Data;
  * ticking countdown needs an unambiguous point in time to diff against
  * `now()`, not the organizer's promised local time.
  */
+#[TypeScript]
 final class CountdownResolvedData extends Data
 {
     public function __construct(

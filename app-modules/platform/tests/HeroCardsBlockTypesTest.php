@@ -153,11 +153,11 @@ it('migrates stored hero payloads from a resolved url to a media ULID', function
 
     $blocks = $page->fresh()->blocks;
 
-    expect($blocks[0]['data'])->toHaveKey('imageMediaId')
-        ->and($blocks[0]['data']['imageMediaId'])->toBe($media->getKey())
-        ->and($blocks[0]['data'])->not->toHaveKey('imageUrl')
+    expect($blocks[0]->data)->toHaveKey('imageMediaId')
+        ->and($blocks[0]->data['imageMediaId'])->toBe($media->getKey())
+        ->and($blocks[0]->data)->not->toHaveKey('imageUrl')
         // Blocks of other types are left exactly as they were.
-        ->and($blocks[1]['data']['heading'])->toBe('Untouched');
+        ->and($blocks[1]->data['heading'])->toBe('Untouched');
 });
 
 it('drops a hero url that matches no media item rather than failing the migration', function (): void {
@@ -181,5 +181,5 @@ it('drops a hero url that matches no media item rather than failing the migratio
     );
     $migration->up();
 
-    expect($page->fresh()->blocks[0]['data']['imageMediaId'])->toBeNull();
+    expect($page->fresh()->blocks[0]->data['imageMediaId'])->toBeNull();
 });

@@ -4,21 +4,23 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Konventix\Platform\Data\Blocks\BlockData;
 use Konventix\Platform\Database\Factories\StaticPageFactory;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
+use Spatie\LaravelData\DataCollection;
 
 /**
  * A static page belonging to a brand, built from blocks.
  *
  * Platform owns the block-based CMS for brand static pages; modules register
  * their own block types with it rather than building a second CMS
- * (module-map.md). The `blocks` column holds the ordered block list — a JSON
- * column is acceptable here only because it will sit behind a typed cast
- * (ADR-0009 forbids free-form blobs), which arrives with the block registry.
+ * (module-map.md). The `blocks` column holds the ordered block list, behind a
+ * typed `DataCollection<BlockData>` cast (ADR-0009 forbids free-form blobs).
  *
  * This is also the reference implementation of a brand-owned model: ULID key,
  * `BelongsToBrand`, no manual `where('brand_id', ...)` anywhere.
@@ -27,7 +29,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $brand_id
  * @property string $slug
  * @property string $title
- * @property array<int, mixed> $blocks
+ * @property DataCollection<int, BlockData>|null $blocks
  * @property Carbon|null $published_at
  */
 class StaticPage extends Model
@@ -45,9 +47,7 @@ class StaticPage extends Model
     protected function casts(): array
     {
         return [
-            // TODO: replace with a typed block-collection cast once the block
-            // registry exists — ADR-0009 forbids untyped structures.
-            'blocks' => 'array',
+            'blocks' => DataCollection::class.':'.BlockData::class,
             'published_at' => 'datetime',
         ];
     }
@@ -55,5 +55,14 @@ class StaticPage extends Model
     protected static function newFactory(): StaticPageFactory
     {
         return StaticPageFactory::new();
+    }
+
+    /**
+     * @param  Builder<StaticPage>  $query
+     * @return Builder<StaticPage>
+     */
+    public function scopePublished(Builder $query): Builder
+    {
+        return $query->whereNotNull('published_at');
     }
 }

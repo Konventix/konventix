@@ -9,6 +9,7 @@ use Konventix\Event\Blocks\EventHeroBlock;
 use Konventix\Event\Models\Event;
 use Konventix\Event\Models\Venue;
 use Konventix\Platform\Blocks\BlockRegistry;
+use Konventix\Platform\Blocks\HasBlockEditor;
 use Konventix\Platform\Blocks\ResolvesBlockProps;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
@@ -30,6 +31,8 @@ it('registers event-hero and countdown at boot, both resolving props server-side
     expect($types['event-hero']->module())->toBe('event');
     expect($types['countdown'])->toBeInstanceOf(ResolvesBlockProps::class);
     expect($types['countdown']->module())->toBe('event');
+    expect(new EventHeroBlock)->toBeInstanceOf(HasBlockEditor::class);
+    expect(new CountdownBlock)->toBeInstanceOf(HasBlockEditor::class);
 });
 
 it('resolves event-hero props from the event\'s wall-clock schedule and venue', function (): void {

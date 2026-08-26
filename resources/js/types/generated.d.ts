@@ -216,6 +216,29 @@ declare namespace Konventix {
                 readonly reentryPolicy: Konventix.Event.Enums.ReentryPolicy;
                 readonly predecessorEventId: string | null;
             };
+            namespace Blocks {
+                export type CountdownBlockData = {
+                    readonly eventId: string;
+                    readonly label: string | null;
+                };
+                export type CountdownResolvedData = {
+                    readonly found: boolean;
+                    readonly label: string | null;
+                    readonly eventName: string | null;
+                    readonly targetIso: string | null;
+                };
+                export type EventHeroBlockData = {
+                    readonly eventId: string;
+                };
+                export type EventHeroResolvedData = {
+                    readonly found: boolean;
+                    readonly name: string | null;
+                    readonly startsAt: string | null;
+                    readonly endsAt: string | null;
+                    readonly timezone: string | null;
+                    readonly venueCity: string | null;
+                };
+            }
         }
         namespace Enums {
             export type EventLifecycleState =
@@ -448,6 +471,17 @@ declare namespace Konventix {
                 faviconMediaId: string | null;
             };
             namespace Blocks {
+                export type BlockData = {
+                    readonly type: string;
+                    readonly data: Record<string, any>;
+                };
+                export type BlockTypeOptionData = {
+                    readonly key: string;
+                    readonly label: string;
+                    readonly module: string;
+                    readonly editorComponent: string;
+                    readonly defaultData: Record<string, any>;
+                };
                 export type CardItemData = {
                     title: string;
                     body: string;

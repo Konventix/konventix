@@ -8,6 +8,7 @@ use Konventix\Event\Data\Blocks\EventHeroBlockData;
 use Konventix\Event\Data\Blocks\EventHeroResolvedData;
 use Konventix\Event\Models\Event;
 use Konventix\Platform\Blocks\BlockType;
+use Konventix\Platform\Blocks\HasBlockEditor;
 use Konventix\Platform\Blocks\ResolvesBlockProps;
 
 /**
@@ -20,7 +21,7 @@ use Konventix\Platform\Blocks\ResolvesBlockProps;
  * never leak an Eloquent model); `resolve()` looks the event up with
  * Event's own model, inside Event, and hands back plain scalars.
  */
-final class EventHeroBlock implements BlockType, ResolvesBlockProps
+final class EventHeroBlock implements BlockType, HasBlockEditor, ResolvesBlockProps
 {
     public function key(): string
     {
@@ -56,5 +57,23 @@ final class EventHeroBlock implements BlockType, ResolvesBlockProps
         $event = Event::query()->with('venues')->find($payload->eventId);
 
         return EventHeroResolvedData::forEvent($event)->toArray();
+    }
+
+    public function label(): string
+    {
+        return 'Event hero';
+    }
+
+    public function editorComponent(): string
+    {
+        return 'event/blocks/editors/EventHeroEditor';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function defaultData(): array
+    {
+        return ['eventId' => ''];
     }
 }

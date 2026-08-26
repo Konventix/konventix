@@ -15,39 +15,19 @@ use Konventix\Platform\Models\StaticPage;
  * the same way), so both resolve blocks through the same registry gate and
  * the same optional server-side resolution hook ({@see ResolvesBlockProps}).
  *
- * Blocks whose type is unknown or whose module is inactive for the brand are
- * skipped, not errors: a page survives a module being switched off.
+ * Delegates the actual translation to {@see BlockCompositionRenderer}, kept
+ * as its own class because two call sites depend on it and both take a
+ * `StaticPage` rather than a raw block list.
  */
 class StaticPageRenderer
 {
-    public function __construct(private readonly BlockRegistry $registry) {}
+    public function __construct(private readonly BlockCompositionRenderer $blocks) {}
 
     /**
-     * @return array<int, array{key: string, component: string, props: array<string, mixed>}>
+     * @return list<array{key: string, component: string, props: array<string, mixed>}>
      */
     public function render(StaticPage $page): array
     {
-        $rendered = [];
-
-        foreach ($page->blocks ?? [] as $block) {
-            $type = $this->registry->resolveActive((string) ($block['type'] ?? ''));
-
-            if ($type === null) {
-                continue;
-            }
-
-            /** @var array<string, mixed> $data */
-            $data = $block['data'] ?? [];
-
-            $rendered[] = [
-                'key' => $type->key(),
-                'component' => $type->component(),
-                'props' => $type instanceof ResolvesBlockProps
-                    ? $type->resolve($data)
-                    : $type->dataClass()::from($data)->toArray(),
-            ];
-        }
-
-        return $rendered;
+        return $this->blocks->render($page->blocks?->toArray() ?? []);
     }
 }
