@@ -20,8 +20,14 @@ use Konventix\Platform\Enums\FooterLinkKind;
  * the migration). Brand hosts read these through the operator their brand
  * belongs to.
  *
+ * Still not `BelongsToBrand`: `brand_id` narrows an operator-owned list, it
+ * does not scope one. The shared prop reads operator rows plus the current
+ * brand's, which is a filter over a set the operator owns (ADR-0010's
+ * distinction).
+ *
  * @property string $id
  * @property string $operator_id
+ * @property string|null $brand_id
  * @property string $label
  * @property FooterLinkKind $kind
  * @property string|null $url
@@ -46,12 +52,16 @@ class FooterLink extends Model
     ];
 
     /**
+     * Operator-wide rows first, then a brand's own, each group in its own
+     * position/label order — the same ordering the shared footer prop reads
+     * with (see HandleInertiaRequests::footerLinks()).
+     *
      * @param  Builder<FooterLink>  $query
      * @return Builder<FooterLink>
      */
     public function scopeInDisplayOrder(Builder $query): Builder
     {
-        return $query->orderBy('position')->orderBy('label');
+        return $query->orderByRaw('brand_id IS NOT NULL')->orderBy('position')->orderBy('label');
     }
 
     /**

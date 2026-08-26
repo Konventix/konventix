@@ -12,7 +12,10 @@ use Konventix\Platform\Actions\UpdateFooterLinks;
 use Konventix\Platform\Data\FooterLinkData;
 use Konventix\Platform\Data\FooterLinksData;
 use Konventix\Platform\Enums\Permission;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\FooterLink;
+use Konventix\Platform\Models\Operator;
+use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Platform\Operators\OperatorContext;
 
 /**
@@ -26,20 +29,35 @@ use Konventix\Platform\Operators\OperatorContext;
  */
 class FooterLinksAdminController
 {
-    public function edit(OperatorContext $context): Response
+    public function edit(OperatorContext $context, ConsoleSelection $selection): Response
     {
         Gate::authorize(Permission::ManageFooterLinks->value);
 
         $operator = $context->current() ?? abort(404);
 
+        $brandId = $selection->brandId();
+        $brand = $brandId === null ? null : Brand::query()->where('operator_id', $operator->getKey())->find($brandId);
+
         return Inertia::render('admin/settings/FooterLinks', [
-            'links' => FooterLink::query()
-                ->where('operator_id', $operator->getKey())
-                ->inDisplayOrder()
-                ->get()
-                ->map(fn (FooterLink $link): FooterLinkData => FooterLinkData::ofModel($link))
-                ->all(),
+            'operatorLinks' => $this->linksOf($operator, null),
+            'brand' => $brand === null ? null : ['id' => $brand->getKey(), 'name' => $brand->name],
+            'brandLinks' => $brand === null ? null : $this->linksOf($operator, $brand->getKey()),
         ]);
+    }
+
+    /**
+     * @return array<int, FooterLinkData>
+     */
+    private function linksOf(Operator $operator, ?string $brandId): array
+    {
+        return FooterLink::query()
+            ->where('operator_id', $operator->getKey())
+            ->when($brandId === null, fn ($query) => $query->whereNull('brand_id'))
+            ->when($brandId !== null, fn ($query) => $query->where('brand_id', $brandId))
+            ->inDisplayOrder()
+            ->get()
+            ->map(fn (FooterLink $link): FooterLinkData => FooterLinkData::ofModel($link))
+            ->all();
     }
 
     public function update(

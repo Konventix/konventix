@@ -420,6 +420,7 @@ declare namespace Konventix {
                 opensInNewTab: boolean;
             };
             export type FooterLinksData = {
+                brandId: string | null;
                 links: Konventix.Platform.Data.FooterLinkData[];
             };
             export type MediaItemData = {

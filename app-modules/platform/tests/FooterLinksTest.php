@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Inertia\Testing\AssertableInertia;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Enums\FooterLinkKind;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\FooterLink;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
@@ -148,4 +149,57 @@ it('renders the operator\'s footer on every brand page, in order', function (): 
             expect($labels)->toBe(['Imprint', 'Privacy']);
             expect($page->toArray()['props']['footer']['version'])->toBe(config('app.version'));
         });
+});
+
+it('keeps a brand\'s own entries beside the operator-wide ones', function (): void {
+    [$operator, $admin] = footerOperator('admin.footerbrand.test');
+    $brand = Brand::factory()->create(['slug' => 'ft-brand']);
+    $brand->forceFill(['operator_id' => $operator->getKey()])->save();
+    FooterLink::factory()->create(['operator_id' => $operator->getKey(), 'label' => 'Imprint', 'position' => 0]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.footerbrand.test/admin/settings/footer', [
+            'brandId' => $brand->getKey(),
+            'links' => [['label' => 'Discord', 'kind' => 'url', 'url' => 'https://discord.gg/x', 'opensInNewTab' => true]],
+        ])
+        ->assertRedirect();
+
+    $rows = FooterLink::query()->where('operator_id', $operator->getKey())->inDisplayOrder()->get();
+
+    expect($rows->pluck('label')->all())->toBe(['Imprint', 'Discord'])
+        ->and($rows->firstWhere('label', 'Discord')->brand_id)->toBe($brand->getKey())
+        ->and($rows->firstWhere('label', 'Imprint')->brand_id)->toBeNull();
+});
+
+it('refuses a brand that is not the operator\'s', function (): void {
+    [, $admin] = footerOperator('admin.footerforeign.test');
+    $foreign = Brand::factory()->create(['slug' => 'ft-foreign']);
+
+    $this->actingAs($admin)
+        ->from('http://admin.footerforeign.test/admin/settings/footer')
+        ->put('http://admin.footerforeign.test/admin/settings/footer', [
+            'brandId' => $foreign->getKey(),
+            'links' => [['label' => 'X', 'kind' => 'url', 'url' => '/x']],
+        ])
+        ->assertSessionHasErrors('brandId');
+});
+
+it('renders operator rows on every brand and a brand\'s rows only on its own host', function (): void {
+    $brand = $this->withBrand();
+    $operator = Operator::factory()->create();
+    $brand->forceFill(['operator_id' => $operator->getKey()])->save();
+    $sibling = Brand::factory()->withDomain('sibling.footer.test')->create(['slug' => 'ft-sibling']);
+    $sibling->forceFill(['operator_id' => $operator->getKey()])->save();
+
+    FooterLink::factory()->create(['operator_id' => $operator->getKey(), 'label' => 'Imprint', 'position' => 0]);
+    FooterLink::factory()->create(['operator_id' => $operator->getKey(), 'brand_id' => $brand->getKey(), 'label' => 'Ours', 'position' => 0]);
+    FooterLink::factory()->create(['operator_id' => $operator->getKey(), 'brand_id' => $sibling->getKey(), 'label' => 'Theirs', 'position' => 0]);
+
+    $this->get('/')->assertInertia(fn (AssertableInertia $page) => expect(
+        collect($page->toArray()['props']['footer']['links'])->pluck('label')->all()
+    )->toBe(['Imprint', 'Ours']));
+
+    $this->get('http://sibling.footer.test/')->assertInertia(fn (AssertableInertia $page) => expect(
+        collect($page->toArray()['props']['footer']['links'])->pluck('label')->all()
+    )->toBe(['Imprint', 'Theirs']));
 });

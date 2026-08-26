@@ -9,14 +9,16 @@ use Illuminate\Validation\ValidationException;
 use Konventix\Platform\Data\FooterLinkData;
 use Konventix\Platform\Data\FooterLinksData;
 use Konventix\Platform\Enums\FooterLinkKind;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\FooterLink;
 use Konventix\Platform\Models\Operator;
 
 /**
- * Replaces the operator's footer with the submitted list, in the submitted
- * order. Position is the array index, so reordering in the UI is the same
- * operation as editing a label — there is no separate reorder endpoint to
- * fall out of sync with this one.
+ * Replaces one of the operator's footer lists — operator-wide, or one
+ * brand's own — with the submitted entries, in the submitted order. Position
+ * is the array index, so reordering in the UI (a drag) is the same operation
+ * as editing a label — there is no separate reorder endpoint to fall out of
+ * sync with this one.
  */
 final class UpdateFooterLinks
 {
@@ -26,9 +28,14 @@ final class UpdateFooterLinks
     public function handle(Operator $operator, FooterLinksData $data): array
     {
         $this->guardDestinations($data);
+        $this->guardBrand($operator, $data->brandId);
 
         return DB::transaction(function () use ($operator, $data): array {
-            FooterLink::query()->where('operator_id', $operator->getKey())->delete();
+            FooterLink::query()
+                ->where('operator_id', $operator->getKey())
+                ->when($data->brandId === null, fn ($query) => $query->whereNull('brand_id'))
+                ->when($data->brandId !== null, fn ($query) => $query->where('brand_id', $data->brandId))
+                ->delete();
 
             $saved = [];
 
@@ -45,6 +52,7 @@ final class UpdateFooterLinks
                     'position' => $position,
                 ]);
                 $row->operator_id = $operator->getKey();
+                $row->brand_id = $data->brandId;
                 $row->save();
 
                 $saved[] = $row;
@@ -52,6 +60,22 @@ final class UpdateFooterLinks
 
             return $saved;
         });
+    }
+
+    /**
+     * A brand's list may only be edited under the operator that runs it.
+     */
+    private function guardBrand(Operator $operator, ?string $brandId): void
+    {
+        if ($brandId === null) {
+            return;
+        }
+
+        $owned = Brand::query()->whereKey($brandId)->where('operator_id', $operator->getKey())->exists();
+
+        if (! $owned) {
+            throw ValidationException::withMessages(['brandId' => __('That brand is not this operator\'s.')]);
+        }
     }
 
     /**

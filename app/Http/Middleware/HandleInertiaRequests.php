@@ -149,7 +149,9 @@ class HandleInertiaRequests extends Middleware
     }
 
     /**
-     * The footer entries of the operator behind the resolved brand.
+     * The footer entries of the operator behind the resolved brand: its
+     * operator-wide rows plus this brand's own, operator-wide first and each
+     * group in its own order.
      *
      * Empty off a brand host: the operator console renders no footer, and
      * asking for one there would be a query for markup nobody emits.
@@ -166,7 +168,11 @@ class HandleInertiaRequests extends Middleware
 
         return FooterLink::query()
             ->where('operator_id', $brand->operator_id)
-            ->inDisplayOrder()
+            ->where(fn ($query) => $query->whereNull('brand_id')->orWhere('brand_id', $brand->getKey()))
+            // Operator-wide rows first, then the brand's own, each in order.
+            ->orderByRaw('brand_id IS NOT NULL')
+            ->orderBy('position')
+            ->orderBy('label')
             ->get()
             ->map(fn (FooterLink $link): FooterLinkData => FooterLinkData::ofModel($link))
             ->all();
