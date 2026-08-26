@@ -70,6 +70,15 @@
 
 ## Done
 
+- [x] ADR-0044 — the payer is on the order. `orders.payer_user_id` names
+      who owes it, a plain ULID with no foreign key, set by whoever creates
+      the root — for now that's Registration, through a widened
+      `RegistrationSettlementRequested::$registrantUserId`; the idempotent
+      path fills a null payer on replay so a request that only later learns
+      who's paying still converges. No backfill: no order in Konventix
+      predates this decision, so there's nothing to fill in for existing
+      rows.
+
 - [x] The orders list defaults its brand filter from the console selection,
       cleared per list with `brand=all` — no event filter, because an order
       settles a registration and the list carries no event column.

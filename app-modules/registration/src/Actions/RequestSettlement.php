@@ -57,6 +57,7 @@ final class RequestSettlement
             registrationTypeId: $registrationType->id,
             eventId: $registration->event_id,
             brandId: $registration->brand_id,
+            registrantUserId: $registration->registrant_user_id,
             settlement: $registrationType->settlement->value,
             billingParty: [
                 'organization_name' => $registration->organization_name,

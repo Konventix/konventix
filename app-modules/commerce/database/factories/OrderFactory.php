@@ -66,6 +66,18 @@ class OrderFactory extends Factory
         ]);
     }
 
+    /**
+     * The person the order is owed by (ADR-0044). Not in the definition:
+     * an order without a payer is what pre-ADR data looks like, and a test
+     * asserting on the payer should say so explicitly.
+     */
+    public function forPayer(string $userId): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'payer_user_id' => $userId,
+        ]);
+    }
+
     public function paid(): static
     {
         return $this->state(fn (array $attributes): array => [

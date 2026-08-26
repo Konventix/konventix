@@ -30,11 +30,16 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * Per ADR-0026, a `settlement: free` `Registration` never causes a row here
  * to exist at all — Commerce stays dormant until something needs to be paid.
  *
+ * `payer_user_id` is the person who owes this order — named by whoever
+ * requested settlement (ADR-0044), a plain user ULID, never a relation.
+ * Everything that answers "what does this person owe" filters on it.
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $settles_type
  * @property string $settles_id
  * @property string $request_key
+ * @property string|null $payer_user_id
  * @property OrderStatus $status
  * @property string $currency
  * @property string $total_net
@@ -57,6 +62,7 @@ class Order extends Model
         'settles_type',
         'settles_id',
         'request_key',
+        'payer_user_id',
         'status',
         'currency',
         'total_net',

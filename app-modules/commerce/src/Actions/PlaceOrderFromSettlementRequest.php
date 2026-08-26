@@ -66,6 +66,7 @@ final class PlaceOrderFromSettlementRequest
         string $priceDisplay,
         int $termsDays,
         string $requestKey,
+        ?string $payerUserId = null,
     ): Order {
         $existing = Order::withoutBrandScope()
             ->where('brand_id', $brandId)
@@ -75,10 +76,16 @@ final class PlaceOrderFromSettlementRequest
             ->first();
 
         if ($existing !== null) {
+            // A replay that finally names the payer (ADR-0044) fills the
+            // column rather than creating a second order.
+            if ($existing->payer_user_id === null && $payerUserId !== null) {
+                $existing->forceFill(['payer_user_id' => $payerUserId])->save();
+            }
+
             return $existing;
         }
 
-        return DB::transaction(function () use ($registrationId, $brandId, $settlement, $billingParty, $lines, $priceDisplay, $termsDays, $requestKey): Order {
+        return DB::transaction(function () use ($registrationId, $brandId, $settlement, $billingParty, $lines, $priceDisplay, $termsDays, $requestKey, $payerUserId): Order {
             $seller = $this->operatorSettings->sellerForBrand($brandId);
             $party = BillingPartyData::ofEventPayload($billingParty);
 
@@ -93,6 +100,7 @@ final class PlaceOrderFromSettlementRequest
                 'settles_type' => self::SETTLES_REGISTRATION,
                 'settles_id' => $registrationId,
                 'request_key' => $requestKey,
+                'payer_user_id' => $payerUserId,
                 'status' => OrderStatus::Pending,
                 'currency' => $this->operatorSettings->currencyForBrand($brandId),
                 'total_net' => $calculation->totalNet,

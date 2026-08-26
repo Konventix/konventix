@@ -22,6 +22,10 @@ namespace Konventix\Registration\Events;
  * rate: Commerce resolves the rate and the treatment — reverse charge, §19
  * UStG — at settlement time (ADR-0017, ADR-0030).
  *
+ * `registrantUserId` names the payer for the order Commerce creates
+ * (ADR-0044): Commerce stores the ULID on the order and never reads this
+ * module's tables to find it.
+ *
  * `requestKey` is what makes Commerce idempotent, and it is deliberately not
  * the registration ULID: ADR-0036 lets one registration map to N orders over
  * its lifetime (the initial settlement plus one per priced amendment), so
@@ -50,6 +54,7 @@ final readonly class RegistrationSettlementRequested
         public string $registrationTypeId,
         public string $eventId,
         public string $brandId,
+        public string $registrantUserId,
         public string $settlement,
         public array $billingParty,
         public array $lines,

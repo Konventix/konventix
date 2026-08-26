@@ -81,7 +81,7 @@ licensing.
 | The net-vs-gross flag itself, and the price declaration | **Registration** — it hangs on the `RegistrationType`, never on a global Commerce setting. Commerce applies it |
 | Custody of participants' money | **Nobody here.** The platform never sits in the flow of funds; the organizer's own PSP account receives it (ADR-0007) |
 | Platform SaaS fees and their billing | **Out of scope for this module** — platform monetization is billed separately and is never deducted from ticket revenue (ADR-0007) |
-| The customer's account, profile, and address of record | **Identity** — Commerce keeps a billing-party read model populated from Identity's events (ADR-0004) |
+| The customer's account, profile, and address of record | **Identity** — the payer is recorded on every order as a user ULID by the module that requests settlement (ADR-0044); Commerce keeps no profile read model |
 | The brand itself, its domains, and its onboarding UI shell | **Platform** — Commerce owns the settlement account behind that onboarding step |
 | Sending invoices, payment reminders, and receipts | **Messaging** |
 | The resource, seat, or booth being paid for | **Resources** |
@@ -121,7 +121,6 @@ maintains from them.
 |---|---|---|
 | `RegistrationSettlementRequested` | Registration | Create the order (and, for `settlement: invoice`, the invoice) from the lines and billing party in the payload — without reading a single Registration model. Lines carry the declared tax *class*; the rate and treatment (reverse charge, §19 UStG) are resolved here at settlement time (ADR-0017, ADR-0030) and snapshotted onto the order lines |
 | `RegistrationCancelled` (proposed) | Registration | Cancel the open order, or issue a credit note if an invoice was already issued |
-| `UserProfileUpdated` (proposed) | Identity | Maintain the billing-party read model (name, billing address, VAT ID) |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler, which must reconcile deletion with statutory invoice retention |
 | `BrandCreated` (proposed) | Platform | Initialize the brand's invoice number range and its (unconnected) settlement account |
 | `EventPublished` (proposed) | Event | Maintain the event read model used to group and report revenue |

@@ -38,6 +38,7 @@ final class CreateOrderOnSettlementRequested
             priceDisplay: $event->priceDisplay,
             termsDays: $event->termsDays,
             requestKey: $event->requestKey,
+            payerUserId: $event->registrantUserId,
         );
     }
 }
