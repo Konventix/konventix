@@ -13,6 +13,7 @@ use Konventix\Commerce\Console\RunDunningSweep;
 use Konventix\Commerce\Data\RegistrationSettlementData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\Permission;
+use Konventix\Commerce\Gdpr\CommerceGdprHandler;
 use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
 use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
 use Konventix\Commerce\Models\Invoice;
@@ -31,6 +32,7 @@ use Konventix\Commerce\Settlement\Unzer\SdkUnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerSettlementAdapter;
 use Konventix\Commerce\Storage\InvoiceStorageMigration;
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -131,6 +133,14 @@ class CommerceServiceProvider extends ModuleServiceProvider
     }
 
     /**
+     * Export by the payer column (ADR-0044); erase nothing — see the handler.
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register(new CommerceGdprHandler);
+    }
+
+    /**
      * The daily dunning sweep. Scheduled here rather than in a central kernel
      * — module wiring never goes into a central provider (ADR-0003).
      */
@@ -194,14 +204,9 @@ class CommerceServiceProvider extends ModuleServiceProvider
      * What a registration cost and whether it is settled, contributed to
      * Registration's own account page.
      *
-     * This is the only direction that works. An order is keyed by
-     * `settles_type`/`settles_id`, so Commerce cannot resolve "which orders
-     * belong to this person" without reading Registration's tables (ADR-0004
-     * forbids it — the same boundary that leaves this module without a GDPR
-     * handler). Asked about one registration whose ownership the caller has
-     * already established, it can answer completely. A standalone "my
-     * invoices" list still cannot be built this way and still needs the
-     * payer read model the ROADMAP carries as an open decision.
+     * Asked about one registration whose ownership the caller has already
+     * established, Commerce answers completely; the standalone list lives at
+     * `/my/orders` and reads `payer_user_id` (ADR-0044).
      *
      * `static` because SlotRegistry is a singleton that outlives the request
      * under Octane, and a closure capturing `$this` would pin this provider

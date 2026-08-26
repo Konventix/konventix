@@ -14,14 +14,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * (ADR-0009): what it costs, whether it is paid, and the invoice if one was
  * issued.
  *
- * Commerce cannot find this by itself. An order is keyed by
- * `settles_type`/`settles_id`, so resolving "whose orders are these" would
- * mean reading Registration's tables, which ADR-0004 forbids — the same
- * boundary that leaves Commerce without a GDPR handler. What closes it here
- * is direction: Registration already knows the registration is the reader's,
- * having checked it, and asks Commerce about that one ULID. Neither module
- * reads the other's tables, and the answer is only ever about a row whose
- * ownership was established before the question was asked.
+ * Commerce cannot find this by itself. The standalone list that can lives at
+ * `/my/orders`, reading `payer_user_id` (ADR-0044).
  *
  * `documentUrl` is a temporary signed URL for exactly that reason. It is
  * minted here, inside the render that verified ownership; the download it

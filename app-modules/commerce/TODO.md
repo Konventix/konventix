@@ -42,8 +42,6 @@
 - [ ] Cancellation as a domain flow (distinct from refund, which is built):
       `OrderCancelled` is still proposed.
 - [ ] Cart and vouchers.
-- [ ] The GDPR exporter in `src/Gdpr/`, reconciled with statutory invoice
-      retention (§147 AO).
 - [ ] GoBD retention lifecycle for the `invoices` disk: the archive must
       survive brand deletion, operator changes, and storage migrations for
       ten years (ADR-0031 names the requirement; only the write-once
@@ -69,6 +67,13 @@
       ranges.
 
 ## Done
+
+- [x] `CommerceGdprHandler` in `src/Gdpr/`, reconciled with statutory
+      invoice retention (§147 AO). Export reads `orders.payer_user_id`
+      (ADR-0044) and returns every order the subject owes on the brand,
+      with its lines, invoices, payments and credit notes; deletion is a
+      deliberate no-op in both modes, because an issued invoice may not be
+      erased and the payer link must stay resolvable for a later audit.
 
 - [x] ADR-0044 — the payer is on the order. `orders.payer_user_id` names
       who owes it, a plain ULID with no foreign key, set by whoever creates

@@ -634,13 +634,6 @@ Findings that are nobody's slice yet. Each is a decision or a piece of work
 that has an owner in a module's `TODO.md` where one exists; this list is only
 so they are not rediscovered.
 
-- **Commerce has no GDPR handler**, and that is a finding rather than an
-  oversight: an order is keyed by `settles_type`/`settles_id`, so Commerce
-  cannot resolve a subject to their invoices without reading Registration's
-  tables (ADR-0004 forbids it). Either Commerce keeps a subject read model or
-  Registration's export carries the invoice references. An issued invoice may
-  not be deleted at all (§147 AO), so this is about export, not erasure.
-  (Compliance's `TODO.md`.)
 - **A subject request is still brand-scoped** while Round 6 settled that it
   spans the operator, so a person registered with two brands gets two
   archives. (Compliance's `TODO.md`.)

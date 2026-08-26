@@ -63,13 +63,6 @@ module built before it will otherwise be retrofitted.
       the retention machinery now has a home for it, but what §147 AO
       deletion *means* needs its own decision before an invoice is near the
       limit.
-- [ ] Commerce has **no** GDPR handler, and that is a finding rather than an
-      omission: an order is keyed by `settles_type`/`settles_id`, so Commerce
-      cannot resolve a subject to their invoices without reading
-      Registration's tables (ADR-0004 forbids it). Either Commerce keeps a
-      subject read model, or Registration's export carries the invoice
-      references. Note that an issued invoice may not be deleted at all
-      (§147 AO / Art. 17(3)(b)), so this is about export, not erasure.
 - [ ] The deadline escalation goes to the operator's single contact address.
       Per-brand or per-role routing (a data protection officer who is not the
       operator's general contact) needs a settings field; flagged rather than
@@ -118,6 +111,13 @@ module built before it will otherwise be retrofitted.
       tracked as Platform's concern.
 
 ## Done
+
+- [x] Commerce has a GDPR handler now. ADR-0044 gave orders a
+      `payer_user_id`, closing the boundary that used to leave Commerce with
+      no lawful way to resolve a subject to their invoices; `CommerceGdprHandler`
+      exports by that column and retains every invoice, credit note and
+      payment it finds — an issued invoice is kept under §147 AO
+      (Art. 17(3)(b) GDPR), so deletion is a deliberate no-op in both modes.
 
 - [x] Subject notices and the deadline watch — the last of slice 14.
       Three subject-facing templates (export ready, deletion acknowledged,
