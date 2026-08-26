@@ -2,9 +2,13 @@
 
 declare(strict_types=1);
 
+use Konventix\Platform\Actions\CreateBrand;
 use Konventix\Platform\Actions\MaterializeDefaultRoles;
 use Konventix\Platform\Actions\SaveRole;
+use Konventix\Platform\Actions\UpdateBrandModules;
+use Konventix\Platform\Data\BrandData;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Role;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Permissions\PermissionCatalog;
@@ -99,4 +103,27 @@ it('materializes only the named module when asked for one', function (): void {
 
     expect(defaultRoleOf($brand, 'platform.brand-admin'))->toBeNull()
         ->and(defaultRoleOf($brand, 'registration.desk'))->not->toBeNull();
+});
+
+it('materializes a gateable module\'s set when that module is activated, and nothing else', function (): void {
+    $brand = Brand::factory()->create(['slug' => 'dr-activate']);
+
+    app(UpdateBrandModules::class)->handle($brand, ['competition' => true]);
+
+    expect(defaultRoleOf($brand, 'competition.tournament-admin'))->not->toBeNull()
+        ->and(defaultRoleOf($brand, 'platform.brand-admin'))->toBeNull();
+});
+
+it('gives a freshly created brand the always-on modules\' sets', function (): void {
+    $operator = Operator::factory()->create();
+
+    $brand = app(CreateBrand::class)->handle($operator, new BrandData(
+        name: 'Fresh',
+        slug: 'dr-fresh',
+        hosts: ['fresh.test'],
+    ));
+
+    expect(defaultRoleOf($brand, 'platform.brand-admin'))->not->toBeNull()
+        ->and(defaultRoleOf($brand, 'registration.desk'))->not->toBeNull()
+        ->and(defaultRoleOf($brand, 'competition.tournament-admin'))->toBeNull();
 });

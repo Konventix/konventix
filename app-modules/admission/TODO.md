@@ -153,8 +153,7 @@
       `tests/EvaluateAdmissionValidityTest.php` asserts the Action's source
       file contains no reference to "payment" at all, plus a validity matrix.
 - [x] Capability catalog in `src/Enums/Permission.php`, `ScanCheckIn`/
-      `PrintBadge` kept separate from the management capabilities (not wired
-      to `permissions:sync` or Policies yet).
+      `PrintBadge` kept separate from the management capabilities.
 - [x] `admission/EventStatsCard` slot contribution to Event's operator
       console dashboard (ADR-0029, ADR-0003 "slots are an activation gate
       point"): `AdmissionServiceProvider::registerSlots()` (the new

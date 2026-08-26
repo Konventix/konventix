@@ -6,9 +6,6 @@
 
 ## Next
 
-- [ ] Define the capability catalog in `src/Enums/Permission.php` (manage teams,
-      manage shift roles, manage shifts, assign others, claim own shift, view
-      roster) and make `permissions:sync` pick it up (ADR-0013).
 - [ ] Add migrations for `teams`, `shift_roles`, `shifts`, `assignments`, and
       `staffer_profiles`: ULID primary keys, `BelongsToBrand`, and `ulid`
       columns without FK constraints for `event_id` and `user_id` (ADR-0014).
@@ -44,6 +41,9 @@
 ## Done
 
 <!-- Move completed items here with the PR that finished them. -->
+
+- [x] Shipped in slice 9, matching this list 1:1 (`ManageAssignments` =
+      assign others).
 
 - [x] Write `SPEC.md` — purpose, ownership boundary, event contract.
 - [x] `TeamFactory` and `ShiftRoleFactory` no longer wrap a four-item

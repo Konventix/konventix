@@ -16,7 +16,14 @@ import { update as updateRole } from '@/routes/admin/roles';
  * here by declaration alone, grouped by its module prefix.
  */
 type Props = {
-    role: { id: string; name: string; brandId: string; brandName: string };
+    role: {
+        id: string;
+        name: string;
+        brandId: string;
+        brandName: string;
+        defaultKey: string | null;
+        customized: boolean;
+    };
     granted: string[];
     catalog: { module: string; permissions: string[] }[];
 };
@@ -43,6 +50,8 @@ function toggle(permission: string, value: boolean): void {
         );
     }
 }
+
+const defaultModule = props.role.defaultKey?.split('.')[0] ?? null;
 
 function moduleLabel(module: string): string {
     return module.charAt(0).toUpperCase() + module.slice(1);
@@ -76,6 +85,16 @@ function submit(): void {
                         <Label for="role-name">Role name</Label>
                         <Input id="role-name" v-model="form.name" />
                         <InputError :message="form.errors.name" />
+                        <p
+                            v-if="
+                                props.role.defaultKey && !props.role.customized
+                            "
+                            class="text-xs text-text-muted"
+                        >
+                            This is the {{ defaultModule }} module's default
+                            role. Once you save an edit, permissions:sync will
+                            not change it again.
+                        </p>
                     </div>
                 </CardContent>
             </Card>

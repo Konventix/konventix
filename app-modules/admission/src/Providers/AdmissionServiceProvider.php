@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Admission\Providers;
 
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Enums\Permission;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
@@ -15,6 +16,7 @@ use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationConfirmed;
@@ -40,6 +42,24 @@ class AdmissionServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'admission';
+    }
+
+    /**
+     * @return list<DefaultRole>
+     */
+    public function defaultRoles(): array
+    {
+        return [
+            DefaultRole::of(
+                'admission.entrance-staff',
+                'Entrance Staff',
+                Permission::ViewAdmissions,
+                Permission::ScanCheckIn,
+                Permission::ViewCheckInLog,
+                Permission::PrintBadge,
+                Permission::AssignHolder,
+            ),
+        ];
     }
 
     /**

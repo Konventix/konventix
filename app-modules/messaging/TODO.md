@@ -78,11 +78,6 @@ the natural first consumer and would register the first real template.
       (`ManageMessageTemplates`/`ViewSuppressionList`/
       `ManageSuppressionList` are the remaining capabilities with no UI yet;
       `ManageSenderIdentity` gates the mail-settings console — see Done).
-- [ ] `permissions:sync` (ADR-0013) doesn't exist in the codebase yet — once it
-      does, run it so `src/Enums/Permission.php`'s seven cases get rows in the
-      `permissions` table. Not specific to this module, but noted here since
-      this is the first module (with Compliance) to populate a real
-      `Permission` enum for it to sync.
 - [ ] Consider whether `BrandCreated` should auto-seed an "unconfigured"
       `messaging_brand_settings` row per brand (so every brand always has
       exactly one row) versus the current design, where absence of a row
@@ -91,6 +86,10 @@ the natural first consumer and would register the first real template.
       query-ergonomics question, not a correctness one.
 
 ## Done
+
+- [x] `permissions:sync` exists (it shipped with the operator console) and,
+      since ADR-0045, also materializes each module's default roles per
+      brand.
 
 - [x] Backfill for accounts created before the recipient projection existed
       closed: `identity:replay-profiles` re-emits `UserProfileUpdated` for

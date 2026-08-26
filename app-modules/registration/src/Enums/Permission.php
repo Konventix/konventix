@@ -9,7 +9,8 @@ namespace Konventix\Registration\Enums;
  * "Capabilities"). This is the source of truth for what Registration can
  * grant; role → permission assignment is per-brand data, not code.
  *
- * Not wired to `permissions:sync`, Policies, or Actions yet — see TODO.md.
+ * Picked up by `permissions:sync` (ADR-0013); add a case and re-sync — never
+ * create permission rows by hand.
  */
 enum Permission: string
 {

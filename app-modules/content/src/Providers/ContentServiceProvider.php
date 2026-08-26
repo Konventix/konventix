@@ -16,6 +16,7 @@ use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Permissions\DefaultRole;
 
 /**
  * Core module: always active for every brand, never gated.
@@ -31,6 +32,16 @@ class ContentServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'content';
+    }
+
+    /**
+     * @return list<DefaultRole>
+     */
+    public function defaultRoles(): array
+    {
+        return [
+            DefaultRole::of('content.editor', 'Content Editor', ...Permission::cases()),
+        ];
     }
 
     /**

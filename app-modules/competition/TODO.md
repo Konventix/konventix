@@ -10,10 +10,6 @@
       `matches`, and `participant_profiles`: ULID primary keys,
       `BelongsToBrand`, and `ulid` columns without FK constraints for
       `event_id`, `game_id`, and `user_id` (ADR-0014).
-- [ ] Define the capability catalog in `src/Enums/Permission.php` (manage
-      competitions, manage entrants, manage schedule, record results, enter a
-      competition, view entrant contact data) and make `permissions:sync` pick
-      it up (ADR-0013).
 - [ ] Emit `MatchScheduled` and `MatchFinished` exactly as ADR-0012 specifies —
       ULIDs and scalars only — since GameOps is built against them. Add an arch
       test proving Competition imports no GameOps class.
@@ -60,6 +56,13 @@
       listener short-circuits when the `competition` feature is off.
 
 ## Done
+
+- [x] The catalogue shipped in slice 10a with six cases (`ViewCompetitions`,
+      `ManageDisciplines`, `ManageCompetitions`, `ManageEntrants`,
+      `RecordResults`, `CorrectResults`); the item's "manage schedule",
+      "enter a competition" and "view entrant contact data" are not cases
+      and are owed with the screens that need them. Tournament Admin is the
+      module's default role (ADR-0045).
 
 - [x] Slice 10c — standings (the inventory's "absorb, then persist"). Five
       calculators behind one contract, pure like the generators, plus a

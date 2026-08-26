@@ -28,10 +28,6 @@
       and `resource_bookings`: ULID primary keys, `BelongsToBrand`, `ulid`
       columns without FK constraints for `event_id`, `venue_id`, and the polymorphic
       holder reference (ADR-0014).
-- [ ] Define the capability catalog in `src/Enums/Permission.php` (manage types,
-      manage resources, manage availability, book for others, book own, view
-      bookings) and make `permissions:sync` pick it up (ADR-0013).
-
 ## Backlog
 
 - [ ] Capacity modes per ADR-0034 (decision log Round 6, D-EVT-03): add a
@@ -56,6 +52,10 @@
       registration, including a concurrent double-booking test.
 
 ## Done
+
+- [x] Shipped in slice 8 as five cases; "manage availability" and "book own"
+      are not cases (availability is a booking, and booking one's own needs
+      no capability); `ReleaseBookings` was added instead.
 
 - [x] Slice 8 (domain) — bookings, capacity modes and claim fulfilment.
       `resource_types` / `resources` / `resource_bookings` with ADR-0020's

@@ -372,7 +372,7 @@ in the owning module's `TODO.md` when it lands.
     whose docblocks still say they are "not wired to `permissions:sync`"
     and the two TODOs claiming the command does not exist get corrected,
     and Competition, Resources and Staffing get the capability enums their
-    TODOs owe.
+    TODOs owe. **Done** (ADR-0045).
 
 20. **Compliance: a public request page, and withdrawal as a policy
     setting.** Two items, one module, one slice.

@@ -7,13 +7,12 @@ namespace Database\Seeders\Demo;
 use Illuminate\Support\Collection;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Actions\AssignRoleToUser;
-use Konventix\Platform\Actions\SaveRole;
+use Konventix\Platform\Actions\MaterializeDefaultRoles;
 use Konventix\Platform\Actions\UpdateBrandModules;
 use Konventix\Platform\Actions\UpdateBrandTheme;
 use Konventix\Platform\Data\BrandThemeData;
 use Konventix\Platform\Models\AdminFavorite;
 use Konventix\Platform\Models\Brand;
-use Konventix\Platform\Models\Permission;
 use Konventix\Platform\Models\Role;
 use Konventix\Platform\Modules\ModuleGate;
 
@@ -57,9 +56,9 @@ final class DemoPlatformSeeder
     public function __construct(
         private readonly UpdateBrandTheme $updateTheme,
         private readonly UpdateBrandModules $updateModules,
-        private readonly SaveRole $saveRole,
         private readonly AssignRoleToUser $assignRole,
         private readonly ModuleGate $gate,
+        private readonly MaterializeDefaultRoles $materialize,
     ) {}
 
     public function handle(Brand $brand, EventArchetype $archetype): void
@@ -69,51 +68,21 @@ final class DemoPlatformSeeder
     }
 
     /**
-     * Roles are seeded after the users exist, since a role nobody holds
-     * tells the console only half the story: each seeded role goes to one
-     * distinct member, so the roles screen shows real assignments.
+     * Roles are the modules' defaults (ADR-0045), materialized here rather
+     * than hardcoded, then handed to one distinct member each so the roles
+     * screen shows real assignments.
      *
      * @param  Collection<int, User>  $members
      */
     public function seedRoles(Brand $brand, Collection $members): void
     {
-        $catalog = Permission::query()->pluck('name');
+        $this->materialize->handle($brand);
 
-        /** @var array<string, list<string>> $roles */
-        $roles = [
-            // Everything the brand's own staff could ever need — the role an
-            // operator hands to the person running the brand.
-            'Brand Admin' => $catalog->all(),
-            // The door: scanning, badges, and reading who registered.
-            'Front Desk' => $catalog
-                ->filter(fn (string $name): bool => str_starts_with($name, 'admission.')
-                    || $name === 'registration.view-registrations')
-                ->values()
-                ->all(),
-            // The newsroom: writing and publishing, moderating comments.
-            'Editor' => $catalog
-                ->filter(fn (string $name): bool => str_starts_with($name, 'content.'))
-                ->values()
-                ->all(),
-        ];
+        foreach (['Brand Admin', 'Registration Desk', 'Content Editor'] as $index => $name) {
+            $holder = $members->get($index);
+            $role = Role::query()->where('brand_id', $brand->getKey())->where('name', $name)->first();
 
-        $index = 0;
-
-        foreach ($roles as $name => $permissions) {
-            $holder = $members->get($index++);
-
-            if ($permissions === []) {
-                continue;
-            }
-
-            $existing = Role::query()
-                ->where('brand_id', $brand->getKey())
-                ->where('name', $name)
-                ->first();
-
-            $role = $existing ?? $this->saveRole->create($brand->getKey(), $name, $permissions);
-
-            if ($holder instanceof User) {
+            if ($role !== null && $holder instanceof User) {
                 $this->assignRole->handle($role, $holder->getKey());
             }
         }

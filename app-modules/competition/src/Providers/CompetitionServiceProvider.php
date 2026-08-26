@@ -11,6 +11,7 @@ use Konventix\Competition\Brackets\Formats\GroupStageGenerator;
 use Konventix\Competition\Brackets\Formats\RoundRobinGenerator;
 use Konventix\Competition\Brackets\Formats\SingleEliminationGenerator;
 use Konventix\Competition\Brackets\Formats\SwissGenerator;
+use Konventix\Competition\Enums\Permission;
 use Konventix\Competition\Gdpr\CompetitionGdprHandler;
 use Konventix\Competition\Listeners\ProjectEligibilityOnRegistrationEvents;
 use Konventix\Competition\Standings\Calculators\DoubleEliminationStandingsCalculator;
@@ -21,6 +22,7 @@ use Konventix\Competition\Standings\Calculators\SwissStandingsCalculator;
 use Konventix\Competition\Standings\StandingsCalculatorRegistry;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Laravel\Pennant\Feature;
@@ -38,6 +40,16 @@ class CompetitionServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'competition';
+    }
+
+    /**
+     * @return list<DefaultRole>
+     */
+    public function defaultRoles(): array
+    {
+        return [
+            DefaultRole::of('competition.tournament-admin', 'Tournament Admin', ...Permission::cases()),
+        ];
     }
 
     /**

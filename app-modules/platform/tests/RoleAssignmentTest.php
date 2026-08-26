@@ -176,3 +176,19 @@ it('defaults the brand to the console selection when the page carries none', fun
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('selectedBrandId', Brand::query()->orderBy('name')->value('id')));
 });
+
+it('tells the operator which roles are module defaults and which they have edited', function (): void {
+    [, $admin] = rolesOperator();
+    $brand = Brand::factory()->create(['slug' => 'ra-defaults']);
+    Role::query()->create(['name' => 'Registration Desk', 'guard_name' => 'web', 'brand_id' => $brand->getKey(), 'default_key' => 'registration.desk']);
+    Role::query()->create(['name' => 'Our Editors', 'guard_name' => 'web', 'brand_id' => $brand->getKey(), 'default_key' => 'content.editor', 'customized_at' => now()]);
+
+    $this->actingAs($admin)
+        ->get('http://admin.roles.test/admin/roles?brand='.$brand->getKey())
+        ->assertInertia(function (AssertableInertia $page): void {
+            $roles = collect($page->toArray()['props']['roles'])->keyBy('name');
+            expect($roles['Registration Desk']['defaultKey'])->toBe('registration.desk')
+                ->and($roles['Registration Desk']['customized'])->toBeFalse()
+                ->and($roles['Our Editors']['customized'])->toBeTrue();
+        });
+});

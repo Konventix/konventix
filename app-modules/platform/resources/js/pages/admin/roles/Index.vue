@@ -40,6 +40,8 @@ type RoleRow = {
     name: string;
     permissions: string[];
     members: string[];
+    defaultKey: string | null;
+    customized: boolean;
 };
 
 const props = defineProps<{
@@ -163,9 +165,9 @@ function submitCreate(): void {
         </AdminPageHeader>
 
         <p v-if="props.roles.length === 0" class="text-sm text-text-muted">
-            This brand has no roles yet — roles are created by
-            <code class="rounded bg-subtle px-1">konventix:seed</code> or a
-            future role editor.
+            This brand has no roles yet — default roles arrive with
+            <code class="rounded bg-subtle px-1">permissions:sync</code>; create
+            your own with New role.
         </p>
 
         <Card
@@ -178,6 +180,16 @@ function submitCreate(): void {
                     {{ role.name }}
                     <span class="text-xs font-normal text-text-muted">
                         {{ role.permissions.length }} capabilities
+                    </span>
+                    <span
+                        v-if="role.defaultKey"
+                        class="rounded-full bg-subtle px-2 py-0.5 text-xs font-normal text-text-muted"
+                        :title="`Shipped by the ${role.defaultKey.split('.')[0]} module`"
+                    >
+                        default · {{ role.defaultKey.split('.')[0] }}
+                        <template v-if="role.customized">
+                            · customized</template
+                        >
                     </span>
                     <Button as-child variant="ghost" size="sm" class="ml-auto">
                         <Link :href="editRole(role.id)">

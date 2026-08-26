@@ -79,6 +79,36 @@ depends on brand resolution and gating working.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] Slice 19 — default role sets (ADR-0045). A module declares its
+      defaults beside its `Permission` enum through the `defaultRoles()`
+      hook on `ModuleServiceProvider` and Platform's new `DefaultRole` value
+      object (`::of()` for a module's own capabilities, `::everything()` for
+      Platform's own "Brand Admin", expanded against the whole catalogue at
+      materialization time since Platform may name the catalogue but not
+      another module's enum). Every role row now carries `default_key` and
+      `customized_at` — the marker `MaterializeDefaultRoles` reads to tell a
+      module's default from an operator's role, and to stop rewriting one
+      the operator has since edited or renamed; a name collision with an
+      operator-made role is reported and skipped, never hijacked.
+      Materialization runs from three places: `permissions:sync` (every
+      brand, so a capability added to an enum reaches every untouched
+      role), `UpdateBrandModules` (the activated module's set, the moment
+      it goes on), and `CreateBrand` (the always-on modules' sets, from the
+      brand's first minute). Five sets shipped: Platform's "Brand Admin"
+      (everything), Registration's "Registration Desk", Admission's
+      "Entrance Staff", Content's "Content Editor" (every capability — it
+      has none narrower to withhold), and Competition's "Tournament Admin".
+      The roles console shows which role is which: a "default · `<module>`"
+      badge, "· customized" once an edit has been saved, and the edit
+      screen names the module and warns that the next sync leaves a saved
+      edit alone. The demo seeder no longer hardcodes its three roles by
+      prefix-matching permission names — it materializes the same defaults
+      and hands three of them to a member each. Six stale claims corrected
+      alongside it: four enum docblocks and two TODOs that said
+      `permissions:sync` did not exist or did not pick up their catalogue,
+      and Competition/Resources/Staffing's TODOs, which still asked for
+      capability enums that had already shipped.
+
 - [x] The operator dashboard is composed through the `admin.dashboard` UI slot
       (ADR-0003 enforcement point 3), like the per-event dashboard already
       was, and Platform contributes the first card on it: Pulse, Horizon and

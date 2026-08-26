@@ -14,7 +14,8 @@ namespace Konventix\Admission\Enums;
  * management capabilities rather than folded into a single "manage
  * admissions" grant (SPEC.md "Capabilities").
  *
- * Not wired to `permissions:sync`, Policies, or Actions yet — see TODO.md.
+ * Picked up by `permissions:sync` (ADR-0013); add a case and re-sync — never
+ * create permission rows by hand.
  */
 enum Permission: string
 {

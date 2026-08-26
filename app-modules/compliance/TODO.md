@@ -105,12 +105,11 @@ module built before it will otherwise be retrofitted.
       is enforced solely inside `PublishPolicyVersion`'s transaction, which is
       correct for the single-writer path this Action guarantees but not
       immune to two concurrent direct writes bypassing the Action.
-- [ ] `permissions:sync` (ADR-0013) doesn't exist yet anywhere in the app —
-      `src/Enums/Permission.php` landed here, but the sync command and the
-      seeded per-brand roles that grant its capabilities are still open,
-      tracked as Platform's concern.
-
 ## Done
+
+- [x] `permissions:sync` exists (it shipped with the operator console) and,
+      since ADR-0045, also materializes each module's default roles per
+      brand.
 
 - [x] Commerce has a GDPR handler now. ADR-0044 gave orders a
       `payer_user_id`, closing the boundary that used to leave Commerce with

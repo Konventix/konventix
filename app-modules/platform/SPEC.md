@@ -52,7 +52,11 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
 - **Per-brand role administration.** Roles and their permission grants are data
   scoped by `brand_id` as the spatie team key, plus the `permissions:sync`
   command that projects every module's capability enum into permission rows
-  (ADR-0013). Platform owns the mechanism, never another module's enum.
+  (ADR-0013). Platform owns the mechanism, never another module's enum. Each
+  module declares its own starting roles through the `defaultRoles()`
+  provider hook (ADR-0045) — the same declare-only pattern as
+  `registerBlockTypes()`/`registerSlots()` — and Platform materializes them
+  per brand.
 
 ## Does not own
 
@@ -93,6 +97,9 @@ event class lands.
 | `StaticPagePublished` | A block-based brand page goes live | `brand_id`, `page_id`, `slug`, `published_at` | proposed |
 | `StaticPageUnpublished` | A brand page is withdrawn | `brand_id`, `page_id`, `slug` | proposed |
 | `RoleGrantsChanged` | A brand role's permission grants are edited | `brand_id`, `role_id`, `role_name` | proposed |
+
+Activation materializes the module's default roles directly (ADR-0045); the
+events stay proposed until a consumer outside Platform needs them.
 
 `BrandResolved` is deliberately absent. Resolution happens on every request;
 publishing it would invite queued listeners on the hot path. Modules read the

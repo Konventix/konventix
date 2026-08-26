@@ -44,6 +44,7 @@ class RoleAssignmentController
 
         $roles = $brandId === null ? collect() : Role::query()
             ->where($teamKey, $brandId)
+            ->with('permissions')
             ->orderBy('name')
             ->get()
             ->map(function (Role $role) use ($teamKey): array {
@@ -57,6 +58,8 @@ class RoleAssignmentController
                     'name' => $role->name,
                     'permissions' => $role->permissions->pluck('name')->sort()->values()->all(),
                     'members' => $members->all(),
+                    'defaultKey' => $role->default_key,
+                    'customized' => $role->customized_at !== null,
                 ];
             });
 
@@ -98,6 +101,8 @@ class RoleAssignmentController
                 'name' => $role->name,
                 'brandId' => $brandId,
                 'brandName' => Brand::query()->find($brandId)->name ?? $brandId,
+                'defaultKey' => $role->default_key,
+                'customized' => $role->customized_at !== null,
             ],
             'granted' => $role->permissions->pluck('name')->sort()->values()->all(),
             'catalog' => collect($catalog->grouped())

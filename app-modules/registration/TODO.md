@@ -6,9 +6,6 @@
 
 ## Next
 
-- [ ] Register policies for viewing, approving, and managing types and quotas
-      (the `Permission` catalog exists — `src/Enums/Permission.php` — but is
-      not wired to `permissions:sync` or any Policy class yet).
 - [ ] A frozen type cannot be superseded from the console: an organizer whose
       terms have changed must build the replacement by hand. A "duplicate this
       type" action would make the intended path (new type, old one hidden by
@@ -56,6 +53,13 @@
       screen is where its tokens belong.
 
 ## Done
+
+- [x] Authorization for viewing, approving, and managing types and quotas
+      goes through `Gate::authorize(Permission::X->value)` on each admin
+      controller action, this project's actual pattern rather than a
+      per-model Policy class; `permissions:sync` has picked up
+      `src/Enums/Permission.php` all along, since it walks every module's
+      enum.
 
 - [x] The registration list defaults both its brand and its event filter from
       the console selection, each cleared per list with `brand=all` /
@@ -225,8 +229,7 @@
       `resources/js/pages` is not wired into Inertia's page resolution yet,
       see `.ai/rules/resources.md` vs. `Konventix\Event\Http\Controllers\EventLandingController`'s
       docblock for the same caveat).
-- [x] Capability catalog in `src/Enums/Permission.php` (not wired to
-      `permissions:sync` or Policies yet).
+- [x] Capability catalog in `src/Enums/Permission.php`.
 - [x] `registration/EventStatsCard` slot contribution to Event's operator
       console dashboard (ADR-0029, ADR-0003 "slots are an activation gate
       point"): `RegistrationServiceProvider::registerSlots()` (the new

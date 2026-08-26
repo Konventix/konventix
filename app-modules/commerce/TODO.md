@@ -252,7 +252,6 @@
       `ManualSettlementAdapter`; `tests/RegistrationImportBoundaryTest.php`
       asserts Commerce never imports a single `Konventix\Registration` class.
 - [x] Capability catalog in `src/Enums/Permission.php`, `BookManualPayment`
-      kept separate from `ManageSettlementAccount` (not wired to
-      `permissions:sync` or Policies yet).
+      kept separate from `ManageSettlementAccount`.
 
 <!-- Move completed items here with the PR that finished them. -->

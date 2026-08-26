@@ -102,8 +102,7 @@
       JSON, not an Inertia render — see Next for why.
 - [x] `src/Enums/Permission.php` capability catalogue (`ViewEvents`,
       `CreateEvent`, `UpdateEvent`, `PublishEvent`, `RescheduleEvent`,
-      `CancelEvent`, `ArchiveEvent`, `ViewVenues`, `ManageVenues`) — not yet
-      wired to policies or `permissions:sync` (see Backlog).
+      `CancelEvent`, `ArchiveEvent`, `ViewVenues`, `ManageVenues`).
 - [x] `event-hero` and `countdown` static-page block types
       (`Blocks\EventHeroBlock`/`CountdownBlock`), registered via the new
       `EventServiceProvider::registerBlockTypes()` hook — Platform's

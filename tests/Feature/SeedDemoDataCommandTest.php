@@ -344,9 +344,9 @@ it('seeds brand theming, module activation, roles and favorites', function () {
         ->and(Feature::for($brand)->active($gate->featureName('agenda')))->toBeFalse();
 
     $roles = Role::query()->where('brand_id', $brand->getKey())->get();
-    expect($roles->pluck('name')->all())->toContain('Brand Admin', 'Front Desk', 'Editor')
+    expect($roles->pluck('name')->all())->toContain('Brand Admin', 'Registration Desk', 'Content Editor')
         // A role nobody holds tells the console only half the story.
-        ->and($roles->firstWhere('name', 'Editor')->users()->count())->toBeGreaterThan(0);
+        ->and($roles->firstWhere('name', 'Content Editor')->users()->count())->toBeGreaterThan(0);
 
     expect(AdminFavorite::query()->count())->toBe(3);
 
