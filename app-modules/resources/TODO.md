@@ -28,6 +28,7 @@
       and `resource_bookings`: ULID primary keys, `BelongsToBrand`, `ulid`
       columns without FK constraints for `event_id`, `venue_id`, and the polymorphic
       holder reference (ADR-0014).
+
 ## Backlog
 
 - [ ] Capacity modes per ADR-0034 (decision log Round 6, D-EVT-03): add a

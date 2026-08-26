@@ -54,6 +54,14 @@
 
 ## Done
 
+- [x] Registration ships "Registration Desk" (`registration.desk`:
+      `ViewRegistrations`, `ApproveRegistrations`, `RejectRegistrations`,
+      `CancelRegistrations`, `ExportRegistrations`) as its ADR-0045 default
+      role set, declared beside `src/Enums/Permission.php` in
+      `RegistrationServiceProvider::defaultRoles()` and materialized per
+      brand by `permissions:sync` (and on module activation and brand
+      creation, since Registration is always on).
+
 - [x] Authorization for viewing, approving, and managing types and quotas
       goes through `Gate::authorize(Permission::X->value)` on each admin
       controller action, this project's actual pattern rather than a

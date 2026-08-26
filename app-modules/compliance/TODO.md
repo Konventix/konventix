@@ -105,6 +105,7 @@ module built before it will otherwise be retrofitted.
       is enforced solely inside `PublishPolicyVersion`'s transaction, which is
       correct for the single-writer path this Action guarantees but not
       immune to two concurrent direct writes bypassing the Action.
+
 ## Done
 
 - [x] `permissions:sync` exists (it shipped with the operator console) and,
