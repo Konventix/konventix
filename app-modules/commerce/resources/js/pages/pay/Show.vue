@@ -23,20 +23,23 @@ type Props = {
         totalGross: string;
         lines: { label: string; quantity: number; lineGross: string }[];
     };
-    hostedCheckoutAvailable: boolean;
+    accounts: Konventix.Commerce.Data.CheckoutAccountData[];
     paymentStatus: string | null;
 };
 
 const props = defineProps<Props>();
 
-const starting = ref(false);
+// The id of the account currently starting a checkout — only that
+// account's button disables, so a second attempt on a different account
+// stays reachable.
+const starting = ref<string | null>(null);
 
-function pay(): void {
-    starting.value = true;
+function pay(accountId: string): void {
+    starting.value = accountId;
     router.post(
         startCheckout(props.registrationId).url,
-        {},
-        { onFinish: () => (starting.value = false) },
+        { account: accountId },
+        { onFinish: () => (starting.value = null) },
     );
 }
 
@@ -119,19 +122,25 @@ const lastAttemptFailed = computed(
                 <span>The last payment attempt did not go through.</span>
             </div>
 
-            <Button
-                v-if="props.hostedCheckoutAvailable"
-                class="self-start"
-                :disabled="starting"
-                @click="pay"
+            <div
+                v-if="props.accounts.length > 0"
+                class="flex flex-col items-start gap-2"
             >
-                <CreditCard class="size-4" />
-                {{
-                    lastAttemptFailed || awaitingConfirmation
-                        ? 'Try again'
-                        : 'Pay now'
-                }}
-            </Button>
+                <Button
+                    v-for="account in props.accounts"
+                    :key="account.id"
+                    :disabled="starting === account.id"
+                    @click="pay(account.id)"
+                >
+                    <CreditCard class="size-4" />
+                    {{
+                        lastAttemptFailed || awaitingConfirmation
+                            ? 'Try again'
+                            : 'Pay'
+                    }}
+                    — {{ account.label }}
+                </Button>
+            </div>
 
             <p v-else class="text-sm text-text-muted">
                 This organizer settles by bank transfer — payment details arrive

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Actions\BookManualPayment;
 use Konventix\Commerce\Actions\ConnectSettlementAccount;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
@@ -16,6 +18,8 @@ use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\Mollie\MollieApi;
+use Konventix\Commerce\Settlement\Mollie\MolliePaymentSnapshot;
 use Konventix\Commerce\Settlement\Mollie\MollieSettlementAdapter;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
@@ -65,6 +69,34 @@ final class MultiProviderSettlementTestFakeStripe implements StripeApi
 
         return $this->capabilities;
     }
+}
+
+/**
+ * A fake of the `MollieApi` seam for the checkout-account-choice tests
+ * below — no SDK call leaves the process.
+ */
+final class MultiProviderSettlementTestFakeMollieApi implements MollieApi
+{
+    /** @var list<array{params: array<string, mixed>, apiKey: string}> */
+    public array $created = [];
+
+    public function createPayment(array $params, string $apiKey): MolliePaymentSnapshot
+    {
+        $this->created[] = ['params' => $params, 'apiKey' => $apiKey];
+
+        return new MolliePaymentSnapshot(
+            id: 'tr_multi_'.count($this->created),
+            status: 'open',
+            checkoutUrl: 'https://www.mollie.test/checkout/select-method/multi',
+        );
+    }
+
+    public function fetchPayment(string $paymentId, string $apiKey): MolliePaymentSnapshot
+    {
+        return new MolliePaymentSnapshot(id: $paymentId, status: 'open');
+    }
+
+    public function refundPayment(string $paymentId, array $params, string $apiKey): void {}
 }
 
 it('lets a brand keep one live account per provider', function (): void {
@@ -201,4 +233,121 @@ it('names the provider and the account on the settlement events', function (): v
         fn (PaymentReceived $event): bool => $event->settlementMethod === 'manual'
             && $event->settlementAccountId === null,
     );
+});
+
+it('lists every offered hosted account on the checkout page with its label', function (): void {
+    $this->withBrand();
+    $registrationId = (string) Str::ulid();
+
+    Order::factory()->create([
+        'status' => OrderStatus::Pending,
+        'settles_type' => 'registration',
+        'settles_id' => $registrationId,
+        'total_gross' => '119.00',
+        'currency' => 'EUR',
+    ]);
+
+    app()->instance(StripeApi::class, new MultiProviderSettlementTestFakeStripe(['card_payments' => 'active']));
+
+    // Ordered before Mollie so it lands first on the page (liveAccountsFor
+    // orders by connected_at).
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)
+        ->create(['capabilities' => ['card_payments' => 'active'], 'connected_at' => now()->subMinute()]);
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)
+        ->create(['checkout_label' => 'PayPal oder Sofort', 'connected_at' => now()]);
+    // Onboarding not finished (no connected_at) — never offered.
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_UNZER)->create(['connected_at' => null]);
+
+    $this->get('/pay/registration/'.$registrationId)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('pay/Show')
+            ->has('accounts', 2)
+            ->where('accounts.0.provider', 'stripe')
+            ->where('accounts.1.label', 'PayPal oder Sofort'));
+});
+
+it('starts the hosted checkout on the chosen account and records it on the payment', function (): void {
+    $this->withBrand();
+    $registrationId = (string) Str::ulid();
+
+    $order = Order::factory()->create([
+        'status' => OrderStatus::Pending,
+        'settles_type' => 'registration',
+        'settles_id' => $registrationId,
+        'total_gross' => '119.00',
+        'currency' => 'EUR',
+    ]);
+
+    $mollie = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)
+        ->create(['credentials' => ['api_key' => 'live_multi_key']]);
+
+    app()->instance(MollieApi::class, new MultiProviderSettlementTestFakeMollieApi);
+
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => $mollie->id])
+        ->assertRedirect('https://www.mollie.test/checkout/select-method/multi');
+
+    $payment = Payment::withoutBrandScope()->where('order_id', $order->id)->firstOrFail();
+    expect($payment->settlement_account_id)->toBe($mollie->id)
+        ->and($payment->provider)->toBe('mollie');
+});
+
+it('refuses an account that is not offered, not this brand\'s, or missing', function (): void {
+    $brand = $this->withBrand();
+    $registrationId = (string) Str::ulid();
+
+    Order::factory()->create([
+        'status' => OrderStatus::Pending,
+        'settles_type' => 'registration',
+        'settles_id' => $registrationId,
+        'total_gross' => '119.00',
+        'currency' => 'EUR',
+    ]);
+
+    // Stripe with pending card_payments: connected, but not offered yet.
+    $notOffered = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)
+        ->create(['capabilities' => ['card_payments' => 'pending']]);
+
+    // A live, offered account — but on another brand entirely.
+    $this->withBrand(Brand::factory()->create());
+    $foreign = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
+    $this->withBrand($brand);
+
+    // postJson, not post: a real Inertia request sends X-Requested-With,
+    // which is what makes Laravel render the ValidationException as JSON
+    // (422) instead of the default redirect-back-with-errors.
+    $this->postJson('/pay/registration/'.$registrationId.'/start', ['account' => $notOffered->id])
+        ->assertStatus(422);
+    $this->postJson('/pay/registration/'.$registrationId.'/start', ['account' => $foreign->id])
+        ->assertStatus(422);
+    $this->postJson('/pay/registration/'.$registrationId.'/start', ['account' => (string) Str::ulid()])
+        ->assertStatus(422);
+});
+
+it('refuses a second account once a payment succeeded', function (): void {
+    $this->withBrand();
+    $registrationId = (string) Str::ulid();
+
+    $order = Order::factory()->create([
+        'status' => OrderStatus::Pending,
+        'settles_type' => 'registration',
+        'settles_id' => $registrationId,
+        'total_gross' => '119.00',
+        'currency' => 'EUR',
+    ]);
+
+    $stripe = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)
+        ->create(['capabilities' => ['card_payments' => 'active']]);
+    $mollie = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'settlement_account_id' => $stripe->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'amount' => '119.00',
+        'currency' => 'EUR',
+    ]);
+
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => $mollie->id])
+        ->assertStatus(409);
 });

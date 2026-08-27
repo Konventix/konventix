@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Http\Controllers;
 
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
@@ -57,24 +62,42 @@ class CheckoutController
                     'lineGross' => $line->line_gross,
                 ])->all(),
             ],
-            'hostedCheckoutAvailable' => $this->hostedCheckoutAvailable($order),
+            'accounts' => $this->offeredAccounts($order)->map(fn (SettlementAccount $account): array => CheckoutAccountData::ofAccount(
+                $account,
+                $this->registry->forProvider($account->provider),
+            )->toArray())->values()->all(),
             'paymentStatus' => $latestPayment?->status->value,
         ]);
     }
 
-    public function start(string $registration): SymfonyResponse
+    public function start(Request $request, string $registration): SymfonyResponse
     {
         $order = $this->orderFor($registration);
 
+        $validated = $request->validate([
+            'account' => ['required', 'ulid'],
+        ]);
+
         abort_unless($order->status === OrderStatus::Pending, 409, 'This order is not payable.');
+        abort_if(
+            Payment::query()->where('order_id', $order->id)->where('status', PaymentStatus::Succeeded)->exists(),
+            409,
+            'This order is already settled.',
+        );
 
-        // Task 3 replaces this with the payer's actual choice (ADR-0046);
-        // for now the first offered account with a hosted checkout wins.
-        $account = SettlementAccount::liveAccountsFor($order->brand_id)
-            ->first(fn (SettlementAccount $a): bool => $a->isOffered() && $this->registry->forProvider($a->provider) instanceof ProvidesHostedCheckout);
-        $adapter = $account === null ? null : $this->registry->forProvider($account->provider);
+        $account = $this->offeredAccounts($order)->firstWhere('id', $validated['account']);
 
-        abort_unless($account !== null && $adapter instanceof ProvidesHostedCheckout, 409, 'This brand takes no online payment.');
+        if ($account === null) {
+            throw ValidationException::withMessages([
+                'account' => __('Choose one of the offered payment options.'),
+            ]);
+        }
+
+        $adapter = $this->registry->forProvider($account->provider);
+
+        // offeredAccounts() only returns accounts whose adapter implements
+        // this — unreachable in practice, but narrows the type for PHPStan.
+        abort_unless($adapter instanceof ProvidesHostedCheckout, 409, 'This brand takes no online payment.');
 
         $redirect = $adapter->startCheckout(
             $account,
@@ -100,9 +123,17 @@ class CheckoutController
             ->firstOrFail();
     }
 
-    private function hostedCheckoutAvailable(Order $order): bool
+    /**
+     * Every account the payer may choose from (ADR-0046): live, offered,
+     * and able to send the payer to a hosted checkout page.
+     *
+     * @return Collection<int, SettlementAccount>
+     */
+    private function offeredAccounts(Order $order): Collection
     {
         return SettlementAccount::liveAccountsFor($order->brand_id)
-            ->contains(fn (SettlementAccount $a): bool => $a->isOffered() && $this->registry->forProvider($a->provider) instanceof ProvidesHostedCheckout);
+            ->filter(fn (SettlementAccount $account): bool => $account->isOffered()
+                && $this->registry->forProvider($account->provider) instanceof ProvidesHostedCheckout)
+            ->values();
     }
 }

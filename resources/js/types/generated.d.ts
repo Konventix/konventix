@@ -43,6 +43,11 @@ declare namespace Konventix {
     }
     namespace Commerce {
         namespace Data {
+            export type CheckoutAccountData = {
+                readonly id: string;
+                readonly provider: string;
+                readonly label: string;
+            };
             export type MyOrderData = {
                 readonly id: string;
                 readonly placedAt: string;

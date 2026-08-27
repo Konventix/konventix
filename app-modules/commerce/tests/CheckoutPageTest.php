@@ -47,7 +47,7 @@ final class CheckoutPageTestFakeStripe implements StripeApi
 }
 
 /**
- * @return array{0: string, 1: Order}
+ * @return array{0: string, 1: Order, 2: ?SettlementAccount}
  */
 function checkoutPageOrder(bool $stripeConnected = true): array
 {
@@ -69,8 +69,10 @@ function checkoutPageOrder(bool $stripeConnected = true): array
         'line_gross' => '119.00',
     ]);
 
+    $account = null;
+
     if ($stripeConnected) {
-        SettlementAccount::factory()->create([
+        $account = SettlementAccount::factory()->create([
             'provider' => SettlementAccount::PROVIDER_STRIPE,
             'provider_account_id' => 'acct_page_1',
             // Only an active Stripe account is offered at checkout (ADR-0046).
@@ -79,7 +81,7 @@ function checkoutPageOrder(bool $stripeConnected = true): array
         app()->instance(StripeApi::class, new CheckoutPageTestFakeStripe);
     }
 
-    return [$registrationId, $order];
+    return [$registrationId, $order, $account];
 }
 
 it('shows the order summary for a registration ULID', function (): void {
@@ -91,7 +93,8 @@ it('shows the order summary for a registration ULID', function (): void {
             ->component('pay/Show')
             ->where('order.totalGross', '119.00')
             ->where('order.lines.0.label', 'Weekend ticket')
-            ->where('hostedCheckoutAvailable', true)
+            ->has('accounts', 1)
+            ->where('accounts.0.provider', 'stripe')
             ->where('paymentStatus', null));
 });
 
@@ -101,28 +104,34 @@ it('offers no online payment for a manual-only brand', function (): void {
     $this->get('/pay/registration/'.$registrationId)
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('hostedCheckoutAvailable', false));
+            ->where('accounts', []));
 
-    $this->post('/pay/registration/'.$registrationId.'/start')->assertStatus(409);
+    // Nothing is offered, so any account the payer might pick is refused.
+    // postJson: a real Inertia request sends X-Requested-With, which is
+    // what makes Laravel render the ValidationException as JSON (422)
+    // instead of the default redirect-back-with-errors.
+    $this->postJson('/pay/registration/'.$registrationId.'/start', ['account' => (string) Str::ulid()])
+        ->assertStatus(422);
 });
 
 it('starts the hosted checkout and hard-redirects to the provider', function (): void {
-    [$registrationId, $order] = checkoutPageOrder();
+    [$registrationId, $order, $account] = checkoutPageOrder();
 
     // Inertia::location: a plain request gets a real redirect to the
     // provider (SPA requests would get 409 + X-Inertia-Location).
-    $this->post('/pay/registration/'.$registrationId.'/start')
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => $account->id])
         ->assertRedirect('https://checkout.stripe.test/session');
 
     expect(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
 });
 
 it('refuses to start a checkout for a settled order', function (): void {
-    [$registrationId, $order] = checkoutPageOrder();
+    [$registrationId, $order, $account] = checkoutPageOrder();
 
     $order->forceFill(['status' => OrderStatus::Paid, 'paid_at' => now()])->save();
 
-    $this->post('/pay/registration/'.$registrationId.'/start')->assertStatus(409);
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => $account->id])
+        ->assertStatus(409);
 });
 
 it('404s an unknown registration', function (): void {
