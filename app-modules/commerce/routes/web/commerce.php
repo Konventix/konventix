@@ -19,6 +19,16 @@ use Illuminate\Support\Facades\Route;
 use Konventix\Commerce\Http\Controllers\CheckoutController;
 use Konventix\Commerce\Http\Controllers\MyInvoiceDocumentController;
 use Konventix\Commerce\Http\Controllers\MyOrdersController;
+use Konventix\Commerce\Http\Controllers\ShopController;
+
+// The public shop (ADR-0047, Task 8): a per-brand feature with no module
+// gate behind it, since Commerce itself is Core and cannot be switched off
+// (`registerFeatures()`). `ensure-feature:commerce:shop` 404s both routes
+// for a brand that never opted in — the middleware's own default.
+Route::middleware(['ensure-feature:commerce:shop'])->group(function (): void {
+    Route::get('/shop', [ShopController::class, 'index'])->name('commerce.shop.index');
+    Route::get('/shop/{slug}', [ShopController::class, 'show'])->name('commerce.shop.show');
+});
 
 // Public checkout for `instant` settlement (ADR-0039), addressed by the
 // registration ULID — the only identifier the payer's flow carries.

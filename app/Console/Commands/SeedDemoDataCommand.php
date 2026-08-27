@@ -331,6 +331,8 @@ class SeedDemoDataCommand extends Command
 
         $firstEvent = $seededEvents->first();
 
+        $this->inBrand($brand, fn () => $this->commerce->seedShop($brand, $archetype, $firstEvent));
+
         $this->inBrand($brand, fn () => $this->compliance->handle($brand, $members));
         $this->inBrand($brand, fn () => $this->content->handle($brand, $firstEvent, $members, $archetype));
         $this->inBrand($brand, fn () => $this->staticPages->handle($brand, $firstEvent, $media));

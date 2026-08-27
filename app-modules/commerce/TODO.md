@@ -63,6 +63,51 @@
 
 ## Done
 
+- [x] Slice 24a (ADR-0047), the public shop — a brand's catalogue gets a
+      storefront: `/shop` lists every published product and `/shop/{slug}`
+      shows one, both behind the per-brand `commerce:shop` feature Task 5
+      introduced (`ensure-feature:commerce:shop` — a brand that never
+      switched it on 404s both routes, the middleware's own default). Brand
+      scoping is the ordinary `BelongsToBrand` global scope, not an admin-
+      host escape, because `ShopController` runs on the brand's own domain.
+      `ShopProductData`/`ShopVariantData` are the one shared read shape
+      between the listing and the product page — the listing simply renders
+      less of it than the show page does — with `imageUrl` resolved through
+      `MediaLibrary::urlFor()` before either reaches the Data object, since
+      Commerce may not import Platform's `MediaItem` (`ArchitectureTest`).
+      `ShopProductData::ofModel()` sets each loaded variant's `product`
+      relation back to the product handed in, because
+      `ProductVariant::effectiveUnitAmountNet()` reads it for a variant with
+      no price override of its own — the common case — and strict mode
+      (`Model::shouldBeStrict()`) refuses the lazy load otherwise; a caller
+      that only eager-loads `variants`, never `variants.product`, would 500
+      the moment a real, un-overridden variant reached the page.
+      `Product::isSoldOut()` badges the index and disables the whole variant
+      `<select>` on the product page; an individual sold-out variant among
+      others disables just its own `<option>`. The add-to-cart form is
+      shipped without a destination: the variant select and quantity input
+      are real, but the buy button renders `disabled` with
+      `title="Cart arrives with a later task"` until Task 11 wires
+      `commerce.cart.add` — a guest gets a "Sign in to buy" link to `/login`
+      in the button's place instead. Nav entry "Shop" at order 30
+      (`AREA_BRAND`, icon `shopping-bag`, `feature: 'commerce:shop'`).
+      Commerce's own contribution to Event's `event.landing` slot,
+      `commerce/ShopLandingCard`, follows Registration's `EventOffers`
+      precedent exactly: server-resolved props so the call to action is in
+      the first paint, `feature: 'commerce:shop'` on the slot registration
+      itself rather than a check inside the closure, and nothing rendered
+      when the brand has no published product for that event.
+      `DemoCommerceSeeder::seedShop()` activates the feature and seeds two
+      products with variants — one in stock, one sold out via a
+      zero-capacity implicit variant — for the LAN archetype only, through
+      the real `SaveProduct` action rather than factory rows; a trade fair
+      gets no shop, the same on/off demonstration Competition's module gate
+      already made for a different archetype split. `DryRunTest` gained a
+      `commerce.shop.show` slug resolver and a small
+      `dryRunIsReachableForBrand()` filter — the first public route in the
+      suite that is legitimately unreachable for one archetype and not the
+      other by design, rather than by a fixture the seed forgot to fill in.
+
 - [x] Slice 24 (ADR-0047), the console — a brand's shop catalogue gets its
       admin at `/admin/products` (`ProductAdminController`, index/store/edit/
       update/destroy), gated on the two capabilities Task 6 added

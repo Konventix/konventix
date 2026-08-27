@@ -26,6 +26,7 @@ use Konventix\Platform\Models\StaticPage;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
+use Laravel\Pennant\Feature;
 
 /**
  * The dry run (slice 16): SXLan and Xpertise, end to end on seeded data.
@@ -92,12 +93,6 @@ function dryRunSkippedRoutes(): array
         // A URL built from route parameters alone cannot carry one.
         // `RegistrationSettlementSlotTest` follows a real minted link.
         'commerce.my.invoice.document' => 'needs a signed download link',
-
-        // The demo seed gets products in Task 14 (roadmap slice 24); until
-        // then `dryRunParameters()`'s `product` resolver always answers null
-        // and the sweep has nothing to point this at. Remove this skip once
-        // the seed produces one — the resolver is already in place.
-        'admin.products.edit' => 'no product seeded until Task 14',
     ];
 }
 
@@ -224,6 +219,13 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             $parameter === 'slug' && $name === 'policies.show' => Policy::withoutBrandScope()
                 ->where('brand_id', $brand->getKey())
                 ->value('slug'),
+            // The public shop 404s behind `ensure-feature:commerce:shop`
+            // (ADR-0047), so this only resolves for a brand the demo seed
+            // switched the feature on for — the LAN archetype.
+            $parameter === 'slug' && $name === 'commerce.shop.show' => Product::withoutBrandScope()
+                ->where('brand_id', $brand->getKey())
+                ->published()
+                ->value('slug'),
 
             $parameter === 'brand' => $brand,
             $parameter === 'event' => $eventQuery()->first(),
@@ -242,9 +244,6 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
                 ->when($member !== null, fn (Builder $query) => $query->where('subject_id', $member->getKey()))
                 ->first(),
             $parameter === 'order' => Order::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
-            // Null until Task 8's demo seed produces products — DryRun skips
-            // an unresolvable route by design, exactly like every other
-            // parameter here that a fixture has not filled in yet.
             $parameter === 'product' => Product::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'invoice' => Invoice::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'account' => SettlementAccount::withoutBrandScope()
@@ -313,6 +312,40 @@ function dryRunUrl(RoutingRoute $route, array $parameters, string $host): string
 function dryRunIsConsoleRoute(RoutingRoute $route): bool
 {
     return str_starts_with((string) $route->getName(), 'admin.');
+}
+
+/**
+ * Route-name prefixes gated behind a per-brand feature with no module gate
+ * behind it (ADR-0047), and the feature name that gates them.
+ *
+ * @return array<string, string>
+ */
+function dryRunFeatureGatedRoutePrefixes(): array
+{
+    return [
+        'commerce.shop.' => 'commerce:shop',
+    ];
+}
+
+/**
+ * Whether a route is reachable *at all* for this brand — distinct from
+ * whether the demo seeded something to point its parameters at. The shop
+ * 404s behind `commerce:shop`, which the seed switches on only for the LAN
+ * archetype (same as Competition's module gate is on only for it): a trade
+ * fair simply does not carry a shop, and that is the gate working, not a
+ * screen the seed forgot to fill in. Walking the route against a brand with
+ * the feature off would only prove the 404 `BrandFeaturesTest` already
+ * covers.
+ */
+function dryRunIsReachableForBrand(RoutingRoute $route, Brand $brand): bool
+{
+    foreach (dryRunFeatureGatedRoutePrefixes() as $prefix => $feature) {
+        if (str_starts_with((string) $route->getName(), $prefix)) {
+            return Feature::for($brand)->active($feature);
+        }
+    }
+
+    return true;
 }
 
 /**
@@ -394,7 +427,9 @@ it('serves every public and account screen for both archetypes', function (strin
         ->whereIn('id', dryRunDownloadableRequests($brand)->select('subject_id'))
         ->firstOrFail();
 
-    $routes = dryRunRoutes()->reject(dryRunIsConsoleRoute(...));
+    $routes = dryRunRoutes()
+        ->reject(dryRunIsConsoleRoute(...))
+        ->filter(fn (RoutingRoute $route): bool => dryRunIsReachableForBrand($route, $brand));
 
     expect($routes)->not->toBeEmpty();
 

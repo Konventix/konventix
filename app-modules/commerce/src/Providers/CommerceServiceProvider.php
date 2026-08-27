@@ -12,6 +12,7 @@ use Konventix\Commerce\Console\RefreshSettlementCapabilities;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
 use Konventix\Commerce\Data\RegistrationSettlementData;
+use Konventix\Commerce\Data\ShopProductData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Gdpr\CommerceGdprHandler;
@@ -19,6 +20,7 @@ use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
 use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\ManualSettlementAdapter;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
@@ -38,6 +40,7 @@ use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Features\BrandFeature;
 use Konventix\Platform\Features\BrandFeatureRegistry;
+use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -319,11 +322,62 @@ class CommerceServiceProvider extends ModuleServiceProvider
             },
             order: 10,
         );
+
+        // The shop's contribution to Event's `event.landing` slot (ADR-0047,
+        // Task 8): what a visitor can buy for this edition, resolved
+        // server-side the same way Registration's `EventOffers` is, so the
+        // call to action is in the first paint rather than a fetch behind
+        // it. `static` for the reason above — this registry outlives the
+        // request under Octane. Renders nothing when the brand has no
+        // products for this event, exactly like `EventOffers` does for no
+        // public types.
+        $this->app->make(SlotRegistry::class)->add(
+            slot: 'event.landing',
+            module: 'commerce',
+            component: 'commerce/ShopLandingCard',
+            props: static function (array $context): array {
+                $products = Product::query()
+                    ->published()
+                    ->where('event_id', $context['eventId'])
+                    ->with('variants')
+                    ->orderBy('name')
+                    ->get();
+
+                $media = app(MediaLibrary::class);
+
+                return [
+                    'products' => $products
+                        ->map(fn (Product $product): array => ShopProductData::ofModel(
+                            $product,
+                            $product->image_media_id === null ? null : $media->urlFor($product->image_media_id),
+                        )->toArray())
+                        ->all(),
+                ];
+            },
+            feature: 'commerce:shop',
+            order: 20,
+        );
     }
 
     protected function registerNavigation(): void
     {
         $registry = $this->app->make(NavigationRegistry::class);
+
+        // The brand topbar's own entry (ADR-0047): gated on the feature, not
+        // a permission — anyone browsing the brand's own domain may shop,
+        // whether signed in or not, so this is visible or not purely on
+        // whether the brand switched `commerce:shop` on.
+        $registry->add(
+            new NavigationItem(
+                module: 'commerce',
+                label: 'Shop',
+                url: '/shop',
+                icon: 'shopping-bag',
+                order: 30,
+                area: NavigationItem::AREA_BRAND,
+                feature: 'commerce:shop',
+            ),
+        );
 
         $registry->add(
             new NavigationItem(

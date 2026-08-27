@@ -14,6 +14,7 @@ use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Models\CompetitionMatch;
@@ -203,6 +204,15 @@ it('seeds a LAN party and a trade fair from the same code', function () {
         // Everything else they agree on.
         ->and(Feature::for($fair)->active($gate->featureName('resources')))->toBeTrue()
         ->and(Feature::for($fair)->active($gate->featureName('staffing')))->toBeTrue();
+
+    // The shop is a second on/off demonstration (ADR-0047): a per-brand
+    // feature with no module behind it, switched on only for the LAN
+    // archetype's players — a trade fair's catalogue is the whole story for
+    // it here, so it carries no merch.
+    expect(Feature::for($lan)->active('commerce:shop'))->toBeTrue()
+        ->and(Feature::for($fair)->active('commerce:shop'))->toBeFalse()
+        ->and(Product::withoutBrandScope()->where('brand_id', $lan->getKey())->count())->toBe(2)
+        ->and(Product::withoutBrandScope()->where('brand_id', $fair->getKey())->count())->toBe(0);
 
     // Nothing was seeded behind the closed gate.
     expect(Entrant::withoutBrandScope()->where('brand_id', $fair->getKey())->count())->toBe(0)

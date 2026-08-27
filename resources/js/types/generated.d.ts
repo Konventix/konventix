@@ -119,6 +119,23 @@ declare namespace Konventix {
                 readonly stockCapacity: number | null;
                 readonly variants: Konventix.Commerce.Data.ProductVariantData[];
             };
+            export type ShopProductData = {
+                readonly id: string;
+                readonly name: string;
+                readonly slug: string;
+                readonly description: string | null;
+                readonly imageUrl: string | null;
+                readonly unitAmountNet: string;
+                readonly priceDisplay: Konventix.Commerce.Enums.PriceDisplay;
+                readonly soldOut: boolean;
+                readonly variants: Konventix.Commerce.Data.ShopVariantData[];
+            };
+            export type ShopVariantData = {
+                readonly id: string;
+                readonly label: string | null;
+                readonly unitAmountNet: string;
+                readonly remaining: number;
+            };
             export type UpdateSettlementAccountLabelData = {
                 readonly checkoutLabel: string | null;
             };

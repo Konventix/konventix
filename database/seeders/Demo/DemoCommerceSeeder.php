@@ -8,14 +8,21 @@ use Illuminate\Support\Collection;
 use Konventix\Commerce\Actions\BookManualPayment;
 use Konventix\Commerce\Actions\IssueCreditNote;
 use Konventix\Commerce\Actions\RaiseDunningLevel;
+use Konventix\Commerce\Actions\SaveProduct;
+use Konventix\Commerce\Data\ProductVariantData;
+use Konventix\Commerce\Data\SaveProductData;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\PriceDisplay;
+use Konventix\Commerce\Enums\TaxClass;
 use Konventix\Commerce\Models\BookkeepingSettings;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Event\Models\Event;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Actions\UpdateBrandFeatures;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Registration\Actions\SubmitRegistration;
@@ -47,6 +54,8 @@ final class DemoCommerceSeeder
         private readonly BookManualPayment $bookPayment,
         private readonly IssueCreditNote $issueCreditNote,
         private readonly RaiseDunningLevel $raiseDunning,
+        private readonly SaveProduct $saveProduct,
+        private readonly UpdateBrandFeatures $updateFeatures,
     ) {}
 
     /**
@@ -88,6 +97,73 @@ final class DemoCommerceSeeder
             ['operator_id' => $operator->getKey()],
             ['consultant_number' => 12345, 'client_number' => 67890],
         );
+    }
+
+    /**
+     * The shop (ADR-0047, Task 8) — a per-brand feature with no module gate
+     * behind it, so it only ever demonstrates as "on for a LAN, off for a
+     * trade fair" the same way the gateable modules already do (this seed's
+     * one structural difference is deliberately never duplicated elsewhere).
+     * A LAN party sells merch to its players; a trade fair's registration
+     * catalogue is the whole story for it here.
+     *
+     * The two products go through the real `SaveProduct` action — variants
+     * and all — rather than factory rows, so the console and the public
+     * shop both render against what a real save produces. One stays in
+     * stock; the other's sole variant is created with zero capacity, which
+     * is what `Product::isSoldOut()` actually reads — not a fixture flag.
+     *
+     * Idempotent on any product already existing for the brand, and a
+     * no-op outright for a brand this archetype does not sell merch for.
+     */
+    public function seedShop(Brand $brand, EventArchetype $archetype, ?Event $event): void
+    {
+        if ($archetype !== EventArchetype::Lan) {
+            return;
+        }
+
+        $this->updateFeatures->handle($brand, ['commerce:shop' => true]);
+
+        if (Product::query()->exists()) {
+            return;
+        }
+
+        $this->saveProduct->handle($brand, null, new SaveProductData(
+            name: 'Event T-Shirt',
+            slug: 'event-t-shirt',
+            description: "Soft cotton tee with this year's line-up on the back.",
+            eventId: $event?->getKey(),
+            imageMediaId: null,
+            taxClass: TaxClass::Standard,
+            unitAmountNet: '19.00',
+            priceDisplay: PriceDisplay::Gross,
+            published: true,
+            stockCapacity: null,
+            variants: [
+                new ProductVariantData(id: null, label: 'S', sku: null, unitAmountNet: null, stockCapacity: 30, position: 0),
+                new ProductVariantData(id: null, label: 'M', sku: null, unitAmountNet: null, stockCapacity: 40, position: 1),
+                new ProductVariantData(id: null, label: 'L', sku: null, unitAmountNet: null, stockCapacity: 20, position: 2),
+            ],
+        ));
+
+        // Sold out on purpose: the shop's badge and the disabled variant
+        // select both need a real zero-stock row to render against, not a
+        // fixture flag. `stockCapacity: 0` on the implicit variant is what
+        // does that — SaveProductData carries no `stockConsumed`, since a
+        // save can only ever set capacity.
+        $this->saveProduct->handle($brand, null, new SaveProductData(
+            name: 'Limited Edition Poster',
+            slug: 'limited-edition-poster',
+            description: 'Numbered print, one per attendee — this run is gone.',
+            eventId: $event?->getKey(),
+            imageMediaId: null,
+            taxClass: TaxClass::Reduced,
+            unitAmountNet: '12.00',
+            priceDisplay: PriceDisplay::Net,
+            published: true,
+            stockCapacity: 0,
+            variants: [],
+        ));
     }
 
     /**

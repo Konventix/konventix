@@ -31,7 +31,14 @@ licensing.
   `SaveProduct` creates so every product has exactly one stock counter. The
   operator console for both lives at `/admin/products`
   (`ProductAdminController`), gated on `commerce.view-products`/
-  `commerce.manage-products`.
+  `commerce.manage-products`. The public storefront is `/shop` and
+  `/shop/{slug}` (`ShopController`), behind the per-brand `commerce:shop`
+  feature (ADR-0047) with no module gate — a brand that never switches it on
+  404s both routes. Only published products are listed; a sold-out one
+  (every variant at `remaining() === 0`) still shows, badged, rather than
+  disappearing. Adding to a cart is Task 11's contract — the product page
+  ships the variant and quantity controls now, with no submission target
+  yet.
   **Stock is a quota in the Registration sense**: `stock_capacity` and
   `stock_consumed` are counters only, copied from `Quota`'s contract rather
   than imported (ADR-0004) — `consumeStock()`/`releaseStock()` never lock or
