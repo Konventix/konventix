@@ -14,6 +14,7 @@ use Konventix\Registration\Actions\JoinWaitlist;
 use Konventix\Registration\Actions\SubmitRegistration;
 use Konventix\Registration\Data\RegistrationFormData;
 use Konventix\Registration\Data\SubmitRegistrationData;
+use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Exceptions\QuotaExhaustedException;
@@ -76,9 +77,14 @@ final class RegistrationController
         // them there to check out. `commerce.cart.show` is Task 11's own
         // route; Route::has() reads false until that task registers it, so
         // this branch is inert (and this module imports nothing from
-        // Commerce to reach it) until then.
+        // Commerce to reach it) until then. `SubmitRegistration` only emits
+        // `RegistrationSettlementRequested` at submission for an
+        // `on_payment` gate (every other gate requests settlement at
+        // confirmation instead), so a cart line only ever exists to redirect
+        // to when the gate agrees.
         if (
             $type->settlement === RegistrationSettlement::Instant
+            && $type->confirmation_gate === ConfirmationGate::OnPayment
             && ($brand = $brandContext->current()) !== null
             && Feature::for($brand)->active('commerce:shop')
             && Route::has('commerce.cart.show')

@@ -72,7 +72,10 @@ final class PlaceOrderFromCart
         if ($reusableOrder !== null) {
             $cart->forceFill(['expires_at' => now()->addMinutes(Cart::CHECKOUT_GRACE_MINUTES)])->save();
 
-            return $this->sendToProvider($cart->brand_id, $account, $reusableOrder, $returnUrl);
+            // Its own lookup — this branch never shares the guard call below.
+            $offered = $this->guardAccountOffered($cart->brand_id, $account);
+
+            return $this->sendToProvider($offered, $reusableOrder, $returnUrl);
         }
 
         if (! $cart->isOpen()) {
@@ -86,11 +89,11 @@ final class PlaceOrderFromCart
         }
 
         // Vetted before the order exists (see class docblock).
-        $this->guardAccountOffered($cart->brand_id, $account);
+        $offered = $this->guardAccountOffered($cart->brand_id, $account);
 
         $order = DB::transaction(fn (): Order => $this->placeOrder($cart, $lines));
 
-        return $this->sendToProvider($cart->brand_id, $account, $order, $returnUrl);
+        return $this->sendToProvider($offered, $order, $returnUrl);
     }
 
     /**
@@ -198,7 +201,7 @@ final class PlaceOrderFromCart
         return $order !== null && $order->status === OrderStatus::Pending ? $order : null;
     }
 
-    private function guardAccountOffered(string $brandId, SettlementAccount $account): void
+    private function guardAccountOffered(string $brandId, SettlementAccount $account): SettlementAccount
     {
         $offered = SettlementAccount::liveAccountsFor($brandId)->firstWhere('id', $account->id);
 
@@ -209,21 +212,17 @@ final class PlaceOrderFromCart
         if (! $this->registry->forProvider($offered->provider) instanceof ProvidesHostedCheckout) {
             throw CartCheckoutRefusedException::noOnlinePayment();
         }
+
+        return $offered;
     }
 
-    private function sendToProvider(string $brandId, SettlementAccount $account, Order $order, string $returnUrl): CheckoutRedirect
+    private function sendToProvider(SettlementAccount $offered, Order $order, string $returnUrl): CheckoutRedirect
     {
-        $offered = SettlementAccount::liveAccountsFor($brandId)->firstWhere('id', $account->id);
-
-        if ($offered === null || ! $offered->isOffered()) {
-            throw CartCheckoutRefusedException::accountNotOffered($account->id, $brandId);
-        }
-
         $adapter = $this->registry->forProvider($offered->provider);
 
-        // guardAccountOffered()/the line above only ever resolves an
-        // account whose adapter implements this — unreachable in practice,
-        // but narrows the type for PHPStan (mirrors CheckoutController).
+        // guardAccountOffered() already resolved and vetted this account —
+        // unreachable in practice, but narrows the type for PHPStan (mirrors
+        // CheckoutController).
         if (! $adapter instanceof ProvidesHostedCheckout) {
             throw CartCheckoutRefusedException::noOnlinePayment();
         }

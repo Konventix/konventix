@@ -9,6 +9,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Commerce\Data\WaitingRoomStatusData;
 use Konventix\Commerce\Models\WaitingRoomSettings;
 use Konventix\Commerce\WaitingRoom\TicketCookie;
 use Konventix\Commerce\WaitingRoom\WaitingRoomStore;
@@ -57,10 +58,20 @@ final class WaitingRoomController
             return redirect()->to($this->store->intendedUrl($brandId, $ticketId) ?? route('commerce.shop.index'));
         }
 
+        $position = $this->store->positionOf($brandId, $ticketId);
+
+        // The store can forget a ticket before it is ever admitted (its 2h
+        // TTL) — a cookie the store no longer recognizes has nothing to
+        // report a position for, so send the visitor back through the gate
+        // to re-queue rather than rendering a lie ("number 0").
+        if ($position === null) {
+            return redirect()->route('commerce.shop.index');
+        }
+
         $settings = WaitingRoomSettings::forBrand($brandId);
 
         return Inertia::render('waiting-room/Show', [
-            'position' => $this->store->positionOf($brandId, $ticketId) ?? 0,
+            'position' => $position,
             'depth' => $this->store->depth($brandId),
             'admitPerInterval' => $settings->admit_per_interval,
             'intervalSeconds' => 5,
@@ -81,27 +92,8 @@ final class WaitingRoomController
 
         $brandId = $brand->getKey();
         $ticketId = $this->ticketId($request, $brandId);
-        $depth = $this->store->depth($brandId);
 
-        if ($ticketId === null) {
-            return response()->json([
-                'position' => null,
-                'admitted' => false,
-                'redirectTo' => null,
-                'depth' => $depth,
-            ]);
-        }
-
-        $admitted = $this->store->isAdmitted($brandId, $ticketId);
-
-        return response()->json([
-            'position' => $this->store->positionOf($brandId, $ticketId),
-            'admitted' => $admitted,
-            'redirectTo' => $admitted
-                ? ($this->store->intendedUrl($brandId, $ticketId) ?? route('commerce.shop.index'))
-                : null,
-            'depth' => $depth,
-        ]);
+        return response()->json(WaitingRoomStatusData::ofStore($this->store, $brandId, $ticketId));
     }
 
     private function ticketId(Request $request, string $brandId): ?string

@@ -52,7 +52,7 @@ const cartCount = computed(() => page.props.cart?.count ?? 0);
  * layered on the link's own text.
  */
 function navItemAriaLabel(item: BrandNavItem): string | undefined {
-    if (item.label !== 'Cart' || cartCount.value === 0) {
+    if (item.url !== '/cart' || cartCount.value === 0) {
         return undefined;
     }
 
@@ -125,7 +125,7 @@ function handleLogout(): void {
                     >
                         {{ item.label }}
                         <span
-                            v-if="item.label === 'Cart' && cartCount > 0"
+                            v-if="item.url === '/cart' && cartCount > 0"
                             aria-hidden="true"
                             class="ml-1 inline-flex min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-medium text-on-accent"
                         >
@@ -179,7 +179,7 @@ function handleLogout(): void {
                     >
                         {{ item.label }}
                         <span
-                            v-if="item.label === 'Cart' && cartCount > 0"
+                            v-if="item.url === '/cart' && cartCount > 0"
                             aria-hidden="true"
                             class="ml-1 inline-flex min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-medium text-on-accent"
                         >

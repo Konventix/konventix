@@ -54,7 +54,7 @@ const props = defineProps<{
                         class="shrink-0 text-sm whitespace-nowrap text-text-muted"
                     >
                         {{ offer.price.unitAmountNet }} €
-                        {{ offer.price.display === 'net' ? 'net' : '' }}
+                        {{ offer.price.display === 'net' ? 'excl. VAT' : '' }}
                     </span>
                     <span v-else class="shrink-0 text-sm text-text-muted">
                         Free

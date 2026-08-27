@@ -92,10 +92,7 @@ function addToCart(): void {
 
             <p class="text-lg font-medium text-text">
                 {{ props.product.unitAmountNet }} €
-                <span
-                    v-if="props.product.priceDisplay === 'net'"
-                    class="text-sm font-normal text-text-muted"
-                >
+                <span class="text-sm font-normal text-text-muted">
                     excl. VAT
                 </span>
             </p>

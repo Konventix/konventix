@@ -32,7 +32,11 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
   owns the token vocabulary; components consume it and never reach past it to a
   palette value.
 - **Plugin registry.** Module discovery, the base `ModuleServiceProvider` every
-  module extends, and the `ensure-module` route middleware.
+  module extends, and the `ensure-module` route middleware, the
+  `ensure-feature:{name}` alias for a per-brand feature with no module
+  gate behind it (ADR-0047), and `Features\BrandFeatureRegistry` — what
+  `ModuleServiceProvider::registerBrandFeatures()` fills and the brand
+  page's Features card renders.
 - **Pennant gating.** Feature definitions registered by each module at boot,
   per-brand activation state as data, and the four enforcement points: routes,
   navigation, UI slots, listeners (ADR-0003).

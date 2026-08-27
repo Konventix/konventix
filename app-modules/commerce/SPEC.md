@@ -36,9 +36,8 @@ licensing.
   feature (ADR-0047) with no module gate — a brand that never switches it on
   404s both routes. Only published products are listed; a sold-out one
   (every variant at `remaining() === 0`) still shows, badged, rather than
-  disappearing. Adding to a cart is Task 11's contract — the product page
-  ships the variant and quantity controls now, with no submission target
-  yet.
+  disappearing. The product page's buy button posts straight to
+  `commerce.cart.lines.store`; a guest sees a sign-in link in its place.
   **Stock is a quota in the Registration sense**: `stock_capacity` and
   `stock_consumed` are counters only, copied from `Quota`'s contract rather
   than imported (ADR-0004) — `consumeStock()`/`releaseStock()` never lock or
@@ -96,7 +95,9 @@ licensing.
   `GuardsProductVariantReferences::isReferenced()` (Task 7) now also
   refuses to delete a product or drop a variant still held by an *open*
   cart's line — an expired cart's line does not count, since its stock was
-  already released.
+  already released. A refund does not return a product line's stock: the
+  goods left the shelf, and putting them back is an operator decision made
+  by raising `stock_capacity`, not a consequence of the money moving back.
 
   **The cart page and its checkout** (ADR-0047 point 4, Task 11), on the
   brand's own domain behind `ensure-feature:commerce:shop` + `auth`
@@ -123,7 +124,11 @@ licensing.
   throws `CartCheckoutRefusedException`, which the controller alone
   catches and turns into a 409; a genuine PSP adapter failure past those
   guards is left uncaught, reaching the payer the way
-  `CheckoutController::start()` already lets one.
+  `CheckoutController::start()` already lets one. `Cart::isOpen()` reads
+  the status column only — a cart past `expires_at` that the
+  fifteen-minute sweep has not reached yet still holds its stock, so
+  checking it out is settling a reservation that is genuinely still in
+  force; the sweep, not the clock, is the authority.
   The topbar badges the "Cart" nav entry from the shared `cart.count` prop
   (`HandleInertiaRequests`, resolved through Commerce's own `CartSummary`
   service so the host layer never reads a `Cart` row itself).
@@ -144,7 +149,13 @@ licensing.
   :{userId}` (a ticket id, so a signed-in visitor's second visit reuses
   the same ticket instead of queueing twice), `waiting-room:{brand}:ip
   :{sha256(ip)}` (a counter, 1h TTL, capped at five new tickets — the raw
-  IP is never stored). The cookie (`TicketCookie`) is
+  IP is never stored). The cap counts `$request->ip()`, which is the
+  forwarded address whenever the peer is a trusted proxy — with
+  `TRUSTED_PROXIES=*` a client can set `X-Forwarded-For` itself and mint
+  unlimited tickets, so the cap is only as strong as the proxy list
+  (`config/trustedproxy.php`). `tests/Load/ticket-rush.js` relies on
+  exactly this to simulate a thousand distinct arrivals. The cookie
+  (`TicketCookie`) is
   `waiting_room_{brandId}`, `httpOnly`, `sameSite: lax`, 30 minutes:
   `id.hash_hmac('sha256', id, config('app.key'))`, parsed back with a
   constant-time signature check — a forged or tampered cookie reads as no
@@ -303,10 +314,10 @@ implemented and their payloads are the contract.
 | Event | Emitted when | Payload |
 |---|---|---|
 | `OrderPlaced` | An order is created from a settlement request — directly from `PlaceOrderFromSettlementRequest`, or from `PlaceOrderFromCart` at the end of a cart checkout (`settles_type = 'cart'`, ADR-0047 point 4, Task 11) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `total_net`, `total_gross`, `currency`, `placed_at` |
-| `OrderPaid` | An order is fully settled, by any adapter or by manual booking. **The event Registration consumes for a direct (non-cart) order** (ADR-0006) — a cart order's registration lines are `OrderLineSettled`'s job instead, below | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_paid`, `currency`, `paid_at`, `settlement_method` |
+| `OrderPaid` | An order is fully settled, by any adapter or by manual booking. **The event Registration consumes for a direct (non-cart) order** (ADR-0006) — a cart order's registration lines are `OrderLineSettled`'s job instead, below | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_paid`, `currency`, `paid_at`, `settlement_method`, `settlement_account_id` (nullable — manual bookings have none) |
 | `OrderPartiallyPaid` (proposed) | A payment lands that does not cover the balance | `order_id`, `amount_paid`, `balance_due`, `currency`, `received_at` |
-| `PaymentReceived` | Any payment is recorded — a webhook-confirmed PSP payment or a manually booked bank transfer. Distinct from `OrderPaid`: this is about the money that arrived, that one about what it means for the order | `payment_id`, `order_id`, `brand_id`, `amount`, `currency`, `settlement_method`, `external_reference` (nullable — manual bookings have none), `received_at` |
-| `PaymentFailed` | An adapter reports a failed or expired attempt (ADR-0039). The order stays pending — a new checkout may follow | `payment_id`, `order_id`, `brand_id`, `settlement_method`, `reason_code`, `failed_at` |
+| `PaymentReceived` | Any payment is recorded — a webhook-confirmed PSP payment or a manually booked bank transfer. Distinct from `OrderPaid`: this is about the money that arrived, that one about what it means for the order | `payment_id`, `order_id`, `brand_id`, `amount`, `currency`, `settlement_method`, `external_reference` (nullable — manual bookings have none), `received_at`, `settlement_account_id` (nullable — manual bookings have none) |
+| `PaymentFailed` | An adapter reports a failed or expired attempt (ADR-0039). The order stays pending — a new checkout may follow | `payment_id`, `order_id`, `brand_id`, `settlement_method`, `reason_code`, `failed_at`, `settlement_account_id` (nullable — manual bookings have none) |
 | `SettlementAccountConnected` | A brand finishes connecting its own PSP account (ADR-0007) — from this moment its orders settle through that provider | `settlement_account_id`, `brand_id`, `provider`, `connected_at` |
 | `OrderCancelled` (proposed) | An order is cancelled before or after settlement | `order_id`, `cancelled_by_user_id`, `reason_code`, `cancelled_at` |
 | `OrderRefunded` | Money went back to the payer. Distinct from `CreditNoteIssued`: that is the document, this is the money. An ADR-0036 transfer issues the first without the second, so a consumer counting refunds must listen here | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_refunded`, `currency`, `credit_note_id` (nullable — an uninvoiced order has no document), `reason_code`, `refunded_at` | implemented |

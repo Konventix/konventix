@@ -177,6 +177,12 @@ declare namespace Konventix {
                 readonly admitPerInterval: number;
                 readonly admissionTtlMinutes: number;
             };
+            export type WaitingRoomStatusData = {
+                readonly position: number | null;
+                readonly admitted: boolean;
+                readonly redirectTo: string | null;
+                readonly depth: number;
+            };
         }
         namespace Enums {
             export type CartLineKind = 'product' | 'registration';

@@ -22,6 +22,7 @@ use Database\Seeders\Demo\DemoStaticPageSeeder;
 use Database\Seeders\Demo\DemoUserSeeder;
 use Database\Seeders\Demo\EventArchetype;
 use Illuminate\Console\Command;
+use Illuminate\Console\ConfirmableTrait;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
@@ -79,6 +80,8 @@ use Spatie\Permission\PermissionRegistrar;
  */
 class SeedDemoDataCommand extends Command
 {
+    use ConfirmableTrait;
+
     protected $signature = 'konventix:seed
         {--default : Seed the default demo set without asking questions}
         {--fresh : Wipe and re-migrate the database first}
@@ -126,6 +129,10 @@ class SeedDemoDataCommand extends Command
 
     public function handle(): int
     {
+        if (! $this->confirmToProceed()) {
+            return self::FAILURE;
+        }
+
         intro('Konventix demo seed');
 
         $this->resolveSeeders();

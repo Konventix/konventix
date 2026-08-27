@@ -380,7 +380,7 @@ it('refuses a quantity change on a registration line through the update endpoint
 
     test()->actingAs($user)
         ->patch("/cart/lines/{$line->id}", ['quantity' => 2])
-        ->assertStatus(422);
+        ->assertSessionHasErrors('quantity');
 });
 
 it('404s a line belonging to another payer\'s cart', function (): void {

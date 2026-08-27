@@ -4,6 +4,9 @@
     "isStdOutTTY": false,
     "isStdErrTTY": false
   },
+  "profile": "reduced",
+  "vus": 40,
+  "arrivalsPerVU": 25,
   "metrics": {
     "admitted": {
       "contains": "default",

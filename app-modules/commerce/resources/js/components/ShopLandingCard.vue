@@ -51,10 +51,7 @@ const props = defineProps<{
                     <span
                         class="shrink-0 text-sm whitespace-nowrap text-text-muted"
                     >
-                        {{ product.unitAmountNet }} €
-                        <template v-if="product.priceDisplay === 'net'">
-                            excl. VAT
-                        </template>
+                        {{ product.unitAmountNet }} € excl. VAT
                     </span>
 
                     <ArrowRight class="size-4 shrink-0 text-text-muted" />

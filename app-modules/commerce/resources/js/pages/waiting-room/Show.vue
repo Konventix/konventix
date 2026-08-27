@@ -39,13 +39,6 @@ const estimatedMinutes = computed(() => {
     return Math.max(1, Math.ceil(totalSeconds / 60));
 });
 
-type StatusResponse = {
-    position: number | null;
-    admitted: boolean;
-    redirectTo: string | null;
-    depth: number;
-};
-
 /**
  * Copied from `resources/js/components/NotificationBell.vue` rather than
  * shared — this poll only ever reads, so it carries none of the bell's
@@ -77,7 +70,7 @@ async function poll(): Promise<void> {
     try {
         const data = (await fetchJson(
             waitingRoomStatus().url,
-        )) as StatusResponse;
+        )) as Konventix.Commerce.Data.WaitingRoomStatusData;
 
         if (data.admitted) {
             window.location.assign(data.redirectTo ?? '/shop');

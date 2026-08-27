@@ -66,10 +66,7 @@ const props = defineProps<{
 
                     <span class="mt-auto text-sm font-medium text-text">
                         {{ product.unitAmountNet }} €
-                        <span
-                            v-if="product.priceDisplay === 'net'"
-                            class="font-normal text-text-muted"
-                        >
+                        <span class="font-normal text-text-muted">
                             excl. VAT
                         </span>
                     </span>

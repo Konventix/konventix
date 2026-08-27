@@ -148,8 +148,10 @@ final class CartController
             throw ValidationException::withMessages([
                 'quantity' => __('Not enough stock remains.'),
             ]);
-        } catch (LogicException $e) {
-            abort(422, $e->getMessage());
+        } catch (LogicException) {
+            throw ValidationException::withMessages([
+                'quantity' => __("This line's quantity is fixed."),
+            ]);
         }
 
         return back();

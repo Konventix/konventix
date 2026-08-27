@@ -204,3 +204,23 @@ it('redirects to the cart when the shop feature is on and the type settles insta
         ])
         ->assertRedirect('/cart');
 });
+
+it('does not redirect to the cart when the type settles instantly but confirms on approval, not on payment', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $type = RegistrationType::factory()
+        ->settlement(RegistrationSettlement::Instant)
+        ->confirmationGate(ConfirmationGate::OnApproval)
+        ->priced(unitAmountNet: '30.00')
+        ->create();
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post("/events/{$type->event_id}/register/{$type->id}", [
+            'organizationName' => null,
+            'billingRecipientName' => 'Ada Lovelace',
+            'billingEmail' => 'ada@example.test',
+        ])
+        ->assertRedirect(route('registration.show', ['event_ulid' => $type->event_id, 'type' => $type->id]));
+});

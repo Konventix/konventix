@@ -79,6 +79,8 @@ depends on brand resolution and gating working.
       Platform-maintained read model (display name/email, fed by Identity's
       events per ADR-0004) exists. The screens are usable — ULIDs copy from
       the Users page — but this is the planned UX completion.
+- [ ] resources/js/pages/admin/pages/Index.vue's "New page" dialog is a multi-field useForm with no ADR-0038 dirty guard — the same gap Commerce's product dialog had before tranche 3 closed it; add useUnsavedChanges(() => open && form.isDirty) plus the role="status" note, and reset the form on close so a discarded draft stops arming the guard.
+- [ ] tests/Unit/ArchitectureTest.php's "App not to use Konventix" rule only inspects type-hinted dependencies, so a provider-level use import passes it silently — the rule's name promises more than it enforces. Either narrow the name or widen the check.
 
 ## Done
 

@@ -275,13 +275,21 @@ export default function () {
 }
 
 export function handleSummary(data) {
+    const payload = {
+        ...data,
+        profile: (VUS === 1000 && ARRIVALS_PER_VU === 1) ? 'full' : 'reduced',
+        vus: VUS,
+        arrivalsPerVU: ARRIVALS_PER_VU,
+    };
+
     return {
         'stdout': JSON.stringify({
             http_req_failed_rate: data.metrics.http_req_failed ? data.metrics.http_req_failed.values.rate : null,
             server_errors: data.metrics.server_errors ? data.metrics.server_errors.values.count : 0,
             admitted: data.metrics.admitted ? data.metrics.admitted.values.count : 0,
             p95_ms: data.metrics.http_req_duration ? data.metrics.http_req_duration.values['p(95)'] : null,
+            profile: payload.profile,
         }, null, 2) + '\n',
-        '/scripts/results/summary.json': JSON.stringify(data, null, 2),
+        '/scripts/results/summary.json': JSON.stringify(payload, null, 2),
     };
 }

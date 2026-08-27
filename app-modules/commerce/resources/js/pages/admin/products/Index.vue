@@ -24,6 +24,7 @@ import type {
     DataTableFilters,
 } from '@/composables/useDataTable';
 import { seedSelectionFilter, useDataTable } from '@/composables/useDataTable';
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import {
     edit as editProduct,
     index as productsIndex,
@@ -126,6 +127,8 @@ const form = useForm<{
     variants: [],
 });
 
+useUnsavedChanges(() => open.value && form.isDirty);
+
 function submit(): void {
     form.post(createProduct().url, {
         onSuccess: () => {
@@ -162,7 +165,17 @@ const brandError = computed(
             @update:filter="setFilter"
         >
             <template #actions>
-                <Dialog v-model:open="open">
+                <Dialog
+                    :open="open"
+                    @update:open="
+                        (value: boolean) => {
+                            open = value;
+                            if (!value) {
+                                form.reset();
+                            }
+                        }
+                    "
+                >
                     <DialogTrigger as-child>
                         <Button :disabled="!selection?.brandId">
                             <Plus class="size-4" />
@@ -217,9 +230,21 @@ const brandError = computed(
                                     :message="form.errors.stockCapacity"
                                 />
                             </div>
-                            <Button type="submit" :disabled="form.processing">
-                                Create
-                            </Button>
+                            <div class="flex items-center gap-3">
+                                <Button
+                                    type="submit"
+                                    :disabled="form.processing"
+                                >
+                                    Create
+                                </Button>
+                                <span
+                                    v-if="form.isDirty"
+                                    role="status"
+                                    class="text-sm text-warning"
+                                >
+                                    Unsaved changes
+                                </span>
+                            </div>
                         </form>
                     </DialogContent>
                 </Dialog>
