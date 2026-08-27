@@ -70,6 +70,56 @@
 
 ## Done
 
+- [x] ADR-0047 point 5, Task 12: a door for the rush. `src/WaitingRoom/`
+      — `WaitingRoomStore` (`RedisWaitingRoomStore` on a sorted set per
+      brand plus a hash per ticket, `ZPOPMIN` for atomic admission;
+      `ArrayWaitingRoomStore` the same shapes in PHP arrays, bound only
+      for `WAITING_ROOM_STORE=array` — test-only, singleton, holds no
+      request-scoped state), `TicketCookie` (`waiting_room_{brandId}`,
+      `id.hash_hmac(...)`, constant-time `parse()`), `IssueWaitingRoomTicket`
+      (reuses a cookie's or a signed-in user's still-known ticket before
+      minting a new one; the per-IP cap — five new tickets/hour, hashed —
+      is charged only on a genuinely new ticket), `AdmitFromWaitingRoom`
+      (`Cache::lock` around pop-then-stamp, TTL from
+      `WaitingRoomSettings::forBrand()`), `CommerceWaitingRoomGate`
+      (Platform's `WaitingRoomGate` contract: feature off → pass; an
+      operator holding `commerce.manage-products` on the brand → pass; an
+      admitted ticket → pass; else issue/re-read + cookie + redirect to
+      `/waiting-room` — a plain path, `TODO(tranche-3 T13)` marks where the
+      named route replaces it once the holding page exists).
+      `WaitingRoomSettings` (`admit_per_interval` default 50,
+      `admission_ttl_minutes` default 30, `forBrand()` the
+      `BookkeepingSettings::forOperator()` idiom) with its own small form
+      — `PUT /admin/brands/{brand}/waiting-room`
+      (`WaitingRoomSettingsAdminController`, `commerce.manage-products`,
+      the same capability the gate's operator bypass checks) — deliberately
+      NOT folded into `UpdateBrandFeatures`.
+      The brand edit page's Waiting room card reaches the brand admin
+      host through `BrandFeature`'s new `settingsComponent`/`settingsProps`
+      (Platform), not a `SlotRegistry` slot: `SlotRegistry`'s feature gate
+      reads the *ambient* `BrandContext::current()`, which the admin host
+      never resolves (ADR-0029) — this extension point instead receives
+      the route-bound `Brand` explicitly, the same one
+      `BrandAdminController::edit()` already computes each feature's
+      Pennant state against.
+      `config/commerce.php` (new) names the store and the `waiting-room`
+      Redis connection (`config/database.php`, `REDIS_WAITING_ROOM_DB`
+      default 2 — its own database so a cache flush never drops an active
+      queue). The alias itself — `ensure-waiting-room` — and the
+      `WaitingRoomGate` contract are Platform's
+      (`app-modules/platform/src/WaitingRoom/`,
+      `Http/Middleware/EnsureWaitingRoomAdmission`): a module standing
+      behind the door names only the alias string, never Commerce.
+      Applied to `/shop*`/`/cart*` (Commerce's own routes) and
+      `registration.show`/`registration.store` beside `require-consent`
+      (Registration — imports nothing from Commerce). Necessary cookie
+      declared (`waiting_room_*`, "Your place in the queue while a sale is
+      busy", 30 minutes).
+      `tests/WaitingRoomTest.php`; Registration's own
+      `tests/WaitingRoomOnRegistrationTest.php`; Platform's
+      `tests/WaitingRoomAliasTest.php` proves the alias degrades to a
+      pass-through with nothing bound. The holding page and the scheduled
+      admission tick are Task 13.
 - [x] Slice 24c prerequisite (ADR-0047, Task 11), one checkout settles a
       ticket and a T-shirt — `PlaceOrderFromCart::handle()` turns a cart
       into one `Order` (`settles_type = 'cart'`, `settles_id`/`request_key`

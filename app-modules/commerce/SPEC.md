@@ -127,6 +127,56 @@ licensing.
   The topbar badges the "Cart" nav entry from the shared `cart.count` prop
   (`HandleInertiaRequests`, resolved through Commerce's own `CartSummary`
   service so the host layer never reads a `Cart` row itself).
+- **The waiting room** (ADR-0047 point 5, Task 12) — a Redis queue and a
+  signed ticket cookie in front of the shop, the cart and Registration's
+  public form, applied through Platform's `ensure-waiting-room` route
+  middleware alias (Platform owns the alias and the `WaitingRoomGate`
+  contract; Commerce binds `CommerceWaitingRoomGate`, the only
+  implementation). `WaitingRoomStore` (`src/WaitingRoom/`) is Redis in
+  every real environment (`RedisWaitingRoomStore`, bound by
+  `config('commerce.waiting_room.store')`) and PHP arrays only for the
+  test suite (`ArrayWaitingRoomStore`, `WAITING_ROOM_STORE=array`,
+  `phpunit.xml`) — a singleton because it holds no request-scoped state,
+  never bound outside tests. Redis keys, per brand: `waiting-room:{brand}
+  :queue` (a sorted set, score = arrival `microtime(true)`, `ZPOPMIN` for
+  atomic admission), `waiting-room:{brand}:ticket:{id}` (a hash: `url`,
+  `user`, `admitted_at`, `expires_at`; 2h TTL), `waiting-room:{brand}:user
+  :{userId}` (a ticket id, so a signed-in visitor's second visit reuses
+  the same ticket instead of queueing twice), `waiting-room:{brand}:ip
+  :{sha256(ip)}` (a counter, 1h TTL, capped at five new tickets — the raw
+  IP is never stored). The cookie (`TicketCookie`) is
+  `waiting_room_{brandId}`, `httpOnly`, `sameSite: lax`, 30 minutes:
+  `id.hash_hmac('sha256', id, config('app.key'))`, parsed back with a
+  constant-time signature check — a forged or tampered cookie reads as no
+  ticket at all. Declared to the cookie dialog as the necessary,
+  pattern-named `waiting_room_*` ("Your place in the queue while a sale
+  is busy").
+  `CommerceWaitingRoomGate::guard()`'s order: the brand's
+  `commerce:waiting-room` feature off → pass; a signed-in user holding
+  `commerce.manage-products` on this brand → pass (an operator must never
+  queue behind their own rush); an admitted, unexpired ticket → pass;
+  otherwise `IssueWaitingRoomTicket::handle()` reuses a still-known ticket
+  (from the cookie, then from the user mapping) or mints a new one after
+  the per-IP cap, sets the cookie on the response, and redirects to
+  `/waiting-room` — a plain path for now, `TODO(tranche-3 T13)` marking
+  where the holding page's named route replaces it.
+  `AdmitFromWaitingRoom::handle(Brand, count)` pops up to `count` tickets
+  off the head under `Cache::lock("waiting-room:{brand}", 10)` and stamps
+  each one admitted until `now() + WaitingRoomSettings::forBrand()->
+  admission_ttl_minutes` — the lock closes the gap between the atomic pop
+  and the (separate) stamp, so two overlapping admission ticks cannot
+  double-admit a batch. `WaitingRoomSettings` (`admit_per_interval`
+  default 50, `admission_ttl_minutes` default 30, one row per brand,
+  `forBrand()` the `BookkeepingSettings::forOperator()` idiom) has its own
+  small save form — `PUT /admin/brands/{brand}/waiting-room`
+  (`WaitingRoomSettingsAdminController`, `commerce.manage-products`, the
+  same capability the gate's operator bypass checks) — deliberately not
+  folded into `UpdateBrandFeatures`. The brand edit page's Waiting room
+  card reaches it through `BrandFeature`'s `settingsComponent`/
+  `settingsProps` (Platform's extension point, not a `SlotRegistry` slot —
+  see Platform's `SPEC.md`), rendered only while the feature is active.
+  The holding page itself and the scheduled admission tick are Task 13;
+  this task built the queue, the ticket, the gate and the settings only.
 - **`Order` and order lines** — the authoritative record of what was ordered,
   at what price, with which tax treatment, in which currency. Orders reference
   what they settle (a registration, a resource booking, a shop item) by ULID.

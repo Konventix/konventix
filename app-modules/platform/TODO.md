@@ -82,6 +82,30 @@ depends on brand resolution and gating working.
 
 ## Done
 
+- [x] ADR-0047 point 5, Task 12: the `ensure-waiting-room` route middleware
+      alias and its contract. `src/WaitingRoom/WaitingRoomGate` (`guard(Request):
+      ?Response` — null passes, a non-null response blocks) and
+      `Http/Middleware/EnsureWaitingRoomAdmission`, registered beside
+      `ensure-module`/`ensure-feature`
+      (`PlatformServiceProvider::registerRouteMiddleware()`). Resolves the
+      gate from the container lazily (`app()->bound(...)`), never
+      constructor-injected — a module applying the alias must never be
+      broken by Commerce (the real binder) not having loaded first;
+      `tests/WaitingRoomAliasTest.php` proves the pass-through directly.
+      `BrandFeature`/`BrandFeatureData` grew a second extension point —
+      `settingsComponent`/`settingsProps` — for a feature with its own
+      settings to show on the brand edit page: a registered-component name
+      plus a closure over the explicit, route-bound `Brand`
+      (`BrandAdminController::edit()` already had it; now passed through
+      to `BrandFeatureData::ofFeature()`), resolved only while the feature
+      is `active`. Deliberately not a new `SlotRegistry` slot: that
+      registry's feature gate reads the *ambient* `BrandContext::current()`,
+      which the admin host never resolves (ADR-0029) — reusing the
+      Features card's own working mechanism (an explicit brand, already
+      correct there) was the smaller, safer change. Commerce's
+      `commerce:waiting-room` feature is the first (and so far only)
+      consumer, in its own `TODO.md`.
+
 - [x] `MediaLibrary` grew two read methods for modules other than Platform:
       `belongsToBrand()` (the ownership check a picker's save needs) and
       `pickableImages()` (a brand's images, ready for `MediaPicker.vue`).

@@ -194,6 +194,24 @@ return [
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
         ],
 
+        // Commerce's waiting room (ADR-0047 point 5, config/commerce.php).
+        // Its own database, not the shared 'cache' one above: a rush's
+        // sorted set and ticket hashes churn on their own cadence, and a
+        // cache FLUSHDB (or the cache store's own eviction) must never
+        // touch an active queue, nor the reverse.
+        'waiting-room' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_WAITING_ROOM_DB', '2'),
+            'max_retries' => env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+        ],
+
     ],
 
 ];

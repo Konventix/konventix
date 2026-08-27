@@ -59,6 +59,14 @@
 
 ## Done
 
+- [x] ADR-0047 point 5 (Task 12), the public registration form stands
+      behind the waiting room too: `ensure-waiting-room` added beside
+      `require-consent` on `registration.show`/`registration.store`
+      (`routes/web/registration.php`) — this module names only Platform's
+      alias string, importing neither Commerce nor its
+      `commerce:waiting-room` feature name; `CommerceWaitingRoomGate`
+      makes that check itself. `tests/WaitingRoomOnRegistrationTest.php`.
+
 - [x] ADR-0047 point 4 (Task 11), Registration learns which cart lines were
       paid — a new `Listeners\RecordPaymentOnOrderLineSettled` consumes
       Commerce's `OrderLineSettled`, the counterpart of `OrderPaid` for a

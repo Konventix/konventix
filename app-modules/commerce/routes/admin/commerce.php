@@ -15,6 +15,7 @@ use Konventix\Commerce\Http\Controllers\Admin\InvoiceDocumentController;
 use Konventix\Commerce\Http\Controllers\Admin\OrderAdminController;
 use Konventix\Commerce\Http\Controllers\Admin\ProductAdminController;
 use Konventix\Commerce\Http\Controllers\Admin\SettlementAccountAdminController;
+use Konventix\Commerce\Http\Controllers\Admin\WaitingRoomSettingsAdminController;
 
 Route::get('/products', [ProductAdminController::class, 'index'])->name('admin.products.index');
 Route::post('/products', [ProductAdminController::class, 'store'])->name('admin.products.store');
@@ -34,6 +35,13 @@ Route::post('/settlement-accounts/mollie', [SettlementAccountAdminController::cl
 Route::post('/settlement-accounts/unzer', [SettlementAccountAdminController::class, 'connectUnzer'])->name('admin.settlement-accounts.unzer');
 Route::post('/settlement-accounts/{account}/disconnect', [SettlementAccountAdminController::class, 'disconnect'])->name('admin.settlement-accounts.disconnect');
 Route::put('/settlement-accounts/{account}/label', [SettlementAccountAdminController::class, 'updateLabel'])->name('admin.settlement-accounts.label');
+
+// The waiting room's per-brand settings (ADR-0047 point 5), reached from
+// the brand edit page's own Waiting room card — see
+// CommerceServiceProvider::registerBrandFeatures(). `{brand}` binds
+// Platform's own Brand implicitly, same as BrandAdminController's routes:
+// Brand is not brand-scoped itself, so no BrandScope hardening applies.
+Route::put('/brands/{brand}/waiting-room', [WaitingRoomSettingsAdminController::class, 'update'])->name('admin.brands.waiting-room.update');
 
 Route::get('/bookkeeping', [BookkeepingExportController::class, 'index'])->name('admin.bookkeeping.index');
 Route::put('/bookkeeping/settings', [BookkeepingExportController::class, 'saveSettings'])->name('admin.bookkeeping.settings');

@@ -25,6 +25,7 @@ use Konventix\Platform\Http\Controllers\CaddyAskController;
 use Konventix\Platform\Http\Controllers\MediaFileController;
 use Konventix\Platform\Http\Middleware\EnsureFeatureIsActive;
 use Konventix\Platform\Http\Middleware\EnsureModuleIsActive;
+use Konventix\Platform\Http\Middleware\EnsureWaitingRoomAdmission;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
@@ -421,5 +422,12 @@ class PlatformServiceProvider extends ModuleServiceProvider
 
         $router->aliasMiddleware('ensure-module', EnsureModuleIsActive::class);
         $router->aliasMiddleware('ensure-feature', EnsureFeatureIsActive::class);
+
+        // ADR-0047 point 5: the waiting room's own enforcement point,
+        // beside the two above. Unlike `ensure-feature`, this alias names
+        // no feature — Commerce's bound `WaitingRoomGate` decides that
+        // itself, so a module applying this alias (Registration's public
+        // form) never names Commerce's feature string either.
+        $router->aliasMiddleware('ensure-waiting-room', EnsureWaitingRoomAdmission::class);
     }
 }

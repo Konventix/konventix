@@ -142,6 +142,7 @@ class BrandAdminController
                 ->map(fn ($feature): array => BrandFeatureData::ofFeature(
                     $feature,
                     active: Feature::for($brand)->active($feature->name),
+                    brand: $brand,
                 )->toArray())
                 ->all(),
         ]);

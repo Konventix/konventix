@@ -36,6 +36,22 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
 - **Pennant gating.** Feature definitions registered by each module at boot,
   per-brand activation state as data, and the four enforcement points: routes,
   navigation, UI slots, listeners (ADR-0003).
+- **The waiting-room gate contract and its route alias** (ADR-0047 point
+  5). `WaitingRoom\WaitingRoomGate` (`guard(Request): ?Response`) and the
+  `ensure-waiting-room` middleware alias, registered beside
+  `ensure-module`/`ensure-feature`. Platform binds nothing — Commerce's
+  provider binds the one real implementation — so the middleware resolves
+  the gate from the container lazily and degrades to a harmless
+  pass-through when nothing is bound, a state a module applying the alias
+  (Registration's public form, alongside Commerce's own `/shop`/`/cart`)
+  must never be broken by. `Features\BrandFeature`'s
+  `settingsComponent`/`settingsProps` is the related extension point a
+  feature with its own settings uses to add a card to the brand edit
+  page — a registered Vue component name plus a closure over the
+  route-bound `Brand`, resolved only while the feature is active;
+  deliberately not a `SlotRegistry` slot, since that registry's feature
+  gate reads the request's *ambient* resolved brand, which the admin host
+  never has (ADR-0029).
 - **Navigation registry.** Modules contribute entries; Platform filters them by
   active feature and by permission at render time, so no component holds a list
   of modules (lessons-from-lancore #10).

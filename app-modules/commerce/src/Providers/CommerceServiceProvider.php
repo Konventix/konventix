@@ -14,6 +14,7 @@ use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
 use Konventix\Commerce\Data\RegistrationSettlementData;
 use Konventix\Commerce\Data\ShopProductData;
+use Konventix\Commerce\Data\WaitingRoomSettingsData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Gdpr\CommerceGdprHandler;
@@ -23,6 +24,7 @@ use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Models\WaitingRoomSettings;
 use Konventix\Commerce\Settlement\ManualSettlementAdapter;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
 use Konventix\Commerce\Settlement\Mollie\MollieSettlementAdapter;
@@ -36,18 +38,27 @@ use Konventix\Commerce\Settlement\Unzer\SdkUnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerSettlementAdapter;
 use Konventix\Commerce\Storage\InvoiceStorageMigration;
+use Konventix\Commerce\WaitingRoom\ArrayWaitingRoomStore;
+use Konventix\Commerce\WaitingRoom\CommerceWaitingRoomGate;
+use Konventix\Commerce\WaitingRoom\RedisWaitingRoomStore;
+use Konventix\Commerce\WaitingRoom\WaitingRoomStore;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Platform\Cookies\CookieDeclaration;
+use Konventix\Platform\Cookies\CookieRegistry;
+use Konventix\Platform\Enums\CookieCategory;
 use Konventix\Platform\Features\BrandFeature;
 use Konventix\Platform\Features\BrandFeatureRegistry;
 use Konventix\Platform\Media\MediaLibrary;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
+use Konventix\Platform\WaitingRoom\WaitingRoomGate;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
 use Laravel\Pennant\Feature;
 use RuntimeException;
@@ -125,7 +136,34 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 label: 'Waiting room',
                 description: 'Holds arrivals in a queue and admits them in batches so a rush cannot oversell.',
                 module: self::moduleName(),
+                // The brand edit page's own extension point (ADR-0047
+                // point 5, `Platform\Features\BrandFeature`'s doc), not a
+                // `SlotRegistry` slot: `SlotRegistry`'s feature gate reads
+                // the *ambient* `BrandContext::current()`, which the admin
+                // host never resolves (ADR-0029) — this closure instead
+                // receives the route-bound `Brand` explicitly, the same
+                // brand `BrandAdminController::edit()` already has.
+                settingsComponent: 'commerce/admin/WaitingRoomSettingsCard',
+                settingsProps: static fn (Brand $brand): array => [
+                    'brandId' => $brand->getKey(),
+                    'settings' => WaitingRoomSettingsData::ofModel(
+                        WaitingRoomSettings::forBrand($brand->getKey()),
+                    )->toArray(),
+                ],
             ),
+        );
+    }
+
+    /**
+     * The waiting room's ticket cookie (ADR-0047 point 5). Its name carries
+     * the brand id (`TicketCookie::name()`), so the declared name here is a
+     * pattern, not a literal value — the same idiom Platform's own
+     * `registerCookies()` uses for the brand-prefixed session cookie.
+     */
+    protected function registerCookies(): void
+    {
+        $this->app->make(CookieRegistry::class)->register(
+            new CookieDeclaration('waiting_room_*', 'Your place in the queue while a sale is busy.', CookieCategory::Necessary, '30 minutes', 'commerce'),
         );
     }
 
@@ -183,6 +221,23 @@ class CommerceServiceProvider extends ModuleServiceProvider
 
             return new SdkStripeApi(new StripeClient($secret));
         });
+
+        // The waiting room (ADR-0047 point 5). ArrayWaitingRoomStore is a
+        // singleton — safe only because it holds no request-scoped state,
+        // just the queue's own (see its own doc) — and must only ever be
+        // bound for `WAITING_ROOM_STORE=array` (phpunit.xml). Everything
+        // else binds RedisWaitingRoomStore, a fresh instance per
+        // resolution: it holds no state of its own, Redis does.
+        $this->app->singleton(ArrayWaitingRoomStore::class);
+
+        $this->app->bind(WaitingRoomStore::class, fn (): WaitingRoomStore => config('commerce.waiting_room.store') === 'array'
+            ? $this->app->make(ArrayWaitingRoomStore::class)
+            : new RedisWaitingRoomStore);
+
+        // Platform's contract, Commerce's queue (ADR-0047 point 5) — every
+        // module standing behind the door resolves this through Platform's
+        // `ensure-waiting-room` alias, never this binding directly.
+        $this->app->bind(WaitingRoomGate::class, CommerceWaitingRoomGate::class);
     }
 
     /**

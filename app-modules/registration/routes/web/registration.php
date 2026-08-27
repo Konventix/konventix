@@ -30,8 +30,11 @@ Route::middleware(['auth'])->group(function (): void {
     // a registration is a contract, so it may not be entered by someone who
     // has not agreed to the brand's required policies. Registration applies
     // it here because Registration is the module that knows that — Compliance
-    // wires nothing centrally (ADR-0003).
-    Route::middleware('require-consent')->group(function (): void {
+    // wires nothing centrally (ADR-0003). `ensure-waiting-room` (ADR-0047
+    // point 5) sits beside it: Platform owns the alias and the gate
+    // contract, Commerce the queue — this module imports neither, it only
+    // names the alias string, the same way it names `require-consent`.
+    Route::middleware(['require-consent', 'ensure-waiting-room'])->group(function (): void {
         Route::get('/events/{event_ulid}/register/{type}', [RegistrationController::class, 'show'])
             ->name('registration.show');
 

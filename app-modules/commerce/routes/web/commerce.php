@@ -26,7 +26,11 @@ use Konventix\Commerce\Http\Controllers\ShopController;
 // gate behind it, since Commerce itself is Core and cannot be switched off
 // (`registerFeatures()`). `ensure-feature:commerce:shop` 404s both routes
 // for a brand that never opted in — the middleware's own default.
-Route::middleware(['ensure-feature:commerce:shop'])->group(function (): void {
+// `ensure-waiting-room` (ADR-0047 point 5) runs after it: a brand with the
+// shop off never reaches the queue check at all, and one with the shop on
+// but the waiting room off passes straight through — `CommerceWaitingRoomGate`
+// checks `commerce:waiting-room` itself.
+Route::middleware(['ensure-feature:commerce:shop', 'ensure-waiting-room'])->group(function (): void {
     Route::get('/shop', [ShopController::class, 'index'])->name('commerce.shop.index');
     Route::get('/shop/{slug}', [ShopController::class, 'show'])->name('commerce.shop.show');
 });
@@ -37,8 +41,10 @@ Route::middleware(['ensure-feature:commerce:shop'])->group(function (): void {
 // the moment it is opened (ADR-0044's shape, one step earlier). The feature
 // gate runs first, so an anonymous visitor on a brand with the feature off
 // gets the same 404 the shop routes give, not a login redirect for a page
-// that does not exist.
-Route::middleware(['ensure-feature:commerce:shop', 'auth'])->group(function (): void {
+// that does not exist. `ensure-waiting-room` sits beside it, same as /shop
+// above — the queue applies to the cart before auth ever redirects a
+// guest to sign in, so a rush is held at the door rather than at login.
+Route::middleware(['ensure-feature:commerce:shop', 'ensure-waiting-room', 'auth'])->group(function (): void {
     Route::get('/cart', [CartController::class, 'show'])->name('commerce.cart.show');
     Route::post('/cart/lines', [CartController::class, 'storeLine'])->name('commerce.cart.lines.store');
     Route::patch('/cart/lines/{line}', [CartController::class, 'updateLine'])->name('commerce.cart.lines.update');

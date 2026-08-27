@@ -43,6 +43,9 @@
         <env name="EXPORTS_DISK" value="exports"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <!-- ArrayWaitingRoomStore, not Redis (ADR-0047 point 5) — a test
+             process needs no real queue infrastructure. -->
+        <env name="WAITING_ROOM_STORE" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="DEBUGBAR_ENABLED" value="false"/>
