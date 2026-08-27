@@ -89,7 +89,7 @@ class ProductAdminController
         $brand = $selection->brandId() === null ? null : Brand::query()->find($selection->brandId());
 
         if ($brand === null) {
-            throw ValidationException::withMessages(['name' => __('Pick a brand in the console shell first.')]);
+            throw ValidationException::withMessages(['brand' => __('Pick a brand in the console shell first.')]);
         }
 
         $product = $save->handle($brand, null, $data);

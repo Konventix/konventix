@@ -134,6 +134,13 @@ function submit(): void {
         },
     });
 }
+
+// `brand` is not one of this form's own fields — `SaveProductData` carries
+// no `brandId`, so the server reports "pick a brand first" under a key the
+// form's own type doesn't know about.
+const brandError = computed(
+    () => (form.errors as Record<string, string>).brand,
+);
 </script>
 
 <template>
@@ -174,6 +181,7 @@ function submit(): void {
                             class="flex flex-col gap-4"
                             @submit.prevent="submit"
                         >
+                            <InputError :message="brandError" />
                             <div class="grid gap-2">
                                 <Label for="product-name">Name</Label>
                                 <Input id="product-name" v-model="form.name" />

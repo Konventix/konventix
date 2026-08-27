@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Actions;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Commerce\Actions\Concerns\GuardsProductVariantReferences;
@@ -98,12 +99,20 @@ final class SaveProduct
 
     private function syncVariants(Brand $brand, Product $product, SaveProductData $data): void
     {
-        $incoming = $data->variants === [] ? [$this->implicitVariant($data)] : $data->variants;
-
         $existing = ProductVariant::withoutBrandScope()
             ->where('product_id', $product->getKey())
             ->get()
             ->keyBy('id');
+
+        // An empty submission is the implicit-variant shape, not "no
+        // variants" — a real product always keeps exactly one row. Reusing
+        // the product's current sole variant (rather than always minting a
+        // fresh `id: null` one) is what lets the ordinary sync path below
+        // apply the capacity-vs-consumed guard to it and keeps its
+        // `stock_consumed`; a product that currently has zero or several
+        // variants gets a brand new implicit one, same as before.
+        $isImplicit = $data->variants === [];
+        $incoming = $isImplicit ? [$this->implicitVariant($data, $existing)] : $data->variants;
 
         $keptIds = [];
 
@@ -112,8 +121,12 @@ final class SaveProduct
             $row = $variant->id !== null ? $existing->get($variant->id) : null;
 
             if ($row !== null && $variant->stockCapacity < $row->stock_consumed) {
+                // The implicit shape has no `variants.{i}` field on the form
+                // — key the error to the field the operator actually edited.
+                $errorKey = $isImplicit ? 'stockCapacity' : "variants.{$index}.stockCapacity";
+
                 throw ValidationException::withMessages([
-                    "variants.{$index}.stockCapacity" => __('Capacity cannot drop below the stock already consumed.'),
+                    $errorKey => __('Capacity cannot drop below the stock already consumed.'),
                 ]);
             }
 
@@ -148,7 +161,10 @@ final class SaveProduct
         }
     }
 
-    private function implicitVariant(SaveProductData $data): ProductVariantData
+    /**
+     * @param  Collection<string, ProductVariant>  $existing
+     */
+    private function implicitVariant(SaveProductData $data, Collection $existing): ProductVariantData
     {
         if ($data->stockCapacity === null) {
             throw ValidationException::withMessages([
@@ -156,8 +172,14 @@ final class SaveProduct
             ]);
         }
 
+        // Exactly one existing variant is the implicit row from a previous
+        // save — reuse its id so this save updates it instead of deleting it
+        // and minting a fresh one that starts stock_consumed back at 0. Zero
+        // or several existing variants get a brand new implicit row.
+        $id = $existing->count() === 1 ? $existing->keys()->first() : null;
+
         return new ProductVariantData(
-            id: null,
+            id: $id,
             label: null,
             sku: null,
             unitAmountNet: null,

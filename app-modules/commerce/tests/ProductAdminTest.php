@@ -113,7 +113,7 @@ it('refuses to create a product when no brand is selected', function (): void {
 
     $this->actingAs($admin)
         ->post('http://admin.products.test/admin/products', productPayload())
-        ->assertSessionHasErrors('name');
+        ->assertSessionHasErrors('brand');
 });
 
 it('refuses a duplicate slug on the same brand', function (): void {
@@ -166,6 +166,37 @@ it('refuses a variant capacity below stock already consumed', function (): void 
         ->assertSessionHasErrors('variants.0.stockCapacity');
 
     expect($variant->refresh()->stock_capacity)->toBe(10);
+});
+
+it('reuses the sole implicit variant across saves, applying the capacity guard and keeping stock_consumed', function (): void {
+    [, $admin] = productsOperator();
+    $brand = $this->withBrand(Brand::factory()->create(['slug' => 'pr-implicit-reuse']));
+    $product = productOf($brand);
+    $variant = ProductVariant::factory()->for($product, 'product')->create(['position' => 0, 'stock_capacity' => 30]);
+    $variant->forceFill(['stock_consumed' => 20])->save();
+
+    // A variant-less save must land on the SAME row — reusing its id, not
+    // deleting it and minting a fresh `stock_consumed = 0` one — so the
+    // ordinary capacity-vs-consumed guard applies here too, keyed to the
+    // field the operator actually edited (`stockCapacity`, not
+    // `variants.0.stockCapacity`, which has no field on this form).
+    $this->actingAs($admin)
+        ->put("http://admin.products.test/admin/products/{$product->getKey()}", productPayload(['stockCapacity' => 10]))
+        ->assertSessionHasErrors('stockCapacity');
+
+    expect(ProductVariant::withoutBrandScope()->where('product_id', $product->getKey())->count())->toBe(1)
+        ->and($variant->refresh()->stock_capacity)->toBe(30)
+        ->and($variant->stock_consumed)->toBe(20);
+
+    $this->actingAs($admin)
+        ->put("http://admin.products.test/admin/products/{$product->getKey()}", productPayload(['stockCapacity' => 30]))
+        ->assertRedirect();
+
+    $variants = ProductVariant::withoutBrandScope()->where('product_id', $product->getKey())->get();
+    expect($variants)->toHaveCount(1)
+        ->and($variants->first()->getKey())->toBe($variant->getKey())
+        ->and($variants->first()->stock_capacity)->toBe(30)
+        ->and($variants->first()->stock_consumed)->toBe(20);
 });
 
 it('records and releases image usage as the product\'s image changes', function (): void {
@@ -254,9 +285,8 @@ it('deletes a product and its variants, releasing the image it referenced', func
     $image->brand_id = $brand->getKey();
     $image->save();
 
-    // Set up directly rather than through an admin-console update, which
-    // would replace the implicit variant a variant-less save always
-    // rebuilds — this test is about the delete cascade, not the save sync.
+    // Set up directly rather than through an admin-console update — this
+    // test is about the delete cascade, not the save sync.
     $product = productOf($brand, ['image_media_id' => $image->getKey()]);
     $variant = ProductVariant::factory()->for($product, 'product')->create();
     app(MediaLibrary::class)->recordUsage($image->getKey(), 'commerce', 'product', $product->getKey());
