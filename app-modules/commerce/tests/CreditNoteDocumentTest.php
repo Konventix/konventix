@@ -10,6 +10,7 @@ use Konventix\Commerce\Actions\IssueCreditNote;
 use Konventix\Commerce\Actions\SendCreditNoteMail;
 use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Documents\CreditNoteDocumentRenderer;
+use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Jobs\GenerateCreditNoteDocument;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
@@ -17,6 +18,10 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Mail\TemplatedMail;
+use Konventix\Platform\Models\Operator;
+use Konventix\Platform\Models\Permission as PermissionModel;
+use Konventix\Platform\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * The Gutschrift PDF and mail (ADR-0048 point 2, Task 3) — mirrors
@@ -190,6 +195,9 @@ it('mails the sealed credit note once, with the attachment and the Erstattung wo
             ->and($attachments[0]->as)->toBe($note->credit_note_number.'.pdf');
 
         $mail->assertSeeInHtml('Erstattung');
+        // The refund-specific sentence — guarded on `reasonLabelDe`, not a
+        // raw reason code, in the template (registerMessageTemplates()).
+        $mail->assertSeeInHtml('ursprünglichen Zahlungsweg');
 
         return true;
     });
@@ -198,6 +206,42 @@ it('mails the sealed credit note once, with the attachment and the Erstattung wo
     $job->handle(app(CreditNoteDocumentRenderer::class), app(SendCreditNoteMail::class));
 
     Mail::assertSentCount(1);
+});
+
+it('mails the Umbuchung wording for a transfer credit note, without the refund-payment-method sentence', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    $note = creditNoteDocNote(
+        creditNoteDocOrder(),
+        billingParty: new BillingPartyData(
+            organizationName: 'Musterfirma GmbH',
+            recipientName: 'Erika Musterfrau',
+            email: 'rechnung@musterfirma.example',
+            addressLine: 'Musterstraße 1',
+            postalCode: '18439',
+            city: 'Stralsund',
+            countryCode: 'DE',
+            vatId: null,
+        ),
+        reasonCode: IssueCreditNote::REASON_TRANSFER,
+    );
+
+    (new GenerateCreditNoteDocument($note->id, $brand->id))
+        ->handle(app(CreditNoteDocumentRenderer::class), app(SendCreditNoteMail::class));
+
+    Mail::assertSent(TemplatedMail::class, function (TemplatedMail $mail) use ($note): bool {
+        if (! str_contains($mail->envelope()->subject, $note->credit_note_number)) {
+            return false;
+        }
+
+        $mail->assertSeeInHtml('Umbuchung');
+        $mail->assertDontSeeInHtml('Erstattung');
+        $mail->assertDontSeeInHtml('ursprünglichen Zahlungsweg');
+
+        return true;
+    });
 });
 
 it('skips the credit note mail without failing when the billing party has no email', function (): void {
@@ -289,4 +333,99 @@ it('403s an unsigned request for a credit note document', function (): void {
     $this->actingAs($payer)
         ->get('/my/credit-notes/'.$note->refresh()->getKey().'/document')
         ->assertForbidden();
+});
+
+/**
+ * An operator admin, optionally holding `ViewOrders` — the permission
+ * `Admin\CreditNoteDocumentController` gates on (Commerce has no separate
+ * "view credit notes" capability; the order admin page already lists
+ * credit notes under this same gate). `$host` must be unique per call:
+ * `operators.admin_host` is unique (.ai/rules/tests.md).
+ */
+function creditNoteDocOperatorAdmin(string $host, bool $withViewOrders = true): User
+{
+    $operator = Operator::factory()->create();
+    $operator->forceFill(['admin_host' => $host])->save();
+
+    $registrar = app(PermissionRegistrar::class);
+    $registrar->setPermissionsTeamId($operator->getKey());
+
+    $permissions = ['platform.access-admin'];
+
+    if ($withViewOrders) {
+        $permissions[] = Permission::ViewOrders->value;
+    }
+
+    foreach ($permissions as $name) {
+        PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
+    }
+
+    $role = Role::query()->create([
+        'name' => $withViewOrders ? 'Operator Admin' : 'Operator Without Orders',
+        'guard_name' => 'web',
+        'brand_id' => $operator->getKey(),
+    ]);
+    $role->givePermissionTo($permissions);
+
+    $admin = User::factory()->create();
+    $admin->assignRole($role);
+
+    $registrar->setPermissionsTeamId(null);
+
+    return $admin;
+}
+
+it('lets an operator with ViewOrders download the sealed credit note document', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    $note = creditNoteDocNote(creditNoteDocOrder());
+    (new GenerateCreditNoteDocument($note->id, $brand->id))
+        ->handle(app(CreditNoteDocumentRenderer::class), app(SendCreditNoteMail::class));
+
+    $admin = creditNoteDocOperatorAdmin('admin.credit-note-docs-ok.test');
+
+    $this->actingAs($admin)
+        ->get('http://admin.credit-note-docs-ok.test/admin/credit-notes/'.$note->refresh()->getKey().'/document')
+        ->assertOk()
+        ->assertHeader('content-disposition', 'attachment; filename='.$note->credit_note_number.'.pdf');
+});
+
+it('403s an operator without ViewOrders on the admin credit note document route', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    $note = creditNoteDocNote(creditNoteDocOrder());
+    (new GenerateCreditNoteDocument($note->id, $brand->id))
+        ->handle(app(CreditNoteDocumentRenderer::class), app(SendCreditNoteMail::class));
+
+    $admin = creditNoteDocOperatorAdmin('admin.credit-note-docs-forbidden.test', withViewOrders: false);
+
+    $this->actingAs($admin)
+        ->get('http://admin.credit-note-docs-forbidden.test/admin/credit-notes/'.$note->refresh()->getKey().'/document')
+        ->assertForbidden();
+});
+
+it('404s the admin credit note document route when nothing has been generated yet', function (): void {
+    $this->withBrand();
+
+    // A bare factory row, deliberately not routed through IssueCreditNote:
+    // that would dispatch GenerateCreditNoteDocument, which — synchronous
+    // under RefreshDatabase — would seal a document and defeat the point
+    // of this test. billing_party/seller are NOT NULL columns
+    // (.ai/rules/tests.md-adjacent: CreditNoteFactory defaults both to
+    // null), so an Invoice supplies real snapshots for them.
+    $invoice = Invoice::factory()->create();
+    $note = CreditNote::factory()->create([
+        'order_id' => $invoice->order_id,
+        'billing_party' => $invoice->billing_party,
+        'seller' => $invoice->seller,
+    ]);
+    $admin = creditNoteDocOperatorAdmin('admin.credit-note-docs-missing.test');
+
+    $this->actingAs($admin)
+        ->get('http://admin.credit-note-docs-missing.test/admin/credit-notes/'.$note->getKey().'/document')
+        ->assertNotFound();
 });

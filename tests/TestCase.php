@@ -6,6 +6,7 @@ namespace Tests;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Storage;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Modules\ModuleGate;
@@ -28,6 +29,18 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // GenerateInvoiceDocument/GenerateCreditNoteDocument dispatch
+        // afterCommit() from inside a DB::transaction() that is itself
+        // nested in RefreshDatabase's wrapping transaction — that nested
+        // commit never reaches transaction level 0, so the dispatch runs
+        // synchronously, in-process, right there, on every test regardless
+        // of whether it faked the queue. Without this, that document job
+        // writes a real PDF onto the host's `storage/app/invoices` on any
+        // test that reaches it — this fakes the disk globally so no test
+        // can do that by omission; a test asserting the archive re-fakes
+        // (or asserts against) the same disk explicitly.
+        Storage::fake((string) config('filesystems.invoices_disk', 'invoices'));
 
         if (in_array(RefreshDatabase::class, class_uses_recursive(static::class), true)) {
             $this->testBrand = Brand::factory()->withDomain('localhost')->create();

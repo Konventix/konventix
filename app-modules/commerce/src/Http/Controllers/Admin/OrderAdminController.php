@@ -196,6 +196,8 @@ class OrderAdminController
                     'totalGross' => $note->total_gross,
                     'reasonCode' => $note->reason_code,
                     'issuedOn' => $note->issued_on->toDateString(),
+                    // Mirrors the invoice card's documentReady, above.
+                    'documentReady' => $note->document_path !== null,
                 ])
                 ->values()
                 ->all(),

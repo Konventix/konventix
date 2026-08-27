@@ -148,6 +148,10 @@ it('shows one order with lines, invoice, payments and credit notes', function ()
         'invoice_id' => $invoice->id,
         'billing_party' => $invoice->billing_party,
         'seller' => $invoice->seller,
+        // Sealed already (Task 3, ADR-0048 point 2) — the console's own
+        // Gutschrift PDF link only renders once documentReady is true.
+        'document_path' => 'GS-TEST/2026/GS-TEST-2026-00001.pdf',
+        'document_disk' => 'invoices',
     ]);
 
     $this->actingAs($admin)
@@ -161,7 +165,8 @@ it('shows one order with lines, invoice, payments and credit notes', function ()
             ->where('lines.0.id', $line->id)
             ->where('invoice.number', $invoice->invoice_number)
             ->where('payments.0.id', $payment->id)
-            ->where('creditNotes.0.number', $note->credit_note_number));
+            ->where('creditNotes.0.number', $note->credit_note_number)
+            ->where('creditNotes.0.documentReady', true));
 });
 
 it('403s the order detail without the view-orders capability', function (): void {

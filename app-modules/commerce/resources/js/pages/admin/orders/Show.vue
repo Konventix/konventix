@@ -5,6 +5,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { document as creditNoteDocument } from '@/routes/admin/credit-notes';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
 import { bookPayment } from '@/routes/admin/orders';
 
@@ -71,6 +72,7 @@ type Props = {
         totalGross: string;
         reasonCode: string;
         issuedOn: string;
+        documentReady: boolean;
     }[];
 };
 
@@ -282,7 +284,7 @@ function submitBookPayment(): void {
                         <div
                             v-for="note in creditNotes"
                             :key="note.id"
-                            class="flex items-center justify-between"
+                            class="flex items-center justify-between gap-2"
                         >
                             <div>
                                 <p class="font-medium">{{ note.number }}</p>
@@ -290,10 +292,26 @@ function submitBookPayment(): void {
                                     {{ note.reasonCode }} · {{ note.issuedOn }}
                                 </p>
                             </div>
-                            <span
-                                >-{{ note.totalGross }}
-                                {{ order.currency }}</span
-                            >
+                            <div class="flex items-center gap-2">
+                                <span
+                                    >-{{ note.totalGross }}
+                                    {{ order.currency }}</span
+                                >
+                                <Button
+                                    v-if="note.documentReady"
+                                    as-child
+                                    variant="outline"
+                                    size="sm"
+                                >
+                                    <a
+                                        :href="creditNoteDocument(note.id).url"
+                                        :aria-label="`Download credit note ${note.number} PDF`"
+                                    >
+                                        <FileText class="size-4" />
+                                        PDF
+                                    </a>
+                                </Button>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>

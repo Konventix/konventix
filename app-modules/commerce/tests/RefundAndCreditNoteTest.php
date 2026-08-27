@@ -3,10 +3,13 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Actions\IssueCreditNote;
+use Konventix\Commerce\Actions\RecordPaymentSuccess;
 use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CreditNoteIssued;
@@ -21,6 +24,8 @@ use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Settlement\SettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
+use Konventix\Identity\Models\User;
+use Konventix\Messaging\Mail\TemplatedMail;
 
 /**
  * Records refund calls so tests can assert the PSP side of `RefundOrder`
@@ -222,15 +227,6 @@ it('draws credit-note numbers from their own gapless series', function (): void 
     // document kinds apart by the number alone.
     $this->withBrand();
 
-    // Task 3: IssueCreditNote now dispatches GenerateCreditNoteDocument
-    // afterCommit() (ADR-0048 point 2, same shape IssueInvoice already
-    // used). Faked here — this test is about numbering, not the document —
-    // because the RefreshDatabase transaction wrapping this test lets that
-    // dispatch run synchronously, and PropagatesBrandContextToQueue forgets
-    // the brand context once the job "completes"; without this, the second
-    // refundTestPaidOrder() below has none to stamp its factories with.
-    Queue::fake();
-
     $first = app(IssueCreditNote::class)->handle(refundTestPaidOrder(), IssueCreditNote::REASON_REFUND);
     $second = app(IssueCreditNote::class)->handle(refundTestPaidOrder(), IssueCreditNote::REASON_TRANSFER);
 
@@ -401,4 +397,73 @@ it('aborts the refund entirely when the provider refuses it', function (): void 
         ->and(CreditNote::query()->where('order_id', $order->id)->count())->toBe(0);
 
     Event::assertNotDispatched(OrderRefunded::class);
+});
+
+/**
+ * End to end (Task 3, ADR-0048 point 2): a card-paid cart order (Task 2's
+ * `OrderPaid` → paid Rechnung setup, `paidInvoice*` helpers from
+ * `PaidInvoiceTest`) refunded through `RefundOrder` leaves a Gutschrift the
+ * payer can both read about and download — not just a `CreditNote` row.
+ *
+ * `GenerateCreditNoteDocument` is never dispatched by hand here: it runs
+ * `afterCommit()` from inside `IssueCreditNote`'s own transaction, which
+ * under RefreshDatabase never reaches transaction level 0 — so the dispatch
+ * runs synchronously, in-process, by the time `RefundOrder::handle()`
+ * returns (`.ai/rules/tests.md`). `Storage::fake('invoices')` here is a
+ * second, harmless fake of the disk `TestCase::setUp()` already faked
+ * globally — kept explicit so this test's intent reads on its own.
+ */
+it('refunds a paid cart order into a mailed, downloadable Gutschrift', function (): void {
+    $brand = paidInvoiceBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    $payer = User::factory()->create();
+    $order = paidInvoiceOrder('cart', paidInvoiceBillingParty($payer->name, $payer->email));
+    $order->forceFill(['payer_user_id' => $payer->getKey()])->save();
+
+    // manual: RefundOrder's PSP call resolves ManualSettlementAdapter, a
+    // true no-op (ADR-0039) — no live provider call in a test.
+    $payment = paidInvoicePayment($order, 'manual');
+    app(RecordPaymentSuccess::class)->handle($payment);
+
+    $invoice = Invoice::query()->where('order_id', $order->id)->sole();
+    expect($invoice->paid_at)->not->toBeNull();
+
+    app(RefundOrder::class)->handle($order->fresh(), reasonCode: 'customer-request');
+
+    $note = CreditNote::query()->where('order_id', $order->id)->sole();
+
+    expect($note->document_path)->not->toBeNull()
+        ->and($note->document_disk)->toBe('invoices');
+
+    Storage::disk('invoices')->assertExists($note->document_path);
+
+    // Two TemplatedMails go out here — the paid Rechnung (Task 2) and the
+    // Gutschrift (this task) — so the matcher must pick its own out by
+    // subject before asserting on it, not assert unconditionally: a failed
+    // `expect()` inside `assertSent`'s callback throws rather than counting
+    // as "no match, try the next mail".
+    Mail::assertSent(TemplatedMail::class, function (TemplatedMail $mail) use ($note): bool {
+        if (! str_contains($mail->envelope()->subject, $note->credit_note_number)) {
+            return false;
+        }
+
+        $attachments = $mail->attachments();
+
+        expect($attachments)->toHaveCount(1)
+            ->and($attachments[0]->as)->toBe($note->credit_note_number.'.pdf');
+
+        return true;
+    });
+
+    test()->actingAs($payer)
+        ->get('/my/orders')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('commerce/my/Index')
+            ->where('orders.0.creditNotes.0.number', $note->credit_note_number)
+            ->where(
+                'orders.0.creditNotes.0.documentUrl',
+                fn (?string $url): bool => $url !== null && str_contains($url, 'signature='),
+            ));
 });
