@@ -126,7 +126,12 @@ final class SendMessage
             } else {
                 $this->log($message, MessageStatus::Queued);
 
-                SendQueuedMessage::dispatch($message);
+                // A caller's own write often shares the transaction this
+                // call runs inside (an order placed, a registration
+                // confirmed); dispatching only after it commits means a
+                // rollback sends no mail for a change that never happened
+                // (ADR-0041/ADR-0048's "sends dispatch afterCommit").
+                SendQueuedMessage::dispatch($message)->afterCommit();
             }
 
             event(new MessageQueued(

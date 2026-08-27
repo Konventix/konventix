@@ -84,6 +84,17 @@ depends on brand resolution and gating working.
 
 ## Done
 
+- [x] ADR-0048 point 4, Task 1 of the mail-and-receipts tranche:
+      `Footer\FooterLinks::legalLinksFor(brandId): array{imprintUrl,
+      privacyUrl}`, a plain read service reading the same `FooterLink` rows
+      the page footer does (operator-wide plus the brand's own,
+      `scopeInDisplayOrder()`), picking the first URL-kind entry whose label
+      reads as imprint or privacy and returning it absolute via `BrandUrl`.
+      `FooterLink` itself stays a Platform model other modules may not
+      import (ADR-0004); Messaging's branded mail layout is the first
+      caller, through this doorway — the same shape as `Operators\
+      OperatorSettings` and `Branding\BrandIdentityResolver`.
+
 - [x] ADR-0047 point 5, Task 12: the `ensure-waiting-room` route middleware
       alias and its contract. `src/WaitingRoom/WaitingRoomGate` (`guard(Request):
       ?Response` — null passes, a non-null response blocks) and

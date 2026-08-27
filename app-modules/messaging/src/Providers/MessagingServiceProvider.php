@@ -12,6 +12,7 @@ use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Content\Events\AnnouncementPublished;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
+use Konventix\Messaging\Branding\BrandMailIdentityResolver;
 use Konventix\Messaging\Channels\ChannelMap;
 use Konventix\Messaging\Channels\InAppChannel;
 use Konventix\Messaging\Channels\MailChannel;
@@ -66,6 +67,11 @@ class MessagingServiceProvider extends ModuleServiceProvider
         // registries (NavigationRegistry, SlotRegistry).
         $this->app->singleton(TemplateRegistry::class);
         $this->app->singleton(TopicRegistry::class);
+
+        // Never a singleton holding a brand (ADR-0010, Octane): a worker
+        // sends mail for many brands over its lifetime, so this is scoped —
+        // forgotten between requests/jobs, resolved fresh for the next one.
+        $this->app->scoped(BrandMailIdentityResolver::class);
 
         // Channel drivers resolve through the map (ADR-0041): adding a
         // channel is one register() line.

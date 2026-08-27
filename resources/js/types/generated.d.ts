@@ -446,6 +446,17 @@ declare namespace Konventix {
     }
     namespace Messaging {
         namespace Data {
+            export type BrandMailIdentityData = {
+                readonly brandId: string;
+                readonly brandName: string;
+                readonly logoUrl: string | null;
+                readonly logoAlt: string | null;
+                readonly accentColor: string;
+                readonly accentTextColor: string;
+                readonly sellerLine: string;
+                readonly imprintUrl: string | null;
+                readonly privacyUrl: string | null;
+            };
             export type MailSettingsData = {
                 fromName: string;
                 fromAddress: string;

@@ -87,6 +87,40 @@ the natural first consumer and would register the first real template.
 
 ## Done
 
+- [x] ADR-0048 point 4, Task 1 of the mail-and-receipts tranche: every mail
+      wears a branded layout Messaging owns. `MailChannel` wraps the
+      template's rendered subject/body in `messaging::layouts.branded`
+      (`Mail\MailLayout::wrap()`) before building `TemplatedMail`, which now
+      takes pre-rendered `html`/`text` rather than a bare `RenderedMessage`
+      — `Content`'s `text` slot only accepts a view name, so a tiny
+      `messaging::mail.text` view echoes the string `MailLayout` derives
+      (subject, the body with `<p>`/`<br>` turned into newlines and every
+      other tag stripped, then the footer lines). The identity is
+      `Data\BrandMailIdentityData`, resolved fresh per send by
+      `Branding\BrandMailIdentityResolver` — never a singleton holding a
+      brand — from `Brand` (the one Platform model on the cross-module
+      allow-list) plus Platform's own non-model read services
+      (`Branding\BrandIdentityResolver` for the logo, `Operators\
+      OperatorSettings` for the legal line, and the new
+      `Konventix\Platform\Footer\FooterLinks` for the imprint/privacy
+      links — `FooterLink` itself stays off Messaging's allow-list, so this
+      is the sanctioned doorway, same shape as `OperatorSettings`). Accent
+      colour comes from `Brand::theme_tokens['accent']`/`['on-accent']` with
+      the theme catalogue's defaults as fallback; a brand with no operator
+      degrades to its name as the seller line instead of failing the send.
+      The preferences link renders only for a template sent with a topic,
+      against the real `notification-preferences.edit` route (the brief
+      assumed a `messaging.preferences.*` name; the settings page Slice 13a
+      shipped is named `notification-preferences.edit`, so that is what
+      resolves), absolute against the brand's own host via `BrandUrl` where
+      one exists. `SendMessage` now dispatches `SendQueuedMessage` with
+      `->afterCommit()`, so a send accepted inside the caller's own
+      transaction never reaches the queue if that transaction rolls back —
+      the gap ADR-0048 calls out explicitly. Existing mail (Commerce's
+      invoice mail, the intent-event listeners) renders inside the new
+      layout unchanged; their own tests still pass. ADR-0048 committed
+      verbatim at `docs/decisions/0048-mail-and-the-rechnung-on-payment.md`.
+
 - [x] `permissions:sync` exists (it shipped with the operator console) and,
       since ADR-0045, also materializes each module's default roles per
       brand.

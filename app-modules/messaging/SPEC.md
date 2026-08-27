@@ -54,6 +54,38 @@ scalars and ULIDs, which is exactly what the rule asks for.
   per-brand overrides, localisation per recipient locale, and rendering against
   a typed payload rather than a free-form array (ADR-0009,
   lessons-from-lancore #11).
+- **Branded layout and mail identity** (ADR-0048 point 4): every mail
+  `MailChannel` sends is wrapped in one layout (`resources/views/layouts/
+  branded.blade.php`, table-based, inline CSS, 600 px) before it reaches
+  `TemplatedMail` — a template author writes only the body. The layout shows
+  the brand's logo (or its name as text, when it has none) on its accent
+  colour, the rendered body, and a footer with the operator's legal line,
+  imprint/privacy links, and — only for a template sent with a topic — a
+  link to manage notification preferences; contractual/legal mail (no
+  topic) carries none, since only the suppression list applies to it. A
+  generated plain-text alternative rides beside the HTML part (subject,
+  the body with `<p>`/`<br>` turned into line breaks and every other tag
+  stripped, then the same footer lines).
+  The identity is a read model (`Data\BrandMailIdentityData`) resolved
+  fresh per send from the envelope's own `brandId` by
+  `Branding\BrandMailIdentityResolver` — never a singleton holding a brand
+  (Octane): logo and alt text from Platform's `BrandIdentityResolver`,
+  accent colour from `Brand::theme_tokens['accent']`/`['on-accent']` with
+  the theme catalogue's defaults as fallback, the legal line from
+  `OperatorSettings::sellerForBrand()` (a brand with no operator degrades to
+  the brand name rather than failing the send), and the imprint/privacy
+  links from Platform's `Footer\FooterLinks` service — a plain read service,
+  not the `FooterLink` model, which stays off Messaging's cross-module
+  allow-list. The preferences link resolves against `notification-
+  preferences.edit` when that route exists and the send names a topic,
+  absolute against the brand's own host where `BrandUrl` can resolve one
+  (a queue job has no request to derive it from); it is left off entirely
+  once no such route exists yet.
+  `SendMessage` dispatches `SendQueuedMessage` with `->afterCommit()`: a
+  send accepted inside the caller's own transaction (an order placed, a
+  registration confirmed) only actually reaches the queue once that
+  transaction commits, so a rollback sends no mail for a change that never
+  happened.
 - **In-app notification inbox** (ADR-0041 point 6): the in-app channel's
   delivery *is* the `messaging_notifications` row (title, body, optional URL,
   topic, read state). The bell lives in the persistent layout and fetches its

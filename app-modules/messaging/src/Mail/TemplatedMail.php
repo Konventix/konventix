@@ -10,18 +10,26 @@ use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Konventix\Messaging\Data\AttachmentData;
-use Konventix\Messaging\Templates\RenderedMessage;
 
 /**
- * A already-rendered message wrapped as a Mailable so it can go through
- * Laravel's normal mail pipeline (queueing, events, testing helpers).
- * Content is a raw HTML string (`Content::$htmlString`) rather than a Blade
- * view — TemplateRenderer already did the rendering.
+ * An already-rendered, already brand-wrapped message as a Mailable so it can
+ * go through Laravel's normal mail pipeline (queueing, events, testing
+ * helpers). `html`/`text` come in pre-rendered — `TemplateRenderer` and
+ * `Mail\MailLayout` already did the rendering — so content() only has to
+ * hand them to `Content` in the shapes it accepts: a raw HTML string
+ * (`htmlString`), and a view name for the text part, since `Content` has no
+ * raw-string equivalent for text (`messaging::mail.text` echoes the string
+ * passed as `with`).
  */
 final class TemplatedMail extends Mailable
 {
     public function __construct(
-        private readonly RenderedMessage $rendered,
+        // Named to avoid colliding with Mailable's own public `$subject`,
+        // protected `$html`, and public `$textView` properties — same
+        // reasoning as `replyToAddress` below.
+        private readonly string $messageSubject,
+        private readonly string $htmlBody,
+        private readonly string $textBody,
         private readonly string $fromAddress,
         private readonly ?string $fromName,
         // Named to avoid colliding with Mailable's own public, read-write
@@ -37,13 +45,17 @@ final class TemplatedMail extends Mailable
         return new Envelope(
             from: new Address($this->fromAddress, $this->fromName),
             replyTo: $this->replyToAddress === null ? [] : [new Address($this->replyToAddress)],
-            subject: $this->rendered->subject,
+            subject: $this->messageSubject,
         );
     }
 
     public function content(): Content
     {
-        return new Content(htmlString: $this->rendered->body);
+        return new Content(
+            htmlString: $this->htmlBody,
+            text: 'messaging::mail.text',
+            with: ['text' => $this->textBody],
+        );
     }
 
     /**
