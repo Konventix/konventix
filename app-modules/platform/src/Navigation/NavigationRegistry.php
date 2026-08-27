@@ -18,16 +18,18 @@ use Laravel\Pennant\Feature;
  * unconditionally. Filtering by what is active for the current brand happens
  * here, at render time — so a module never inspects feature state to decide
  * whether to register.
+ *
+ * Holds only boot-time registrations, so a long-lived Octane worker may share
+ * this singleton across requests; `BrandContext` is scoped, not singleton, so
+ * it is resolved at call time in `visible()` rather than constructor-injected
+ * — the same pattern `BlockRegistry::resolveActive()` uses.
  */
 class NavigationRegistry
 {
     /** @var array<int, NavigationItem> */
     private array $items = [];
 
-    public function __construct(
-        private readonly ModuleGate $gate,
-        private readonly BrandContext $context,
-    ) {}
+    public function __construct(private readonly ModuleGate $gate) {}
 
     public function add(NavigationItem ...$items): void
     {
@@ -46,12 +48,17 @@ class NavigationRegistry
      */
     public function visible(string $area = NavigationItem::AREA_BRAND): Collection
     {
+        // Resolved here, not captured in the constructor: BrandContext is
+        // scoped per request, and this registry is a singleton that outlives
+        // it under Octane.
+        $brand = app(BrandContext::class)->current();
+
         return Collection::make($this->items)
             ->filter(fn (NavigationItem $item): bool => $item->area === $area)
             ->filter(fn (NavigationItem $item): bool => $area === NavigationItem::AREA_ADMIN
                 || $this->gate->isActive($item->module))
             ->filter(fn (NavigationItem $item): bool => $item->feature === null
-                || (($brand = $this->context->current()) !== null && Feature::for($brand)->active($item->feature)))
+                || ($brand !== null && Feature::for($brand)->active($item->feature)))
             ->filter(fn (NavigationItem $item): bool => $item->permission === null
                 || auth()->user()?->can($item->permission) === true)
             ->sortBy([

@@ -10,6 +10,7 @@ use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
+use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Slots\SlotRegistry;
@@ -155,6 +156,46 @@ it('skips a slot contribution behind an inactive brand feature', function (): vo
     Feature::for($brand)->activate('commerce:shop');
 
     expect($slots->for('test.brand-feature.slot')->pluck('component')->all())->toBe(['ShopWidget']);
+});
+
+/**
+ * Regression: NavigationRegistry, SlotRegistry and ModuleGate are singletons
+ * that outlive a single request under Octane, while BrandContext is scoped
+ * and forgotten between requests. Resolving BrandContext once in a
+ * constructor and holding onto it would pin the first request's brand into
+ * the worker for its whole lifetime — every feature-gated entry would read
+ * as belonging to whichever brand answered the worker's very first request.
+ * `app()->forgetScopedInstances()` simulates that request boundary.
+ */
+it('resolves the brand fresh per call instead of pinning it across an Octane request boundary', function (): void {
+    $brandA = Brand::factory()->create(['slug' => 'octane-a']);
+    $brandB = Brand::factory()->create(['slug' => 'octane-b']);
+
+    $this->withBrand($brandA);
+
+    // Registries constructed once, as the singletons they are — held across
+    // the simulated request boundary below, exactly as an Octane worker
+    // would hold them.
+    $navigation = app(NavigationRegistry::class);
+    $navigation->add(new NavigationItem(
+        module: 'commerce',
+        label: 'Shop',
+        url: '/shop',
+        feature: 'commerce:shop',
+    ));
+
+    expect($navigation->visible()->pluck('label')->contains('Shop'))->toBeFalse();
+
+    // The Octane request boundary: the scoped BrandContext is forgotten: a
+    // fresh one is bound for the next request, which resolves brand B.
+    app()->forgetScopedInstances();
+    $this->withBrand($brandB);
+
+    $this->activateFeature('commerce:shop', $brandB);
+    $this->activateModule('competition', $brandB);
+
+    expect($navigation->visible()->pluck('label')->contains('Shop'))->toBeTrue()
+        ->and(app(ModuleGate::class)->isActive('competition'))->toBeTrue();
 });
 
 it('renders the edit page with feature state', function (): void {

@@ -32,16 +32,18 @@ use Laravel\Pennant\Feature;
  * A contribution may also carry a per-brand feature (ADR-0047) — a second,
  * finer-grained gate for the module that has no module activation to hide
  * behind, applied the same way and after the module filter.
+ *
+ * Holds only boot-time registrations, so a long-lived Octane worker may share
+ * this singleton across requests; `BrandContext` is scoped, not singleton, so
+ * it is resolved at call time in `for()` rather than constructor-injected —
+ * the same pattern `BlockRegistry::resolveActive()` uses.
  */
 class SlotRegistry
 {
     /** @var array<string, array<int, array{module: string, component: string, props: array<string, mixed>|Closure(array<string, mixed>): array<string, mixed>, order: int, feature: string|null}>> */
     private array $slots = [];
 
-    public function __construct(
-        private readonly ModuleGate $gate,
-        private readonly BrandContext $context,
-    ) {}
+    public function __construct(private readonly ModuleGate $gate) {}
 
     /**
      * @param  array<string, mixed>|Closure(array<string, mixed>): array<string, mixed>  $props
@@ -77,6 +79,11 @@ class SlotRegistry
      */
     public function for(string $slot, array $context = []): Collection
     {
+        // Resolved here, not captured in the constructor: BrandContext is
+        // scoped per request, and this registry is a singleton that outlives
+        // it under Octane.
+        $brand = app(BrandContext::class)->current();
+
         // PHPStan false positive on the return below: Collection's TValue is
         // a non-covariant template, and its invariance check rejects this
         // array shape — identical to the declared return type — purely
@@ -87,7 +94,7 @@ class SlotRegistry
         return Collection::make($this->slots[$slot] ?? [])
             ->filter(fn (array $entry): bool => $this->gate->isActive($entry['module']))
             ->filter(fn (array $entry): bool => $entry['feature'] === null
-                || (($brand = $this->context->current()) !== null && Feature::for($brand)->active($entry['feature'])))
+                || ($brand !== null && Feature::for($brand)->active($entry['feature'])))
             ->sortBy('order')
             ->map(fn (array $entry): array => [
                 'module' => $entry['module'],

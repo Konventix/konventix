@@ -16,6 +16,11 @@ use Laravel\Pennant\Feature;
  * EnsureModuleIsActive, navigation via NavigationRegistry, UI slots via
  * SlotRegistry, and listeners by calling `isActive()` before doing work — so
  * activation semantics live in exactly one place.
+ *
+ * Holds only boot-time registrations, so a long-lived Octane worker may share
+ * this singleton across requests; `BrandContext` is scoped, not singleton, so
+ * it is resolved at call time here rather than constructor-injected — the
+ * same pattern `BlockRegistry::resolveActive()` uses.
  */
 class ModuleGate
 {
@@ -23,7 +28,6 @@ class ModuleGate
     private ?array $gateable = null;
 
     public function __construct(
-        private readonly BrandContext $context,
         private readonly ModuleRegistry $registry,
     ) {}
 
@@ -41,7 +45,7 @@ class ModuleGate
             return true;
         }
 
-        $brand = $this->context->current();
+        $brand = app(BrandContext::class)->current();
 
         if ($brand === null) {
             return false;
