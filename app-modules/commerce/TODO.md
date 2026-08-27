@@ -35,9 +35,10 @@
       `app.url`, which providers cannot reach from a WSL dev stack — needs
       a tunnel for end-to-end manual testing. Stripe can replay via
       `stripe listen --forward-to`.
-- [ ] Credit-note PDF. `CreditNote` records the document but nothing renders
-      it; ADR-0031's hybrid ZUGFeRD pipeline should extend to credit notes,
-      with `InvoiceDocumentRenderer` as the shape to follow.
+- [ ] `konventix:seed` never issues a refund, so `admin.credit-notes.document`
+      (Task 3) is skipped by name in `DryRunTest` rather than walked — a real
+      gap, not a "not a screen" skip. Have the seed refund one paid order per
+      archetype once a natural spot for it exists in the seeding flow.
 - [ ] Partial credit notes. `IssueCreditNote` accepts a `$totalGross`
       override, but the tax split is still the invoice's — a genuine partial
       needs its own line-level calculation through `TaxCalculator`.
@@ -84,6 +85,44 @@
 - [ ] PlaceRegistrationLineInCart's read-then-insert can lose a race to cart_lines_request_key_unique and throw a QueryException out of a listener, the same shape PlaceOrderFromSettlementRequest carries. The 2026-08-27 rush never surfaced it (0 × 5xx across 754 arrivals), so this stays a converge-on-conflict cleanup — catch the violation and re-read the line the winner created, as OpenCart::for() already does.
 
 ## Done
+
+- [x] ADR-0048 (mail-and-receipts Task 3): a refund leaves a Gutschrift
+      behind, on paper and in the inbox. `IssueCreditNote` now dispatches
+      `Jobs\GenerateCreditNoteDocument` `afterCommit()`, the same shape
+      `IssueInvoice` already used for a paid Rechnung (Task 2) —
+      `Documents\CreditNoteDocumentRenderer` renders the hybrid-ZUGFeRD
+      shape (`ZugferdInvoiceType::CREDITNOTE`, code 381) from the credit
+      note's own snapshot, never from `Order`/`OrderLine`: a credit note
+      only carries aggregate totals, so the document is one summary
+      position ("Gutschrift zu Rechnung Nr. …") rather than a line
+      breakdown, and `addDocumentInvoiceReferencedDocument()` names the
+      corrected invoice whenever `invoice_id` is set. `credit_notes` gained
+      the same four `document_*` columns invoices carry (new migration);
+      the job is idempotent on `document_path` and archives to the same
+      `invoices_disk` an invoice does — one archive, one retention rule,
+      for both document kinds. `Actions\SendCreditNoteMail` mails the
+      sealed archive through the new `commerce.credit-note-issued`
+      template — one template for both refund and transfer, with
+      `Data\CreditNoteMailData` carrying `reasonLabelDe`/`reasonLabelEn` as
+      two already-localised strings rather than a raw `reasonCode` the
+      template branches on, keeping the body branch-free
+      (`.ai/rules/app-modules-src.md`'s "a Blade directive glued to a
+      preceding/following word" trap). The payer's own copy is
+      `GET /my/credit-notes/{creditNote}/document`
+      (`commerce.my.credit-note.document`) — `auth` + `signed:relative`
+      like the invoice route, but `MyCreditNoteDocumentController` checks
+      ownership against the order's `payer_user_id` explicitly, since
+      unlike an invoice's link a credit note's is minted from the shared
+      "my orders" list rather than from a render that already proved
+      ownership. `MyOrderData.creditNotes` (`Data\MyCreditNoteData`,
+      additive-only) lists every Gutschrift per order with its own
+      `documentUrl`; `commerce/my/Index.vue` renders one "Gutschrift
+      {{ number }}" secondary button per credit note, linking once the
+      document exists. The operator console's twin,
+      `admin.credit-notes.document` (`Admin\CreditNoteDocumentController`),
+      is gated on `ViewOrders` — Commerce has no separate "view credit
+      notes" capability, and the order admin page already lists credit
+      notes under that same permission.
 
 - [x] ADR-0048 (mail-and-receipts Task 2): a paid order gets its Rechnung
       the moment it is paid, and it says so. `IssueInvoiceOnOrderPaid`

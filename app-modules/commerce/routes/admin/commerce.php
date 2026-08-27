@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Commerce\Http\Controllers\Admin\BookkeepingExportController;
+use Konventix\Commerce\Http\Controllers\Admin\CreditNoteDocumentController;
 use Konventix\Commerce\Http\Controllers\Admin\InvoiceDocumentController;
 use Konventix\Commerce\Http\Controllers\Admin\OrderAdminController;
 use Konventix\Commerce\Http\Controllers\Admin\ProductAdminController;
@@ -27,6 +28,7 @@ Route::get('/orders', [OrderAdminController::class, 'index'])->name('admin.order
 Route::get('/orders/{order}', [OrderAdminController::class, 'show'])->name('admin.orders.show');
 Route::post('/orders/{order}/payment', [OrderAdminController::class, 'bookPayment'])->name('admin.orders.book-payment');
 Route::get('/invoices/{invoice}/document', [InvoiceDocumentController::class, 'download'])->name('admin.invoices.document');
+Route::get('/credit-notes/{creditNote}/document', [CreditNoteDocumentController::class, 'download'])->name('admin.credit-notes.document');
 
 Route::get('/settlement-accounts', [SettlementAccountAdminController::class, 'index'])->name('admin.settlement-accounts.index');
 Route::post('/settlement-accounts/stripe', [SettlementAccountAdminController::class, 'connectStripe'])->name('admin.settlement-accounts.stripe');

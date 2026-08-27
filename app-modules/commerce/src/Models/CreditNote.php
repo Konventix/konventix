@@ -45,6 +45,10 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $reason_code
  * @property string|null $reason_note
  * @property Carbon $issued_on
+ * @property string|null $document_path
+ * @property string|null $document_disk
+ * @property string|null $document_sha256
+ * @property Carbon|null $document_generated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -55,6 +59,11 @@ class CreditNote extends Model
     /** @use HasFactory<CreditNoteFactory> */
     use HasFactory, HasUlids;
 
+    /**
+     * The document fields are not fillable — like `Invoice`, they are
+     * written exactly once by the generation job via `forceFill()`, never
+     * through mass assignment at issuance.
+     */
     protected $fillable = [
         'order_id',
         'invoice_id',
@@ -97,6 +106,7 @@ class CreditNote extends Model
             'seller' => OperatorSellerData::class,
             'tax_treatment' => TaxTreatment::class,
             'issued_on' => 'datetime',
+            'document_generated_at' => 'datetime',
         ];
     }
 

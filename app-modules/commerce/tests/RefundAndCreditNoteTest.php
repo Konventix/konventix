@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Actions\IssueCreditNote;
@@ -220,6 +221,15 @@ it('draws credit-note numbers from their own gapless series', function (): void 
     // A separate sequence from invoices, so a tax advisor can tell the two
     // document kinds apart by the number alone.
     $this->withBrand();
+
+    // Task 3: IssueCreditNote now dispatches GenerateCreditNoteDocument
+    // afterCommit() (ADR-0048 point 2, same shape IssueInvoice already
+    // used). Faked here — this test is about numbering, not the document —
+    // because the RefreshDatabase transaction wrapping this test lets that
+    // dispatch run synchronously, and PropagatesBrandContextToQueue forgets
+    // the brand context once the job "completes"; without this, the second
+    // refundTestPaidOrder() below has none to stamp its factories with.
+    Queue::fake();
 
     $first = app(IssueCreditNote::class)->handle(refundTestPaidOrder(), IssueCreditNote::REASON_REFUND);
     $second = app(IssueCreditNote::class)->handle(refundTestPaidOrder(), IssueCreditNote::REASON_TRANSFER);

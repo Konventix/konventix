@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Actions;
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Events\CreditNoteIssued;
 use Konventix\Commerce\Exceptions\CreditNoteRequiresInvoiceException;
+use Konventix\Commerce\Jobs\GenerateCreditNoteDocument;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
@@ -89,6 +90,11 @@ final class IssueCreditNote
                 reasonCode: $reasonCode,
                 issuedAt: $creditNote->issued_on->toIso8601String(),
             ));
+
+            // ADR-0048 point 2: a Gutschrift gets a document and a mail, like
+            // an invoice — `afterCommit()` so the job never races the row it
+            // reads (the same shape `IssueInvoiceOnOrderPaid` uses).
+            GenerateCreditNoteDocument::dispatch($creditNote->id, $order->brand_id)->afterCommit();
 
             return $creditNote;
         });

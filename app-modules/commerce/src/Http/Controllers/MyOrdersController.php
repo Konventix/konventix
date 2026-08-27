@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Data\MyOrderData;
+use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 
@@ -36,9 +37,23 @@ final class MyOrdersController
             ->unique('order_id')
             ->keyBy('order_id');
 
+        // One lookup for every credit note issued against any of these
+        // orders (ADR-0048 point 2) — grouped per order, oldest first, the
+        // way `MyCreditNoteData::ofCreditNote()` expects to list them.
+        $creditNotes = CreditNote::query()
+            ->whereIn('order_id', $orders->pluck('id'))
+            ->orderBy('issued_on')
+            ->get()
+            ->groupBy('order_id');
+
         return Inertia::render('commerce/my/Index', [
             'orders' => $orders
-                ->map(fn (Order $order): array => MyOrderData::ofOrder($order, $invoices->get($order->getKey()))->toArray())
+                ->map(function (Order $order) use ($invoices, $creditNotes): array {
+                    /** @var list<CreditNote> $orderCreditNotes */
+                    $orderCreditNotes = $creditNotes->get($order->getKey(), collect())->values()->all();
+
+                    return MyOrderData::ofOrder($order, $invoices->get($order->getKey()), $orderCreditNotes)->toArray();
+                })
                 ->all(),
         ]);
     }

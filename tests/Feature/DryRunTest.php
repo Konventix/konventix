@@ -93,6 +93,14 @@ function dryRunSkippedRoutes(): array
         // A URL built from route parameters alone cannot carry one.
         // `RegistrationSettlementSlotTest` follows a real minted link.
         'commerce.my.invoice.document' => 'needs a signed download link',
+        // Same reason as above (see MyCreditNoteDocumentController).
+        'commerce.my.credit-note.document' => 'needs a signed download link',
+
+        // `konventix:seed` never issues a refund, so neither archetype has a
+        // credit note for this route's `{creditNote}` parameter to point
+        // at — a genuine seed gap (ADR-0048 point 2), not a route that
+        // cannot be a screen.
+        'admin.credit-notes.document' => 'no credit note in seeded data — konventix:seed does not exercise a refund',
     ];
 }
 

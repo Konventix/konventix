@@ -74,6 +74,24 @@ declare namespace Konventix {
                 readonly provider: string;
                 readonly label: string;
             };
+            export type CreditNoteMailData = {
+                readonly creditNoteNumber: string;
+                readonly invoiceNumber: string | null;
+                readonly recipientName: string;
+                readonly sellerName: string;
+                readonly totalGross: string;
+                readonly currency: string;
+                readonly reasonLabelDe: string;
+                readonly reasonLabelEn: string;
+                readonly issuedOn: string;
+            };
+            export type MyCreditNoteData = {
+                readonly number: string;
+                readonly issuedOn: string;
+                readonly totalGross: string;
+                readonly currency: string;
+                readonly documentUrl: string | null;
+            };
             export type MyOrderData = {
                 readonly id: string;
                 readonly placedAt: string;
@@ -88,6 +106,7 @@ declare namespace Konventix {
                 readonly payUrl: string | null;
                 readonly documentUrl: string | null;
                 readonly lines: Konventix.Commerce.Data.MyOrderLineData[];
+                readonly creditNotes: Konventix.Commerce.Data.MyCreditNoteData[];
             };
             export type MyOrderLineData = {
                 readonly label: string;

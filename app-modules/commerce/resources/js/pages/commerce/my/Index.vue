@@ -114,7 +114,9 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
                     </ul>
                 </div>
 
-                <div class="flex shrink-0 items-center gap-2">
+                <div
+                    class="flex shrink-0 flex-wrap items-center justify-end gap-2"
+                >
                     <Button v-if="order.payUrl" as-child size="sm">
                         <a :href="order.payUrl">Pay now</a>
                     </Button>
@@ -133,6 +135,36 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
                             }}
                         </a>
                     </Button>
+                    <!--
+                        A refund of a paid order leaves a Gutschrift beside
+                        the invoice it corrects (ADR-0048 point 2) — one
+                        secondary button per credit note, same shape as the
+                        Rechnung button above, linking to the document only
+                        once it has been generated.
+                    -->
+                    <template
+                        v-for="creditNote in order.creditNotes"
+                        :key="creditNote.number"
+                    >
+                        <Button
+                            v-if="creditNote.documentUrl"
+                            as-child
+                            variant="secondary"
+                            size="sm"
+                        >
+                            <a :href="creditNote.documentUrl">
+                                <FileText class="size-4" />
+                                Gutschrift {{ creditNote.number }}
+                            </a>
+                        </Button>
+                        <span
+                            v-else
+                            class="inline-flex items-center gap-1.5 text-xs text-text-muted"
+                        >
+                            <FileText class="size-4" />
+                            Gutschrift {{ creditNote.number }}
+                        </span>
+                    </template>
                 </div>
             </li>
         </ul>

@@ -18,6 +18,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Commerce\Http\Controllers\CartController;
 use Konventix\Commerce\Http\Controllers\CheckoutController;
+use Konventix\Commerce\Http\Controllers\MyCreditNoteDocumentController;
 use Konventix\Commerce\Http\Controllers\MyInvoiceDocumentController;
 use Konventix\Commerce\Http\Controllers\MyOrdersController;
 use Konventix\Commerce\Http\Controllers\ShopController;
@@ -87,6 +88,15 @@ Route::get('/my/invoices/{invoice}/document', MyInvoiceDocumentController::class
     ->whereUlid('invoice')
     ->middleware(['auth', 'signed:relative'])
     ->name('commerce.my.invoice.document');
+
+// The payer's own credit note PDF (ADR-0048 point 2) — same shape as the
+// invoice route above, `signed:relative` for the same brand-host reason.
+// Ownership is checked explicitly inside MyCreditNoteDocumentController,
+// not left to the signature alone (see its docblock).
+Route::get('/my/credit-notes/{creditNote}/document', MyCreditNoteDocumentController::class)
+    ->whereUlid('creditNote')
+    ->middleware(['auth', 'signed:relative'])
+    ->name('commerce.my.credit-note.document');
 
 // The payer's own orders (ADR-0044). `auth` only — no `require-consent`,
 // for the reason Registration gives on `/my/registrations`: reading back what

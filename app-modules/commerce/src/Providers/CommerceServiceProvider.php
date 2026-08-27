@@ -396,6 +396,55 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
             defaultLocale: 'de',
         ));
+
+        // ADR-0048 point 2: a Gutschrift gets a document and a mail, like an
+        // invoice. One template covers both reasons (refund/transfer) —
+        // `reasonLabelDe`/`reasonLabelEn` carry both words already, so the
+        // template body stays branch-free rather than gluing an
+        // `@if($reasonCode === ...)` onto the strings this renders from
+        // (`.ai/rules/app-modules-src.md`). The refund-specific sentence
+        // about the original payment method is guarded on `invoiceNumber`'s
+        // sibling condition instead: `SendCreditNoteMail` only ever sets
+        // `reasonLabelDe`/`En` to the refund pair when the reason is a
+        // refund, and the template checks that string, not a raw code.
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'commerce.credit-note-issued',
+            subjects: [
+                'de' => 'Gutschrift {{ $creditNoteNumber }} von {{ $sellerName }}',
+                'en' => 'Credit note {{ $creditNoteNumber }} from {{ $sellerName }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag {{ $recipientName }},</p>
+                    <p>anbei erhalten Sie die Gutschrift <strong>{{ $creditNoteNumber }}</strong>
+                    über <strong>{{ $totalGross }} {{ $currency }}</strong> vom
+                    <strong>{{ $issuedOn }}</strong>, Grund: <strong>{{ $reasonLabelDe }}</strong>.</p>
+                    @if ($invoiceNumber)
+                    <p>Die Gutschrift bezieht sich auf Rechnung <strong>{{ $invoiceNumber }}</strong>.</p>
+                    @endif
+                    @if ($reasonLabelDe === 'Erstattung')
+                    <p>Der Betrag wird über den ursprünglichen Zahlungsweg erstattet; das
+                    dauert je nach Anbieter einige Werktage.</p>
+                    @endif
+                    <p>Mit freundlichen Grüßen<br>{{ $sellerName }}</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Dear {{ $recipientName }},</p>
+                    <p>please find attached credit note <strong>{{ $creditNoteNumber }}</strong>
+                    for <strong>{{ $totalGross }} {{ $currency }}</strong> dated
+                    <strong>{{ $issuedOn }}</strong>, reason: <strong>{{ $reasonLabelEn }}</strong>.</p>
+                    @if ($invoiceNumber)
+                    <p>This credit note refers to invoice <strong>{{ $invoiceNumber }}</strong>.</p>
+                    @endif
+                    @if ($reasonLabelEn === 'Refund')
+                    <p>The amount will be refunded via the original payment method; this
+                    takes a few business days depending on the provider.</p>
+                    @endif
+                    <p>Kind regards<br>{{ $sellerName }}</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
     }
 
     /**

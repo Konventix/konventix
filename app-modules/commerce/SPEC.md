@@ -305,6 +305,41 @@ licensing.
   already received instead of naming a due date. `SendInvoiceMail` picks
   the key from `Invoice::isPaid()`; a per-brand override of either wording
   stays a plain template with no conditional of its own.
+
+  **A Gutschrift gets a document too, at the moment it is issued
+  (ADR-0048 point 2).** `IssueCreditNote` dispatches
+  `Jobs\GenerateCreditNoteDocument` `afterCommit()`, mirroring
+  `IssueInvoice`'s document dispatch exactly: `Documents\CreditNoteDocumentRenderer`
+  renders the same hybrid-ZUGFeRD shape (`ZugferdInvoiceType::CREDITNOTE`,
+  code 381), archived once to the `credit_notes.document_*` columns
+  (idempotent on `document_path`, same as an invoice) on the same
+  `invoices_disk` an invoice archives to — one archive, one retention rule,
+  for both document kinds. Unlike `InvoiceDocumentRenderer`, it never reads
+  `Order`/`OrderLine`: a credit note only snapshots the invoice's totals
+  (`IssueCreditNote`), so the document renders one summary position
+  ("Gutschrift zu Rechnung Nr. …") rather than a line-by-line breakdown, and
+  `addDocumentInvoiceReferencedDocument()` carries the corrected invoice's
+  number and issue date whenever `invoice_id` is set. `Actions\SendCreditNoteMail`
+  mails the sealed archive through `commerce.credit-note-issued`
+  (`Data\CreditNoteMailData`) — one template for both reasons
+  (`IssueCreditNote::REASON_REFUND`/`REASON_TRANSFER`): the payload carries
+  `reasonLabelDe`/`reasonLabelEn` as two already-localised strings rather
+  than a raw `reasonCode` the template branches on, so the body stays
+  branch-free the same way the invoice templates do. The payer's own copy
+  is `GET /my/credit-notes/{creditNote}/document`
+  (`commerce.my.credit-note.document`, `MyCreditNoteDocumentController`) —
+  `auth` + `signed:relative` like the invoice route, but with an *explicit*
+  `payer_user_id` ownership check inside the controller: a credit note has
+  no per-render minting site that has already proven ownership the way
+  `RegistrationSettlementData::ofOrder()` does for an invoice, since
+  `MyOrderData::ofOrder()` mints every credit note's link from the same
+  "my orders" list every payer can reach. `MyOrderData.creditNotes`
+  (`Data\MyCreditNoteData`, additive) lists every Gutschrift issued against
+  an order, oldest first, each with its own `documentUrl`; the operator
+  console's twin, `admin.credit-notes.document`
+  (`Admin\CreditNoteDocumentController`), is gated on `ViewOrders` — Commerce
+  has no separate "view credit notes" capability, and the order admin page
+  already lists credit notes under that same permission.
 - **Payment terms, due dates, and dunning levels** as domain concepts, not as
   provider callbacks.
 - **Payment records**, including **first-class manual payment booking** — an

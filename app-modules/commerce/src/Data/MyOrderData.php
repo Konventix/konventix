@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Data;
 
 use Illuminate\Support\Facades\URL;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
@@ -28,12 +29,19 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * `invoicePaid` (ADR-0048) is whether the invoice — if there is one —
  * carries a payment snapshot, so the page can label its document button
  * "Rechnung (bezahlt)" rather than "Rechnung".
+ *
+ * `creditNotes` (ADR-0048 point 2, Task 3): every Gutschrift issued against
+ * this order, newest last — a refund of a paid order leaves one behind, and
+ * the payer must be able to find it beside the invoice it corrects. Default
+ * empty array so every existing `ofOrder()` call site stays valid
+ * (additive-only payload changes, global constraints D-BATCH-7).
  */
 #[TypeScript]
 final class MyOrderData extends Data
 {
     /**
      * @param  list<MyOrderLineData>  $lines
+     * @param  list<MyCreditNoteData>  $creditNotes
      */
     public function __construct(
         public readonly string $id,
@@ -49,12 +57,15 @@ final class MyOrderData extends Data
         public readonly ?string $payUrl,
         public readonly ?string $documentUrl,
         public readonly array $lines,
+        public readonly array $creditNotes = [],
     ) {}
 
     /**
      * `of*`, never `from*` (.ai/rules/data.md).
+     *
+     * @param  list<CreditNote>  $creditNotes
      */
-    public static function ofOrder(Order $order, ?Invoice $invoice): self
+    public static function ofOrder(Order $order, ?Invoice $invoice, array $creditNotes = []): self
     {
         $firstLine = $order->lines->first();
 
@@ -87,6 +98,10 @@ final class MyOrderData extends Data
                 absolute: false,
             ),
             lines: array_values($order->lines->map(fn (OrderLine $line): MyOrderLineData => MyOrderLineData::ofLine($line))->all()),
+            creditNotes: array_map(
+                fn (CreditNote $creditNote): MyCreditNoteData => MyCreditNoteData::ofCreditNote($creditNote),
+                $creditNotes,
+            ),
         );
     }
 }
