@@ -20,5 +20,6 @@ final class PaymentFailed
         public readonly string $settlementMethod,
         public readonly string $reasonCode,
         public readonly string $failedAt,
+        public readonly ?string $settlementAccountId = null,
     ) {}
 }

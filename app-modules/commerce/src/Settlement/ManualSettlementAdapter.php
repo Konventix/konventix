@@ -69,6 +69,7 @@ final class ManualSettlementAdapter implements SettlementAdapter
                 settlementMethod: $settlementMethod,
                 externalReference: null,
                 receivedAt: $payment->received_at->toIso8601String(),
+                settlementAccountId: null,
             ));
 
             event(new OrderPaid(
@@ -80,6 +81,7 @@ final class ManualSettlementAdapter implements SettlementAdapter
                 currency: $currency,
                 paidAt: $order->paid_at->toIso8601String(),
                 settlementMethod: $settlementMethod,
+                settlementAccountId: null,
             ));
 
             return $order->refresh();

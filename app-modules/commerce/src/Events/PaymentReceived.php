@@ -23,5 +23,6 @@ final class PaymentReceived
         public readonly string $settlementMethod,
         public readonly ?string $externalReference,
         public readonly string $receivedAt,
+        public readonly ?string $settlementAccountId = null,
     ) {}
 }

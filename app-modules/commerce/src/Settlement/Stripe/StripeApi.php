@@ -40,4 +40,16 @@ interface StripeApi
      * configuration of `$stripeAccountId`.
      */
     public function createOnboardingLink(string $stripeAccountId, string $returnUrl, string $refreshUrl): string;
+
+    /**
+     * The current state of `$stripeAccountId`'s merchant configuration, as
+     * Stripe itself reports it — the periodic refresh
+     * `RefreshSettlementAccountCapabilities` turns into whether
+     * `SettlementAccount::isOffered()` shows the account at checkout.
+     *
+     * @return array{card_payments: string} 'card_payments' is one of
+     *                                      'active'|'inactive'|'pending', or 'unknown' when the account has no
+     *                                      merchant configuration yet (onboarding not started/completed).
+     */
+    public function fetchAccount(string $stripeAccountId): array;
 }

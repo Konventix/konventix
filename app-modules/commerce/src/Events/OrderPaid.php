@@ -5,15 +5,12 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Events;
 
 /**
- * An order is fully settled, by any adapter or by manual booking — the event
- * Registration consumes (ADR-0006, SPEC.md "Public contract" table).
- * Emitted by `Konventix\Commerce\Settlement\ManualSettlementAdapter`.
+ * Emitted from the verified webhook path (`RecordPaymentSuccess`) and from
+ * manual booking; consumed by Registration's `RecordPaymentOnOrderPaid`.
+ * `settlementMethod` is the provider (`stripe|mollie|unzer|manual`),
+ * `settlementAccountId` the account that took the money (null for manual).
  *
  * Payload is scalars/ULIDs only (ADR-0004) — never an Eloquent model.
- * Registration does not consume this yet (TODO.md Phase 2 backlog:
- * `RegistrationSettlementRequested`/`OrderPaid` are not wired together in
- * Phase 1), but the event is the module's outbound contract regardless of
- * who is listening.
  */
 final class OrderPaid
 {
@@ -26,5 +23,6 @@ final class OrderPaid
         public readonly string $currency,
         public readonly string $paidAt,
         public readonly string $settlementMethod,
+        public readonly ?string $settlementAccountId = null,
     ) {}
 }

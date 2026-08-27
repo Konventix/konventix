@@ -39,6 +39,11 @@ final class CheckoutPageTestFakeStripe implements StripeApi
     {
         return 'https://stripe.test/link';
     }
+
+    public function fetchAccount(string $stripeAccountId): array
+    {
+        return ['card_payments' => 'unknown'];
+    }
 }
 
 /**

@@ -45,6 +45,11 @@ final class StripeAdapterTestFakeApi implements StripeApi
     {
         return 'https://stripe.test/unused';
     }
+
+    public function fetchAccount(string $stripeAccountId): array
+    {
+        return ['card_payments' => 'unknown'];
+    }
 }
 
 function stripeAdapterTestSetup(): array

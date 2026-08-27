@@ -12,6 +12,7 @@ use Inertia\Response;
 use Konventix\Commerce\Actions\ConnectSettlementAccount;
 use Konventix\Commerce\Actions\DisconnectSettlementAccount;
 use Konventix\Commerce\Actions\MarkSettlementAccountConnected;
+use Konventix\Commerce\Actions\RefreshSettlementAccountCapabilities;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
@@ -95,8 +96,11 @@ class SettlementAccountAdminController
         return Inertia::location($onboardingUrl);
     }
 
-    public function stripeReturn(string $account, MarkSettlementAccountConnected $markConnected): RedirectResponse
-    {
+    public function stripeReturn(
+        string $account,
+        MarkSettlementAccountConnected $markConnected,
+        RefreshSettlementAccountCapabilities $refreshCapabilities,
+    ): RedirectResponse {
         Gate::authorize(Permission::ManageSettlementAccount->value);
 
         $row = SettlementAccount::withoutBrandScope()
@@ -105,6 +109,10 @@ class SettlementAccountAdminController
             ->firstOrFail();
 
         $markConnected->handle($row);
+        // Card payments are rarely active the instant onboarding returns —
+        // this is a best-effort first read, the daily sweep is the one that
+        // actually catches up once Stripe activates the account.
+        $refreshCapabilities->handle($row);
 
         return redirect()
             ->route('admin.settlement-accounts.index')

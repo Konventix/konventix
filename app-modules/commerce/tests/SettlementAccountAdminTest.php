@@ -52,6 +52,11 @@ final class SettlementAdminTestFakeStripe implements StripeApi
 
         return 'https://connect.stripe.test/onboarding/'.$stripeAccountId;
     }
+
+    public function fetchAccount(string $stripeAccountId): array
+    {
+        return ['card_payments' => 'unknown'];
+    }
 }
 
 final class SettlementAdminTestFakeUnzer implements UnzerApi
@@ -221,6 +226,9 @@ it('marks the Stripe account connected on return, once', function (): void {
         'connected_at' => null,
     ]);
 
+    // The return also refreshes capabilities (a best-effort first read).
+    app()->instance(StripeApi::class, new SettlementAdminTestFakeStripe);
+
     Event::fake([SettlementAccountConnected::class]);
 
     $this->actingAs($admin)
@@ -230,7 +238,9 @@ it('marks the Stripe account connected on return, once', function (): void {
         ->get('http://admin.settlement.test/admin/settlement-accounts/stripe/return/'.$account->id)
         ->assertRedirect();
 
-    expect($account->refresh()->connected_at)->not->toBeNull();
+    expect($account->refresh()->connected_at)->not->toBeNull()
+        ->and($account->capabilities)->toBe(['card_payments' => 'unknown'])
+        ->and($account->capabilities_checked_at)->not->toBeNull();
 
     Event::assertDispatchedTimes(SettlementAccountConnected::class, 1);
 });

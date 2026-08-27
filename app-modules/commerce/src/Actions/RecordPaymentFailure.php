@@ -46,6 +46,7 @@ final class RecordPaymentFailure
                 settlementMethod: $locked->provider,
                 reasonCode: $reasonCode,
                 failedAt: $locked->failed_at->toIso8601String(),
+                settlementAccountId: $locked->settlement_account_id,
             ));
 
             return $locked->refresh();

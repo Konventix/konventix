@@ -8,6 +8,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Konventix\Admission\Events\AdmissionCheckedIn;
+use Konventix\Commerce\Console\RefreshSettlementCapabilities;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
 use Konventix\Commerce\Data\RegistrationSettlementData;
@@ -151,7 +152,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // sweep that silently fails to register would look like "no invoices
         // are overdue" rather than like a bug.
         if ($this->app->runningInConsole()) {
-            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class]);
+            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
@@ -161,6 +162,10 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // under Octane "boot" is every worker start, which would make it
             // noise instead of a control.
             $schedule->command(ReportInvoiceRetention::class)->dailyAt('07:15');
+
+            // A Stripe account can activate — or be restricted — on
+            // Stripe's own timeline, well after onboarding's return trip.
+            $schedule->command(RefreshSettlementCapabilities::class)->dailyAt('06:30');
         });
     }
 

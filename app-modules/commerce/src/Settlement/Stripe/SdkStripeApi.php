@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Settlement\Stripe;
 
+use Illuminate\Support\Arr;
 use RuntimeException;
 use Stripe\StripeClient;
 
@@ -91,5 +92,19 @@ final class SdkStripeApi implements StripeApi
         ]);
 
         return $link->url;
+    }
+
+    public function fetchAccount(string $stripeAccountId): array
+    {
+        $account = $this->client->v2->core->accounts->retrieve($stripeAccountId, [
+            'include' => ['configuration.merchant'],
+        ]);
+
+        // `toArray()` recurses through the nested `StripeObject`s into
+        // plain arrays, so a missing level (no merchant configuration yet)
+        // reads as a missing key instead of a magic-property notice.
+        $status = Arr::get($account->toArray(), 'configuration.merchant.capabilities.card_payments.status');
+
+        return ['card_payments' => is_string($status) ? $status : 'unknown'];
     }
 }

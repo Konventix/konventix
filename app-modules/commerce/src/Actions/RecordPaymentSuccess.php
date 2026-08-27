@@ -52,6 +52,7 @@ final class RecordPaymentSuccess
                 settlementMethod: $locked->provider,
                 externalReference: $locked->external_id,
                 receivedAt: $locked->received_at->toIso8601String(),
+                settlementAccountId: $locked->settlement_account_id,
             ));
 
             $this->settleOrder($locked);
@@ -91,6 +92,7 @@ final class RecordPaymentSuccess
             currency: $payment->currency,
             paidAt: $order->paid_at->toIso8601String(),
             settlementMethod: $payment->provider,
+            settlementAccountId: $payment->settlement_account_id,
         ));
     }
 }
