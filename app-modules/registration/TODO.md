@@ -54,6 +54,26 @@
 
 ## Done
 
+- [x] ADR-0047 point 3 (Task 10), a cart that dies lets its ticket go — new
+      `CancelPendingRegistrationForCart::handle(brandId, registrationId)`
+      cancels the still-pending registration a dead cart line was holding
+      (`payment_status: pending` and not already cancelled — idempotent
+      either way, since a second `CartLineExpired`/`CartLineRemoved` for the
+      same registration is a real possibility) through the existing
+      `CancelRegistration`, which already releases whatever quota units it
+      consumed. The new `CancelPendingRegistrationOnCartLineGone` listener is
+      registered twice in `RegistrationServiceProvider::registerListeners()`,
+      once each for `Konventix\Commerce\Events\CartLineExpired` and
+      `CartLineRemoved` — the sanctioned cross-module import now runs in both
+      directions (ADR-0047 "Consequences"), and only the Listener sees the
+      Commerce event; the Action underneath takes scalars. Also:
+      `RegistrationController::store()` now redirects to `commerce.cart.show`
+      with an "added to your cart" flash when the brand's `commerce:shop`
+      feature is on, the type settles `instant`, and the route exists
+      (`Route::has()`, since Task 11 is what actually registers it) — no
+      Commerce import needed to ask that question. The redirect's own test is
+      written now and marked `->todo()` until Task 11 lands the route.
+
 - [x] Registration ships "Registration Desk" (`registration.desk`:
       `ViewRegistrations`, `ApproveRegistrations`, `RejectRegistrations`,
       `CancelRegistrations`, `ExportRegistrations`) as its ADR-0045 default

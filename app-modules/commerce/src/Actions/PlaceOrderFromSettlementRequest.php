@@ -117,6 +117,8 @@ final class PlaceOrderFromSettlementRequest
                 $orderLine = $order->lines()->make([
                     'position' => $index + 1,
                     'label' => $line->label,
+                    'settles_kind' => self::SETTLES_REGISTRATION,
+                    'settles_ref' => $registrationId,
                     'quantity' => $line->quantity,
                     'unit_amount_net' => $line->unitAmountNet,
                     'tax_class' => $line->taxClass,

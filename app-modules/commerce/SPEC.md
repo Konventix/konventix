@@ -181,7 +181,7 @@ maintains from them.
 
 | Event | Owning module | Why |
 |---|---|---|
-| `RegistrationSettlementRequested` | Registration | Create the order (and, for `settlement: invoice`, the invoice) from the lines and billing party in the payload — without reading a single Registration model. Lines carry the declared tax *class*; the rate and treatment (reverse charge, §19 UStG) are resolved here at settlement time (ADR-0017, ADR-0030) and snapshotted onto the order lines |
+| `RegistrationSettlementRequested` | Registration | Create the order (and, for `settlement: invoice`, the invoice) from the lines and billing party in the payload — without reading a single Registration model. Lines carry the declared tax *class*; the rate and treatment (reverse charge, §19 UStG) are resolved here at settlement time (ADR-0017, ADR-0030) and snapshotted onto the order lines. **Cart line when shop + instant, else order (ADR-0047, Task 10):** an `instant` settlement on a brand with `commerce:shop` active becomes one `registration`-kind `CartLine` in the registrant's own cart instead — the registration already exists and already holds its quota, only where the money settles changes; every other case (`invoice`, or the feature off) still gets the direct order this listener always produced |
 | `RegistrationCancelled` (proposed) | Registration | Cancel the open order, or issue a credit note if an invoice was already issued |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler, which must reconcile deletion with statutory invoice retention |
 | `BrandCreated` (proposed) | Platform | Initialize the brand's invoice number range and its (unconnected) settlement account |

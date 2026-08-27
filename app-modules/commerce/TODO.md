@@ -63,6 +63,25 @@
 
 ## Done
 
+- [x] Slice 24b (ADR-0047, Task 10), a registration joins the cart —
+      `CreateOrderOnSettlementRequested` now branches on `RegistrationSettlementRequested`
+      instead of always placing an order: an `instant` settlement request on a
+      brand with `commerce:shop` active goes to the new
+      `PlaceRegistrationLineInCart` (`OpenCart::for()` the registrant's own
+      cart, one `registration`-kind line per settlement request — idempotent
+      on `(cart, kind, request_key)` via `cart_lines_request_key_unique`,
+      `quantity` fixed at 1 with `unit_amount_net` the sum of every request
+      line's own net, `label`/`tax_class` from the first line — a
+      registration always settles as one line). `invoice` settlements, and
+      every settlement on a brand with the feature off, still get the
+      direct order this listener always produced;
+      `PlaceOrderFromSettlementRequest`'s lines now carry
+      `settles_kind => 'registration'`/`settles_ref` (Task 9's columns) so a
+      future cart checkout's order lines can tell what each one paid for.
+      The feature check resolves `Brand::query()->find($event->brandId)` —
+      Platform's scoping primitive, the one cross-module model this listener
+      is allowed to touch — purely to ask Pennant whether the flag is on.
+
 - [x] Slice 24b (ADR-0047, Task 9), the cart and its reservation — a cart
       holds what a person intends to buy, and holds the stock with it for
       twenty minutes. `Cart` (`payer_user_id`, `status`, `expires_at`,

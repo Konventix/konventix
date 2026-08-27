@@ -6,6 +6,8 @@ namespace Konventix\Registration\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Konventix\Commerce\Events\CartLineExpired;
+use Konventix\Commerce\Events\CartLineRemoved;
 use Konventix\Commerce\Events\InvoiceIssued;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
@@ -27,6 +29,7 @@ use Konventix\Registration\Enums\Permission;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Events\QuotaReleased;
 use Konventix\Registration\Gdpr\RegistrationGdprHandler;
+use Konventix\Registration\Listeners\CancelPendingRegistrationOnCartLineGone;
 use Konventix\Registration\Listeners\MarkInvoicedOnInvoiceIssued;
 use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Listeners\ProjectRegistrant;
@@ -89,6 +92,11 @@ class RegistrationServiceProvider extends ModuleServiceProvider
 
         // ADR-0036: billing party freezes at first invoice.
         Event::listen(InvoiceIssued::class, MarkInvoicedOnInvoiceIssued::class);
+
+        // ADR-0047 point 3: a cart line that dies — expired or removed —
+        // cancels the still-pending registration it was holding.
+        Event::listen(CartLineExpired::class, CancelPendingRegistrationOnCartLineGone::class);
+        Event::listen(CartLineRemoved::class, CancelPendingRegistrationOnCartLineGone::class);
 
         // Registrant read model for organizer lists (ADR-0004).
         Event::listen(UserRegistered::class, ProjectRegistrant::class);
