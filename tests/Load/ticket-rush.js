@@ -280,6 +280,7 @@ export function handleSummary(data) {
         profile: (VUS === 1000 && ARRIVALS_PER_VU === 1) ? 'full' : 'reduced',
         vus: VUS,
         arrivalsPerVU: ARRIVALS_PER_VU,
+        generatedAt: new Date().toISOString(),
     };
 
     return {

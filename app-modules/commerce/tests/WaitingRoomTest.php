@@ -390,6 +390,25 @@ it('sends an already-admitted visitor who revisits the waiting room page straigh
         ->assertRedirect('http://localhost/shop');
 });
 
+it('sends a visitor whose ticket the store has forgotten back to the shop to re-queue', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    $response = $this->get('/shop');
+    $cookieValue = waitingRoomCookieValue($response, $brand);
+    $ticketId = TicketCookie::parse($cookieValue);
+
+    // The cookie still parses to a signed, well-formed ticket id — the
+    // store just no longer recognizes it (its TTL lapsed). A12: this must
+    // never render "number 0"; the gate re-issues a ticket from `/shop`.
+    app(WaitingRoomStore::class)->forget($brand->getKey(), $ticketId);
+
+    $this->withCookie(TicketCookie::name($brand->getKey()), $cookieValue)
+        ->get('/waiting-room')
+        ->assertRedirect(route('commerce.shop.index'));
+});
+
 it('dispatches twelve staggered admission batches only for a brand with a busy queue', function (): void {
     Queue::fake();
 
