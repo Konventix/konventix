@@ -29,10 +29,19 @@ use Spatie\LaravelData\DataCollection;
  * `settlement: invoice` submissions require one (`guardBillingParty`), but
  * an operator-created order might not — the invoice still exists and can
  * be downloaded from the console.
+ *
+ * ADR-0048: a paid invoice (`Invoice::isPaid()`) mails through
+ * `commerce.invoice-paid` instead of `commerce.invoice-issued` — two
+ * template keys rather than one branching on a `$paid` payload field, so
+ * neither template needs a `@if`/`@endif` block directive
+ * (`CommerceServiceProvider::registerMessageTemplates()`'s own docblock
+ * explains why that breaks).
  */
 final class SendInvoiceMail
 {
-    private const string TEMPLATE_KEY = 'commerce.invoice-issued';
+    private const string TEMPLATE_KEY_OPEN = 'commerce.invoice-issued';
+
+    private const string TEMPLATE_KEY_PAID = 'commerce.invoice-paid';
 
     public function __construct(
         private readonly SendMessage $sendMessage,
@@ -63,7 +72,7 @@ final class SendInvoiceMail
 
         $this->sendMessage->handle(new SendMessageRequest(
             recipientId: null,
-            templateKey: self::TEMPLATE_KEY,
+            templateKey: $invoice->isPaid() ? self::TEMPLATE_KEY_PAID : self::TEMPLATE_KEY_OPEN,
             payload: new InvoiceMailData(
                 invoiceNumber: $invoice->invoice_number,
                 recipientName: $party->displayName(),
@@ -72,6 +81,9 @@ final class SendInvoiceMail
                 currency: $invoice->currency,
                 dueOn: $invoice->due_on->format('d.m.Y'),
                 termsDaysHint: (int) $invoice->issued_on->diffInDays($invoice->due_on),
+                paid: $invoice->isPaid(),
+                paidVia: $invoice->paid_via,
+                paidAt: $invoice->paid_at?->format('d.m.Y'),
             ),
             recipientEmail: $party->email,
             recipientLocale: 'de',

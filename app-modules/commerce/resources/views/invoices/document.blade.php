@@ -118,6 +118,10 @@
         </tr>
     </table>
 
+    @if ($invoice->isPaid())
+        <p class="tax-note">Bezahlt am {{ $invoice->paid_at->format('d.m.Y') }} via {{ $invoice->paid_via }}.</p>
+    @endif
+
     @if ($invoice->tax_treatment === Konventix\Commerce\Enums\TaxTreatment::SmallBusiness)
         <p class="tax-note">Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.</p>
     @elseif ($invoice->tax_treatment === Konventix\Commerce\Enums\TaxTreatment::ReverseCharge)
@@ -127,9 +131,11 @@
         </p>
     @endif
 
-    <p class="terms">
-        Zahlbar bis zum {{ $invoice->due_on->format('d.m.Y') }} unter Angabe der Rechnungsnummer.
-    </p>
+    @unless ($invoice->isPaid())
+        <p class="terms">
+            Zahlbar bis zum {{ $invoice->due_on->format('d.m.Y') }} unter Angabe der Rechnungsnummer.
+        </p>
+    @endunless
 
     <div class="footer">
         {{ $seller->legalName }} · {{ $seller->addressLine }} · {{ $seller->postalCode }} {{ $seller->city }}

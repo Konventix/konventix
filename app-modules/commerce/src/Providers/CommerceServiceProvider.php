@@ -18,8 +18,10 @@ use Konventix\Commerce\Data\ShopProductData;
 use Konventix\Commerce\Data\WaitingRoomSettingsData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\Permission;
+use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Gdpr\CommerceGdprHandler;
 use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
+use Konventix\Commerce\Listeners\IssueInvoiceOnOrderPaid;
 use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
@@ -182,6 +184,11 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // Admission's tables, so this projection is the *only* way the refund
         // guard can know a registration was used.
         Event::listen(AdmissionCheckedIn::class, ProjectCheckInOnAdmissionCheckedIn::class);
+
+        // ADR-0048: a paid order gets its Rechnung the moment it is paid —
+        // card-paid registrations and every cart order got no document
+        // before this.
+        Event::listen(OrderPaid::class, IssueInvoiceOnOrderPaid::class);
     }
 
     /**
@@ -323,6 +330,19 @@ class CommerceServiceProvider extends ModuleServiceProvider
      * this module only declares what its mail says). German default: the
      * release targets domestic DACH events (ADR-0030's framing), and the
      * billing party's locale is unknown for account-less recipients.
+     *
+     * ADR-0048: two template keys, not one branching on `$paid` —
+     * `TemplateRenderer` runs every subject and body through
+     * `Blade::render()`, and Livewire's `SupportMorphAwareBladeCompilation`
+     * precompiler (registered globally, `livewire.inject_morph_markers`
+     * defaults true) wraps every `@if`/`@endif` it finds with its own
+     * morph-tracking markers — verified in isolation that this leaves the
+     * directive's own closing tag uncompiled, silently producing an empty
+     * string. `commerce.invoice-issued` stays the open-invoice wording
+     * exactly as before; `commerce.invoice-paid` is the ADR-0048 paid
+     * wording — both plain `{{ }}` interpolation only, no block directive,
+     * so neither can trip the same bug. `SendInvoiceMail` picks the key
+     * from `Invoice::isPaid()`.
      */
     protected function registerMessageTemplates(): void
     {
@@ -347,6 +367,31 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     for <strong>{{ $totalGross }} {{ $currency }}</strong>.</p>
                     <p>Payment is due by <strong>{{ $dueOn }}</strong>, quoting the
                     invoice number.</p>
+                    <p>Kind regards<br>{{ $sellerName }}</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'commerce.invoice-paid',
+            subjects: [
+                'de' => 'Ihre Rechnung {{ $invoiceNumber }} – bezahlt',
+                'en' => 'Your invoice {{ $invoiceNumber }} – paid',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag {{ $recipientName }},</p>
+                    <p>vielen Dank für Ihre Zahlung über <strong>{{ $totalGross }} {{ $currency }}</strong>
+                    am <strong>{{ $paidAt }}</strong> via <strong>{{ $paidVia }}</strong>.</p>
+                    <p>Anbei erhalten Sie die Rechnung <strong>{{ $invoiceNumber }}</strong> als Beleg.</p>
+                    <p>Mit freundlichen Grüßen<br>{{ $sellerName }}</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Dear {{ $recipientName }},</p>
+                    <p>thank you for your payment of <strong>{{ $totalGross }} {{ $currency }}</strong>
+                    on <strong>{{ $paidAt }}</strong> via <strong>{{ $paidVia }}</strong>.</p>
+                    <p>Please find attached invoice <strong>{{ $invoiceNumber }}</strong> as your receipt.</p>
                     <p>Kind regards<br>{{ $sellerName }}</p>
                     BLADE,
             ],

@@ -3,20 +3,27 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Actions\AddProductToCart;
 use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\PlaceOrderFromCart;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
+use Konventix\Commerce\Actions\SendInvoiceMail;
+use Konventix\Commerce\Data\BillingPartyData;
+use Konventix\Commerce\Documents\InvoiceDocumentRenderer;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CartCheckedOut;
 use Konventix\Commerce\Events\OrderLineSettled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderPlaced;
+use Konventix\Commerce\Jobs\GenerateInvoiceDocument;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
+use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
@@ -100,6 +107,16 @@ function cartCheckoutAccount(): SettlementAccount
 }
 
 /**
+ * The billing party `CartController::checkout()` builds from the payer's own
+ * account (ADR-0048) — `PlaceOrderFromCart::handle()` needs one for every
+ * checkout, direct-Action calls included.
+ */
+function cartCheckoutBillingParty(User $user): BillingPartyData
+{
+    return BillingPartyData::ofAccount($user->name, $user->email);
+}
+
+/**
  * A cart holding one product line (quantity 2 at 10.00 net each) and one
  * registration line (50.00 net), for the payer given.
  */
@@ -128,7 +145,7 @@ it('checks out a mixed cart into one order with two lines carrying settles_kind/
     $cart = cartCheckoutMixedCart($brand, $user->getKey(), $registrationId);
     $account = cartCheckoutAccount();
 
-    $redirect = app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart');
+    $redirect = app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', cartCheckoutBillingParty($user));
 
     expect($redirect->url)->toBe('https://checkout.stripe.test/cart-session');
 
@@ -174,7 +191,7 @@ it('emits CartCheckedOut and OrderPlaced with settlesType cart', function (): vo
 
     Event::fake([CartCheckedOut::class, OrderPlaced::class]);
 
-    app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart');
+    app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', cartCheckoutBillingParty($user));
 
     Event::assertDispatched(CartCheckedOut::class, fn (CartCheckedOut $e): bool => $e->cartId === $cart->id
         && $e->brandId === $brand->getKey()
@@ -192,7 +209,7 @@ it('emits OrderPaid(settlesType cart) and one OrderLineSettled per line on the w
     $cart = cartCheckoutMixedCart($brand, $user->getKey(), $registrationId);
     $account = cartCheckoutAccount();
 
-    $redirect = app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart');
+    $redirect = app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', cartCheckoutBillingParty($user));
     $order = Order::query()->where('settles_type', 'cart')->where('settles_id', $cart->id)->sole();
     $payment = Payment::withoutBrandScope()->where('id', $redirect->paymentId)->sole();
 
@@ -214,6 +231,47 @@ it('emits OrderPaid(settlesType cart) and one OrderLineSettled per line on the w
         && $e->refId === $registrationId);
 });
 
+/**
+ * ADR-0048: a real checkout, followed by the provider's success path
+ * (`RecordPaymentSuccess`, the same call the Stripe webhook controller
+ * makes once it verifies the event) issues the Rechnung for the cart order
+ * — the gap this task closes: before it, only an invoice-settled
+ * registration order produced any document at all.
+ */
+it('issues a Rechnung with the cart\'s billing party once the checkout is paid, and stays at one on replay', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    Storage::fake('invoices');
+    Mail::fake();
+    $user = User::factory()->create();
+    $cart = cartCheckoutMixedCart($brand, $user->getKey());
+    $account = cartCheckoutAccount();
+
+    $redirect = app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', cartCheckoutBillingParty($user));
+    $order = Order::query()->where('settles_type', 'cart')->where('settles_id', $cart->id)->sole();
+    $payment = Payment::withoutBrandScope()->where('id', $redirect->paymentId)->sole();
+
+    app(RecordPaymentSuccess::class)->handle($payment);
+
+    $invoice = Invoice::query()->where('order_id', $order->id)->sole();
+
+    expect($invoice->paid_at)->not->toBeNull()
+        ->and($invoice->paid_via)->toBe('Stripe')
+        ->and($invoice->billing_party->recipientName)->toBe($user->name)
+        ->and($invoice->billing_party->email)->toBe($user->email);
+
+    (new GenerateInvoiceDocument($invoice->id, $brand->id))
+        ->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));
+
+    Mail::assertSentCount(1);
+
+    // A replayed webhook notification for the same, already-succeeded
+    // payment must not produce a second invoice.
+    app(RecordPaymentSuccess::class)->handle($payment->fresh());
+
+    expect(Invoice::query()->where('order_id', $order->id)->count())->toBe(1);
+});
+
 it('reuses the pending order on a second checkout of the same cart', function (): void {
     $brand = cartCheckoutBrand();
     test()->activateFeature('commerce:shop', $brand);
@@ -221,7 +279,7 @@ it('reuses the pending order on a second checkout of the same cart', function ()
     $cart = cartCheckoutMixedCart($brand, $user->getKey());
     $account = cartCheckoutAccount();
 
-    app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart');
+    app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', cartCheckoutBillingParty($user));
     $orderCountAfterFirst = Order::query()->where('settles_type', 'cart')->count();
     $expiresAfterFirst = $cart->fresh()->expires_at;
 
@@ -230,7 +288,7 @@ it('reuses the pending order on a second checkout of the same cart', function ()
     // extends the shopping one on continued activity.
     test()->travel(5)->minutes();
 
-    app(PlaceOrderFromCart::class)->handle($cart->fresh(), $account, 'https://brand.test/cart');
+    app(PlaceOrderFromCart::class)->handle($cart->fresh(), $account, 'https://brand.test/cart', cartCheckoutBillingParty($user));
 
     expect(Order::query()->where('settles_type', 'cart')->count())->toBe($orderCountAfterFirst)
         ->and(Payment::withoutBrandScope()->count())->toBe(2)
@@ -245,7 +303,7 @@ it('refuses to check out an expired cart', function (): void {
     $cart->forceFill(['status' => CartStatus::Expired])->save();
     $account = cartCheckoutAccount();
 
-    expect(fn () => app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart'))
+    expect(fn () => app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', cartCheckoutBillingParty($user)))
         ->toThrow(RuntimeException::class);
 
     expect(Order::query()->where('settles_type', 'cart')->count())->toBe(0);
@@ -258,7 +316,7 @@ it('refuses to check out an empty cart', function (): void {
     $cart = Cart::factory()->forPayer($user->getKey())->create();
     $account = cartCheckoutAccount();
 
-    expect(fn () => app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart'))
+    expect(fn () => app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', cartCheckoutBillingParty($user)))
         ->toThrow(RuntimeException::class);
 
     expect(Order::query()->where('settles_type', 'cart')->count())->toBe(0);
@@ -272,7 +330,7 @@ it('refuses a non-offered account and creates no order', function (): void {
     // Never connected/offered.
     $account = SettlementAccount::factory()->create(['provider' => SettlementAccount::PROVIDER_STRIPE]);
 
-    expect(fn () => app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart'))
+    expect(fn () => app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', cartCheckoutBillingParty($user)))
         ->toThrow(RuntimeException::class);
 
     expect(Order::query()->where('settles_type', 'cart')->count())->toBe(0);

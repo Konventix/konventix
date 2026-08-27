@@ -17,6 +17,7 @@ use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\PlaceOrderFromCart;
 use Konventix\Commerce\Actions\RemoveCartLine;
 use Konventix\Commerce\Data\AddToCartData;
+use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Data\CartData;
 use Konventix\Commerce\Data\CartLineData;
 use Konventix\Commerce\Data\CartLineQuantityData;
@@ -183,12 +184,21 @@ final class CartController
             ]);
         }
 
+        // ADR-0048: a cart order needs a billing party to invoice against
+        // once it is paid. The account is all a shop checkout gathers —
+        // name and email, never a postal address or a VAT id
+        // (`BillingPartyData::ofAccount`'s own docblock).
+        $billingParty = BillingPartyData::ofAccount(
+            (string) $request->user()->name,
+            (string) $request->user()->email,
+        );
+
         // Only the Action's own guards (cart state, account offered) are
         // caught here — a real adapter failure past that point must reach
         // the payer the way `CheckoutController::start()` lets it, not
         // disguised as a 409 domain refusal.
         try {
-            $redirect = app(PlaceOrderFromCart::class)->handle($cart, $account, route('commerce.cart.show'));
+            $redirect = app(PlaceOrderFromCart::class)->handle($cart, $account, route('commerce.cart.show'), $billingParty);
         } catch (CartCheckoutRefusedException $e) {
             abort(409, $e->getMessage());
         }

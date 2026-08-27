@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Actions;
 
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CartCheckedOut;
@@ -65,7 +66,7 @@ final class PlaceOrderFromCart
         private readonly SettlementAdapterRegistry $registry,
     ) {}
 
-    public function handle(Cart $cart, SettlementAccount $account, string $returnUrl): CheckoutRedirect
+    public function handle(Cart $cart, SettlementAccount $account, string $returnUrl, BillingPartyData $billingParty): CheckoutRedirect
     {
         $reusableOrder = $this->reusableCheckedOutOrder($cart);
 
@@ -91,7 +92,7 @@ final class PlaceOrderFromCart
         // Vetted before the order exists (see class docblock).
         $offered = $this->guardAccountOffered($cart->brand_id, $account);
 
-        $order = DB::transaction(fn (): Order => $this->placeOrder($cart, $lines));
+        $order = DB::transaction(fn (): Order => $this->placeOrder($cart, $lines, $billingParty));
 
         return $this->sendToProvider($offered, $order, $returnUrl);
     }
@@ -99,7 +100,7 @@ final class PlaceOrderFromCart
     /**
      * @param  Collection<int, CartLine>  $lines
      */
-    private function placeOrder(Cart $cart, Collection $lines): Order
+    private function placeOrder(Cart $cart, Collection $lines, BillingPartyData $billingParty): Order
     {
         $seller = $this->operatorSettings->sellerForBrand($cart->brand_id);
 
@@ -120,6 +121,10 @@ final class PlaceOrderFromCart
             'settles_id' => $cart->id,
             'request_key' => $cart->id,
             'payer_user_id' => $cart->payer_user_id,
+            // ADR-0048: a cart order needs a billing party too — the payer's
+            // account identity, since a shop checkout gathers nothing more
+            // (`BillingPartyData::ofAccount`'s own docblock).
+            'billing_party' => $billingParty,
             'status' => OrderStatus::Pending,
             'currency' => $this->operatorSettings->currencyForBrand($cart->brand_id),
             'total_net' => $calculation->totalNet,

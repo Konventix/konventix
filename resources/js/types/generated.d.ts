@@ -84,6 +84,7 @@ declare namespace Konventix {
                 readonly currency: string;
                 readonly totalGross: string;
                 readonly invoiceNumber: string | null;
+                readonly invoicePaid: boolean;
                 readonly payUrl: string | null;
                 readonly documentUrl: string | null;
                 readonly lines: Konventix.Commerce.Data.MyOrderLineData[];

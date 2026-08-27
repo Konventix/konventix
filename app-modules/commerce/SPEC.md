@@ -249,12 +249,48 @@ licensing.
   existing order; a genuinely new request against the same registration gets
   its own. "What did this exhibitor pay" is therefore a sum over orders, and
   the orders index groups by `settles_id`.
+
+  **`orders.billing_party`** (ADR-0048, nullable JSON `BillingPartyData`
+  cast) — who an invoice for this order would address, snapshotted at
+  placement: `PlaceOrderFromSettlementRequest` stores the settlement
+  request's own party for every settlement kind, not only `invoice`;
+  `PlaceOrderFromCart` stores `BillingPartyData::ofAccount()` — the payer's
+  account name and email, nothing more, since a shop checkout gathers
+  nothing else. Null on an order placed before ADR-0048, or one an
+  operator books manually with no billing information — `IssueInvoiceOnOrderPaid`
+  treats that as nothing to issue, logged, not guessed at.
 - **Pricing and tax calculation** — line totals, tax rates, and the net-vs-gross
   *display* decision, which Commerce applies from the flag declared on the
   `RegistrationType` (ADR-0006).
 - **`Invoice`, credit notes, and cancellations** — including **per-brand
   invoice number ranges**, which are legally cleaner when brands appear as
   separate identities (ADR-0001).
+
+  **Every paid order gets a Rechnung, at the moment it is paid (ADR-0048).**
+  `IssueInvoiceOnOrderPaid` listens to `OrderPaid` and issues an invoice in
+  the same gapless per-brand series `IssueInvoice` already draws for
+  invoice-settled registrations — `due_on = issued_on` (nothing is still
+  owed) and a payment snapshot (`paid_at`, `paid_via`, `payment_reference`)
+  written at the same moment as every other field (ADR-0031 immutability).
+  `IssueInvoice::handle()` is idempotent per `order_id`: an invoice-settled
+  registration order already has one from placement, and a replayed
+  `OrderPaid` finds it and returns rather than issuing a second one — the
+  listener repeats the same check itself before calling in. An order with
+  no `billing_party` is logged and skipped: pre-ADR-0048 data, or an
+  operator-booked order with nothing to address an invoice to. `paid_via`
+  is the human-readable settlement label (`Settlement\ProviderLabels`:
+  `stripe → 'Stripe'`, `manual → 'Überweisung / manuell'`, …), never the
+  raw provider key. The rendered document states that it is paid —
+  `InvoiceDocumentRenderer`'s Blade half prints "Bezahlt am … via …"
+  instead of "Zahlbar bis …", the Factur-X XML carries
+  `addDocumentPaymentMean()` (SEPA credit transfer for `manual`, bank card
+  for `stripe`/`mollie`/`unzer`) and `setDocumentSummation()`'s
+  `totalPrepaidAmount` equal to the gross total with `duePayableAmount`
+  zero. It is archived and mailed exactly like an open invoice — one
+  series, one renderer, no separate receipt document type. The invoice
+  mail (`commerce.invoice-issued`) branches on `$paid`: a paid Rechnung's
+  subject reads "…– bezahlt" / "…– paid" and its body thanks the payer for
+  the payment already received instead of naming a due date.
 - **Payment terms, due dates, and dunning levels** as domain concepts, not as
   provider callbacks.
 - **Payment records**, including **first-class manual payment booking** — an
@@ -314,7 +350,7 @@ implemented and their payloads are the contract.
 | Event | Emitted when | Payload |
 |---|---|---|
 | `OrderPlaced` | An order is created from a settlement request — directly from `PlaceOrderFromSettlementRequest`, or from `PlaceOrderFromCart` at the end of a cart checkout (`settles_type = 'cart'`, ADR-0047 point 4, Task 11) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `total_net`, `total_gross`, `currency`, `placed_at` |
-| `OrderPaid` | An order is fully settled, by any adapter or by manual booking. **The event Registration consumes for a direct (non-cart) order** (ADR-0006) — a cart order's registration lines are `OrderLineSettled`'s job instead, below | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_paid`, `currency`, `paid_at`, `settlement_method`, `settlement_account_id` (nullable — manual bookings have none) |
+| `OrderPaid` | An order is fully settled, by any adapter or by manual booking. **The event Registration consumes for a direct (non-cart) order** (ADR-0006) — a cart order's registration lines are `OrderLineSettled`'s job instead, below. **Commerce also listens to its own event** (`IssueInvoiceOnOrderPaid`, ADR-0048): issues the paid Rechnung, synchronously inside `RecordPaymentSuccess::settleOrder()`'s own transaction | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_paid`, `currency`, `paid_at`, `settlement_method`, `settlement_account_id` (nullable — manual bookings have none) |
 | `OrderPartiallyPaid` (proposed) | A payment lands that does not cover the balance | `order_id`, `amount_paid`, `balance_due`, `currency`, `received_at` |
 | `PaymentReceived` | Any payment is recorded — a webhook-confirmed PSP payment or a manually booked bank transfer. Distinct from `OrderPaid`: this is about the money that arrived, that one about what it means for the order | `payment_id`, `order_id`, `brand_id`, `amount`, `currency`, `settlement_method`, `external_reference` (nullable — manual bookings have none), `received_at`, `settlement_account_id` (nullable — manual bookings have none) |
 | `PaymentFailed` | An adapter reports a failed or expired attempt (ADR-0039). The order stays pending — a new checkout may follow | `payment_id`, `order_id`, `brand_id`, `settlement_method`, `reason_code`, `failed_at`, `settlement_account_id` (nullable — manual bookings have none) |

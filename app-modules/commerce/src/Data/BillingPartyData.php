@@ -56,6 +56,30 @@ final class BillingPartyData extends Data
     }
 
     /**
+     * A cart checkout's payer (ADR-0047, ADR-0048): the account holds only a
+     * name and an email, never a postal address or a VAT id — so a shop
+     * order's invoice addresses the payer by account identity alone. Country
+     * is deliberately null rather than a guessed `'DE'`: the cart's own tax
+     * calculation already resolves ADR-0030's domestic treatment with no
+     * billing country at all (`PlaceOrderFromCart`'s own docblock), so a
+     * null here changes nothing about what tax applies — it would only be a
+     * fabricated fact on the invoice.
+     */
+    public static function ofAccount(string $name, string $email): self
+    {
+        return new self(
+            organizationName: null,
+            recipientName: $name,
+            email: $email,
+            addressLine: null,
+            postalCode: null,
+            city: null,
+            countryCode: null,
+            vatId: null,
+        );
+    }
+
+    /**
      * The name an invoice addresses: the organization when there is one,
      * else the personal recipient.
      */

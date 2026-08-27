@@ -32,6 +32,9 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $invoice_number
  * @property Carbon $issued_on
  * @property Carbon $due_on
+ * @property Carbon|null $paid_at
+ * @property string|null $paid_via
+ * @property string|null $payment_reference
  * @property Carbon|null $overdue_at
  * @property int $dunning_level
  * @property Carbon|null $dunning_raised_at
@@ -62,6 +65,9 @@ class Invoice extends Model
         'invoice_number',
         'issued_on',
         'due_on',
+        'paid_at',
+        'paid_via',
+        'payment_reference',
         'currency',
         'total_net',
         'total_tax',
@@ -81,6 +87,16 @@ class Invoice extends Model
     }
 
     /**
+     * ADR-0048: an invoice issued from `OrderPaid` carries its payment
+     * snapshot from the moment it is created — `paid_at` alone decides,
+     * the same column the rendering and mailing paths branch on.
+     */
+    public function isPaid(): bool
+    {
+        return $this->paid_at !== null;
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
@@ -88,6 +104,7 @@ class Invoice extends Model
         return [
             'issued_on' => 'date',
             'due_on' => 'date',
+            'paid_at' => 'datetime',
             'total_net' => 'decimal:2',
             'total_tax' => 'decimal:2',
             'total_gross' => 'decimal:2',

@@ -126,7 +126,11 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
                     >
                         <a :href="order.documentUrl">
                             <FileText class="size-4" />
-                            Invoice PDF
+                            {{
+                                order.invoicePaid
+                                    ? 'Rechnung (bezahlt)'
+                                    : 'Rechnung'
+                            }}
                         </a>
                     </Button>
                 </div>

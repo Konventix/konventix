@@ -24,6 +24,10 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * of products and registrations, so the order-level summary alone no
  * longer says enough — `$order->lines` must already be eager-loaded, the
  * way `MyOrdersController` loads it for the whole list.
+ *
+ * `invoicePaid` (ADR-0048) is whether the invoice — if there is one —
+ * carries a payment snapshot, so the page can label its document button
+ * "Rechnung (bezahlt)" rather than "Rechnung".
  */
 #[TypeScript]
 final class MyOrderData extends Data
@@ -41,6 +45,7 @@ final class MyOrderData extends Data
         public readonly string $currency,
         public readonly string $totalGross,
         public readonly ?string $invoiceNumber,
+        public readonly bool $invoicePaid,
         public readonly ?string $payUrl,
         public readonly ?string $documentUrl,
         public readonly array $lines,
@@ -71,6 +76,7 @@ final class MyOrderData extends Data
             currency: $order->currency,
             totalGross: $order->total_gross,
             invoiceNumber: $invoice?->invoice_number,
+            invoicePaid: $invoice?->paid_at !== null,
             payUrl: $order->status === OrderStatus::Pending && $order->settles_type === 'registration'
                 ? route('commerce.pay.show', ['registration' => $order->settles_id], absolute: false)
                 : null,

@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Data\BillingPartyData;
+use Konventix\Commerce\Data\PaymentSnapshotData;
 use Konventix\Commerce\Events\InvoiceIssued;
 use Konventix\Commerce\Jobs\GenerateInvoiceDocument;
 use Konventix\Commerce\Models\Invoice;
@@ -20,6 +21,21 @@ use Konventix\Platform\Data\OperatorSellerData;
  * rendered *from* this snapshot by `GenerateInvoiceDocument`, dispatched
  * after the surrounding transaction commits so a rollback never leaves an
  * orphaned archive file.
+ *
+ * Idempotent per order (ADR-0048): at most one invoice ever exists for a
+ * given `order_id` — an invoice-settled order already has one from
+ * placement, and `IssueInvoiceOnOrderPaid` must not create a second one
+ * when the same order pays later, or when `OrderPaid` is replayed. The
+ * check happens before the transaction opens; the caller (the listener,
+ * running inside `RecordPaymentSuccess::settleOrder()`'s own transaction)
+ * relies on it to make a replay a no-op rather than a unique-constraint
+ * failure.
+ *
+ * `$paid`, when given, is what turns this into ADR-0048's paid Rechnung:
+ * the due date collapses to the issue date — the money already landed, so
+ * there is nothing left to be due — and the payment snapshot is written
+ * onto the row at the same moment as everything else, never as a later
+ * edit (ADR-0031 immutability).
  */
 final class IssueInvoice
 {
@@ -32,15 +48,24 @@ final class IssueInvoice
         BillingPartyData $billingParty,
         OperatorSellerData $seller,
         int $termsDays,
+        ?PaymentSnapshotData $paid = null,
     ): Invoice {
-        return DB::transaction(function () use ($order, $billingParty, $seller, $termsDays): Invoice {
+        $existing = Invoice::withoutBrandScope()->where('order_id', $order->id)->first();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        return DB::transaction(function () use ($order, $billingParty, $seller, $termsDays, $paid): Invoice {
             $issuedOn = now()->toDateString();
 
-            $invoice = new Invoice([
+            $attributes = [
                 'order_id' => $order->id,
                 'invoice_number' => $this->drawInvoiceNumber->handle($order->brand_id),
                 'issued_on' => $issuedOn,
-                'due_on' => now()->addDays($termsDays)->toDateString(),
+                // Paid at issuance: nothing is still owed, so the due date
+                // is the issue date itself rather than a computed term.
+                'due_on' => $paid !== null ? $issuedOn : now()->addDays($termsDays)->toDateString(),
                 'currency' => $order->currency,
                 'total_net' => $order->total_net,
                 'total_tax' => $order->total_tax,
@@ -49,7 +74,15 @@ final class IssueInvoice
                 'price_display' => $order->price_display,
                 'billing_party' => $billingParty,
                 'seller' => $seller,
-            ]);
+            ];
+
+            if ($paid !== null) {
+                $attributes['paid_at'] = $paid->paidAt;
+                $attributes['paid_via'] = $paid->paidVia;
+                $attributes['payment_reference'] = $paid->paymentReference;
+            }
+
+            $invoice = new Invoice($attributes);
             // brand_id from the order, not ambient context — issuance may run
             // outside any resolved brand (queued replay, operator host).
             $invoice->brand_id = $order->brand_id;

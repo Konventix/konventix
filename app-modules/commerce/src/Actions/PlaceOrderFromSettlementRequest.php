@@ -101,6 +101,10 @@ final class PlaceOrderFromSettlementRequest
                 'settles_id' => $registrationId,
                 'request_key' => $requestKey,
                 'payer_user_id' => $payerUserId,
+                // Snapshotted for every settlement kind (ADR-0048), not just
+                // `invoice`: a card-paid order needs a billing party too,
+                // the moment `OrderPaid` issues its own Rechnung.
+                'billing_party' => $party,
                 'status' => OrderStatus::Pending,
                 'currency' => $this->operatorSettings->currencyForBrand($brandId),
                 'total_net' => $calculation->totalNet,

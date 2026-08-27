@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Database\Factories\OrderFactory;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\TaxTreatment;
@@ -34,12 +35,20 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * requested settlement (ADR-0044), a plain user ULID, never a relation.
  * Everything that answers "what does this person owe" filters on it.
  *
+ * `billing_party` is who an invoice for this order would address (ADR-0048)
+ * — a point-in-time snapshot at order placement, the same shape
+ * `IssueInvoice` copies onto the invoice itself. Null on an order placed
+ * before ADR-0048, or one an operator books manually with no billing
+ * information: `IssueInvoiceOnOrderPaid` treats that as nothing to issue,
+ * not an error.
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $settles_type
  * @property string $settles_id
  * @property string $request_key
  * @property string|null $payer_user_id
+ * @property BillingPartyData|null $billing_party
  * @property OrderStatus $status
  * @property string $currency
  * @property string $total_net
@@ -63,6 +72,7 @@ class Order extends Model
         'settles_id',
         'request_key',
         'payer_user_id',
+        'billing_party',
         'status',
         'currency',
         'total_net',
@@ -87,6 +97,7 @@ class Order extends Model
     protected function casts(): array
     {
         return [
+            'billing_party' => BillingPartyData::class,
             'status' => OrderStatus::class,
             'total_net' => 'decimal:2',
             'total_tax' => 'decimal:2',

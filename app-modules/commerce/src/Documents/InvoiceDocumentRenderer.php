@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Documents;
 use Barryvdh\DomPDF\Facade\Pdf;
 use horstoeko\zugferd\codelists\ZugferdDutyTaxFeeCategories;
 use horstoeko\zugferd\codelists\ZugferdInvoiceType;
+use horstoeko\zugferd\codelists\ZugferdPaymentMeans;
 use horstoeko\zugferd\codelists\ZugferdReferenceCodeQualifiers;
 use horstoeko\zugferd\codelists\ZugferdUnitCodes;
 use horstoeko\zugferd\ZugferdDocumentBuilder;
@@ -117,17 +118,45 @@ final class InvoiceDocumentRenderer
             );
         }
 
+        // ADR-0048: a paid invoice states as much in the XML too — the
+        // prepaid amount equals the gross total, nothing is still due, and
+        // the payment means that settled it is on record.
+        if ($invoice->isPaid()) {
+            $document->addDocumentPaymentMean(
+                typeCode: $this->paymentMeansTypecodeFor((string) $invoice->paid_via),
+                information: $invoice->paid_via,
+            );
+        }
+
         $document->setDocumentSummation(
             grandTotalAmount: (float) $invoice->total_gross,
-            duePayableAmount: (float) $invoice->total_gross,
+            duePayableAmount: $invoice->isPaid() ? 0.0 : (float) $invoice->total_gross,
             lineTotalAmount: (float) $invoice->total_net,
             chargeTotalAmount: 0.0,
             allowanceTotalAmount: 0.0,
             taxBasisTotalAmount: (float) $invoice->total_net,
             taxTotalAmount: (float) $invoice->total_tax,
+            totalPrepaidAmount: $invoice->isPaid() ? (float) $invoice->total_gross : null,
         );
 
         return $document;
+    }
+
+    /**
+     * `paid_via` is the human label `ProviderLabels::labelFor()` already
+     * produced, not the raw provider key — matched back to a UNTDID 4461
+     * payment-means code (ADR-0048). Bank transfer is SEPA credit transfer;
+     * every card-network PSP this release supports (Stripe, Mollie, Unzer)
+     * is a bank card from the payer's side; anything else states only that
+     * a payment means exists, not which one.
+     */
+    private function paymentMeansTypecodeFor(string $paidVia): string
+    {
+        return match ($paidVia) {
+            'Überweisung / manuell' => ZugferdPaymentMeans::UNTDID_4461_58,
+            'Stripe', 'Mollie', 'Unzer' => ZugferdPaymentMeans::UNTDID_4461_48,
+            default => ZugferdPaymentMeans::UNTDID_4461_ZZZ,
+        };
     }
 
     /**
