@@ -153,6 +153,18 @@ final class RedisWaitingRoomStore implements WaitingRoomStore
         return $count;
     }
 
+    public function recordAdmissionRun(string $brandId): void
+    {
+        $this->connection()->set($this->lastAdmissionKey($brandId), CarbonImmutable::now()->toIso8601String());
+    }
+
+    public function lastAdmissionAt(string $brandId): ?CarbonImmutable
+    {
+        $value = $this->connection()->get($this->lastAdmissionKey($brandId));
+
+        return is_string($value) && $value !== '' ? CarbonImmutable::parse($value) : null;
+    }
+
     private function stringField(string $brandId, string $ticketId, string $field): ?string
     {
         $value = $this->connection()->hget($this->ticketKey($brandId, $ticketId), $field);
@@ -183,5 +195,10 @@ final class RedisWaitingRoomStore implements WaitingRoomStore
     private function ipKey(string $brandId, string $ipHash): string
     {
         return "waiting-room:{$brandId}:ip:{$ipHash}";
+    }
+
+    private function lastAdmissionKey(string $brandId): string
+    {
+        return "waiting-room:{$brandId}:last_admission";
     }
 }

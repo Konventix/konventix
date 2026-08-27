@@ -67,6 +67,7 @@ it('drives the real Redis store through arrival order, admission, and cleanup', 
         "waiting-room:{$brandId}:ticket:{$third}",
         "waiting-room:{$brandId}:user:{$userId}",
         "waiting-room:{$brandId}:ip:{$ipHash}",
+        "waiting-room:{$brandId}:last_admission",
     ];
 
     try {
@@ -105,6 +106,17 @@ it('drives the real Redis store through arrival order, admission, and cleanup', 
 
         $store->forget($brandId, $first);
         expect($store->intendedUrl($brandId, $first))->toBeNull();
+
+        // Task 13: the admission tick's own heartbeat, read back by
+        // WaitingRoomCheck.
+        expect($store->lastAdmissionAt($brandId))->toBeNull();
+
+        $before = CarbonImmutable::now();
+        $store->recordAdmissionRun($brandId);
+        $recordedAt = $store->lastAdmissionAt($brandId);
+
+        expect($recordedAt)->toBeInstanceOf(CarbonImmutable::class)
+            ->and($recordedAt->diffInSeconds($before, true))->toBeLessThan(2);
     } finally {
         redisWaitingRoomCleanup($keys);
     }

@@ -328,6 +328,10 @@ function dryRunFeatureGatedRoutePrefixes(): array
         // needs — a brand that never switched shopping on has no cart to
         // walk either.
         'commerce.cart.' => 'commerce:shop',
+        // The holding page (Task 13) sits behind its own feature, off for
+        // both seeded archetypes — walking it here would only prove the
+        // 404 `EnsureFeatureIsActive` already gives, not a working page.
+        'commerce.waiting-room.' => 'commerce:waiting-room',
     ];
 }
 

@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Commerce\Health\WaitingRoomCheck;
+use Konventix\Commerce\Jobs\AdmitWaitingRoomBatch;
 use Konventix\Commerce\Models\WaitingRoomSettings;
 use Konventix\Commerce\WaitingRoom\AdmitFromWaitingRoom;
 use Konventix\Commerce\WaitingRoom\TicketCookie;
@@ -300,4 +303,174 @@ it('shows the waiting room settings card on the brand edit page only while the f
                 ->and($feature['settingsProps']['settings']['admitPerInterval'])->toBe(77)
                 ->and($feature['settingsProps']['settings']['admissionTtlMinutes'])->toBe(12);
         });
+});
+
+/*
+|--------------------------------------------------------------------------
+| The holding page, the admission tick, and its heartbeat (Task 13)
+|--------------------------------------------------------------------------
+*/
+
+it('answers the status endpoint for a queued ticket', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    $response = $this->get('/shop');
+    $cookieValue = waitingRoomCookieValue($response, $brand);
+
+    $status = $this->withCookie(TicketCookie::name($brand->getKey()), $cookieValue)
+        ->get('/waiting-room/status');
+
+    $status->assertOk()->assertJson([
+        'position' => 1,
+        'admitted' => false,
+        'redirectTo' => null,
+        'depth' => 1,
+    ]);
+});
+
+it('answers the status endpoint for an admitted ticket with its intended redirect', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    $response = $this->get('/shop');
+    $cookieValue = waitingRoomCookieValue($response, $brand);
+
+    app(AdmitFromWaitingRoom::class)->handle($brand, 1);
+
+    $status = $this->withCookie(TicketCookie::name($brand->getKey()), $cookieValue)
+        ->get('/waiting-room/status');
+
+    $status->assertOk();
+    expect($status->json('admitted'))->toBeTrue()
+        ->and($status->json('redirectTo'))->toBe('http://localhost/shop')
+        ->and($status->json('position'))->toBeNull();
+});
+
+it('sends a visitor without a waiting room ticket back to the shop', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    $this->get('/waiting-room')->assertRedirect(route('commerce.shop.index'));
+});
+
+it('renders the waiting room page with the ticket position', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    $response = $this->get('/shop');
+    $cookieValue = waitingRoomCookieValue($response, $brand);
+
+    $this->withCookie(TicketCookie::name($brand->getKey()), $cookieValue)
+        ->get('/waiting-room')
+        ->assertInertia(function (AssertableInertia $page): void {
+            $page->component('waiting-room/Show')
+                ->where('position', 1)
+                ->where('depth', 1)
+                ->has('admitPerInterval')
+                ->where('intervalSeconds', 5);
+        });
+});
+
+it('sends an already-admitted visitor who revisits the waiting room page straight on', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    $response = $this->get('/shop');
+    $cookieValue = waitingRoomCookieValue($response, $brand);
+
+    app(AdmitFromWaitingRoom::class)->handle($brand, 1);
+
+    $this->withCookie(TicketCookie::name($brand->getKey()), $cookieValue)
+        ->get('/waiting-room')
+        ->assertRedirect('http://localhost/shop');
+});
+
+it('dispatches twelve staggered admission batches only for a brand with a busy queue', function (): void {
+    Queue::fake();
+
+    $busyBrand = $this->withBrand();
+    $this->activateFeature('commerce:waiting-room', $busyBrand);
+    app(WaitingRoomStore::class)->enqueue($busyBrand->getKey(), (string) Str::ulid(), 'https://example.test/shop', null);
+
+    $quietBrand = Brand::factory()->withDomain('quiet.waiting-room.test')->create();
+    $this->activateFeature('commerce:waiting-room', $quietBrand);
+
+    $offBrand = Brand::factory()->withDomain('off.waiting-room.test')->create();
+    app(WaitingRoomStore::class)->enqueue($offBrand->getKey(), (string) Str::ulid(), 'https://example.test/shop', null);
+
+    $this->artisan('commerce:waiting-room-tick')->assertExitCode(0);
+
+    Queue::assertPushed(AdmitWaitingRoomBatch::class, 12);
+
+    Queue::assertPushed(AdmitWaitingRoomBatch::class, fn (AdmitWaitingRoomBatch $job): bool => $job->brandId === $busyBrand->getKey());
+
+    // Twelve genuinely distinct dispatches, not one collapsed by the
+    // unique lock — see AdmitWaitingRoomBatch::uniqueId()'s docblock.
+    $distinctDelays = Queue::pushed(AdmitWaitingRoomBatch::class)
+        ->map(fn (AdmitWaitingRoomBatch $job) => $job->delay?->getTimestamp())
+        ->unique();
+    expect($distinctDelays)->toHaveCount(12);
+});
+
+it('admits from the queue and records the admission run when the batch job executes', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+    WaitingRoomSettings::factory()->create(['admit_per_interval' => 1]);
+
+    $response = $this->get('/shop');
+    $ticketId = TicketCookie::parse(waitingRoomCookieValue($response, $brand));
+
+    $store = app(WaitingRoomStore::class);
+    expect($store->lastAdmissionAt($brand->getKey()))->toBeNull();
+
+    // Run synchronously — QUEUE_CONNECTION=sync would already do this for
+    // a real dispatch, but calling handle() directly keeps this test from
+    // depending on that environment default.
+    app()->call([new AdmitWaitingRoomBatch($brand->getKey()), 'handle']);
+
+    expect($store->isAdmitted($brand->getKey(), $ticketId))->toBeTrue()
+        ->and($store->lastAdmissionAt($brand->getKey()))->not->toBeNull();
+});
+
+it('leaves no trace and admits nobody when the brand never switched the feature on', function (): void {
+    $brand = $this->withBrand();
+    $store = app(WaitingRoomStore::class);
+    $store->enqueue($brand->getKey(), (string) Str::ulid(), 'https://example.test/shop', null);
+
+    app()->call([new AdmitWaitingRoomBatch($brand->getKey()), 'handle']);
+
+    expect($store->lastAdmissionAt($brand->getKey()))->toBeNull()
+        ->and($store->depth($brand->getKey()))->toBe(1);
+});
+
+it('fails the waiting room health check when a busy brand has no recent admission, and passes once one runs', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    $store = app(WaitingRoomStore::class);
+    $store->enqueue($brand->getKey(), (string) Str::ulid(), 'https://example.test/shop', null);
+
+    $check = app(WaitingRoomCheck::class);
+
+    expect((string) $check->run()->status)->toBe('failed');
+
+    $store->recordAdmissionRun($brand->getKey());
+    expect((string) $check->run()->status)->toBe('ok');
+
+    Carbon::setTestNow(now()->addMinutes(3));
+    expect((string) $check->run()->status)->toBe('failed');
+    Carbon::setTestNow();
+});
+
+it('passes the waiting room health check when nobody is queued at all', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    expect((string) app(WaitingRoomCheck::class)->run()->status)->toBe('ok');
 });

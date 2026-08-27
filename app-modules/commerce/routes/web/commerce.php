@@ -21,6 +21,7 @@ use Konventix\Commerce\Http\Controllers\CheckoutController;
 use Konventix\Commerce\Http\Controllers\MyInvoiceDocumentController;
 use Konventix\Commerce\Http\Controllers\MyOrdersController;
 use Konventix\Commerce\Http\Controllers\ShopController;
+use Konventix\Commerce\Http\Controllers\WaitingRoomController;
 
 // The public shop (ADR-0047, Task 8): a per-brand feature with no module
 // gate behind it, since Commerce itself is Core and cannot be switched off
@@ -33,6 +34,18 @@ use Konventix\Commerce\Http\Controllers\ShopController;
 Route::middleware(['ensure-feature:commerce:shop', 'ensure-waiting-room'])->group(function (): void {
     Route::get('/shop', [ShopController::class, 'index'])->name('commerce.shop.index');
     Route::get('/shop/{slug}', [ShopController::class, 'show'])->name('commerce.shop.show');
+});
+
+// The holding page itself (ADR-0047 point 5, Task 13). Behind its own
+// feature — a brand that never switched the waiting room on 404s here
+// exactly like `/shop` does behind `commerce:shop` — but deliberately
+// NOT behind `ensure-waiting-room`: this page IS the waiting room, so
+// gating it with itself would loop the visitor straight back here. Not
+// behind `auth` either — a guest queues exactly like a signed-in
+// visitor, and the ticket travels in a signed cookie, not a session.
+Route::middleware(['ensure-feature:commerce:waiting-room'])->group(function (): void {
+    Route::get('/waiting-room', [WaitingRoomController::class, 'show'])->name('commerce.waiting-room.show');
+    Route::get('/waiting-room/status', [WaitingRoomController::class, 'status'])->name('commerce.waiting-room.status');
 });
 
 // The person-owned cart and its checkout (ADR-0047, Task 11): behind both

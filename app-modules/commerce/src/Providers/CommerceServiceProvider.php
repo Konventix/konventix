@@ -12,6 +12,7 @@ use Konventix\Commerce\Console\ExpireCartsCommand;
 use Konventix\Commerce\Console\RefreshSettlementCapabilities;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
+use Konventix\Commerce\Console\WaitingRoomTick;
 use Konventix\Commerce\Data\RegistrationSettlementData;
 use Konventix\Commerce\Data\ShopProductData;
 use Konventix\Commerce\Data\WaitingRoomSettingsData;
@@ -269,7 +270,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // sweep that silently fails to register would look like "no invoices
         // are overdue" rather than like a bug.
         if ($this->app->runningInConsole()) {
-            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class, ExpireCartsCommand::class]);
+            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class, ExpireCartsCommand::class, WaitingRoomTick::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
@@ -292,6 +293,13 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // makes one run take longer than fifteen minutes must not stack
             // a second run on top of it.
             $schedule->command('commerce:expire-carts')->everyFifteenMinutes()->withoutOverlapping();
+
+            // The waiting room's own heartbeat (ADR-0047 point 5, Task 13):
+            // every minute, stagger up to twelve admission batches per busy
+            // brand across that minute. `withoutOverlapping()` for the same
+            // reason as the sweep above — a slow run must not stack a
+            // second tick's dispatches on top of the first's.
+            $schedule->command(WaitingRoomTick::class)->everyMinute()->withoutOverlapping();
         });
     }
 

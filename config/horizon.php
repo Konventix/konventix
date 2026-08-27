@@ -221,6 +221,20 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+
+        // The waiting room's own queue (ADR-0047 point 5, Task 13),
+        // separate from `supervisor-1` so a rush admitting a thousand
+        // arrivals never starves whatever else the default queue is
+        // carrying. `timeout: 30` — an admission batch is a handful of
+        // Redis calls plus one lock; anything past that means the lock
+        // itself is stuck, not that the batch is merely large.
+        'waiting-room' => [
+            'connection' => 'redis',
+            'queue' => ['waiting-room'],
+            'balance' => 'auto',
+            'maxProcesses' => 1,
+            'timeout' => 30,
+        ],
     ],
 
     'environments' => [
@@ -230,11 +244,19 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+
+            'waiting-room' => [
+                'maxProcesses' => 2,
+            ],
         ],
 
         'local' => [
             'supervisor-1' => [
                 'maxProcesses' => 3,
+            ],
+
+            'waiting-room' => [
+                'maxProcesses' => 2,
             ],
         ],
     ],

@@ -67,9 +67,70 @@
       carries the prefix (defaulting from the brand slug on first draw);
       editing it needs a settings screen and only ever applies to future
       ranges.
+- [ ] Pulse card for the waiting room is owed (Task 13). The
+      `waiting_room_admitted` metric is recorded (`AdmitWaitingRoomBatch`,
+      `Pulse::record(...)->sum()`); nothing renders it yet. Needs a
+      Livewire component extending `Laravel\Pulse\Livewire\Card`
+      (`#[Lazy]`, `$this->aggregate('waiting_room_admitted', ['sum'])`),
+      its Blade view (`commerce::pulse.waiting-room`, registered via
+      `loadViewsFrom`), a `Livewire::component()` registration, and —
+      since `resources/views/vendor/pulse/dashboard.blade.php` has never
+      been published in this app — `php artisan vendor:publish
+      --tag=pulse-dashboard` followed by adding the card's
+      `<livewire:.../>` line, with the ongoing cost of keeping that
+      published copy in step with Pulse's own default on every upgrade.
 
 ## Done
 
+- [x] ADR-0047 point 5, Task 13: the holding page counts down, the tick
+      admits, and the console can see the queue breathe.
+      `WaitingRoomController` (`show`/`status`) behind
+      `ensure-feature:commerce:waiting-room` only — not
+      `ensure-waiting-room` (the page IS the waiting room), not `auth`
+      (a guest queues like anyone else). `GET /waiting-room`
+      (`commerce.waiting-room.show`) renders `waiting-room/Show.vue`
+      (position, ETA, `aria-live="polite"`, a `<noscript>` meta-refresh
+      fallback, a five-second poll of `status` copied from
+      `NotificationBell.vue`'s `fetchJson`, `window.location.assign()` on
+      `admitted`); a visitor with no ticket cookie is sent to `/shop`, one
+      already admitted who revisits is sent straight to its
+      `intendedUrl`. `GET /waiting-room/status`
+      (`commerce.waiting-room.status`) answers
+      `{position, admitted, redirectTo, depth}`. `CommerceWaitingRoomGate`
+      now redirects to the named route instead of a literal path.
+      `AdmitWaitingRoomBatch` (`src/Jobs/`, queue `waiting-room`,
+      `ShouldBeUnique`/`uniqueFor` 5s) admits a batch, writes
+      `waiting-room:{brand}:last_admission` (new
+      `WaitingRoomStore::recordAdmissionRun()`/`lastAdmissionAt()`, both
+      implementations) whether or not anyone was admitted, and records
+      `Pulse::record('waiting_room_admitted', ...)->sum()` when someone
+      was. Its `uniqueId()` folds in the job's own delay rather than the
+      brand id alone — a literal brand-only key would let a tick's unique
+      lock swallow eleven of its own twelve staggered dispatches, since
+      Laravel checks that lock at dispatch time, before any `->delay()`
+      has elapsed (verified against this app's Laravel version before
+      writing it this way; see the class's docblock). `commerce:waiting-room-tick`
+      (`src/Console/WaitingRoomTick.php`, scheduled
+      `everyMinute()->withoutOverlapping()` beside the cart sweep) walks
+      every brand — no `BrandContext`, there is none outside a request —
+      and dispatches twelve staggered batches for each with the feature
+      on and a non-empty queue. `config/horizon.php` gained a
+      `waiting-room` supervisor (`maxProcesses` 2 in `local`/`production`),
+      separate from `supervisor-1`. `WaitingRoomCheck`
+      (`src/Health/`, a `Spatie\Health\Checks\Check`) fails when a
+      feature-on brand's queue is non-empty and no admission ran in the
+      last two minutes; registered in
+      `App\Providers\ObservabilityServiceProvider::registerHealthChecks()`
+      beside `HorizonCheck` — confirmed first that `App` importing
+      `Konventix\Commerce` does not trip
+      `tests/Unit/ArchitectureTest.php`'s "App not to use Konventix" arch
+      rule (Task 11 precedent; the provider already imports
+      `Konventix\Identity` and `Konventix\Platform`). No Pulse dashboard
+      card: the documented custom-card pattern needs a Livewire
+      component, its view, a Livewire registration, and a
+      publish-and-edit of `dashboard.blade.php` (never published in this
+      app) — past the "one class, one view" bar this task set. The
+      recording ships; the card is the backlog line below.
 - [x] ADR-0047 point 5, Task 12: a door for the rush. `src/WaitingRoom/`
       — `WaitingRoomStore` (`RedisWaitingRoomStore` on a sorted set per
       brand plus a hash per ticket, `ZPOPMIN` for atomic admission;
@@ -86,7 +147,8 @@
       operator holding `commerce.manage-products` on the brand → pass; an
       admitted ticket → pass; else issue/re-read + cookie + redirect to
       `/waiting-room` — a plain path, `TODO(tranche-3 T13)` marks where the
-      named route replaces it once the holding page exists).
+      named route replaces it once the holding page exists — done in
+      Task 13, see above).
       `WaitingRoomSettings` (`admit_per_interval` default 50,
       `admission_ttl_minutes` default 30, `forBrand()` the
       `BookkeepingSettings::forOperator()` idiom) with its own small form

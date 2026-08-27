@@ -30,6 +30,9 @@ final class ArrayWaitingRoomStore implements WaitingRoomStore
     /** @var array<string, array<string, array{count: int, resetAt: int}>> brandId => [ipHash => state] */
     private array $ipAttempts = [];
 
+    /** @var array<string, CarbonImmutable> brandId => last admission run */
+    private array $lastAdmission = [];
+
     public function enqueue(string $brandId, string $ticketId, string $intendedUrl, ?string $userId): int
     {
         $this->queues[$brandId][$ticketId] = microtime(true);
@@ -128,5 +131,15 @@ final class ArrayWaitingRoomStore implements WaitingRoomStore
         $this->ipAttempts[$brandId][$ipHash] = $state;
 
         return $state['count'];
+    }
+
+    public function recordAdmissionRun(string $brandId): void
+    {
+        $this->lastAdmission[$brandId] = CarbonImmutable::now();
+    }
+
+    public function lastAdmissionAt(string $brandId): ?CarbonImmutable
+    {
+        return $this->lastAdmission[$brandId] ?? null;
     }
 }

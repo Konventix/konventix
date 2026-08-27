@@ -56,9 +56,7 @@ final class CommerceWaitingRoomGate implements WaitingRoomGate
             return null;
         }
 
-        // TODO(tranche-3 T13): redirect to route('commerce.waiting-room.show')
-        // once the holding page exists — a plain path for now.
-        $response = redirect('/waiting-room');
+        $response = redirect()->route('commerce.waiting-room.show');
 
         $response->headers->setCookie(cookie(
             name: TicketCookie::name($brand->getKey()),

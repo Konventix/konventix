@@ -158,8 +158,7 @@ licensing.
   otherwise `IssueWaitingRoomTicket::handle()` reuses a still-known ticket
   (from the cookie, then from the user mapping) or mints a new one after
   the per-IP cap, sets the cookie on the response, and redirects to
-  `/waiting-room` — a plain path for now, `TODO(tranche-3 T13)` marking
-  where the holding page's named route replaces it.
+  `route('commerce.waiting-room.show')`.
   `AdmitFromWaitingRoom::handle(Brand, count)` pops up to `count` tickets
   off the head under `Cache::lock("waiting-room:{brand}", 10)` and stamps
   each one admitted until `now() + WaitingRoomSettings::forBrand()->
@@ -175,8 +174,50 @@ licensing.
   card reaches it through `BrandFeature`'s `settingsComponent`/
   `settingsProps` (Platform's extension point, not a `SlotRegistry` slot —
   see Platform's `SPEC.md`), rendered only while the feature is active.
-  The holding page itself and the scheduled admission tick are Task 13;
-  this task built the queue, the ticket, the gate and the settings only.
+  **Task 13** built the holding page and the scheduled admission tick.
+  `GET /waiting-room` (`commerce.waiting-room.show`, Inertia
+  `waiting-room/Show`) and `GET /waiting-room/status`
+  (`commerce.waiting-room.status`, JSON `{position, admitted, redirectTo,
+  depth}`) — `WaitingRoomController` — sit behind
+  `ensure-feature:commerce:waiting-room` only: **not**
+  `ensure-waiting-room` (the page IS the waiting room; gating it behind
+  itself would loop) and **not** `auth` (a guest queues like anyone
+  else). A visitor with no valid ticket cookie is sent to `/shop`, which
+  the gate re-issues one from; one already holding an admitted, unexpired
+  ticket who revisits is sent straight on to its `intendedUrl` rather than
+  shown a stale position. The page polls `status` every five seconds (a
+  local `fetchJson` copied from `NotificationBell.vue`, GET only) and
+  navigates away the moment it reports `admitted`; a `<noscript>` meta
+  refresh covers a visitor with JavaScript disabled. `AdmitWaitingRoomBatch`
+  (`src/Jobs/`, queue `waiting-room`, `ShouldBeUnique`, `uniqueFor` 5s)
+  resolves the brand, checks `commerce:waiting-room` is still active, calls
+  `AdmitFromWaitingRoom` with `WaitingRoomSettings::forBrand()->
+  admit_per_interval`, writes `waiting-room:{brand}:last_admission` via
+  the store's `recordAdmissionRun()`/`lastAdmissionAt()` (added to
+  `WaitingRoomStore` alongside the rest, both implementations) whether or
+  not anyone was admitted, and records `Pulse::record('waiting_room_admitted',
+  $brandId, $count)->sum()` when `$count > 0`. Its `uniqueId()` folds the
+  job's own `->delay()` into the lock key rather than the brand id alone
+  — Laravel checks a `ShouldBeUnique` job's lock at dispatch time, before
+  any delay elapses, so a literal brand-only key would let only the first
+  of a tick's twelve staggered dispatches through; see the class's own
+  docblock. `commerce:waiting-room-tick` (`src/Console/WaitingRoomTick.php`,
+  scheduled `everyMinute()->withoutOverlapping()` beside the cart sweep)
+  walks every brand — no `BrandContext`, there is none outside a request —
+  and for each with the feature active and `depth() > 0` dispatches twelve
+  batches five seconds apart, spreading one minute's admission instead of
+  bursting it. Horizon's `waiting-room` supervisor (`config/horizon.php`,
+  `maxProcesses` 2 in `local`/`production`) drains that queue on its own,
+  away from `supervisor-1`'s traffic. `WaitingRoomCheck`
+  (`src/Health/`, a `Spatie\Health\Checks\Check`, registered in
+  `App\Providers\ObservabilityServiceProvider::registerHealthChecks()`
+  the same way `HorizonCheck` is) fails when some feature-on brand has
+  `depth() > 0` and no admission run in the last two minutes — proof the
+  tick is still ticking, not merely scheduled. A Pulse dashboard card was
+  scoped out this task: it would need a Livewire component, its own view,
+  a Livewire registration, and a publish-and-edit of `dashboard.blade.php`
+  (never published in this app), past the "one class, one view" bar the
+  task set — the recording exists, the card is `TODO.md` backlog.
 - **`Order` and order lines** — the authoritative record of what was ordered,
   at what price, with which tax treatment, in which currency. Orders reference
   what they settle (a registration, a resource booking, a shop item) by ULID.

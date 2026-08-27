@@ -94,4 +94,19 @@ interface WaitingRoomStore
      * call, not this store's; it only counts.
      */
     public function incrementIpAttempts(string $brandId, string $ipHash): int;
+
+    /**
+     * Stamps "an admission run happened for this brand, now" (Task 13) —
+     * what `AdmitWaitingRoomBatch::handle()` calls on every run it reaches,
+     * whether or not anyone was actually admitted, and what
+     * `WaitingRoomCheck` reads back to tell "the tick is ticking" from
+     * "the tick stopped".
+     */
+    public function recordAdmissionRun(string $brandId): void;
+
+    /**
+     * When the brand's last admission run happened, or null if none ever
+     * has (or the record has since expired/been forgotten).
+     */
+    public function lastAdmissionAt(string $brandId): ?CarbonImmutable;
 }

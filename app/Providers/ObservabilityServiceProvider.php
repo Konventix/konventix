@@ -8,6 +8,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Konventix\Commerce\Health\WaitingRoomCheck;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Enums\Permission;
 use Laravel\Horizon\Horizon;
@@ -111,6 +112,12 @@ class ObservabilityServiceProvider extends ServiceProvider
             CacheCheck::new(),
             ScheduleCheck::new()->heartbeatMaxAgeInMinutes(5),
             HorizonCheck::new(),
+            // ADR-0047 point 5, Task 13: the waiting room's admission tick
+            // is a Horizon queue worker like any other, but "Horizon is
+            // running" (the check above) does not prove THIS supervisor is
+            // draining its queue — WaitingRoomCheck reads the tick's own
+            // heartbeat.
+            WaitingRoomCheck::new(),
             UsedDiskSpaceCheck::new()->warnWhenUsedSpaceIsAbovePercentage(80)->failWhenUsedSpaceIsAbovePercentage(90),
             // Debug mode in production leaks stack traces, environment and
             // query contents to whoever triggers an error.
