@@ -65,6 +65,22 @@ class BrandSwitchingProbeJob implements ShouldQueue
 }
 
 /**
+ * Throws unconditionally — proves the propagator restores the interrupted
+ * brand on the *failure* path (`JobExceptionOccurred`), not only on the
+ * happy-path `JobProcessed`, and that a failing job leaves the stack
+ * balanced for whatever the caller dispatches next.
+ */
+class BrandFailingProbeJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable;
+
+    public function handle(BrandContext $context): void
+    {
+        throw new RuntimeException('BrandFailingProbeJob deliberately fails');
+    }
+}
+
+/**
  * @return array<string, mixed>
  */
 function queuedPayload(): array
@@ -200,4 +216,45 @@ it("restores each nested job's own interrupted brand, not the outermost one — 
         // And once the outer job itself finishes, its own interrupted
         // brand ($a) comes back.
         ->and(app(BrandContext::class)->id())->toBe($a->getKey());
+});
+
+it('restores the interrupted brand after a sync-queued job throws, and leaves the stack balanced for the next job', function (): void {
+    config()->set('queue.default', 'sync');
+
+    $context = app(BrandContext::class);
+    $a = $this->withBrand();
+    $b = Brand::factory()->create();
+
+    // Ambient is $a to start. Something is about to do a deliberate,
+    // legitimate cross-brand aside under $b — the job's payload carries $b,
+    // not $a — and that job blows up. The exception is caught right here,
+    // at the dispatch site, the same shape `RefundOrder`'s PSP call or any
+    // other synchronous afterCommit() dispatch is caught in production.
+    $context->set($b);
+
+    try {
+        BrandFailingProbeJob::dispatch();
+
+        test()->fail('Expected BrandFailingProbeJob to throw.');
+    } catch (RuntimeException $e) {
+        expect($e->getMessage())->toBe('BrandFailingProbeJob deliberately fails');
+    }
+
+    // Restored to $b — what was ambient at the moment this dispatch's
+    // JobProcessing pushed — proving JobExceptionOccurred restores just
+    // like JobProcessed does, not leaving the context null or stuck on
+    // whatever the failed job's payload set.
+    expect($context->id())->toBe($b->getKey());
+
+    // Back to what the caller's own code is responsible for (here: undoing
+    // its own aside), then prove the stack is not desynchronised by the
+    // failure: a completely unrelated job dispatched next still carries and
+    // restores its own brand correctly.
+    $context->set($a);
+    BrandProbeJob::$observed = [];
+
+    BrandProbeJob::dispatch('after a failure, still correct');
+
+    expect(BrandProbeJob::$observed)->toBe(['after a failure, still correct' => $a->getKey()])
+        ->and($context->id())->toBe($a->getKey());
 });

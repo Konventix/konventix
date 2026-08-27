@@ -12,6 +12,9 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Realtime\BrandBroadcasting;
+use Laravel\Octane\Events\RequestReceived;
+use Laravel\Octane\Events\TaskReceived;
+use Laravel\Octane\Events\TickReceived;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -44,6 +47,24 @@ class PropagatesBrandContextToQueue
      * before returning. `null` entries are real: they mean the interrupted
      * code had no brand of its own, and restoring must set "no brand" back,
      * not silently leave whatever the job set.
+     *
+     * This instance is resolved once, at boot, and its `register()` closures
+     * capture `$this` for the worker's entire lifetime (Octane) or the whole
+     * `queue:work` process — so the stack is not request-scoped on its own.
+     * Every push (`JobProcessing`) is paired with exactly one pop
+     * (`JobProcessed` or `JobExceptionOccurred` — see `register()`'s
+     * docblock on why not also `JobFailed`), so a correctly-running worker
+     * never accumulates entries across jobs. The Octane listeners below are
+     * defence in depth regardless: the pairing invariant depends on every
+     * job attempt reaching one of those two events, which is true for every
+     * path this codebase's queue drivers take today but is not something a
+     * future job middleware, a fatal error PHP itself intercepts before the
+     * catch block, or an exotic driver is guaranteed to preserve — and a
+     * worker that serves thousands of unrelated HTTP requests over its
+     * lifetime should not carry a queue bug into all of them. Resetting on
+     * every request/task/tick this worker picks up next bounds the damage
+     * of a hypothetical unbalanced push to the single job (or `sync` request)
+     * that caused it.
      *
      * @var list<Brand|null>
      */
@@ -115,5 +136,37 @@ class PropagatesBrandContextToQueue
         // JobExceptionOccurred alone already covers every exception on every
         // attempt, final or not.
         Event::listen(JobExceptionOccurred::class, $restoreInterruptedBrand);
+
+        $this->registerOctaneStackReset();
+    }
+
+    /**
+     * Defence in depth (see `$interruptedBrands`'s docblock): clears the
+     * stack at the start of whatever this Octane worker serves next, so a
+     * hypothetical unbalanced push from one request/task/tick can never
+     * follow into another. `class_exists()`-guarded because Octane's event
+     * classes only autoload when the package is actually installed — this
+     * runs in every environment, Octane or not (`.ai/rules/providers.md`'s
+     * "a boot-time singleton never constructor-injects a scoped binding"
+     * lesson is the same family of Octane-worker-lifetime bug this guards
+     * against, one step further down the stack).
+     */
+    private function registerOctaneStackReset(): void
+    {
+        $resetInterruptedBrands = function (): void {
+            $this->interruptedBrands = [];
+        };
+
+        if (class_exists(RequestReceived::class)) {
+            Event::listen(RequestReceived::class, $resetInterruptedBrands);
+        }
+
+        if (class_exists(TaskReceived::class)) {
+            Event::listen(TaskReceived::class, $resetInterruptedBrands);
+        }
+
+        if (class_exists(TickReceived::class)) {
+            Event::listen(TickReceived::class, $resetInterruptedBrands);
+        }
     }
 }

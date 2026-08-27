@@ -11,6 +11,7 @@ use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Actions\IssueCreditNote;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
 use Konventix\Commerce\Actions\RefundOrder;
+use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CreditNoteIssued;
 use Konventix\Commerce\Events\OrderRefunded;
@@ -26,6 +27,8 @@ use Konventix\Commerce\Settlement\SettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Mail\TemplatedMail;
+use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
 
 /**
  * Records refund calls so tests can assert the PSP side of `RefundOrder`
@@ -400,10 +403,69 @@ it('aborts the refund entirely when the provider refuses it', function (): void 
 });
 
 /**
+ * A brand with an operator attached — `IssueInvoiceOnOrderPaid`'s document
+ * pipeline needs a seller to render (`OperatorSettings::sellerForBrand()`).
+ * Duplicated from `PaidInvoiceTest::paidInvoiceBrand()` rather than reused:
+ * Pest helper functions only exist once their defining file has been loaded
+ * by the current run, so a file that must pass in isolation (`php artisan
+ * test app-modules/commerce/tests/RefundAndCreditNoteTest.php` alone) cannot
+ * call a helper defined in a sibling test file (.ai/rules/tests.md).
+ */
+function refundTestBrandWithOperator(): Brand
+{
+    $brand = test()->withBrand();
+    $brand->operator()->associate(Operator::factory()->create())->save();
+
+    return $brand;
+}
+
+function refundTestBillingParty(?string $name = 'Erika Musterfrau', ?string $email = 'erika@musterfrau.example'): BillingPartyData
+{
+    return BillingPartyData::ofAccount((string) $name, (string) $email);
+}
+
+/**
+ * A pending cart order with one line and a billing party (Task 2's
+ * `OrderPaid` → paid Rechnung shape) — ready for `RecordPaymentSuccess` to
+ * settle and, from there, for `RefundOrder` to reverse.
+ */
+function refundTestCartOrder(?BillingPartyData $billingParty = null): Order
+{
+    $order = Order::factory()->create([
+        'settles_type' => 'cart',
+        'total_net' => '100.00',
+        'total_tax' => '19.00',
+        'total_gross' => '119.00',
+        'billing_party' => $billingParty ?? refundTestBillingParty(),
+    ]);
+
+    OrderLine::factory()->forOrder($order)->create([
+        'label' => 'Rush Shirt',
+        'unit_amount_net' => '100.00',
+        'tax_rate' => '19.00',
+        'line_net' => '100.00',
+        'line_tax' => '19.00',
+        'line_gross' => '119.00',
+    ]);
+
+    return $order;
+}
+
+function refundTestCardPayment(Order $order, string $provider = 'stripe'): Payment
+{
+    return Payment::factory()->create([
+        'order_id' => $order->id,
+        'provider' => $provider,
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+}
+
+/**
  * End to end (Task 3, ADR-0048 point 2): a card-paid cart order (Task 2's
- * `OrderPaid` → paid Rechnung setup, `paidInvoice*` helpers from
- * `PaidInvoiceTest`) refunded through `RefundOrder` leaves a Gutschrift the
- * payer can both read about and download — not just a `CreditNote` row.
+ * `OrderPaid` → paid Rechnung setup) refunded through `RefundOrder` leaves a
+ * Gutschrift the payer can both read about and download — not just a
+ * `CreditNote` row.
  *
  * `GenerateCreditNoteDocument` is never dispatched by hand here: it runs
  * `afterCommit()` from inside `IssueCreditNote`'s own transaction, which
@@ -414,17 +476,17 @@ it('aborts the refund entirely when the provider refuses it', function (): void 
  * globally — kept explicit so this test's intent reads on its own.
  */
 it('refunds a paid cart order into a mailed, downloadable Gutschrift', function (): void {
-    $brand = paidInvoiceBrand();
+    $brand = refundTestBrandWithOperator();
     Storage::fake('invoices');
     Mail::fake();
 
     $payer = User::factory()->create();
-    $order = paidInvoiceOrder('cart', paidInvoiceBillingParty($payer->name, $payer->email));
+    $order = refundTestCartOrder(refundTestBillingParty($payer->name, $payer->email));
     $order->forceFill(['payer_user_id' => $payer->getKey()])->save();
 
     // manual: RefundOrder's PSP call resolves ManualSettlementAdapter, a
     // true no-op (ADR-0039) — no live provider call in a test.
-    $payment = paidInvoicePayment($order, 'manual');
+    $payment = refundTestCardPayment($order, 'manual');
     app(RecordPaymentSuccess::class)->handle($payment);
 
     $invoice = Invoice::query()->where('order_id', $order->id)->sole();
