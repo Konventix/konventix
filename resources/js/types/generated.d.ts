@@ -115,6 +115,33 @@ declare namespace Konventix {
                 readonly kind: string | null;
                 readonly registrationUrl: string | null;
             };
+            export type OperationsNoticeData = {
+                readonly kind: unknown;
+                readonly title: string;
+                readonly detail: string;
+                readonly url: string;
+            };
+            export type OrderConfirmationMailData = {
+                readonly orderNumberShort: string;
+                readonly recipientName: string | null;
+                readonly placedAt: string;
+                readonly lines: {
+                    label: string;
+                    quantity: number;
+                    lineGross: string;
+                }[];
+                readonly totalGross: string;
+                readonly currency: string;
+                readonly paid: boolean;
+                readonly reservationUntil: string | null;
+                readonly ordersUrl: string;
+            };
+            export type PaymentFailedMailData = {
+                readonly orderNumberShort: string;
+                readonly reason: string;
+                readonly retryUrl: string;
+                readonly ordersUrl: string;
+            };
             export type ProductData = {
                 readonly id: string;
                 readonly brandId: string;

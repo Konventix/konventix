@@ -88,9 +88,14 @@ it('never imports another module internals across a boundary', function (): void
             // Messaging's declared send API (its SPEC: "The send API modules
             // consume is SendMessage::handle(SendMessageRequest)") — the
             // kernel-tier service every module addresses messages through,
-            // plus the template registration surface. Models stay forbidden:
-            // no module may touch Messaging's log/settings tables.
-            if ($importedModule === 'Messaging' && in_array($segments[2] ?? null, ['Actions', 'Data', 'Templates'], true)) {
+            // plus the template registration surface, plus the topic
+            // registration surface (`Topics\Topic`/`TopicRegistry`,
+            // `ModuleServiceProvider::registerMessageTopics()`'s own hook —
+            // ADR-0048 point 3 is the first module besides Messaging to use
+            // it) and the `Channel` enum a topic declaration needs to name
+            // its default channels. Models stay forbidden: no module may
+            // touch Messaging's log/settings tables.
+            if ($importedModule === 'Messaging' && in_array($segments[2] ?? null, ['Actions', 'Data', 'Templates', 'Topics', 'Enums'], true)) {
                 continue;
             }
 

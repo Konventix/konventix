@@ -76,7 +76,11 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
   module declares its own starting roles through the `defaultRoles()`
   provider hook (ADR-0045) — the same declare-only pattern as
   `registerBlockTypes()`/`registerSlots()`/`registerCookies()` — and Platform
-  materializes them per brand.
+  materializes them per brand. `Permissions\PermissionHolders::userIdsWithPermission()`
+  is the read side: a pure query builder over spatie's own pivot tables (no
+  Eloquent `Role`/`Permission` model, no Identity `User` import) that answers
+  "which users hold this permission on this brand" — Commerce's operations
+  notice (ADR-0048 point 3) is the first caller.
 - **Cookie registry.** Every cookie the platform sets, declared by the
   module that sets it through the `registerCookies()` provider hook, so the
   cookie-settings dialog renders from that declaration and an undeclared

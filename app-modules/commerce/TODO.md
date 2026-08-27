@@ -86,6 +86,45 @@
 
 ## Done
 
+- [x] ADR-0048 point 3 (mail-and-receipts Task 4): an order is confirmed, a
+      failed payment is explained, and the shop manager hears about it.
+      Four new listeners, all on Commerce's own events: `SendOrderConfirmationOnOrderPlaced`
+      (`OrderPlaced`, `settlesType: 'cart'` only — a direct order's payer
+      already hears from Registration, and where invoice-settled, from
+      Commerce's own Rechnung mail) mails `commerce.order-confirmation` with
+      the order's lines, total, and — when a checked-out cart is still
+      behind it — the reservation deadline; `SendPaymentFailedMailOnPaymentFailed`
+      (`PaymentFailed`) mails `commerce.payment-failed` to the payer with an
+      already-localised reason sentence and a retry link (`commerce.pay.show`
+      for a registration order, `/my/orders` for a cart order); a payer-less
+      order is logged and skipped, never an error, the same
+      `PromoteFromWaitlist::notify()` try/`Log::warning` shape guards every
+      `SendMessage` call here. `NotifyOperatorsOnStockExhausted`
+      (`StockExhausted`) and `NotifyOperatorsOnPaymentFailed` (`PaymentFailed`)
+      mail every `commerce.manage-products` holder on the brand through the
+      new `commerce.operations-notice` template, on the new `commerce.operations`
+      topic (`registerMessageTopics()` — declared `digestable: true`, but
+      both current triggers set `urgent: true` on the request itself so a
+      manager gets an immediate nudge rather than a 30-minute-coalesced
+      digest, the same `HoldPolicy`/D-CNT-08 reasoning an urgent
+      announcement already uses). New in Platform: `Permissions\PermissionHolders::userIdsWithPermission()`
+      — a pure query builder over spatie's own pivot tables (no Eloquent
+      `Role`/`Permission` model, no Identity `User` import) answering "which
+      users hold this permission on this brand", the first caller outside
+      Platform itself. `reasonCode` mapping (`SendPaymentFailedMailOnPaymentFailed::reasonSentence()`)
+      reads the real values the three PSP webhook controllers emit
+      (`async_payment_failed`, `checkout_expired`, `failed`, `canceled`,
+      `expired`) rather than the illustrative `card_declined` wording
+      sketched during planning — no adapter emits that code. The admin link
+      in a stock-exhausted notice is relative (`route('admin.products.edit', …, absolute: false)`):
+      Commerce cannot import Platform's `Operator` model to resolve
+      `admin_host` from a queue worker, so the recipient's own browser
+      (already on the admin host) resolves it — worth an `AdminUrl` helper
+      alongside `BrandUrl` if a second cross-module caller needs the same
+      thing. `tests/Unit/ArchitectureTest.php`'s Messaging allowlist grew
+      two segments, `Topics` and `Enums`, for `Topic`/`TopicRegistry`/`Channel`
+      — the first module besides Messaging to use
+      `ModuleServiceProvider::registerMessageTopics()`'s hook.
 - [x] ADR-0048 (mail-and-receipts Task 3): a refund leaves a Gutschrift
       behind, on paper and in the inbox. `IssueCreditNote` now dispatches
       `Jobs\GenerateCreditNoteDocument` `afterCommit()`, the same shape

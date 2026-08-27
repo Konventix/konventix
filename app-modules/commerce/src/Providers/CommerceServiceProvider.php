@@ -19,10 +19,17 @@ use Konventix\Commerce\Data\WaitingRoomSettingsData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Events\OrderPaid;
+use Konventix\Commerce\Events\OrderPlaced;
+use Konventix\Commerce\Events\PaymentFailed;
+use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Commerce\Gdpr\CommerceGdprHandler;
 use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
 use Konventix\Commerce\Listeners\IssueInvoiceOnOrderPaid;
+use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentFailed;
+use Konventix\Commerce\Listeners\NotifyOperatorsOnStockExhausted;
 use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
+use Konventix\Commerce\Listeners\SendOrderConfirmationOnOrderPlaced;
+use Konventix\Commerce\Listeners\SendPaymentFailedMailOnPaymentFailed;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
@@ -47,8 +54,11 @@ use Konventix\Commerce\WaitingRoom\CommerceWaitingRoomGate;
 use Konventix\Commerce\WaitingRoom\RedisWaitingRoomStore;
 use Konventix\Commerce\WaitingRoom\WaitingRoomStore;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Messaging\Topics\Topic;
+use Konventix\Messaging\Topics\TopicRegistry;
 use Konventix\Platform\Cookies\CookieDeclaration;
 use Konventix\Platform\Cookies\CookieRegistry;
 use Konventix\Platform\Enums\CookieCategory;
@@ -189,6 +199,15 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // card-paid registrations and every cart order got no document
         // before this.
         Event::listen(OrderPaid::class, IssueInvoiceOnOrderPaid::class);
+
+        // ADR-0048 point 3: the module that owns an event owns its mail —
+        // a cart checkout's own confirmation, a failed payment explained to
+        // the payer, and the shop manager told about both a sold-out
+        // variant and a payment that did not go through.
+        Event::listen(OrderPlaced::class, SendOrderConfirmationOnOrderPlaced::class);
+        Event::listen(PaymentFailed::class, SendPaymentFailedMailOnPaymentFailed::class);
+        Event::listen(StockExhausted::class, NotifyOperatorsOnStockExhausted::class);
+        Event::listen(PaymentFailed::class, NotifyOperatorsOnPaymentFailed::class);
     }
 
     /**
@@ -444,6 +463,132 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+        ));
+
+        // ADR-0048 point 3: a cart checkout's own confirmation — Registration
+        // already tells a direct order's registrant their submission went
+        // through, so this template exists for `settlesType: 'cart'` only
+        // (`SendOrderConfirmationOnOrderPlaced`).
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'commerce.order-confirmation',
+            subjects: [
+                'de' => 'Ihre Bestellung {{ $orderNumberShort }}',
+                'en' => 'Your order {{ $orderNumberShort }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>{{ $recipientName ?? 'Hallo' }},</p>
+                    <p>vielen Dank für Ihre Bestellung <strong>{{ $orderNumberShort }}</strong>
+                    vom {{ $placedAt }}.</p>
+                    <table>
+                    <tbody>
+                    @foreach ($lines as $line)
+                    <tr>
+                    <td>{{ $line['label'] }}</td>
+                    <td>{{ $line['quantity'] }}×</td>
+                    <td>{{ $line['lineGross'] }} {{ $currency }}</td>
+                    </tr>
+                    @endforeach
+                    </tbody>
+                    </table>
+                    <p>Gesamt: <strong>{{ $totalGross }} {{ $currency }}</strong></p>
+                    @if ($reservationUntil)
+                    <p>Ihre Reservierung gilt bis {{ $reservationUntil }} — schließen Sie die
+                    Zahlung bis dahin ab.</p>
+                    @endif
+                    <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>{{ $recipientName ?? 'Hello' }},</p>
+                    <p>thank you for your order <strong>{{ $orderNumberShort }}</strong>
+                    placed on {{ $placedAt }}.</p>
+                    <table>
+                    <tbody>
+                    @foreach ($lines as $line)
+                    <tr>
+                    <td>{{ $line['label'] }}</td>
+                    <td>{{ $line['quantity'] }}×</td>
+                    <td>{{ $line['lineGross'] }} {{ $currency }}</td>
+                    </tr>
+                    @endforeach
+                    </tbody>
+                    </table>
+                    <p>Total: <strong>{{ $totalGross }} {{ $currency }}</strong></p>
+                    @if ($reservationUntil)
+                    <p>Your reservation holds until {{ $reservationUntil }} — please
+                    complete payment before then.</p>
+                    @endif
+                    <p><a href="{{ $ordersUrl }}">My orders</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        // ADR-0048 point 3: a failed attempt explained to the payer, with a
+        // link back to wherever they can try again
+        // (`SendPaymentFailedMailOnPaymentFailed`).
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'commerce.payment-failed',
+            subjects: [
+                'de' => 'Zahlung zu Bestellung {{ $orderNumberShort }} fehlgeschlagen',
+                'en' => 'Payment for order {{ $orderNumberShort }} failed',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag,</p>
+                    <p>Ihre Zahlung zur Bestellung <strong>{{ $orderNumberShort }}</strong>
+                    ist fehlgeschlagen. {{ $reason }}</p>
+                    <p><a href="{{ $retryUrl }}">Zahlung erneut versuchen</a></p>
+                    <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>your payment for order <strong>{{ $orderNumberShort }}</strong>
+                    failed. {{ $reason }}</p>
+                    <p><a href="{{ $retryUrl }}">Try payment again</a></p>
+                    <p><a href="{{ $ordersUrl }}">My orders</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        // ADR-0048 point 3: one template for every shop-operator notice on
+        // the `commerce.operations` topic — `title`/`detail`/`url` are
+        // already composed by the sending listener
+        // (`NotifyOperatorsOnStockExhausted`, `NotifyOperatorsOnPaymentFailed`),
+        // so this stays branch-free regardless of `kind`.
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'commerce.operations-notice',
+            subjects: [
+                'de' => '{{ $title }}',
+                'en' => '{{ $title }}',
+            ],
+            bodies: [
+                'de' => '<p>{{ $detail }}</p><p><a href="{{ $url }}">Im Konsolenbereich öffnen</a></p>',
+                'en' => '<p>{{ $detail }}</p><p><a href="{{ $url }}">Open in the console</a></p>',
+            ],
+            defaultLocale: 'de',
+        ));
+    }
+
+    /**
+     * ADR-0048 point 3: the shop operators' own topic — a sold-out variant
+     * or a failed payment, in-app and by mail, both suppressible (an
+     * operator may prefer just one channel) and digestable, declared here
+     * for future non-urgent operational sends on it. Today's two triggers
+     * (`NotifyOperatorsOnStockExhausted`, `NotifyOperatorsOnPaymentFailed`)
+     * both set `urgent: true` on the request itself — a manager is worth an
+     * immediate nudge, not a 30-minute-coalesced digest, the same
+     * `HoldPolicy`/D-CNT-08 reasoning an urgent announcement already uses.
+     */
+    protected function registerMessageTopics(): void
+    {
+        $this->app->make(TopicRegistry::class)->register(new Topic(
+            key: 'commerce.operations',
+            label: 'Shop operations',
+            defaultChannels: [Channel::InApp, Channel::Mail],
+            suppressible: true,
+            digestable: true,
         ));
     }
 

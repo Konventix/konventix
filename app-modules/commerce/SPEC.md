@@ -446,6 +446,26 @@ other changes where a brand's money goes. `commerce.shop-manager` (ADR-0045)
 is the shop's own starting role: the two product capabilities plus viewing
 orders, without invoicing, refunds or settlement access.
 
+## Mail
+
+ADR-0048 point 3: the module that owns an event owns its mail — every key
+below is a Commerce listener calling Messaging's `SendMessage` (never a
+Messaging-owned trigger). Money in a payload is a preformatted string
+(`"35.70"` + a separate `currency` field); dates are `d.m.Y`/`d.m.Y H:i`
+strings, never Carbon. `commerce.operations` is the one topic Commerce
+declares (`registerMessageTopics()`) — suppressible and digestable, though
+both current triggers send `urgent: true` for an immediate nudge rather than
+the topic's own 30-minute coalescing window.
+
+| Key | Trigger | Recipient | Topic |
+|---|---|---|---|
+| `commerce.invoice-issued` | `SendInvoiceMail`, called by `GenerateInvoiceDocument` once an open invoice's ZUGFeRD archive seals | The invoice's billing party, by address (no account required) | — (plain mail) |
+| `commerce.invoice-paid` | `SendInvoiceMail`, same call site, when `Invoice::isPaid()` | The invoice's billing party, by address | — |
+| `commerce.credit-note-issued` | `SendCreditNoteMail`, called by `GenerateCreditNoteDocument` once a credit note's ZUGFeRD archive seals | The credit note's billing party, by address | — |
+| `commerce.order-confirmation` | `SendOrderConfirmationOnOrderPlaced` on `OrderPlaced`, only `settlesType === 'cart'` | The order's payer (`payer_user_id`) | — |
+| `commerce.payment-failed` | `SendPaymentFailedMailOnPaymentFailed` on `PaymentFailed` | The order's payer | — |
+| `commerce.operations-notice` | `NotifyOperatorsOnStockExhausted` on `StockExhausted`; `NotifyOperatorsOnPaymentFailed` on `PaymentFailed` | Every `commerce.manage-products` holder on the brand (`Platform\Permissions\PermissionHolders`) | `commerce.operations` |
+
 ## Activation
 
 **Core tier: always active.** Every brand needs Commerce and no Pennant feature
