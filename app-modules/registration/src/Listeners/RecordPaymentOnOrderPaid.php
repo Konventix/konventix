@@ -17,7 +17,11 @@ use Konventix\Registration\Actions\RecordOrderPaidForRegistration;
  * module imports, allowed because events are the public contract between
  * modules (ADR-0004). Orders can settle things other than registrations
  * (`settles_type` is an open domain string), so anything that is not a
- * registration settlement is ignored here.
+ * registration settlement is ignored here — including, since ADR-0047
+ * (Task 11), `settles_type: 'cart'`: a cart order's registration lines are
+ * `RecordPaymentOnOrderLineSettled`'s job, reached through
+ * `OrderLineSettled` instead, so this guard already does the right thing
+ * for it without a dedicated branch.
  *
  * Core module (never gated) — no `ShortCircuitsInactiveModule`, same
  * reasoning as Admission's listener.

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Events\CartLineExpired;
 use Konventix\Commerce\Events\CartLineRemoved;
 use Konventix\Commerce\Events\InvoiceIssued;
+use Konventix\Commerce\Events\OrderLineSettled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventArchived;
@@ -34,6 +35,7 @@ use Konventix\Registration\Listeners\MarkInvoicedOnInvoiceIssued;
 use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Listeners\ProjectRegistrant;
 use Konventix\Registration\Listeners\PromoteOnQuotaReleased;
+use Konventix\Registration\Listeners\RecordPaymentOnOrderLineSettled;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
 use Konventix\Registration\Models\RegistrationType;
 
@@ -84,6 +86,10 @@ class RegistrationServiceProvider extends ModuleServiceProvider
     protected function registerListeners(): void
     {
         Event::listen(OrderPaid::class, RecordPaymentOnOrderPaid::class);
+
+        // ADR-0047 point 4 (Task 11): the counterpart for a cart order,
+        // whose lines `OrderPaid` alone cannot tell apart.
+        Event::listen(OrderLineSettled::class, RecordPaymentOnOrderLineSettled::class);
 
         // D-REG-12: a freed quota unit promotes the oldest queued waitlist
         // entry — including units released by expired offers, which is what

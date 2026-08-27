@@ -7,9 +7,11 @@ namespace Konventix\Commerce\Actions;
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Events\OrderLineSettled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\PaymentReceived;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 
 /**
@@ -94,5 +96,43 @@ final class RecordPaymentSuccess
             settlementMethod: $payment->provider,
             settlementAccountId: $payment->settlement_account_id,
         ));
+
+        $this->emitOrderLineSettled($order, $payment);
+    }
+
+    /**
+     * `OrderLineSettled` per line, **cart orders only** (`OrderLineSettled`'s
+     * own docblock explains why): a `settles_type: 'registration'` order —
+     * still produced directly for `invoice` settlements and for `instant`
+     * ones on a brand with the shop feature off — has exactly one thing to
+     * confirm, and `OrderPaid` above already says which. Only a cart
+     * checkout's order settles more than one thing at once, so only it
+     * needs a per-line event to say which of them were paid.
+     */
+    private function emitOrderLineSettled(Order $order, Payment $payment): void
+    {
+        if ($order->settles_type !== 'cart') {
+            return;
+        }
+
+        $lines = OrderLine::withoutBrandScope()->where('order_id', $order->id)->orderBy('position')->get();
+
+        foreach ($lines as $line) {
+            if ($line->settles_kind === null || $line->settles_ref === null) {
+                continue;
+            }
+
+            event(new OrderLineSettled(
+                orderId: $order->id,
+                brandId: $order->brand_id,
+                kind: $line->settles_kind,
+                refId: $line->settles_ref,
+                requestKey: $order->request_key,
+                amountGross: $line->line_gross,
+                currency: $payment->currency,
+                paidAt: $order->paid_at->toIso8601String(),
+                settlementAccountId: $payment->settlement_account_id,
+            ));
+        }
     }
 }

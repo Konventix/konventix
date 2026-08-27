@@ -160,7 +160,4 @@ it('redirects to the cart when the shop feature is on and the type settles insta
             'billingEmail' => 'ada@example.test',
         ])
         ->assertRedirect('/cart');
-    // Task 11 registers `commerce.cart.show`; until then Route::has() reads
-    // false and the controller falls back to today's redirect, so this
-    // assertion cannot pass yet.
-})->todo();
+});

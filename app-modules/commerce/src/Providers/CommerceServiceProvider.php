@@ -233,7 +233,10 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // sweep on the same cadence as the waitlist offer expiry it
             // mirrors — fifteen minutes is frequent enough that stock a
             // person abandoned comes back well within a rush.
-            $schedule->command('commerce:expire-carts')->everyFifteenMinutes();
+            // `withoutOverlapping()` (Task 9 review minor): a rush that
+            // makes one run take longer than fifteen minutes must not stack
+            // a second run on top of it.
+            $schedule->command('commerce:expire-carts')->everyFifteenMinutes()->withoutOverlapping();
         });
     }
 
@@ -381,6 +384,22 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 url: '/shop',
                 icon: 'shopping-bag',
                 order: 30,
+                area: NavigationItem::AREA_BRAND,
+                feature: 'commerce:shop',
+            ),
+        );
+
+        // The cart (ADR-0047, Task 11) — right after "Shop", gated on the
+        // same feature. `HandleInertiaRequests`' `cart.count` prop is what
+        // badges this entry; the item itself is visible or not purely on
+        // whether the brand switched shopping on, the same as "Shop".
+        $registry->add(
+            new NavigationItem(
+                module: 'commerce',
+                label: 'Cart',
+                url: '/cart',
+                icon: 'shopping-cart',
+                order: 31,
                 area: NavigationItem::AREA_BRAND,
                 feature: 'commerce:shop',
             ),

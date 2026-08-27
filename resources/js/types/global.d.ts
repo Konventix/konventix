@@ -21,6 +21,7 @@ declare module '@inertiajs/core' {
             brand: Konventix.Platform.Data.BrandIdentityData;
             nav: BrandNavItem[];
             accountNav: BrandNavItem[];
+            cart: { count: number };
             footer: {
                 links: Konventix.Platform.Data.FooterLinkData[];
                 columns: {

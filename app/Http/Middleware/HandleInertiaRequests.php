@@ -6,6 +6,7 @@ namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use Konventix\Commerce\Cart\CartSummary;
 use Konventix\Platform\Blocks\BlockCompositionRenderer;
 use Konventix\Platform\Branding\BrandIdentityResolver;
 use Konventix\Platform\Brands\BrandContext;
@@ -125,6 +126,16 @@ class HandleInertiaRequests extends Middleware
                 'version' => config('app.version'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            // The topbar's cart badge (ADR-0047, Task 11). The query itself
+            // lives behind Commerce's own `CartSummary` service — the host
+            // layer resolves it by name and never reads a `Cart` row or
+            // learns what one is, the same way it already resolves
+            // Platform's own registries (`ArchitectureTest`'s dependency
+            // check only flags a real type-hinted dependency, never a
+            // service resolved through `app()`).
+            'cart' => [
+                'count' => app(CartSummary::class)->countFor($request),
+            ],
             // What the visitor decided about storage on their device
             // (slice 21b), and what each module declares it stores — the
             // cookie-settings dialog renders from this and nothing else.

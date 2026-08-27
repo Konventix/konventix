@@ -16,6 +16,7 @@ use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Settlement\SettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
@@ -259,6 +260,71 @@ it('refunds an uninvoiced order without producing paperwork', function (): void 
 
     Event::assertDispatched(OrderRefunded::class, fn (OrderRefunded $e): bool => $e->creditNoteId === null);
     Event::assertNotDispatched(CreditNoteIssued::class);
+});
+
+it('blocks the refund of a cart order when one of its registration lines is checked in', function (): void {
+    // ADR-0047: a cart order settles a mix of products and registrations —
+    // the check-in guard has to look through settles_kind lines, not just
+    // settles_id, for a cart order to be covered at all.
+    test()->withBrand();
+
+    $registrationId = (string) Str::ulid();
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'cart',
+        'settles_id' => (string) Str::ulid(),
+    ]);
+    OrderLine::factory()->forOrder($order)->create([
+        'settles_kind' => 'product',
+        'settles_ref' => (string) Str::ulid(),
+    ]);
+    OrderLine::factory()->forOrder($order)->create([
+        'position' => 2,
+        'settles_kind' => 'registration',
+        'settles_ref' => $registrationId,
+    ]);
+    Invoice::factory()->create(['order_id' => $order->id]);
+
+    event(new AdmissionCheckedIn(
+        checkInId: (string) Str::ulid(),
+        admissionId: (string) Str::ulid(),
+        registrationId: $registrationId,
+        eventId: (string) Str::ulid(),
+        brandId: $order->brand_id,
+        eventDayId: null,
+        checkpointId: null,
+        direction: 'in',
+        scannedAt: now()->toIso8601String(),
+    ));
+
+    expect(fn () => app(RefundOrder::class)->handle($order, reasonCode: 'customer-request'))
+        ->toThrow(RefundBlockedByCheckInException::class);
+
+    expect($order->fresh()->status)->toBe(OrderStatus::Paid)
+        ->and(CreditNote::query()->where('order_id', $order->id)->count())->toBe(0);
+});
+
+it('refunds a cart order whose lines have no checked-in registration', function (): void {
+    test()->withBrand();
+
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'cart',
+        'settles_id' => (string) Str::ulid(),
+    ]);
+    OrderLine::factory()->forOrder($order)->create([
+        'settles_kind' => 'product',
+        'settles_ref' => (string) Str::ulid(),
+    ]);
+    OrderLine::factory()->forOrder($order)->create([
+        'position' => 2,
+        'settles_kind' => 'registration',
+        'settles_ref' => (string) Str::ulid(),
+    ]);
+    Invoice::factory()->create(['order_id' => $order->id]);
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    expect(app(RefundOrder::class)->handle($order, reasonCode: 'customer-request')->status)
+        ->toBe(OrderStatus::Refunded);
 });
 
 it('refuses to credit-note an order that was never invoiced', function (): void {

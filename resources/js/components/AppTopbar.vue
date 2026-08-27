@@ -18,6 +18,7 @@ import UserMenuContent from '@/components/UserMenuContent.vue';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { home, login, register } from '@/routes';
+import type { BrandNavItem } from '@/types/navigation';
 
 /**
  * The brand shell's one navigation bar, for logged-out visitors and members
@@ -30,12 +31,31 @@ import { home, login, register } from '@/routes';
  * announcement banner and the notification bell resolve through the module
  * component registry, so a build without Content or Messaging renders
  * neither rather than failing.
+ *
+ * The one exception is the cart badge (ADR-0047, Task 11): it keys off the
+ * nav entry's own label rather than a module import, reading the count from
+ * the shared `cart` prop `HandleInertiaRequests` already puts on every
+ * response — a build without Commerce (impossible; Commerce is Core) would
+ * simply never have a "Cart" entry to match.
  */
 const page = usePage();
 const mobileMenuOpen = ref(false);
 
 const user = computed(() => page.props.auth?.user ?? null);
 const navItems = computed(() => page.props.nav ?? []);
+const cartCount = computed(() => page.props.cart?.count ?? 0);
+
+/**
+ * Overrides the link's own accessible name with the count for the one nav
+ * entry that carries a badge, instead of a second `aria-label` on the badge
+ * itself, which a screen reader would announce as a confusing second name
+ * layered on the link's own text.
+ */
+function navItemAriaLabel(item: BrandNavItem): string | undefined {
+    return item.label === 'Cart' && cartCount.value > 0
+        ? `Cart, ${cartCount.value} items`
+        : undefined;
+}
 
 const { isCurrentUrl } = useCurrentUrl();
 
@@ -96,9 +116,17 @@ function handleLogout(): void {
                         :aria-current="
                             isCurrentUrl(item.url) ? 'page' : undefined
                         "
+                        :aria-label="navItemAriaLabel(item)"
                         class="rounded-lg px-3 py-2 text-sm text-text-muted transition hover:bg-surface-muted hover:text-text aria-[current=page]:bg-subtle aria-[current=page]:text-text"
                     >
                         {{ item.label }}
+                        <span
+                            v-if="item.label === 'Cart' && cartCount > 0"
+                            aria-hidden="true"
+                            class="ml-1 inline-flex min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-medium text-on-accent"
+                        >
+                            {{ cartCount }}
+                        </span>
                     </Link>
 
                     <template v-if="user">
@@ -142,9 +170,17 @@ function handleLogout(): void {
                         :aria-current="
                             isCurrentUrl(item.url) ? 'page' : undefined
                         "
+                        :aria-label="navItemAriaLabel(item)"
                         class="rounded-md px-3 py-2 text-sm whitespace-nowrap text-text-muted transition hover:bg-surface-muted hover:text-text aria-[current=page]:bg-subtle aria-[current=page]:text-text"
                     >
                         {{ item.label }}
+                        <span
+                            v-if="item.label === 'Cart' && cartCount > 0"
+                            aria-hidden="true"
+                            class="ml-1 inline-flex min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-medium text-on-accent"
+                        >
+                            {{ cartCount }}
+                        </span>
                     </Link>
                 </nav>
             </div>

@@ -12,6 +12,7 @@ use Konventix\Commerce\Exceptions\RefundBlockedByCheckInException;
 use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
@@ -131,17 +132,37 @@ final class RefundOrder
     }
 
     /**
-     * Only registrations can be checked in. An order settling something else
-     * has no admissions and therefore nothing to block it.
+     * Only registrations can be checked in. A direct registration order has
+     * one to check; a cart order (ADR-0047) may hold several — every
+     * `settles_kind: 'registration'` line names one, and any single
+     * checked-in admission among them blocks the whole order the same way,
+     * since a cart refund is whole-order (SPEC.md). An order settling
+     * neither shape has no admissions and therefore nothing to block it.
      */
     private function guardNotCheckedIn(Order $order): void
     {
-        if ($order->settles_type !== 'registration') {
+        if ($order->settles_type === 'registration') {
+            if (CheckedInAdmission::registrationHasCheckIn($order->brand_id, $order->settles_id)) {
+                throw RefundBlockedByCheckInException::forRegistration($order->settles_id);
+            }
+
             return;
         }
 
-        if (CheckedInAdmission::registrationHasCheckIn($order->brand_id, $order->settles_id)) {
-            throw RefundBlockedByCheckInException::forRegistration($order->settles_id);
+        if ($order->settles_type !== 'cart') {
+            return;
+        }
+
+        $registrationIds = OrderLine::withoutBrandScope()
+            ->where('order_id', $order->id)
+            ->where('settles_kind', 'registration')
+            ->whereNotNull('settles_ref')
+            ->pluck('settles_ref');
+
+        foreach ($registrationIds as $registrationId) {
+            if (CheckedInAdmission::registrationHasCheckIn($order->brand_id, $registrationId)) {
+                throw RefundBlockedByCheckInException::forRegistration($registrationId);
+            }
         }
     }
 }

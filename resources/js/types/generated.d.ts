@@ -43,6 +43,32 @@ declare namespace Konventix {
     }
     namespace Commerce {
         namespace Data {
+            export type AddToCartData = {
+                readonly variantId: string;
+                readonly quantity: number;
+            };
+            export type CartData = {
+                readonly lines: Konventix.Commerce.Data.CartLineData[];
+                readonly totalNet: string;
+                readonly totalTax: string;
+                readonly totalGross: string;
+                readonly currency: string;
+                readonly expiresAt: string | null;
+                readonly accounts: Konventix.Commerce.Data.CheckoutAccountData[];
+            };
+            export type CartLineData = {
+                readonly id: string;
+                readonly kind: string;
+                readonly label: string;
+                readonly quantity: number;
+                readonly unitAmountNet: string;
+                readonly lineGross: string;
+                readonly canChangeQuantity: boolean;
+                readonly maxQuantity: number | null;
+            };
+            export type CartLineQuantityData = {
+                readonly quantity: number;
+            };
             export type CheckoutAccountData = {
                 readonly id: string;
                 readonly provider: string;
@@ -60,6 +86,14 @@ declare namespace Konventix {
                 readonly invoiceNumber: string | null;
                 readonly payUrl: string | null;
                 readonly documentUrl: string | null;
+                readonly lines: Konventix.Commerce.Data.MyOrderLineData[];
+            };
+            export type MyOrderLineData = {
+                readonly label: string;
+                readonly quantity: number;
+                readonly lineGross: string;
+                readonly kind: string | null;
+                readonly registrationUrl: string | null;
             };
             export type ProductData = {
                 readonly id: string;
@@ -141,6 +175,8 @@ declare namespace Konventix {
             };
         }
         namespace Enums {
+            export type CartLineKind = 'product' | 'registration';
+            export type CartStatus = 'open' | 'expired' | 'checked_out';
             export type OrderStatus =
                 'pending' | 'paid' | 'cancelled' | 'refunded';
             export type PaymentStatus =

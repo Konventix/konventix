@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { login } from '@/routes';
+import { store as storeCartLine } from '@/routes/commerce/cart/lines';
 
 /**
- * One shop product (ADR-0047, Task 8). The variant `<select>` and quantity
- * `<input>` are wired up for real, but there is nowhere for them to submit
- * to yet — `commerce.cart.add` is Task 11's route. Until then the buy
- * button renders disabled, and a guest sees a sign-in link in its place:
- * `/login` sends them back here once they are, the same round trip every
- * other auth-gated action on a brand host makes.
+ * One shop product (ADR-0047, Task 8/11). The buy button posts straight to
+ * `commerce.cart.lines.store` — a single immediate action, not a draft form
+ * (ADR-0038's dirty guard does not apply, the same reasoning `pay/Show.vue`
+ * already applies to its own account buttons). A guest sees a sign-in link
+ * in its place: `/login` sends them back here once they are, the same
+ * round trip every other auth-gated action on a brand host makes.
  */
 type Variant = Konventix.Commerce.Data.ShopVariantData;
 type Product = Konventix.Commerce.Data.ShopProductData;
@@ -24,6 +26,8 @@ const props = defineProps<{
 
 const page = usePage();
 const isGuest = computed(() => page.props.auth.user === null);
+const quantityError = computed(() => page.props.errors.quantity);
+const adding = ref(false);
 
 const firstAvailable = props.product.variants.find(
     (variant: Variant) => variant.remaining > 0,
@@ -40,6 +44,19 @@ const selectedVariant = computed<Variant | null>(
 );
 
 const quantity = ref(1);
+
+function addToCart(): void {
+    if (selectedVariantId.value === null) {
+        return;
+    }
+
+    adding.value = true;
+    router.post(
+        storeCartLine().url,
+        { variantId: selectedVariantId.value, quantity: quantity.value },
+        { preserveScroll: true, onFinish: () => (adding.value = false) },
+    );
+}
 </script>
 
 <template>
@@ -125,20 +142,20 @@ const quantity = ref(1);
                 />
             </div>
 
-            <!-- TODO(tranche-3 T11): wire commerce.cart.add -->
             <Button v-if="isGuest" as-child class="w-fit">
                 <Link :href="login()">Sign in to buy</Link>
             </Button>
-            <Button
-                v-else
-                type="button"
-                disabled
-                aria-disabled="true"
-                title="Cart arrives with a later task"
-                class="w-fit"
-            >
-                Add to cart
-            </Button>
+            <template v-else>
+                <Button
+                    type="button"
+                    :disabled="props.product.soldOut || adding"
+                    class="w-fit"
+                    @click="addToCart"
+                >
+                    Add to cart
+                </Button>
+                <InputError :message="quantityError" />
+            </template>
         </div>
     </div>
 </template>

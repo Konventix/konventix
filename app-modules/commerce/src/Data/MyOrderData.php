@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\URL;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -18,10 +19,18 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * `documentUrl` is a temporary signed link minted here, inside the render
  * that already established the reader is the payer — the same shape the
  * per-registration slot uses, for the same reason.
+ *
+ * `lines` is the per-line breakdown (Task 11): a cart order settles a mix
+ * of products and registrations, so the order-level summary alone no
+ * longer says enough — `$order->lines` must already be eager-loaded, the
+ * way `MyOrdersController` loads it for the whole list.
  */
 #[TypeScript]
 final class MyOrderData extends Data
 {
+    /**
+     * @param  list<MyOrderLineData>  $lines
+     */
     public function __construct(
         public readonly string $id,
         public readonly string $placedAt,
@@ -34,6 +43,7 @@ final class MyOrderData extends Data
         public readonly ?string $invoiceNumber,
         public readonly ?string $payUrl,
         public readonly ?string $documentUrl,
+        public readonly array $lines,
     ) {}
 
     /**
@@ -70,6 +80,7 @@ final class MyOrderData extends Data
                 ['invoice' => $invoice->getKey()],
                 absolute: false,
             ),
+            lines: array_values($order->lines->map(fn (OrderLine $line): MyOrderLineData => MyOrderLineData::ofLine($line))->all()),
         );
     }
 }

@@ -63,6 +63,69 @@
 
 ## Done
 
+- [x] Slice 24c prerequisite (ADR-0047, Task 11), one checkout settles a
+      ticket and a T-shirt — `PlaceOrderFromCart::handle()` turns a cart
+      into one `Order` (`settles_type = 'cart'`, `settles_id`/`request_key`
+      the cart's own id), one `OrderLine` per cart line carrying
+      `settles_kind`/`settles_ref` straight from the line's own
+      `kind`/`ref_id`, moves the cart to `checked_out` and starts the
+      chosen account's hosted checkout — the same account-offered guard
+      `CheckoutController::start()` already applies, now duplicated inside
+      the Action itself so a bad account never leaves a stray order
+      behind: it is checked *before* the order exists, not after. Reusing
+      a cart already `checked_out` with a still-pending order is the
+      idempotent path a double-submit or a retried checkout needs — the
+      controller's own cart lookup for `/cart/checkout` widens to include
+      `checked_out` alongside `open` for exactly that reason, while every
+      other cart route keeps the narrower `Cart::open()` lookup
+      (`{line}` resolved through the payer's own open cart, never a bare
+      `CartLine::find()`).
+      `RecordPaymentSuccess::settleOrder()` now also emits one
+      `OrderLineSettled` per line, **only for a `settles_type: 'cart'`
+      order** — a direct registration order still has exactly one thing to
+      confirm and `OrderPaid` already says which, so emitting the new
+      event for it too would let Registration confirm the same
+      registration twice from two different events. Registration's new
+      `RecordPaymentOnOrderLineSettled` is the only thing that reaches a
+      cart order's registration lines; `RecordPaymentOnOrderPaid` already
+      ignored `settles_type: 'cart'` before this task, since it only ever
+      acted on `'registration'` — no code change there, just a test that
+      says so explicitly. `RefundOrder`'s ADR-0037 check-in guard now
+      looks through a cart order's `settles_kind: 'registration'` lines
+      the same way it already read a direct order's `settles_id` — one
+      checked-in admission among several still blocks the whole order,
+      since a cart refund stays whole-order.
+      `CartController` (`GET /cart`, `POST /cart/lines`, `PATCH
+      /cart/lines/{line}`, `DELETE /cart/lines/{line}`, `POST
+      /cart/checkout`, all behind `ensure-feature:commerce:shop` + `auth`)
+      and `cart/Show.vue` (line list with quantity steppers and remove, a
+      `TaxCalculator` preview of the totals checkout recomputes for real,
+      one button per offered account like `pay/Show.vue`, an "expires in N
+      minutes" note, an empty state linking to `/shop` — no dirty guard,
+      every change here is its own immediate request). `shop/Show.vue`'s
+      buy button, disabled since Task 8, now posts for real. Nav entry
+      "Cart" at order 31 beside "Shop", badged from a new shared `cart`
+      Inertia prop (`HandleInertiaRequests` → `Cart\CartSummary`, a plain
+      service the host layer resolves by name — it may `use` a Commerce
+      class the same way it already does Platform's own registries,
+      confirmed against `tests/Unit/ArchitectureTest.php`'s dependency
+      check, which only flags a real type-hinted dependency, never a
+      service resolved through `app()`; no Platform indirection needed).
+      `commerce:expire-carts` gained `->withoutOverlapping()` (Task 9
+      review minor).
+      `MyOrderData` gained a `lines[]` breakdown (`label`, `quantity`,
+      `lineGross`, `kind`, `registrationUrl`) so "my orders" can say what a
+      cart order actually contained — the last field resolves
+      `registration.mine.show` server-side for a `registration`-kind line,
+      the same way `payUrl`/`documentUrl` already resolve their own
+      routes. `CommerceGdprHandler` now exports the subject's carts
+      alongside their orders, and genuinely deletes an *open* one on
+      erasure — releasing a product line's stock and emitting
+      `CartLineRemoved` for a registration line exactly the way
+      `RemoveCartLine` would, since an open cart holds a reservation, not
+      a commercial fact the way a placed order does; a `checked_out` or
+      `expired` cart is left alone.
+
 - [x] Slice 24b (ADR-0047, Task 10), a registration joins the cart —
       `CreateOrderOnSettlementRequested` now branches on `RegistrationSettlementRequested`
       instead of always placing an order: an `instant` settlement request on a

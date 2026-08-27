@@ -19,6 +19,11 @@
 
 ## Backlog (Phase 2 — release scope)
 
+- [ ] `registration:expire-waitlist-offers` should get the same
+      `->withoutOverlapping()` Task 11 added to Commerce's
+      `commerce:expire-carts` (Task 9 review minor): a rush that makes one
+      sweep run long enough to still be going at the next fifteen-minute
+      tick must not stack a second run on top of it.
 - [ ] Follow-ups from the filter-contract review (2026-08-25), none blocking:
       `export()`'s audit context now records resolved filter values and that
       path is untested; the registrations list clears `filters.event` to
@@ -53,6 +58,24 @@
       screen is where its tokens belong.
 
 ## Done
+
+- [x] ADR-0047 point 4 (Task 11), Registration learns which cart lines were
+      paid — a new `Listeners\RecordPaymentOnOrderLineSettled` consumes
+      Commerce's `OrderLineSettled`, the counterpart of `OrderPaid` for a
+      cart checkout's order (Task 11), which settles a mix of products and
+      registrations that `OrderPaid` alone cannot tell apart: a
+      `kind: 'registration'` line runs the same
+      `Actions\RecordOrderPaidForRegistration` `RecordPaymentOnOrderPaid`
+      already calls, keyed by the line's own `ref_id`; a `kind: 'product'`
+      line is Commerce's own business and is ignored.
+      `RecordPaymentOnOrderPaid` needed no code change to stop double-
+      confirming a cart order — it already only ever acted on
+      `settlesType === 'registration'`, so `'cart'` was already ignored;
+      `OrderLineSettledTest.php` proves that explicitly rather than
+      leaving it as an accident of the existing guard.
+      `RegistrationController::store()`'s redirect to `commerce.cart.show`
+      (written in Task 10, marked `->todo()` until this task registered
+      the route) now runs for real.
 
 - [x] ADR-0047 point 3 (Task 10), a cart that dies lets its ticket go — new
       `CancelPendingRegistrationForCart::handle(brandId, registrationId)`

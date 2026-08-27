@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 
@@ -61,6 +63,46 @@ it('offers the invoice through a signed link once one is archived', function ():
                 ->and($row['payUrl'])->toBeNull()
                 ->and($row['documentUrl'])->toContain($invoice->getKey())
                 ->and($row['documentUrl'])->toContain('signature=');
+        });
+});
+
+it('renders a cart order\'s lines, linking its registration line to the account page', function (): void {
+    // ADR-0047: a cart order settles a mix of products and registrations —
+    // the order-level summary line does not say which is which, so "my
+    // orders" carries the per-line breakdown too.
+    $brand = $this->withBrand();
+    $me = User::factory()->create();
+    $registrationId = (string) Str::ulid();
+
+    $order = Order::factory()->forPayer($me->getKey())->create([
+        'settles_type' => 'cart',
+        'settles_id' => (string) Str::ulid(),
+        'total_gross' => '83.30',
+    ]);
+    OrderLine::factory()->forOrder($order)->create([
+        'label' => 'Event T-Shirt',
+        'quantity' => 2,
+        'line_gross' => '23.80',
+        'settles_kind' => 'product',
+        'settles_ref' => (string) Str::ulid(),
+    ]);
+    OrderLine::factory()->forOrder($order)->create([
+        'position' => 2,
+        'label' => 'Weekend Ticket',
+        'quantity' => 1,
+        'line_gross' => '59.50',
+        'settles_kind' => 'registration',
+        'settles_ref' => $registrationId,
+    ]);
+
+    $this->actingAs($me)
+        ->get('/my/orders')
+        ->assertInertia(function (AssertableInertia $page) use ($registrationId): void {
+            $lines = collect($page->toArray()['props']['orders'][0]['lines'])->keyBy('kind');
+
+            expect($lines['product']['registrationUrl'])->toBeNull()
+                ->and($lines['registration']['label'])->toBe('Weekend Ticket')
+                ->and($lines['registration']['registrationUrl'])->toBe('/my/registrations/'.$registrationId);
         });
 });
 

@@ -75,6 +75,43 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
                             {{ order.totalGross }} {{ order.currency }}
                         </span>
                     </span>
+
+                    <!--
+                        A cart order settles a mix of products and
+                        registrations (ADR-0047) — the summary line above
+                        does not say enough on its own, so its lines get
+                        their own breakdown. A single-line registration
+                        order already has its link on the summary line, so
+                        this stays specific to carts.
+                    -->
+                    <ul
+                        v-if="
+                            order.settlesType === 'cart' &&
+                            order.lines.length > 0
+                        "
+                        class="mt-1 flex flex-col gap-0.5 border-t border-border pt-1 text-sm text-text-muted"
+                    >
+                        <li
+                            v-for="(line, index) in order.lines"
+                            :key="index"
+                            class="flex items-center justify-between gap-2"
+                        >
+                            <span>
+                                {{ line.quantity }}×
+                                <Link
+                                    v-if="line.registrationUrl"
+                                    :href="line.registrationUrl"
+                                    class="underline-offset-4 hover:underline"
+                                >
+                                    {{ line.label }}
+                                </Link>
+                                <span v-else>{{ line.label }}</span>
+                            </span>
+                            <span
+                                >{{ line.lineGross }} {{ order.currency }}</span
+                            >
+                        </li>
+                    </ul>
                 </div>
 
                 <div class="flex shrink-0 items-center gap-2">

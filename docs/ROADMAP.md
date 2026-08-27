@@ -533,6 +533,9 @@ in the owning module's `TODO.md` when it lands.
     concurrent arrivals with no 5xx and no double-sold stock. Needs P2 and
     slice 23; the standalone "my orders" list falls out of P2 and closes
     the last open item of the first build order.
+    **In progress** — landed as 24a–24b (the catalogue and its console, the
+    public shop, the cart and its checkout into one order per ADR-0047);
+    24c, the waiting room and its load test, is still open.
 
 25. **Profiles, and a page for them.** Identity for the account of
     record, Community for the page — which pulls Community forward from

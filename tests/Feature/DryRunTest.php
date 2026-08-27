@@ -324,6 +324,10 @@ function dryRunFeatureGatedRoutePrefixes(): array
 {
     return [
         'commerce.shop.' => 'commerce:shop',
+        // The cart (Task 11) sits behind the same feature the shop itself
+        // needs — a brand that never switched shopping on has no cart to
+        // walk either.
+        'commerce.cart.' => 'commerce:shop',
     ];
 }
 

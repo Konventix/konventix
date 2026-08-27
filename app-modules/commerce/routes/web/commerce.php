@@ -16,6 +16,7 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Commerce\Http\Controllers\CartController;
 use Konventix\Commerce\Http\Controllers\CheckoutController;
 use Konventix\Commerce\Http\Controllers\MyInvoiceDocumentController;
 use Konventix\Commerce\Http\Controllers\MyOrdersController;
@@ -28,6 +29,21 @@ use Konventix\Commerce\Http\Controllers\ShopController;
 Route::middleware(['ensure-feature:commerce:shop'])->group(function (): void {
     Route::get('/shop', [ShopController::class, 'index'])->name('commerce.shop.index');
     Route::get('/shop/{slug}', [ShopController::class, 'show'])->name('commerce.shop.show');
+});
+
+// The person-owned cart and its checkout (ADR-0047, Task 11): behind both
+// the shop's own feature — a brand that never switched shopping on has no
+// cart either — and `auth`, since a cart belongs to a signed-in payer from
+// the moment it is opened (ADR-0044's shape, one step earlier). The feature
+// gate runs first, so an anonymous visitor on a brand with the feature off
+// gets the same 404 the shop routes give, not a login redirect for a page
+// that does not exist.
+Route::middleware(['ensure-feature:commerce:shop', 'auth'])->group(function (): void {
+    Route::get('/cart', [CartController::class, 'show'])->name('commerce.cart.show');
+    Route::post('/cart/lines', [CartController::class, 'storeLine'])->name('commerce.cart.lines.store');
+    Route::patch('/cart/lines/{line}', [CartController::class, 'updateLine'])->name('commerce.cart.lines.update');
+    Route::delete('/cart/lines/{line}', [CartController::class, 'destroyLine'])->name('commerce.cart.lines.destroy');
+    Route::post('/cart/checkout', [CartController::class, 'checkout'])->name('commerce.cart.checkout');
 });
 
 // Public checkout for `instant` settlement (ADR-0039), addressed by the
