@@ -133,6 +133,11 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         );
     }
 
+    public function defaultCheckoutLabel(): string
+    {
+        return 'Card, Apple Pay, Google Pay';
+    }
+
     /**
      * One Checkout line per order line, at the snapshotted gross amount
      * (ADR-0017/ADR-0030): tax is already computed and rounded per line by

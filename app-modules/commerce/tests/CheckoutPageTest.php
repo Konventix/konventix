@@ -68,6 +68,8 @@ function checkoutPageOrder(bool $stripeConnected = true): array
         SettlementAccount::factory()->create([
             'provider' => SettlementAccount::PROVIDER_STRIPE,
             'provider_account_id' => 'acct_page_1',
+            // Only an active Stripe account is offered at checkout (ADR-0046).
+            'capabilities' => ['card_payments' => 'active'],
         ]);
         app()->instance(StripeApi::class, new CheckoutPageTestFakeStripe);
     }

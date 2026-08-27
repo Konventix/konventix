@@ -11,8 +11,6 @@ use Konventix\Commerce\Events\InvoiceOverdue;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\SettlementAccount;
-use Konventix\Commerce\Settlement\ManualSettlementAdapter;
-use Konventix\Commerce\Settlement\NullSettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 
 /**
@@ -127,37 +125,6 @@ it('runs from the scheduled console command', function (): void {
         ->assertSuccessful();
 });
 
-it('resolves the manual adapter for a brand with no connected account', function (): void {
-    // Booking a bank transfer by hand is the honest default, not a degraded
-    // state — and the only mode the definition of done requires.
-    $brand = $this->withBrand();
-
-    expect(app(SettlementAdapterRegistry::class)->forBrand($brand->id))
-        ->toBeInstanceOf(ManualSettlementAdapter::class)
-        ->and(app(SettlementAdapterRegistry::class)->accountIdForBrand($brand->id))
-        ->toBe(SettlementAccount::PROVIDER_MANUAL);
-});
-
-it('resolves the adapter of the brand connected account', function (): void {
-    $brand = $this->withBrand();
-
-    $account = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_NULL)->create();
-
-    expect(app(SettlementAdapterRegistry::class)->forBrand($brand->id))
-        ->toBeInstanceOf(NullSettlementAdapter::class)
-        ->and(app(SettlementAdapterRegistry::class)->accountIdForBrand($brand->id))
-        ->toBe($account->id);
-});
-
-it('falls back to manual once an account is disconnected', function (): void {
-    $brand = $this->withBrand();
-
-    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_NULL)->disconnected()->create();
-
-    expect(app(SettlementAdapterRegistry::class)->forBrand($brand->id))
-        ->toBeInstanceOf(ManualSettlementAdapter::class);
-});
-
 it('refuses to invent an adapter for an unregistered provider', function (): void {
     // Slice 7b registers Stripe and Mollie here; until then, asking for one
     // must fail loudly rather than silently settle through something else.
@@ -165,13 +132,15 @@ it('refuses to invent an adapter for an unregistered provider', function (): voi
         ->toThrow(RuntimeException::class);
 });
 
-it('allows only one live settlement account per brand', function (): void {
-    // Two live providers has no defined answer for which one an order settles
-    // through, so the database refuses the state.
+it('allows one live settlement account per provider per brand', function (): void {
+    // Two providers create fine (ADR-0046 reverses the single-answer rule);
+    // the same provider twice still has no defined answer for which live row
+    // an order settles through, so the database refuses that state.
     $this->withBrand();
 
-    SettlementAccount::factory()->create();
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create();
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
 
-    expect(fn () => SettlementAccount::factory()->create())
+    expect(fn () => SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create())
         ->toThrow(QueryException::class);
 });

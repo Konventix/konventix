@@ -6,15 +6,15 @@ namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Events\SettlementAccountConnected;
-use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveSettlementAccountException;
+use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
 use Konventix\Commerce\Models\SettlementAccount;
 
 /**
  * Creates a brand's settlement account (ADR-0007). One live account per
- * brand — the database enforces it with a partial unique index, and this
+ * provider — the database enforces it with a partial unique index, and this
  * action refuses first so the operator gets a reasoned message instead of a
- * constraint violation: which provider settles a brand's money is a
- * deliberate switch, never an accumulation.
+ * constraint violation (ADR-0046): a brand may connect several providers at
+ * once, but never two live accounts of the same one.
  *
  * Providers whose connection completes elsewhere (Stripe's hosted
  * onboarding) create the row unconnected and finish through
@@ -35,10 +35,10 @@ final class ConnectSettlementAccount
         bool $connected = true,
     ): SettlementAccount {
         return DB::transaction(function () use ($brandId, $provider, $label, $providerAccountId, $credentials, $connected): SettlementAccount {
-            $live = SettlementAccount::liveFor($brandId);
+            $live = SettlementAccount::liveAccountsFor($brandId)->firstWhere('provider', $provider);
 
             if ($live !== null) {
-                throw BrandAlreadyHasLiveSettlementAccountException::for($brandId, $live->provider);
+                throw BrandAlreadyHasLiveProviderException::for($brandId, $provider);
             }
 
             $account = new SettlementAccount([

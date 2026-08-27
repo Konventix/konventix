@@ -68,8 +68,11 @@ class CheckoutController
 
         abort_unless($order->status === OrderStatus::Pending, 409, 'This order is not payable.');
 
-        $account = SettlementAccount::liveFor($order->brand_id);
-        $adapter = $this->registry->forBrand($order->brand_id);
+        // Task 3 replaces this with the payer's actual choice (ADR-0046);
+        // for now the first offered account with a hosted checkout wins.
+        $account = SettlementAccount::liveAccountsFor($order->brand_id)
+            ->first(fn (SettlementAccount $a): bool => $a->isOffered() && $this->registry->forProvider($a->provider) instanceof ProvidesHostedCheckout);
+        $adapter = $account === null ? null : $this->registry->forProvider($account->provider);
 
         abort_unless($account !== null && $adapter instanceof ProvidesHostedCheckout, 409, 'This brand takes no online payment.');
 
@@ -99,7 +102,7 @@ class CheckoutController
 
     private function hostedCheckoutAvailable(Order $order): bool
     {
-        return SettlementAccount::liveFor($order->brand_id) !== null
-            && $this->registry->forBrand($order->brand_id) instanceof ProvidesHostedCheckout;
+        return SettlementAccount::liveAccountsFor($order->brand_id)
+            ->contains(fn (SettlementAccount $a): bool => $a->isOffered() && $this->registry->forProvider($a->provider) instanceof ProvidesHostedCheckout);
     }
 }

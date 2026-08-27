@@ -153,7 +153,7 @@ it('records a manual booking as a first-class payment', function (): void {
 
     Event::assertDispatched(
         PaymentReceived::class,
-        fn (PaymentReceived $event): bool => $event->settlementMethod === 'bank_transfer'
+        fn (PaymentReceived $event): bool => $event->settlementMethod === 'manual'
             && $event->externalReference === null,
     );
     Event::assertDispatched(OrderPaid::class);

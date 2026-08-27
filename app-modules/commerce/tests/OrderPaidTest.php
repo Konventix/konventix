@@ -30,7 +30,7 @@ it('marks an order paid through the manual settlement adapter and emits OrderPai
     Event::fake([OrderPaid::class]);
 
     $accountId = (string) Str::ulid();
-    $paid = (new ManualSettlementAdapter)->markOrderPaid($accountId, $order, '42.00', 'EUR', 'bank_transfer');
+    $paid = (new ManualSettlementAdapter)->markOrderPaid($accountId, $order, '42.00', 'EUR', 'manual');
 
     expect($paid->status)->toBe(OrderStatus::Paid)
         ->and($paid->paid_at)->not->toBeNull();
@@ -41,7 +41,7 @@ it('marks an order paid through the manual settlement adapter and emits OrderPai
         && $event->settlesId === $order->settles_id
         && $event->amountPaid === '42.00'
         && $event->currency === 'EUR'
-        && $event->settlementMethod === 'bank_transfer');
+        && $event->settlementMethod === 'manual');
 });
 
 it('leaves the order untouched and emits nothing through the null adapter', function (): void {

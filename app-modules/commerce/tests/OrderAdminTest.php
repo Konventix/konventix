@@ -97,7 +97,7 @@ it('books a manual payment, emitting OrderPaid', function (): void {
 
     Event::assertDispatched(OrderPaid::class, fn (OrderPaid $event): bool => $event->orderId === $order->id
         && $event->amountPaid === '297.50'
-        && $event->settlementMethod === 'bank_transfer');
+        && $event->settlementMethod === 'manual');
 });
 
 it('403s payment booking without the book-manual-payment capability', function (): void {

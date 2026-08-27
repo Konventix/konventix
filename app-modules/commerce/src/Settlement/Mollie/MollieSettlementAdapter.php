@@ -125,6 +125,11 @@ final class MollieSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         );
     }
 
+    public function defaultCheckoutLabel(): string
+    {
+        return 'PayPal, iDEAL, SEPA, cards';
+    }
+
     private function apiKeyOf(SettlementAccount $account): string
     {
         $apiKey = $account->credentials['api_key'] ?? null;

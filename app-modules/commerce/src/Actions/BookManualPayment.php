@@ -17,11 +17,10 @@ use RuntimeException;
  * `ManualSettlementAdapter`, which marks paid and emits `OrderPaid` — the
  * event Registration consumes (ADR-0006).
  *
- * The account id is the brand's live *manual* account when one exists, and
- * the `manual` sentinel otherwise: a bank transfer booked by hand involves
- * no PSP, so a live Stripe/Mollie/Unzer account is deliberately never
- * referenced here — the adapter contract is account-scoped on every call
- * (ADR-0007) even where no PSP is involved.
+ * The account id is always the `manual` sentinel: a bank transfer booked by
+ * hand involves no PSP, so a live Stripe/Mollie/Unzer account is
+ * deliberately never referenced here — the adapter contract is
+ * account-scoped on every call (ADR-0007) even where no PSP is involved.
  */
 final class BookManualPayment
 {
@@ -39,16 +38,12 @@ final class BookManualPayment
             ));
         }
 
-        $live = SettlementAccount::liveFor($order->brand_id);
-
         return $this->adapter->markOrderPaid(
-            accountId: $live?->provider === SettlementAccount::PROVIDER_MANUAL
-                ? $live->id
-                : SettlementAccount::PROVIDER_MANUAL,
+            accountId: SettlementAccount::PROVIDER_MANUAL,
             order: $order,
             amountPaid: $order->total_gross,
             currency: $order->currency,
-            settlementMethod: 'bank_transfer',
+            settlementMethod: SettlementAccount::PROVIDER_MANUAL,
         );
     }
 }

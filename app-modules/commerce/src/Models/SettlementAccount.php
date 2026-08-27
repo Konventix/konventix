@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Konventix\Commerce\Database\Factories\SettlementAccountFactory;
+use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
+use Konventix\Commerce\Settlement\SettlementAdapter;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
@@ -28,8 +31,11 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $brand_id
  * @property string $provider
  * @property string|null $label
+ * @property string|null $checkout_label
  * @property string|null $provider_account_id
  * @property array<string, string>|null $credentials
+ * @property array<string, mixed>|null $capabilities
+ * @property Carbon|null $capabilities_checked_at
  * @property Carbon|null $connected_at
  * @property Carbon|null $disconnected_at
  * @property Carbon|null $created_at
@@ -63,28 +69,67 @@ class SettlementAccount extends Model
     protected $fillable = [
         'provider',
         'label',
+        'checkout_label',
         'provider_account_id',
         'credentials',
+        'capabilities',
+        'capabilities_checked_at',
         'connected_at',
         'disconnected_at',
     ];
 
     /**
-     * The account a brand currently settles through, or null when it has
-     * connected none. `withoutBrandScope()` scoped explicitly (ADR-0010):
-     * settlement runs from queue workers and the operator host.
+     * Every account a brand may settle through, oldest connection first
+     * (ADR-0046 — the single answer is gone; callers pick or list).
+     * `withoutBrandScope()` scoped explicitly (ADR-0010): settlement runs
+     * from queue workers and the operator host. `connected_at`/`created_at`
+     * are second-precision columns, so two accounts connected within the
+     * same second tie on both — `id` breaks the tie deterministically
+     * because `HasUlids` mints ULIDs in monotonically increasing order.
+     *
+     * @return Collection<int, static>
      */
-    public static function liveFor(string $brandId): ?self
+    public static function liveAccountsFor(string $brandId): Collection
     {
         return self::withoutBrandScope()
             ->where('brand_id', $brandId)
             ->whereNull('disconnected_at')
-            ->first();
+            ->orderBy('connected_at')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
     }
 
     public function isLive(): bool
     {
         return $this->disconnected_at === null;
+    }
+
+    /**
+     * Live, connected, and — for Stripe — allowed to take cards: a freshly
+     * onboarded Stripe account is connected but not yet active, and
+     * offering it would fail at Stripe rather than on our page.
+     */
+    public function isOffered(): bool
+    {
+        if (! $this->isLive() || $this->connected_at === null) {
+            return false;
+        }
+
+        if ($this->provider === self::PROVIDER_STRIPE) {
+            return ($this->capabilities['card_payments'] ?? null) === 'active';
+        }
+
+        return true;
+    }
+
+    public function checkoutLabel(SettlementAdapter $adapter): string
+    {
+        if ($this->checkout_label !== null && trim($this->checkout_label) !== '') {
+            return $this->checkout_label;
+        }
+
+        return $adapter instanceof ProvidesHostedCheckout ? $adapter->defaultCheckoutLabel() : ucfirst($this->provider);
     }
 
     /**
@@ -97,6 +142,8 @@ class SettlementAccount extends Model
             // {'private_key': …} for Unzer; Stripe stores no secret at all —
             // the connected account id plus the platform key is sufficient.
             'credentials' => 'encrypted:array',
+            'capabilities' => 'array',
+            'capabilities_checked_at' => 'datetime',
             'connected_at' => 'datetime',
             'disconnected_at' => 'datetime',
         ];

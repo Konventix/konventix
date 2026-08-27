@@ -32,4 +32,11 @@ interface ProvidesHostedCheckout
         Order $order,
         string $returnUrl,
     ): CheckoutRedirect;
+
+    /**
+     * What the checkout button says when the operator wrote nothing — the
+     * methods this provider's hosted page typically offers, never a promise:
+     * the PSP's dashboard configuration is what actually decides (ADR-0046).
+     */
+    public function defaultCheckoutLabel(): string;
 }

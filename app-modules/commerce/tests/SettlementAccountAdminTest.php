@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Commerce\Actions\ConnectSettlementAccount;
 use Konventix\Commerce\Events\SettlementAccountConnected;
+use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
@@ -233,23 +235,39 @@ it('marks the Stripe account connected on return, once', function (): void {
     Event::assertDispatchedTimes(SettlementAccountConnected::class, 1);
 });
 
-it('refuses a second live account for the same brand', function (): void {
+it('refuses a second live account of the same provider', function (): void {
     [$admin, $brand] = settlementAdminOperator();
 
-    SettlementAccount::factory()->create([
-        'brand_id' => $brand->id,
-        'provider' => SettlementAccount::PROVIDER_MOLLIE,
-        'credentials' => ['api_key' => 'k'],
-    ]);
-
     $this->actingAs($admin)
-        ->post('http://admin.settlement.test/admin/settlement-accounts/unzer', [
+        ->post('http://admin.settlement.test/admin/settlement-accounts/mollie', [
             'brand_id' => $brand->id,
-            'private_key' => 's-priv-1234567890',
+            'api_key' => 'live_key_1234567890',
         ])
-        ->assertStatus(500);
+        ->assertRedirect();
+
+    // The controller doesn't catch this yet (Task 4 adds the friendly
+    // `back()->withErrors()`), so the refusal is exercised through the
+    // Action directly, the way `ConnectSettlementAccount` itself throws it.
+    expect(fn () => app(ConnectSettlementAccount::class)->handle(
+        $brand->id,
+        SettlementAccount::PROVIDER_MOLLIE,
+        credentials: ['api_key' => 'live_key_0987654321'],
+    ))->toThrow(BrandAlreadyHasLiveProviderException::class);
 
     expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->count())->toBe(1);
+
+    // A different provider for the same brand is legal now (ADR-0046): the
+    // admin console connects it right through the same HTTP endpoint shape.
+    app()->instance(StripeApi::class, new SettlementAdminTestFakeStripe);
+
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
+            'brand_id' => $brand->id,
+            'contact_email' => 'orga@example.test',
+        ])
+        ->assertRedirect();
+
+    expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->count())->toBe(2);
 });
 
 it('disconnects the live account and falls back to manual booking', function (): void {
@@ -266,5 +284,5 @@ it('disconnects the live account and falls back to manual booking', function ():
         ->assertRedirect();
 
     expect($account->refresh()->disconnected_at)->not->toBeNull()
-        ->and(SettlementAccount::liveFor($brand->id))->toBeNull();
+        ->and(SettlementAccount::liveAccountsFor($brand->id))->toBeEmpty();
 });

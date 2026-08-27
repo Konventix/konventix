@@ -45,4 +45,17 @@ class SettlementAccountFactory extends Factory
             'disconnected_at' => now(),
         ]);
     }
+
+    /**
+     * A live account the checkout page is willing to show (ADR-0046): for
+     * Stripe this is the `card_payments` capability the PSP itself reports
+     * active, not something we assert about ourselves.
+     */
+    public function offered(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'capabilities' => ['card_payments' => 'active'],
+            'connected_at' => now(),
+        ]);
+    }
 }

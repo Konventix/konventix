@@ -38,17 +38,20 @@ class SettlementAccountAdminController
     {
         Gate::authorize(Permission::ManageSettlementAccount->value);
 
+        // ADR-0046: a brand may now hold several live accounts at once, one
+        // per provider — grouped rather than keyed until Task 4 turns this
+        // into a proper list.
         $accounts = SettlementAccount::withoutBrandScope()
             ->whereNull('disconnected_at')
             ->get()
-            ->keyBy('brand_id');
+            ->groupBy('brand_id');
 
         return Inertia::render('admin/settlement-accounts/Index', [
             'brands' => Brand::query()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Brand $brand): array => [
                     'id' => (string) $brand->getKey(),
                     'name' => $brand->name,
-                    'account' => $this->accountProps($accounts->get((string) $brand->getKey())),
+                    'account' => $this->accountProps($accounts->get((string) $brand->getKey())?->first()),
                 ])
                 ->values()
                 ->all(),
