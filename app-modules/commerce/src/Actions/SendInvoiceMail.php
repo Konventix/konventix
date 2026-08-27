@@ -33,9 +33,8 @@ use Spatie\LaravelData\DataCollection;
  * ADR-0048: a paid invoice (`Invoice::isPaid()`) mails through
  * `commerce.invoice-paid` instead of `commerce.invoice-issued` — two
  * template keys rather than one branching on a `$paid` payload field, so
- * neither template needs a `@if`/`@endif` block directive
- * (`CommerceServiceProvider::registerMessageTemplates()`'s own docblock
- * explains why that breaks).
+ * a per-brand override of either wording stays a plain template with no
+ * conditional of its own (`.ai/rules/app-modules-src.md`).
  */
 final class SendInvoiceMail
 {

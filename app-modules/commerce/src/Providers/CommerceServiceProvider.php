@@ -331,18 +331,17 @@ class CommerceServiceProvider extends ModuleServiceProvider
      * release targets domestic DACH events (ADR-0030's framing), and the
      * billing party's locale is unknown for account-less recipients.
      *
-     * ADR-0048: two template keys, not one branching on `$paid` —
-     * `TemplateRenderer` runs every subject and body through
-     * `Blade::render()`, and Livewire's `SupportMorphAwareBladeCompilation`
-     * precompiler (registered globally, `livewire.inject_morph_markers`
-     * defaults true) wraps every `@if`/`@endif` it finds with its own
-     * morph-tracking markers — verified in isolation that this leaves the
-     * directive's own closing tag uncompiled, silently producing an empty
-     * string. `commerce.invoice-issued` stays the open-invoice wording
-     * exactly as before; `commerce.invoice-paid` is the ADR-0048 paid
-     * wording — both plain `{{ }}` interpolation only, no block directive,
-     * so neither can trip the same bug. `SendInvoiceMail` picks the key
-     * from `Invoice::isPaid()`.
+     * ADR-0048: two template keys, not one branching on `$paid` — a per-
+     * brand override of either wording (`TemplateOverride`) then stays a
+     * plain template with no conditional of its own. `commerce.invoice-issued`
+     * stays the open-invoice wording exactly as before; `commerce.invoice-paid`
+     * is the ADR-0048 paid wording. `SendInvoiceMail` picks the key from
+     * `Invoice::isPaid()`. See `.ai/rules/app-modules-src.md` for why a
+     * template string branching on `@if($paid)…@else…@endif` is fragile
+     * regardless: `TemplateRenderer` runs both subject and body through
+     * `Blade::render()`, and Blade only recognises a directive glued
+     * directly to the preceding/following text as literal words, not a
+     * directive boundary.
      */
     protected function registerMessageTemplates(): void
     {

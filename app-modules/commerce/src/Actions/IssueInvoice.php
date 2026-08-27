@@ -26,10 +26,15 @@ use Konventix\Platform\Data\OperatorSellerData;
  * given `order_id` — an invoice-settled order already has one from
  * placement, and `IssueInvoiceOnOrderPaid` must not create a second one
  * when the same order pays later, or when `OrderPaid` is replayed. The
- * check happens before the transaction opens; the caller (the listener,
- * running inside `RecordPaymentSuccess::settleOrder()`'s own transaction)
- * relies on it to make a replay a no-op rather than a unique-constraint
- * failure.
+ * order row is locked (`lockForUpdate`) *inside* the transaction, before
+ * the existence check: `RecordPaymentSuccess::settleOrder()` already holds
+ * this same lock for the `OrderPaid` path, but a manual booking
+ * (`ManualSettlementAdapter::markOrderPaid()`) takes no lock of its own
+ * before calling in, so two concurrent operator double-submits must
+ * serialize here — the second call blocks until the first transaction
+ * commits, then finds the invoice the first one just issued and returns
+ * it, rather than both racing the existence check and drawing two numbers
+ * for the same order.
  *
  * `$paid`, when given, is what turns this into ADR-0048's paid Rechnung:
  * the due date collapses to the issue date — the money already landed, so
@@ -50,13 +55,18 @@ final class IssueInvoice
         int $termsDays,
         ?PaymentSnapshotData $paid = null,
     ): Invoice {
-        $existing = Invoice::withoutBrandScope()->where('order_id', $order->id)->first();
-
-        if ($existing !== null) {
-            return $existing;
-        }
-
         return DB::transaction(function () use ($order, $billingParty, $seller, $termsDays, $paid): Invoice {
+            // Lock first, then check (see class docblock): a second,
+            // concurrent call for the same order blocks here rather than
+            // racing the existence check below.
+            Order::withoutBrandScope()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+
+            $existing = Invoice::withoutBrandScope()->where('order_id', $order->id)->first();
+
+            if ($existing !== null) {
+                return $existing;
+            }
+
             $issuedOn = now()->toDateString();
 
             $attributes = [
@@ -79,6 +89,7 @@ final class IssueInvoice
             if ($paid !== null) {
                 $attributes['paid_at'] = $paid->paidAt;
                 $attributes['paid_via'] = $paid->paidVia;
+                $attributes['paid_provider'] = $paid->provider;
                 $attributes['payment_reference'] = $paid->paymentReference;
             }
 

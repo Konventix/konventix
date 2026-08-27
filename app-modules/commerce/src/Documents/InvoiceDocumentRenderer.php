@@ -74,11 +74,16 @@ final class InvoiceDocumentRenderer
             ->setDocumentSellerAddress($seller->addressLine, null, null, $seller->postalCode, $seller->city, $seller->countryCode)
             ->setDocumentBuyer($party->displayName())
             ->setDocumentBuyerAddress($party->addressLine, null, null, $party->postalCode, $party->city, $party->countryCode ?? 'DE')
-            ->setDocumentSupplyChainEvent($invoice->issued_on->toDateTimeImmutable())
-            ->addDocumentPaymentTerm(
+            ->setDocumentSupplyChainEvent($invoice->issued_on->toDateTimeImmutable());
+
+        // ADR-0048: a paid invoice carries no due term — the PDF drops
+        // "Zahlbar bis" once paid, and the XML must not disagree with it.
+        if (! $invoice->isPaid()) {
+            $document->addDocumentPaymentTerm(
                 sprintf('Zahlbar bis %s', $invoice->due_on->format('d.m.Y')),
                 $invoice->due_on->toDateTimeImmutable(),
             );
+        }
 
         if ($seller->vatId !== null) {
             $document->addDocumentSellerTaxRegistration(ZugferdReferenceCodeQualifiers::VAT_REGI_NUMB, $seller->vatId);
@@ -123,7 +128,7 @@ final class InvoiceDocumentRenderer
         // the payment means that settled it is on record.
         if ($invoice->isPaid()) {
             $document->addDocumentPaymentMean(
-                typeCode: $this->paymentMeansTypecodeFor((string) $invoice->paid_via),
+                typeCode: $this->paymentMeansTypecodeFor($invoice->paid_provider),
                 information: $invoice->paid_via,
             );
         }
@@ -143,18 +148,21 @@ final class InvoiceDocumentRenderer
     }
 
     /**
-     * `paid_via` is the human label `ProviderLabels::labelFor()` already
-     * produced, not the raw provider key — matched back to a UNTDID 4461
-     * payment-means code (ADR-0048). Bank transfer is SEPA credit transfer;
-     * every card-network PSP this release supports (Stripe, Mollie, Unzer)
-     * is a bank card from the payer's side; anything else states only that
-     * a payment means exists, not which one.
+     * `paid_provider` is the raw settlement key (`Payment::provider` /
+     * `OrderPaid::settlementMethod`), matched to a UNTDID 4461
+     * payment-means code (ADR-0048) — never `paid_via`, the translated,
+     * operator-overridable human label, which is not a stable match target.
+     * Bank transfer is SEPA credit transfer; every card-network PSP this
+     * release supports (Stripe, Mollie, Unzer) is a bank card from the
+     * payer's side; the `null` provider (no PSP connected, `local`/`testing`
+     * only — `LocalHostedCheckoutAdapter`) and anything else state only
+     * that a payment means exists, not which one.
      */
-    private function paymentMeansTypecodeFor(string $paidVia): string
+    private function paymentMeansTypecodeFor(?string $paidProvider): string
     {
-        return match ($paidVia) {
-            'Überweisung / manuell' => ZugferdPaymentMeans::UNTDID_4461_58,
-            'Stripe', 'Mollie', 'Unzer' => ZugferdPaymentMeans::UNTDID_4461_48,
+        return match ($paidProvider) {
+            'manual' => ZugferdPaymentMeans::UNTDID_4461_58,
+            'stripe', 'mollie', 'unzer' => ZugferdPaymentMeans::UNTDID_4461_48,
             default => ZugferdPaymentMeans::UNTDID_4461_ZZZ,
         };
     }

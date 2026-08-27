@@ -83,6 +83,7 @@ final class IssueInvoiceOnOrderPaid
             paid: new PaymentSnapshotData(
                 paidAt: $event->paidAt,
                 paidVia: ProviderLabels::labelFor($event->settlementMethod),
+                provider: $event->settlementMethod,
                 paymentReference: $payment?->external_id,
             ),
         );

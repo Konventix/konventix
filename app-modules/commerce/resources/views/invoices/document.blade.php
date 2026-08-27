@@ -72,7 +72,11 @@
     <div class="meta">
         Rechnungsdatum: {{ $invoice->issued_on->format('d.m.Y') }} ·
         Leistungsdatum entspricht Rechnungsdatum ·
-        Fällig am: {{ $invoice->due_on->format('d.m.Y') }}
+        @if ($invoice->isPaid())
+            Bezahlt am: {{ $invoice->paid_at->format('d.m.Y') }}
+        @else
+            Fällig am: {{ $invoice->due_on->format('d.m.Y') }}
+        @endif
         @if ($party->vatId)<br>USt-IdNr. des Leistungsempfängers: {{ $party->vatId }}@endif
     </div>
 

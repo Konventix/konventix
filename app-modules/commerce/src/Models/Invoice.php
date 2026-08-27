@@ -34,6 +34,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property Carbon $due_on
  * @property Carbon|null $paid_at
  * @property string|null $paid_via
+ * @property string|null $paid_provider
  * @property string|null $payment_reference
  * @property Carbon|null $overdue_at
  * @property int $dunning_level
@@ -67,6 +68,7 @@ class Invoice extends Model
         'due_on',
         'paid_at',
         'paid_via',
+        'paid_provider',
         'payment_reference',
         'currency',
         'total_net',

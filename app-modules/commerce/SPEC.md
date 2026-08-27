@@ -270,27 +270,41 @@ licensing.
   `IssueInvoiceOnOrderPaid` listens to `OrderPaid` and issues an invoice in
   the same gapless per-brand series `IssueInvoice` already draws for
   invoice-settled registrations — `due_on = issued_on` (nothing is still
-  owed) and a payment snapshot (`paid_at`, `paid_via`, `payment_reference`)
-  written at the same moment as every other field (ADR-0031 immutability).
-  `IssueInvoice::handle()` is idempotent per `order_id`: an invoice-settled
-  registration order already has one from placement, and a replayed
-  `OrderPaid` finds it and returns rather than issuing a second one — the
-  listener repeats the same check itself before calling in. An order with
+  owed) and a payment snapshot (`paid_at`, `paid_via`, `paid_provider`,
+  `payment_reference`) written at the same moment as every other field
+  (ADR-0031 immutability). `IssueInvoice::handle()` is idempotent per
+  `order_id`: it locks the order row (`lockForUpdate`) *inside* its own
+  transaction before checking for an existing invoice, so two concurrent
+  calls for the same order — a replayed `OrderPaid`, or two manual-booking
+  double-submits, which take no lock of their own before calling in —
+  serialize instead of both drawing a number; the listener repeats the
+  same existence check itself as a second line of defence. An order with
   no `billing_party` is logged and skipped: pre-ADR-0048 data, or an
   operator-booked order with nothing to address an invoice to. `paid_via`
   is the human-readable settlement label (`Settlement\ProviderLabels`:
-  `stripe → 'Stripe'`, `manual → 'Überweisung / manuell'`, …), never the
-  raw provider key. The rendered document states that it is paid —
-  `InvoiceDocumentRenderer`'s Blade half prints "Bezahlt am … via …"
-  instead of "Zahlbar bis …", the Factur-X XML carries
-  `addDocumentPaymentMean()` (SEPA credit transfer for `manual`, bank card
-  for `stripe`/`mollie`/`unzer`) and `setDocumentSummation()`'s
-  `totalPrepaidAmount` equal to the gross total with `duePayableAmount`
-  zero. It is archived and mailed exactly like an open invoice — one
-  series, one renderer, no separate receipt document type. The invoice
-  mail (`commerce.invoice-issued`) branches on `$paid`: a paid Rechnung's
-  subject reads "…– bezahlt" / "…– paid" and its body thanks the payer for
-  the payment already received instead of naming a due date.
+  `stripe → 'Stripe'`, `manual → 'Überweisung / manuell'`, `null →
+  'Testzahlung'` — the `local`/`testing`-only no-PSP-connected adapter,
+  …); `paid_provider` is the raw settlement key it was derived from
+  (`Payment::provider` / `OrderPaid::settlementMethod`), kept alongside it
+  because `InvoiceDocumentRenderer` needs a stable key to match against,
+  not a translated, operator-overridable label. The rendered document
+  states that it is paid — `InvoiceDocumentRenderer`'s Blade half prints
+  "Bezahlt am … via …" instead of "Zahlbar bis …" (or "Fällig am …"), the
+  Factur-X XML carries `addDocumentPaymentMean()` (SEPA credit transfer
+  for `manual`, bank card for `stripe`/`mollie`/`unzer`, matched off
+  `paid_provider`) and `setDocumentSummation()`'s `totalPrepaidAmount`
+  equal to the gross total with `duePayableAmount` zero, and drops
+  `addDocumentPaymentTerm()`'s due term entirely rather than let the XML
+  disagree with the PDF. It is archived and mailed exactly like an open
+  invoice — one series, one renderer, no separate receipt document type.
+  The invoice mail is **two message template keys sharing one payload**
+  (`Data\InvoiceMailData`) rather than one template branching on `$paid`:
+  `commerce.invoice-issued` (open, unchanged wording) and
+  `commerce.invoice-paid` (ADR-0048) — a paid Rechnung's subject reads
+  "…– bezahlt" / "…– paid" and its body thanks the payer for the payment
+  already received instead of naming a due date. `SendInvoiceMail` picks
+  the key from `Invoice::isPaid()`; a per-brand override of either wording
+  stays a plain template with no conditional of its own.
 - **Payment terms, due dates, and dunning levels** as domain concepts, not as
   provider callbacks.
 - **Payment records**, including **first-class manual payment booking** — an

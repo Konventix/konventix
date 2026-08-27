@@ -88,13 +88,19 @@
 - [x] ADR-0048 (mail-and-receipts Task 2): a paid order gets its Rechnung
       the moment it is paid, and it says so. `IssueInvoiceOnOrderPaid`
       listens to `OrderPaid` (registered in `registerListeners()`) and
-      calls the existing `IssueInvoice`, now idempotent per `order_id`
-      (`Invoice::withoutBrandScope()->where('order_id', …)->first()`
-      before ever opening a transaction) and accepting an optional
+      calls the existing `IssueInvoice`, now accepting an optional
       `PaymentSnapshotData` — `due_on` collapses to `issued_on` and
-      `paid_at`/`paid_via`/`payment_reference` are written at the same
-      moment as everything else, never as a later edit. Before this, only
-      an invoice-settled registration order (issued at placement by
+      `paid_at`/`paid_via`/`paid_provider`/`payment_reference` are written
+      at the same moment as everything else, never as a later edit.
+      Idempotent per `order_id`: the order row is locked
+      (`lockForUpdate`) *inside* the transaction before the existence
+      check, not before it opens — a manual booking
+      (`ManualSettlementAdapter::markOrderPaid()`) takes no lock of its
+      own before calling in, so two concurrent double-submits must
+      serialize on this lock rather than both drawing a number for the
+      same order (fix round 1; the listener repeats the existence check
+      itself as a second line of defence). Before this, only an
+      invoice-settled registration order (issued at placement by
       `PlaceOrderFromSettlementRequest`) produced any document at all — a
       card-paid registration and every cart order (ADR-0047) got nothing.
       `orders.billing_party` (new nullable JSON column, `BillingPartyData`
@@ -109,31 +115,47 @@
       one would change nothing but the printed page).
       `Settlement\ProviderLabels::labelFor()` turns a raw provider key
       into the human label a payer actually reads (`stripe → 'Stripe'`,
-      `manual → 'Überweisung / manuell'`, …); `InvoiceDocumentRenderer`
-      prints "Bezahlt am … via …" instead of "Zahlbar bis …" on the PDF
-      half and, on the Factur-X half, adds the UNTDID 4461 payment means
-      (SEPA credit transfer for `manual`, bank card for
-      `stripe`/`mollie`/`unzer`, matched off the *label* string since
-      that's what the invoice itself carries) and sets
-      `setDocumentSummation()`'s `totalPrepaidAmount` to the gross total
-      with `duePayableAmount` zero — read back and asserted with
-      `ZugferdDocumentPdfReader::readAndGuessFromContent()` in
-      `PaidInvoiceTest`. The invoice mail (`commerce.invoice-issued`, one
-      template key, both wordings — `TemplateRenderer` runs the subject
-      through `Blade::render()` exactly like the body, so `@if($paid)`
-      works in a subject string too) branches to thank the payer for the
-      payment instead of naming a due date; `/my/orders`
-      (`MyOrderData.invoicePaid`) labels the document button "Rechnung
-      (bezahlt)" instead of "Rechnung". `PaidInvoiceTest.php` covers
-      one-invoice-per-order under replay (both by calling
+      `manual → 'Überweisung / manuell'`, `null → 'Testzahlung'` — the
+      actual key `LocalHostedCheckoutAdapter` stamps for every dev/demo
+      payment, fix round 1; an earlier `'local'` never matched anything
+      real); `InvoiceDocumentRenderer` prints "Bezahlt am …" instead of
+      "Fällig am …"/"Zahlbar bis …" on the PDF half (both the header meta
+      and a "Bezahlt am … via …" note under the totals) and, on the
+      Factur-X half, adds the UNTDID 4461 payment means (SEPA credit
+      transfer for `manual`, bank card for `stripe`/`mollie`/`unzer`,
+      matched off the new `paid_provider` column — the raw settlement
+      key, fix round 1, not the translated `paid_via` label the first
+      pass matched off), sets `setDocumentSummation()`'s
+      `totalPrepaidAmount` to the gross total with `duePayableAmount`
+      zero, and drops `addDocumentPaymentTerm()`'s due term entirely so
+      the XML never disagrees with what the PDF shows — read back and
+      asserted with `ZugferdDocumentPdfReader::readAndGuessFromContent()`
+      in `PaidInvoiceTest`. The invoice mail is two message template keys
+      sharing one payload (`commerce.invoice-issued` open,
+      `commerce.invoice-paid` new, `Data\InvoiceMailData`) rather than one
+      template branching on `$paid`: a Blade directive glued to the
+      surrounding text (`bezahlt@else`, `AAA@endif`) is left as literal
+      text by Blade's own directive regex and silently drops the rest of
+      the template — `.ai/rules/app-modules-src.md` records it, fix round
+      1 replaced the first pass's incorrect Livewire diagnosis of the same
+      symptom. `SendInvoiceMail` picks the key from `Invoice::isPaid()`;
+      `/my/orders` (`MyOrderData.invoicePaid`) labels the document button
+      "Rechnung (bezahlt)" instead of "Rechnung". `PaidInvoiceTest.php`
+      covers one-invoice-per-order under replay (both by calling
       `RecordPaymentSuccess` twice — the existing not-pending guard
       already stops a second `OrderPaid` — and by replaying `OrderPaid`
       itself straight into the listener, to prove `IssueInvoice`'s own
-      guard holds independently), an invoice-settled order paid later
-      staying at one untouched invoice, the missing-billing-party warning
-      path (`Log::spy()`), the archived XML/PDF, and the `/my/orders`
-      projection; `CartCheckoutTest` gained the real checkout → webhook-
-      success → invoice-with-the-cart's-billing-party path.
+      guard holds independently) and under two same-process
+      `IssueInvoice::handle()` calls for the same order (one invoice, one
+      number drawn — `InvoiceNumberRange` counter advances by exactly one,
+      fix round 1), an invoice-settled order paid later staying at one
+      untouched invoice, the missing-billing-party warning path
+      (`Log::spy()`), the archived XML/PDF (payment means typecode pinned
+      to `48` for a Stripe payment and `58` for a manual one, fix round
+      1), `ProviderLabels::labelFor('null') === 'Testzahlung'`, and the
+      `/my/orders` projection; `CartCheckoutTest` gained the real
+      checkout → webhook-success → invoice-with-the-cart's-billing-party
+      path.
 - [x] ADR-0047 point 6, Task 14: the infrastructure flip and the rush
       itself. `SESSION_DRIVER`/`CACHE_STORE` are `redis` in `.env` and
       `.env.example` (the queue already was); a database-backed session

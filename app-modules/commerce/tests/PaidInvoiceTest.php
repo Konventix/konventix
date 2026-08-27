@@ -7,21 +7,26 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Commerce\Actions\IssueInvoice;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
 use Konventix\Commerce\Actions\SendInvoiceMail;
 use Konventix\Commerce\Data\BillingPartyData;
+use Konventix\Commerce\Data\PaymentSnapshotData;
 use Konventix\Commerce\Documents\InvoiceDocumentRenderer;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Jobs\GenerateInvoiceDocument;
 use Konventix\Commerce\Listeners\IssueInvoiceOnOrderPaid;
 use Konventix\Commerce\Models\Invoice;
+use Konventix\Commerce\Models\InvoiceNumberRange;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Settlement\ProviderLabels;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Mail\TemplatedMail;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
+use Konventix\Platform\Operators\OperatorSettings;
 
 /**
  * ADR-0048: `OrderPaid` issues the invoice — the same gapless per-brand
@@ -79,6 +84,46 @@ function paidInvoicePayment(Order $order, string $provider = 'stripe'): Payment
         'currency' => $order->currency,
     ]);
 }
+
+it('labels the null provider Testzahlung, matching what LocalHostedCheckoutAdapter actually stamps', function (): void {
+    // SettlementAccount::PROVIDER_NULL — every dev/demo payment through
+    // the no-PSP-connected adapter goes through this key, not 'local'.
+    expect(ProviderLabels::labelFor('null'))->toBe('Testzahlung');
+});
+
+it('draws exactly one invoice number when IssueInvoice is called twice for the same order', function (): void {
+    $brand = paidInvoiceBrand();
+    // Refreshed: OrderFactory doesn't set tax_treatment/price_display, so
+    // the in-memory model from create() misses the columns' DB defaults
+    // ('standard'/'gross') until re-fetched — RecordPaymentSuccess always
+    // re-fetches its own Order, but this test calls IssueInvoice directly.
+    $order = paidInvoiceOrder()->fresh();
+    $seller = app(OperatorSettings::class)->sellerForBrand($brand->id);
+    $paid = new PaymentSnapshotData(
+        paidAt: now()->toIso8601String(),
+        paidVia: 'Stripe',
+        provider: 'stripe',
+        paymentReference: 'pi_test_1',
+    );
+
+    // Not a concurrency test — Pest runs single-threaded, so this cannot
+    // reproduce two transactions actually racing the existence check. It
+    // proves the idempotency half of the fix instead: two calls for the
+    // same order, whether concurrent or sequential, must resolve to the
+    // one invoice the first call issued and draw exactly one number. The
+    // ordering that makes the *concurrent* case safe — the order row is
+    // locked (`lockForUpdate`) inside the transaction, before the
+    // existence check, not before the transaction opens — is read
+    // directly off `IssueInvoice::handle()`'s source, not asserted here.
+    $first = app(IssueInvoice::class)->handle($order, $order->billing_party, $seller, termsDays: 0, paid: $paid);
+    $second = app(IssueInvoice::class)->handle($order, $order->billing_party, $seller, termsDays: 0, paid: $paid);
+
+    expect($second->id)->toBe($first->id)
+        ->and(Invoice::query()->where('order_id', $order->id)->count())->toBe(1);
+
+    $range = InvoiceNumberRange::query()->sole();
+    expect($range->counter)->toBe(1);
+});
 
 it('issues one invoice with a payment snapshot when a cart order is paid', function (): void {
     $brand = paidInvoiceBrand();
@@ -178,7 +223,7 @@ it('logs a warning and issues nothing when the paid order has no billing party',
             && $context['order_id'] === $order->id);
 });
 
-it('archives a paid ZUGFeRD document with the prepaid amount and payment means, and mails it as bezahlt', function (): void {
+it('archives a paid ZUGFeRD document with the prepaid amount, payment means 48 for a card PSP, and mails it as bezahlt', function (): void {
     $brand = paidInvoiceBrand();
     Storage::fake('invoices');
     Mail::fake();
@@ -194,7 +239,8 @@ it('archives a paid ZUGFeRD document with the prepaid amount and payment means, 
         ->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));
 
     $invoice->refresh();
-    expect($invoice->document_path)->not->toBeNull();
+    expect($invoice->document_path)->not->toBeNull()
+        ->and($invoice->paid_provider)->toBe('stripe');
 
     $bytes = Storage::disk('invoices')->get($invoice->document_path);
     $reader = ZugferdDocumentPdfReader::readAndGuessFromContent($bytes);
@@ -229,7 +275,9 @@ it('archives a paid ZUGFeRD document with the prepaid amount and payment means, 
         $payeeBic,
     );
 
-    expect($typeCode)->not->toBeEmpty()
+    // UNTDID 4461 "48" — bank card — matched off paid_provider (stripe),
+    // not the translated paid_via label.
+    expect($typeCode)->toBe('48')
         ->and($information)->toBe('Stripe');
 
     Mail::assertSent(TemplatedMail::class, function (TemplatedMail $mail): bool {
@@ -238,6 +286,45 @@ it('archives a paid ZUGFeRD document with the prepaid amount and payment means, 
 
         return true;
     });
+});
+
+it('pins payment means 58 (SEPA credit transfer) for a manual bank-transfer payment', function (): void {
+    $brand = paidInvoiceBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    $order = paidInvoiceOrder();
+    $payment = paidInvoicePayment($order, 'manual');
+
+    app(RecordPaymentSuccess::class)->handle($payment);
+
+    $invoice = Invoice::query()->where('order_id', $order->id)->sole();
+    expect($invoice->paid_provider)->toBe('manual')
+        ->and($invoice->paid_via)->toBe('Überweisung / manuell');
+
+    (new GenerateInvoiceDocument($invoice->id, $brand->id))
+        ->handle(app(InvoiceDocumentRenderer::class), app(SendInvoiceMail::class));
+
+    $bytes = Storage::disk('invoices')->get($invoice->refresh()->document_path);
+    $reader = ZugferdDocumentPdfReader::readAndGuessFromContent($bytes);
+
+    expect($reader->firstGetDocumentPaymentMeans())->toBeTrue();
+
+    $reader->getDocumentPaymentMeans(
+        $typeCode,
+        $information,
+        $cardType,
+        $cardId,
+        $cardHolderName,
+        $buyerIban,
+        $payeeIban,
+        $payeeAccountName,
+        $payeePropId,
+        $payeeBic,
+    );
+
+    expect($typeCode)->toBe('58')
+        ->and($information)->toBe('Überweisung / manuell');
 });
 
 it('shows invoicePaid true on /my/orders once the invoice carries a payment snapshot', function (): void {
