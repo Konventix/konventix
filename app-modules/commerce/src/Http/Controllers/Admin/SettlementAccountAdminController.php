@@ -13,7 +13,10 @@ use Konventix\Commerce\Actions\ConnectSettlementAccount;
 use Konventix\Commerce\Actions\DisconnectSettlementAccount;
 use Konventix\Commerce\Actions\MarkSettlementAccountConnected;
 use Konventix\Commerce\Actions\RefreshSettlementAccountCapabilities;
+use Konventix\Commerce\Actions\UpdateSettlementAccountLabel;
+use Konventix\Commerce\Data\UpdateSettlementAccountLabelData;
 use Konventix\Commerce\Enums\Permission;
+use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
@@ -35,25 +38,51 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
  */
 class SettlementAccountAdminController
 {
+    /**
+     * Every provider a brand may still connect (ADR-0046): the three known
+     * providers minus whichever ones already have a live account.
+     *
+     * @var list<string>
+     */
+    private const array PROVIDERS = [
+        SettlementAccount::PROVIDER_STRIPE,
+        SettlementAccount::PROVIDER_MOLLIE,
+        SettlementAccount::PROVIDER_UNZER,
+    ];
+
     public function index(): Response
     {
         Gate::authorize(Permission::ManageSettlementAccount->value);
 
-        // ADR-0046: a brand may now hold several live accounts at once, one
-        // per provider — grouped rather than keyed until Task 4 turns this
-        // into a proper list.
+        // ADR-0046: a brand may hold several live accounts at once, one per
+        // provider — the console lists them all, ordered the same way
+        // `liveAccountsFor()` would (oldest connection first).
         $accounts = SettlementAccount::withoutBrandScope()
             ->whereNull('disconnected_at')
+            ->orderBy('connected_at')
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->get()
             ->groupBy('brand_id');
 
         return Inertia::render('admin/settlement-accounts/Index', [
             'brands' => Brand::query()->orderBy('name')->get(['id', 'name'])
-                ->map(fn (Brand $brand): array => [
-                    'id' => (string) $brand->getKey(),
-                    'name' => $brand->name,
-                    'account' => $this->accountProps($accounts->get((string) $brand->getKey())?->first()),
-                ])
+                ->map(function (Brand $brand) use ($accounts): array {
+                    $brandAccounts = $accounts->get((string) $brand->getKey()) ?? collect();
+
+                    return [
+                        'id' => (string) $brand->getKey(),
+                        'name' => $brand->name,
+                        'accounts' => $brandAccounts
+                            ->map(fn (SettlementAccount $account): array => $this->accountProps($account))
+                            ->values()
+                            ->all(),
+                        'connectableProviders' => array_values(array_diff(
+                            self::PROVIDERS,
+                            $brandAccounts->pluck('provider')->all(),
+                        )),
+                    ];
+                })
                 ->values()
                 ->all(),
         ]);
@@ -77,14 +106,18 @@ class SettlementAccountAdminController
             country: 'DE',
         );
 
-        $account = $connect->handle(
-            brandId: (string) $brand->getKey(),
-            provider: SettlementAccount::PROVIDER_STRIPE,
-            label: 'Stripe — '.$brand->name,
-            providerAccountId: $stripeAccountId,
-            // Connected only when the organizer returns from onboarding.
-            connected: false,
-        );
+        try {
+            $account = $connect->handle(
+                brandId: (string) $brand->getKey(),
+                provider: SettlementAccount::PROVIDER_STRIPE,
+                label: 'Stripe — '.$brand->name,
+                providerAccountId: $stripeAccountId,
+                // Connected only when the organizer returns from onboarding.
+                connected: false,
+            );
+        } catch (BrandAlreadyHasLiveProviderException) {
+            return back()->withErrors(['provider' => __('This brand already has a live :provider account.', ['provider' => 'Stripe'])]);
+        }
 
         $onboardingUrl = $stripe->createOnboardingLink(
             $stripeAccountId,
@@ -128,12 +161,16 @@ class SettlementAccountAdminController
             'api_key' => ['required', 'string', 'min:10'],
         ]);
 
-        $connect->handle(
-            brandId: $data['brand_id'],
-            provider: SettlementAccount::PROVIDER_MOLLIE,
-            label: 'Mollie',
-            credentials: ['api_key' => $data['api_key']],
-        );
+        try {
+            $connect->handle(
+                brandId: $data['brand_id'],
+                provider: SettlementAccount::PROVIDER_MOLLIE,
+                label: 'Mollie',
+                credentials: ['api_key' => $data['api_key']],
+            );
+        } catch (BrandAlreadyHasLiveProviderException) {
+            return back()->withErrors(['provider' => __('This brand already has a live :provider account.', ['provider' => 'Mollie'])]);
+        }
 
         return redirect()
             ->route('admin.settlement-accounts.index')
@@ -149,12 +186,16 @@ class SettlementAccountAdminController
             'private_key' => ['required', 'string', 'min:10'],
         ]);
 
-        $account = $connect->handle(
-            brandId: $data['brand_id'],
-            provider: SettlementAccount::PROVIDER_UNZER,
-            label: 'Unzer',
-            credentials: ['private_key' => $data['private_key']],
-        );
+        try {
+            $account = $connect->handle(
+                brandId: $data['brand_id'],
+                provider: SettlementAccount::PROVIDER_UNZER,
+                label: 'Unzer',
+                credentials: ['private_key' => $data['private_key']],
+            );
+        } catch (BrandAlreadyHasLiveProviderException) {
+            return back()->withErrors(['provider' => __('This brand already has a live :provider account.', ['provider' => 'Unzer'])]);
+        }
 
         // Without this registration no Unzer payment would ever settle:
         // Unzer notifies per account (ADR-0039).
@@ -179,22 +220,32 @@ class SettlementAccountAdminController
             ->with('success', 'Account disconnected — the brand settles manually until a new one is connected.');
     }
 
-    /**
-     * @return array<string, mixed>|null
-     */
-    private function accountProps(?SettlementAccount $account): ?array
+    public function updateLabel(string $account, UpdateSettlementAccountLabelData $data, UpdateSettlementAccountLabel $update): RedirectResponse
     {
-        if ($account === null) {
-            return null;
-        }
+        Gate::authorize(Permission::ManageSettlementAccount->value);
 
+        $update->handle(SettlementAccount::withoutBrandScope()->findOrFail($account), $data);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Checkout label saved.')]);
+
+        return back();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function accountProps(SettlementAccount $account): array
+    {
         return [
             'id' => $account->id,
             'provider' => $account->provider,
             'label' => $account->label,
+            'checkoutLabel' => $account->checkout_label,
             'providerAccountId' => $account->provider_account_id,
             'connectedAt' => $account->connected_at?->toDateString(),
             'pendingOnboarding' => $account->connected_at === null,
+            'offered' => $account->isOffered(),
+            'capabilitiesCheckedAt' => $account->capabilities_checked_at?->toDateString(),
         ];
     }
 }

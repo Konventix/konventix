@@ -36,6 +36,10 @@ final readonly class JournalEntry
         public string $totalTax,
         public string $totalGross,
         public array $buckets,
+        // The settlement provider (ADR-0046) — the latest succeeded payment
+        // on the document's order; null when the order isn't settled through
+        // a PSP yet (or at all, e.g. a manual booking not yet recorded).
+        public ?string $provider = null,
     ) {}
 
     public function isCreditNote(): bool

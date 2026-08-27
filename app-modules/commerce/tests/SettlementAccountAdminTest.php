@@ -122,7 +122,35 @@ it('403s an admin without the manage capability', function (): void {
         ->assertForbidden();
 });
 
-it('lists brands with their live account state', function (): void {
+it('lists a brand\'s live accounts with offered flags and remaining connectable providers', function (): void {
+    [$admin, $brand] = settlementAdminOperator();
+
+    SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_MOLLIE,
+        'credentials' => ['api_key' => 'k'],
+    ]);
+    SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_UNZER,
+        'credentials' => ['private_key' => 'p'],
+    ]);
+
+    $this->actingAs($admin)
+        ->get('http://admin.settlement.test/admin/settlement-accounts')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/settlement-accounts/Index')
+            ->has('brands', 1)
+            ->has('brands.0.accounts', 2)
+            ->where('brands.0.accounts.0.provider', 'mollie')
+            ->where('brands.0.accounts.0.pendingOnboarding', false)
+            ->where('brands.0.accounts.0.offered', true)
+            ->where('brands.0.accounts.1.provider', 'unzer')
+            ->where('brands.0.connectableProviders', ['stripe']));
+});
+
+it('still offers the remaining providers once one is connected', function (): void {
     [$admin, $brand] = settlementAdminOperator();
 
     SettlementAccount::factory()->create([
@@ -135,10 +163,25 @@ it('lists brands with their live account state', function (): void {
         ->get('http://admin.settlement.test/admin/settlement-accounts')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->component('admin/settlement-accounts/Index')
-            ->has('brands', 1)
-            ->where('brands.0.account.provider', 'mollie')
-            ->where('brands.0.account.pendingOnboarding', false));
+            ->where('brands.0.connectableProviders', ['stripe', 'unzer']));
+});
+
+it('saves a custom checkout label', function (): void {
+    [$admin, $brand] = settlementAdminOperator();
+
+    $account = SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_MOLLIE,
+        'credentials' => ['api_key' => 'k'],
+    ]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+        ])
+        ->assertRedirect();
+
+    expect($account->refresh()->checkout_label)->toBe('Pay by card');
 });
 
 it('connects Mollie in one step and emits the contract event', function (): void {
@@ -245,6 +288,26 @@ it('marks the Stripe account connected on return, once', function (): void {
     Event::assertDispatchedTimes(SettlementAccountConnected::class, 1);
 });
 
+it('returns a validation error when connecting a second live account of the same provider over HTTP', function (): void {
+    [$admin, $brand] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/mollie', [
+            'brand_id' => $brand->id,
+            'api_key' => 'live_key_1234567890',
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/mollie', [
+            'brand_id' => $brand->id,
+            'api_key' => 'live_key_0987654321',
+        ])
+        ->assertSessionHasErrors('provider');
+
+    expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->count())->toBe(1);
+});
+
 it('refuses a second live account of the same provider', function (): void {
     [$admin, $brand] = settlementAdminOperator();
 
@@ -255,9 +318,9 @@ it('refuses a second live account of the same provider', function (): void {
         ])
         ->assertRedirect();
 
-    // The controller doesn't catch this yet (Task 4 adds the friendly
-    // `back()->withErrors()`), so the refusal is exercised through the
-    // Action directly, the way `ConnectSettlementAccount` itself throws it.
+    // Exercised through the Action directly, the way `ConnectSettlementAccount`
+    // itself throws it — the friendly `back()->withErrors()` at the HTTP
+    // boundary is covered by the test above.
     expect(fn () => app(ConnectSettlementAccount::class)->handle(
         $brand->id,
         SettlementAccount::PROVIDER_MOLLIE,

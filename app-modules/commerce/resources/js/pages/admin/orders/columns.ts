@@ -12,6 +12,7 @@ export type OrderRow = {
     totalNet: string;
     totalGross: string;
     taxTreatment: string;
+    provider: string | null;
     paidAt: string | null;
     createdAt: string | null;
     invoice: {
@@ -87,6 +88,17 @@ export const columns: ColumnDef<OrderRow>[] = [
                 status,
             );
         },
+    },
+    {
+        accessorKey: 'provider',
+        header: 'Provider',
+        enableSorting: false,
+        cell: ({ row }) =>
+            h(
+                'span',
+                { class: 'text-text-muted' },
+                row.original.provider ?? '—',
+            ),
     },
     {
         accessorKey: 'total_gross',

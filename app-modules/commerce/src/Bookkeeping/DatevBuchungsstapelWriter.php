@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Bookkeeping;
 use Carbon\CarbonInterface;
 use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Models\BookkeepingSettings;
+use RuntimeException;
 
 /**
  * Writes the DATEV-Format Buchungsstapel (ADR-0040): `EXTF` header
@@ -121,12 +122,35 @@ final class DatevBuchungsstapelWriter
             $fields[39] = '"'.$this->text($entry->vatId, 15).'"';            // EU-Land u. USt-IdNr.
         }
 
+        if ($entry->provider !== null) {
+            // ADR-0046: which provider settled the order, in the first free
+            // Beleginfo pair — indexes found by name so a future column
+            // reorder in COLUMNS can't silently misplace this.
+            $fields[$this->columnIndex('Beleginfo – Art 1')] = '"Zahlungsanbieter"';
+            $fields[$this->columnIndex('Beleginfo – Inhalt 1')] = '"'.$this->text($entry->provider, 40).'"';
+        }
+
         return implode(';', $fields);
     }
 
     private function decimal(string $amount): string
     {
         return str_replace('.', ',', $amount);
+    }
+
+    /**
+     * Finds a column's position by its canonical name, so a value never
+     * lands in the wrong field if COLUMNS is ever reordered.
+     */
+    private function columnIndex(string $name): int
+    {
+        $index = array_search($name, self::COLUMNS, true);
+
+        if ($index === false) {
+            throw new RuntimeException("Unknown DATEV column [{$name}].");
+        }
+
+        return $index;
     }
 
     private function text(string $value, int $maxLength): string

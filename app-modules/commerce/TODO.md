@@ -16,11 +16,6 @@
       only); `Leistungsdatum` is not filled (the advisor may want the event
       date rather than the invoice date for period assignment — ask them);
       no SKR04 one-click preset on the settings form.
-- [ ] Stripe go-live readiness check: nothing verifies
-      `configuration.merchant.capabilities.card_payments.status === 'active'`
-      before offering checkout on a freshly onboarded account — until Stripe
-      activates it, `startCheckout` fails at Stripe rather than being hidden.
-      Needs a fetch-account seam method and a guard/badge on the admin page.
 - [ ] Mollie/Unzer key validation at connect time: the key is stored and
       trusted; a typo surfaces at the first checkout, not in the connect
       form. Validate with a cheap authenticated API call before saving.
@@ -67,6 +62,25 @@
       ranges.
 
 ## Done
+
+- [x] Slice 23 (ADR-0046) — a brand may hold several live settlement
+      accounts at once, one per provider, and the payer chooses which
+      settles their order. `SettlementAccount::liveAccountsFor()`,
+      `isOffered()` and `checkoutLabel()` are the seam the checkout page
+      offers accounts through; an account is offered only once it's live,
+      connected, and — for Stripe — its `card_payments` capability reads
+      `active`, closing the go-live readiness gap this TODO used to carry
+      as an open item. `RefreshSettlementAccountCapabilities` keeps that
+      capability current on return from onboarding and on a daily sweep.
+      The settlement-account console is a list per brand now, not "the
+      account": every live account with its offered state, an inline form
+      to give it its own `checkout_label`, and the connect form limited to
+      whichever providers aren't already live. Settlement events carry the
+      account id alongside the provider. The orders console and the
+      bookkeeping export both name the provider — the latest succeeded
+      payment on the order — on the orders list, the order detail, the
+      readable journal's `Zahlungsanbieter` column and the DATEV batch's
+      `Beleginfo – Art 1`/`Inhalt 1` pair.
 
 - [x] `CommerceGdprHandler` in `src/Gdpr/`, reconciled with statutory
       invoice retention (§147 AO). Export reads `orders.payer_user_id`

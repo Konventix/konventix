@@ -11,6 +11,7 @@ use Konventix\Commerce\Models\BookkeepingSettings;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\OrderLine;
+use Konventix\Commerce\Models\Payment;
 use Konventix\Platform\Models\Brand;
 
 /**
@@ -53,6 +54,20 @@ final class CollectDocumentJournal
             ->orderBy('invoice_number')
             ->get();
 
+        $creditNotes = CreditNote::withoutBrandScope()
+            ->whereIn('brand_id', $brandIds)
+            ->whereBetween('issued_on', [$from, $to])
+            ->orderBy('issued_on')
+            ->orderBy('credit_note_number')
+            ->get();
+
+        // One lookup for both document kinds (ADR-0046): the provider is
+        // metadata about the order the document belongs to, not something
+        // either document type tracks itself.
+        $providerByOrder = Payment::latestProviderByOrder(
+            $invoices->pluck('order_id')->merge($creditNotes->pluck('order_id'))->unique(),
+        );
+
         foreach ($invoices as $invoice) {
             $entries[] = new JournalEntry(
                 kind: JournalEntry::KIND_INVOICE,
@@ -68,15 +83,9 @@ final class CollectDocumentJournal
                 totalTax: $invoice->total_tax,
                 totalGross: $invoice->total_gross,
                 buckets: $this->invoiceBuckets($invoice, $settings),
+                provider: $providerByOrder->get($invoice->order_id),
             );
         }
-
-        $creditNotes = CreditNote::withoutBrandScope()
-            ->whereIn('brand_id', $brandIds)
-            ->whereBetween('issued_on', [$from, $to])
-            ->orderBy('issued_on')
-            ->orderBy('credit_note_number')
-            ->get();
 
         foreach ($creditNotes as $creditNote) {
             $entries[] = new JournalEntry(
@@ -93,6 +102,7 @@ final class CollectDocumentJournal
                 totalTax: $creditNote->total_tax,
                 totalGross: $creditNote->total_gross,
                 buckets: $this->creditNoteBuckets($creditNote, $settings),
+                provider: $providerByOrder->get($creditNote->order_id),
             );
         }
 

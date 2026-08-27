@@ -26,6 +26,7 @@ type Props = {
         totalTax: string;
         totalGross: string;
         taxTreatment: string;
+        provider: string | null;
         paidAt: string | null;
         createdAt: string | null;
     };
@@ -193,6 +194,9 @@ function submitBookPayment(): void {
                         Tax treatment: {{ order.taxTreatment }}
                         <template v-if="order.paidAt">
                             · paid {{ order.paidAt }}
+                        </template>
+                        <template v-if="order.provider">
+                            · via {{ order.provider }}
                         </template>
                     </p>
                 </CardContent>

@@ -491,6 +491,7 @@ in the owning module's `TODO.md` when it lands.
     into a list, and the Stripe `card_payments.status` check Commerce's
     `TODO.md` owes becomes the rule for whether a method is *offered*, not
     only whether it is connected.
+    **Done** (ADR-0046).
 
 24. **The shop: products, a cart, and a door for the rush.** Commerce
     with Registration for the entitlement-bearing half, gated per brand

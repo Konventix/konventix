@@ -26,6 +26,7 @@ Route::get('/settlement-accounts/stripe/return/{account}', [SettlementAccountAdm
 Route::post('/settlement-accounts/mollie', [SettlementAccountAdminController::class, 'connectMollie'])->name('admin.settlement-accounts.mollie');
 Route::post('/settlement-accounts/unzer', [SettlementAccountAdminController::class, 'connectUnzer'])->name('admin.settlement-accounts.unzer');
 Route::post('/settlement-accounts/{account}/disconnect', [SettlementAccountAdminController::class, 'disconnect'])->name('admin.settlement-accounts.disconnect');
+Route::put('/settlement-accounts/{account}/label', [SettlementAccountAdminController::class, 'updateLabel'])->name('admin.settlement-accounts.label');
 
 Route::get('/bookkeeping', [BookkeepingExportController::class, 'index'])->name('admin.bookkeeping.index');
 Route::put('/bookkeeping/settings', [BookkeepingExportController::class, 'saveSettings'])->name('admin.bookkeeping.settings');

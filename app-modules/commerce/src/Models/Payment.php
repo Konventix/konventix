@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Konventix\Commerce\Database\Factories\PaymentFactory;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
@@ -81,6 +82,27 @@ class Payment extends Model
     public function isSettled(): bool
     {
         return $this->status === PaymentStatus::Succeeded;
+    }
+
+    /**
+     * Which provider settled each of these orders, keyed by order id: the
+     * latest succeeded payment per order (ADR-0046) — the orders console,
+     * the order detail and the bookkeeping export all name the money by
+     * this same lookup. Escapes BrandScope explicitly (ADR-0010): every
+     * caller runs on the operator admin host.
+     *
+     * @param  iterable<string>  $orderIds
+     * @return Collection<string, string>
+     */
+    public static function latestProviderByOrder(iterable $orderIds): Collection
+    {
+        return self::withoutBrandScope()
+            ->whereIn('order_id', $orderIds)
+            ->where('status', PaymentStatus::Succeeded)
+            ->orderByDesc('received_at')
+            ->get()
+            ->unique('order_id')
+            ->pluck('provider', 'order_id');
     }
 
     /**

@@ -80,6 +80,25 @@ it('lists orders with their invoice across brands', function (): void {
             ->where('orders.data.0.invoice.number', $invoice->invoice_number));
 });
 
+it('shows the settlement provider on the orders list, from the latest succeeded payment', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->create();
+    Payment::factory()->failed()->create(['order_id' => $order->id, 'provider' => 'mollie']);
+    Payment::factory()->succeeded()->create(['order_id' => $order->id, 'provider' => 'stripe']);
+    $unpaidOrder = Order::factory()->create();
+
+    $response = $this->actingAs($admin)
+        ->get('http://admin.commerce.test/admin/orders')
+        ->assertOk();
+
+    $rows = collect($response->viewData('page')['props']['orders']['data']);
+
+    expect($rows->firstWhere('id', $order->id)['provider'])->toBe('stripe')
+        ->and($rows->firstWhere('id', $unpaidOrder->id)['provider'])->toBeNull();
+});
+
 it('books a manual payment, emitting OrderPaid', function (): void {
     [, $admin] = commerceOperator();
 
@@ -123,7 +142,7 @@ it('shows one order with lines, invoice, payments and credit notes', function ()
         'order_id' => $order->id,
         'label' => 'Exhibitor package',
     ]);
-    $payment = Payment::factory()->create(['order_id' => $order->id]);
+    $payment = Payment::factory()->succeeded()->create(['order_id' => $order->id, 'provider' => 'stripe']);
     $note = CreditNote::factory()->create([
         'order_id' => $order->id,
         'invoice_id' => $invoice->id,
@@ -137,6 +156,7 @@ it('shows one order with lines, invoice, payments and credit notes', function ()
         ->assertInertia(fn ($page) => $page
             ->component('admin/orders/Show')
             ->where('order.id', $order->id)
+            ->where('order.provider', 'stripe')
             ->where('lines.0.label', 'Exhibitor package')
             ->where('lines.0.id', $line->id)
             ->where('invoice.number', $invoice->invoice_number)

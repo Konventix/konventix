@@ -61,15 +61,24 @@ licensing.
   Unzer account, and every adapter call carries that account. ADR-0039 pins
   the mechanics: hosted checkout only, settlement truth exclusively from
   verified webhooks, per-brand credentials encrypted on the account row.
-- **`SettlementAccount`** — the per-brand record of which PSP account settles
-  that brand's money, and its connection state.
+- **`SettlementAccount`** — one live account per provider per brand
+  (ADR-0046): a brand may connect Stripe for cards and Mollie for PayPal and
+  iDEAL at once, and the checkout page offers every account that is live,
+  connected, and — for Stripe — has an active `card_payments` capability.
+  The payer chooses which account settles their order; `settlement_method`
+  on the settlement events is always the provider, and the events also carry
+  the account id.
 - **Vouchers and discount codes**, their rules and their redemption records.
 - **Bookkeeping exports** for the tax advisor (ADR-0040): a DATEV
   Buchungsstapel plus a readable journal, one export per operator and month,
   all of the operator's brands in one file (D-COM-05), invoices and credit
   notes only — payments are booked by the advisor from bank and PSP
   statements. Account mapping (`BookkeepingSettings`) is per operator with
-  SKR03 Automatikkonten defaults.
+  SKR03 Automatikkonten defaults. Each document row names the settlement
+  provider (ADR-0046: the latest succeeded payment on its order) as
+  metadata — a `Zahlungsanbieter` column in the readable journal, the
+  `Beleginfo – Art 1`/`Inhalt 1` pair in the DATEV batch; the export still
+  books documents only.
 
 ## Does not own
 

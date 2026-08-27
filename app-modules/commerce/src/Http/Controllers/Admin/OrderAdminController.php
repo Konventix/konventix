@@ -74,8 +74,10 @@ class OrderAdminController
             ->get()
             ->keyBy('order_id');
 
+        $providerByOrder = Payment::latestProviderByOrder($orders->getCollection()->pluck('id'));
+
         return Inertia::render('admin/orders/Index', [
-            'orders' => $orders->through(function (Order $order) use ($invoices): array {
+            'orders' => $orders->through(function (Order $order) use ($invoices, $providerByOrder): array {
                 /** @var Invoice|null $invoice */
                 $invoice = $invoices->get($order->id);
 
@@ -88,6 +90,7 @@ class OrderAdminController
                     'totalNet' => $order->total_net,
                     'totalGross' => $order->total_gross,
                     'taxTreatment' => $order->tax_treatment->value,
+                    'provider' => $providerByOrder[$order->id] ?? null,
                     'paidAt' => $order->paid_at?->format('Y-m-d H:i'),
                     'createdAt' => $order->created_at?->format('Y-m-d H:i'),
                     'invoice' => $invoice === null ? null : [
@@ -118,6 +121,8 @@ class OrderAdminController
         /** @var Invoice|null $invoice */
         $invoice = Invoice::withoutBrandScope()->where('order_id', $model->getKey())->first();
 
+        $provider = Payment::latestProviderByOrder([$model->getKey()])->get($model->getKey());
+
         return Inertia::render('admin/orders/Show', [
             'order' => [
                 'id' => $model->getKey(),
@@ -130,6 +135,7 @@ class OrderAdminController
                 'totalTax' => $model->total_tax,
                 'totalGross' => $model->total_gross,
                 'taxTreatment' => $model->tax_treatment->value,
+                'provider' => $provider,
                 'paidAt' => $model->paid_at?->format('Y-m-d H:i'),
                 'createdAt' => $model->created_at?->format('Y-m-d H:i'),
             ],

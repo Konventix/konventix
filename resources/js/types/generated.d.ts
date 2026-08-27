@@ -72,6 +72,9 @@ declare namespace Konventix {
                 readonly dueOn: string | null;
                 readonly documentUrl: string | null;
             };
+            export type UpdateSettlementAccountLabelData = {
+                readonly checkoutLabel: string | null;
+            };
         }
         namespace Enums {
             export type OrderStatus =

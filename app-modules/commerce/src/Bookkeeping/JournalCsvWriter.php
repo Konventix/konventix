@@ -21,6 +21,7 @@ final class JournalCsvWriter
         $lines = [implode(';', [
             'Belegart', 'Belegnummer', 'Datum', 'Marke', 'Käufer', 'Land',
             'USt-IdNr', 'Steuerbehandlung', 'Netto', 'Steuer', 'Brutto', 'Währung',
+            'Zahlungsanbieter',
         ])];
 
         foreach ($entries as $entry) {
@@ -37,6 +38,9 @@ final class JournalCsvWriter
                 $this->decimal($entry->totalTax),
                 $this->decimal($entry->totalGross),
                 $entry->currency,
+                // ADR-0046: which provider settled the underlying order,
+                // blank when it hasn't (yet) settled through one.
+                $entry->provider ?? '',
             ]);
         }
 

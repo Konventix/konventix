@@ -14,6 +14,7 @@ use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
+use Konventix\Commerce\Models\Payment;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -333,6 +334,55 @@ it('writes the readable journal with one line per document', function (): void {
     expect($csv)->toStartWith("\u{FEFF}Belegart;Belegnummer;")
         ->and($csv)->toContain('Rechnung;"SXL-2026-00001";10.07.2026;"SXLan";"Musterfirma GmbH"')
         ->and($writer->filename($from))->toBe('Rechnungsjournal_2026_07.csv');
+});
+
+it('names the settlement provider on the readable journal (ADR-0046)', function (): void {
+    [$operator] = bookkeepingOperator();
+    $brand = bookkeepingBrand($operator, 'SXLan');
+
+    $paid = bookkeepingInvoice($brand, 'SXL-2026-00001', '2026-07-10', [['class' => TaxClass::Standard, 'gross' => '119.00']]);
+    Payment::factory()->succeeded()->create(['brand_id' => $brand->id, 'order_id' => $paid->order_id, 'provider' => 'stripe']);
+    bookkeepingInvoice($brand, 'SXL-2026-00002', '2026-07-11', [['class' => TaxClass::Standard, 'gross' => '50.00']]);
+
+    [$from, $to] = bookkeepingPeriod();
+    $entries = app(CollectDocumentJournal::class)->handle(
+        $operator->getKey(), $from, $to, BookkeepingSettings::forOperator($operator->getKey()),
+    );
+
+    $csv = (new JournalCsvWriter)->build($entries);
+    $lines = explode("\r\n", $csv);
+
+    $paidRow = collect($lines)->first(fn (string $line): bool => str_contains($line, 'SXL-2026-00001'));
+    $unpaidRow = collect($lines)->first(fn (string $line): bool => str_contains($line, 'SXL-2026-00002'));
+
+    expect($lines[0])->toEndWith(';Zahlungsanbieter')
+        ->and($paidRow)->toEndWith(';stripe')
+        ->and($unpaidRow)->toEndWith(';');
+});
+
+it('carries the settlement provider on the Beleginfo row (ADR-0046)', function (): void {
+    [$operator] = bookkeepingOperator();
+    $brand = bookkeepingBrand($operator, 'SXLan');
+
+    $invoice = bookkeepingInvoice($brand, 'SXL-2026-00001', '2026-07-10', [['class' => TaxClass::Standard, 'gross' => '119.00']]);
+    Payment::factory()->succeeded()->create(['brand_id' => $brand->id, 'order_id' => $invoice->order_id, 'provider' => 'stripe']);
+
+    [$from, $to] = bookkeepingPeriod();
+    $settings = BookkeepingSettings::forOperator($operator->getKey());
+    $entries = app(CollectDocumentJournal::class)->handle($operator->getKey(), $from, $to, $settings);
+
+    $bytes = (new DatevBuchungsstapelWriter)->build($settings, $entries, $from, $to, Carbon::create(2026, 8, 16, 12));
+    $content = mb_convert_encoding($bytes, 'UTF-8', 'Windows-1252');
+    $lines = explode("\r\n", trim($content));
+
+    $columns = explode(';', $lines[1]);
+    $row = explode(';', $lines[2]);
+
+    $artIndex = array_search('Beleginfo – Art 1', $columns, true);
+    $inhaltIndex = array_search('Beleginfo – Inhalt 1', $columns, true);
+
+    expect($row[$artIndex])->toBe('"Zahlungsanbieter"')
+        ->and($row[$inhaltIndex])->toBe('"stripe"');
 });
 
 it('serves both downloads from the admin console, gated on the capability', function (): void {
