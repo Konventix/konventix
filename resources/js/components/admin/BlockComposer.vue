@@ -10,6 +10,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useDragReorder } from '@/composables/useDragReorder';
+import { freshBlockData } from '@/lib/blockDefaults';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import type { BlockEditorContext } from '@/types/blocks';
 
@@ -60,10 +61,7 @@ const {
 function add(type: TypeOption): void {
     emit('update:modelValue', [
         ...props.modelValue,
-        {
-            type: type.key,
-            data: structuredClone(type.defaultData) as Record<string, unknown>,
-        },
+        { type: type.key, data: freshBlockData(type.defaultData) },
     ]);
 }
 

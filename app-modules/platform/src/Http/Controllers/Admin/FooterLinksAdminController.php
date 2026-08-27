@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Platform\Http\Controllers\Admin;
 
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -35,16 +36,26 @@ use Konventix\Platform\Operators\OperatorContext;
  */
 class FooterLinksAdminController
 {
-    public function edit(OperatorContext $context, ConsoleSelection $selection, BlockRegistry $registry): Response
+    public function edit(Request $request, OperatorContext $context, ConsoleSelection $selection, BlockRegistry $registry): Response
     {
         Gate::authorize(Permission::ManageFooterLinks->value);
 
         $operator = $context->current() ?? abort(404);
 
-        $brandId = $selection->brandId();
-        $brand = $brandId === null ? null : Brand::query()->where('operator_id', $operator->getKey())->find($brandId);
+        $brands = Brand::query()->where('operator_id', $operator->getKey())->orderBy('name')->get(['id', 'name']);
+
+        // The brand whose own list is edited beside the operator-wide one:
+        // picked on this page, else the console's selection — the same
+        // default-not-scope the roles page uses. No pick means the brand
+        // forms stay hidden, never that the page dead-ends.
+        $brandId = $request->string('brand')->toString() ?: $selection->brandId();
+        $brand = $brandId === null ? null : $brands->firstWhere('id', $brandId);
 
         return Inertia::render('admin/settings/FooterLinks', [
+            'brands' => $brands->map(fn (Brand $candidate): array => [
+                'id' => $candidate->getKey(),
+                'name' => $candidate->name,
+            ])->all(),
             'operatorLinks' => $this->linksOf($operator, null),
             'brand' => $brand === null ? null : ['id' => $brand->getKey(), 'name' => $brand->name],
             'brandLinks' => $brand === null ? null : $this->linksOf($operator, $brand->getKey()),
@@ -103,7 +114,9 @@ class FooterLinksAdminController
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Footer saved.')]);
 
-        return to_route('admin.settings.footer.edit');
+        // Keep the picked brand, or the brand's own forms would vanish on
+        // the very save that filled them.
+        return to_route('admin.settings.footer.edit', array_filter(['brand' => $data->brandId]));
     }
 
     public function updateColumns(
@@ -117,6 +130,8 @@ class FooterLinksAdminController
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Footer columns saved.')]);
 
-        return to_route('admin.settings.footer.edit');
+        // Keep the picked brand, or the brand's own forms would vanish on
+        // the very save that filled them.
+        return to_route('admin.settings.footer.edit', array_filter(['brand' => $data->brandId]));
     }
 }

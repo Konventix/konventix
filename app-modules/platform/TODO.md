@@ -82,6 +82,18 @@ depends on brand resolution and gating working.
 
 ## Done
 
+- [x] Two things the first click-through found. "Add block" in the
+      composer was a dead click: a block type's `defaultData` arrives as an
+      Inertia prop, i.e. a Vue reactive proxy, and `structuredClone` refuses
+      proxies — the handler threw before it emitted. `freshBlockData()` now
+      copies the default through JSON, which is what the payload is anyway.
+      And the footer's per-brand forms were reachable only through the
+      console's brand selector, which read as "no per-brand footer at all";
+      the page now carries its own brand picker (defaulting to the console
+      selection, like the roles page) and a save keeps the picked brand. The
+      shape is unchanged and deliberate: the operator-wide entries cannot be
+      overridden per brand (ADR-0001), a brand adds its own after them.
+
 <!-- Move completed items here with the PR that finished them. -->
 
 - [x] Slice 21b — footer content, closing what 21a left as a reserved slot.

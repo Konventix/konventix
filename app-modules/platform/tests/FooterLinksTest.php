@@ -223,3 +223,27 @@ it('renders operator rows on every brand and a brand\'s rows only on its own hos
         collect($page->toArray()['props']['footer']['links'])->pluck('label')->all()
     )->toBe(['Imprint', 'Theirs']));
 });
+
+it('lets the operator pick the brand to edit on the page itself, defaulting to the console selection', function (): void {
+    [$operator, $admin] = footerOperator('admin.footerpick.test');
+    $brand = Brand::factory()->create(['name' => 'SXLan', 'slug' => 'ft-pick']);
+    $brand->forceFill(['operator_id' => $operator->getKey()])->save();
+    FooterLink::factory()->create(['operator_id' => $operator->getKey(), 'brand_id' => $brand->getKey(), 'label' => 'Discord']);
+
+    $this->actingAs($admin)
+        ->get('http://admin.footerpick.test/admin/settings/footer?brand='.$brand->getKey())
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page) use ($brand): void {
+            $page->where('brand.id', $brand->getKey())
+                ->where('brand.name', 'SXLan')
+                ->where('brandLinks.0.label', 'Discord');
+
+            expect(collect($page->toArray()['props']['brands'])->pluck('id')->all())->toContain($brand->getKey());
+        });
+
+    // Without a pick and without a console selection there is still a list
+    // of brands to choose from — the page never dead-ends on a note.
+    $this->actingAs($admin)
+        ->get('http://admin.footerpick.test/admin/settings/footer')
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('brand', null)->has('brands'));
+});
