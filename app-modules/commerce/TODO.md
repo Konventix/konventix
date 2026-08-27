@@ -36,7 +36,7 @@
       needs its own line-level calculation through `TaxCalculator`.
 - [ ] Cancellation as a domain flow (distinct from refund, which is built):
       `OrderCancelled` is still proposed.
-- [ ] Cart and vouchers.
+- [ ] Vouchers.
 - [ ] GoBD retention lifecycle for the `invoices` disk: the archive must
       survive brand deletion, operator changes, and storage migrations for
       ten years (ADR-0031 names the requirement; only the write-once
@@ -62,6 +62,51 @@
       ranges.
 
 ## Done
+
+- [x] Slice 24b (ADR-0047, Task 9), the cart and its reservation — a cart
+      holds what a person intends to buy, and holds the stock with it for
+      twenty minutes. `Cart` (`payer_user_id`, `status`, `expires_at`,
+      `checked_out_order_id`) and `CartLine` (`kind`: `product` or
+      `registration`, `ref_id`, `request_key`, a settlement-time snapshot
+      of `label`/`unit_amount_net`/`tax_class`, exactly like `OrderLine`'s
+      but taken one step earlier). `OpenCart::for(brandId, payerUserId)`
+      finds a payer's open cart or opens one, `brand_id` explicit rather
+      than from ambient context — a queue or admin caller has none — with
+      the partial unique index `carts_one_open_per_payer` closing the same
+      concurrent-open race `entrants_one_live_per_team` already closes
+      elsewhere: the insert is attempted and a lost race re-reads the cart
+      the other request created rather than erroring.
+      `AddProductToCart` locks the variant, refuses with
+      `StockExhaustedException` when `hasStockFor()` says no, consumes,
+      merges a second add of the same variant into its existing line
+      rather than duplicating it, and emits `StockExhausted` the moment
+      the variant hits zero. `ChangeCartLineQuantity` consumes or releases
+      the delta between the old and new quantity under the same lock, and
+      refuses a registration line with a `LogicException` — its quantity
+      is fixed by the registration itself, not by the cart.
+      `RemoveCartLine` releases a product line's stock silently; a
+      registration line has none to release and instead emits
+      `CartLineRemoved`, which is what tells Registration (Task 10) to
+      cancel the still-pending registration the line was holding
+      (ADR-0047 point 3). Every one of these calls `Cart::touchExpiry()`,
+      so continued activity keeps the twenty-minute reservation alive.
+      **The sweep** (`commerce:expire-carts`, scheduled every fifteen
+      minutes) mirrors `Registration\Actions\ExpireWaitlistOffers`
+      exactly: `withoutBrandScope()` across every brand, one transaction
+      per cart so one bad row never blocks the rest, a product line's
+      stock released and a registration line's `CartLineExpired` emitted
+      before the cart itself moves to `expired`.
+      `GuardsProductVariantReferences::isReferenced()` — a documented stub
+      returning `false` since Task 7, because neither `cart_lines` nor the
+      settlement columns on `order_lines` existed yet — now has real
+      teeth: a variant referenced by an *open* cart's line or a settled
+      order line refuses `SaveProduct`'s variant removal and
+      `DeleteProduct` alike; an expired cart's line does not count, since
+      the sweep already released its stock. `order_lines` gained
+      `settles_kind`/`settles_ref`, the per-line counterpart of `Order`'s
+      own `settles_type`/`settles_id` — Task 11 is what actually writes
+      them, once a cart checkout can produce an order whose lines settle a
+      mix of products and registrations.
 
 - [x] Slice 24a (ADR-0047), the public shop — a brand's catalogue gets a
       storefront: `/shop` lists every published product and `/shop/{slug}`

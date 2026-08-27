@@ -3,6 +3,11 @@
 declare(strict_types=1);
 
 use Inertia\Testing\AssertableInertia;
+use Konventix\Commerce\Enums\CartLineKind;
+use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Models\Cart;
+use Konventix\Commerce\Models\CartLine;
+use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Identity\Models\User;
@@ -298,6 +303,75 @@ it('deletes a product and its variants, releasing the image it referenced', func
     expect(Product::withoutBrandScope()->whereKey($product->getKey())->exists())->toBeFalse()
         ->and(ProductVariant::withoutBrandScope()->whereKey($variant->getKey())->exists())->toBeFalse()
         ->and(MediaUsage::withoutBrandScope()->where('media_item_id', $image->getKey())->exists())->toBeFalse();
+});
+
+it('refuses to delete a product whose variant sits in an open cart, but not once that cart expires', function (): void {
+    [, $admin] = productsOperator();
+    $brand = $this->withBrand(Brand::factory()->create(['slug' => 'pr-cart-delete']));
+    $product = productOf($brand);
+    $variant = ProductVariant::factory()->for($product, 'product')->create();
+    $cart = Cart::factory()->create(['status' => CartStatus::Open]);
+    CartLine::factory()->forCart($cart)->create(['kind' => CartLineKind::Product, 'ref_id' => $variant->getKey()]);
+
+    $this->actingAs($admin)
+        ->delete("http://admin.products.test/admin/products/{$product->getKey()}")
+        ->assertSessionHasErrors('product');
+
+    expect(Product::withoutBrandScope()->whereKey($product->getKey())->exists())->toBeTrue();
+
+    // An expired cart's line does not count — its stock has already been
+    // released by the sweep (Actions\ExpireCarts).
+    $cart->forceFill(['status' => CartStatus::Expired])->save();
+
+    $this->actingAs($admin)
+        ->delete("http://admin.products.test/admin/products/{$product->getKey()}")
+        ->assertRedirect('http://admin.products.test/admin/products');
+
+    expect(Product::withoutBrandScope()->whereKey($product->getKey())->exists())->toBeFalse();
+});
+
+it('refuses to drop a variant from the list while an open cart still holds it, but not once that cart expires', function (): void {
+    [, $admin] = productsOperator();
+    $brand = $this->withBrand(Brand::factory()->create(['slug' => 'pr-cart-variant']));
+    $product = productOf($brand);
+    $kept = ProductVariant::factory()->for($product, 'product')->create(['label' => 'Small', 'position' => 0]);
+    $referenced = ProductVariant::factory()->for($product, 'product')->create(['label' => 'Medium', 'position' => 1]);
+    $cart = Cart::factory()->create(['status' => CartStatus::Open]);
+    CartLine::factory()->forCart($cart)->create(['kind' => CartLineKind::Product, 'ref_id' => $referenced->getKey()]);
+
+    $updatePayload = productPayload([
+        'variants' => [
+            ['id' => $kept->getKey(), 'label' => 'Small', 'sku' => null, 'unitAmountNet' => null, 'stockCapacity' => 10, 'position' => 0],
+        ],
+    ]);
+
+    $this->actingAs($admin)
+        ->put("http://admin.products.test/admin/products/{$product->getKey()}", $updatePayload)
+        ->assertSessionHasErrors('variants');
+
+    expect(ProductVariant::withoutBrandScope()->whereKey($referenced->getKey())->exists())->toBeTrue();
+
+    $cart->forceFill(['status' => CartStatus::Expired])->save();
+
+    $this->actingAs($admin)
+        ->put("http://admin.products.test/admin/products/{$product->getKey()}", $updatePayload)
+        ->assertRedirect();
+
+    expect(ProductVariant::withoutBrandScope()->whereKey($referenced->getKey())->exists())->toBeFalse();
+});
+
+it('refuses to delete a product whose variant a settled order line still settles against', function (): void {
+    [, $admin] = productsOperator();
+    $brand = $this->withBrand(Brand::factory()->create(['slug' => 'pr-order-ref']));
+    $product = productOf($brand);
+    $variant = ProductVariant::factory()->for($product, 'product')->create();
+    OrderLine::factory()->create(['settles_kind' => 'product', 'settles_ref' => $variant->getKey()]);
+
+    $this->actingAs($admin)
+        ->delete("http://admin.products.test/admin/products/{$product->getKey()}")
+        ->assertSessionHasErrors('product');
+
+    expect(Product::withoutBrandScope()->whereKey($product->getKey())->exists())->toBeTrue();
 });
 
 it('requires view-products to read and manage-products to write', function (): void {

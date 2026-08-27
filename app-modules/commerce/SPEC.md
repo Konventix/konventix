@@ -45,7 +45,33 @@ licensing.
   open a transaction themselves, callers do that under their own Action's
   `DB::transaction`. `sku` is unique per brand only when set, so many
   implicit variants with no sku never collide.
-- **`Cart`** — the pre-order assembly of what someone intends to buy.
+- **`Cart` and cart lines** — a person-owned reservation that locks stock as
+  a quota for twenty minutes (ADR-0047, `Cart::LIFETIME_MINUTES`): the first
+  Commerce root that belongs to a person before any order exists.
+  `OpenCart::for(brandId, payerUserId)` finds a payer's open cart or opens
+  one, `brand_id` set explicitly rather than from ambient context (a queue
+  or admin caller has none) — the partial unique index
+  `carts_one_open_per_payer` makes a second concurrent one for the same
+  payer impossible, the same read-then-write race `entrants_one_live_per_team`
+  closes elsewhere. A `CartLine` is either `product` (locks a
+  `ProductVariant`'s stock, keyed by its id, merged rather than duplicated
+  on a second add of the same variant) or `registration` (ADR-0047 point 3
+  — Task 10 creates these, keyed by the settlement request's own
+  `request_key` since a person may hold more than one pending registration
+  at once). `AddProductToCart`, `ChangeCartLineQuantity` and
+  `RemoveCartLine` all lock the variant row under their own transaction and
+  call `Cart::touchExpiry()`, so continued activity keeps the reservation
+  alive; `ChangeCartLineQuantity` refuses a registration line with a
+  `LogicException`, since its quantity is fixed by the registration itself.
+  **The sweep** (`commerce:expire-carts`, scheduled every fifteen minutes,
+  mirroring `Registration\Actions\ExpireWaitlistOffers`) expires every open
+  cart past `expires_at` in its own transaction: a product line's stock is
+  released silently, a registration line emits `CartLineExpired` so
+  Registration can cancel what it was holding, and the cart itself moves to
+  `expired`. `GuardsProductVariantReferences::isReferenced()` (Task 7) now
+  also refuses to delete a product or drop a variant still held by an
+  *open* cart's line — an expired cart's line does not count, since its
+  stock was already released.
 - **`Order` and order lines** — the authoritative record of what was ordered,
   at what price, with which tax treatment, in which currency. Orders reference
   what they settle (a registration, a resource booking, a shop item) by ULID.
@@ -130,7 +156,7 @@ implemented and their payloads are the contract.
 
 | Event | Emitted when | Payload |
 |---|---|---|
-| `OrderPlaced` | An order is created from a settlement request (carts do not exist yet) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `total_net`, `total_gross`, `currency`, `placed_at` |
+| `OrderPlaced` | An order is created from a settlement request (checkout through a cart is Task 11's — this order still comes from `PlaceOrderFromSettlementRequest` directly) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `total_net`, `total_gross`, `currency`, `placed_at` |
 | `OrderPaid` | An order is fully settled, by any adapter or by manual booking. **The event Registration consumes** (ADR-0006) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_paid`, `currency`, `paid_at`, `settlement_method` |
 | `OrderPartiallyPaid` (proposed) | A payment lands that does not cover the balance | `order_id`, `amount_paid`, `balance_due`, `currency`, `received_at` |
 | `PaymentReceived` | Any payment is recorded — a webhook-confirmed PSP payment or a manually booked bank transfer. Distinct from `OrderPaid`: this is about the money that arrived, that one about what it means for the order | `payment_id`, `order_id`, `brand_id`, `amount`, `currency`, `settlement_method`, `external_reference` (nullable — manual bookings have none), `received_at` |
@@ -143,6 +169,10 @@ implemented and their payloads are the contract.
 | `DunningLevelRaised` | An overdue invoice reached the next days-overdue threshold. Commerce declares *that* a level was reached; Messaging decides what a level means to a recipient — the same split D-CNT-08 draws for announcements, which is why no mail is sent from here | `invoice_id`, `invoice_number`, `order_id`, `brand_id`, `level`, `days_overdue`, `raised_at`, `billing_name`, `billing_email` (nullable — the contact may have no account), `total_gross`, `currency`, `due_on` (billing scalars added for ADR-0041 point 8: Messaging's listener must not read this module's models) | implemented |
 | `CreditNoteIssued` | A credit note was issued against an order. `reason_code` distinguishes a refund (ADR-0037) from a post-invoice transfer (ADR-0036) — a transfer is immediately followed by a new invoice for the same amount, so treating it as a refund would double-count | `credit_note_id`, `credit_note_number`, `order_id`, `invoice_id`, `brand_id`, `total_gross`, `currency`, `reason_code`, `issued_at` | implemented |
 | `VoucherRedeemed` (proposed) | A voucher is applied to an order | `voucher_id`, `order_id`, `discount_amount`, `currency`, `redeemed_at` |
+| `StockExhausted` | A `ProductVariant`'s `remaining()` reaches zero from a `consumeStock()` call — the transition into sold-out, not every purchase against an already-exhausted variant | `variant_id`, `product_id`, `brand_id`, `exhausted_at` |
+| `CartExpired` (ADR-0047) | The sweep moves an open cart past `expires_at` to `expired`, after every one of its lines has been released or announced | `cart_id`, `brand_id`, `payer_user_id`, `expired_at` |
+| `CartLineExpired` (ADR-0047) | The sweep expires a registration-kind cart line — a product line releases its stock silently instead. **Registration consumes this** to cancel the still-pending registration the line was holding | `cart_id`, `brand_id`, `kind`, `ref_id`, `request_key` (nullable), `expired_at` |
+| `CartLineRemoved` (ADR-0047) | A person removes a registration-kind cart line — a product line releases its stock silently instead. **Registration consumes this**, the same way it consumes `CartLineExpired` | `cart_id`, `brand_id`, `kind`, `ref_id`, `request_key` (nullable), `removed_at` |
 
 ## Consumes
 

@@ -8,6 +8,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Konventix\Admission\Events\AdmissionCheckedIn;
+use Konventix\Commerce\Console\ExpireCartsCommand;
 use Konventix\Commerce\Console\RefreshSettlementCapabilities;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
@@ -213,7 +214,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // sweep that silently fails to register would look like "no invoices
         // are overdue" rather than like a bug.
         if ($this->app->runningInConsole()) {
-            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class]);
+            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class, ExpireCartsCommand::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
@@ -227,6 +228,12 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // A Stripe account can activate — or be restricted — on
             // Stripe's own timeline, well after onboarding's return trip.
             $schedule->command(RefreshSettlementCapabilities::class)->dailyAt('06:30');
+
+            // A cart's twenty-minute reservation (ADR-0047, Task 9) needs a
+            // sweep on the same cadence as the waitlist offer expiry it
+            // mirrors — fifteen minutes is frequent enough that stock a
+            // person abandoned comes back well within a rush.
+            $schedule->command('commerce:expire-carts')->everyFifteenMinutes();
         });
     }
 

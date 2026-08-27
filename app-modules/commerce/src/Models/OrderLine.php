@@ -20,11 +20,21 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * offered. Nothing here is ever recomputed after the fact — the invoice
  * document's XML is built from these rows (ADR-0031).
  *
+ * `settles_kind`/`settles_ref` are the per-line counterpart of `Order`'s
+ * own `settles_type`/`settles_id` (ADR-0047): a cart checkout produces one
+ * order whose lines settle a mix of products and registrations, so the
+ * "what does this line pay for" reference has to live per line rather than
+ * once per order. Both are nullable plain ULIDs (ADR-0014) — Task 11
+ * writes them; a pre-cart order line, like every order Commerce created
+ * before this task, carries neither.
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $order_id
  * @property int $position
  * @property string $label
+ * @property string|null $settles_kind
+ * @property string|null $settles_ref
  * @property int $quantity
  * @property numeric-string $unit_amount_net
  * @property TaxClass $tax_class
@@ -46,6 +56,8 @@ class OrderLine extends Model
         'order_id',
         'position',
         'label',
+        'settles_kind',
+        'settles_ref',
         'quantity',
         'unit_amount_net',
         'tax_class',
