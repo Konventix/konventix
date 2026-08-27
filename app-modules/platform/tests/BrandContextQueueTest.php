@@ -40,6 +40,31 @@ class BrandProbeJob implements ShouldQueue
 }
 
 /**
+ * Stand-in for a `sync`-queued job that itself dispatches another job
+ * before returning (`IssueCreditNote` dispatching `GenerateCreditNoteDocument`
+ * `afterCommit()`, mid-transaction, is the real shape) — proves the
+ * propagator restores a *stack* of interrupted brands, one per nesting
+ * level, not a single slot.
+ */
+class BrandSwitchingProbeJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable;
+
+    public static ?string $brandAfterInnerDispatch = null;
+
+    public function __construct(private readonly string $switchToBrandId) {}
+
+    public function handle(BrandContext $context): void
+    {
+        $context->set(Brand::query()->findOrFail($this->switchToBrandId));
+
+        BrandProbeJob::dispatch('inner, dispatched under the switched brand');
+
+        self::$brandAfterInnerDispatch = $context->id();
+    }
+}
+
+/**
  * @return array<string, mixed>
  */
 function queuedPayload(): array
@@ -132,4 +157,47 @@ it('hands each job the brand it was dispatched under, not the one before it', fu
         'first brand' => $first->getKey(),
         'second brand' => $second->getKey(),
     ]);
+});
+
+/**
+ * Task 3 (mail-and-receipts) surfaced this on the `sync` queue specifically:
+ * `IssueCreditNote` dispatches `GenerateCreditNoteDocument` `afterCommit()`
+ * from inside a brand-scoped action. On `sync` — every test, and any
+ * `QUEUE_CONNECTION=sync` deployment — `dispatch()` runs the job inline, in
+ * the same process and the same call stack as the code that dispatched it.
+ * The old `JobProcessed` handler cleared the brand outright, which wiped the
+ * *dispatching* code's own ambient brand the moment the job it dispatched
+ * finished — the next brand-owned row that code tried to create had none to
+ * stamp. These run on `sync`, not `database`: the leaking-ambient bug only
+ * exists when dispatch and handling share a call stack.
+ */
+it('restores the ambient brand once a job dispatched inline on the sync queue finishes', function (): void {
+    config()->set('queue.default', 'sync');
+
+    $a = $this->withBrand();
+
+    BrandProbeJob::dispatch('inline under sync');
+
+    expect(BrandProbeJob::$observed)->toBe(['inline under sync' => $a->getKey()])
+        ->and(app(BrandContext::class)->id())->toBe($a->getKey());
+});
+
+it("restores each nested job's own interrupted brand, not the outermost one — a stack", function (): void {
+    config()->set('queue.default', 'sync');
+
+    $a = $this->withBrand();
+    $b = Brand::factory()->create();
+
+    BrandProbeJob::$observed = [];
+    BrandSwitchingProbeJob::$brandAfterInnerDispatch = null;
+
+    BrandSwitchingProbeJob::dispatch($b->getKey());
+
+    expect(BrandProbeJob::$observed)->toBe(['inner, dispatched under the switched brand' => $b->getKey()])
+        // Restored to $b — the brand interrupted by the *inner* dispatch —
+        // not to $a, proving each nesting level restores its own frame.
+        ->and(BrandSwitchingProbeJob::$brandAfterInnerDispatch)->toBe($b->getKey())
+        // And once the outer job itself finishes, its own interrupted
+        // brand ($a) comes back.
+        ->and(app(BrandContext::class)->id())->toBe($a->getKey());
 });
