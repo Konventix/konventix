@@ -37,6 +37,7 @@ use Konventix\Event\Enums\EventLifecycleState;
 use Konventix\Event\Models\Event;
 use Konventix\Event\Models\EventDay;
 use Konventix\Event\Models\Venue;
+use Konventix\Identity\Models\User;
 use Konventix\Messaging\Models\BrandMailSettings;
 use Konventix\Messaging\Models\InboxNotification;
 use Konventix\Messaging\Models\MessageRecord;
@@ -53,6 +54,7 @@ use Konventix\Platform\Models\StaticPage;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Models\InvitationToken;
+use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registrant;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
@@ -590,4 +592,51 @@ it('seeds content, compliance paperwork and messaging history', function () {
         ->and(InboxNotification::withoutBrandScope()->where('brand_id', $brand->getKey())->count())
         ->toBeGreaterThanOrEqual(6)
         ->and(Suppression::withoutBrandScope()->where('brand_id', $brand->getKey())->count())->toBe(2);
+});
+
+/**
+ * The rush fixture (ADR-0047 point 6, `--rush`): a brand a k6 run can hit
+ * with a real HTTP client, a capacity-capped instant-settlement ticket, a
+ * limited-stock shop item and 1,200 login-ready members. `--rush` alone
+ * skips the interactive archetype prompts entirely — this is a fixture
+ * step, not a demo walk — so no `expectsQuestion()` chain is needed here,
+ * unlike every other test in this file.
+ */
+it('seeds the rush brand, its capped ticket and 1,200 members', function () {
+    releaseLocalhostForTest();
+
+    $this->artisan('konventix:seed', ['--rush' => true])->assertSuccessful();
+
+    $brand = Brand::query()->firstWhere('slug', 'rush');
+    expect($brand)->not->toBeNull()
+        ->and($brand->domains()->value('host'))->toBe('rush.localhost')
+        ->and(Feature::for($brand)->active('commerce:shop'))->toBeTrue()
+        ->and(Feature::for($brand)->active('commerce:waiting-room'))->toBeTrue();
+
+    $type = RegistrationType::withoutBrandScope()->where('brand_id', $brand->getKey())->firstWhere('name', 'Rush ticket');
+    expect($type)->not->toBeNull();
+
+    $quota = Quota::withoutBrandScope()->where('brand_id', $brand->getKey())->firstWhere('name', 'Rush capacity');
+    expect($quota)->not->toBeNull()
+        ->and($quota->capacity)->toBe(300)
+        ->and($type->quotas()->whereKey($quota->getKey())->exists())->toBeTrue();
+
+    $product = Product::withoutBrandScope()->where('brand_id', $brand->getKey())->firstWhere('slug', 'rush-shirt');
+    expect($product)->not->toBeNull()
+        ->and($product->variants()->sole()->stock_capacity)->toBe(200);
+
+    expect(SettlementAccount::withoutBrandScope()
+        ->where('brand_id', $brand->getKey())
+        ->where('provider', SettlementAccount::PROVIDER_NULL)
+        ->exists())->toBeTrue();
+
+    expect(User::query()->where('email', 'like', 'rush+%@konventix.test')->count())->toBe(1200)
+        ->and(User::query()->firstWhere('email', 'rush+1@konventix.test')->email_verified_at)->not->toBeNull();
+
+    // Re-running must top up nothing further and duplicate nothing.
+    $this->artisan('konventix:seed', ['--rush' => true])->assertSuccessful();
+
+    expect(User::query()->where('email', 'like', 'rush+%@konventix.test')->count())->toBe(1200)
+        ->and(RegistrationType::withoutBrandScope()->where('brand_id', $brand->getKey())->where('name', 'Rush ticket')->count())->toBe(1)
+        ->and(Product::withoutBrandScope()->where('brand_id', $brand->getKey())->where('slug', 'rush-shirt')->count())->toBe(1);
 });

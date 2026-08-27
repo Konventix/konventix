@@ -59,6 +59,21 @@
 
 ## Done
 
+- [x] ADR-0047 point 6 (Task 14), the waitlist/`on_payment` pricing
+      backlog note above re-checked against a real rush rather than
+      theory: `konventix:seed --rush`'s "Rush ticket" type is exactly
+      `instant`/`on_payment`/capacity 300, and the k6 rush
+      (`tests/Load/ticket-rush.js`) drove 1,000 arrivals through it —
+      300 quota-consuming registrations, the rest onto the waitlist
+      (`JoinWaitlist`, `QuotaExhaustedException`) via the same
+      `RegistrationController::store()` path a real sold-out submission
+      takes. The concern the note names — a waitlisted-then-promoted
+      registration's `on_payment` settlement pricing itself against a
+      submission-time snapshot that may be stale by promotion — was not
+      exercised (`PromoteFromWaitlist` never ran during the rush) and
+      stays exactly the open follow-up the backlog item already
+      describes; nothing here settles it.
+
 - [x] ADR-0047 point 5 (Task 12), the public registration form stands
       behind the waiting room too: `ensure-waiting-room` added beside
       `require-consent` on `registration.show`/`registration.store`

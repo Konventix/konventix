@@ -82,6 +82,42 @@
 
 ## Done
 
+- [x] ADR-0047 point 6, Task 14: the infrastructure flip and the rush
+      itself. `SESSION_DRIVER`/`CACHE_STORE` are `redis` in `.env` and
+      `.env.example` (the queue already was); a database-backed session
+      is the first thing to fall over under a rush, and this is
+      load-tested rather than assumed. `database/seeders/Demo/DemoRushSeeder.php`
+      (`konventix:seed --rush`, additive, skips the interactive archetype
+      prompts on its own) seeds a "Rush" brand on `rush.localhost`: one
+      event, one `instant`/`on_payment` capacity-300 ticket ("Rush
+      ticket"), one 200-unit shop item ("Rush shirt"), `commerce:shop` +
+      `commerce:waiting-room` on, `admit_per_interval` 100, and 1,200
+      login-ready members (`rush+{n}@konventix.test` / `password`).
+      Checkout needed a PSP-less path to "start" at all:
+      `Settlement\LocalHostedCheckoutAdapter` implements
+      `ProvidesHostedCheckout` for the `null` provider, bound only in
+      `local`/`testing` (`CommerceServiceProvider`) — `NullSettlementAdapter`
+      stays the honest "no PSP, no hosted checkout" adapter everywhere
+      real. `tests/Load/ticket-rush.js` drives 1,000 arrivals through
+      login, the waiting room, registration, the shop and checkout
+      against `laravel.test` with `Host: rush.localhost`, redirects
+      followed by hand (several of this app's own are absolute URLs a
+      k6 container cannot resolve), and a per-arrival synthetic
+      `X-Forwarded-For` — every VU otherwise shares this container's one
+      IP, and `IssueWaitingRoomTicket`'s per-IP cap (five new tickets)
+      refused nearly all of them until that header was added, a real bug
+      the first three iterations missed and mis-attributed to raw
+      concurrency. Measured 2026-08-27: 754 of 1,000 arrivals completed
+      inside the run window (742 admitted at 100 per 5 s), 0 server
+      errors, quota consumed exactly 300/300, stock consumed exactly
+      200/200 — no seat and no shirt oversold, the load-test's actual
+      job. `http_req_failed` measured 5.9%, above the 1% threshold
+      `tests/Load/RushResultTest.php` (`--group=load`) still enforces —
+      a genuine concurrency ceiling of this dev container under ~40
+      simultaneously open connections (isolated by direct measurement:
+      40 concurrent sustains 500+ req/s at p95 ≈ 45 ms, a sudden 200
+      collapses to ~22 req/s), not a data-integrity gap. Left for a later
+      infrastructure task, not re-litigated here.
 - [x] ADR-0047 point 5, Task 13: the holding page counts down, the tick
       admits, and the console can see the queue breathe.
       `WaitingRoomController` (`show`/`status`) behind

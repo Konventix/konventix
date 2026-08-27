@@ -16,6 +16,7 @@ use Database\Seeders\Demo\DemoMessagingSeeder;
 use Database\Seeders\Demo\DemoPlatformSeeder;
 use Database\Seeders\Demo\DemoRegistrationSeeder;
 use Database\Seeders\Demo\DemoResourcesSeeder;
+use Database\Seeders\Demo\DemoRushSeeder;
 use Database\Seeders\Demo\DemoStaffingSeeder;
 use Database\Seeders\Demo\DemoStaticPageSeeder;
 use Database\Seeders\Demo\DemoUserSeeder;
@@ -80,7 +81,8 @@ class SeedDemoDataCommand extends Command
 {
     protected $signature = 'konventix:seed
         {--default : Seed the default demo set without asking questions}
-        {--fresh : Wipe and re-migrate the database first}';
+        {--fresh : Wipe and re-migrate the database first}
+        {--rush : Also seed the rush fixture (ADR-0047 point 6) — a brand, a capacity-capped ticket and 1,200 members for tests/Load/ticket-rush.js. Additive; skips the interactive archetype prompts on its own}';
 
     protected $description = 'Seed demo data across every module — interactive unless --default';
 
@@ -95,6 +97,8 @@ class SeedDemoDataCommand extends Command
     private DemoRegistrationSeeder $registrations;
 
     private DemoCommerceSeeder $commerce;
+
+    private DemoRushSeeder $rush;
 
     private DemoAdmissionSeeder $admission;
 
@@ -131,8 +135,6 @@ class SeedDemoDataCommand extends Command
             return self::FAILURE;
         }
 
-        [$brandCount, $usersPerBrand, $eventsPerBrand, $registrationsPerEvent] = $this->dimensions();
-
         // Baseline: capabilities, dev brand, operator + admin login.
         Artisan::call('db:seed', ['--force' => true], $this->output);
 
@@ -141,19 +143,33 @@ class SeedDemoDataCommand extends Command
         $operator = Operator::query()->firstWhere('name', 'Konventix Dev Operator');
         $admin = User::query()->firstWhere('email', 'admin@konventix.test');
 
-        $brands = $this->seedBrands($brandCount, $operator);
+        $brands = collect();
 
-        foreach ($brands->values() as $index => $brand) {
-            $this->seedBrand(
-                $brand,
-                $index,
-                EventArchetype::forBrandSlug($brand->slug, $index),
-                $usersPerBrand,
-                $eventsPerBrand,
-                $registrationsPerEvent,
-                $admin,
-                $operator,
-            );
+        // `--rush` on its own is a fixture step, not an interactive demo
+        // walk — it skips `dimensions()`'s prompts and the archetype brand
+        // loop entirely rather than forcing a user who only wants the rush
+        // brand through "how many brands besides the dev brand?".
+        if ($this->option('default') || ! $this->option('rush')) {
+            [$brandCount, $usersPerBrand, $eventsPerBrand, $registrationsPerEvent] = $this->dimensions();
+
+            $brands = $this->seedBrands($brandCount, $operator);
+
+            foreach ($brands->values() as $index => $brand) {
+                $this->seedBrand(
+                    $brand,
+                    $index,
+                    EventArchetype::forBrandSlug($brand->slug, $index),
+                    $usersPerBrand,
+                    $eventsPerBrand,
+                    $registrationsPerEvent,
+                    $admin,
+                    $operator,
+                );
+            }
+        }
+
+        if ($this->option('rush')) {
+            $brands->push($this->seedRush($operator));
         }
 
         // Console favorites are not brand-owned (ADR-0029), so they are
@@ -194,6 +210,7 @@ class SeedDemoDataCommand extends Command
         $this->events = app(DemoEventSeeder::class);
         $this->registrations = app(DemoRegistrationSeeder::class);
         $this->commerce = app(DemoCommerceSeeder::class);
+        $this->rush = app(DemoRushSeeder::class);
         $this->admission = app(DemoAdmissionSeeder::class);
         $this->resources = app(DemoResourcesSeeder::class);
         $this->staffing = app(DemoStaffingSeeder::class);
@@ -442,6 +459,24 @@ class SeedDemoDataCommand extends Command
             $confirmed->pluck('id'),
             $archetype,
         ));
+    }
+
+    /**
+     * The rush fixture (`--rush`, ADR-0047 point 6): its own brand, found or
+     * created without a brand context pinned yet — `DemoRushSeeder::brand()`
+     * mirrors `seedBrands()`'s own operator-scoped creation — then every
+     * brand-owned row inside it seeded with that brand pinned, the same
+     * `inBrand()` discipline every other slice in this command follows.
+     */
+    private function seedRush(?Operator $operator): Brand
+    {
+        $brand = $this->rush->brand($operator);
+
+        info("Seeding {$brand->name} (rush fixture)…");
+
+        $this->inBrand($brand, fn () => $this->rush->handle($brand));
+
+        return $brand;
     }
 
     /**

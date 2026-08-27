@@ -196,6 +196,13 @@ services:
 
     redis:
         image: 'redis:alpine'
+        # ADR-0047 point 6: Redis now backs sessions and cache alongside the
+        # queue and the waiting room, so its data must survive a container
+        # restart mid-rush — `noeviction` refuses new writes rather than
+        # silently dropping a session or a queued ticket once memory fills,
+        # and `appendonly yes` persists every write instead of only the
+        # point-in-time RDB snapshot.
+        command: ['redis-server', '--maxmemory-policy', 'noeviction', '--appendonly', 'yes']
         ports:
             - '${FORWARD_REDIS_PORT:-6379}:6379'
         volumes:
@@ -253,6 +260,24 @@ services:
         ports:
             - '${FORWARD_MAILPIT_PORT:-1025}:1025'
             - '${FORWARD_MAILPIT_DASHBOARD_PORT:-8025}:8025'
+        networks:
+            - sail
+
+    # ADR-0047 point 6: the k6 rush against the seeded "Rush" brand
+    # (`tests/Load/ticket-rush.js`), behind a profile like `garage` — an
+    # always-on load-test runner nobody exercises during ordinary dev work
+    # is exactly the rot `garage`'s own doc warns about. `laravel.test` is
+    # reached by its compose service name on the `sail` network, at the
+    # port FrankenPHP listens on inside the container (80, regardless of
+    # `APP_PORT` — that env var only remaps the *host*-side publish); the
+    # script sends `Host: rush.localhost` on every request so brand
+    # resolution picks the seeded brand rather than 404ing on the bare
+    # service name.
+    k6:
+        image: grafana/k6
+        profiles: ['load']
+        volumes:
+            - './tests/Load:/scripts'
         networks:
             - sail
 

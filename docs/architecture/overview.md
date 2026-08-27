@@ -107,6 +107,13 @@ through the application, so authorization never leaves the Gate. Local
 storage stays a supported production deployment; object storage is an
 option, not a requirement.
 
+Redis now backs sessions and cache alongside the queue and the shop's
+waiting room (ADR-0047 point 6) — a database-backed session under a
+ticket rush is the first thing to fall over, and the flip is load-tested,
+not assumed: `tests/Load/ticket-rush.js` runs a thousand arrivals through
+login, the queue, registration and checkout against the seeded "Rush"
+brand, with the summary committed under `tests/Load/results/`.
+
 ## Non-goals (write it down so nobody builds it)
 
 - No classical multi-tenancy / tenant self-signup at release.

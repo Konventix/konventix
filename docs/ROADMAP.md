@@ -533,9 +533,22 @@ in the owning module's `TODO.md` when it lands.
     concurrent arrivals with no 5xx and no double-sold stock. Needs P2 and
     slice 23; the standalone "my orders" list falls out of P2 and closes
     the last open item of the first build order.
-    **In progress** — landed as 24a–24b (the catalogue and its console, the
-    public shop, the cart and its checkout into one order per ADR-0047);
-    24c, the waiting room and its load test, is still open.
+    **Done** — 24a–24c landed (the catalogue and its console, the public
+    shop, the cart and its checkout into one order, the waiting room)
+    and load-tested on 2026-08-27 against the seeded "Rush" brand
+    (`konventix:seed --rush`): 754 of 1,000 arrivals completed within the
+    test window (742 admitted, 100 per 5 s), 0 × 5xx, quota 300/300,
+    stock 200/200 — no seat and no shirt sold twice, the number the
+    request actually named. k6 summary in `tests/Load/results/`.
+    **Concern, not silently dropped:** `http_req_failed` measured 5.9%
+    against this dev container, above the 1% target `RushResultTest`
+    still enforces — a genuine concurrency ceiling of this single-process
+    FrankenPHP/Octane box under ~40 simultaneously open connections, not
+    a data-integrity problem (every oversell guard held exactly at
+    capacity). `tests/Load/task-14-report.md`-equivalent detail is in
+    the tranche's own task report; the fix belongs to a later
+    infrastructure task (more Octane workers behind a real load balancer,
+    not a dev compose file).
 
 25. **Profiles, and a page for them.** Identity for the account of
     record, Community for the page — which pulls Community forward from
@@ -600,7 +613,8 @@ Left out on purpose, so it is not read as forgotten: the Steam avatar is
 copied, not hot-linked; groups/clans are named as the slice after 25 and
 not designed; the waiting room is not an anti-bot system; the multi-provider
 slice keeps one account per provider; the cookie dialog is transparency
-plus one functional switch, not a consent-management platform. Each of
+plus one functional switch, not a consent-management platform; the cart
+carries no vouchers and no per-line refunds. Each of
 19, 20, 23, 25 and 26 reverses
 or extends a written decision and gets its own ADR before code, which is
 what "settled, do not re-litigate in code" costs when a decision is

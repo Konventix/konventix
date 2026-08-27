@@ -4,6 +4,16 @@
          bootstrap="vendor/autoload.php"
          colors="true"
 >
+    <groups>
+        <exclude>
+            <!-- tests/Load/RushResultTest.php reads the results of a real k6
+                 run against the live dev stack (ADR-0047 point 6): it has no
+                 place in an ordinary suite run, which never boots a server
+                 for it to have hit. Run it explicitly, naming the load
+                 group and the file. -->
+            <group>load</group>
+        </exclude>
+    </groups>
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>

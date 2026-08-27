@@ -26,6 +26,7 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Models\WaitingRoomSettings;
+use Konventix\Commerce\Settlement\LocalHostedCheckoutAdapter;
 use Konventix\Commerce\Settlement\ManualSettlementAdapter;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
 use Konventix\Commerce\Settlement\Mollie\MollieSettlementAdapter;
@@ -195,7 +196,21 @@ class CommerceServiceProvider extends ModuleServiceProvider
             $registry = new SettlementAdapterRegistry;
 
             $registry->register(SettlementAccount::PROVIDER_MANUAL, ManualSettlementAdapter::class);
-            $registry->register(SettlementAccount::PROVIDER_NULL, NullSettlementAdapter::class);
+
+            // `null` is the honest "no PSP connected" adapter everywhere in
+            // production — it cannot host a checkout, so a cart never
+            // reaches PlaceOrderFromCart's `ProvidesHostedCheckout` branch
+            // for it (CartCheckoutRefusedException::noOnlinePayment()).
+            // `local`/`testing` swap in LocalHostedCheckoutAdapter instead
+            // (ADR-0047 point 6): a k6 rush against a seeded demo brand has
+            // nothing to onboard a real PSP with, but still needs to
+            // exercise the shop's actual checkout path end to end. See that
+            // class's docblock for why this is scoped this narrowly.
+            $registry->register(
+                SettlementAccount::PROVIDER_NULL,
+                $this->app->environment('local', 'testing') ? LocalHostedCheckoutAdapter::class : NullSettlementAdapter::class,
+            );
+
             $registry->register(SettlementAccount::PROVIDER_STRIPE, StripeSettlementAdapter::class);
             $registry->register(SettlementAccount::PROVIDER_MOLLIE, MollieSettlementAdapter::class);
             $registry->register(SettlementAccount::PROVIDER_UNZER, UnzerSettlementAdapter::class);
