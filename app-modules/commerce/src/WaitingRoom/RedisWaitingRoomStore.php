@@ -63,6 +63,15 @@ final class RedisWaitingRoomStore implements WaitingRoomStore
         return is_int($rank) ? $rank + 1 : null;
     }
 
+    /**
+     * The `[member => score, ...]` shape this reads relies on phpredis'
+     * `zPopMin` specifically (`REDIS_CLIENT=phpredis`, pinned in
+     * `.env.example`) — Predis' return shape for the same call differs,
+     * and a silent switch between the two would reorder or drop arrivals
+     * without a single line here changing. `tests/RedisWaitingRoomStoreTest.php`
+     * runs this against a real Redis connection and is the guard: it fails
+     * loudly if a client swap or a phpredis upgrade ever changes the shape.
+     */
     public function admitNext(string $brandId, int $count): array
     {
         if ($count <= 0) {
