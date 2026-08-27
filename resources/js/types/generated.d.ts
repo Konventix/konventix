@@ -61,6 +61,40 @@ declare namespace Konventix {
                 readonly payUrl: string | null;
                 readonly documentUrl: string | null;
             };
+            export type ProductData = {
+                readonly id: string;
+                readonly brandId: string;
+                readonly brandName: string;
+                readonly eventId: string | null;
+                readonly name: string;
+                readonly slug: string;
+                readonly description: string | null;
+                readonly imageMediaId: string | null;
+                readonly taxClass: Konventix.Commerce.Enums.TaxClass;
+                readonly unitAmountNet: string;
+                readonly priceDisplay: Konventix.Commerce.Enums.PriceDisplay;
+                readonly published: boolean;
+                readonly variants: Konventix.Commerce.Data.ProductVariantData[];
+            };
+            export type ProductRowData = {
+                readonly id: string;
+                readonly name: string;
+                readonly slug: string;
+                readonly brandName: string;
+                readonly unitAmountNet: string;
+                readonly priceDisplay: Konventix.Commerce.Enums.PriceDisplay;
+                readonly published: boolean;
+                readonly updatedAt: string | null;
+            };
+            export type ProductVariantData = {
+                readonly id: string | null;
+                readonly label: string | null;
+                readonly sku: string | null;
+                readonly unitAmountNet: string | null;
+                readonly stockCapacity: number;
+                readonly position: number;
+                readonly remaining: number | null;
+            };
             export type RegistrationSettlementData = {
                 readonly orderId: string;
                 readonly status: string;
@@ -71,6 +105,19 @@ declare namespace Konventix {
                 readonly issuedOn: string | null;
                 readonly dueOn: string | null;
                 readonly documentUrl: string | null;
+            };
+            export type SaveProductData = {
+                readonly name: string;
+                readonly slug: string;
+                readonly description: string | null;
+                readonly eventId: string | null;
+                readonly imageMediaId: string | null;
+                readonly taxClass: Konventix.Commerce.Enums.TaxClass;
+                readonly unitAmountNet: string;
+                readonly priceDisplay: Konventix.Commerce.Enums.PriceDisplay;
+                readonly published: boolean;
+                readonly stockCapacity: number | null;
+                readonly variants: Konventix.Commerce.Data.ProductVariantData[];
             };
             export type UpdateSettlementAccountLabelData = {
                 readonly checkoutLabel: string | null;

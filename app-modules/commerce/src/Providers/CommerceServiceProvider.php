@@ -328,6 +328,18 @@ class CommerceServiceProvider extends ModuleServiceProvider
         $registry->add(
             new NavigationItem(
                 module: 'commerce',
+                label: 'Products',
+                url: '/admin/products',
+                icon: 'shopping-bag',
+                order: 24,
+                permission: Permission::ViewProducts->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+        );
+
+        $registry->add(
+            new NavigationItem(
+                module: 'commerce',
                 label: 'Orders',
                 url: '/admin/orders',
                 icon: 'receipt',

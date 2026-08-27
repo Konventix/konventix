@@ -82,6 +82,20 @@ depends on brand resolution and gating working.
 
 ## Done
 
+- [x] `MediaLibrary` grew two read methods for modules other than Platform:
+      `belongsToBrand()` (the ownership check a picker's save needs) and
+      `pickableImages()` (a brand's images, ready for `MediaPicker.vue`).
+      Commerce's product editor (Task 7) needed exactly what
+      `StaticPageAdminController::edit()` builds inline for its own media
+      picker, but a straight copy would have queried `MediaItem` directly
+      from outside Platform — a boundary `tests/Unit/ArchitectureTest.php`
+      enforces, since `MediaItem` is not one of the Platform primitives
+      (`Brand`, `Role`, `Permission`, `Concerns\*`, `Scopes\*`) that test
+      lets a module import. `MediaLibrary` already existed as "the sanctioned
+      doorway" for everything else about a media reference; these two
+      methods extend that doorway to ownership and listing rather than
+      leaving every future module to rediscover the same wall.
+
 - [x] Two things the first click-through found. "Add block" in the
       composer was a dead click: a block type's `defaultData` arrives as an
       Inertia prop, i.e. a Vue reactive proxy, and `structuredClone` refuses

@@ -63,6 +63,50 @@
 
 ## Done
 
+- [x] Slice 24 (ADR-0047), the console — a brand's shop catalogue gets its
+      admin at `/admin/products` (`ProductAdminController`, index/store/edit/
+      update/destroy), gated on the two capabilities Task 6 added
+      (`commerce.view-products`/`commerce.manage-products`). One Data class,
+      `SaveProductData`, serves both create and update through
+      `SaveProduct::handle()`: it creates or updates the product and syncs
+      its variants by id — a submitted row with a known id updates that row,
+      one with none (or one this product does not own) inserts, and an
+      existing row missing from the submission is deleted unless a settled
+      order still references it. That guard,
+      `GuardsProductVariantReferences::isReferenced()`, answers false today
+      by design — `cart_lines` and the settlement columns on `order_lines`
+      are Task 9's, and its docblock names Task 9 as the one that fills it
+      in and writes the "refused while referenced" test. Capacity may never
+      drop below stock already consumed (422 on `variants.{i}.stockCapacity`).
+      An empty variant list still gets exactly one row: the implicit variant
+      `Product`'s own docblock promised, capacity from the form's top-level
+      `stockCapacity` field. `DeleteProduct::handle()` carries the same
+      referenced-variant guard and releases the product's image usage;
+      variant rows themselves cascade off the FK.
+      Image references go through `MediaLibrary::recordUsage()`/
+      `releaseUsage()` like every other picker (ADR-0035). Two new
+      `MediaLibrary` methods, `belongsToBrand()` and `pickableImages()`, are
+      what let this module check ownership and list a brand's images for
+      `MediaPicker.vue` without importing Platform's `MediaItem` model
+      directly — a straight copy of `StaticPageAdminController::edit()`'s
+      inline query would have crossed the boundary
+      `tests/Unit/ArchitectureTest.php` enforces, since `MediaItem` is not on
+      that test's short list of Platform primitives a module may import.
+      The editor (`Edit.vue`) carries name/slug/description, an event
+      `<select>` fed by `ConsoleEventSources`, `MediaPicker`, tax class and
+      price display, a publish checkbox, and a variants repeater built on
+      `useDragReorder` with keyboard parity on the reorder handle — a row's
+      `position` is finalized from the array's own order at submit time
+      rather than trusted from whatever the client last carried. Creation
+      resolves its brand from the console's own selection rather than a
+      field on the form — `SaveProductData` carries no `brandId` — so "New
+      product" on the index is disabled until an operator has picked one.
+      Nav entry "Products" at order 24 (icon `shopping-bag`, added to
+      `navIcons.ts`). `tests/Feature/DryRunTest.php` gained a `product`
+      parameter resolver for when Task 14's demo seed produces one; until
+      then `admin.products.edit` is a named skip in that sweep, same as
+      every other route a seed doesn't yet fill.
+
 - [x] Slice 23 (ADR-0046) — a brand may hold several live settlement
       accounts at once, one per provider, and the payer chooses which
       settles their order. `SettlementAccount::liveAccountsFor()`,

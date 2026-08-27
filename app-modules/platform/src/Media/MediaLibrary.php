@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Media;
 
+use Konventix\Platform\Data\MediaItemData;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\MediaUsage;
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Platform\Storage\DiskResolver;
 
 /**
@@ -70,6 +72,40 @@ class MediaLibrary
             'url' => $this->deliveryUrl($item, $path, $variant),
             'altText' => $item->alt_text,
         ];
+    }
+
+    /**
+     * Whether a media item belongs to the given brand — the ownership check
+     * a module other than Platform needs before it lets a form reference a
+     * media ULID (ADR-0035). A direct `MediaItem` query from outside this
+     * module would cross the boundary ArchitectureTest enforces (ADR-0004);
+     * this is the sanctioned doorway instead.
+     */
+    public function belongsToBrand(string $mediaId, string $brandId): bool
+    {
+        return MediaItem::withoutBrandScope()->whereKey($mediaId)->where('brand_id', $brandId)->exists();
+    }
+
+    /**
+     * A brand's images, most recent first, ready for a picker like
+     * `MediaPicker.vue` (ADR-0035). The same doorway `belongsToBrand()` is:
+     * a module other than Platform may not query `MediaItem` itself, so this
+     * is how its admin controller gets the candidate list
+     * `StaticPageAdminController::edit()` builds inline for its own module.
+     *
+     * @return list<MediaItemData>
+     */
+    public function pickableImages(string $brandId, int $limit = 200): array
+    {
+        return array_values(MediaItem::withoutBrandScope()
+            ->withCount(['usages' => fn ($query) => $query->withoutGlobalScope(BrandScope::class)])
+            ->where('brand_id', $brandId)
+            ->where('mime_type', 'like', 'image/%')
+            ->latest()
+            ->limit($limit)
+            ->get()
+            ->map(fn (MediaItem $item): MediaItemData => MediaItemData::fromModel($item, $this))
+            ->all());
     }
 
     /**

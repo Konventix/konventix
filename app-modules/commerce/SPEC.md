@@ -27,8 +27,11 @@ licensing.
   event by plain ULID (ADR-0014, never a foreign key — Commerce never reads
   Event's tables for it); `unit_amount_net`, `tax_class` and `price_display`
   are its defaults. A `ProductVariant` is the purchasable line — a size, a
-  colour, or, for a product without variation, the single implicit row a
-  later slice creates so every product has exactly one stock counter.
+  colour, or, for a product without variation, the single implicit row
+  `SaveProduct` creates so every product has exactly one stock counter. The
+  operator console for both lives at `/admin/products`
+  (`ProductAdminController`), gated on `commerce.view-products`/
+  `commerce.manage-products`.
   **Stock is a quota in the Registration sense**: `stock_capacity` and
   `stock_consumed` are counters only, copied from `Quota`'s contract rather
   than imported (ADR-0004) — `consumeStock()`/`releaseStock()` never lock or

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use Konventix\Admission\Models\Admission;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\Policy;
@@ -91,6 +92,12 @@ function dryRunSkippedRoutes(): array
         // A URL built from route parameters alone cannot carry one.
         // `RegistrationSettlementSlotTest` follows a real minted link.
         'commerce.my.invoice.document' => 'needs a signed download link',
+
+        // The demo seed gets products in Task 14 (roadmap slice 24); until
+        // then `dryRunParameters()`'s `product` resolver always answers null
+        // and the sweep has nothing to point this at. Remove this skip once
+        // the seed produces one — the resolver is already in place.
+        'admin.products.edit' => 'no product seeded until Task 14',
     ];
 }
 
@@ -235,6 +242,10 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
                 ->when($member !== null, fn (Builder $query) => $query->where('subject_id', $member->getKey()))
                 ->first(),
             $parameter === 'order' => Order::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
+            // Null until Task 8's demo seed produces products — DryRun skips
+            // an unresolvable route by design, exactly like every other
+            // parameter here that a fixture has not filled in yet.
+            $parameter === 'product' => Product::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'invoice' => Invoice::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'account' => SettlementAccount::withoutBrandScope()
                 ->where('brand_id', $brand->getKey())

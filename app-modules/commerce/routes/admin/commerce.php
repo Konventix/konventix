@@ -13,7 +13,14 @@ use Illuminate\Support\Facades\Route;
 use Konventix\Commerce\Http\Controllers\Admin\BookkeepingExportController;
 use Konventix\Commerce\Http\Controllers\Admin\InvoiceDocumentController;
 use Konventix\Commerce\Http\Controllers\Admin\OrderAdminController;
+use Konventix\Commerce\Http\Controllers\Admin\ProductAdminController;
 use Konventix\Commerce\Http\Controllers\Admin\SettlementAccountAdminController;
+
+Route::get('/products', [ProductAdminController::class, 'index'])->name('admin.products.index');
+Route::post('/products', [ProductAdminController::class, 'store'])->name('admin.products.store');
+Route::get('/products/{product}/edit', [ProductAdminController::class, 'edit'])->name('admin.products.edit');
+Route::put('/products/{product}', [ProductAdminController::class, 'update'])->name('admin.products.update');
+Route::delete('/products/{product}', [ProductAdminController::class, 'destroy'])->name('admin.products.destroy');
 
 Route::get('/orders', [OrderAdminController::class, 'index'])->name('admin.orders.index');
 Route::get('/orders/{order}', [OrderAdminController::class, 'show'])->name('admin.orders.show');
