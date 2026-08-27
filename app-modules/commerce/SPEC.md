@@ -45,9 +45,16 @@ licensing.
   open a transaction themselves, callers do that under their own Action's
   `DB::transaction`. `sku` is unique per brand only when set, so many
   implicit variants with no sku never collide.
-- **`Cart` and cart lines** — a person-owned reservation that locks stock as
-  a quota for twenty minutes (ADR-0047, `Cart::LIFETIME_MINUTES`): the first
-  Commerce root that belongs to a person before any order exists.
+- **`Cart` and cart lines** — a person-owned reservation with **two
+  lifetimes** (ADR-0047): the first Commerce root that belongs to a person
+  before any order exists. While `open`, it locks stock as a quota for
+  twenty minutes (`Cart::LIFETIME_MINUTES`); the moment checkout moves it to
+  `checked_out`, that same `expires_at` column is reset to a second, longer
+  window — sixty minutes (`Cart::CHECKOUT_GRACE_MINUTES`, Task 11 fix round
+  1) — the grace a payer gets to finish a hosted checkout page before the
+  reservation and the pending order behind it are given up on. A cart is
+  never both `open` and `checked_out` at once, so the one column serves
+  both windows rather than needing a second.
   `OpenCart::for(brandId, payerUserId)` finds a payer's open cart or opens
   one, `brand_id` set explicitly rather than from ambient context (a queue
   or admin caller has none) — the partial unique index
@@ -65,10 +72,27 @@ licensing.
   `LogicException`, since its quantity is fixed by the registration itself.
   **The sweep** (`commerce:expire-carts`, scheduled every fifteen minutes
   with `->withoutOverlapping()`, mirroring
-  `Registration\Actions\ExpireWaitlistOffers`) expires every open cart past
-  `expires_at` in its own transaction: a product line's stock is released
-  silently, a registration line emits `CartLineExpired` so Registration can
-  cancel what it was holding, and the cart itself moves to `expired`.
+  `Registration\Actions\ExpireWaitlistOffers`) is two passes over the same
+  `expires_at` deadline, each in its own per-cart transaction: the
+  **shopping pass** expires every `open` cart past `expires_at` — a
+  product line's stock is released silently, a registration line emits
+  `CartLineExpired` so Registration can cancel what it was holding, and the
+  cart itself moves to `expired`. The **checkout-grace pass** (Task 11 fix
+  round 1) does the same release, plus one more step first, for every
+  `checked_out` cart past `expires_at` whose order is still `pending` — a
+  payer who closed the PSP tab, or whose hosted session lapsed, without
+  either the webhook or a return visit ever landing: the order is marked
+  `Cancelled` before its lines are released, so the stock and registration
+  holds a checkout claimed do not sit there forever waiting for a payment
+  that is never coming. A `checked_out` cart whose order is already `paid`
+  is never selected by this pass at all — filtered at the query itself, not
+  merely skipped once fetched — so it is left alone for good, however long
+  `expires_at` has been in the past. A PSP success that lands *after* this
+  pass has cancelled the order is refused by
+  `RecordPaymentSuccess::settleOrder()`'s existing not-pending guard
+  (logged as a warning with the order id and provider, never silently
+  dropped) — a refund path for that late-arriving money is a known gap,
+  `TODO.md`.
   `GuardsProductVariantReferences::isReferenced()` (Task 7) now also
   refuses to delete a product or drop a variant still held by an *open*
   cart's line — an expired cart's line does not count, since its stock was
@@ -89,10 +113,17 @@ licensing.
   the cart into one `Order` (`settles_type = 'cart'`, `settles_id`/
   `request_key` the cart's own id), one `OrderLine` per cart line carrying
   `settles_kind`/`settles_ref` from the line's own `kind`/`ref_id`, moves
-  the cart to `checked_out`, and starts the chosen account's hosted
-  checkout exactly like `CheckoutController::start()` does for a direct
-  registration order — idempotently: a cart already `checked_out` with a
-  still-pending order resumes that order instead of placing a second one.
+  the cart to `checked_out` (resetting `expires_at` to the checkout-grace
+  window above), and starts the chosen account's hosted checkout exactly
+  like `CheckoutController::start()` does for a direct registration order —
+  idempotently: a cart already `checked_out` with a still-pending order
+  resumes that order instead of placing a second one, extending its own
+  grace window again in the process. Every guard the Action enforces —
+  cart open and non-empty, account offered and hosted-checkout-capable —
+  throws `CartCheckoutRefusedException`, which the controller alone
+  catches and turns into a 409; a genuine PSP adapter failure past those
+  guards is left uncaught, reaching the payer the way
+  `CheckoutController::start()` already lets one.
   The topbar badges the "Cart" nav entry from the shared `cart.count` prop
   (`HandleInertiaRequests`, resolved through Commerce's own `CartSummary`
   service so the host layer never reads a `Cart` row itself).
@@ -198,7 +229,7 @@ implemented and their payloads are the contract.
 | `CartLineExpired` (ADR-0047) | The sweep expires a registration-kind cart line — a product line releases its stock silently instead. **Registration consumes this** to cancel the still-pending registration the line was holding | `cart_id`, `brand_id`, `kind`, `ref_id`, `request_key` (nullable), `expired_at` |
 | `CartLineRemoved` (ADR-0047) | A person removes a registration-kind cart line — a product line releases its stock silently instead. **Registration consumes this**, the same way it consumes `CartLineExpired` | `cart_id`, `brand_id`, `kind`, `ref_id`, `request_key` (nullable), `removed_at` |
 | `CartCheckedOut` (ADR-0047, Task 11) | `PlaceOrderFromCart` moves a cart from `open` to `checked_out` and names the `Order` it produced. Fired alongside `OrderPlaced`, inside the same transaction — nothing consumes it yet; it exists for "this cart is spoken for" without reading `Cart` | `cart_id`, `brand_id`, `payer_user_id`, `order_id`, `checked_out_at` |
-| `OrderLineSettled` (ADR-0047, Task 11) | One order line was paid — emitted per line from `RecordPaymentSuccess::settleOrder()`, alongside `OrderPaid`, **only for an order whose `settles_type` is `cart`**. A direct order (`settles_type: 'registration'`) has exactly one thing to confirm and `OrderPaid` already says which; only a cart checkout's order settles more than one thing at once, so only it needs a per-line event. **Registration consumes this** (`RecordPaymentOnOrderLineSettled`) to confirm exactly the `kind: 'registration'` lines that were paid — a `kind: 'product'` line is Commerce's own business | `order_id`, `brand_id`, `kind`, `ref_id`, `request_key` (the order's own `request_key`, ADR-0036), `amount_gross`, `currency`, `paid_at`, `settlement_account_id` (nullable) |
+| `OrderLineSettled` (ADR-0047, Task 11) | One order line was paid — emitted per line from `RecordPaymentSuccess::settleOrder()`, alongside `OrderPaid`, **only for an order whose `settles_type` is `cart`**. A direct order (`settles_type: 'registration'`) has exactly one thing to confirm and `OrderPaid` already says which; only a cart checkout's order settles more than one thing at once, so only it needs a per-line event. **Registration consumes this** (`RecordPaymentOnOrderLineSettled`) to confirm exactly the `kind: 'registration'` lines that were paid — a `kind: 'product'` line is Commerce's own business | `order_id`, `brand_id`, `kind`, `ref_id`, `order_request_key` (the *order's own* `request_key`, ADR-0036 — the checked-out cart's id, not the per-line settlement request key `CartLineExpired`/`CartLineRemoved` carry), `amount_gross`, `currency`, `paid_at`, `settlement_account_id` (nullable) |
 
 ## Consumes
 

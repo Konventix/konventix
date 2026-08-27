@@ -10,6 +10,7 @@ import {
     destroy as destroyLine,
     update as updateLine,
 } from '@/routes/commerce/cart/lines';
+import { index as shopIndex } from '@/routes/commerce/shop';
 
 /**
  * The person-owned cart (ADR-0047, Task 11): line list with quantity
@@ -90,7 +91,7 @@ const expiresInMinutes = computed<number | null>(() => {
 
         <p v-if="cart.lines.length === 0" class="text-sm text-text-muted">
             Your cart is empty.
-            <Link href="/shop" class="underline underline-offset-4">
+            <Link :href="shopIndex().url" class="underline underline-offset-4">
                 Browse the shop
             </Link>
         </p>

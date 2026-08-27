@@ -52,6 +52,19 @@ class Cart extends Model
      */
     public const int LIFETIME_MINUTES = 20;
 
+    /**
+     * The second lifetime (ADR-0047 point 4, Task 11 fix round 1): once
+     * `PlaceOrderFromCart` moves a cart to `checked_out`, `expires_at` is
+     * reset to this many minutes out instead — the window a payer gets to
+     * finish a hosted checkout before `ExpireCarts`' second pass gives up
+     * on it, cancels the still-pending order, and releases what it held.
+     * Longer than Stripe Checkout's 30-minute minimum session lifetime;
+     * Mollie's and Unzer's hosted pages are comparable. A cart whose order
+     * is *paid* is never touched by that pass, however long it has been
+     * `checked_out`.
+     */
+    public const int CHECKOUT_GRACE_MINUTES = 60;
+
     protected $fillable = [
         'payer_user_id',
         'status',

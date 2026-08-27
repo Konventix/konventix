@@ -24,14 +24,21 @@ use Laravel\Pennant\Feature;
  * switched `commerce:shop` on — the same three conditions the route
  * middleware itself gates the cart behind, so the badge never counts what
  * the topbar does not also link to.
+ *
+ * `BrandContext` is resolved at call time (`app(BrandContext::class)
+ * ->current()`), never constructor-injected (`.ai/rules/providers.md`): it
+ * is a `scoped()` binding, and this class has no singleton binding of its
+ * own today — but constructor-injecting a scoped dependency is exactly the
+ * trap that bites the moment one is added later, pinning the first
+ * request's brand into an Octane worker for good. Resolving inside the
+ * method that needs it is the pattern `BlockRegistry::resolveActive()`
+ * established first.
  */
 final class CartSummary
 {
-    public function __construct(private readonly BrandContext $brandContext) {}
-
     public function countFor(Request $request): int
     {
-        $brand = $this->brandContext->current();
+        $brand = app(BrandContext::class)->current();
 
         if ($brand === null) {
             return 0;

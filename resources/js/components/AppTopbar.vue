@@ -52,9 +52,13 @@ const cartCount = computed(() => page.props.cart?.count ?? 0);
  * layered on the link's own text.
  */
 function navItemAriaLabel(item: BrandNavItem): string | undefined {
-    return item.label === 'Cart' && cartCount.value > 0
-        ? `Cart, ${cartCount.value} items`
-        : undefined;
+    if (item.label !== 'Cart' || cartCount.value === 0) {
+        return undefined;
+    }
+
+    return cartCount.value === 1
+        ? 'Cart, 1 item'
+        : `Cart, ${cartCount.value} items`;
 }
 
 const { isCurrentUrl } = useCurrentUrl();

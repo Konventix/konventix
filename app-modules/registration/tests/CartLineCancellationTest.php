@@ -3,8 +3,14 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use Konventix\Commerce\Actions\ExpireCarts;
+use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CartLineExpired;
 use Konventix\Commerce\Events\CartLineRemoved;
+use Konventix\Commerce\Models\Cart;
+use Konventix\Commerce\Models\CartLine;
+use Konventix\Commerce\Models\Order;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -143,6 +149,43 @@ it('is a no-op on a second cart-line-gone event for the same registration', func
 
     cartCancelExpired($registration);
     expect($registration->fresh()->status)->toBe(RegistrationStatus::Cancelled)
+        ->and($quota->fresh()->consumed)->toBe(0);
+});
+
+it('cancels a pending registration when Commerce\'s checkout-grace sweep cancels its cart order', function (): void {
+    // Task 11 fix round 1: an abandoned hosted checkout must not hold a
+    // registration's spot forever. `ExpireCarts`' second pass emits the
+    // same `CartLineExpired` the shopping pass already does, so this only
+    // needs to prove the real sweep — not a hand-built event — still
+    // reaches this module's listener end to end.
+    cartCancelOperatorBrand($this->withBrand());
+    $quota = Quota::factory()->withCapacity(5)->create();
+    $type = cartCancelInstantType();
+    $type->quotas()->attach($quota);
+
+    $registration = cartCancelSubmit($type);
+    expect($registration->status)->toBe(RegistrationStatus::Submitted);
+
+    $cart = Cart::factory()->create();
+    CartLine::factory()->forCart($cart)->registration($registration->id)->create([
+        'ref_id' => $registration->id,
+    ]);
+    $order = Order::factory()->create([
+        'settles_type' => 'cart',
+        'settles_id' => $cart->id,
+        'request_key' => $cart->id,
+        'status' => OrderStatus::Pending,
+    ]);
+    $cart->forceFill([
+        'status' => CartStatus::CheckedOut,
+        'checked_out_order_id' => $order->id,
+        'expires_at' => now()->subMinute(),
+    ])->save();
+
+    app(ExpireCarts::class)->handle();
+
+    expect($registration->fresh()->status)->toBe(RegistrationStatus::Cancelled)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Cancelled)
         ->and($quota->fresh()->consumed)->toBe(0);
 });
 

@@ -10,6 +10,13 @@
 
 ## Backlog (Phase 2 — release scope, invoice-settled registrations are a definition-of-done item)
 
+- [ ] A PSP success arriving for an order already cancelled by
+      `ExpireCarts`' checkout-grace sweep (Task 11 fix round 1) is refused
+      by `RecordPaymentSuccess::settleOrder()` — logged as a warning, not
+      silently dropped, but the money still moved on the provider's side
+      with no domain record of it. A refund path for that late payment is
+      owed: today an operator would have to notice the log and refund by
+      hand through the provider's own dashboard.
 - [ ] Bookkeeping export follow-ups (ADR-0040 accepts all of these):
       deviating fiscal years are unsupported (WJ-Beginn is hardcoded to
       January 1); no per-customer debtor master export (collective debtor

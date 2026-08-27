@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Http\Controllers;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,9 +23,11 @@ use Konventix\Commerce\Data\CartLineQuantityData;
 use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Exceptions\CartCheckoutRefusedException;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
+use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
@@ -33,7 +36,6 @@ use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Operators\OperatorSettings;
 use LogicException;
-use RuntimeException;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
@@ -113,7 +115,16 @@ final class CartController
         $brand = $brandContext->current();
         abort_if($brand === null, 404);
 
-        $variant = ProductVariant::query()->whereKey($data->variantId)->firstOrFail();
+        // Published only — an operator's draft product must not be
+        // addable to a cart just because its variant id leaked somehow;
+        // the shop itself never links to one.
+        $variant = ProductVariant::query()
+            ->whereKey($data->variantId)
+            ->whereHas('product', function (Builder $query): Builder {
+                /** @var Builder<Product> $query */
+                return $query->published();
+            })
+            ->firstOrFail();
         $cart = OpenCart::for($brand->id, (string) $request->user()->getAuthIdentifier());
 
         try {
@@ -153,11 +164,11 @@ final class CartController
 
     public function checkout(Request $request): SymfonyResponse
     {
-        $cart = $this->cartForCheckout($request);
-
         $validated = $request->validate([
             'account' => ['required', 'ulid'],
         ]);
+
+        $cart = $this->cartForCheckout($request);
 
         $account = $this->offeredAccounts($cart->brand_id)->firstWhere('id', $validated['account']);
 
@@ -170,9 +181,13 @@ final class CartController
             ]);
         }
 
+        // Only the Action's own guards (cart state, account offered) are
+        // caught here — a real adapter failure past that point must reach
+        // the payer the way `CheckoutController::start()` lets it, not
+        // disguised as a 409 domain refusal.
         try {
             $redirect = app(PlaceOrderFromCart::class)->handle($cart, $account, route('commerce.cart.show'));
-        } catch (RuntimeException $e) {
+        } catch (CartCheckoutRefusedException $e) {
             abort(409, $e->getMessage());
         }
 

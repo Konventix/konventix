@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Events\OrderLineSettled;
@@ -68,6 +69,14 @@ final class RecordPaymentSuccess
      * payment but must not re-emit `OrderPaid` — Registration confirmed on
      * the first one, and the duplicate money is an operator refund case,
      * not a second confirmation.
+     *
+     * The same early return also now catches a PSP success arriving for an
+     * order `ExpireCarts`' checkout-grace sweep already cancelled (Task 11
+     * fix round 1) — that money moved on the provider's side with nothing
+     * here to record it against, which is not a case to return from
+     * silently. Logged as a warning rather than thrown: the webhook caller
+     * still needs a 2xx so the provider stops retrying, and a refund path
+     * for this late payment is a known gap (`TODO.md`).
      */
     private function settleOrder(Payment $payment): void
     {
@@ -77,6 +86,12 @@ final class RecordPaymentSuccess
             ->firstOrFail();
 
         if ($order->status !== OrderStatus::Pending) {
+            Log::warning('Payment succeeded for an order that is not pending; ignoring.', [
+                'order_id' => $order->id,
+                'provider' => $payment->provider,
+                'order_status' => $order->status->value,
+            ]);
+
             return;
         }
 
@@ -127,7 +142,7 @@ final class RecordPaymentSuccess
                 brandId: $order->brand_id,
                 kind: $line->settles_kind,
                 refId: $line->settles_ref,
-                requestKey: $order->request_key,
+                orderRequestKey: $order->request_key,
                 amountGross: $line->line_gross,
                 currency: $payment->currency,
                 paidAt: $order->paid_at->toIso8601String(),

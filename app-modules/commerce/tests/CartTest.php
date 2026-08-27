@@ -11,6 +11,7 @@ use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\RemoveCartLine;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CartExpired;
 use Konventix\Commerce\Events\CartLineExpired;
 use Konventix\Commerce\Events\CartLineRemoved;
@@ -18,6 +19,7 @@ use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
+use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
 
@@ -208,6 +210,100 @@ it('sweeps expired carts: releases product stock, emits CartLineExpired for a re
     Event::assertDispatched(CartExpired::class, fn (CartExpired $event): bool => $event->cartId === $expiring->getKey()
         && $event->brandId === $brand->getKey()
         && $event->payerUserId === $expiring->payer_user_id);
+});
+
+it('sweeps a checked-out cart past its grace whose order is still pending: cancels the order, releases stock, expires the cart and its registration line', function (): void {
+    // Task 11 fix round 1: an abandoned hosted checkout must not hold
+    // stock and a registration's spot forever.
+    Event::fake([CartLineExpired::class, CartExpired::class]);
+    $brand = $this->withBrand();
+    $variant = cartVariant(10);
+
+    $requestKey = (string) Str::ulid();
+    $cart = Cart::factory()->create();
+    app(AddProductToCart::class)->handle($cart, $variant, 4);
+    $registrationLine = CartLine::factory()->forCart($cart)->registration($requestKey)->create();
+
+    $order = Order::factory()->create([
+        'settles_type' => 'cart',
+        'settles_id' => $cart->id,
+        'request_key' => $cart->id,
+        'status' => OrderStatus::Pending,
+    ]);
+    $cart->forceFill([
+        'status' => CartStatus::CheckedOut,
+        'checked_out_order_id' => $order->id,
+        'expires_at' => now()->subMinute(),
+    ])->save();
+
+    $expiredCount = app(ExpireCarts::class)->handle();
+
+    expect($expiredCount)->toBe(1)
+        ->and($variant->refresh()->stock_consumed)->toBe(0)
+        ->and($cart->refresh()->status)->toBe(CartStatus::Expired)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Cancelled);
+
+    Event::assertDispatched(CartLineExpired::class, fn (CartLineExpired $event): bool => $event->cartId === $cart->getKey()
+        && $event->kind === CartLineKind::Registration->value
+        && $event->refId === $registrationLine->ref_id
+        && $event->requestKey === $requestKey);
+
+    Event::assertDispatched(CartExpired::class, fn (CartExpired $event): bool => $event->cartId === $cart->getKey()
+        && $event->brandId === $brand->getKey());
+});
+
+it('leaves a checked-out cart whose order is already paid untouched, however long past its grace', function (): void {
+    $this->withBrand();
+    $variant = cartVariant(10);
+
+    $cart = Cart::factory()->create();
+    app(AddProductToCart::class)->handle($cart, $variant, 4);
+
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'cart',
+        'settles_id' => $cart->id,
+        'request_key' => $cart->id,
+    ]);
+    $cart->forceFill([
+        'status' => CartStatus::CheckedOut,
+        'checked_out_order_id' => $order->id,
+        // Long past any grace window — still must never be touched.
+        'expires_at' => now()->subDay(),
+    ])->save();
+
+    $expiredCount = app(ExpireCarts::class)->handle();
+
+    expect($expiredCount)->toBe(0)
+        ->and($variant->refresh()->stock_consumed)->toBe(4)
+        ->and($cart->refresh()->status)->toBe(CartStatus::CheckedOut)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Paid);
+});
+
+it('leaves a checked-out cart still inside its grace window untouched', function (): void {
+    $this->withBrand();
+    $variant = cartVariant(10);
+
+    $cart = Cart::factory()->create();
+    app(AddProductToCart::class)->handle($cart, $variant, 4);
+
+    $order = Order::factory()->create([
+        'settles_type' => 'cart',
+        'settles_id' => $cart->id,
+        'request_key' => $cart->id,
+        'status' => OrderStatus::Pending,
+    ]);
+    $cart->forceFill([
+        'status' => CartStatus::CheckedOut,
+        'checked_out_order_id' => $order->id,
+        'expires_at' => now()->addMinutes(30),
+    ])->save();
+
+    $expiredCount = app(ExpireCarts::class)->handle();
+
+    expect($expiredCount)->toBe(0)
+        ->and($variant->refresh()->stock_consumed)->toBe(4)
+        ->and($cart->refresh()->status)->toBe(CartStatus::CheckedOut)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Pending);
 });
 
 it('runs the sweep through artisan commerce:expire-carts', function (): void {

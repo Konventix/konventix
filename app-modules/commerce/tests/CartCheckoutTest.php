@@ -78,7 +78,10 @@ function cartCheckoutBrand(): Brand
 
 function cartCheckoutVariant(int $capacity = 10): ProductVariant
 {
-    $product = Product::factory()->create(['unit_amount_net' => '10.00']);
+    // Published: the store endpoint now refuses an unpublished product's
+    // variant (fix round 1), and every other test in this file reaches
+    // the variant through that same endpoint or the Action it wraps.
+    $product = Product::factory()->published()->create(['unit_amount_net' => '10.00']);
 
     return ProductVariant::factory()->for($product, 'product')->withCapacity($capacity)->create();
 }
@@ -153,6 +156,12 @@ it('checks out a mixed cart into one order with two lines carrying settles_kind/
     expect($cart->fresh()->status)->toBe(CartStatus::CheckedOut)
         ->and($cart->fresh()->checked_out_order_id)->toBe($order->id);
 
+    // Task 11 fix round 1: checkout resets the cart's reservation to the
+    // sixty-minute checkout-grace window, not the twenty-minute shopping
+    // one — well past the shopping window, comfortably inside the grace.
+    expect($cart->fresh()->expires_at->diffInMinutes(now(), true))->toBeLessThan(60)
+        ->and($cart->fresh()->expires_at->isFuture())->toBeTrue();
+
     expect(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
 });
 
@@ -199,7 +208,7 @@ it('emits OrderPaid(settlesType cart) and one OrderLineSettled per line on the w
     Event::assertDispatched(OrderLineSettled::class, 2);
     Event::assertDispatched(OrderLineSettled::class, fn (OrderLineSettled $e): bool => $e->orderId === $order->id
         && $e->kind === 'product'
-        && $e->requestKey === $order->request_key);
+        && $e->orderRequestKey === $order->request_key);
     Event::assertDispatched(OrderLineSettled::class, fn (OrderLineSettled $e): bool => $e->orderId === $order->id
         && $e->kind === 'registration'
         && $e->refId === $registrationId);
@@ -214,11 +223,18 @@ it('reuses the pending order on a second checkout of the same cart', function ()
 
     app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart');
     $orderCountAfterFirst = Order::query()->where('settles_type', 'cart')->count();
+    $expiresAfterFirst = $cart->fresh()->expires_at;
+
+    // A little time passes before the payer retries — the reused branch
+    // must extend the grace window again, the same way `touchExpiry()`
+    // extends the shopping one on continued activity.
+    test()->travel(5)->minutes();
 
     app(PlaceOrderFromCart::class)->handle($cart->fresh(), $account, 'https://brand.test/cart');
 
     expect(Order::query()->where('settles_type', 'cart')->count())->toBe($orderCountAfterFirst)
-        ->and(Payment::withoutBrandScope()->count())->toBe(2);
+        ->and(Payment::withoutBrandScope()->count())->toBe(2)
+        ->and($cart->fresh()->expires_at->gt($expiresAfterFirst))->toBeTrue();
 });
 
 it('refuses to check out an expired cart', function (): void {
@@ -307,6 +323,22 @@ it('adds a product line through the store endpoint', function (): void {
     $cart = Cart::query()->open()->where('payer_user_id', $user->getKey())->sole();
     expect($cart->lines()->sole()->quantity)->toBe(3)
         ->and($variant->fresh()->stock_consumed)->toBe(3);
+});
+
+it('404s the store endpoint for an unpublished product\'s variant and consumes nothing', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    // Not published — the shop itself never links to this variant.
+    $product = Product::factory()->create();
+    $variant = ProductVariant::factory()->for($product, 'product')->withCapacity(10)->create();
+
+    test()->actingAs($user)
+        ->post('/cart/lines', ['variantId' => $variant->getKey(), 'quantity' => 1])
+        ->assertNotFound();
+
+    expect($variant->fresh()->stock_consumed)->toBe(0)
+        ->and(CartLine::query()->count())->toBe(0);
 });
 
 it('surfaces a quantity error when the store endpoint exhausts stock', function (): void {

@@ -10,6 +10,7 @@ use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CartCheckedOut;
 use Konventix\Commerce\Events\OrderPlaced;
+use Konventix\Commerce\Exceptions\CartCheckoutRefusedException;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
@@ -19,7 +20,6 @@ use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Platform\Operators\OperatorSettings;
-use RuntimeException;
 
 /**
  * Turns a cart into one order, `settles_type = 'cart'` (ADR-0047 point 4):
@@ -27,14 +27,16 @@ use RuntimeException;
  * line carrying `settles_kind`/`settles_ref` from its cart line so a later
  * `OrderLineSettled` (`RecordPaymentSuccess`) knows which of them was paid.
  *
- * Guards, in order: a checked-out cart with a still-pending order reuses
- * that order instead of placing a second one (idempotent — a double-submit
- * or a retried checkout must not fork the cart into two orders); otherwise
- * the cart must be `open` and non-empty, and the chosen account must be
- * live, offered (ADR-0046) and able to host a checkout page, checked
- * *before* the order is created so an unreachable account never leaves a
- * stray pending order behind — a later retry with a good account still
- * finds nothing to reuse, since no order was ever placed.
+ * Guards, in order — every one of them throws `CartCheckoutRefusedException`,
+ * never a raw `RuntimeException`, so the controller can catch exactly these
+ * and nothing an adapter call raises: a checked-out cart with a still-pending
+ * order reuses that order instead of placing a second one (idempotent — a
+ * double-submit or a retried checkout must not fork the cart into two
+ * orders); otherwise the cart must be `open` and non-empty, and the chosen
+ * account must be live, offered (ADR-0046) and able to host a checkout page,
+ * checked *before* the order is created so an unreachable account never
+ * leaves a stray pending order behind — a later retry with a good account
+ * still finds nothing to reuse, since no order was ever placed.
  *
  * `TaxCalculator::calculate()` runs with no billing party at all
  * (`billingVatId`/`billingCountryCode` both null): a cart has no invoice
@@ -44,6 +46,14 @@ use RuntimeException;
  * transaction that creates the order: the PSP call is a side effect, not a
  * domain write, and a failure there must not roll back a real order that
  * a retried checkout can still pay through the idempotent branch above.
+ *
+ * **The checkout grace window** (fix round 1): moving the cart to
+ * `checked_out` also resets `expires_at` to `Cart::CHECKOUT_GRACE_MINUTES`
+ * out — the twenty-minute shopping reservation and the sixty-minute
+ * checkout grace are the same column, reused rather than duplicated, since
+ * a cart is never both at once. `ExpireCarts`' second pass is what acts on
+ * that deadline: an abandoned hosted checkout (closed tab, expired PSP
+ * session) must not hold stock and registration lines forever.
  */
 final class PlaceOrderFromCart
 {
@@ -60,17 +70,19 @@ final class PlaceOrderFromCart
         $reusableOrder = $this->reusableCheckedOutOrder($cart);
 
         if ($reusableOrder !== null) {
+            $cart->forceFill(['expires_at' => now()->addMinutes(Cart::CHECKOUT_GRACE_MINUTES)])->save();
+
             return $this->sendToProvider($cart->brand_id, $account, $reusableOrder, $returnUrl);
         }
 
         if (! $cart->isOpen()) {
-            throw new RuntimeException("Cart [{$cart->id}] is not open and has no pending order to resume.");
+            throw CartCheckoutRefusedException::cartNotOpen($cart->id);
         }
 
         $lines = $cart->lines()->get();
 
         if ($lines->isEmpty()) {
-            throw new RuntimeException("Cart [{$cart->id}] is empty.");
+            throw CartCheckoutRefusedException::cartEmpty($cart->id);
         }
 
         // Vetted before the order exists (see class docblock).
@@ -142,6 +154,10 @@ final class PlaceOrderFromCart
         $cart->forceFill([
             'status' => CartStatus::CheckedOut,
             'checked_out_order_id' => $order->id,
+            // The checkout grace window starts now (Cart::CHECKOUT_GRACE_MINUTES,
+            // fix round 1) — reusing `expires_at` rather than a second column,
+            // since a cart is never simultaneously shopping and checking out.
+            'expires_at' => now()->addMinutes(Cart::CHECKOUT_GRACE_MINUTES),
         ])->save();
 
         event(new CartCheckedOut(
@@ -187,11 +203,11 @@ final class PlaceOrderFromCart
         $offered = SettlementAccount::liveAccountsFor($brandId)->firstWhere('id', $account->id);
 
         if ($offered === null || ! $offered->isOffered()) {
-            throw new RuntimeException("Settlement account [{$account->id}] is not offered for brand [{$brandId}].");
+            throw CartCheckoutRefusedException::accountNotOffered($account->id, $brandId);
         }
 
         if (! $this->registry->forProvider($offered->provider) instanceof ProvidesHostedCheckout) {
-            throw new RuntimeException('This brand takes no online payment.');
+            throw CartCheckoutRefusedException::noOnlinePayment();
         }
     }
 
@@ -200,7 +216,7 @@ final class PlaceOrderFromCart
         $offered = SettlementAccount::liveAccountsFor($brandId)->firstWhere('id', $account->id);
 
         if ($offered === null || ! $offered->isOffered()) {
-            throw new RuntimeException("Settlement account [{$account->id}] is not offered for brand [{$brandId}].");
+            throw CartCheckoutRefusedException::accountNotOffered($account->id, $brandId);
         }
 
         $adapter = $this->registry->forProvider($offered->provider);
@@ -209,9 +225,11 @@ final class PlaceOrderFromCart
         // account whose adapter implements this — unreachable in practice,
         // but narrows the type for PHPStan (mirrors CheckoutController).
         if (! $adapter instanceof ProvidesHostedCheckout) {
-            throw new RuntimeException('This brand takes no online payment.');
+            throw CartCheckoutRefusedException::noOnlinePayment();
         }
 
+        // Deliberately uncaught by this Action: a real adapter failure past
+        // this point is not a domain refusal (see class docblock).
         return $adapter->startCheckout($offered, $order, $returnUrl);
     }
 }

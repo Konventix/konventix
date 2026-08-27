@@ -60,7 +60,7 @@ function lineSettledEvent(Registration $registration, string $kind = 'registrati
         brandId: $registration->brand_id,
         kind: $kind,
         refId: $refId ?? $registration->id,
-        requestKey: (string) Str::ulid(),
+        orderRequestKey: (string) Str::ulid(),
         amountGross: '35.70',
         currency: 'EUR',
         paidAt: now()->toIso8601String(),
