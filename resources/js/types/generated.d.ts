@@ -92,7 +92,10 @@ declare namespace Konventix {
                 | 'commerce.run-dunning'
                 | 'commerce.manage-vouchers'
                 | 'commerce.manage-settlement-account'
-                | 'commerce.export-bookkeeping';
+                | 'commerce.export-bookkeeping'
+                | 'commerce.view-products'
+                | 'commerce.manage-products';
+            export type PriceDisplay = 'net' | 'gross';
             export type TaxClass = 'standard' | 'reduced';
             export type TaxTreatment =
                 'standard' | 'reverse_charge' | 'small_business';

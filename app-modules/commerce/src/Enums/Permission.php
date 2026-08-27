@@ -29,4 +29,6 @@ enum Permission: string
     case ManageVouchers = 'commerce.manage-vouchers';
     case ManageSettlementAccount = 'commerce.manage-settlement-account';
     case ExportBookkeeping = 'commerce.export-bookkeeping';
+    case ViewProducts = 'commerce.view-products';
+    case ManageProducts = 'commerce.manage-products';
 }

@@ -22,6 +22,19 @@ licensing.
 
 ## Owns
 
+- **`Product` and `ProductVariant`** — the shop's catalogue (ADR-0047,
+  roadmap slice 24). A `Product` belongs to a brand and optionally names one
+  event by plain ULID (ADR-0014, never a foreign key — Commerce never reads
+  Event's tables for it); `unit_amount_net`, `tax_class` and `price_display`
+  are its defaults. A `ProductVariant` is the purchasable line — a size, a
+  colour, or, for a product without variation, the single implicit row a
+  later slice creates so every product has exactly one stock counter.
+  **Stock is a quota in the Registration sense**: `stock_capacity` and
+  `stock_consumed` are counters only, copied from `Quota`'s contract rather
+  than imported (ADR-0004) — `consumeStock()`/`releaseStock()` never lock or
+  open a transaction themselves, callers do that under their own Action's
+  `DB::transaction`. `sku` is unique per brand only when set, so many
+  implicit variants with no sku never collide.
 - **`Cart`** — the pre-order assembly of what someone intends to buy.
 - **`Order` and order lines** — the authoritative record of what was ordered,
   at what price, with which tax treatment, in which currency. Orders reference
@@ -142,9 +155,12 @@ data, not code (ADR-0013).
 The catalog covers: viewing orders and invoices, issuing and cancelling
 invoices, booking payments manually, issuing refunds and credit notes, running
 dunning, managing vouchers, connecting and managing the brand's settlement
-account, and exporting bookkeeping data. Manual payment booking and settlement
-account management are deliberately separate capabilities — one is day-to-day
-treasury work, the other changes where a brand's money goes.
+account, viewing and managing the product catalogue, and exporting
+bookkeeping data. Manual payment booking and settlement account management
+are deliberately separate capabilities — one is day-to-day treasury work, the
+other changes where a brand's money goes. `commerce.shop-manager` (ADR-0045)
+is the shop's own starting role: the two product capabilities plus viewing
+orders, without invoicing, refunds or settlement access.
 
 ## Activation
 

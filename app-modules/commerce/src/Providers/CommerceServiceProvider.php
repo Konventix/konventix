@@ -41,6 +41,7 @@ use Konventix\Platform\Features\BrandFeatureRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
@@ -68,6 +69,27 @@ class CommerceServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'commerce';
+    }
+
+    /**
+     * ADR-0045: the shop's own starting point — viewing and managing the
+     * catalogue plus the orders it produces, without every other Commerce
+     * capability (invoicing, refunds, settlement accounts) a shop manager
+     * has no business touching.
+     *
+     * @return list<DefaultRole>
+     */
+    public function defaultRoles(): array
+    {
+        return [
+            DefaultRole::of(
+                'commerce.shop-manager',
+                'Shop Manager',
+                Permission::ViewProducts,
+                Permission::ManageProducts,
+                Permission::ViewOrders,
+            ),
+        ];
     }
 
     /**
