@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { update as updateBrand } from '@/routes/admin/brands';
 import { update as updateFeatures } from '@/routes/admin/brands/features';
 import { update as updateModules } from '@/routes/admin/brands/modules';
@@ -397,6 +398,34 @@ function moduleLabel(module: string): string {
                     </form>
                 </CardContent>
             </Card>
+
+            <!--
+                A feature's own settings card (ADR-0047 point 5) — declared
+                by the module through `BrandFeature`'s `settingsComponent`,
+                resolved by registered name so this host page never imports
+                a module's component. Renders only for a feature the
+                backend already reports `active` and carrying one; each
+                card owns its own form and its own ADR-0038 dirty guard,
+                the same way every card above does.
+            -->
+            <template
+                v-for="entry in props.features"
+                :key="`settings-${entry.name}`"
+            >
+                <component
+                    :is="
+                        resolveRegisteredComponent(
+                            entry.settingsComponent ?? '',
+                        )
+                    "
+                    v-if="
+                        entry.active &&
+                        entry.settingsComponent &&
+                        resolveRegisteredComponent(entry.settingsComponent)
+                    "
+                    v-bind="entry.settingsProps ?? {}"
+                />
+            </template>
         </div>
     </div>
 </template>

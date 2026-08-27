@@ -173,6 +173,10 @@ declare namespace Konventix {
             export type UpdateSettlementAccountLabelData = {
                 readonly checkoutLabel: string | null;
             };
+            export type WaitingRoomSettingsData = {
+                readonly admitPerInterval: number;
+                readonly admissionTtlMinutes: number;
+            };
         }
         namespace Enums {
             export type CartLineKind = 'product' | 'registration';
@@ -491,6 +495,8 @@ declare namespace Konventix {
                 label: string;
                 description: string;
                 active: boolean;
+                settingsComponent: string | null;
+                settingsProps: Record<string, any> | null;
             };
             export type BrandIdentityData = {
                 name: string;
