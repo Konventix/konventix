@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { CheckCircle2, Clock3, CreditCard, XCircle } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { start as startCheckout } from '@/routes/commerce/pay';
@@ -28,6 +29,12 @@ type Props = {
 };
 
 const props = defineProps<Props>();
+
+// A refused account (unknown, not offered, or another brand's) comes back
+// as a redirect-with-errors, same as any other rejected form field —
+// Inertia shares it on `errors.account` for the page that follows.
+const page = usePage();
+const accountError = computed(() => page.props.errors.account);
 
 // The id of the account currently starting a checkout — only that
 // account's button disables, so a second attempt on a different account
@@ -140,6 +147,8 @@ const lastAttemptFailed = computed(
                     }}
                     — {{ account.label }}
                 </Button>
+
+                <InputError :message="accountError" />
             </div>
 
             <p v-else class="text-sm text-text-muted">

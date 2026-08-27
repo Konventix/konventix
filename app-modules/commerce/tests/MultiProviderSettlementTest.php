@@ -313,15 +313,20 @@ it('refuses an account that is not offered, not this brand\'s, or missing', func
     $foreign = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
     $this->withBrand($brand);
 
-    // postJson, not post: a real Inertia request sends X-Requested-With,
-    // which is what makes Laravel render the ValidationException as JSON
-    // (422) instead of the default redirect-back-with-errors.
-    $this->postJson('/pay/registration/'.$registrationId.'/start', ['account' => $notOffered->id])
-        ->assertStatus(422);
-    $this->postJson('/pay/registration/'.$registrationId.'/start', ['account' => $foreign->id])
-        ->assertStatus(422);
-    $this->postJson('/pay/registration/'.$registrationId.'/start', ['account' => (string) Str::ulid()])
-        ->assertStatus(422);
+    // A real Inertia POST sends X-Requested-With but Accept: text/html, so
+    // Laravel's ValidationException redirects back with errors (302) —
+    // exactly what a normal form submission does; the plain `post()` +
+    // assertSessionHasErrors() pair matches that, and matches how the rest
+    // of the app tests the same thing (e.g. PublicRegistrationFlowTest).
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => $notOffered->id])
+        ->assertRedirect()
+        ->assertSessionHasErrors('account');
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => $foreign->id])
+        ->assertRedirect()
+        ->assertSessionHasErrors('account');
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => (string) Str::ulid()])
+        ->assertRedirect()
+        ->assertSessionHasErrors('account');
 });
 
 it('refuses a second account once a payment succeeded', function (): void {

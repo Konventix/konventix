@@ -106,12 +106,12 @@ it('offers no online payment for a manual-only brand', function (): void {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('accounts', []));
 
-    // Nothing is offered, so any account the payer might pick is refused.
-    // postJson: a real Inertia request sends X-Requested-With, which is
-    // what makes Laravel render the ValidationException as JSON (422)
-    // instead of the default redirect-back-with-errors.
-    $this->postJson('/pay/registration/'.$registrationId.'/start', ['account' => (string) Str::ulid()])
-        ->assertStatus(422);
+    // Nothing is offered, so any account the payer might pick is refused —
+    // a real Inertia POST redirects back with errors (302), same as any
+    // other rejected form field (see PublicRegistrationFlowTest).
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => (string) Str::ulid()])
+        ->assertRedirect()
+        ->assertSessionHasErrors('account');
 });
 
 it('starts the hosted checkout and hard-redirects to the provider', function (): void {

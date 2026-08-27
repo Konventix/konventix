@@ -87,6 +87,11 @@ class CheckoutController
 
         $account = $this->offeredAccounts($order)->firstWhere('id', $validated['account']);
 
+        // An id that is unknown, not offered, or another brand's all land
+        // here alike: refused with a validation error on `account`, the
+        // same as any other rejected form field (redirect-back-with-errors
+        // for a normal request; Inertia's XHR client surfaces it to the
+        // page's shared `errors` prop instead of following the redirect).
         if ($account === null) {
             throw ValidationException::withMessages([
                 'account' => __('Choose one of the offered payment options.'),
