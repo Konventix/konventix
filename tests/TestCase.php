@@ -63,6 +63,16 @@ abstract class TestCase extends BaseTestCase
             ->activate(app(ModuleGate::class)->featureName($module));
     }
 
+    /**
+     * Turn a per-brand feature on (ADR-0047) — the module-less counterpart
+     * to activateModule(), for features like `commerce:shop` that have no
+     * module gate behind them.
+     */
+    protected function activateFeature(string $feature, ?Brand $brand = null): void
+    {
+        Feature::for($brand ?? $this->withBrand())->activate($feature);
+    }
+
     protected function skipUnlessFortifyHas(string $feature, ?string $message = null): void
     {
         if (! Features::enabled($feature)) {

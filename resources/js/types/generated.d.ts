@@ -383,6 +383,12 @@ declare namespace Konventix {
                 slug: string;
                 hosts: string[];
             };
+            export type BrandFeatureData = {
+                name: string;
+                label: string;
+                description: string;
+                active: boolean;
+            };
             export type BrandIdentityData = {
                 name: string;
                 logoUrl: string | null;

@@ -11,14 +11,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { update as updateBrand } from '@/routes/admin/brands';
+import { update as updateFeatures } from '@/routes/admin/brands/features';
 import { update as updateModules } from '@/routes/admin/brands/modules';
 import { edit as editTheme } from '@/routes/admin/brands/theme';
 
 /**
- * Brand settings: identity fields, hosts, and per-brand module activation
- * (ADR-0003) — the Pennant state behind routes, navigation, UI slots and
- * listeners. Kernel and Core modules are always on and listed read-only so
- * the page tells the whole story.
+ * Brand settings: identity fields, hosts, per-brand module activation
+ * (ADR-0003), and per-brand features with no module behind them (ADR-0047)
+ * — the Pennant state behind routes, navigation, UI slots and listeners.
+ * Kernel and Core modules are always on and listed read-only so the page
+ * tells the whole story.
  */
 type Props = {
     brand: {
@@ -35,6 +37,7 @@ type Props = {
     media: Konventix.Platform.Data.MediaItemData[];
     modules: { module: string; active: boolean }[];
     alwaysOn: string[];
+    features: Konventix.Platform.Data.BrandFeatureData[];
 };
 
 const props = defineProps<Props>();
@@ -55,7 +58,15 @@ const modulesForm = useForm({
     ) as Record<string, boolean>,
 });
 
-useUnsavedChanges(() => form.isDirty || modulesForm.isDirty);
+const featuresForm = useForm({
+    features: Object.fromEntries(
+        props.features.map((entry) => [entry.name, entry.active]),
+    ) as Record<string, boolean>,
+});
+
+useUnsavedChanges(
+    () => form.isDirty || modulesForm.isDirty || featuresForm.isDirty,
+);
 
 function submitDetails(): void {
     form.transform((data) => ({
@@ -66,6 +77,12 @@ function submitDetails(): void {
 
 function submitModules(): void {
     modulesForm.put(updateModules(props.brand.id).url, {
+        preserveScroll: true,
+    });
+}
+
+function submitFeatures(): void {
+    featuresForm.put(updateFeatures(props.brand.id).url, {
         preserveScroll: true,
     });
 }
@@ -306,6 +323,71 @@ function moduleLabel(module: string): string {
                             </Button>
                             <span
                                 v-if="modulesForm.isDirty"
+                                role="status"
+                                class="text-sm text-warning"
+                            >
+                                Unsaved changes
+                            </span>
+                        </div>
+                    </form>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Features</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <form
+                        class="flex flex-col gap-4"
+                        @submit.prevent="submitFeatures"
+                    >
+                        <p class="text-sm text-text-muted">
+                            Per-brand features with no module behind them
+                            (ADR-0047) — switching one off hides its routes,
+                            navigation and UI contributions for this brand only,
+                            the data stays.
+                        </p>
+
+                        <div class="flex flex-col gap-3">
+                            <div
+                                v-for="entry in props.features"
+                                :key="entry.name"
+                                class="flex items-start gap-2"
+                            >
+                                <Checkbox
+                                    :id="`feature-${entry.name}`"
+                                    :model-value="
+                                        featuresForm.features[entry.name]
+                                    "
+                                    @update:model-value="
+                                        (value: boolean | 'indeterminate') => {
+                                            featuresForm.features[entry.name] =
+                                                value === true;
+                                        }
+                                    "
+                                />
+                                <div class="flex flex-col gap-0.5">
+                                    <Label :for="`feature-${entry.name}`">
+                                        {{ entry.label }}
+                                    </Label>
+                                    <p class="text-xs text-text-muted">
+                                        {{ entry.description }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-3">
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                :disabled="featuresForm.processing"
+                            >
+                                Save features
+                            </Button>
+                            <span
+                                v-if="featuresForm.isDirty"
                                 role="status"
                                 class="text-sm text-warning"
                             >

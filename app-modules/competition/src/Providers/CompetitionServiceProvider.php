@@ -25,7 +25,6 @@ use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationSubmitted;
-use Laravel\Pennant\Feature;
 
 /**
  * Competition is Pennant-gated: a brand that runs no tournaments switches it
@@ -83,12 +82,6 @@ class CompetitionServiceProvider extends ModuleServiceProvider
 
             return $registry;
         });
-    }
-
-    protected function registerFeatures(): void
-    {
-        // Off by default: running tournaments is an opt-in.
-        Feature::define(self::moduleName(), fn (): bool => false);
     }
 
     protected function registerListeners(): void

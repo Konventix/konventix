@@ -42,6 +42,7 @@ Route::post('/brands', [BrandAdminController::class, 'store'])->name('admin.bran
 Route::get('/brands/{brand}/edit', [BrandAdminController::class, 'edit'])->name('admin.brands.edit');
 Route::put('/brands/{brand}', [BrandAdminController::class, 'update'])->name('admin.brands.update');
 Route::put('/brands/{brand}/modules', [BrandAdminController::class, 'updateModules'])->name('admin.brands.modules.update');
+Route::put('/brands/{brand}/features', [BrandAdminController::class, 'updateFeatures'])->name('admin.brands.features.update');
 
 // A brand's static pages, composed of registered block types (slice 21a).
 // `{page}` is a plain string: the admin host resolves no brand, so an

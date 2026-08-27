@@ -11,7 +11,6 @@ use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
 use Konventix\Resources\Listeners\ProjectEventWindow;
-use Laravel\Pennant\Feature;
 
 /**
  * Resources is Pennant-gated: a brand that books nothing switches it off and
@@ -30,12 +29,6 @@ class ResourcesServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'resources';
-    }
-
-    protected function registerFeatures(): void
-    {
-        // Off by default: a brand opts into booking, it is not opted in for it.
-        Feature::define(self::moduleName(), fn (): bool => false);
     }
 
     protected function registerListeners(): void

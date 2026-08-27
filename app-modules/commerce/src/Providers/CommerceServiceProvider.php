@@ -36,12 +36,15 @@ use Konventix\Commerce\Storage\InvoiceStorageMigration;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Platform\Features\BrandFeature;
+use Konventix\Platform\Features\BrandFeatureRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
+use Laravel\Pennant\Feature;
 use RuntimeException;
 use Stripe\StripeClient;
 
@@ -65,6 +68,39 @@ class CommerceServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'commerce';
+    }
+
+    /**
+     * ADR-0047: Commerce is Core and cannot be switched off, so the shop and
+     * the waiting room in front of it are per-brand Pennant features instead
+     * of module gates. Both default to off — a brand opts in explicitly.
+     */
+    protected function registerFeatures(): void
+    {
+        Feature::define('commerce:shop', fn (): bool => false);
+        Feature::define('commerce:waiting-room', fn (): bool => false);
+    }
+
+    /**
+     * Declares the two features above with Platform's `BrandFeatureRegistry`
+     * so the brand page's Features card has something to list.
+     */
+    protected function registerBrandFeatures(): void
+    {
+        $this->app->make(BrandFeatureRegistry::class)->register(
+            new BrandFeature(
+                name: 'commerce:shop',
+                label: 'Shop',
+                description: 'A person-owned cart settles registrations and goods in one order.',
+                module: self::moduleName(),
+            ),
+            new BrandFeature(
+                name: 'commerce:waiting-room',
+                label: 'Waiting room',
+                description: 'Holds arrivals in a queue and admits them in batches so a rush cannot oversell.',
+                module: self::moduleName(),
+            ),
+        );
     }
 
     /**

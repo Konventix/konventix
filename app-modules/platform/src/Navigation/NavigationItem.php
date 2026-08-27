@@ -33,6 +33,7 @@ class NavigationItem
      * @param  int  $order  lower sorts first
      * @param  string|null  $permission  capability required to see the entry
      * @param  string  $area  which shell shows it: brand topbar, account menu, or operator admin (ADR-0029)
+     * @param  string|null  $feature  per-brand feature (ADR-0047) required to see the entry, on top of module activation
      */
     public function __construct(
         public readonly string $module,
@@ -42,6 +43,7 @@ class NavigationItem
         public readonly int $order = 100,
         public readonly ?string $permission = null,
         public readonly string $area = self::AREA_BRAND,
+        public readonly ?string $feature = null,
     ) {}
 
     /**

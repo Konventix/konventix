@@ -55,6 +55,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerListeners();
         $this->registerNavigation();
         $this->registerFeatures();
+        $this->registerBrandFeatures();
         $this->registerCookies();
         $this->registerBlockTypes();
         $this->registerSlots();
@@ -222,6 +223,16 @@ abstract class ModuleServiceProvider extends ServiceProvider
      * here so the four enforcement points have something to resolve.
      */
     protected function registerFeatures(): void {}
+
+    /**
+     * Per-brand features (ADR-0047) this module offers with no module gate
+     * behind them — Commerce's `commerce:shop` is the first: Commerce is
+     * Core and cannot be switched off, so the shop opts in per brand on its
+     * own. A module that defines such a feature (`registerFeatures()`) also
+     * declares it here with Platform's `BrandFeatureRegistry`, so the brand
+     * page's Features card has something to list.
+     */
+    protected function registerBrandFeatures(): void {}
 
     /**
      * Cookies this module sets on the visitor's device, declared for the

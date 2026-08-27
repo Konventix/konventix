@@ -6,7 +6,9 @@ namespace Konventix\Platform\Slots;
 
 use Closure;
 use Illuminate\Support\Collection;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Modules\ModuleGate;
+use Laravel\Pennant\Feature;
 
 /**
  * Enforcement point 3 of 4 for per-brand module activation (ADR-0003).
@@ -26,13 +28,20 @@ use Konventix\Platform\Modules\ModuleGate;
  * which the rendering controller resolves with the page's context — that is
  * the module computing its own props, in its own module, at render time. The
  * caller still knows nothing about what comes back.
+ *
+ * A contribution may also carry a per-brand feature (ADR-0047) — a second,
+ * finer-grained gate for the module that has no module activation to hide
+ * behind, applied the same way and after the module filter.
  */
 class SlotRegistry
 {
-    /** @var array<string, array<int, array{module: string, component: string, props: array<string, mixed>|Closure(array<string, mixed>): array<string, mixed>, order: int}>> */
+    /** @var array<string, array<int, array{module: string, component: string, props: array<string, mixed>|Closure(array<string, mixed>): array<string, mixed>, order: int, feature: string|null}>> */
     private array $slots = [];
 
-    public function __construct(private readonly ModuleGate $gate) {}
+    public function __construct(
+        private readonly ModuleGate $gate,
+        private readonly BrandContext $context,
+    ) {}
 
     /**
      * @param  array<string, mixed>|Closure(array<string, mixed>): array<string, mixed>  $props
@@ -43,12 +52,14 @@ class SlotRegistry
         string $component,
         array|Closure $props = [],
         int $order = 100,
+        ?string $feature = null,
     ): void {
         $this->slots[$slot][] = [
             'module' => $module,
             'component' => $component,
             'props' => $props,
             'order' => $order,
+            'feature' => $feature,
         ];
     }
 
@@ -62,18 +73,30 @@ class SlotRegistry
      * against tables the brand does not use.
      *
      * @param  array<string, mixed>  $context
-     * @return Collection<int, array{module: string, component: string, props: array<string, mixed>, order: int}>
+     * @return Collection<int, array{module: string, component: string, props: array<string, mixed>, order: int, feature: string|null}>
      */
     public function for(string $slot, array $context = []): Collection
     {
+        // PHPStan false positive on the return below: Collection's TValue is
+        // a non-covariant template, and its invariance check rejects this
+        // array shape — identical to the declared return type — purely
+        // because the `feature` field is nullable. Confirmed by elimination
+        // against several equivalent rewrites; the same shape with `feature`
+        // typed non-nullable passes cleanly.
+        // @phpstan-ignore return.type
         return Collection::make($this->slots[$slot] ?? [])
             ->filter(fn (array $entry): bool => $this->gate->isActive($entry['module']))
+            ->filter(fn (array $entry): bool => $entry['feature'] === null
+                || (($brand = $this->context->current()) !== null && Feature::for($brand)->active($entry['feature'])))
             ->sortBy('order')
             ->map(fn (array $entry): array => [
-                ...$entry,
+                'module' => $entry['module'],
+                'component' => $entry['component'],
                 'props' => $entry['props'] instanceof Closure
                     ? ($entry['props'])($context)
                     : $entry['props'],
+                'order' => $entry['order'],
+                'feature' => $entry['feature'],
             ])
             ->values();
     }

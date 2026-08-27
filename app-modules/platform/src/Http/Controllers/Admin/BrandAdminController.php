@@ -11,11 +11,14 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Platform\Actions\CreateBrand;
 use Konventix\Platform\Actions\UpdateBrand;
+use Konventix\Platform\Actions\UpdateBrandFeatures;
 use Konventix\Platform\Actions\UpdateBrandModules;
 use Konventix\Platform\Data\BrandData;
+use Konventix\Platform\Data\BrandFeatureData;
 use Konventix\Platform\Data\MediaItemData;
 use Konventix\Platform\Data\UpdateBrandData;
 use Konventix\Platform\Enums\Permission;
+use Konventix\Platform\Features\BrandFeatureRegistry;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
@@ -85,7 +88,7 @@ class BrandAdminController
         return to_route('admin.brands.index');
     }
 
-    public function edit(Brand $brand, ModuleGate $gate, MediaLibrary $library): Response
+    public function edit(Brand $brand, ModuleGate $gate, MediaLibrary $library, BrandFeatureRegistry $features): Response
     {
         Gate::authorize(Permission::ViewBrands->value);
 
@@ -133,6 +136,14 @@ class BrandAdminController
                 ->sort()
                 ->values()
                 ->all(),
+            // Per-brand features with no module gate behind them (ADR-0047):
+            // Pennant state for THIS brand, same idiom as 'modules' above.
+            'features' => collect($features->all())
+                ->map(fn ($feature): array => BrandFeatureData::ofFeature(
+                    $feature,
+                    active: Feature::for($brand)->active($feature->name),
+                )->toArray())
+                ->all(),
         ]);
     }
 
@@ -162,6 +173,25 @@ class BrandAdminController
         ));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Module activation saved.')]);
+
+        return to_route('admin.brands.edit', $brand);
+    }
+
+    public function updateFeatures(Brand $brand, Request $request, UpdateBrandFeatures $updateFeatures): RedirectResponse
+    {
+        Gate::authorize(Permission::ManageModuleActivation->value);
+
+        $data = $request->validate([
+            'features' => ['required', 'array'],
+            'features.*' => ['boolean'],
+        ]);
+
+        $updateFeatures->handle($brand, array_map(
+            fn (mixed $active): bool => (bool) $active,
+            $data['features'],
+        ));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Feature activation saved.')]);
 
         return to_route('admin.brands.edit', $brand);
     }

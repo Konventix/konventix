@@ -20,8 +20,10 @@ use Konventix\Platform\Cookies\CookiePreferences;
 use Konventix\Platform\Cookies\CookieRegistry;
 use Konventix\Platform\Enums\CookieCategory;
 use Konventix\Platform\Enums\Permission;
+use Konventix\Platform\Features\BrandFeatureRegistry;
 use Konventix\Platform\Http\Controllers\CaddyAskController;
 use Konventix\Platform\Http\Controllers\MediaFileController;
+use Konventix\Platform\Http\Middleware\EnsureFeatureIsActive;
 use Konventix\Platform\Http\Middleware\EnsureModuleIsActive;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -145,6 +147,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->app->singleton(ConsoleEventSources::class);
         $this->app->singleton(StorageMigrationRegistry::class);
         $this->app->singleton(CookieRegistry::class);
+        $this->app->singleton(BrandFeatureRegistry::class);
 
         // Scoped, not singleton: DiskResolver memoizes built filesystems —
         // including a brand's own bucket (ADR-0043 point 6) — and those must
@@ -414,7 +417,9 @@ class PlatformServiceProvider extends ModuleServiceProvider
      */
     private function registerRouteMiddleware(): void
     {
-        $this->app->make(Router::class)
-            ->aliasMiddleware('ensure-module', EnsureModuleIsActive::class);
+        $router = $this->app->make(Router::class);
+
+        $router->aliasMiddleware('ensure-module', EnsureModuleIsActive::class);
+        $router->aliasMiddleware('ensure-feature', EnsureFeatureIsActive::class);
     }
 }

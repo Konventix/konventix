@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace Konventix\Platform\Navigation;
 
 use Illuminate\Support\Collection;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Modules\ModuleGate;
+use Laravel\Pennant\Feature;
 
 /**
- * Enforcement point 2 of 4 for per-brand module activation (ADR-0003).
+ * Enforcement point 2 of 4 for per-brand module activation (ADR-0003), and
+ * one of the two enforcement points for per-brand features with no module
+ * behind them (ADR-0047).
  *
  * Modules register entries from their own ServiceProvider at boot,
  * unconditionally. Filtering by what is active for the current brand happens
@@ -20,7 +24,10 @@ class NavigationRegistry
     /** @var array<int, NavigationItem> */
     private array $items = [];
 
-    public function __construct(private readonly ModuleGate $gate) {}
+    public function __construct(
+        private readonly ModuleGate $gate,
+        private readonly BrandContext $context,
+    ) {}
 
     public function add(NavigationItem ...$items): void
     {
@@ -43,6 +50,8 @@ class NavigationRegistry
             ->filter(fn (NavigationItem $item): bool => $item->area === $area)
             ->filter(fn (NavigationItem $item): bool => $area === NavigationItem::AREA_ADMIN
                 || $this->gate->isActive($item->module))
+            ->filter(fn (NavigationItem $item): bool => $item->feature === null
+                || (($brand = $this->context->current()) !== null && Feature::for($brand)->active($item->feature)))
             ->filter(fn (NavigationItem $item): bool => $item->permission === null
                 || auth()->user()?->can($item->permission) === true)
             ->sortBy([
