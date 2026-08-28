@@ -73,6 +73,10 @@
       `ManageSenderIdentity` gates the mail-settings console and
       `ViewMessageLog`/`ViewMessageContent`/`ResendMessage` gate the delivery
       log — see Done for both).
+- [ ] ResendMessage accepts the operator's user id but only logs it; a
+      resent_by column (or an AuditRecorder entry, as
+      RegistrationAdminController::export() does) is owed once resend
+      accountability must be queryable.
 - [ ] Consider whether `BrandCreated` should auto-seed an "unconfigured"
       `messaging_brand_settings` row per brand (so every brand always has
       exactly one row) versus the current design, where absence of a row

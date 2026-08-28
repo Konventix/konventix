@@ -17,13 +17,16 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * Seeing that a message was sent (`ViewMessageLog`) and reading what it
  * said (`ViewMessageContent`) are separate capabilities (SPEC.md
  * "Capabilities") — a viewer without the second gets `bodyRedacted: true`
- * and no subject or body, even on a row that stored one.
+ * and no subject, body, or payload, even on a row that stored one. The
+ * payload is exactly as much personal data as the rendered body — the
+ * template variables it was rendered from — so it is gated the same way,
+ * not merely "less sensitive because it isn't prose".
  */
 #[TypeScript]
 final class MessageLogDetailData extends Data
 {
     /**
-     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>|null  $payload
      * @param  list<string>  $attachments  file names only ("as"), never the disk path
      * @param  list<MessageResendRowData>  $resends
      */
@@ -40,7 +43,7 @@ final class MessageLogDetailData extends Data
         public readonly ?string $failedAt,
         public readonly ?string $lastError,
         public readonly ?string $resentFromId,
-        public readonly array $payload,
+        public readonly ?array $payload,
         public readonly ?string $renderedSubject,
         public readonly ?string $renderedBody,
         public readonly bool $bodyRedacted,
@@ -78,10 +81,9 @@ final class MessageLogDetailData extends Data
             failedAt: $record->failed_at?->format('Y-m-d H:i'),
             lastError: $record->last_error,
             resentFromId: $record->resent_from_id,
-            payload: $record->payload,
-            // Redacted regardless of whether logBodies stored a value for
-            // this template — the permission gates reading it, not whether
-            // it happens to exist.
+            // Gated exactly like the render below — the payload is the
+            // data the render came from, not a lesser category of it.
+            payload: $canViewContent ? $record->payload : null,
             renderedSubject: $canViewContent ? $record->rendered_subject : null,
             renderedBody: $canViewContent ? $record->rendered_body : null,
             bodyRedacted: ! $canViewContent,

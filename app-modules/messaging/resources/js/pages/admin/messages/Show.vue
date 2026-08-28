@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
 import { RotateCcw } from '@lucide/vue';
+import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,8 +26,13 @@ function statusVariant(
 }
 
 const inFlight = ['queued', 'held'];
+const isSuppressed = computed(() => props.message.status === 'suppressed');
 
 function resend(): void {
+    if (isSuppressed.value) {
+        return;
+    }
+
     if (
         !confirm(
             'Resend this message? A fresh copy is queued and sent to the same recipient.',
@@ -53,12 +59,17 @@ function resend(): void {
             <Button
                 v-if="!inFlight.includes(message.status)"
                 variant="outline"
+                :disabled="isSuppressed"
                 @click="resend"
             >
                 <RotateCcw class="size-4" />
                 Resend
             </Button>
         </AdminPageHeader>
+
+        <p v-if="isSuppressed" class="text-sm text-text-muted" role="status">
+            Recipient is suppressed — lift the suppression first.
+        </p>
 
         <div class="grid gap-6 xl:grid-cols-3">
             <Card class="xl:col-span-2">
@@ -182,7 +193,7 @@ function resend(): void {
             </CardContent>
         </Card>
 
-        <Card>
+        <Card v-if="!message.bodyRedacted">
             <CardHeader>
                 <CardTitle>Payload</CardTitle>
             </CardHeader>

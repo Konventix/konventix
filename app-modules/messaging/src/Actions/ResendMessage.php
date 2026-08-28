@@ -59,6 +59,16 @@ final class ResendMessage
             urgent: true,
         ));
 
+        // SendMessage refuses silently-to-the-caller (loudly to the log,
+        // via MessageSuppressed) when the recipient is still on the
+        // suppression list or has opted out — no RuntimeException, just no
+        // envelope. Nothing was queued, so there is nothing to link back
+        // to; the operator needs to hear that in words, not a 500 from
+        // dereferencing an envelope that never arrived.
+        if ($envelopes === []) {
+            throw new LogicException(__('The recipient is still suppressed; lift the suppression before resending.'));
+        }
+
         /** @var MessageRecord $new */
         $new = MessageRecord::withoutBrandScope()->findOrFail($envelopes[0]->messageId);
         $new->forceFill(['resent_from_id' => $record->getKey()])->save();

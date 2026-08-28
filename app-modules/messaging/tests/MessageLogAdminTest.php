@@ -9,6 +9,7 @@ use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Enums\MessageStatus;
 use Konventix\Messaging\Jobs\SendQueuedMessage;
 use Konventix\Messaging\Models\MessageRecord;
+use Konventix\Messaging\Models\Suppression;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
@@ -111,6 +112,7 @@ it('redacts the rendered body without view-message-content, and reveals it with'
         'status' => MessageStatus::Sent,
         'rendered_subject' => 'Hello Erika',
         'rendered_body' => '<p>Hi Erika</p>',
+        'payload' => ['name' => 'Erika'],
     ]);
 
     $this->actingAs($reader)
@@ -120,7 +122,11 @@ it('redacts the rendered body without view-message-content, and reveals it with'
             ->component('admin/messages/Show')
             ->where('message.bodyRedacted', true)
             ->where('message.renderedSubject', null)
-            ->where('message.renderedBody', null));
+            ->where('message.renderedBody', null)
+            // The payload is exactly as much personal data as the render —
+            // a reader without view-message-content must not see the
+            // template variables the body was built from either.
+            ->where('message.payload', null));
 
     $this->actingAs($full)
         ->get("http://admin.messages.test/admin/messages/{$record->getKey()}")
@@ -129,7 +135,8 @@ it('redacts the rendered body without view-message-content, and reveals it with'
             ->component('admin/messages/Show')
             ->where('message.bodyRedacted', false)
             ->where('message.renderedSubject', 'Hello Erika')
-            ->where('message.renderedBody', '<p>Hi Erika</p>'));
+            ->where('message.renderedBody', '<p>Hi Erika</p>')
+            ->where('message.payload', ['name' => 'Erika']));
 });
 
 it('refuses to resend without the resend-message permission', function (): void {
@@ -184,4 +191,61 @@ it('refuses to resend a message still queued or held', function (): void {
         ->assertSessionHasErrors('resend');
 
     expect(MessageRecord::withoutBrandScope()->where('resent_from_id', $record->getKey())->exists())->toBeFalse();
+});
+
+it('refuses to resend a message whose recipient is still suppressed, and pushes nothing', function (): void {
+    [, $admin] = messageLogOperator();
+    $brand = Brand::factory()->create(['slug' => 'ml-suppressed']);
+    $record = messageLogOf($brand, [
+        'status' => MessageStatus::Failed,
+        'recipient_email' => 'blocked@example.test',
+        'channel' => Channel::Mail,
+    ]);
+
+    Suppression::factory()->create([
+        'brand_id' => $brand->getKey(),
+        'channel' => Channel::Mail,
+        'email' => 'blocked@example.test',
+    ]);
+
+    Queue::fake();
+
+    $this->actingAs($admin)
+        ->post("http://admin.messages.test/admin/messages/{$record->getKey()}/resend")
+        ->assertSessionHasErrors('resend');
+
+    expect(MessageRecord::withoutBrandScope()->where('resent_from_id', $record->getKey())->exists())->toBeFalse();
+    Queue::assertNothingPushed();
+});
+
+it('filters the index by template and by channel', function (): void {
+    [, $admin] = messageLogOperator();
+    $brand = Brand::factory()->create(['slug' => 'ml-filters']);
+
+    messageLogOf($brand, [
+        'recipient_email' => 'invoice@example.test',
+        'template_key' => 'commerce.invoice-issued',
+        'channel' => Channel::Mail,
+    ]);
+    messageLogOf($brand, [
+        'recipient_email' => 'announcement@example.test',
+        'template_key' => 'messaging.announcement',
+        'channel' => Channel::InApp,
+    ]);
+
+    $this->actingAs($admin)
+        ->get('http://admin.messages.test/admin/messages?brand='.$brand->getKey().'&template=commerce.invoice-issued')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/messages/Index')
+            ->has('messages.data', 1)
+            ->where('messages.data.0.recipientEmail', 'invoice@example.test'));
+
+    $this->actingAs($admin)
+        ->get('http://admin.messages.test/admin/messages?brand='.$brand->getKey().'&channel=in_app')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/messages/Index')
+            ->has('messages.data', 1)
+            ->where('messages.data.0.recipientEmail', 'announcement@example.test'));
 });

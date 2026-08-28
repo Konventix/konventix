@@ -539,12 +539,12 @@ declare namespace Konventix {
                 readonly templateKey: string;
                 readonly channel: Konventix.Messaging.Enums.Channel;
                 readonly status: Konventix.Messaging.Enums.MessageStatus;
-                readonly queuedAt: string | null;
+                readonly queuedAt: string;
                 readonly sentAt: string | null;
                 readonly failedAt: string | null;
                 readonly lastError: string | null;
                 readonly resentFromId: string | null;
-                readonly payload: Record<string, any>;
+                readonly payload: Record<string, any> | null;
                 readonly renderedSubject: string | null;
                 readonly renderedBody: string | null;
                 readonly bodyRedacted: boolean;
@@ -563,7 +563,7 @@ declare namespace Konventix {
                 readonly templateKey: string;
                 readonly channel: Konventix.Messaging.Enums.Channel;
                 readonly status: Konventix.Messaging.Enums.MessageStatus;
-                readonly queuedAt: string | null;
+                readonly queuedAt: string;
                 readonly sentAt: string | null;
                 readonly failedAt: string | null;
                 readonly lastError: string | null;
@@ -571,7 +571,7 @@ declare namespace Konventix {
             };
             export type MessageResendRowData = {
                 readonly id: string;
-                readonly queuedAt: string | null;
+                readonly queuedAt: string;
                 readonly status: Konventix.Messaging.Enums.MessageStatus;
             };
             export type NotificationData = {
