@@ -8,10 +8,10 @@
 
 - [ ] `UserAnonymized` is still unconsumed by the recipient read model — it
       lands with Identity's GDPR handler.
-- [ ] Suppression-list and message-log operator screens: `AddSuppression`/
-      `LiftSuppression` exist with `ViewSuppressionList`/`ManageSuppressionList`
-      catalogued, but lifting means tinker; the delivery log likewise has no
-      `/admin` view yet (`ViewMessageLog`/`ViewMessageContent`).
+- [ ] Suppression-list operator screen: `AddSuppression`/`LiftSuppression`
+      exist with `ViewSuppressionList`/`ManageSuppressionList` catalogued, but
+      lifting still means tinker. (The delivery-log half of this item is done
+      — see Done below.)
 - [ ] Provider bounce/complaint webhooks feeding `AddSuppression` (ADR-0041
       point 4 follow-up): per-brand transports are plain SMTP today and emit
       none, so only the seam exists. `MessageBounced` in SPEC.md stays
@@ -67,13 +67,12 @@
       and replayable, rebuildable from scratch. (Superset of the recipient
       read model item under Next above; that item is the minimum slice —
       email/locale — needed to drop the temporary `SendMessageRequest` fields.)
-- [ ] Message log view registered in Platform's navigation
-      (`ViewMessageLog`/`ViewMessageContent`/`ResendMessage` from
-      `src/Enums/Permission.php`, done — see Done below), plus the
-      `src/Gdpr/` handler that exports and purges inbox and log rows
+- [ ] The `src/Gdpr/` handler that exports and purges inbox and log rows
       (`ManageMessageTemplates`/`ViewSuppressionList`/
       `ManageSuppressionList` are the remaining capabilities with no UI yet;
-      `ManageSenderIdentity` gates the mail-settings console — see Done).
+      `ManageSenderIdentity` gates the mail-settings console and
+      `ViewMessageLog`/`ViewMessageContent`/`ResendMessage` gate the delivery
+      log — see Done for both).
 - [ ] Consider whether `BrandCreated` should auto-seed an "unconfigured"
       `messaging_brand_settings` row per brand (so every brand always has
       exactly one row) versus the current design, where absence of a row
@@ -82,6 +81,36 @@
       query-ergonomics question, not a correctness one.
 
 ## Done
+
+- [x] ADR-0048 decision 6, Task 7 of the mail-and-receipts tranche: the
+      delivery log gets a screen, and a lost mail gets a second chance.
+      `/admin/messages` (nav "Messages", order 41, gated `ViewMessageLog`) —
+      an index (`Http\Controllers\Admin\MessageLogAdminController::index()`)
+      filtered by brand/status/channel/template and searched by recipient
+      email, a detail page (`show()`) with the meta, the payload, the
+      rendered mail in a sandboxed `<iframe srcdoc>` and the attachment
+      names. Reading the rendered subject/body needs `ViewMessageContent`
+      separately from seeing the row at all (`ViewMessageLog`) —
+      `Data\MessageLogDetailData::ofModel()` returns `bodyRedacted: true`
+      and no content for a viewer without it, regardless of whether the row
+      stored one. `Actions\ResendMessage` (its own capability,
+      `ResendMessage`) rebuilds a `SendMessageRequest` from the stored row
+      and hands it back to `SendMessage`, which logs a fresh row exactly
+      like an original send; the new row's `resent_from_id` (new column,
+      alongside `attachments` — what actually rode on the envelope,
+      `SendMessage::log()` now writes both) links it back. The row kept
+      only the payload's rendered array, not the module-owned Data class
+      that produced it — and Messaging may not import a module's own type
+      anyway (ADR-0004) — so the resend wraps it in a new
+      `Data\ArrayPayloadData`, a `Data` stand-in whose `toArray()` is the
+      only thing either consumer (`TemplateRenderer`, `SendMessage::log()`)
+      ever calls on a payload. Attachments are re-checked against disk and
+      dropped with a warning when gone. `urgent: true` on every resend, so
+      it bypasses digest/quiet-hours holds instead of joining an unrelated
+      window; refuses (`LogicException`, mapped to a redirect with errors)
+      a record still `Queued`/`Held`. `DryRunTest` walks the index; the
+      show route is named-skipped — `konventix:seed` sends no mail, so no
+      brand ever has a row for it to point at.
 
 - [x] ADR-0048 point 5, Task 6 of the mail-and-receipts tranche: Identity's
       auth mail — `identity.verify-email`, `identity.password-reset`,

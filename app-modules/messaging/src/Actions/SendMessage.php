@@ -211,6 +211,10 @@ final class SendMessage
             'topic_key' => $message->topicKey,
             'status' => $status,
             'payload' => $message->payload->toArray(),
+            // Referenced, not inlined (AttachmentData's own docblock) — a
+            // resend re-reads these from disk rather than the row carrying
+            // bytes (Actions\ResendMessage).
+            'attachments' => $message->attachments?->toArray(),
             'urgent' => $message->urgent,
             'hold_until' => $holdUntil,
             'queued_at' => now(),

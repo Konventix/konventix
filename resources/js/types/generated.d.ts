@@ -531,6 +531,49 @@ declare namespace Konventix {
                 smtpPassword: string | null;
                 smtpScheme: string | null;
             };
+            export type MessageLogDetailData = {
+                readonly id: string;
+                readonly brandName: string;
+                readonly recipientEmail: string;
+                readonly recipientId: string | null;
+                readonly templateKey: string;
+                readonly channel: Konventix.Messaging.Enums.Channel;
+                readonly status: Konventix.Messaging.Enums.MessageStatus;
+                readonly queuedAt: string | null;
+                readonly sentAt: string | null;
+                readonly failedAt: string | null;
+                readonly lastError: string | null;
+                readonly resentFromId: string | null;
+                readonly payload: Record<string, any>;
+                readonly renderedSubject: string | null;
+                readonly renderedBody: string | null;
+                readonly bodyRedacted: boolean;
+                readonly attachments: string[];
+                readonly attempts: number;
+                readonly topicKey: string | null;
+                readonly urgent: boolean;
+                readonly providerMessageId: string | null;
+                readonly resends: Konventix.Messaging.Data.MessageResendRowData[];
+            };
+            export type MessageLogRowData = {
+                readonly id: string;
+                readonly brandName: string;
+                readonly recipientEmail: string;
+                readonly recipientId: string | null;
+                readonly templateKey: string;
+                readonly channel: Konventix.Messaging.Enums.Channel;
+                readonly status: Konventix.Messaging.Enums.MessageStatus;
+                readonly queuedAt: string | null;
+                readonly sentAt: string | null;
+                readonly failedAt: string | null;
+                readonly lastError: string | null;
+                readonly resentFromId: string | null;
+            };
+            export type MessageResendRowData = {
+                readonly id: string;
+                readonly queuedAt: string | null;
+                readonly status: Konventix.Messaging.Enums.MessageStatus;
+            };
             export type NotificationData = {
                 readonly id: string;
                 readonly topicKey: string | null;

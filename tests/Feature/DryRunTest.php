@@ -18,6 +18,7 @@ use Konventix\Content\Models\ContentEntry;
 use Konventix\Event\Models\Event;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
+use Konventix\Messaging\Models\MessageRecord;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\BrandDomain;
 use Konventix\Platform\Models\MediaItem;
@@ -101,6 +102,12 @@ function dryRunSkippedRoutes(): array
         // at — a genuine seed gap (ADR-0048 point 2), not a route that
         // cannot be a screen.
         'admin.credit-notes.document' => 'no credit note in seeded data — konventix:seed does not exercise a refund',
+
+        // The demo seed sends no mail at all — konventix:seed never calls
+        // SendMessage — so no MessageRecord exists for this route's
+        // `{message}` parameter to point at. `admin.messages.index` still
+        // walks; only the detail screen needs a row.
+        'admin.messages.show' => 'no message record after seeding — konventix:seed sends no mail',
     ];
 }
 
@@ -270,6 +277,10 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
                 ->where('brand_id', $brand->getKey())
                 ->first(),
             $parameter === 'admission' => Admission::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
+            // Always null — konventix:seed sends no mail, so no brand ever
+            // has a MessageRecord — which is exactly why the route this
+            // parameter belongs to is also listed in dryRunSkippedRoutes().
+            $parameter === 'message' => MessageRecord::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             default => null,
         };
 

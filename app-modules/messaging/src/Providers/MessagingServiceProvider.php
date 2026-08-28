@@ -116,7 +116,9 @@ class MessagingServiceProvider extends ModuleServiceProvider
      */
     protected function registerNavigation(): void
     {
-        $this->app->make(NavigationRegistry::class)->add(
+        $registry = $this->app->make(NavigationRegistry::class);
+
+        $registry->add(
             new NavigationItem(
                 module: 'messaging',
                 label: 'Mail settings',
@@ -124,6 +126,21 @@ class MessagingServiceProvider extends ModuleServiceProvider
                 icon: 'mail',
                 order: 40,
                 permission: Permission::ManageSenderIdentity->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+        );
+
+        // ADR-0048 decision 6: the delivery log, gated on merely seeing
+        // that a message was sent — reading its content and resending it
+        // are separate capabilities the screen itself checks per action.
+        $registry->add(
+            new NavigationItem(
+                module: 'messaging',
+                label: 'Messages',
+                url: '/admin/messages',
+                icon: 'send',
+                order: 41,
+                permission: Permission::ViewMessageLog->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
         );

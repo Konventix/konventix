@@ -100,7 +100,29 @@ scalars and ULIDs, which is exactly what the rule asks for.
   question about "did they get the mail" has an answer. The suppression list is
   per brand, not global, because ADR-0028 makes reputation per brand domain: a
   hard bounce on one brand's sending domain says nothing about deliverability on
-  another's.
+  another's. `messaging_messages` carries two more columns for this:
+  `attachments` (a list of `{disk, path, as, mime}`, what actually rode on the
+  envelope — `SendMessage::log()` writes it from the request's attachment
+  collection) and `resent_from_id`, set on a resend's fresh row to point back
+  at the record an operator resent.
+  The operator console (ADR-0048 decision 6, `/admin/messages`, gated
+  `ViewMessageLog`) is the screen this exists for: an index filtered by
+  brand/status/channel/template and searched by recipient email, and a detail
+  page showing the meta, the payload, the rendered mail (sandboxed
+  `<iframe srcdoc>`, redacted to `bodyRedacted: true` without
+  `ViewMessageContent` regardless of whether the row stored a body) and the
+  attachment names. `Actions\ResendMessage` (gated `ResendMessage`, its own
+  capability — seeing the log does not imply sending again) rebuilds a
+  `SendMessageRequest` from the stored row — payload wrapped in the new
+  `Data\ArrayPayloadData` (the row kept only the rendered array, not the
+  original module-owned Data class, and Messaging may not import a module's
+  own payload type anyway), attachments re-checked against disk and dropped
+  with a warning when gone — and hands it back to `SendMessage`, which logs a
+  new row exactly like an original send (`MessageQueued` fires again); the new
+  row's `resent_from_id` links it to the one it came from. `urgent: true` on a
+  resend, so it bypasses digest/quiet-hours holds rather than joining an
+  unrelated window. Refuses (`LogicException`, mapped to a redirect with
+  errors) a record still `Queued`/`Held` — nothing to resend yet.
 - **The outbound pipeline**: its own queue name, retry and backoff policy, and
   the brand context carried into and restored inside the job (ADR-0010).
 - **Rendering context**: the brand read model — name, canonical domain, sender

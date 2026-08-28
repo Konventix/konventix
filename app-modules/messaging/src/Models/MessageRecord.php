@@ -33,6 +33,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $topic_key
  * @property MessageStatus $status
  * @property array<string, mixed> $payload
+ * @property list<array<string, mixed>>|null $attachments
  * @property string|null $rendered_subject
  * @property string|null $rendered_body
  * @property int $attempts
@@ -41,6 +42,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property bool $urgent
  * @property Carbon|null $hold_until
  * @property string|null $digest_message_id
+ * @property string|null $resent_from_id
  * @property Carbon $queued_at
  * @property Carbon|null $sent_at
  * @property Carbon|null $failed_at
@@ -70,6 +72,7 @@ class MessageRecord extends Model
         'topic_key',
         'status',
         'payload',
+        'attachments',
         'rendered_subject',
         'rendered_body',
         'attempts',
@@ -78,6 +81,7 @@ class MessageRecord extends Model
         'urgent',
         'hold_until',
         'digest_message_id',
+        'resent_from_id',
         'queued_at',
         'sent_at',
         'failed_at',
@@ -92,6 +96,7 @@ class MessageRecord extends Model
             'channel' => Channel::class,
             'status' => MessageStatus::class,
             'payload' => 'array',
+            'attachments' => 'array',
             'attempts' => 'integer',
             'urgent' => 'boolean',
             'hold_until' => 'datetime',
