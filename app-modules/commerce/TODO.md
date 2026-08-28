@@ -93,7 +93,10 @@
       already hears from Registration, and where invoice-settled, from
       Commerce's own Rechnung mail) mails `commerce.order-confirmation` with
       the order's lines, total, and — when a checked-out cart is still
-      behind it — the reservation deadline; `SendPaymentFailedMailOnPaymentFailed`
+      behind it — the reservation deadline; the greeting is branch-free
+      (`Guten Tag{{ $recipientName ? ' '.$recipientName : '' }},`), not a
+      payload-level `?? 'Hallo'` fallback, which read as a name rather than
+      a salutation. `SendPaymentFailedMailOnPaymentFailed`
       (`PaymentFailed`) mails `commerce.payment-failed` to the payer with an
       already-localised reason sentence and a retry link (`commerce.pay.show`
       for a registration order, `/my/orders` for a cart order); a payer-less
@@ -107,22 +110,27 @@
       both current triggers set `urgent: true` on the request itself so a
       manager gets an immediate nudge rather than a 30-minute-coalesced
       digest, the same `HoldPolicy`/D-CNT-08 reasoning an urgent
-      announcement already uses). New in Platform: `Permissions\PermissionHolders::userIdsWithPermission()`
-      — a pure query builder over spatie's own pivot tables (no Eloquent
+      announcement already uses). `OperationsNoticeData.kind` is a real
+      backed enum (`Enums\OperationsNoticeKind`, `#[TypeScript]`), not a
+      string with a docblock union — the generated TypeScript type is a
+      real union rather than `unknown`. New in Platform:
+      `Permissions\PermissionHolders::userIdsWithPermission()` — a pure
+      query builder over spatie's own pivot tables (no Eloquent
       `Role`/`Permission` model, no Identity `User` import) answering "which
-      users hold this permission on this brand", the first caller outside
-      Platform itself. `reasonCode` mapping (`SendPaymentFailedMailOnPaymentFailed::reasonSentence()`)
+      users hold this permission on this brand" — and
+      `Operators\OperatorSettings::adminBaseUrlForBrand()`, the doorway to
+      `Operator::$admin_host` (scheme parsed from `config('app.url')`,
+      `https` default) that both `NotifyOperators*` listeners use to build
+      an absolute admin-console link, falling back to a relative path when
+      the brand's operator has none set yet — an email with a relative link
+      is dead, so this replaced the first pass's `route(…, absolute: false)`.
+      `reasonCode` mapping (`SendPaymentFailedMailOnPaymentFailed::reasonSentence()`)
       reads the real values the three PSP webhook controllers emit
       (`async_payment_failed`, `checkout_expired`, `failed`, `canceled`,
       `expired`) rather than the illustrative `card_declined` wording
-      sketched during planning — no adapter emits that code. The admin link
-      in a stock-exhausted notice is relative (`route('admin.products.edit', …, absolute: false)`):
-      Commerce cannot import Platform's `Operator` model to resolve
-      `admin_host` from a queue worker, so the recipient's own browser
-      (already on the admin host) resolves it — worth an `AdminUrl` helper
-      alongside `BrandUrl` if a second cross-module caller needs the same
-      thing. `tests/Unit/ArchitectureTest.php`'s Messaging allowlist grew
-      two segments, `Topics` and `Enums`, for `Topic`/`TopicRegistry`/`Channel`
+      sketched during planning — no adapter emits that code.
+      `tests/Unit/ArchitectureTest.php`'s Messaging allowlist grew two
+      segments, `Topics` and `Enums`, for `Topic`/`TopicRegistry`/`Channel`
       — the first module besides Messaging to use
       `ModuleServiceProvider::registerMessageTopics()`'s hook.
 - [x] ADR-0048 (mail-and-receipts Task 3): a refund leaves a Gutschrift

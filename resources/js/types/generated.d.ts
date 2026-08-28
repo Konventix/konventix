@@ -116,7 +116,7 @@ declare namespace Konventix {
                 readonly registrationUrl: string | null;
             };
             export type OperationsNoticeData = {
-                readonly kind: unknown;
+                readonly kind: Konventix.Commerce.Enums.OperationsNoticeKind;
                 readonly title: string;
                 readonly detail: string;
                 readonly url: string;
@@ -234,6 +234,8 @@ declare namespace Konventix {
         namespace Enums {
             export type CartLineKind = 'product' | 'registration';
             export type CartStatus = 'open' | 'expired' | 'checked_out';
+            export type OperationsNoticeKind =
+                'stock-exhausted' | 'payment-failed';
             export type OrderStatus =
                 'pending' | 'paid' | 'cancelled' | 'refunded';
             export type PaymentStatus =

@@ -58,4 +58,31 @@ class OperatorSettings
 
         return $operator?->contact_email;
     }
+
+    /**
+     * The operator console's own origin for this brand's operator —
+     * `scheme://{admin_host}` — for a mail that links a shop operator into
+     * the console (ADR-0048 point 3, Commerce's operations notice is the
+     * first caller). The scheme is parsed from `config('app.url')` rather
+     * than assumed, defaulting to `https` when that config carries none —
+     * `admin_host` itself is bare (no scheme, ADR-0029's `ResolveBrand`
+     * middleware matches it against the raw request host).
+     *
+     * Null when the brand has no operator, or the operator has not set an
+     * `admin_host` yet — the caller then has nowhere to link to and falls
+     * back to a relative path, same as `contactEmailForBrand()`'s "nowhere
+     * to escalate to" shape.
+     */
+    public function adminBaseUrlForBrand(string $brandId): ?string
+    {
+        $adminHost = Brand::query()->find($brandId)?->operator?->admin_host;
+
+        if ($adminHost === null) {
+            return null;
+        }
+
+        $scheme = parse_url((string) config('app.url'), PHP_URL_SCHEME) ?? 'https';
+
+        return "{$scheme}://{$adminHost}";
+    }
 }

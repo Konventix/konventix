@@ -6,11 +6,13 @@ namespace Konventix\Commerce\Listeners;
 
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Data\OperationsNoticeData;
+use Konventix\Commerce\Enums\OperationsNoticeKind;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Events\PaymentFailed;
 use Konventix\Commerce\Models\Order;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
+use Konventix\Platform\Operators\OperatorSettings;
 use Konventix\Platform\Permissions\PermissionHolders;
 use RuntimeException;
 
@@ -21,12 +23,17 @@ use RuntimeException;
  * `commerce.operations` topic `NotifyOperatorsOnStockExhausted` uses. Runs
  * regardless of whether the payer mail sent: an order with no payer still
  * needs the shop manager's attention.
+ *
+ * The admin order link is absolute through `OperatorSettings::adminBaseUrlForBrand()`
+ * — see `NotifyOperatorsOnStockExhausted`'s docblock for why that doorway
+ * and not the `Operator` model directly.
  */
 final class NotifyOperatorsOnPaymentFailed
 {
     public function __construct(
         private readonly SendMessage $sendMessage,
         private readonly PermissionHolders $permissionHolders,
+        private readonly OperatorSettings $operatorSettings,
     ) {}
 
     public function handle(PaymentFailed $event): void
@@ -40,6 +47,7 @@ final class NotifyOperatorsOnPaymentFailed
         $orderNumberShort = strtoupper(substr($order->id, -8));
         $title = "Zahlung fehlgeschlagen: Bestellung {$orderNumberShort}";
         $detail = $title.'. '.$this->reasonSentence($event->reasonCode);
+        $url = $this->adminUrl($event->brandId, 'admin.orders.show', ['order' => $order->id]);
 
         $holders = $this->permissionHolders->userIdsWithPermission($event->brandId, Permission::ManageProducts->value);
 
@@ -49,10 +57,10 @@ final class NotifyOperatorsOnPaymentFailed
                     recipientId: $userId,
                     templateKey: 'commerce.operations-notice',
                     payload: new OperationsNoticeData(
-                        kind: 'payment-failed',
+                        kind: OperationsNoticeKind::PaymentFailed,
                         title: $title,
                         detail: $detail,
-                        url: route('admin.orders.show', ['order' => $order->id], absolute: false),
+                        url: $url,
                     ),
                     recipientLocale: 'de',
                     brandId: $event->brandId,
@@ -85,5 +93,16 @@ final class NotifyOperatorsOnPaymentFailed
             'canceled' => 'Die Zahlung wurde abgebrochen.',
             default => 'Die Zahlung konnte nicht abgeschlossen werden.',
         };
+    }
+
+    /**
+     * @param  array<string, string>  $parameters
+     */
+    private function adminUrl(string $brandId, string $routeName, array $parameters): string
+    {
+        $base = $this->operatorSettings->adminBaseUrlForBrand($brandId);
+        $path = route($routeName, $parameters, absolute: false);
+
+        return $base === null ? $path : rtrim($base, '/').$path;
     }
 }

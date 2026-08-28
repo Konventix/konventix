@@ -84,6 +84,23 @@ depends on brand resolution and gating working.
 
 ## Done
 
+- [x] ADR-0048 point 3, Task 4 of the mail-and-receipts tranche, two new
+      cross-module doorways. `Permissions\PermissionHolders::userIdsWithPermission(brandId,
+      permission): list<string>` — a pure `DB::table()` query over spatie's
+      own `model_has_roles`/`roles`/`role_has_permissions`/`permissions`
+      pivots (`config('permission.table_names')`/`column_names()`, `model_type`
+      compared against `config('auth.providers.users.model')` as a plain
+      string) — no Eloquent `Role`/`Permission` model, no Identity `User`
+      import; answers "which users hold this permission on this brand".
+      `Operators\OperatorSettings::adminBaseUrlForBrand(brandId): ?string`
+      — `scheme://{admin_host}` for the brand's operator (scheme parsed
+      from `config('app.url')`, `https` default), the same doorway shape
+      `sellerForBrand()`/`contactEmailForBrand()` already use; null when the
+      brand has no operator or no `admin_host` set. Commerce's operations
+      notice (a sold-out variant, a failed payment) is the first caller of
+      both — the notice needs an absolute console link (a relative one is
+      dead in an email) and a recipient list with no user model of its own.
+
 - [x] ADR-0048 point 4, Task 1 of the mail-and-receipts tranche:
       `Footer\FooterLinks::legalLinksFor(brandId): array{imprintUrl,
       privacyUrl}`, a plain read service reading the same `FooterLink` rows

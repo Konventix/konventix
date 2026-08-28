@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Konventix\Commerce\Data\OrderConfirmationMailData;
 use Konventix\Commerce\Events\OrderPlaced;
 use Konventix\Commerce\Events\PaymentFailed;
 use Konventix\Commerce\Events\StockExhausted;
@@ -16,10 +17,16 @@ use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
+use Konventix\Messaging\Data\SendMessageData;
+use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Jobs\SendQueuedMessage;
 use Konventix\Messaging\Models\InboxNotification;
+use Konventix\Messaging\Templates\TemplateRenderer;
+use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
+use Konventix\Platform\Operators\OperatorSettings;
 
 /**
  * ADR-0048 point 3: Commerce owns the mail behind its own events — a cart
@@ -125,6 +132,42 @@ it('sends the order confirmation when a cart order is placed, with lines and the
     });
 });
 
+function orderMailsConfirmationBody(?string $recipientName, string $brandId): string
+{
+    $message = new SendMessageData(
+        messageId: (string) Str::ulid(),
+        brandId: $brandId,
+        recipientId: (string) Str::ulid(),
+        recipientEmail: 'payer@example.test',
+        recipientLocale: 'de',
+        templateKey: 'commerce.order-confirmation',
+        payload: new OrderConfirmationMailData(
+            orderNumberShort: 'ABCD1234',
+            recipientName: $recipientName,
+            placedAt: '28.08.2026 10:00',
+            lines: [['label' => 'Con Shirt', 'quantity' => 1, 'lineGross' => '35.70']],
+            totalGross: '35.70',
+            currency: 'EUR',
+            paid: false,
+            reservationUntil: null,
+            ordersUrl: 'https://brand.example.test/my/orders',
+        ),
+        channel: Channel::Mail->value,
+    );
+
+    return app(TemplateRenderer::class)->render($message)->body;
+}
+
+it('greets by name when one is known, and plainly when it is not', function (): void {
+    $brand = $this->withBrand();
+
+    expect(orderMailsConfirmationBody('Max Mustermann', $brand->id))
+        ->toContain('<p>Guten Tag Max Mustermann,</p>');
+
+    expect(orderMailsConfirmationBody(null, $brand->id))
+        ->toContain('<p>Guten Tag,</p>');
+});
+
 it('sends no order confirmation for a direct registration order', function (): void {
     $brand = $this->withBrand();
     $payer = orderMailsRecipient($brand->id);
@@ -224,8 +267,9 @@ it('logs a warning and sends nothing when a failed payment has no payer', functi
             && $context['order_id'] === $order->id);
 });
 
-it('reaches exactly the permission holders with a stock-exhausted operations notice', function (): void {
-    $brand = $this->withBrand();
+it('reaches exactly the permission holders with a stock-exhausted operations notice, with an absolute admin link', function (): void {
+    $operator = Operator::factory()->create(['admin_host' => 'admin.orders-mails.test']);
+    $brand = $this->withBrand(Brand::factory()->for($operator)->create());
 
     $product = Product::factory()->create(['name' => 'Con Shirt']);
     $variant = ProductVariant::factory()->create(['product_id' => $product->id, 'label' => 'L']);
@@ -257,9 +301,12 @@ it('reaches exactly the permission holders with a stock-exhausted operations not
         ->and($notices->pluck('message.recipientId')->unique()->all())->toBe([$holder->id]);
 
     $payload = $notices->first()->message->payload->toArray();
+    $adminBase = app(OperatorSettings::class)->adminBaseUrlForBrand($brand->id);
 
     expect($payload['kind'])->toBe('stock-exhausted')
         ->and($payload['title'])->toBe('Ausverkauft: Con Shirt – L')
+        ->and($adminBase)->not->toBeNull()
+        ->and($payload['url'])->toStartWith($adminBase)
         ->and($notices->first()->message->topicKey)->toBe('commerce.operations')
         ->and($notices->first()->message->urgent)->toBeTrue();
 });

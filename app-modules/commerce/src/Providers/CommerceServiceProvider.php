@@ -477,7 +477,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>{{ $recipientName ?? 'Hallo' }},</p>
+                    <p>Guten Tag{{ $recipientName ? ' '.$recipientName : '' }},</p>
                     <p>vielen Dank für Ihre Bestellung <strong>{{ $orderNumberShort }}</strong>
                     vom {{ $placedAt }}.</p>
                     <table>
@@ -499,7 +499,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
                     BLADE,
                 'en' => <<<'BLADE'
-                    <p>{{ $recipientName ?? 'Hello' }},</p>
+                    <p>Hello{{ $recipientName ? ' '.$recipientName : '' }},</p>
                     <p>thank you for your order <strong>{{ $orderNumberShort }}</strong>
                     placed on {{ $placedAt }}.</p>
                     <table>

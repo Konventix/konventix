@@ -74,3 +74,40 @@ it('resolves a seller for any brand, because every brand now has an operator', f
 
     expect($seller->legalName)->not->toBeEmpty();
 });
+
+/**
+ * ADR-0048 point 3: the operations notice needs an absolute console link —
+ * a relative one is dead in an email. `adminBaseUrlForBrand()` is the
+ * sanctioned doorway to `Operator::$admin_host` (the model itself stays
+ * off-limits cross-module).
+ */
+it('resolves the admin console origin from the brand\'s operator', function (): void {
+    // config('app.url') is http://localhost in this suite (phpunit.xml sets
+    // no APP_URL override) — pinned to an https URL here so the assertion
+    // proves the scheme is actually read from config, not hardcoded.
+    config(['app.url' => 'https://console.example.test']);
+
+    $operator = Operator::factory()->create(['admin_host' => 'admin.example.test']);
+    $brand = Brand::factory()->for($operator)->create();
+
+    $base = app(OperatorSettings::class)->adminBaseUrlForBrand((string) $brand->getKey());
+
+    expect($base)->toBe('https://admin.example.test');
+});
+
+it('defaults to https when config(\'app.url\') carries no scheme', function (): void {
+    config(['app.url' => 'localhost']);
+
+    $operator = Operator::factory()->create(['admin_host' => 'admin.example.test']);
+    $brand = Brand::factory()->for($operator)->create();
+
+    expect(app(OperatorSettings::class)->adminBaseUrlForBrand((string) $brand->getKey()))
+        ->toBe('https://admin.example.test');
+});
+
+it('resolves nothing when the operator has no admin host yet', function (): void {
+    $operator = Operator::factory()->create(['admin_host' => null]);
+    $brand = Brand::factory()->for($operator)->create();
+
+    expect(app(OperatorSettings::class)->adminBaseUrlForBrand((string) $brand->getKey()))->toBeNull();
+});

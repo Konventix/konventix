@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Data;
 
+use Konventix\Commerce\Enums\OperationsNoticeKind;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -19,11 +20,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 #[TypeScript]
 final class OperationsNoticeData extends Data
 {
-    /**
-     * @param  'stock-exhausted'|'payment-failed'  $kind
-     */
     public function __construct(
-        public readonly string $kind,
+        public readonly OperationsNoticeKind $kind,
         public readonly string $title,
         public readonly string $detail,
         public readonly string $url,
