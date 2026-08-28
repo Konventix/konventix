@@ -128,6 +128,10 @@ php artisan make:module <name>          # scaffold a module from stubs/app-modul
 php artisan make:<thing> --module=<name>  # generate into a module, not app/
 ```
 
+Mail in the dev stack goes to Mailpit, not out: the `mailpit` service catches every send, and
+its inbox is at `http://localhost:8025`. A send only leaves the `messaging` queue once the
+`queue` container is up, so check that first if the inbox stays empty.
+
 Developing against object storage (ADR-0043) is opt-in — media and invoices stay on local
 disks by default:
 

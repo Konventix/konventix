@@ -232,8 +232,16 @@ class RegistrationServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag{{ $holderName ? ' '.$holderName : '' }},</p>
-                    <p>Ihre Anmeldung{{ $eventName ? ' zu '.$eventName : '' }} ({{ $registrationTypeName }}) ist bei uns eingegangen.</p>
+                    @if ($holderName)
+                    <p>Guten Tag {{ $holderName }},</p>
+                    @else
+                    <p>Guten Tag,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Ihre Anmeldung zu {{ $eventName }} ({{ $registrationTypeName }}) ist bei uns eingegangen.</p>
+                    @else
+                    <p>Ihre Anmeldung ({{ $registrationTypeName }}) ist bei uns eingegangen.</p>
+                    @endif
                     @if ($nextStep === 'approval')
                     <p>Wir prüfen Ihre Anmeldung und melden uns.</p>
                     @elseif ($nextStep === 'pay')
@@ -246,8 +254,16 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $registrationUrl }}">Zu Ihrer Anmeldung</a></p>
                     BLADE,
                 'en' => <<<'BLADE'
-                    <p>Hello{{ $holderName ? ' '.$holderName : '' }},</p>
-                    <p>Your registration{{ $eventName ? ' for '.$eventName : '' }} ({{ $registrationTypeName }}) has been received.</p>
+                    @if ($holderName)
+                    <p>Hello {{ $holderName }},</p>
+                    @else
+                    <p>Hello,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Your registration for {{ $eventName }} ({{ $registrationTypeName }}) has been received.</p>
+                    @else
+                    <p>Your registration ({{ $registrationTypeName }}) has been received.</p>
+                    @endif
                     @if ($nextStep === 'approval')
                     <p>We are reviewing your registration and will get back to you.</p>
                     @elseif ($nextStep === 'pay')
@@ -278,8 +294,16 @@ class RegistrationServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag{{ $holderName ? ' '.$holderName : '' }},</p>
-                    <p>Ihre Anmeldung{{ $eventName ? ' zu '.$eventName : '' }} ({{ $registrationTypeName }}) wurde angenommen.</p>
+                    @if ($holderName)
+                    <p>Guten Tag {{ $holderName }},</p>
+                    @else
+                    <p>Guten Tag,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Ihre Anmeldung zu {{ $eventName }} ({{ $registrationTypeName }}) wurde angenommen.</p>
+                    @else
+                    <p>Ihre Anmeldung ({{ $registrationTypeName }}) wurde angenommen.</p>
+                    @endif
                     @if ($nextStep === 'approval')
                     <p>Wir prüfen Ihre Anmeldung und melden uns.</p>
                     @elseif ($nextStep === 'pay')
@@ -292,8 +316,16 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     <p><a href="{{ $registrationUrl }}">Zu Ihrer Anmeldung</a></p>
                     BLADE,
                 'en' => <<<'BLADE'
-                    <p>Hello{{ $holderName ? ' '.$holderName : '' }},</p>
-                    <p>Your registration{{ $eventName ? ' for '.$eventName : '' }} ({{ $registrationTypeName }}) has been accepted.</p>
+                    @if ($holderName)
+                    <p>Hello {{ $holderName }},</p>
+                    @else
+                    <p>Hello,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Your registration for {{ $eventName }} ({{ $registrationTypeName }}) has been accepted.</p>
+                    @else
+                    <p>Your registration ({{ $registrationTypeName }}) has been accepted.</p>
+                    @endif
                     @if ($nextStep === 'approval')
                     <p>We are reviewing your registration and will get back to you.</p>
                     @elseif ($nextStep === 'pay')
@@ -324,14 +356,46 @@ class RegistrationServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag{{ $holderName ? ' '.$holderName : '' }},</p>
-                    <p>Ihre Anmeldung{{ $eventName ? ' zu '.$eventName : '' }} ({{ $registrationTypeName }}) wurde leider abgelehnt.</p>
-                    <p>Grund: {{ match ($reason) { 'capacity' => 'Die Kapazität war ausgeschöpft.', 'incomplete' => 'Ihre Angaben waren unvollständig.', 'duplicate' => 'Es liegt bereits eine Anmeldung von Ihnen vor.', default => $reason } }}</p>
+                    @if ($holderName)
+                    <p>Guten Tag {{ $holderName }},</p>
+                    @else
+                    <p>Guten Tag,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Ihre Anmeldung zu {{ $eventName }} ({{ $registrationTypeName }}) wurde leider abgelehnt.</p>
+                    @else
+                    <p>Ihre Anmeldung ({{ $registrationTypeName }}) wurde leider abgelehnt.</p>
+                    @endif
+                    @if ($reason === 'capacity')
+                    <p>Grund: Die Kapazität war ausgeschöpft.</p>
+                    @elseif ($reason === 'incomplete')
+                    <p>Grund: Ihre Angaben waren unvollständig.</p>
+                    @elseif ($reason === 'duplicate')
+                    <p>Grund: Es liegt bereits eine Anmeldung von Ihnen vor.</p>
+                    @else
+                    <p>Grund: {{ $reason }}</p>
+                    @endif
                     BLADE,
                 'en' => <<<'BLADE'
-                    <p>Hello{{ $holderName ? ' '.$holderName : '' }},</p>
-                    <p>Your registration{{ $eventName ? ' for '.$eventName : '' }} ({{ $registrationTypeName }}) has unfortunately been declined.</p>
-                    <p>Reason: {{ match ($reason) { 'capacity' => 'Capacity was exhausted.', 'incomplete' => 'Your details were incomplete.', 'duplicate' => 'A registration from you already exists.', default => $reason } }}</p>
+                    @if ($holderName)
+                    <p>Hello {{ $holderName }},</p>
+                    @else
+                    <p>Hello,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Your registration for {{ $eventName }} ({{ $registrationTypeName }}) has unfortunately been declined.</p>
+                    @else
+                    <p>Your registration ({{ $registrationTypeName }}) has unfortunately been declined.</p>
+                    @endif
+                    @if ($reason === 'capacity')
+                    <p>Reason: Capacity was exhausted.</p>
+                    @elseif ($reason === 'incomplete')
+                    <p>Reason: Your details were incomplete.</p>
+                    @elseif ($reason === 'duplicate')
+                    <p>Reason: A registration from you already exists.</p>
+                    @else
+                    <p>Reason: {{ $reason }}</p>
+                    @endif
                     BLADE,
             ],
             defaultLocale: 'de',
@@ -351,13 +415,29 @@ class RegistrationServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag{{ $holderName ? ' '.$holderName : '' }},</p>
-                    <p>Ihre Anmeldung{{ $eventName ? ' zu '.$eventName : '' }} ({{ $registrationTypeName }}) ist bestätigt.</p>
+                    @if ($holderName)
+                    <p>Guten Tag {{ $holderName }},</p>
+                    @else
+                    <p>Guten Tag,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Ihre Anmeldung zu {{ $eventName }} ({{ $registrationTypeName }}) ist bestätigt.</p>
+                    @else
+                    <p>Ihre Anmeldung ({{ $registrationTypeName }}) ist bestätigt.</p>
+                    @endif
                     <p>Alles Weitere (Einlass, Unterlagen) finden Sie auf Ihrer <a href="{{ $registrationUrl }}">Anmeldeseite</a>.</p>
                     BLADE,
                 'en' => <<<'BLADE'
-                    <p>Hello{{ $holderName ? ' '.$holderName : '' }},</p>
-                    <p>Your registration{{ $eventName ? ' for '.$eventName : '' }} ({{ $registrationTypeName }}) is confirmed.</p>
+                    @if ($holderName)
+                    <p>Hello {{ $holderName }},</p>
+                    @else
+                    <p>Hello,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Your registration for {{ $eventName }} ({{ $registrationTypeName }}) is confirmed.</p>
+                    @else
+                    <p>Your registration ({{ $registrationTypeName }}) is confirmed.</p>
+                    @endif
                     <p>Everything else (admission, documents) is on your <a href="{{ $registrationUrl }}">registration page</a>.</p>
                     BLADE,
             ],
@@ -378,8 +458,16 @@ class RegistrationServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    <p>Guten Tag{{ $holderName ? ' '.$holderName : '' }},</p>
-                    <p>Ihre Anmeldung{{ $eventName ? ' zu '.$eventName : '' }} ({{ $registrationTypeName }}) wurde storniert.</p>
+                    @if ($holderName)
+                    <p>Guten Tag {{ $holderName }},</p>
+                    @else
+                    <p>Guten Tag,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Ihre Anmeldung zu {{ $eventName }} ({{ $registrationTypeName }}) wurde storniert.</p>
+                    @else
+                    <p>Ihre Anmeldung ({{ $registrationTypeName }}) wurde storniert.</p>
+                    @endif
                     @if ($cancelReason === 'cart_expired')
                     <p>Ihre Reservierung ist abgelaufen, bevor die Zahlung einging.</p>
                     @elseif ($cancelReason === 'registrant')
@@ -392,8 +480,16 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @endif
                     BLADE,
                 'en' => <<<'BLADE'
-                    <p>Hello{{ $holderName ? ' '.$holderName : '' }},</p>
-                    <p>Your registration{{ $eventName ? ' for '.$eventName : '' }} ({{ $registrationTypeName }}) has been cancelled.</p>
+                    @if ($holderName)
+                    <p>Hello {{ $holderName }},</p>
+                    @else
+                    <p>Hello,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Your registration for {{ $eventName }} ({{ $registrationTypeName }}) has been cancelled.</p>
+                    @else
+                    <p>Your registration ({{ $registrationTypeName }}) has been cancelled.</p>
+                    @endif
                     @if ($cancelReason === 'cart_expired')
                     <p>Your reservation expired before payment was received.</p>
                     @elseif ($cancelReason === 'registrant')

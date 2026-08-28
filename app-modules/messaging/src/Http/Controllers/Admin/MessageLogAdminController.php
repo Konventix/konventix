@@ -89,7 +89,14 @@ class MessageLogAdminController
 
         /** @var MessageRecord $record */
         $record = MessageRecord::withoutBrandScope()->findOrFail($message);
-        $brandName = Brand::query()->find($record->brand_id)->name ?? '—';
+        $brand = Brand::query()->find($record->brand_id);
+
+        // Not `Brand::query()->find(...)?->name`: Larastan mistypes `find()`
+        // here as never-null (same false positive as `MyOrderData::ofOrder()`'s
+        // own note), which makes the nullsafe form a phpstan false positive
+        // (`nullsafe.neverNull`) — an explicit null check sidesteps it without
+        // changing the behaviour.
+        $brandName = $brand !== null ? $brand->name : '—';
 
         // Seeing that a message was sent and reading what it said are
         // separate capabilities (SPEC.md "Capabilities") — this only

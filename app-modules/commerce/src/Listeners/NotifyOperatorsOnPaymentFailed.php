@@ -62,7 +62,6 @@ final class NotifyOperatorsOnPaymentFailed
                         detail: $detail,
                         url: $url,
                     ),
-                    recipientLocale: 'de',
                     brandId: $event->brandId,
                     topicKey: 'commerce.operations',
                     // See NotifyOperatorsOnStockExhausted's docblock: a

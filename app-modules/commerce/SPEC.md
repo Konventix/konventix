@@ -466,6 +466,10 @@ the topic's own 30-minute coalescing window.
 | `commerce.payment-failed` | `SendPaymentFailedMailOnPaymentFailed` on `PaymentFailed` | The order's payer | — |
 | `commerce.operations-notice` | `NotifyOperatorsOnStockExhausted` on `StockExhausted`; `NotifyOperatorsOnPaymentFailed` on `PaymentFailed` | Every `commerce.manage-products` holder on the brand (`Platform\Permissions\PermissionHolders`) | `commerce.operations` |
 
+`ProviderLabels` returns German labels ('Überweisung / manuell', 'Testzahlung') stored in
+`invoices.paid_via` and echoed by both locales of `commerce.invoice-paid` and by the PDF —
+deliberate for the DACH release, not a translation gap.
+
 ## Activation
 
 **Core tier: always active.** Every brand needs Commerce and no Pennant feature

@@ -65,14 +65,16 @@ final class MailLayout
     }
 
     /**
-     * `<br>` and the close of a `<p>` become newlines before every other tag
-     * is stripped, so paragraph breaks survive into the text part instead
-     * of running every line together.
+     * `<br>`, the close of a `<p>`, and the close of an `<li>` become
+     * newlines before every other tag is stripped, so paragraph breaks and
+     * list items survive into the text part instead of running every line
+     * together.
      */
     private static function plainBody(string $html): string
     {
         $normalized = preg_replace('/<br\s*\/?>/i', "\n", $html) ?? $html;
         $normalized = preg_replace('/<\/p>/i', "\n\n", $normalized) ?? $normalized;
+        $normalized = preg_replace('/<\/li>/i', "\n", $normalized) ?? $normalized;
 
         return trim(html_entity_decode(strip_tags($normalized), ENT_QUOTES | ENT_HTML5));
     }

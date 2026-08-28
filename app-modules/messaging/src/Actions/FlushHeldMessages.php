@@ -46,7 +46,14 @@ final class FlushHeldMessages
                 ->where('status', MessageStatus::Held)
                 ->where('hold_until', '<=', now())
                 ->lockForUpdate()
+                // `queued_at` alone ties whenever two holds land in the same
+                // second — a real possibility for a burst of digestable
+                // sends, not just a test racing the clock. `id` (a ULID) is
+                // monotonically increasing even within one millisecond, so it
+                // breaks the tie in actual creation order instead of leaving
+                // it to Postgres' unspecified order for equal sort keys.
                 ->orderBy('queued_at')
+                ->orderBy('id')
                 ->get();
 
             $dispatches = [];

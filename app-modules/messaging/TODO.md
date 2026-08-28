@@ -7,15 +7,16 @@
 ## Next
 
 - [ ] `TemplateOverrideGuard`'s allow-list is deliberately narrower than
-      Blade itself — a shipped default that uses a richer expression than
-      a plain echo (`registration.rejected`'s `{{ match ($reason) { ... } }}`,
-      `messaging.dunning-notice`'s ternary echoes) cannot be pasted verbatim
-      into an override; the guard refuses it the same as any other
-      disallowed construct, even though the *default* renders it fine.
-      Moving that kind of logic into the payload Data class (so the
-      template only ever echoes a precomputed field) is the fix, and it is
-      a follow-up per template, not a guard change — widening the guard to
-      admit arbitrary PHP expressions is exactly what it exists to refuse.
+      Blade itself: an echo that is anything more than `{{ $field }}` or
+      `{{ $field ?? 'literal' }}` is refused, so a shipped default using a
+      richer expression cannot be pasted into an override even though the
+      default renders it fine. As of ADR-0048 the only default still in
+      that state is `compliance.deadline-warning`'s
+      `{{ $daysLeft < 0 ? … }}` (both locales) — the tranche's own
+      templates were rewritten to guard-legal `@if`/`@else` blocks instead.
+      Moving that logic into the payload Data class, or into an `@if`
+      block, is the fix per template; widening the guard to admit
+      arbitrary PHP expressions is exactly what it exists to refuse.
 - [ ] `UserAnonymized` is still unconsumed by the recipient read model — it
       lands with Identity's GDPR handler.
 - [ ] Suppression-list operator screen: `AddSuppression`/`LiftSuppression`
@@ -48,10 +49,16 @@
 
 ## Backlog
 
-- [ ] The plain-text alternative handles `<li>` only by incidental
-      whitespace.
-- [ ] Shipped defaults with richer expressions (`registration.rejected`'s
-      match) cannot be pasted into an override.
+- [ ] `TemplateOverrideGuard` refuses a literal email address in an override:
+      its `@word` scan matches `@example` inside `info@example.com` and the
+      glued-directive check then rejects it, even though Blade renders it
+      as plain text. A negative lookahead for a preceding word character
+      would close it; the compile check already backstops the case it was
+      guarding.
+- [ ] `DryRunTest` walks `admin.messages.templates.edit` for reachability
+      only — the console walk carries no `ConsoleSelection`, so the screen
+      redirects rather than rendering. A walk that makes a pick first would
+      cover the render.
 - [ ] Announcement audience narrowing: both `everyone` and `logged-in`
       currently reach every known account, operator-wide — Messaging's
       recipient read model has no notion of brand membership. Needs an

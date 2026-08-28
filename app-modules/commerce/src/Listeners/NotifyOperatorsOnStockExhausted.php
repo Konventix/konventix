@@ -72,7 +72,6 @@ final class NotifyOperatorsOnStockExhausted
                         detail: "{$productLabel} ist ausverkauft und kann nicht mehr bestellt werden.",
                         url: $url,
                     ),
-                    recipientLocale: 'de',
                     brandId: $event->brandId,
                     topicKey: 'commerce.operations',
                     // `commerce.operations` is digestable (`HoldPolicy`

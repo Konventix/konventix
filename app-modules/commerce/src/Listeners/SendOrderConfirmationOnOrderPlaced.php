@@ -101,7 +101,6 @@ final class SendOrderConfirmationOnOrderPlaced
                 reservationUntil: $checkedOutCart?->expires_at->format('d.m.Y H:i'),
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
             ),
-            recipientLocale: 'de',
             brandId: $event->brandId,
         ));
     }

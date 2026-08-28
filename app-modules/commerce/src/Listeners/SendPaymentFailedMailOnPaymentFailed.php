@@ -81,7 +81,6 @@ final class SendPaymentFailedMailOnPaymentFailed
                 retryUrl: $retryUrl,
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
             ),
-            recipientLocale: 'de',
             brandId: $event->brandId,
         ));
     }

@@ -154,6 +154,26 @@ it('renders the body inside the layout and carries the subject in a markup-free 
     });
 });
 
+it('turns list items into their own lines in the markup-free text part', function (): void {
+    $this->withBrand();
+
+    app(TemplateRegistry::class)->register(new MessageTemplate(
+        key: 'branded-layout.list-test',
+        subjects: ['en' => 'Hello {{ $name }}'],
+        bodies: ['en' => '<ul><li>A</li><li>B</li></ul>'],
+        defaultLocale: 'en',
+    ));
+    Mail::fake();
+
+    app(SendMessage::class)->handle(brandedLayoutRequest('branded-layout.list-test'));
+
+    Mail::assertSent(TemplatedMail::class, function (TemplatedMail $mail): bool {
+        $mail->assertSeeInText("A\nB");
+
+        return true;
+    });
+});
+
 it('dispatches the queued send only after the surrounding transaction commits', function (): void {
     $this->withBrand();
 

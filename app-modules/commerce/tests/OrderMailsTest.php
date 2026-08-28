@@ -34,7 +34,7 @@ use Konventix\Platform\Operators\OperatorSettings;
  * and the shop manager told about a sold-out variant or a payment that did
  * not go through, on the `commerce.operations` topic.
  */
-function orderMailsRecipient(string $brandId): User
+function orderMailsRecipient(string $brandId, ?string $locale = null): User
 {
     $user = User::factory()->create();
 
@@ -47,14 +47,14 @@ function orderMailsRecipient(string $brandId): User
         brandId: $brandId,
         email: $user->email,
         displayName: $user->name,
-        locale: $user->locale,
+        locale: $locale ?? $user->locale,
         registeredAt: now()->toIso8601String(),
     ));
 
     return $user;
 }
 
-function orderMailsOperator(string $brandId, array $permissions = ['commerce.manage-products'], string $roleName = 'Shop Manager'): User
+function orderMailsOperator(string $brandId, array $permissions = ['commerce.manage-products'], string $roleName = 'Shop Manager', ?string $locale = null): User
 {
     foreach ($permissions as $name) {
         PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
@@ -67,7 +67,7 @@ function orderMailsOperator(string $brandId, array $permissions = ['commerce.man
     ]);
     $role->givePermissionTo($permissions);
 
-    $user = orderMailsRecipient($brandId);
+    $user = orderMailsRecipient($brandId, $locale);
 
     DB::table('model_has_roles')->insert([
         'role_id' => $role->id,
@@ -168,6 +168,37 @@ it('greets by name when one is known, and plainly when it is not', function (): 
         ->toContain('<p>Guten Tag,</p>');
 });
 
+it('honours the payer\'s own locale instead of hard-coding German', function (): void {
+    $brand = $this->withBrand();
+    $payer = orderMailsRecipient($brand->id, 'en');
+    Queue::fake();
+
+    $order = Order::factory()->create([
+        'settles_type' => 'cart',
+        'payer_user_id' => $payer->id,
+    ]);
+    OrderLine::factory()->forOrder($order)->create();
+
+    event(new OrderPlaced(
+        orderId: $order->id,
+        brandId: $brand->id,
+        settlesType: 'cart',
+        settlesId: (string) Str::ulid(),
+        totalNet: '30.00',
+        totalGross: '35.70',
+        currency: 'EUR',
+        placedAt: now()->toIso8601String(),
+    ));
+
+    $job = Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.order-confirmation',
+    )->sole();
+
+    expect($job->message->recipientLocale)->toBe('en')
+        ->and(app(TemplateRenderer::class)->render($job->message)->subject)->toStartWith('Your order');
+});
+
 it('sends no order confirmation for a direct registration order', function (): void {
     $brand = $this->withBrand();
     $payer = orderMailsRecipient($brand->id);
@@ -214,6 +245,31 @@ it('sends the payment-failed mail to the order payer with a mapped reason and a 
             && $payload['reason'] === 'Die Zahlung ist abgelaufen.'
             && str_ends_with($payload['retryUrl'], '/my/orders');
     });
+});
+
+it('honours the payer\'s own locale for the payment-failed mail instead of hard-coding German', function (): void {
+    $brand = $this->withBrand();
+    $payer = orderMailsRecipient($brand->id, 'en');
+    Queue::fake();
+
+    $order = Order::factory()->create(['settles_type' => 'cart', 'payer_user_id' => $payer->id]);
+
+    event(new PaymentFailed(
+        paymentId: (string) Str::ulid(),
+        orderId: $order->id,
+        brandId: $brand->id,
+        settlementMethod: 'stripe',
+        reasonCode: 'checkout_expired',
+        failedAt: now()->toIso8601String(),
+    ));
+
+    $job = Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-failed',
+    )->sole();
+
+    expect($job->message->recipientLocale)->toBe('en')
+        ->and(app(TemplateRenderer::class)->render($job->message)->subject)->toContain('Payment for order');
 });
 
 it('picks the registration checkout as the retry link for a registration-settled order', function (): void {
@@ -336,6 +392,36 @@ it('reaches the permission holders with a payment-failed operations notice', fun
             && $payload['kind'] === 'payment-failed'
             && str_contains($payload['title'], strtoupper(substr($order->id, -8)));
     });
+});
+
+it('honours an operator\'s own locale for the operations notice instead of hard-coding German', function (): void {
+    $brand = $this->withBrand();
+    $holder = orderMailsOperator($brand->id, locale: 'en');
+    Queue::fake();
+
+    $order = Order::factory()->create(['settles_type' => 'cart', 'payer_user_id' => null]);
+
+    event(new PaymentFailed(
+        paymentId: (string) Str::ulid(),
+        orderId: $order->id,
+        brandId: $brand->id,
+        settlementMethod: 'stripe',
+        reasonCode: 'failed',
+        failedAt: now()->toIso8601String(),
+    ));
+
+    // `commerce.operations` is not `topicKey`-free — it fans out to both its
+    // default channels, so two envelopes for this one holder are expected
+    // (see the stock-exhausted case above); either carries the same locale.
+    $job = Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.operations-notice'
+            && $job->message->recipientId === $holder->id
+            && $job->message->channel === Channel::Mail->value,
+    )->sole();
+
+    expect($job->message->recipientLocale)->toBe('en')
+        ->and(app(TemplateRenderer::class)->render($job->message)->body)->toContain('Open in the console');
 });
 
 it('records an in-app inbox row for the operations notice', function (): void {

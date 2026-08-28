@@ -129,17 +129,15 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
                         <a :href="order.documentUrl">
                             <FileText class="size-4" />
                             {{
-                                order.invoicePaid
-                                    ? 'Rechnung (bezahlt)'
-                                    : 'Rechnung'
+                                order.invoicePaid ? 'Invoice (paid)' : 'Invoice'
                             }}
                         </a>
                     </Button>
                     <!--
-                        A refund of a paid order leaves a Gutschrift beside
+                        A refund of a paid order leaves a credit note beside
                         the invoice it corrects (ADR-0048 point 2) — one
                         secondary button per credit note, same shape as the
-                        Rechnung button above, linking to the document only
+                        Invoice button above, linking to the document only
                         once it has been generated.
                     -->
                     <template
@@ -154,7 +152,7 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
                         >
                             <a :href="creditNote.documentUrl">
                                 <FileText class="size-4" />
-                                Gutschrift {{ creditNote.number }}
+                                Credit note {{ creditNote.number }}
                             </a>
                         </Button>
                         <span
@@ -162,7 +160,7 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
                             class="inline-flex items-center gap-1.5 text-xs text-text-muted"
                         >
                             <FileText class="size-4" />
-                            Gutschrift {{ creditNote.number }}
+                            Credit note {{ creditNote.number }}
                         </span>
                     </template>
                 </div>

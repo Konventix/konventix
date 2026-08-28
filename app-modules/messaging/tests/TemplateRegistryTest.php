@@ -5,8 +5,10 @@ declare(strict_types=1);
 use Illuminate\Support\Str;
 use Konventix\Messaging\Data\SendMessageData;
 use Konventix\Messaging\Enums\Channel;
+use Konventix\Messaging\Exceptions\UnsafeTemplateException;
 use Konventix\Messaging\Models\TemplateOverride;
 use Konventix\Messaging\Templates\MessageTemplate;
+use Konventix\Messaging\Templates\TemplateOverrideGuard;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Messaging\Templates\TemplateRenderer;
 use Konventix\Platform\Models\Brand;
@@ -177,6 +179,49 @@ it('renders every registered template\'s sample without error, in every locale i
                 );
             } catch (Throwable $exception) {
                 test()->fail("Template [{$template->key}] failed to render its sample in locale [{$locale}]: {$exception->getMessage()}");
+            }
+        }
+    }
+});
+
+/**
+ * I1: `templates/Edit.vue` seeds the override textarea with the shipped
+ * default, so any default `TemplateOverrideGuard` would refuse as an
+ * override is one edit away from a 422 the moment an operator opens it —
+ * a ternary echo like `{{ $field ? … : … }}` is exactly the shape the guard
+ * exists to reject. This loop proves every registered default round-trips
+ * through the same guard `SaveTemplateOverride` applies, so a future
+ * template that ships with a richer expression fails the suite instead of
+ * failing silently in the editor. `compliance.deadline-warning` is the one
+ * known, deliberate exception (see its own TODO and messaging/TODO.md).
+ */
+it('keeps every registered template\'s subjects and bodies guard-legal, so the editor can round-trip its own defaults', function (): void {
+    $registry = app(TemplateRegistry::class);
+    $guard = app(TemplateOverrideGuard::class);
+    $templates = $registry->all();
+
+    $allowedExceptions = ['compliance.deadline-warning'];
+
+    expect($templates)->not->toBeEmpty();
+
+    foreach ($templates as $template) {
+        if (in_array($template->key, $allowedExceptions, true)) {
+            continue;
+        }
+
+        foreach (array_keys($template->subjects) as $locale) {
+            try {
+                $guard->assertSafe($template->subjectFor($locale));
+            } catch (UnsafeTemplateException $exception) {
+                test()->fail("Template [{$template->key}] subject in locale [{$locale}] is not guard-legal: {$exception->getMessage()}");
+            }
+        }
+
+        foreach (array_keys($template->bodies) as $locale) {
+            try {
+                $guard->assertSafe($template->bodyFor($locale));
+            } catch (UnsafeTemplateException $exception) {
+                test()->fail("Template [{$template->key}] body in locale [{$locale}] is not guard-legal: {$exception->getMessage()}");
             }
         }
     }
