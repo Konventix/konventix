@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
-import { update as updateMailSettings } from '@/routes/admin/mail-settings';
+import {
+    test as sendTestMail,
+    update as updateMailSettings,
+} from '@/routes/admin/mail-settings';
 
 /**
  * One brand's sender identity, quiet-hours timezone (ADR-0041) and
@@ -18,6 +21,7 @@ import { update as updateMailSettings } from '@/routes/admin/mail-settings';
  */
 type Props = {
     brand: { id: string; name: string };
+    identity: Konventix.Messaging.Data.BrandMailIdentityData;
     settings: {
         fromName: string;
         fromAddress: string;
@@ -33,6 +37,10 @@ type Props = {
 };
 
 const props = defineProps<Props>();
+
+function sendTest(): void {
+    router.post(sendTestMail(props.brand.id).url, {}, { preserveScroll: true });
+}
 
 const form = useForm({
     fromName: props.settings.fromName,
@@ -224,5 +232,55 @@ function submit(): void {
                 </span>
             </div>
         </form>
+
+        <Card>
+            <CardHeader>
+                <CardTitle>How your mail looks</CardTitle>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-4">
+                <div class="flex items-center gap-3">
+                    <img
+                        v-if="identity.logoUrl"
+                        :src="identity.logoUrl"
+                        :alt="identity.logoAlt ?? identity.brandName"
+                        class="h-10"
+                    />
+                    <span v-else class="text-lg font-semibold">{{
+                        identity.brandName
+                    }}</span>
+                </div>
+                <div class="flex items-center gap-2 text-sm">
+                    <span
+                        class="size-5 shrink-0 rounded-full border border-border"
+                        :style="{ backgroundColor: identity.accentColor }"
+                        aria-hidden="true"
+                    />
+                    <span class="text-text-muted">Accent colour</span>
+                    <span class="font-mono">{{ identity.accentColor }}</span>
+                </div>
+                <p class="text-sm text-text-muted">
+                    {{ identity.sellerLine }}
+                </p>
+                <div class="flex gap-3 text-xs">
+                    <a
+                        v-if="identity.imprintUrl"
+                        :href="identity.imprintUrl"
+                        class="underline-offset-4 hover:underline"
+                        >Imprint</a
+                    >
+                    <a
+                        v-if="identity.privacyUrl"
+                        :href="identity.privacyUrl"
+                        class="underline-offset-4 hover:underline"
+                        >Privacy</a
+                    >
+                </div>
+                <div>
+                    <Button type="button" variant="outline" @click="sendTest">
+                        Send test mail to me
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
     </div>
 </template>
