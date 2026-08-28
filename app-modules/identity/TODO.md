@@ -123,6 +123,29 @@ person behind it. The value here is in what is left out.
 
 <!-- Move completed items here with the PR that finished them. -->
 
+- [x] ADR-0048 point 5: verification, password reset and the welcome that
+      follows the first verification go through Messaging instead of
+      Laravel's stock `Illuminate\Auth\Notifications\*` — `Mail\AuthMailer`
+      (`sendVerification`/`sendPasswordReset`/`sendWelcome`), `User`
+      overrides of `sendEmailVerificationNotification()` /
+      `sendPasswordResetNotification()`, `Listeners\SendWelcomeOnVerified`
+      on `Illuminate\Auth\Events\Verified`, three templates (`identity.
+      verify-email`, `identity.password-reset`, `identity.welcome`) and the
+      `identity.welcome` topic. Closes Messaging's own "wire a real caller"
+      TODO item — the first non-Registration/Commerce module to call
+      `SendMessage`. Along the way, found and fixed a real duplicate send:
+      `Registered => SendEmailVerificationNotification` was registered both
+      explicitly here and — always, unconditionally, for every Laravel
+      11+/12+/13 app built on `Application::configure()` — by the
+      framework's own base `EventServiceProvider` (`->withEvents()` is
+      chained by default); every registration was quietly sending two
+      verification mails. `AuthMailTest.php`, `IdentityServiceProvider`'s
+      `registerListeners()` docblock has the detail. The verification URL
+      is built exactly like Laravel's own `VerifyEmail::verificationUrl()` —
+      absolute against the ambient request, never `BrandUrl`-prefixed, since
+      that would sign a relative path and break validation against the
+      later absolute request.
+
 - [x] Steam remembers only when asked (WP194 §3.2). Both `Auth::login()`
       calls in `SocialAuthController` (`store()` for a fresh signup,
       `logIn()` for a recognised identity) unconditionally passed

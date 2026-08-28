@@ -458,6 +458,10 @@ declare namespace Konventix {
                 readonly linkedAt: string | null;
                 readonly canUnlink: boolean;
             };
+            export type PasswordResetMailData = {
+                readonly resetUrl: string;
+                readonly validMinutes: number;
+            };
             export type PasswordUpdateData = {
                 readonly current_password: string;
                 readonly password: string;
@@ -477,6 +481,15 @@ declare namespace Konventix {
                 readonly userAgent: string | null;
                 readonly lastActiveAt: string;
                 readonly isCurrentDevice: boolean;
+            };
+            export type VerifyEmailMailData = {
+                readonly verifyUrl: string;
+                readonly validMinutes: number;
+            };
+            export type WelcomeMailData = {
+                readonly brandName: string;
+                readonly homeUrl: string;
+                readonly shopUrl: string | null;
             };
         }
         namespace Enums {

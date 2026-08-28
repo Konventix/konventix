@@ -128,6 +128,39 @@ Proposed catalogue: `ViewUsers`, `ManageUsers`, `LockUser`, `UnlockUser`,
 `ManageSocialProviders`, `ImpersonateUser`. Acting on one's own account is a
 policy question, not a capability.
 
+## Mail
+
+ADR-0048 point 5: `User::sendEmailVerificationNotification()` and
+`sendPasswordResetNotification()` override the two hooks Laravel's own
+`MustVerifyEmail`/`CanResetPassword` contracts call, replacing the stock
+`Illuminate\Auth\Notifications\*` sends with `Mail\AuthMailer`, so both
+carry the brand's sender identity and branded layout and leave a
+delivery-log row instead of going out through Laravel's default mailer.
+Laravel still generates and validates the signed link/hashed token; only
+delivery moves. `identity.verify-email` and `identity.password-reset` are
+contractual — no topic, only the suppression list applies; `identity.welcome`
+is the one key with a topic, following the first verification.
+
+| Key | Trigger | Recipient | Topic |
+|---|---|---|---|
+| `identity.verify-email` | `User::sendEmailVerificationNotification()`, called by Laravel's own `Registered` handling (registration) and the `verification.send` resend route | The account, by id + explicit email/locale (independent of Messaging's recipient projection, which may not exist yet at registration time) | — |
+| `identity.password-reset` | `User::sendPasswordResetNotification($token)`, called by Fortify's password-reset-link flow | The account, by id + explicit email/locale | — |
+| `identity.welcome` | `Listeners\SendWelcomeOnVerified` on `Illuminate\Auth\Events\Verified` | The account, by id + explicit email/locale | `identity.welcome` |
+
+`AuthMailer::resolveBrandId()` prefers the ambient `BrandContext` (the
+request the link was issued or followed from) and falls back to the
+account's earliest `BrandMembership` when there is none (console/queue
+context); a user with neither is skipped with a `Log::warning` rather than
+guessed at, the `PromoteFromWaitlist::notify()` shape. The verification URL
+is built exactly as Laravel's own `VerifyEmail::verificationUrl()` —
+`URL::temporarySignedRoute(..., absolute: true)`, never prefixed with
+`BrandUrl::baseFor()`, because a signed route's signature is checked
+against the exact absolute URL it is later requested at; prefixing a
+relative signed path with a brand base would produce a URL whose signature
+never validates. The welcome mail's `shopUrl` is set only when
+`Feature::for($brand)->active('commerce:shop')` (Pennant, no Commerce
+import).
+
 ## Activation
 
 Kernel module. Always active for every brand and not gateable: its provider sets

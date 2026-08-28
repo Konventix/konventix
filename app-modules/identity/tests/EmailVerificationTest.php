@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use Illuminate\Auth\Notifications\VerifyEmail;
-use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
 use Konventix\Identity\Models\User;
+use Konventix\Messaging\Jobs\SendQueuedMessage;
 use Laravel\Fortify\Features;
 
 /**
@@ -76,11 +76,17 @@ test('email is not verified with an invalid hash', function () {
 });
 
 test('the verification email can be resent', function () {
-    Notification::fake();
+    $this->withBrand();
+    Queue::fake();
 
     $user = User::factory()->unverified()->create();
 
     $this->actingAs($user)->post(route('verification.send'));
 
-    Notification::assertSentTo($user, VerifyEmail::class);
+    Queue::assertPushedOn(
+        'messaging',
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'identity.verify-email'
+            && $job->message->recipientId === $user->getKey(),
+    );
 });

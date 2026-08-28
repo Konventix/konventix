@@ -6,10 +6,6 @@
 
 ## Next
 
-Phase 3 candidate: wire a real caller. Nothing in the platform calls
-`SendMessage` yet — Identity's password reset / registration confirmation is
-the natural first consumer and would register the first real template.
-
 - [ ] `UserAnonymized` is still unconsumed by the recipient read model — it
       lands with Identity's GDPR handler.
 - [ ] Suppression-list and message-log operator screens: `AddSuppression`/
@@ -86,6 +82,16 @@ the natural first consumer and would register the first real template.
       query-ergonomics question, not a correctness one.
 
 ## Done
+
+- [x] ADR-0048 point 5, Task 6 of the mail-and-receipts tranche: Identity's
+      auth mail — `identity.verify-email`, `identity.password-reset`,
+      `identity.welcome` — is Messaging's first Identity consumer, closing
+      the "wire a real caller" item this file used to open with (stale by
+      the time it landed: Commerce and Registration, Tasks 4/5, were
+      already real callers). `Konventix\Identity\Mail\AuthMailer` calls
+      `SendMessage` with explicit `recipientEmail`/`recipientLocale`
+      alongside `recipientId`, independent of whether `ProjectRecipient`'s
+      projection has run yet for a brand-new account.
 
 - [x] ADR-0048 point 4, Task 1 of the mail-and-receipts tranche: every mail
       wears a branded layout Messaging owns. `MailChannel` wraps the

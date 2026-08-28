@@ -6,7 +6,7 @@ namespace Konventix\Identity\Providers;
 
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Registered;
-use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
+use Illuminate\Auth\Events\Verified;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -22,8 +22,14 @@ use Konventix\Identity\Console\ReplayProfilesCommand;
 use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Listeners\RecordBrandMembership;
+use Konventix\Identity\Listeners\SendWelcomeOnVerified;
 use Konventix\Identity\Social\SocialProviderRegistry;
 use Konventix\Identity\Social\SteamProvider;
+use Konventix\Messaging\Enums\Channel;
+use Konventix\Messaging\Templates\MessageTemplate;
+use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Messaging\Topics\Topic;
+use Konventix\Messaging\Topics\TopicRegistry;
 use Konventix\Platform\Cookies\CookieDeclaration;
 use Konventix\Platform\Cookies\CookieRegistry;
 use Konventix\Platform\Enums\CookieCategory;
@@ -69,16 +75,32 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
     /**
      * ADR-0016: registration and login establish the user↔brand membership.
-     * `SendEmailVerificationNotification` is Laravel's own default listener —
-     * not auto-wired anywhere in this app (no central `EventServiceProvider`,
-     * ADR-0003), so `Features::emailVerification()` would otherwise enforce
-     * the `verified` middleware against an email nobody ever sent.
+     *
+     * `Registered => SendEmailVerificationNotification` is deliberately NOT
+     * registered here, despite being Laravel's own default listener: every
+     * `bootstrap/app.php` built on `Application::configure()` chains
+     * `->withEvents()` unconditionally (`Illuminate\Foundation\Application::
+     * configure()`), which registers the framework's own base
+     * `Illuminate\Foundation\Support\Providers\EventServiceProvider` — an
+     * empty `$listen` array, but its `booted()` hook always calls
+     * `configureEmailVerification()`, which wires exactly this pair whenever
+     * it is not already present. Registering it again here does not fail
+     * (Laravel's dispatcher has no dedup), it doubles the send — the module
+     * boots once, but the account then gets two identical verification
+     * mails, invisible to an `assertSentTo()`-style assertion that only
+     * checks "was one sent" (`AuthMailTest.php` is what caught it, asserting
+     * an exact pushed count). `SendEmailVerificationNotification` calls
+     * `$event->user->sendEmailVerificationNotification()` regardless of who
+     * registered it, so `AuthMailer::sendVerification()` still runs — this
+     * relies on Laravel's own wiring instead of duplicating it.
      */
     protected function registerListeners(): void
     {
         Event::listen(Login::class, RecordBrandMembership::class);
         Event::listen(Registered::class, RecordBrandMembership::class);
-        Event::listen(Registered::class, SendEmailVerificationNotification::class);
+
+        // ADR-0048 point 5: the welcome that follows the first verification.
+        Event::listen(Verified::class, SendWelcomeOnVerified::class);
 
         // Community Socialite providers are not auto-discovered the way the
         // built-in ones are — they extend the manager by listening for this
@@ -195,5 +217,102 @@ class IdentityServiceProvider extends ModuleServiceProvider
     protected function registerGdprExporters(): void
     {
         $this->app->make(GdprHandlerRegistry::class)->register(new IdentityGdprHandler);
+    }
+
+    /**
+     * ADR-0048 point 3/5: `identity.verify-email` and `identity.password-
+     * reset` carry no topic — contractual, un-mutable, the suppression list
+     * is the only gate — `identity.welcome` alone declares one
+     * (`registerMessageTopics()` below).
+     */
+    protected function registerMessageTemplates(): void
+    {
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.verify-email',
+            subjects: [
+                'de' => 'Bitte bestätigen Sie Ihre E-Mail-Adresse',
+                'en' => 'Please confirm your email address',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Bitte bestätigen Sie Ihre E-Mail-Adresse, um Ihr Konto zu
+                    aktivieren: <a href="{{ $verifyUrl }}">E-Mail-Adresse bestätigen</a>.</p>
+                    <p>Der Link ist {{ $validMinutes }} Minuten gültig.</p>
+                    <p>Falls Sie kein Konto angelegt haben, ignorieren Sie diese
+                    Nachricht.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Please confirm your email address to activate your account:
+                    <a href="{{ $verifyUrl }}">Confirm email address</a>.</p>
+                    <p>The link is valid for {{ $validMinutes }} minutes.</p>
+                    <p>If you did not create an account, please ignore this
+                    message.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.password-reset',
+            subjects: [
+                'de' => 'Passwort zurücksetzen',
+                'en' => 'Reset password',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Sie haben angefordert, Ihr Passwort zurückzusetzen:
+                    <a href="{{ $resetUrl }}">Passwort zurücksetzen</a>.</p>
+                    <p>Der Link ist {{ $validMinutes }} Minuten gültig.</p>
+                    <p>Falls Sie diese Anfrage nicht gestellt haben, ignorieren Sie
+                    diese Nachricht.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>You requested to reset your password:
+                    <a href="{{ $resetUrl }}">Reset password</a>.</p>
+                    <p>The link is valid for {{ $validMinutes }} minutes.</p>
+                    <p>If you did not request this, please ignore this message.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.welcome',
+            subjects: [
+                'de' => 'Willkommen bei {{ $brandName }}',
+                'en' => 'Welcome to {{ $brandName }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Willkommen bei {{ $brandName }}!</p>
+                    <p>Ihr Konto ist bestätigt.</p>
+                    <p>Hier geht es zur Startseite: <a href="{{ $homeUrl }}">{{ $brandName }}</a>.</p>
+                    @if ($shopUrl)
+                    <p>Im Shop finden Sie unser aktuelles Angebot:
+                    <a href="{{ $shopUrl }}">Zum Shop</a>.</p>
+                    @endif
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Welcome to {{ $brandName }}!</p>
+                    <p>Your account is confirmed.</p>
+                    <p>Here is the homepage: <a href="{{ $homeUrl }}">{{ $brandName }}</a>.</p>
+                    @if ($shopUrl)
+                    <p>Check out our shop for what is on offer:
+                    <a href="{{ $shopUrl }}">Go to the shop</a>.</p>
+                    @endif
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+    }
+
+    protected function registerMessageTopics(): void
+    {
+        $this->app->make(TopicRegistry::class)->register(new Topic(
+            key: 'identity.welcome',
+            label: 'Welcome and onboarding',
+            defaultChannels: [Channel::Mail],
+            suppressible: true,
+        ));
     }
 }

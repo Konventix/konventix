@@ -2,11 +2,19 @@
 
 declare(strict_types=1);
 
-use Illuminate\Auth\Notifications\ResetPassword;
-use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Konventix\Identity\Models\User;
+use Konventix\Messaging\Jobs\SendQueuedMessage;
 use Laravel\Fortify\Features;
 
+/**
+ * ADR-0048 point 5: the reset-link mail this flow triggers goes through
+ * Messaging (`Konventix\Identity\Mail\AuthMailer::sendPasswordReset()`)
+ * rather than Laravel's stock `ResetPassword` notification, so the raw
+ * token these tests need is read off `identity.password-reset`'s pushed
+ * payload (`resetUrl`) instead of a faked notification instance — see
+ * `app-modules/identity/tests/AuthMailTest.php` for the mail itself.
+ */
 beforeEach(function () {
     $this->skipUnlessFortifyHas(Features::resetPasswords());
 });
@@ -18,52 +26,63 @@ test('reset password link screen can be rendered', function () {
 });
 
 test('reset password link can be requested', function () {
-    Notification::fake();
+    Queue::fake();
 
     $user = User::factory()->create();
 
     $this->post(route('password.email'), ['email' => $user->email]);
 
-    Notification::assertSentTo($user, ResetPassword::class);
+    Queue::assertPushedOn(
+        'messaging',
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'identity.password-reset'
+            && $job->message->recipientId === $user->getKey(),
+    );
 });
 
 test('reset password screen can be rendered', function () {
-    Notification::fake();
+    Queue::fake();
 
     $user = User::factory()->create();
 
     $this->post(route('password.email'), ['email' => $user->email]);
 
-    Notification::assertSentTo($user, ResetPassword::class, function ($notification) {
-        $response = $this->get(route('password.reset', $notification->token));
+    $job = Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'identity.password-reset',
+    )->firstOrFail();
 
-        $response->assertOk();
+    $token = basename((string) parse_url($job->message->payload->toArray()['resetUrl'], PHP_URL_PATH));
 
-        return true;
-    });
+    $response = $this->get(route('password.reset', $token));
+
+    $response->assertOk();
 });
 
 test('password can be reset with valid token', function () {
-    Notification::fake();
+    Queue::fake();
 
     $user = User::factory()->create();
 
     $this->post(route('password.email'), ['email' => $user->email]);
 
-    Notification::assertSentTo($user, ResetPassword::class, function ($notification) use ($user) {
-        $response = $this->post(route('password.update'), [
-            'token' => $notification->token,
-            'email' => $user->email,
-            'password' => 'password',
-            'password_confirmation' => 'password',
-        ]);
+    $job = Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'identity.password-reset',
+    )->firstOrFail();
 
-        $response
-            ->assertSessionHasNoErrors()
-            ->assertRedirect(route('login'));
+    $token = basename((string) parse_url($job->message->payload->toArray()['resetUrl'], PHP_URL_PATH));
 
-        return true;
-    });
+    $response = $this->post(route('password.update'), [
+        'token' => $token,
+        'email' => $user->email,
+        'password' => 'password',
+        'password_confirmation' => 'password',
+    ]);
+
+    $response
+        ->assertSessionHasNoErrors()
+        ->assertRedirect(route('login'));
 });
 
 test('password cannot be reset with invalid token', function () {

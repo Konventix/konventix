@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
 use Konventix\Identity\Data\AccountPreferencesData;
 use Konventix\Identity\Database\Factories\UserFactory;
 use Konventix\Identity\Enums\AccountState;
+use Konventix\Identity\Mail\AuthMailer;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -112,5 +113,30 @@ class User extends Authenticatable implements MustVerifyEmail
     protected static function newFactory(): UserFactory
     {
         return UserFactory::new();
+    }
+
+    /**
+     * ADR-0048 point 5: Laravel keeps generating and validating the signed
+     * link (`URL::temporarySignedRoute('verification.verify', ...)`
+     * unchanged); Messaging delivers it, branded and logged, instead of
+     * Laravel's stock verification notification. Resolved per call —
+     * `AuthMailer` is not injected here, this method is not constructor
+     * context.
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        app(AuthMailer::class)->sendVerification($this);
+    }
+
+    /**
+     * ADR-0048 point 5: same substitution for the password-reset link —
+     * Fortify's password broker still generates and hashes `$token`, only
+     * delivery moves to Messaging.
+     *
+     * @param  string  $token
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        app(AuthMailer::class)->sendPasswordReset($this, $token);
     }
 }

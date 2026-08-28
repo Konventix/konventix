@@ -2,20 +2,22 @@
 
 declare(strict_types=1);
 
-use Illuminate\Auth\Notifications\VerifyEmail;
-use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
+use Konventix\Messaging\Jobs\SendQueuedMessage;
 use Laravel\Fortify\Features;
 
 /**
  * Registration on a brand host (module TODO.md, task scope item 1/6): a
  * fresh account, the ADR-0016 brand membership row via the existing
  * `RecordBrandMembership` listener, and the verification mail
- * `Features::emailVerification()` requires. `Notification::fake()` is scoped
- * to `VerifyEmail`, never a blanket `Event::fake()` — .ai/rules/tests.md: a
- * blanket fake swallows the `eloquent.creating` event the `BelongsToBrand`
- * trait hooks into, and `BrandMembership::brand_id` would never get stamped.
+ * `Features::emailVerification()` requires — since ADR-0048 point 5, sent
+ * through Messaging (`AuthMailTest.php` covers that path in full; the
+ * `Queue::fake()` here only asserts the push happened, never a blanket
+ * `Event::fake()` — .ai/rules/tests.md: a blanket fake swallows the
+ * `eloquent.creating` event the `BelongsToBrand` trait hooks into, and
+ * `BrandMembership::brand_id` would never get stamped).
  */
 beforeEach(function () {
     $this->skipUnlessFortifyHas(Features::registration());
@@ -28,7 +30,7 @@ test('registration screen can be rendered', function () {
 });
 
 test('a new user can register on a brand host', function () {
-    Notification::fake();
+    Queue::fake();
 
     $response = $this->post(route('register.store'), [
         'name' => 'Test User',
@@ -49,7 +51,12 @@ test('a new user can register on a brand host', function () {
     expect(BrandMembership::withoutBrandScope()->where('user_id', $user->getKey())->count())
         ->toBe(1);
 
-    Notification::assertSentTo($user, VerifyEmail::class);
+    Queue::assertPushedOn(
+        'messaging',
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'identity.verify-email'
+            && $job->message->recipientId === $user->getKey(),
+    );
 });
 
 test('registration requires a name, email and password', function () {
