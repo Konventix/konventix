@@ -1,35 +1,82 @@
 <script setup lang="ts">
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
+import type { SortingState } from '@tanstack/vue-table';
+import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
-import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
+import DataTable from '@/components/admin/DataTable.vue';
+import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
+import { useConsoleSelection } from '@/composables/useConsoleSelection';
+import type {
+    DataTableFilterDef,
+    DataTableFilters,
+} from '@/composables/useDataTable';
+import { seedSelectionFilter, useDataTable } from '@/composables/useDataTable';
 import {
     edit as editTemplate,
     index as templatesIndex,
 } from '@/routes/admin/messages/templates';
+import { columns } from './columns';
+import type { TemplateRow } from './columns';
 
-type TemplateRow = Konventix.Messaging.Data.TemplateSummaryData;
+interface PaginatedTemplates {
+    data: TemplateRow[];
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
+}
 
-defineProps<{
-    templates: TemplateRow[];
+const props = defineProps<{
+    templates: PaginatedTemplates;
     brands: { id: string; name: string }[];
-    filters: { brand: string | null };
+    filters: DataTableFilters & { brand: string | null };
 }>();
 
-/**
- * The overridden-locale badges are computed server-side for the console
- * brand — this page only lets an operator switch which brand that is,
- * mirroring the delivery log's own brand filter.
- */
-function onBrandChange(event: Event): void {
-    const value = (event.target as HTMLSelectElement).value;
+const selection = useConsoleSelection();
 
-    router.get(
-        templatesIndex().url,
-        { brand: value },
-        { preserveState: true, replace: true },
-    );
+// `seedSelectionFilter` carries a cleared filter forward as `all` — but only
+// when the shell has a pick to have cleared.
+const { filters, setSearch, setFilter, toggleSort, setPerPage, setPage } =
+    useDataTable(() => templatesIndex().url, {
+        ...props.filters,
+        brand: seedSelectionFilter(
+            props.filters.brand,
+            selection.value?.brandId,
+        ),
+    });
+
+const filterDefs = computed<DataTableFilterDef[]>(() => [
+    {
+        name: 'brand',
+        label: 'Brand',
+        value: props.filters.brand,
+        options: props.brands.map((brand) => ({
+            value: brand.id,
+            label: brand.name,
+        })),
+        clearValue: 'all',
+    },
+]);
+
+const sorting = computed<SortingState>(() =>
+    filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
+);
+
+function onSortingChange(next: SortingState): void {
+    if (next.length > 0) {
+        toggleSort(next[0].id);
+    }
 }
+
+const pagination = computed(() => ({
+    currentPage: props.templates.current_page,
+    lastPage: props.templates.last_page,
+    total: props.templates.total,
+    from: props.templates.from,
+    to: props.templates.to,
+}));
 </script>
 
 <template>
@@ -41,95 +88,32 @@ function onBrandChange(event: Event): void {
             description="Rewrite a mail in your own words, preview it, then save the override — per brand"
         />
 
-        <div class="flex items-center gap-2">
-            <Label for="template-brand">Brand</Label>
-            <select
-                id="template-brand"
-                class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
-                :value="filters.brand ?? 'all'"
-                @change="onBrandChange"
-            >
-                <option value="all">Select a brand…</option>
-                <option
-                    v-for="brand in brands"
-                    :key="brand.id"
-                    :value="brand.id"
-                >
-                    {{ brand.name }}
-                </option>
-            </select>
-        </div>
+        <DataTableToolbar
+            :search="filters.search ?? ''"
+            :per-page="filters.per_page ?? 15"
+            :filters="filterDefs"
+            search-placeholder="Search key or module…"
+            @update:search="setSearch"
+            @update:per-page="setPerPage"
+            @update:filter="setFilter"
+        />
 
-        <div class="rounded-xl border border-border">
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr
-                            class="border-b border-border text-left text-text-muted"
-                        >
-                            <th scope="col" class="p-3 font-medium">Key</th>
-                            <th scope="col" class="p-3 font-medium">Module</th>
-                            <th scope="col" class="p-3 font-medium">Locales</th>
-                            <th scope="col" class="p-3"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr
-                            v-for="template in templates"
-                            :key="template.key"
-                            class="cursor-pointer border-b border-border last:border-0 hover:bg-surface-muted"
-                            @click="router.visit(editTemplate(template.key))"
-                        >
-                            <td class="p-3 font-mono text-xs">
-                                {{ template.key }}
-                            </td>
-                            <td class="p-3 text-text-muted">
-                                {{ template.module }}
-                            </td>
-                            <td class="p-3">
-                                <span class="flex flex-wrap gap-1">
-                                    <Badge
-                                        v-for="locale in template.locales"
-                                        :key="locale"
-                                        :variant="
-                                            template.overriddenLocales.includes(
-                                                locale,
-                                            )
-                                                ? 'default'
-                                                : 'secondary'
-                                        "
-                                    >
-                                        {{ locale
-                                        }}{{
-                                            template.overriddenLocales.includes(
-                                                locale,
-                                            )
-                                                ? ' · overridden'
-                                                : ''
-                                        }}
-                                    </Badge>
-                                </span>
-                            </td>
-                            <td class="p-3 text-right" @click.stop>
-                                <Link
-                                    :href="editTemplate(template.key)"
-                                    class="text-sm font-medium underline-offset-4 hover:underline"
-                                >
-                                    Edit
-                                </Link>
-                            </td>
-                        </tr>
-                        <tr v-if="templates.length === 0">
-                            <td
-                                colspan="4"
-                                class="p-6 text-center text-text-muted"
-                            >
-                                No templates registered.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        <DataTable
+            data-test="templates-table"
+            :columns="columns"
+            :data="templates.data"
+            :sorting="sorting"
+            :row-count="templates.total"
+            :pagination="pagination"
+            :get-row-id="(row: TemplateRow) => row.key"
+            items-label="templates"
+            empty-message="No templates registered."
+            row-clickable
+            @row-click="
+                (row: TemplateRow) => router.visit(editTemplate(row.key))
+            "
+            @update:sorting="onSortingChange"
+            @update:page="setPage"
+        />
     </div>
 </template>

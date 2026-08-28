@@ -20,6 +20,13 @@ type LocaleText = { subject: string; body: string };
 
 const props = defineProps<{ template: TemplateEdit }>();
 
+// Mirrors `TemplateOverrideGuard`'s allow-list (backend): built as one
+// string here rather than inline in the template, since a literal
+// "{{ $name }}" inside a Vue mustache would be parsed as the start of a
+// second interpolation, not as text.
+const overrideHelp =
+    'Simple echoes ({{ $name }}) and if/unless/foreach on payload fields only — no @php, no {!! !!}, no other directives.';
+
 const locales = props.template.locales;
 const activeLocale = ref<string>(
     locales.includes(props.template.defaultLocale)
@@ -69,7 +76,6 @@ function save(): void {
     form.body = drafts[locale].body;
 
     form.transform((data) => ({
-        brandId: props.template.brandId,
         locale,
         subject: data.subject,
         body: data.body,
@@ -139,7 +145,6 @@ async function refreshPreview(): Promise<void> {
                 subject: draft.subject,
                 body: draft.body,
                 locale,
-                brandId: props.template.brandId,
             }),
         });
 
@@ -268,6 +273,9 @@ watchDebounced(
                         <Label :for="`override-body-${activeLocale}`"
                             >Body</Label
                         >
+                        <p class="text-xs text-text-muted">
+                            {{ overrideHelp }}
+                        </p>
                         <textarea
                             :id="`override-body-${activeLocale}`"
                             v-model="activeDraft.body"

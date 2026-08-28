@@ -6,6 +6,16 @@
 
 ## Next
 
+- [ ] `TemplateOverrideGuard`'s allow-list is deliberately narrower than
+      Blade itself — a shipped default that uses a richer expression than
+      a plain echo (`registration.rejected`'s `{{ match ($reason) { ... } }}`,
+      `messaging.dunning-notice`'s ternary echoes) cannot be pasted verbatim
+      into an override; the guard refuses it the same as any other
+      disallowed construct, even though the *default* renders it fine.
+      Moving that kind of logic into the payload Data class (so the
+      template only ever echoes a precomputed field) is the fix, and it is
+      a follow-up per template, not a guard change — widening the guard to
+      admit arbitrary PHP expressions is exactly what it exists to refuse.
 - [ ] `UserAnonymized` is still unconsumed by the recipient read model — it
       lands with Identity's GDPR handler.
 - [ ] Suppression-list operator screen: `AddSuppression`/`LiftSuppression`
@@ -85,6 +95,35 @@
       query-ergonomics question, not a correctness one.
 
 ## Done
+
+- [x] Fix round 1 on Task 8: an override is raw Blade, and Blade is PHP —
+      `manage-message-templates` is a brand-operator permission, not a
+      superuser one, and `preview()` executes a draft that was never saved.
+      `Templates\TemplateOverrideGuard::assertSafe()` (new) allow-lists what
+      subject/body may contain — see SPEC.md's Templates section for the
+      exact grammar — refusing everything else, including `@php`,
+      `{!! !!}`, `@include`/`@inject`, a raw `<?php ?>` tag, and any
+      unrecognised directive; run on both fields, on save
+      (`SaveTemplateOverride`) and preview (`TemplateAdminController::
+      preview()`), before the compile check. A denylist could not close
+      this off — `TemplateOverrideGuardTest` covers the exact refused/
+      accepted grammar from the review that found it, through the guard
+      directly and through both endpoints. Also: `update()`/`preview()` no
+      longer take `brandId` from the request body — both now read
+      `ConsoleSelection::brandId()` the same way `edit()`/`reset()` already
+      did, and refuse (a validation error on `body`; a 422 on preview) with
+      none selected — a client-named brand would have let any holder of the
+      capability write into a brand nobody handed them the console
+      selection for. `compliance.deadline-warning` gained the `sample` the
+      first pass missed; `TemplateRegistryTest` gained a durable guard that
+      loops `TemplateRegistry::all()` and renders every template's sample
+      in every locale it defines, so a missing or mismatched sample fails
+      at test time rather than the first time an operator opens the editor.
+      `admin/messages/templates/Index.vue` now uses the shared
+      `DataTable`/`DataTableToolbar`/`useDataTable` + `columns.ts` stack
+      (server-side paginated, the `index()` route now `LengthAwarePaginator`
+      over the in-memory registry) instead of a hand-rolled table, matching
+      every other operator-console index.
 
 - [x] ADR-0048 decisions 4 and 6, Task 8 of the mail-and-receipts tranche:
       operators rewrite a mail in their own words, see it before it goes,

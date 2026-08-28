@@ -584,7 +584,6 @@ declare namespace Konventix {
                 readonly createdAt: string;
             };
             export type SaveTemplateOverrideData = {
-                readonly brandId: string;
                 readonly locale: string;
                 readonly subject: string;
                 readonly body: string;
@@ -616,7 +615,6 @@ declare namespace Konventix {
                 readonly subject: string;
                 readonly body: string;
                 readonly locale: string;
-                readonly brandId: string;
             };
             export type TemplateSummaryData = {
                 readonly key: string;

@@ -215,6 +215,13 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'requestId' => '01J8Z6QZ2R3S4T5U6V7W8X9Y0Z',
+                'requestType' => 'export',
+                'deadline' => '28.08.2026',
+                'daysLeft' => 5,
+                'openModules' => 2,
+            ],
         ));
     }
 

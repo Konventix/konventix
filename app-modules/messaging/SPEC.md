@@ -64,11 +64,29 @@ scalars and ULIDs, which is exactly what the rule asks for.
   brand's own rewrite side by side per locale (locale tabs), a debounced
   live preview (`renderString()` + `MailLayout::wrap()` against the
   template's `sample`, sandboxed `<iframe srcdoc>`), and a reset back to
-  the default. Saving (`Actions\SaveTemplateOverride`) validates the Blade
-  first by rendering the sample — a compile error becomes a validation
-  error on `body`, never a 500 — before writing the row
-  (`(brand_id, template_key, locale)`, either field individually nullable
-  and falling back to the default). **Send test mail to me**
+  the default. An override is raw Blade, and Blade is PHP — `Templates\
+  TemplateOverrideGuard` allow-lists what one may contain: plain text, a
+  `{{ $field }}` / `{{ $field ?? 'literal' }}` echo of a payload field
+  (`$field['key']` indexing allowed), and `@if`/`@elseif`/`@unless`/
+  `@isset`/`@empty`/`@foreach` gated on a payload field with at most one
+  scalar comparison — nothing else, including every other directive by
+  name (`@php`, `@include`, `@inject`, `@component`, `@livewire`, …), a
+  raw `<?php ?>` tag, and unescaped `{!! !!}` output. `manage-message-
+  templates` is a brand-operator capability, not a superuser one, and the
+  preview endpoint executes a draft that was never saved — a deny-list of
+  "bad words" cannot close that off, so this is an allow-list instead, run
+  on subject and body before anything else, on both save
+  (`Actions\SaveTemplateOverride`) and preview
+  (`TemplateAdminController::preview()`). Only once both pass does saving
+  validate the Blade actually compiles, by rendering the sample — a
+  compile error becomes a validation error on `body`, never a 500 —
+  before writing the row (`(brand_id, template_key, locale)`, either
+  field individually nullable and falling back to the default). The
+  brand a save or preview acts on is always the console's own selection
+  (`ConsoleSelection`, session, server-side) — neither request carries a
+  `brandId`, since a client-named one would let any holder of the
+  capability write into a brand nobody handed them the selection for.
+  **Send test mail to me**
   (`Actions\SendTestMail`, template `messaging.test-mail`): a "How your
   mail looks" card on the mail-settings edit page shows the resolved
   `BrandMailIdentityData` (logo, accent colour, seller line, imprint/

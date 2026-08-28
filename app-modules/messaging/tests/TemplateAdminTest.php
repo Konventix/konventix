@@ -91,12 +91,12 @@ it('lists every registered template, with override state for the console brand',
 
     $this->actingAs($admin)
         ->withSession([ConsoleSelection::SESSION_BRAND => $brand->getKey()])
-        ->get('http://admin.templates.test/admin/messages/templates')
+        ->get('http://admin.templates.test/admin/messages/templates?per_page=100')
         ->assertOk()
         ->assertInertia(function (AssertableInertia $page): void {
-            $page->component('admin/messages/templates/Index')->has('templates');
+            $page->component('admin/messages/templates/Index')->has('templates.data');
 
-            $templates = collect($page->toArray()['props']['templates'])->keyBy('key');
+            $templates = collect($page->toArray()['props']['templates']['data'])->keyBy('key');
 
             expect($templates->has('commerce.invoice-issued'))->toBeTrue()
                 ->and($templates['commerce.invoice-issued']['overriddenLocales'])->toBe(['de'])
@@ -147,7 +147,6 @@ it('creates the override on first save, updates it on the next, and the next ren
     $this->actingAs($admin)
         ->withSession([ConsoleSelection::SESSION_BRAND => $brand->getKey()])
         ->put('http://admin.templates.test/admin/messages/templates/commerce.invoice-issued', [
-            'brandId' => $brand->getKey(),
             'locale' => 'de',
             'subject' => 'Ihre Rechnung, {{ $recipientName }}',
             'body' => '<p>Danke, {{ $recipientName }}.</p>',
@@ -165,7 +164,6 @@ it('creates the override on first save, updates it on the next, and the next ren
     $this->actingAs($admin)
         ->withSession([ConsoleSelection::SESSION_BRAND => $brand->getKey()])
         ->put('http://admin.templates.test/admin/messages/templates/commerce.invoice-issued', [
-            'brandId' => $brand->getKey(),
             'locale' => 'de',
             'subject' => 'Ihre aktualisierte Rechnung, {{ $recipientName }}',
             'body' => '<p>Danke nochmal, {{ $recipientName }}.</p>',
@@ -194,19 +192,38 @@ it('rejects a body that does not compile, without saving it', function (): void 
         ->withSession([ConsoleSelection::SESSION_BRAND => $brand->getKey()])
         ->from('http://admin.templates.test/admin/messages/templates/commerce.invoice-issued/edit')
         ->put('http://admin.templates.test/admin/messages/templates/commerce.invoice-issued', [
-            'brandId' => $brand->getKey(),
             'locale' => 'de',
-            // The closing directive is glued to the preceding word, so it is
-            // left as literal text (.ai/rules/app-modules-src.md) and the
-            // compiled view is left with an unclosed `if` — a real compile
-            // error, not merely unwanted output.
+            // Passes the allow-list guard — `@if` and `@endforeach` are
+            // each individually well-formed — but `@endforeach` never
+            // opened a `@foreach`, a real PHP parse error the guard cannot
+            // see (it checks each directive in isolation, not that they
+            // nest correctly). Covers the compile check as its own thing,
+            // separate from `TemplateOverrideGuardTest`'s glued-directive
+            // and disallowed-construct cases, which the guard itself now
+            // catches before this check ever runs.
             'subject' => 'Broken',
-            'body' => '@if($recipientName)A@endif',
+            'body' => "@if (\$recipientName)\nA\n@endforeach",
         ])
         ->assertSessionHasErrors('body');
 
     expect(TemplateOverride::withoutBrandScope()
         ->where('brand_id', $brand->getKey())
+        ->where('template_key', 'commerce.invoice-issued')
+        ->exists())->toBeFalse();
+});
+
+it('refuses to save without a brand selected, and writes nothing', function (): void {
+    [, $admin] = templateAdminOperator();
+
+    $this->actingAs($admin)
+        ->put('http://admin.templates.test/admin/messages/templates/commerce.invoice-issued', [
+            'locale' => 'de',
+            'subject' => 'Subject',
+            'body' => '<p>{{ $recipientName }}</p>',
+        ])
+        ->assertSessionHasErrors('body');
+
+    expect(TemplateOverride::withoutBrandScope()
         ->where('template_key', 'commerce.invoice-issued')
         ->exists())->toBeFalse();
 });
@@ -245,11 +262,11 @@ it('previews the sample rendered inside the branded layout', function (): void {
     $brand = Brand::factory()->create(['name' => 'Preview Brand', 'slug' => 'ta-preview']);
 
     $response = $this->actingAs($admin)
+        ->withSession([ConsoleSelection::SESSION_BRAND => $brand->getKey()])
         ->postJson('http://admin.templates.test/admin/messages/templates/commerce.invoice-issued/preview', [
             'subject' => 'Vorschau {{ $invoiceNumber }}',
             'body' => '<p>Hallo {{ $recipientName }}, mit freundlichen Grüßen {{ $sellerName }}.</p>',
             'locale' => 'de',
-            'brandId' => $brand->getKey(),
         ])
         ->assertOk();
 
@@ -265,11 +282,39 @@ it('reports a preview compile error as a 422 with a message, not a crash', funct
     $brand = Brand::factory()->create(['slug' => 'ta-preview-error']);
 
     $this->actingAs($admin)
+        ->withSession([ConsoleSelection::SESSION_BRAND => $brand->getKey()])
         ->postJson('http://admin.templates.test/admin/messages/templates/commerce.invoice-issued/preview', [
             'subject' => 'Broken',
-            'body' => '@if($recipientName)A@endif',
+            'body' => "@if (\$recipientName)\nA\n@endforeach",
             'locale' => 'de',
-            'brandId' => $brand->getKey(),
+        ])
+        ->assertStatus(422)
+        ->assertJsonStructure(['message']);
+});
+
+it('refuses an unsafe preview draft with a 422, before ever rendering it', function (): void {
+    [, $admin] = templateAdminOperator();
+    $brand = Brand::factory()->create(['slug' => 'ta-preview-unsafe']);
+
+    $this->actingAs($admin)
+        ->withSession([ConsoleSelection::SESSION_BRAND => $brand->getKey()])
+        ->postJson('http://admin.templates.test/admin/messages/templates/commerce.invoice-issued/preview', [
+            'subject' => 'Broken',
+            'body' => "{{ exec('id') }}",
+            'locale' => 'de',
+        ])
+        ->assertStatus(422)
+        ->assertJsonStructure(['message']);
+});
+
+it('refuses to preview without a brand selected', function (): void {
+    [, $admin] = templateAdminOperator();
+
+    $this->actingAs($admin)
+        ->postJson('http://admin.templates.test/admin/messages/templates/commerce.invoice-issued/preview', [
+            'subject' => 'Subject',
+            'body' => '<p>{{ $recipientName }}</p>',
+            'locale' => 'de',
         ])
         ->assertStatus(422)
         ->assertJsonStructure(['message']);

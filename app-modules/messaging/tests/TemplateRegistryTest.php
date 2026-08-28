@@ -148,3 +148,36 @@ it('does not apply another brand\'s override', function (): void {
 
     expect($rendered->subject)->toBe('Default subject');
 });
+
+/**
+ * The durable guard behind every module's `sample` (Task 8 fix round 1): a
+ * template registered with a `sample` that does not actually cover its own
+ * variables — a typo'd key, a field a later edit renamed — fails here at
+ * test time instead of only when an operator opens the editor and the
+ * preview 500s. Every real module's provider runs in this suite's own app
+ * boot, so this loop sees the whole shipped catalogue, not a fixture.
+ */
+it('renders every registered template\'s sample without error, in every locale it defines', function (): void {
+    $registry = app(TemplateRegistry::class);
+    $renderer = app(TemplateRenderer::class);
+    $templates = $registry->all();
+
+    // Never trivially green: a registry that booted empty would leave the
+    // loop below with nothing to check.
+    expect($templates)->not->toBeEmpty();
+
+    foreach ($templates as $template) {
+        foreach (array_keys($template->subjects) as $locale) {
+            try {
+                $renderer->renderString(
+                    $template->subjectFor($locale),
+                    $template->bodyFor($locale),
+                    $locale,
+                    $template->sample,
+                );
+            } catch (Throwable $exception) {
+                test()->fail("Template [{$template->key}] failed to render its sample in locale [{$locale}]: {$exception->getMessage()}");
+            }
+        }
+    }
+});
