@@ -59,6 +59,32 @@
 
 ## Done
 
+- [x] ADR-0048 point 3 (Mail Task 5): a registration tells its holder every
+      time its state changes. Five new listeners
+      (`Listeners\MailOnRegistration{Submitted,Approved,Rejected,Confirmed,Cancelled}`)
+      on Registration's own events, each re-reading `Registration` with its
+      `registrationType` and calling the new `Mail\RegistrationMailer::send()`
+      (the `PromoteFromWaitlist::notify()` try/`Log::warning` shape, so a
+      mail that cannot be delivered never rolls back or crashes the state
+      transition). One shared `Data\RegistrationMailData` payload: no field
+      is a precomputed sentence — `nextStep` (`approval`/`pay`/`invoice`/
+      `confirmed`, computed off the type's own axes by
+      `Listeners\Concerns\ComputesNextStepCode`), the raw rejection
+      `reason` code, and `cancelReason`
+      (`cart_expired`/`registrant`/`operator`, derived from
+      `RegistrationCancelled`'s `reasonCode`/`cancelledByUserId` against the
+      registrant) all ride as codes the five bodies branch on with
+      whitespace-safe `@if`/`@elseif`, since `SendMessage` only resolves the
+      recipient's locale at send time and a PHP-computed sentence could not
+      know it yet. Fixed along the way: eager-loading `registrationType`
+      with a bare `with('registrationType')` returned null on the admin
+      host (`RegistrationAdminController::bulkApprove()` — BrandScope
+      hardens to 1=0 there, `.ai/rules/app-modules-src.md`'s relation trap),
+      which surfaced as a silently rolled-back `ApproveRegistration`
+      transaction (its own blanket `catch (\Throwable)` swallowed the
+      error) — every listener now escapes the relation explicitly.
+      `tests/RegistrationMailsTest.php`.
+
 - [x] ADR-0047 point 6 (Task 14), the waitlist/`on_payment` pricing
       backlog note above re-checked against a real rush rather than
       theory: `konventix:seed --rush`'s "Rush ticket" type is exactly

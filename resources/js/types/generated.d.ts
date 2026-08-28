@@ -823,6 +823,16 @@ declare namespace Konventix {
                 readonly price: Konventix.Registration.Data.PriceDeclarationData | null;
                 readonly termsDays: number;
             };
+            export type RegistrationMailData = {
+                readonly registrationTypeName: string;
+                readonly registrationUrl: string;
+                readonly eventName: string | null;
+                readonly holderName: string | null;
+                readonly nextStep: string | null;
+                readonly reason: string | null;
+                readonly cancelReason: string | null;
+                readonly wasPaid: boolean;
+            };
             export type RegistrationTypeData = {
                 readonly eventId: string;
                 readonly name: string;

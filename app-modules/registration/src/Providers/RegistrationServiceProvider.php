@@ -29,8 +29,18 @@ use Konventix\Registration\Data\PublicOfferData;
 use Konventix\Registration\Enums\Permission;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Events\QuotaReleased;
+use Konventix\Registration\Events\RegistrationApproved;
+use Konventix\Registration\Events\RegistrationCancelled;
+use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationRejected;
+use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Gdpr\RegistrationGdprHandler;
 use Konventix\Registration\Listeners\CancelPendingRegistrationOnCartLineGone;
+use Konventix\Registration\Listeners\MailOnRegistrationApproved;
+use Konventix\Registration\Listeners\MailOnRegistrationCancelled;
+use Konventix\Registration\Listeners\MailOnRegistrationConfirmed;
+use Konventix\Registration\Listeners\MailOnRegistrationRejected;
+use Konventix\Registration\Listeners\MailOnRegistrationSubmitted;
 use Konventix\Registration\Listeners\MarkInvoicedOnInvoiceIssued;
 use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Listeners\ProjectRegistrant;
@@ -113,6 +123,15 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
         Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
         Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleArchived']);
+
+        // ADR-0048 point 3: the module that owns an event owns its mail —
+        // Registration's own lifecycle, told to the registrant every time
+        // its state changes.
+        Event::listen(RegistrationSubmitted::class, MailOnRegistrationSubmitted::class);
+        Event::listen(RegistrationApproved::class, MailOnRegistrationApproved::class);
+        Event::listen(RegistrationRejected::class, MailOnRegistrationRejected::class);
+        Event::listen(RegistrationConfirmed::class, MailOnRegistrationConfirmed::class);
+        Event::listen(RegistrationCancelled::class, MailOnRegistrationCancelled::class);
     }
 
     protected function registerGdprExporters(): void
@@ -166,12 +185,15 @@ class RegistrationServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * The waitlist-offer mail (D-REG-12); sending is Messaging's concern,
-     * this module only declares what its mail says.
+     * The waitlist-offer mail (D-REG-12) plus the five lifecycle mails
+     * (ADR-0048 point 3); sending is Messaging's concern, this module only
+     * declares what its mail says.
      */
     protected function registerMessageTemplates(): void
     {
-        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+        $registry = $this->app->make(TemplateRegistry::class);
+
+        $registry->register(new MessageTemplate(
             key: 'registration.waitlist-offer',
             subjects: [
                 'de' => 'Ein Platz ist frei geworden',
@@ -187,6 +209,171 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     <p>Good news: a waitlist spot has opened up for you.</p>
                     <p><a href="{{ $claimUrl }}">Claim your spot now</a></p>
                     <p>The offer is valid until {{ $offerExpiresAt }} — after that it passes to the next person in line.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        // ADR-0048 point 3: Registration's own lifecycle mail — one key per
+        // event, `Data\RegistrationMailData` the shared payload. `nextStep`
+        // and `cancelReason` branch with whitespace-safe `@if`/`@elseif`
+        // (`.ai/rules/app-modules-src.md`) — every directive on its own
+        // line — since the wording each names is inherently locale-specific
+        // and cannot be precomputed in PHP.
+        $registry->register(new MessageTemplate(
+            key: 'registration.submitted',
+            subjects: [
+                'de' => 'Ihre Anmeldung ist eingegangen',
+                'en' => 'Your registration has been received',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag{{ $holderName ? ' '.$holderName : '' }},</p>
+                    <p>Ihre Anmeldung{{ $eventName ? ' zu '.$eventName : '' }} ({{ $registrationTypeName }}) ist bei uns eingegangen.</p>
+                    @if ($nextStep === 'approval')
+                    <p>Wir prüfen Ihre Anmeldung und melden uns.</p>
+                    @elseif ($nextStep === 'pay')
+                    <p>Bitte schließen Sie die Zahlung ab — der Link ist auf Ihrer <a href="{{ $registrationUrl }}">Anmeldeseite</a>.</p>
+                    @elseif ($nextStep === 'invoice')
+                    <p>Sie erhalten eine Rechnung per E-Mail.</p>
+                    @else
+                    <p>Ihre Anmeldung ist bestätigt.</p>
+                    @endif
+                    <p><a href="{{ $registrationUrl }}">Zu Ihrer Anmeldung</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello{{ $holderName ? ' '.$holderName : '' }},</p>
+                    <p>Your registration{{ $eventName ? ' for '.$eventName : '' }} ({{ $registrationTypeName }}) has been received.</p>
+                    @if ($nextStep === 'approval')
+                    <p>We are reviewing your registration and will get back to you.</p>
+                    @elseif ($nextStep === 'pay')
+                    <p>Please complete the payment — the link is on your <a href="{{ $registrationUrl }}">registration page</a>.</p>
+                    @elseif ($nextStep === 'invoice')
+                    <p>You will receive an invoice by email.</p>
+                    @else
+                    <p>Your registration is confirmed.</p>
+                    @endif
+                    <p><a href="{{ $registrationUrl }}">Go to your registration</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: 'registration.approved',
+            subjects: [
+                'de' => 'Ihre Anmeldung wurde angenommen',
+                'en' => 'Your registration has been accepted',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag{{ $holderName ? ' '.$holderName : '' }},</p>
+                    <p>Ihre Anmeldung{{ $eventName ? ' zu '.$eventName : '' }} ({{ $registrationTypeName }}) wurde angenommen.</p>
+                    @if ($nextStep === 'approval')
+                    <p>Wir prüfen Ihre Anmeldung und melden uns.</p>
+                    @elseif ($nextStep === 'pay')
+                    <p>Bitte schließen Sie die Zahlung ab — der Link ist auf Ihrer <a href="{{ $registrationUrl }}">Anmeldeseite</a>.</p>
+                    @elseif ($nextStep === 'invoice')
+                    <p>Sie erhalten eine Rechnung per E-Mail.</p>
+                    @else
+                    <p>Ihre Anmeldung ist bestätigt.</p>
+                    @endif
+                    <p><a href="{{ $registrationUrl }}">Zu Ihrer Anmeldung</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello{{ $holderName ? ' '.$holderName : '' }},</p>
+                    <p>Your registration{{ $eventName ? ' for '.$eventName : '' }} ({{ $registrationTypeName }}) has been accepted.</p>
+                    @if ($nextStep === 'approval')
+                    <p>We are reviewing your registration and will get back to you.</p>
+                    @elseif ($nextStep === 'pay')
+                    <p>Please complete the payment — the link is on your <a href="{{ $registrationUrl }}">registration page</a>.</p>
+                    @elseif ($nextStep === 'invoice')
+                    <p>You will receive an invoice by email.</p>
+                    @else
+                    <p>Your registration is confirmed.</p>
+                    @endif
+                    <p><a href="{{ $registrationUrl }}">Go to your registration</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: 'registration.rejected',
+            subjects: [
+                'de' => 'Ihre Anmeldung wurde abgelehnt',
+                'en' => 'Your registration has been declined',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag{{ $holderName ? ' '.$holderName : '' }},</p>
+                    <p>Ihre Anmeldung{{ $eventName ? ' zu '.$eventName : '' }} ({{ $registrationTypeName }}) wurde leider abgelehnt.</p>
+                    <p>Grund: {{ match ($reason) { 'capacity' => 'Die Kapazität war ausgeschöpft.', 'incomplete' => 'Ihre Angaben waren unvollständig.', 'duplicate' => 'Es liegt bereits eine Anmeldung von Ihnen vor.', default => $reason } }}</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello{{ $holderName ? ' '.$holderName : '' }},</p>
+                    <p>Your registration{{ $eventName ? ' for '.$eventName : '' }} ({{ $registrationTypeName }}) has unfortunately been declined.</p>
+                    <p>Reason: {{ match ($reason) { 'capacity' => 'Capacity was exhausted.', 'incomplete' => 'Your details were incomplete.', 'duplicate' => 'A registration from you already exists.', default => $reason } }}</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: 'registration.confirmed',
+            subjects: [
+                'de' => 'Bestätigt: {{ $registrationTypeName }}',
+                'en' => 'Confirmed: {{ $registrationTypeName }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag{{ $holderName ? ' '.$holderName : '' }},</p>
+                    <p>Ihre Anmeldung{{ $eventName ? ' zu '.$eventName : '' }} ({{ $registrationTypeName }}) ist bestätigt.</p>
+                    <p>Alles Weitere (Einlass, Unterlagen) finden Sie auf Ihrer <a href="{{ $registrationUrl }}">Anmeldeseite</a>.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello{{ $holderName ? ' '.$holderName : '' }},</p>
+                    <p>Your registration{{ $eventName ? ' for '.$eventName : '' }} ({{ $registrationTypeName }}) is confirmed.</p>
+                    <p>Everything else (admission, documents) is on your <a href="{{ $registrationUrl }}">registration page</a>.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: 'registration.cancelled',
+            subjects: [
+                'de' => 'Ihre Anmeldung wurde storniert',
+                'en' => 'Your registration has been cancelled',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag{{ $holderName ? ' '.$holderName : '' }},</p>
+                    <p>Ihre Anmeldung{{ $eventName ? ' zu '.$eventName : '' }} ({{ $registrationTypeName }}) wurde storniert.</p>
+                    @if ($cancelReason === 'cart_expired')
+                    <p>Ihre Reservierung ist abgelaufen, bevor die Zahlung einging.</p>
+                    @elseif ($cancelReason === 'registrant')
+                    <p>Die Stornierung erfolgte auf Ihren Wunsch.</p>
+                    @else
+                    <p>Die Stornierung erfolgte durch den Veranstalter.</p>
+                    @endif
+                    @if ($wasPaid)
+                    <p>Eine bereits geleistete Zahlung wird erstattet; Sie erhalten dazu eine Gutschrift.</p>
+                    @endif
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello{{ $holderName ? ' '.$holderName : '' }},</p>
+                    <p>Your registration{{ $eventName ? ' for '.$eventName : '' }} ({{ $registrationTypeName }}) has been cancelled.</p>
+                    @if ($cancelReason === 'cart_expired')
+                    <p>Your reservation expired before payment was received.</p>
+                    @elseif ($cancelReason === 'registrant')
+                    <p>The cancellation was made at your request.</p>
+                    @else
+                    <p>The cancellation was made by the organizer.</p>
+                    @endif
+                    @if ($wasPaid)
+                    <p>Any payment already made will be refunded; you will receive a credit note for it.</p>
+                    @endif
                     BLADE,
             ],
             defaultLocale: 'de',

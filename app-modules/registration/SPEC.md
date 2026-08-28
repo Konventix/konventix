@@ -134,6 +134,30 @@ definitions, managing quotas, approving and rejecting submissions, cancelling
 registrations, issuing invitation tokens, and exporting registration lists.
 Registration never references another module's `Permission` enum.
 
+## Mail
+
+ADR-0048 point 3: the module that owns an event owns its mail — every key
+below is a Registration listener on Registration's own event, calling
+Messaging's `SendMessage` (never a Messaging-owned trigger). The five
+lifecycle keys share one payload, `Data\RegistrationMailData`, built by the
+shared `Mail\RegistrationMailer`; `nextStep`, `reason` and `cancelReason`
+ride as codes rather than precomputed sentences, since `SendMessage`
+resolves the recipient's locale only when it actually sends — a
+PHP-computed German sentence would be wrong for an `en` recipient. Every
+template's body branches on those codes with whitespace-safe
+`@if`/`@elseif` (`.ai/rules/app-modules-src.md`); nothing else about a body
+is conditional. No key here declares a topic — these are the record of a
+contractual act's own lifecycle, not a notification a recipient can mute.
+
+| Key | Trigger | Recipient | Topic |
+|---|---|---|---|
+| `registration.waitlist-offer` | `PromoteFromWaitlist::notify()` when a waitlist entry is offered a freed quota unit (D-REG-12) | The waitlisted registrant (`registrant_user_id`) | — |
+| `registration.submitted` | `Listeners\MailOnRegistrationSubmitted` on `RegistrationSubmitted` | The registrant | — |
+| `registration.approved` | `Listeners\MailOnRegistrationApproved` on `RegistrationApproved` | The registrant | — |
+| `registration.rejected` | `Listeners\MailOnRegistrationRejected` on `RegistrationRejected` | The registrant | — |
+| `registration.confirmed` | `Listeners\MailOnRegistrationConfirmed` on `RegistrationConfirmed` | The registrant | — |
+| `registration.cancelled` | `Listeners\MailOnRegistrationCancelled` on `RegistrationCancelled` | The registrant | — |
+
 ## Activation
 
 **Core tier: always active.** Every brand needs Registration, so no Pennant
