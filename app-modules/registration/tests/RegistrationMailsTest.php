@@ -91,14 +91,33 @@ function regMailsInvoiceNoApprovalType(): RegistrationType
 }
 
 /**
+ * Asserts the push landed on Messaging's own `messaging` queue — the
+ * documented convention (`SendQueuedMessage` never dispatches with
+ * `->onQueue(...)` elsewhere, see its own docblock) — before handing back
+ * the matching jobs for the caller's own payload assertions.
+ *
  * @return array<int, SendQueuedMessage>
  */
 function regMailsPushed(string $templateKey): array
 {
+    Queue::assertPushedOn(
+        'messaging',
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === $templateKey,
+    );
+
     return Queue::pushed(
         SendQueuedMessage::class,
         fn (SendQueuedMessage $job): bool => $job->message->templateKey === $templateKey,
     )->all();
+}
+
+function regMailsNotPushed(string $templateKey): void
+{
+    Queue::assertNotPushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === $templateKey,
+    );
 }
 
 function regMailsRender(string $templateKey, RegistrationMailData $payload, string $locale = 'de'): string
@@ -117,7 +136,7 @@ function regMailsRender(string $templateKey, RegistrationMailData $payload, stri
     return app(TemplateRenderer::class)->render($message)->body;
 }
 
-it('sends registration.submitted with nextStep=confirmed and also registration.confirmed when a free type auto-confirms', function (): void {
+it('sends only registration.confirmed, not registration.submitted, when a free type auto-confirms at submission', function (): void {
     $brand = $this->withBrand();
     $registrant = regMailsRecipient($brand->id);
     Queue::fake();
@@ -126,18 +145,17 @@ it('sends registration.submitted with nextStep=confirmed and also registration.c
 
     $registration = app(SubmitRegistration::class)->handle($type, $registrant->id, regMailsFreeSubmission());
 
-    $submitted = regMailsPushed('registration.submitted');
-    expect($submitted)->toHaveCount(1);
-    $payload = $submitted[0]->message->payload->toArray();
-    expect($submitted[0]->message->recipientId)->toBe($registrant->id)
-        ->and($payload['nextStep'])->toBe('confirmed')
+    // registration.confirmed fires in the same request and is already the
+    // receipt — a registration.submitted mail here would say nothing new.
+    regMailsNotPushed('registration.submitted');
+
+    $confirmed = regMailsPushed('registration.confirmed');
+    expect($confirmed)->toHaveCount(1);
+    $payload = $confirmed[0]->message->payload->toArray();
+    expect($confirmed[0]->message->recipientId)->toBe($registrant->id)
         ->and($payload['registrationTypeName'])->toBe($type->name)
         ->and($payload['holderName'])->toBe('Ada Lovelace')
         ->and(str_contains($payload['registrationUrl'], '/my/registrations/'.$registration->id))->toBeTrue();
-
-    $confirmed = regMailsPushed('registration.confirmed');
-    expect($confirmed)->toHaveCount(1)
-        ->and($confirmed[0]->message->recipientId)->toBe($registrant->id);
 });
 
 it('sends registration.submitted with nextStep=approval for a type requiring approval', function (): void {
@@ -154,7 +172,7 @@ it('sends registration.submitted with nextStep=approval for a type requiring app
     expect($submitted[0]->message->payload->toArray()['nextStep'])->toBe('approval');
 
     // Not yet approved: no confirmation mail.
-    expect(regMailsPushed('registration.confirmed'))->toBeEmpty();
+    regMailsNotPushed('registration.confirmed');
 });
 
 it('sends registration.submitted with nextStep=pay for an instant on_payment type', function (): void {

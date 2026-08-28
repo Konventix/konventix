@@ -36,9 +36,21 @@ final class MailOnRegistrationSubmitted
             return;
         }
 
+        $nextStep = $this->nextStepCode($registration, $registration->registrationType);
+
+        // A type that auto-confirms at submission (`approval: none`,
+        // `confirmation_gate: on_submit` — `SubmitRegistration`'s own
+        // inline branch) fires `RegistrationConfirmed` in the very same
+        // request, and `MailOnRegistrationConfirmed`'s
+        // `registration.confirmed` is already the receipt for it — a
+        // second "you're in" mail here would say nothing new.
+        if ($nextStep === 'confirmed') {
+            return;
+        }
+
         $this->mailer->send($registration, 'registration.submitted', new RegistrationMailData(
             ...$this->mailer->commonFields($registration),
-            nextStep: $this->nextStepCode($registration, $registration->registrationType),
+            nextStep: $nextStep,
         ));
     }
 }

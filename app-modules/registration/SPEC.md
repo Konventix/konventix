@@ -152,11 +152,17 @@ contractual act's own lifecycle, not a notification a recipient can mute.
 | Key | Trigger | Recipient | Topic |
 |---|---|---|---|
 | `registration.waitlist-offer` | `PromoteFromWaitlist::notify()` when a waitlist entry is offered a freed quota unit (D-REG-12) | The waitlisted registrant (`registrant_user_id`) | — |
-| `registration.submitted` | `Listeners\MailOnRegistrationSubmitted` on `RegistrationSubmitted` | The registrant | — |
+| `registration.submitted` | `Listeners\MailOnRegistrationSubmitted` on `RegistrationSubmitted` — skipped when the type auto-confirms at submission (`approval: none`, `confirmation_gate: on_submit`): `RegistrationConfirmed` fires in the same request and `registration.confirmed` is already the receipt | The registrant | — |
 | `registration.approved` | `Listeners\MailOnRegistrationApproved` on `RegistrationApproved` | The registrant | — |
 | `registration.rejected` | `Listeners\MailOnRegistrationRejected` on `RegistrationRejected` | The registrant | — |
 | `registration.confirmed` | `Listeners\MailOnRegistrationConfirmed` on `RegistrationConfirmed` | The registrant | — |
 | `registration.cancelled` | `Listeners\MailOnRegistrationCancelled` on `RegistrationCancelled` | The registrant | — |
+
+An `on_approval`-gated type still sends both `registration.approved` and
+`registration.confirmed` for the same approval — two mails in one request
+by design, since they say different things (a reviewer's decision, then the
+entitlement itself), unlike the on-submit case above where both mails would
+say the same thing.
 
 ## Activation
 
