@@ -48,6 +48,10 @@
 
 ## Backlog
 
+- [ ] The plain-text alternative handles `<li>` only by incidental
+      whitespace.
+- [ ] Shipped defaults with richer expressions (`registration.rejected`'s
+      match) cannot be pasted into an override.
 - [ ] Announcement audience narrowing: both `everyone` and `logged-in`
       currently reach every known account, operator-wide — Messaging's
       recipient read model has no notion of brand membership. Needs an
@@ -96,145 +100,74 @@
 
 ## Done
 
-- [x] Fix round 1 on Task 8: an override is raw Blade, and Blade is PHP —
-      `manage-message-templates` is a brand-operator permission, not a
-      superuser one, and `preview()` executes a draft that was never saved.
-      `Templates\TemplateOverrideGuard::assertSafe()` (new) allow-lists what
-      subject/body may contain — see SPEC.md's Templates section for the
-      exact grammar — refusing everything else, including `@php`,
-      `{!! !!}`, `@include`/`@inject`, a raw `<?php ?>` tag, and any
-      unrecognised directive; run on both fields, on save
-      (`SaveTemplateOverride`) and preview (`TemplateAdminController::
-      preview()`), before the compile check. A denylist could not close
-      this off — `TemplateOverrideGuardTest` covers the exact refused/
-      accepted grammar from the review that found it, through the guard
-      directly and through both endpoints. Also: `update()`/`preview()` no
-      longer take `brandId` from the request body — both now read
-      `ConsoleSelection::brandId()` the same way `edit()`/`reset()` already
-      did, and refuse (a validation error on `body`; a 422 on preview) with
-      none selected — a client-named brand would have let any holder of the
-      capability write into a brand nobody handed them the console
-      selection for. `compliance.deadline-warning` gained the `sample` the
-      first pass missed; `TemplateRegistryTest` gained a durable guard that
-      loops `TemplateRegistry::all()` and renders every template's sample
-      in every locale it defines, so a missing or mismatched sample fails
-      at test time rather than the first time an operator opens the editor.
-      `admin/messages/templates/Index.vue` now uses the shared
-      `DataTable`/`DataTableToolbar`/`useDataTable` + `columns.ts` stack
-      (server-side paginated, the `index()` route now `LengthAwarePaginator`
-      over the in-memory registry) instead of a hand-rolled table, matching
-      every other operator-console index.
+- [x] ADR-0048 (mail-and-receipts tranche): every mail wears the brand's own
+      layout, the delivery log and the template editor get screens, and
+      Identity's auth mail moves onto this pipe.
 
-- [x] ADR-0048 decisions 4 and 6, Task 8 of the mail-and-receipts tranche:
-      operators rewrite a mail in their own words, see it before it goes,
-      and send themselves one. `/admin/messages/templates` (nav "Message
-      templates", order 42, gated `ManageMessageTemplates`) —
-      `Http\Controllers\Admin\TemplateAdminController::index()` lists every
-      key `TemplateRegistry::all()` (new) knows about with an override badge
-      per locale for the console's selected brand; `edit()` needs a brand
-      picked first (redirects to the index with a toast otherwise) and shows
-      the module default and the brand's own rewrite side by side per
-      locale, locale tabs, a 500ms-debounced live preview
-      (`preview()`, POST, JSON — an XHR from the page, not an Inertia visit)
-      rendered inside the branded layout via a new
-      `TemplateRenderer::renderString()` (no override lookup — previews a
-      draft, not what is stored) against the template's new `sample` field
-      (a realistic payload every registered template now carries, used for
-      nothing but this and the compile check below), and "Reset to default"
-      per locale once an override exists. `Actions\SaveTemplateOverride`
-      validates the Blade first by rendering the sample — a compile error
-      (a glued directive left as literal text, `.ai/rules/app-modules-src.md`,
-      is the common way to get one) becomes a validation error on `body`
-      rather than a 500 — before writing the row
-      (`(brand_id, template_key, locale)`, updateOrCreate semantics, either
-      field individually nullable and falling back to the default);
-      `Actions\ResetTemplateOverride` deletes it. Mail-settings gained its
-      own piece: `MailSettingsAdminController::edit()` now also hands the
-      page a `BrandMailIdentityData` (the exact read model a real send
-      resolves), rendered as a "How your mail looks" card — logo, accent
-      swatch with its value, seller line, imprint/privacy links — next to a
-      "Send test mail to me" button (`POST /mail-settings/{brand}/test`,
-      gated `ManageSenderIdentity` since it lives on that screen, not the
-      template editor) that calls `Actions\SendTestMail` with template
+      Fix round 1 on the template editor: an override is raw Blade, and
+      Blade is PHP — `Templates\TemplateOverrideGuard::assertSafe()`
+      allow-lists what a subject/body may contain (plain text, an echo of a
+      payload field, `@if`/`@elseif`/`@unless`/`@isset`/`@empty`/`@foreach`
+      gated on a payload field) and refuses everything else — `@php`,
+      `{!! !!}`, `@include`/`@inject`, a raw `<?php ?>` tag, any
+      unrecognised directive — run on both fields, on save and preview,
+      before the compile check; a denylist could not close this off.
+      `update()`/`preview()` read the brand from `ConsoleSelection` rather
+      than the request body, closing a hole that would have let any holder
+      of the capability write into a brand nobody handed them the console
+      selection for. `TemplateRegistryTest` renders every template's sample
+      in every locale as a durable guard against a missing or mismatched
+      one.
+
+      The template editor (Task 8, decisions 4 and 6): `/admin/messages/
+      templates` (gated `ManageMessageTemplates`) lists every registered
+      key with an override badge per locale for the console's selected
+      brand; the edit screen shows the module default and the brand's own
+      rewrite side by side per locale with a 500ms-debounced live preview
+      (`TemplateRenderer::renderString()` + `MailLayout::wrap()` against the
+      template's `sample`) and a reset to default. `Actions\
+      SaveTemplateOverride` validates the Blade compiles by rendering the
+      sample before writing the row — a compile error becomes a validation
+      error on `body`, never a 500. Mail-settings gained a "How your mail
+      looks" card (the resolved `BrandMailIdentityData`) and a "Send test
+      mail to me" button that calls `Actions\SendTestMail` with template
       `messaging.test-mail`, addressed to the signed-in operator's own
-      account email — never a domain event. `DryRunTest` walks the index and
-      the edit route; the edit route legitimately redirects during the walk
-      (the console selection it needs is never made by a route-table crawl)
-      and is allow-listed for `<400` rather than exactly `200`.
+      account email — never a domain event.
 
-- [x] ADR-0048 decision 6, Task 7 of the mail-and-receipts tranche: the
-      delivery log gets a screen, and a lost mail gets a second chance.
-      `/admin/messages` (nav "Messages", order 41, gated `ViewMessageLog`) —
-      an index (`Http\Controllers\Admin\MessageLogAdminController::index()`)
-      filtered by brand/status/channel/template and searched by recipient
-      email, a detail page (`show()`) with the meta, the payload, the
-      rendered mail in a sandboxed `<iframe srcdoc>` and the attachment
-      names. Reading the rendered subject/body needs `ViewMessageContent`
-      separately from seeing the row at all (`ViewMessageLog`) —
-      `Data\MessageLogDetailData::ofModel()` returns `bodyRedacted: true`
-      and no content for a viewer without it, regardless of whether the row
-      stored one. `Actions\ResendMessage` (its own capability,
-      `ResendMessage`) rebuilds a `SendMessageRequest` from the stored row
-      and hands it back to `SendMessage`, which logs a fresh row exactly
-      like an original send; the new row's `resent_from_id` (new column,
-      alongside `attachments` — what actually rode on the envelope,
-      `SendMessage::log()` now writes both) links it back. The row kept
-      only the payload's rendered array, not the module-owned Data class
-      that produced it — and Messaging may not import a module's own type
-      anyway (ADR-0004) — so the resend wraps it in a new
-      `Data\ArrayPayloadData`, a `Data` stand-in whose `toArray()` is the
-      only thing either consumer (`TemplateRenderer`, `SendMessage::log()`)
-      ever calls on a payload. Attachments are re-checked against disk and
-      dropped with a warning when gone. `urgent: true` on every resend, so
-      it bypasses digest/quiet-hours holds instead of joining an unrelated
-      window; refuses (`LogicException`, mapped to a redirect with errors)
-      a record still `Queued`/`Held`. `DryRunTest` walks the index; the
-      show route is named-skipped — `konventix:seed` sends no mail, so no
-      brand ever has a row for it to point at.
+      The delivery log (Task 7, decision 6): `/admin/messages` (gated
+      `ViewMessageLog`) is an index filtered by brand/status/channel/
+      template and searched by recipient email, with a detail page showing
+      the meta, payload and rendered mail in a sandboxed `<iframe srcdoc>`;
+      reading the rendered content needs `ViewMessageContent` separately
+      from seeing the row (`ViewMessageLog`). `Actions\ResendMessage`
+      rebuilds a `SendMessageRequest` from the stored row (wrapped in a new
+      `Data\ArrayPayloadData`, since the row kept only the rendered array,
+      not the module-owned Data class that produced it) and hands it back
+      to `SendMessage`, which logs a fresh row whose `resent_from_id`
+      points back at the original; `urgent: true` on every resend so it
+      bypasses digest/quiet-hours holds.
 
-- [x] ADR-0048 point 5, Task 6 of the mail-and-receipts tranche: Identity's
-      auth mail — `identity.verify-email`, `identity.password-reset`,
-      `identity.welcome` — is Messaging's first Identity consumer, closing
-      the "wire a real caller" item this file used to open with (stale by
-      the time it landed: Commerce and Registration, Tasks 4/5, were
-      already real callers). `Konventix\Identity\Mail\AuthMailer` calls
-      `SendMessage` with explicit `recipientEmail`/`recipientLocale`
-      alongside `recipientId`, independent of whether `ProjectRecipient`'s
-      projection has run yet for a brand-new account.
+      Identity's auth mail (Task 6, point 5): `identity.verify-email`,
+      `identity.password-reset` and `identity.welcome` are Messaging's
+      first Identity consumer — `AuthMailer` calls `SendMessage` with
+      explicit `recipientEmail`/`recipientLocale` alongside `recipientId`,
+      independent of whether the recipient projection has run yet for a
+      brand-new account.
 
-- [x] ADR-0048 point 4, Task 1 of the mail-and-receipts tranche: every mail
-      wears a branded layout Messaging owns. `MailChannel` wraps the
+      The branded layout (Task 1, point 4): `MailChannel` wraps every
       template's rendered subject/body in `messaging::layouts.branded`
-      (`Mail\MailLayout::wrap()`) before building `TemplatedMail`, which now
-      takes pre-rendered `html`/`text` rather than a bare `RenderedMessage`
-      — `Content`'s `text` slot only accepts a view name, so a tiny
-      `messaging::mail.text` view echoes the string `MailLayout` derives
-      (subject, the body with `<p>`/`<br>` turned into newlines and every
-      other tag stripped, then the footer lines). The identity is
+      before building `TemplatedMail`. The identity is
       `Data\BrandMailIdentityData`, resolved fresh per send by
       `Branding\BrandMailIdentityResolver` — never a singleton holding a
-      brand — from `Brand` (the one Platform model on the cross-module
-      allow-list) plus Platform's own non-model read services
+      brand — from `Brand` plus Platform's own read services
       (`Branding\BrandIdentityResolver` for the logo, `Operators\
-      OperatorSettings` for the legal line, and the new
-      `Konventix\Platform\Footer\FooterLinks` for the imprint/privacy
-      links — `FooterLink` itself stays off Messaging's allow-list, so this
-      is the sanctioned doorway, same shape as `OperatorSettings`). Accent
-      colour comes from `Brand::theme_tokens['accent']`/`['on-accent']` with
-      the theme catalogue's defaults as fallback; a brand with no operator
-      degrades to its name as the seller line instead of failing the send.
-      The preferences link renders only for a template sent with a topic,
-      against the real `notification-preferences.edit` route (the brief
-      assumed a `messaging.preferences.*` name; the settings page Slice 13a
-      shipped is named `notification-preferences.edit`, so that is what
-      resolves), absolute against the brand's own host via `BrandUrl` where
-      one exists. `SendMessage` now dispatches `SendQueuedMessage` with
-      `->afterCommit()`, so a send accepted inside the caller's own
-      transaction never reaches the queue if that transaction rolls back —
-      the gap ADR-0048 calls out explicitly. Existing mail (Commerce's
-      invoice mail, the intent-event listeners) renders inside the new
-      layout unchanged; their own tests still pass. ADR-0048 committed
-      verbatim at `docs/decisions/0048-mail-and-the-rechnung-on-payment.md`.
+      OperatorSettings` for the legal line, the new `Footer\FooterLinks`
+      for imprint/privacy links); a brand with no operator degrades to its
+      name as the seller line rather than failing the send. `SendMessage`
+      now dispatches `SendQueuedMessage` with `->afterCommit()`, so a send
+      accepted inside the caller's own transaction never reaches the queue
+      if that transaction rolls back. ADR-0048 committed verbatim at
+      `docs/decisions/0048-mail-and-the-rechnung-on-payment.md`.
 
 - [x] `permissions:sync` exists (it shipped with the operator console) and,
       since ADR-0045, also materializes each module's default roles per

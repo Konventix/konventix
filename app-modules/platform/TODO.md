@@ -84,33 +84,26 @@ depends on brand resolution and gating working.
 
 ## Done
 
-- [x] ADR-0048 point 3, Task 4 of the mail-and-receipts tranche, two new
-      cross-module doorways. `Permissions\PermissionHolders::userIdsWithPermission(brandId,
-      permission): list<string>` — a pure `DB::table()` query over spatie's
-      own `model_has_roles`/`roles`/`role_has_permissions`/`permissions`
-      pivots (`config('permission.table_names')`/`column_names()`, `model_type`
-      compared against `config('auth.providers.users.model')` as a plain
-      string) — no Eloquent `Role`/`Permission` model, no Identity `User`
-      import; answers "which users hold this permission on this brand".
-      `Operators\OperatorSettings::adminBaseUrlForBrand(brandId): ?string`
-      — `scheme://{admin_host}` for the brand's operator (scheme parsed
-      from `config('app.url')`, `https` default), the same doorway shape
-      `sellerForBrand()`/`contactEmailForBrand()` already use; null when the
-      brand has no operator or no `admin_host` set. Commerce's operations
-      notice (a sold-out variant, a failed payment) is the first caller of
-      both — the notice needs an absolute console link (a relative one is
-      dead in an email) and a recipient list with no user model of its own.
-
-- [x] ADR-0048 point 4, Task 1 of the mail-and-receipts tranche:
-      `Footer\FooterLinks::legalLinksFor(brandId): array{imprintUrl,
-      privacyUrl}`, a plain read service reading the same `FooterLink` rows
-      the page footer does (operator-wide plus the brand's own,
-      `scopeInDisplayOrder()`), picking the first URL-kind entry whose label
-      reads as imprint or privacy and returning it absolute via `BrandUrl`.
-      `FooterLink` itself stays a Platform model other modules may not
-      import (ADR-0004); Messaging's branded mail layout is the first
-      caller, through this doorway — the same shape as `Operators\
-      OperatorSettings` and `Branding\BrandIdentityResolver`.
+- [x] ADR-0048 (mail-and-receipts tranche): three new cross-module read
+      doorways for branded mail, none of them an Eloquent import.
+      `Permissions\PermissionHolders::userIdsWithPermission(brandId,
+      permission): list<string>` (point 3, Task 4) — a pure `DB::table()`
+      query over spatie's own pivots, no Eloquent `Role`/`Permission` model,
+      no Identity `User` import; answers "which users hold this permission
+      on this brand". `Operators\OperatorSettings::
+      adminBaseUrlForBrand(brandId): ?string` — `scheme://{admin_host}` for
+      the brand's operator, the same doorway shape `sellerForBrand()`/
+      `contactEmailForBrand()` already use; null when the brand has no
+      operator or no `admin_host` set. Commerce's operations notice (a
+      sold-out variant, a failed payment) is the first caller of both — it
+      needs an absolute console link and a recipient list with no user
+      model of its own. `Footer\FooterLinks::legalLinksFor(brandId):
+      array{imprintUrl, privacyUrl}` (point 4, Task 1) — a plain read
+      service reading the same `FooterLink` rows the page footer does,
+      picking the first URL-kind entry whose label reads as imprint or
+      privacy and returning it absolute via `BrandUrl`; `FooterLink` itself
+      stays a Platform model other modules may not import, and Messaging's
+      branded mail layout is the first caller through this doorway.
 
 - [x] ADR-0047 point 5, Task 12: the `ensure-waiting-room` route middleware
       alias and its contract. `src/WaitingRoom/WaitingRoomGate` (`guard(Request):

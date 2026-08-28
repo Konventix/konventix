@@ -623,6 +623,18 @@ or extends a written decision and gets its own ADR before code, which is
 what "settled, do not re-litigate in code" costs when a decision is
 revisited on purpose.
 
+## Beyond the second build order
+
+- **Transactional mail and the Rechnung on payment** — **Done** (ADR-0048,
+  2026-08-28): every paid order gets a Rechnung the moment it is paid (same
+  gapless series, payment snapshot, Factur-X prepaid amount), refunds leave
+  a Gutschrift PDF, and the base set of mails — order confirmation, payment
+  failed, credit note, registration submitted/approved/rejected/confirmed/
+  cancelled, verification, password reset, welcome, an operators' topic —
+  goes through Messaging in the brand's layout. Operators see the delivery
+  log, resend, rewrite templates per brand behind an allow-list guard,
+  preview, and send themselves a test mail.
+
 ## Phase 3 — post-release
 
 Community, Agenda, Sponsoring, Newsletter, Extensibility (external
@@ -674,9 +686,9 @@ so they are not rediscovered.
   is unsatisfiable for the passwordless accounts social login creates; the
   lockout guard is what protects the account today. (Identity's `TODO.md`.)
 - **Messaging gaps unchanged**: recipient timezone, D-BATCH-7 inactive-module
-  filtering, announcement audience narrowing, suppression/log operator
-  screens, provider bounce webhooks, a real-browser push pass. (Messaging's
-  `TODO.md`.)
+  filtering, announcement audience narrowing, suppression-list operator
+  screens (the delivery log itself now has one, ADR-0048), provider bounce
+  webhooks, a real-browser push pass. (Messaging's `TODO.md`.)
 - **`Data\OpeningPeriodData` carries no `#[TypeScript]` attribute**, so the
   venues form spells its shape out by hand and the two can drift. Add the
   attribute when the opening-times editor lands.
@@ -717,7 +729,9 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Compliance | Retention-policy admin | `admin/data-lifecycle/*` | ✓ |
 | Compliance | Anonymization log (what a deletion actually changed, per module) | `admin/data-lifecycle/*` | S14 |
 | Compliance | Audit pages (per-entity change history — LanCore had ten `*/Audit.vue`) | `users/Audit`, `events/Audit`, `news/Audit`, … | ✓ — absorbed into one filtered trail, not ported per entity |
-| Messaging | Delivery log + suppression admin | `admin/emails/*` | S13 |
+| Messaging | Delivery log (index + detail), resend | `admin/emails/*` | ✓ (ADR-0048, `/admin/messages`) |
+| Messaging | Suppression list admin | `admin/emails/*` | P2 backlog |
+| Messaging | Template editor (index + editor), per-brand override + preview + test mail | — (new concept, ADR-0048) | ✓ (`/admin/messages/templates`) |
 | Messaging | In-app inbox + archive; notification/digest/quiet-hours preferences | `notifications/*`, `settings/{Notifications,EmailSettings}` | S13 |
 
 ### Core

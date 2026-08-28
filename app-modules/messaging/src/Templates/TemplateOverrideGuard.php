@@ -89,7 +89,7 @@ final class TemplateOverrideGuard
 
     private function assertDirectivesSafe(string $blade): void
     {
-        if (preg_match_all('/@([a-zA-Z]+)(\s*\((?:[^()]|\([^()]*\))*\))?/', $blade, $matches, PREG_OFFSET_CAPTURE) === 0) {
+        if (preg_match_all('/@([a-zA-Z]+)([ \t]*\((?:[^()]|\([^()]*\))*\))?/', $blade, $matches, PREG_OFFSET_CAPTURE) === 0) {
             return;
         }
 

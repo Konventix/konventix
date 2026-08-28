@@ -11,7 +11,7 @@ not cosmetic — they force generic data models instead of relabeled LAN concept
 | **Identity** | Auth, Profile, Steam auth | User (slim!), social login as `SocialProvider` drivers (Steam is one of many), 2FA, sessions |
 | **Event** | Event, Venue | Event lifecycle, venue as sub-concept |
 | **Compliance** | Policy, DataLifecycle | Consent/policies, GDPR export & deletion orchestration (delegating to per-module `Gdpr/` exporters), audit |
-| **Messaging** | Notification, EmailLog | Channel abstraction (mail, push, in-app), delivery log as infrastructure |
+| **Messaging** | Notification, EmailLog | Channel abstraction (mail, push, in-app), delivery log as infrastructure; delivery log and template overrides have screens (`/admin/messages`) |
 
 ## Core (every brand)
 

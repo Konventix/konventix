@@ -10,6 +10,11 @@
 
 ## Backlog (Phase 2 — release scope, invoice-settled registrations are a definition-of-done item)
 
+- [ ] B2C invoices above 250 € need a postal address (§14 UStG vs §33
+      UStDV): a way for the operator or payer to complete the billing
+      address on a cart order.
+- [ ] A cart order whose payment failed has no re-pay link (the grace sweep
+      cancels it after 60 min; the payer re-shops).
 - [ ] A PSP success arriving for an order already cancelled by
       `ExpireCarts`' checkout-grace sweep (Task 11 fix round 1) is refused
       by `RecordPaymentSuccess::settleOrder()` — logged as a warning, not
@@ -86,162 +91,61 @@
 
 ## Done
 
-- [x] ADR-0048 point 3 (mail-and-receipts Task 4): an order is confirmed, a
-      failed payment is explained, and the shop manager hears about it.
-      Four new listeners, all on Commerce's own events: `SendOrderConfirmationOnOrderPlaced`
-      (`OrderPlaced`, `settlesType: 'cart'` only — a direct order's payer
-      already hears from Registration, and where invoice-settled, from
-      Commerce's own Rechnung mail) mails `commerce.order-confirmation` with
-      the order's lines, total, and — when a checked-out cart is still
-      behind it — the reservation deadline; the greeting is branch-free
-      (`Guten Tag{{ $recipientName ? ' '.$recipientName : '' }},`), not a
-      payload-level `?? 'Hallo'` fallback, which read as a name rather than
-      a salutation. `SendPaymentFailedMailOnPaymentFailed`
-      (`PaymentFailed`) mails `commerce.payment-failed` to the payer with an
-      already-localised reason sentence and a retry link (`commerce.pay.show`
-      for a registration order, `/my/orders` for a cart order); a payer-less
-      order is logged and skipped, never an error, the same
-      `PromoteFromWaitlist::notify()` try/`Log::warning` shape guards every
-      `SendMessage` call here. `NotifyOperatorsOnStockExhausted`
-      (`StockExhausted`) and `NotifyOperatorsOnPaymentFailed` (`PaymentFailed`)
-      mail every `commerce.manage-products` holder on the brand through the
-      new `commerce.operations-notice` template, on the new `commerce.operations`
-      topic (`registerMessageTopics()` — declared `digestable: true`, but
-      both current triggers set `urgent: true` on the request itself so a
-      manager gets an immediate nudge rather than a 30-minute-coalesced
-      digest, the same `HoldPolicy`/D-CNT-08 reasoning an urgent
-      announcement already uses). `OperationsNoticeData.kind` is a real
-      backed enum (`Enums\OperationsNoticeKind`, `#[TypeScript]`), not a
-      string with a docblock union — the generated TypeScript type is a
-      real union rather than `unknown`. New in Platform:
-      `Permissions\PermissionHolders::userIdsWithPermission()` — a pure
-      query builder over spatie's own pivot tables (no Eloquent
-      `Role`/`Permission` model, no Identity `User` import) answering "which
-      users hold this permission on this brand" — and
-      `Operators\OperatorSettings::adminBaseUrlForBrand()`, the doorway to
-      `Operator::$admin_host` (scheme parsed from `config('app.url')`,
-      `https` default) that both `NotifyOperators*` listeners use to build
-      an absolute admin-console link, falling back to a relative path when
-      the brand's operator has none set yet — an email with a relative link
-      is dead, so this replaced the first pass's `route(…, absolute: false)`.
-      `reasonCode` mapping (`SendPaymentFailedMailOnPaymentFailed::reasonSentence()`)
-      reads the real values the three PSP webhook controllers emit
-      (`async_payment_failed`, `checkout_expired`, `failed`, `canceled`,
-      `expired`) rather than the illustrative `card_declined` wording
-      sketched during planning — no adapter emits that code.
-      `tests/Unit/ArchitectureTest.php`'s Messaging allowlist grew two
-      segments, `Topics` and `Enums`, for `Topic`/`TopicRegistry`/`Channel`
-      — the first module besides Messaging to use
-      `ModuleServiceProvider::registerMessageTopics()`'s hook.
-- [x] ADR-0048 (mail-and-receipts Task 3): a refund leaves a Gutschrift
-      behind, on paper and in the inbox. `IssueCreditNote` now dispatches
-      `Jobs\GenerateCreditNoteDocument` `afterCommit()`, the same shape
-      `IssueInvoice` already used for a paid Rechnung (Task 2) —
-      `Documents\CreditNoteDocumentRenderer` renders the hybrid-ZUGFeRD
-      shape (`ZugferdInvoiceType::CREDITNOTE`, code 381) from the credit
-      note's own snapshot, never from `Order`/`OrderLine`: a credit note
-      only carries aggregate totals, so the document is one summary
-      position ("Gutschrift zu Rechnung Nr. …") rather than a line
-      breakdown, and `addDocumentInvoiceReferencedDocument()` names the
-      corrected invoice whenever `invoice_id` is set. `credit_notes` gained
-      the same four `document_*` columns invoices carry (new migration);
-      the job is idempotent on `document_path` and archives to the same
-      `invoices_disk` an invoice does — one archive, one retention rule,
-      for both document kinds. `Actions\SendCreditNoteMail` mails the
-      sealed archive through the new `commerce.credit-note-issued`
-      template — one template for both refund and transfer, with
-      `Data\CreditNoteMailData` carrying `reasonLabelDe`/`reasonLabelEn` as
-      two already-localised strings rather than a raw `reasonCode` the
-      template branches on, keeping the body branch-free
-      (`.ai/rules/app-modules-src.md`'s "a Blade directive glued to a
-      preceding/following word" trap). The payer's own copy is
-      `GET /my/credit-notes/{creditNote}/document`
-      (`commerce.my.credit-note.document`) — `auth` + `signed:relative`
-      like the invoice route, but `MyCreditNoteDocumentController` checks
-      ownership against the order's `payer_user_id` explicitly, since
-      unlike an invoice's link a credit note's is minted from the shared
-      "my orders" list rather than from a render that already proved
-      ownership. `MyOrderData.creditNotes` (`Data\MyCreditNoteData`,
-      additive-only) lists every Gutschrift per order with its own
-      `documentUrl`; `commerce/my/Index.vue` renders one "Gutschrift
-      {{ number }}" secondary button per credit note, linking once the
-      document exists. The operator console's twin,
-      `admin.credit-notes.document` (`Admin\CreditNoteDocumentController`),
-      is gated on `ViewOrders` — Commerce has no separate "view credit
-      notes" capability, and the order admin page already lists credit
-      notes under that same permission.
+- [x] ADR-0048 (mail-and-receipts tranche): a paid order gets its Rechnung
+      the moment it is paid, a refund leaves a Gutschrift behind, and the
+      order lifecycle now talks to the people it affects.
 
-- [x] ADR-0048 (mail-and-receipts Task 2): a paid order gets its Rechnung
-      the moment it is paid, and it says so. `IssueInvoiceOnOrderPaid`
-      listens to `OrderPaid` (registered in `registerListeners()`) and
-      calls the existing `IssueInvoice`, now accepting an optional
-      `PaymentSnapshotData` — `due_on` collapses to `issued_on` and
-      `paid_at`/`paid_via`/`paid_provider`/`payment_reference` are written
-      at the same moment as everything else, never as a later edit.
-      Idempotent per `order_id`: the order row is locked
-      (`lockForUpdate`) *inside* the transaction before the existence
-      check, not before it opens — a manual booking
-      (`ManualSettlementAdapter::markOrderPaid()`) takes no lock of its
-      own before calling in, so two concurrent double-submits must
-      serialize on this lock rather than both drawing a number for the
-      same order (fix round 1; the listener repeats the existence check
-      itself as a second line of defence). Before this, only an
-      invoice-settled registration order (issued at placement by
-      `PlaceOrderFromSettlementRequest`) produced any document at all — a
-      card-paid registration and every cart order (ADR-0047) got nothing.
-      `orders.billing_party` (new nullable JSON column, `BillingPartyData`
-      cast) closes the gap that made that impossible: settlement requests
-      already carried a billing party but only the `invoice` branch kept
-      it, and a cart checkout gathered none — `PlaceOrderFromCart` now
-      takes a `BillingPartyData` parameter, `CartController::checkout()`
-      builds one from the signed-in payer's account (`BillingPartyData::
-      ofAccount()`, name and email only, country left null rather than
-      guessed — the cart's own tax calculation already resolves ADR-0030's
-      domestic treatment with no billing country at all, so a fabricated
-      one would change nothing but the printed page).
-      `Settlement\ProviderLabels::labelFor()` turns a raw provider key
-      into the human label a payer actually reads (`stripe → 'Stripe'`,
-      `manual → 'Überweisung / manuell'`, `null → 'Testzahlung'` — the
-      actual key `LocalHostedCheckoutAdapter` stamps for every dev/demo
-      payment, fix round 1; an earlier `'local'` never matched anything
-      real); `InvoiceDocumentRenderer` prints "Bezahlt am …" instead of
-      "Fällig am …"/"Zahlbar bis …" on the PDF half (both the header meta
-      and a "Bezahlt am … via …" note under the totals) and, on the
-      Factur-X half, adds the UNTDID 4461 payment means (SEPA credit
-      transfer for `manual`, bank card for `stripe`/`mollie`/`unzer`,
-      matched off the new `paid_provider` column — the raw settlement
-      key, fix round 1, not the translated `paid_via` label the first
-      pass matched off), sets `setDocumentSummation()`'s
-      `totalPrepaidAmount` to the gross total with `duePayableAmount`
-      zero, and drops `addDocumentPaymentTerm()`'s due term entirely so
-      the XML never disagrees with what the PDF shows — read back and
-      asserted with `ZugferdDocumentPdfReader::readAndGuessFromContent()`
-      in `PaidInvoiceTest`. The invoice mail is two message template keys
-      sharing one payload (`commerce.invoice-issued` open,
-      `commerce.invoice-paid` new, `Data\InvoiceMailData`) rather than one
-      template branching on `$paid`: a Blade directive glued to the
-      surrounding text (`bezahlt@else`, `AAA@endif`) is left as literal
-      text by Blade's own directive regex and silently drops the rest of
-      the template — `.ai/rules/app-modules-src.md` records it, fix round
-      1 replaced the first pass's incorrect Livewire diagnosis of the same
-      symptom. `SendInvoiceMail` picks the key from `Invoice::isPaid()`;
-      `/my/orders` (`MyOrderData.invoicePaid`) labels the document button
-      "Rechnung (bezahlt)" instead of "Rechnung". `PaidInvoiceTest.php`
-      covers one-invoice-per-order under replay (both by calling
-      `RecordPaymentSuccess` twice — the existing not-pending guard
-      already stops a second `OrderPaid` — and by replaying `OrderPaid`
-      itself straight into the listener, to prove `IssueInvoice`'s own
-      guard holds independently) and under two same-process
-      `IssueInvoice::handle()` calls for the same order (one invoice, one
-      number drawn — `InvoiceNumberRange` counter advances by exactly one,
-      fix round 1), an invoice-settled order paid later staying at one
-      untouched invoice, the missing-billing-party warning path
-      (`Log::spy()`), the archived XML/PDF (payment means typecode pinned
-      to `48` for a Stripe payment and `58` for a manual one, fix round
-      1), `ProviderLabels::labelFor('null') === 'Testzahlung'`, and the
-      `/my/orders` projection; `CartCheckoutTest` gained the real
-      checkout → webhook-success → invoice-with-the-cart's-billing-party
-      path.
+      A paid order (Task 2): `IssueInvoiceOnOrderPaid` listens to
+      `OrderPaid` and calls the existing `IssueInvoice`, now accepting an
+      optional `PaymentSnapshotData` so `paid_at`/`paid_via`/`paid_provider`/
+      `payment_reference` are written at the same moment as everything
+      else, never as a later edit; idempotent per `order_id` via
+      `lockForUpdate` taken before the existence check, since manual
+      booking takes no lock of its own. Before this, only an
+      invoice-settled registration order produced any document — a
+      card-paid registration and every cart order got nothing; the new
+      `orders.billing_party` column (`BillingPartyData` cast) closes that
+      gap by giving a cart checkout a billing party to snapshot too. The
+      invoice mail is two template keys sharing one payload
+      (`commerce.invoice-issued`, `commerce.invoice-paid`) rather than one
+      branching template, avoiding the Blade-directive-glued-to-text trap
+      (`.ai/rules/app-modules-src.md`). The Factur-X half gets the prepaid
+      treatment (`totalPrepaidAmount` = gross, `duePayableAmount` zero, no
+      due term) so the PDF and the XML never disagree; `/my/orders` labels
+      the paid document "Rechnung (bezahlt)".
+
+      A refund (Task 3): `IssueCreditNote` dispatches
+      `Jobs\GenerateCreditNoteDocument` `afterCommit()`, the same shape
+      `IssueInvoice` uses, rendering the hybrid-ZUGFeRD `CREDITNOTE` (code
+      381) from the credit note's own snapshot as one summary line
+      ("Gutschrift zu Rechnung Nr. …"), archived to the same disk and
+      retention rule as an invoice. `SendCreditNoteMail` sends
+      `commerce.credit-note-issued` — one template for both refund and
+      transfer, with pre-localised reason labels keeping the body
+      branch-free. The payer's own copy lives at
+      `/my/credit-notes/{creditNote}/document`, checked against the
+      order's `payer_user_id` explicitly since a credit note's link is
+      minted from the "my orders" list rather than from a render that
+      already proved ownership; the operator console's twin is gated
+      `ViewOrders`.
+
+      The order lifecycle (Task 4): `SendOrderConfirmationOnOrderPlaced`
+      (`OrderPlaced`, cart orders only — a direct order's payer already
+      hears from Registration or Commerce's own Rechnung mail) sends
+      `commerce.order-confirmation` with the order's lines, total and any
+      reservation deadline; `SendPaymentFailedMailOnPaymentFailed`
+      (`PaymentFailed`) sends `commerce.payment-failed` to the payer with a
+      localised reason and a retry link, skipping a payer-less order with a
+      `Log::warning` rather than an error. `NotifyOperatorsOnStockExhausted`
+      and `NotifyOperatorsOnPaymentFailed` mail every
+      `commerce.manage-products` holder through `commerce.operations-notice`
+      on the new `commerce.operations` topic — digestable, but both
+      triggers set `urgent: true` for an immediate nudge. New shared
+      pieces: Platform's `Permissions\PermissionHolders::
+      userIdsWithPermission()` (a pure query over spatie's own pivot
+      tables) and `Operators\OperatorSettings::adminBaseUrlForBrand()`,
+      the doorway both operator-notice listeners use to build an absolute
+      admin-console link.
 - [x] ADR-0047 point 6, Task 14: the infrastructure flip and the rush
       itself. `SESSION_DRIVER`/`CACHE_STORE` are `redis` in `.env` and
       `.env.example` (the queue already was); a database-backed session

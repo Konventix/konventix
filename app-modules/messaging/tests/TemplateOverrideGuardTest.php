@@ -54,6 +54,7 @@ dataset('overrideGuardUnsafeFragments', [
     'the inject directive' => ["@inject('a', 'b')"],
     'a raw PHP tag' => ['<?php echo 1; ?>'],
     'a directive glued to a word' => ['@if($x)A@endif'],
+    'a directive whose ( sits on the next line' => ["@if\n(\$x)\nA\n@endif"],
 ]);
 
 // The guard's own grammar, verbatim — independent of any real template's

@@ -246,6 +246,22 @@ Proposed catalogue: `ViewMessageLog`, `ViewMessageContent`, `ResendMessage`,
 `ManageSuppressionList`. Seeing that a message was sent and reading its rendered
 body are separate capabilities, since the body usually contains personal data.
 
+## Mail
+
+The four templates Messaging registers on its own behalf, distinct from the
+per-module tables below (ADR-0048 point 3/4): two are the wording behind the
+intent-event exception above (`messaging.announcement`, `messaging.dunning-
+notice` — Content and Commerce declare only the event, Messaging owns the
+template), one is the coalesced-hold carrier, and one is operator-only and
+never reachable from a domain event.
+
+| Key | Trigger | Recipient | Topic |
+|---|---|---|---|
+| `messaging.announcement` | `Listeners\SendAnnouncementNotifications` on `AnnouncementPublished` (Content) | Every known recipient (fan-out; per-brand narrowing waits on an Identity signal, TODO.md) | `content.announcements` |
+| `messaging.dunning-notice` | `Listeners\SendDunningNotice` on `DunningLevelRaised` (Commerce) | The invoice's billing contact, by address (no account required) | `commerce.dunning` |
+| `messaging.digest` | `Actions\FlushHeldMessages`, run by the `messaging:flush-held` sweep, coalescing a recipient/channel's due holds into one send | The recipient whose held sends coalesced | — (meta; carries the coalesced topics' own subjects, not one of its own) |
+| `messaging.test-mail` | `Actions\SendTestMail`, the "Send test mail to me" button on the mail-settings edit page | The signed-in operator's own account email | — (never a domain event, gated `ManageSenderIdentity`) |
+
 ## Activation
 
 Kernel module. Always active for every brand and not gateable: its provider sets
