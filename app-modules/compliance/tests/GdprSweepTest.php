@@ -150,9 +150,12 @@ it('keeps an account that still belongs to another brand', function (): void {
     app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
 
     // One brand asked; the account spans the operator (ADR-0016) and the
-    // person is still registered elsewhere.
+    // person is still registered elsewhere. The membership that survives is
+    // the other brand's — count across brands, not brand A's own scope,
+    // which the queue propagator (Task 3) now leaves ambient after the
+    // sync-dispatched deletion job restores it.
     expect($user->refresh()->state)->toBe(AccountState::Active)
-        ->and(BrandMembership::query()->where('user_id', $user->id)->count())->toBe(1);
+        ->and(BrandMembership::withoutBrandScope()->where('user_id', $user->id)->count())->toBe(1);
 });
 
 it('leaves the consent record standing after a deletion', function (): void {
