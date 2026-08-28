@@ -212,6 +212,10 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'claimUrl' => 'https://example.test/waitlist/claim/abc123',
+                'offerExpiresAt' => '28.08.2026 18:00',
+            ],
         ));
 
         // ADR-0048 point 3: Registration's own lifecycle mail — one key per
@@ -257,6 +261,13 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'holderName' => 'Erika Musterfrau',
+                'eventName' => 'SXLan 2026',
+                'registrationTypeName' => 'Teilnehmer-Ticket',
+                'nextStep' => 'pay',
+                'registrationUrl' => 'https://example.test/my/registrations/abc123',
+            ],
         ));
 
         $registry->register(new MessageTemplate(
@@ -296,6 +307,13 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'holderName' => 'Erika Musterfrau',
+                'eventName' => 'SXLan 2026',
+                'registrationTypeName' => 'Teilnehmer-Ticket',
+                'nextStep' => 'pay',
+                'registrationUrl' => 'https://example.test/my/registrations/abc123',
+            ],
         ));
 
         $registry->register(new MessageTemplate(
@@ -317,6 +335,12 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'holderName' => 'Erika Musterfrau',
+                'eventName' => 'SXLan 2026',
+                'registrationTypeName' => 'Teilnehmer-Ticket',
+                'reason' => 'capacity',
+            ],
         ));
 
         $registry->register(new MessageTemplate(
@@ -338,6 +362,12 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'holderName' => 'Erika Musterfrau',
+                'eventName' => 'SXLan 2026',
+                'registrationTypeName' => 'Teilnehmer-Ticket',
+                'registrationUrl' => 'https://example.test/my/registrations/abc123',
+            ],
         ));
 
         $registry->register(new MessageTemplate(
@@ -377,6 +407,13 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'holderName' => 'Erika Musterfrau',
+                'eventName' => 'SXLan 2026',
+                'registrationTypeName' => 'Teilnehmer-Ticket',
+                'cancelReason' => 'registrant',
+                'wasPaid' => true,
+            ],
         ));
     }
 

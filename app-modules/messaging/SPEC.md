@@ -53,7 +53,29 @@ scalars and ULIDs, which is exactly what the rule asks for.
 - **Templates**: template keys registered by the owning module at boot,
   per-brand overrides, localisation per recipient locale, and rendering against
   a typed payload rather than a free-form array (ADR-0009,
-  lessons-from-lancore #11).
+  lessons-from-lancore #11). Every registered `MessageTemplate` carries a
+  `sample` — a realistic payload for its variables — used for nothing but
+  the template editor below; a real send always renders against the caller's
+  own typed payload.
+  **The template editor** (ADR-0048 decisions 4 and 6, Task 8,
+  `/admin/messages/templates`, gated `ManageMessageTemplates`): an index of
+  every registered key with an override badge per locale for the console's
+  selected brand, and an edit screen with the module default and the
+  brand's own rewrite side by side per locale (locale tabs), a debounced
+  live preview (`renderString()` + `MailLayout::wrap()` against the
+  template's `sample`, sandboxed `<iframe srcdoc>`), and a reset back to
+  the default. Saving (`Actions\SaveTemplateOverride`) validates the Blade
+  first by rendering the sample — a compile error becomes a validation
+  error on `body`, never a 500 — before writing the row
+  (`(brand_id, template_key, locale)`, either field individually nullable
+  and falling back to the default). **Send test mail to me**
+  (`Actions\SendTestMail`, template `messaging.test-mail`): a "How your
+  mail looks" card on the mail-settings edit page shows the resolved
+  `BrandMailIdentityData` (logo, accent colour, seller line, imprint/
+  privacy links) and a button that sends that render to the signed-in
+  operator's own account email — never a domain event, and gated
+  `ManageSenderIdentity` since it is a mail-settings action, not a
+  template-editor one.
 - **Branded layout and mail identity** (ADR-0048 point 4): every mail
   `MailChannel` sends is wrapped in one layout (`resources/views/layouts/
   branded.blade.php`, table-based, inline CSS, 600 px) before it reaches

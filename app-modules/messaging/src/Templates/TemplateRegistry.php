@@ -36,4 +36,16 @@ final class TemplateRegistry
         return $this->templates[$key]
             ?? throw new InvalidArgumentException("No message template is registered for key [{$key}].");
     }
+
+    /**
+     * Every registered template, keyed the same way `get()` looks them up —
+     * the template editor's index (Task 8) lists the whole catalogue rather
+     * than one key at a time.
+     *
+     * @return array<string, MessageTemplate>
+     */
+    public function all(): array
+    {
+        return $this->templates;
+    }
 }

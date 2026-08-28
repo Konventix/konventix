@@ -144,6 +144,21 @@ class MessagingServiceProvider extends ModuleServiceProvider
                 area: NavigationItem::AREA_ADMIN,
             ),
         );
+
+        // ADR-0048 decisions 4 and 6 (Task 8): the template editor —
+        // rewriting a mail per brand is its own capability, separate from
+        // merely seeing what was sent.
+        $registry->add(
+            new NavigationItem(
+                module: 'messaging',
+                label: 'Message templates',
+                url: '/admin/messages/templates',
+                icon: 'file-text',
+                order: 42,
+                permission: Permission::ManageMessageTemplates->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+        );
     }
 
     /**
@@ -214,6 +229,7 @@ class MessagingServiceProvider extends ModuleServiceProvider
                 'en' => '<p>New announcement: <strong>{{ $title }}</strong></p>',
             ],
             defaultLocale: 'de',
+            sample: ['title' => 'Neue Programmpunkte veröffentlicht'],
         ));
 
         $registry->register(new MessageTemplate(
@@ -245,6 +261,15 @@ class MessagingServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'recipientName' => 'Erika Musterfrau',
+                'invoiceNumber' => 'RE-2026-0142',
+                'level' => 2,
+                'daysOverdue' => 14,
+                'totalGross' => '35.70',
+                'currency' => 'EUR',
+                'dueOn' => '28.08.2026',
+            ],
         ));
 
         $registry->register(new MessageTemplate(
@@ -274,6 +299,31 @@ class MessagingServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'count' => 3,
+                'items' => [
+                    'Neue Ankündigung: Programm steht',
+                    'Zahlungserinnerung RE-2026-0142',
+                    'Ihre Anmeldung ist bestätigt',
+                ],
+            ],
+        ));
+
+        // Task 8 (ADR-0048 decisions 4/6): what "Send test mail to me"
+        // actually sends — an operator confirming a brand's sender identity
+        // and layout render, not a template any domain event triggers.
+        $registry->register(new MessageTemplate(
+            key: 'messaging.test-mail',
+            subjects: [
+                'de' => 'Testnachricht von {{ $brandName }}',
+                'en' => 'Test message from {{ $brandName }}',
+            ],
+            bodies: [
+                'de' => '<p>Dies ist eine Testnachricht von {{ $brandName }}, gesendet am {{ $date }}.</p>',
+                'en' => '<p>This is a test message from {{ $brandName }}, sent on {{ $date }}.</p>',
+            ],
+            defaultLocale: 'de',
+            sample: ['brandName' => 'SXLan', 'date' => '28.08.2026'],
         ));
     }
 

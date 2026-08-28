@@ -86,6 +86,43 @@
 
 ## Done
 
+- [x] ADR-0048 decisions 4 and 6, Task 8 of the mail-and-receipts tranche:
+      operators rewrite a mail in their own words, see it before it goes,
+      and send themselves one. `/admin/messages/templates` (nav "Message
+      templates", order 42, gated `ManageMessageTemplates`) —
+      `Http\Controllers\Admin\TemplateAdminController::index()` lists every
+      key `TemplateRegistry::all()` (new) knows about with an override badge
+      per locale for the console's selected brand; `edit()` needs a brand
+      picked first (redirects to the index with a toast otherwise) and shows
+      the module default and the brand's own rewrite side by side per
+      locale, locale tabs, a 500ms-debounced live preview
+      (`preview()`, POST, JSON — an XHR from the page, not an Inertia visit)
+      rendered inside the branded layout via a new
+      `TemplateRenderer::renderString()` (no override lookup — previews a
+      draft, not what is stored) against the template's new `sample` field
+      (a realistic payload every registered template now carries, used for
+      nothing but this and the compile check below), and "Reset to default"
+      per locale once an override exists. `Actions\SaveTemplateOverride`
+      validates the Blade first by rendering the sample — a compile error
+      (a glued directive left as literal text, `.ai/rules/app-modules-src.md`,
+      is the common way to get one) becomes a validation error on `body`
+      rather than a 500 — before writing the row
+      (`(brand_id, template_key, locale)`, updateOrCreate semantics, either
+      field individually nullable and falling back to the default);
+      `Actions\ResetTemplateOverride` deletes it. Mail-settings gained its
+      own piece: `MailSettingsAdminController::edit()` now also hands the
+      page a `BrandMailIdentityData` (the exact read model a real send
+      resolves), rendered as a "How your mail looks" card — logo, accent
+      swatch with its value, seller line, imprint/privacy links — next to a
+      "Send test mail to me" button (`POST /mail-settings/{brand}/test`,
+      gated `ManageSenderIdentity` since it lives on that screen, not the
+      template editor) that calls `Actions\SendTestMail` with template
+      `messaging.test-mail`, addressed to the signed-in operator's own
+      account email — never a domain event. `DryRunTest` walks the index and
+      the edit route; the edit route legitimately redirects during the walk
+      (the console selection it needs is never made by a route-table crawl)
+      and is allow-listed for `<400` rather than exactly `200`.
+
 - [x] ADR-0048 decision 6, Task 7 of the mail-and-receipts tranche: the
       delivery log gets a screen, and a lost mail gets a second chance.
       `/admin/messages` (nav "Messages", order 41, gated `ViewMessageLog`) —

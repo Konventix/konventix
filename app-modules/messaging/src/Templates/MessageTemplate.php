@@ -20,6 +20,14 @@ final class MessageTemplate
     /**
      * @param  array<string, string>  $subjects  locale => Blade subject string
      * @param  array<string, string>  $bodies  locale => Blade body string
+     * @param  array<string, mixed>  $sample  a realistic payload for this
+     *                                        template's variables — what the
+     *                                        template editor's preview and a
+     *                                        saved override's compile check
+     *                                        render against (Task 8, ADR-0048
+     *                                        decision 4). Keyed the same way
+     *                                        the real payload Data class's
+     *                                        `toArray()` is.
      */
     public function __construct(
         public readonly string $key,
@@ -30,6 +38,7 @@ final class MessageTemplate
         // significant store their rendered bodies on the delivery log.
         // Default off — the log keeps the typed payload either way.
         public readonly bool $logBodies = false,
+        public readonly array $sample = [],
     ) {
         if (! array_key_exists($defaultLocale, $subjects) || ! array_key_exists($defaultLocale, $bodies)) {
             throw new InvalidArgumentException(

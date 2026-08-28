@@ -250,6 +250,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: ['verifyUrl' => 'https://example.test/verify/abc123', 'validMinutes' => 60],
         ));
 
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
@@ -274,6 +275,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: ['resetUrl' => 'https://example.test/reset/abc123', 'validMinutes' => 60],
         ));
 
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
@@ -303,6 +305,11 @@ class IdentityServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'brandName' => 'SXLan',
+                'homeUrl' => 'https://example.test/',
+                'shopUrl' => 'https://example.test/shop',
+            ],
         ));
     }
 

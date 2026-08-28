@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Konventix\Messaging\Http\Controllers\Admin;
 
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Messaging\Actions\SendTestMail;
 use Konventix\Messaging\Actions\UpdateBrandMailSettings;
+use Konventix\Messaging\Branding\BrandMailIdentityResolver;
 use Konventix\Messaging\Data\MailSettingsData;
 use Konventix\Messaging\Enums\Permission;
 use Konventix\Messaging\Models\BrandMailSettings;
@@ -50,7 +53,7 @@ class MailSettingsAdminController
         ]);
     }
 
-    public function edit(Brand $brand): Response
+    public function edit(Brand $brand, BrandMailIdentityResolver $identity): Response
     {
         Gate::authorize(Permission::ManageSenderIdentity->value);
 
@@ -66,6 +69,9 @@ class MailSettingsAdminController
                 'id' => (string) $brand->getKey(),
                 'name' => $brand->name,
             ],
+            // "How your mail looks" (ADR-0048 point 4): the same identity a
+            // real send resolves, so the preview never lies about it.
+            'identity' => $identity->for((string) $brand->getKey())->toArray(),
             'settings' => [
                 'fromName' => $settings->from_name ?? '',
                 'fromAddress' => $settings->from_address ?? '',
@@ -91,5 +97,23 @@ class MailSettingsAdminController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Mail settings saved.')]);
 
         return to_route('admin.mail-settings.edit', $brand);
+    }
+
+    /**
+     * "Send test mail to me" (Task 8): addressed to the signed-in operator's
+     * own account email — never an Identity import, `$request->user()` is
+     * the guard's own authenticatable.
+     */
+    public function test(Brand $brand, Request $request, SendTestMail $action): RedirectResponse
+    {
+        Gate::authorize(Permission::ManageSenderIdentity->value);
+
+        $email = (string) $request->user()->email;
+
+        $action->handle($brand, $email);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Test mail queued to :email.', ['email' => $email])]);
+
+        return back();
     }
 }

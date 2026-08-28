@@ -583,6 +583,48 @@ declare namespace Konventix {
                 readonly readAt: string | null;
                 readonly createdAt: string;
             };
+            export type SaveTemplateOverrideData = {
+                readonly brandId: string;
+                readonly locale: string;
+                readonly subject: string;
+                readonly body: string;
+            };
+            export type TemplateEditData = {
+                readonly key: string;
+                readonly module: string;
+                readonly locales: string[];
+                readonly defaultLocale: string;
+                readonly defaults: Record<
+                    string,
+                    {
+                        subject: string;
+                        body: string;
+                    }
+                >;
+                readonly overrides: Record<
+                    string,
+                    {
+                        subject: string;
+                        body: string;
+                    } | null
+                >;
+                readonly sample: Record<string, any>;
+                readonly brandId: string;
+                readonly brandName: string;
+            };
+            export type TemplatePreviewData = {
+                readonly subject: string;
+                readonly body: string;
+                readonly locale: string;
+                readonly brandId: string;
+            };
+            export type TemplateSummaryData = {
+                readonly key: string;
+                readonly module: string;
+                readonly locales: string[];
+                readonly defaultLocale: string;
+                readonly overriddenLocales: string[];
+            };
         }
         namespace Enums {
             export type Channel = 'mail' | 'in_app' | 'push';

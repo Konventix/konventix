@@ -49,4 +49,22 @@ final class TemplateRenderer
             locale: $locale,
         );
     }
+
+    /**
+     * Renders arbitrary subject/body strings against a payload with no
+     * registry lookup and no override applied — the template editor's own
+     * job (Task 8, ADR-0048 decision 4): previewing a draft override, and
+     * compile-checking one before it saves, both render text that is not
+     * (yet, or ever) the stored default or override.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function renderString(string $subject, string $body, string $locale, array $payload): RenderedMessage
+    {
+        return new RenderedMessage(
+            subject: Blade::render($subject, $payload),
+            body: Blade::render($body, $payload),
+            locale: $locale,
+        );
+    }
 }

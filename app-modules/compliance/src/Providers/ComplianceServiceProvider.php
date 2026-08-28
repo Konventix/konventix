@@ -147,6 +147,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
             defaultLocale: 'de',
             // Legally significant: what we told a data subject, and when.
             logBodies: true,
+            sample: ['requestType' => 'export', 'deadline' => '28.08.2026', 'availableUntil' => '11.09.2026'],
         ));
 
         $registry->register(new MessageTemplate(
@@ -169,6 +170,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
             ],
             defaultLocale: 'de',
             logBodies: true,
+            sample: ['requestType' => 'deletion', 'deadline' => '28.08.2026'],
         ));
 
         $registry->register(new MessageTemplate(
@@ -191,6 +193,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
             ],
             defaultLocale: 'de',
             logBodies: true,
+            sample: ['requestType' => 'export', 'deadline' => '28.08.2026', 'reasonCode' => 'identity_not_verified'],
         ));
 
         $registry->register(new MessageTemplate(

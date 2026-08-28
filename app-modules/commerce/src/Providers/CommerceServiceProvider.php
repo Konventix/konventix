@@ -389,6 +389,14 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'recipientName' => 'Erika Musterfrau',
+                'invoiceNumber' => 'RE-2026-0142',
+                'totalGross' => '35.70',
+                'currency' => 'EUR',
+                'dueOn' => '28.08.2026',
+                'sellerName' => 'Konventix Demo GmbH',
+            ],
         ));
 
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
@@ -414,6 +422,15 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'recipientName' => 'Erika Musterfrau',
+                'invoiceNumber' => 'RE-2026-0142',
+                'totalGross' => '35.70',
+                'currency' => 'EUR',
+                'paidAt' => '28.08.2026',
+                'paidVia' => 'Kreditkarte',
+                'sellerName' => 'Konventix Demo GmbH',
+            ],
         ));
 
         // ADR-0048 point 2: a Gutschrift gets a document and a mail, like an
@@ -463,6 +480,17 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'recipientName' => 'Erika Musterfrau',
+                'creditNoteNumber' => 'GS-2026-0007',
+                'totalGross' => '35.70',
+                'currency' => 'EUR',
+                'issuedOn' => '28.08.2026',
+                'reasonLabelDe' => 'Erstattung',
+                'reasonLabelEn' => 'Refund',
+                'invoiceNumber' => 'RE-2026-0142',
+                'sellerName' => 'Konventix Demo GmbH',
+            ],
         ));
 
         // ADR-0048 point 3: a cart checkout's own confirmation — Registration
@@ -522,6 +550,18 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'recipientName' => 'Erika Musterfrau',
+                'orderNumberShort' => 'A1B2C3',
+                'placedAt' => '28.08.2026',
+                'lines' => [
+                    ['label' => 'Tagesticket', 'quantity' => 2, 'lineGross' => '25.00'],
+                ],
+                'currency' => 'EUR',
+                'totalGross' => '25.00',
+                'reservationUntil' => '28.08.2026 18:00',
+                'ordersUrl' => 'https://example.test/my/orders',
+            ],
         ));
 
         // ADR-0048 point 3: a failed attempt explained to the payer, with a
@@ -550,6 +590,12 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     BLADE,
             ],
             defaultLocale: 'de',
+            sample: [
+                'orderNumberShort' => 'A1B2C3',
+                'reason' => 'Die Karte wurde abgelehnt.',
+                'retryUrl' => 'https://example.test/pay/A1B2C3',
+                'ordersUrl' => 'https://example.test/my/orders',
+            ],
         ));
 
         // ADR-0048 point 3: one template for every shop-operator notice on
@@ -568,6 +614,11 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 'en' => '<p>{{ $detail }}</p><p><a href="{{ $url }}">Open in the console</a></p>',
             ],
             defaultLocale: 'de',
+            sample: [
+                'title' => 'Lager leer: Tagesticket',
+                'detail' => 'Das Kontingent für Tagesticket ist ausverkauft.',
+                'url' => 'https://example.test/admin/products',
+            ],
         ));
     }
 
