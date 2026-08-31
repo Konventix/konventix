@@ -235,6 +235,21 @@ return [
             'maxProcesses' => 1,
             'timeout' => 30,
         ],
+
+        // Mail and every other Messaging send (ADR-0048) run on their own
+        // queue so a rush admitting a thousand arrivals and a batch of a
+        // thousand mails never starve each other. `timeout: 120` — an SMTP
+        // handshake plus a ZUGFeRD attachment can be slow, but two minutes
+        // means the transport is down, not busy. This is the largest timeout
+        // in the file: deployments size their termination grace period from
+        // it (ADR-0049 §7).
+        'messaging' => [
+            'connection' => 'redis',
+            'queue' => ['messaging'],
+            'balance' => 'auto',
+            'maxProcesses' => 1,
+            'timeout' => 120,
+        ],
     ],
 
     'environments' => [
@@ -248,6 +263,10 @@ return [
             'waiting-room' => [
                 'maxProcesses' => 2,
             ],
+
+            'messaging' => [
+                'maxProcesses' => 2,
+            ],
         ],
 
         'local' => [
@@ -257,6 +276,10 @@ return [
 
             'waiting-room' => [
                 'maxProcesses' => 2,
+            ],
+
+            'messaging' => [
+                'maxProcesses' => 1,
             ],
         ],
     ],
