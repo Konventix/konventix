@@ -20,10 +20,10 @@ depends on brand resolution and gating working.
 
 ## Backlog
 
-- [ ] `permissions:sync` must run in every deploy (ADR-0013, ADR-0045) and
+- [x] `permissions:sync` must run in every deploy (ADR-0013, ADR-0045) and
       nothing automates it — `konventix:migrate` runs migrations only. Decide
       whether the migrate command runs the sync afterwards or the runbook
-      says so.
+      says so. — folded into `konventix:migrate` (ADR-0049 §3).
 
 - [ ] Follow-ups from the console-selection review (tranche 1 of the second
       build order, 2026-08-25), none blocking: a selected brand that has since
