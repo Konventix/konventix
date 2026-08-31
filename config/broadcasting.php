@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+$reverbServerPath = trim((string) env('REVERB_SERVER_PATH', ''), '/');
+
 return [
 
     /*
@@ -42,6 +44,18 @@ return [
                 'port' => env('REVERB_PORT', 443),
                 'scheme' => env('REVERB_SCHEME', 'https'),
                 'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
+                // REVERB_SERVER_PATH prefixes Reverb's whole route set, the
+                // publish API included (ADR-0049 §5). Without this the server
+                // that broadcasts would keep POSTing to the bare /apps/... and
+                // get a 404 the moment the deployment sets a path. The
+                // trailing slash is not cosmetic: pusher-php-server hands
+                // Guzzle `apps/<id>/events` as a *relative* reference against
+                // this prefix, and RFC 3986 resolution replaces the last
+                // segment of a prefix that does not end in one — `/ws` would
+                // silently resolve back to `/apps/...`. Normalised here so a
+                // deployment can write REVERB_SERVER_PATH=/ws, which is what
+                // config/reverb.php and the docs ask for.
+                'path' => $reverbServerPath === '' ? '' : "/{$reverbServerPath}/",
             ],
             'client_options' => [
                 // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
