@@ -1,0 +1,322 @@
+# The production artifact, run locally, so the k6 rush measures the thing we
+# actually ship instead of the Sail dev container.
+#
+# ROADMAP slice 24 recorded the rush as done but flagged a concern: 5.9%
+# http_req_failed against a single-process FrankenPHP/Octane dev box, and
+# "the fix belongs to a later infrastructure task (more Octane workers behind
+# a real load balancer, not a dev compose file)". ADR-0049's consequences say
+# the same thing from the other end — the image makes that run possible. This
+# file is that run. It is a measurement rig, not a deployment: the Helm chart
+# in its own repository is the real target, and nothing here is a substitute
+# for it.
+#
+# Run it as its own compose project so it can never collide with, or
+# half-inherit, the dev stack in compose.yaml:
+#
+#   docker build -t konventix:local .
+#   docker compose -p konventix-prod -f compose.prod-local.yaml up -d
+#   docker compose -p konventix-prod -f compose.prod-local.yaml run --rm seed
+#   docker compose -p konventix-prod -f compose.prod-local.yaml run --rm k6 \
+#       run /scripts/ticket-rush.js
+#
+# Two deliberate departures from a real deployment, both of them forced:
+#
+# 1. APP_ENV=local, not production. CommerceServiceProvider registers a
+#    hosted-checkout adapter for the `null` provider only outside production
+#    (LocalHostedCheckoutAdapter, ADR-0047 point 6) — in production the null
+#    provider honestly cannot host a checkout and PlaceOrderFromCart refuses
+#    the cart. A seeded demo brand has no real PSP to onboard, so with
+#    APP_ENV=production the rush cannot reach step 10 at all and would
+#    measure nothing past the shop page. Everything else about the artifact
+#    stays production: --no-dev vendor (no Telescope, no debugbar), the
+#    prebuilt Vite/SSR bundle, the entrypoint's config/route/view/event
+#    caching, FrankenPHP baked in, non-root `konventix` user, port 8000.
+#    Note this also leaves Model::shouldBeStrict() on (AppServiceProvider
+#    keys it off isProduction), which makes the run a stricter test than
+#    production, not a laxer one.
+#
+# 2. The rush fixture is seeded from the Sail image, not this one. The
+#    seeders use model factories, factories need fakerphp/faker, and faker is
+#    require-dev — deliberately absent from the artifact (ADR-0049 §1). The
+#    fixture is data in Postgres either way; only the tool that writes it
+#    differs. See the `seed` service.
+services:
+    pgsql:
+        image: 'postgres:18-alpine'
+        # Octane workers + Horizon supervisors + pulse + scheduler + reverb,
+        # each holding connections, comfortably exceed the stock 100.
+        command: ['postgres', '-c', 'max_connections=300']
+        environment:
+            POSTGRES_DB: konventix
+            POSTGRES_USER: konventix
+            POSTGRES_PASSWORD: secret
+        ports:
+            - '${PROD_FORWARD_DB_PORT:-5433}:5432'
+        volumes:
+            - 'prod-pgsql:/var/lib/postgresql'
+            # RushResultTest runs through phpunit.xml, which forces
+            # DB_DATABASE=testing on the default connection before the test
+            # opens its own `pgsql_rush` connection to `konventix`. Without
+            # this the testing database simply does not exist here, the way
+            # it does in the dev stack. initdb only runs it on a first boot,
+            # so a stack whose volume predates this line needs
+            # `psql -U konventix -c 'create database testing'` once.
+            - './vendor/laravel/sail/database/pgsql/create-testing-database.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql'
+        networks:
+            - konventix
+        healthcheck:
+            test: ['CMD', 'pg_isready', '-q', '-d', 'konventix', '-U', 'konventix']
+            interval: 5s
+            retries: 20
+            timeout: 5s
+
+    redis:
+        image: 'redis:alpine'
+        command: ['redis-server', '--maxmemory-policy', 'noeviction', '--appendonly', 'yes']
+        ports:
+            - '${PROD_FORWARD_REDIS_PORT:-6380}:6379'
+        volumes:
+            - 'prod-redis:/data'
+        networks:
+            - konventix
+        healthcheck:
+            test: ['CMD', 'redis-cli', 'ping']
+            interval: 5s
+            retries: 20
+            timeout: 5s
+
+    mailpit:
+        image: 'axllent/mailpit:latest'
+        ports:
+            - '${PROD_FORWARD_MAILPIT_DASHBOARD_PORT:-8026}:8025'
+        networks:
+            - konventix
+
+    # Schema + permission sync (ADR-0049 §3), the chart's pre-upgrade Job.
+    migrate:
+        image: 'konventix:local'
+        command: ['php', 'artisan', 'konventix:migrate']
+        env_file: ['./contrib/prod-local.env']
+        environment:
+            AUTO_MIGRATE: 'true'
+        networks:
+            - konventix
+        depends_on:
+            pgsql: { condition: service_healthy }
+            redis: { condition: service_healthy }
+        restart: 'no'
+
+    # Operator, admin host and first admin (ADR-0049 §4), the chart's
+    # post-install hook. Idempotent — it exits 0 unchanged on a second run.
+    #
+    # The operator name and admin email are the ones DatabaseSeeder looks up
+    # by (`firstWhere('name', 'Konventix Dev Operator')`, admin@konventix.test)
+    # rather than names of this rig's choosing: the `seed` service runs
+    # `db:seed` underneath and would otherwise create a *second* operator
+    # beside this one and leave the rush brand hanging off whichever it found.
+    # Both commands key on those values with firstOrCreate, so either order
+    # works and a re-run changes nothing.
+    install:
+        image: 'konventix:local'
+        command:
+            [
+                'php',
+                'artisan',
+                'konventix:install',
+                '--operator-name=Konventix Dev Operator',
+                '--admin-host=admin.localhost',
+                '--admin-email=admin@konventix.test',
+            ]
+        env_file: ['./contrib/prod-local.env']
+        environment:
+            KONVENTIX_ADMIN_PASSWORD: password
+        networks:
+            - konventix
+        depends_on:
+            migrate: { condition: service_completed_successfully }
+        restart: 'no'
+
+    # The role under test. `--workers=auto` is one FrankenPHP worker per CPU
+    # against the dev container's single supervisord process — the first half
+    # of what ROADMAP slice 24 said the concern needed. `--max-requests`
+    # recycles a worker periodically so a leak cannot masquerade as a
+    # throughput cliff halfway through the run.
+    web:
+        image: 'konventix:local'
+        command:
+            [
+                'php',
+                'artisan',
+                'octane:start',
+                '--server=frankenphp',
+                '--host=0.0.0.0',
+                '--port=8000',
+                '--workers=auto',
+                '--max-requests=2000',
+            ]
+        env_file: ['./contrib/prod-local.env']
+        ports:
+            - '${PROD_FORWARD_APP_PORT:-8000}:8000'
+        networks:
+            - konventix
+        depends_on:
+            install: { condition: service_completed_successfully }
+        restart: unless-stopped
+
+    horizon:
+        image: 'konventix:local'
+        command: ['php', 'artisan', 'horizon']
+        env_file: ['./contrib/prod-local.env']
+        networks:
+            - konventix
+        depends_on:
+            install: { condition: service_completed_successfully }
+        restart: unless-stopped
+
+    scheduler:
+        image: 'konventix:local'
+        command: ['php', 'artisan', 'schedule:work']
+        env_file: ['./contrib/prod-local.env']
+        networks:
+            - konventix
+        depends_on:
+            install: { condition: service_completed_successfully }
+        restart: unless-stopped
+
+    pulse:
+        image: 'konventix:local'
+        command: ['php', 'artisan', 'pulse:work']
+        env_file: ['./contrib/prod-local.env']
+        networks:
+            - konventix
+        depends_on:
+            install: { condition: service_completed_successfully }
+        restart: unless-stopped
+
+    reverb:
+        image: 'konventix:local'
+        command: ['php', 'artisan', 'reverb:start', '--host=0.0.0.0', '--port=8080']
+        env_file: ['./contrib/prod-local.env']
+        ports:
+            - '${PROD_FORWARD_REVERB_PORT:-8081}:8080'
+        networks:
+            - konventix
+        depends_on:
+            install: { condition: service_completed_successfully }
+        restart: unless-stopped
+
+    # The rush fixture, written by the Sail image because the artifact has no
+    # faker (see the header). It bind-mounts the repository for its dev
+    # vendor/ and shares the artifact's APP_KEY — brand Reverb secrets and
+    # mail transports are encrypted with it (ADR-0049 §12), so a fixture
+    # seeded under a different key would be undecryptable by the web role.
+    #
+    # It runs once on `up` and exits; `run --rm seed` re-runs it. Either way
+    # DemoRushSeeder is idempotent, so a second pass tops up the 1,200 members
+    # rather than duplicating them.
+    seed:
+        image: 'sail-8.5/app'
+        # `--rush` without `--default`: the fixture only. The command skips
+        # its interactive archetype walk when --rush is the sole flag, and
+        # the db:seed baseline underneath it still creates the operator, the
+        # admin and the dev brand.
+        command: ['php', 'artisan', 'konventix:seed', '--rush']
+        env_file: ['./contrib/prod-local.env']
+        environment:
+            LARAVEL_SAIL: 1
+            # The Sail image's entrypoint ends in `gosu $WWWUSER "$@"`.
+            # `vendor/bin/sail` exports WWWUSER from the invoking shell; this
+            # file is driven by plain `docker compose`, which does not, and an
+            # empty value makes gosu read the first word of the command as the
+            # username — "failed switching to \"php\": no matching entries in
+            # passwd file". Default to the usual first host account.
+            WWWUSER: '${WWWUSER:-1000}'
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - konventix
+        depends_on:
+            install: { condition: service_completed_successfully }
+        restart: 'no'
+
+    prometheus:
+        image: 'prom/prometheus:v3.7.3'
+        command:
+            [
+                '--config.file=/etc/prometheus/prometheus.yml',
+                '--storage.tsdb.path=/prometheus',
+                '--storage.tsdb.retention.time=15d',
+                '--web.enable-remote-write-receiver',
+                '--enable-feature=native-histograms',
+            ]
+        ports:
+            - '${FORWARD_PROMETHEUS_PORT:-9091}:9090'
+        volumes:
+            - './contrib/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
+            - 'prod-prometheus:/prometheus'
+        networks:
+            - konventix
+        healthcheck:
+            test: ['CMD', 'promtool', 'check', 'healthy', '--url=http://localhost:9090']
+            interval: 5s
+            retries: 10
+            timeout: 3s
+        restart: unless-stopped
+
+    grafana:
+        image: 'grafana/grafana:12.3.0'
+        environment:
+            GF_AUTH_ANONYMOUS_ENABLED: 'true'
+            GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+            GF_AUTH_BASIC_ENABLED: 'false'
+            GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/k6-ticket-rush.json
+        ports:
+            - '${FORWARD_GRAFANA_PORT:-3000}:3000'
+        volumes:
+            - './contrib/grafana/provisioning:/etc/grafana/provisioning:ro'
+            - './contrib/grafana/dashboards:/var/lib/grafana/dashboards:ro'
+            - 'prod-grafana:/var/lib/grafana'
+        networks:
+            - konventix
+        depends_on:
+            prometheus: { condition: service_healthy }
+        restart: unless-stopped
+
+    # RUSH_BASE_URL overrides the script's `http://laravel.test` default: the
+    # role is called `web` here and listens on the artifact's unprivileged
+    # 8000, not 80. k6 exposes the process environment as __ENV, so these
+    # arrive without any -e flag.
+    k6:
+        image: 'grafana/k6:2.2.0'
+        command: ['version']
+        restart: 'no'
+        environment:
+            RUSH_BASE_URL: 'http://web:8000'
+            RUSH_HOST: rush.localhost
+            VUS: '${VUS:-1000}'
+            ARRIVALS_PER_VU: '${ARRIVALS_PER_VU:-1}'
+            K6_OUT: '${K6_OUT-experimental-prometheus-rw}'
+            K6_PROMETHEUS_RW_SERVER_URL: 'http://prometheus:9090/api/v1/write'
+            K6_PROMETHEUS_RW_PUSH_INTERVAL: 5s
+            K6_FEATURES: native-histograms
+            K6_PROMETHEUS_RW_STALE_MARKERS: 'true'
+        volumes:
+            - './tests/Load:/scripts'
+        networks:
+            - konventix
+        depends_on:
+            prometheus: { condition: service_healthy }
+
+networks:
+    konventix:
+        driver: bridge
+
+volumes:
+    prod-pgsql:
+        driver: local
+    prod-redis:
+        driver: local
+    prod-prometheus:
+        driver: local
+    prod-grafana:
+        driver: local
