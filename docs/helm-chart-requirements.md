@@ -73,6 +73,10 @@ The image must:
 Where the Dockerfile lives is decision D7; the recommendation is the
 konventix repository, next to `compose.yaml`, built by its CI.
 
+**Delivered** (ADR-0049 §1): `Dockerfile`, `docker/entrypoint.sh` and
+`.dockerignore`, built and smoked by `.github/workflows/image.yml` on every
+push to `main` and on `v*` tags, published to `ghcr.io/konventix/konventix`.
+
 ### B2 — Runtime-configurable browser endpoint for Reverb (blocker)
 
 `resources/js/app.ts` calls `configureEcho({ broadcaster: 'reverb', key })`.
@@ -100,6 +104,11 @@ address of the Reverb Service (`http://konventix-reverb:8080`), and the
 `brands` application provider reads brand rows from Postgres, so the reverb
 role needs database access too.
 
+**Delivered** (ADR-0049 §5): `resources/js/lib/reverbEndpoint.ts` derives
+`wsHost`/port/`forceTLS` from `window.location` with a fixed `/ws` path, and
+`resources/js/app.ts` now calls it instead of reading the Vite-baked
+`VITE_REVERB_HOST/PORT/SCHEME` env vars.
+
 ### B3 — Inertia SSR: decide, and make it configurable (blocker if SSR stays on)
 
 `config/inertia.php` hardcodes `ssr.enabled = true` and
@@ -112,6 +121,12 @@ D1. If SSR is a release feature: `npm run build:ssr` in the image, a Node
 runtime (in the image or a second image), and the chart adds an `ssr` role
 (`node bootstrap/ssr/ssr.mjs` or `php artisan inertia:start-ssr`) that the
 web role reaches over a Service.
+
+**Delivered** (ADR-0049 §6): `INERTIA_SSR_ENABLED`/`INERTIA_SSR_URL` in
+`config/inertia.php`, defaulting to today's dev behaviour (`true`,
+`http://127.0.0.1:13714`). D1 decided: the chart sets
+`INERTIA_SSR_ENABLED=false` for the first release; the image still builds the
+SSR bundle so a deployment can turn on the `ssr` role without a rebuild.
 
 ### B4 — Non-interactive first-run bootstrap (blocker)
 
@@ -135,6 +150,13 @@ every deploy** and nothing automates it. Either fold it into
 `konventix:migrate` (after the migration step, still behind `AUTO_MIGRATE`) or
 confirm the chart may run `konventix:migrate && permissions:sync` in one Job.
 
+**Delivered** (ADR-0049 §3–§4): `app/Console/Commands/InstallCommand.php`
+(`konventix:install`), idempotent and env/flag-driven, run by the chart as a
+post-install hook. `konventix:migrate`
+(`app/Console/Commands/MigrateOnStartCommand.php`) now runs
+`permissions:sync` after migrating, behind the same `AUTO_MIGRATE` gate, so
+the chart's pre-upgrade Job stays one command.
+
 ### B5 — Horizon does not work the `messaging` queue (blocker for mail)
 
 `Konventix\Messaging\Jobs\SendQueuedMessage` dispatches `onQueue('messaging')`.
@@ -145,6 +167,12 @@ supervisor — and, since `docs/architecture/overview.md` promises "queue
 workers split by queue name (long-running provisioning isolated with extended
 timeout)", define the full queue list and per-queue timeouts now; the chart
 sizes `terminationGracePeriodSeconds` from the largest timeout.
+
+**Delivered** (ADR-0049 §7): a `messaging` supervisor added to
+`config/horizon.php` beside `default` and `waiting-room`, each with its own
+declared timeout; `tests/Feature/HorizonQueueCoverageTest.php` scans the
+codebase for `onQueue(...)` literals and fails when one names a queue no
+Horizon supervisor works.
 
 ### B6 — Redis topology: three logical databases (decision D2)
 
@@ -158,6 +186,10 @@ address). If HA via Cluster is wanted later, the split has to move to key
 prefixes on one database. Also required of the external Redis (ADR-0047 point
 6, compose.yaml): `maxmemory-policy noeviction`, `appendonly yes`, AUTH.
 
+**Answered, no code** (ADR-0049 Consequences): needs no code — `storage:doctor`
+already runs non-interactively and the S3 path was exercised against Garage
+in slice 17.
+
 ### B7 — Backups: make them switchable (decision D4)
 
 `ObservabilityServiceProvider` schedules `backup:run` / `backup:clean`
@@ -169,6 +201,11 @@ spatie/laravel-backup for `storage/` alone or not at all. If it stays on, the
 image needs `pg_dump` (B1) and `BACKUP_DESTINATION_DISK` must name a disk that
 is **not** the application's own bucket.
 
+**Delivered** (ADR-0049 §8): `BACKUP_ENABLED` gates `config/backup.php`'s
+`schedule_enabled`, read by `ObservabilityServiceProvider` before scheduling
+`backup:clean`/`backup:run`; `BACKUP_INCLUDE_DATABASE` gates the `databases`
+entry in the backup config. Defaults keep today's behaviour.
+
 ### B8 — Migration/rollout policy (decision D8)
 
 The chart runs migrations in a Helm `pre-upgrade` Job while the previous
@@ -177,6 +214,12 @@ release's pods still serve traffic. Either the repository commits to
 drops one release later), or the chart puts the app in maintenance mode around
 the Job (`APP_MAINTENANCE_DRIVER=cache`, store `redis`, so `artisan down` is
 cluster-wide — both are env-driven already). State the policy in the repo.
+
+**Delivered** (ADR-0049 §9): the repository commits to expand/contract —
+new columns nullable or defaulted, renames staged over two releases,
+destructive drops one release after the code stops reading the column — with
+the maintenance-mode toggle kept as the documented escape hatch for a
+migration that cannot be shaped that way.
 
 ### B9 — Health check semantics in a cluster (minor)
 
@@ -192,11 +235,18 @@ media volume when local disks are used, or make it skippable. `HealthCheck`
 notifications go to `HEALTH_TO_ADDRESS` via the fallback mailer — fine, just
 document it.
 
+**Delivered** (ADR-0049 §11): `HEALTH_DISK_CHECK` (skip the check) and
+`HEALTH_DISK_CHECK_PATH` (point it at a volume that matters) in
+`config/health.php`.
+
 ### B10 — Version alignment (minor)
 
 `composer.json` requires `php ^8.3`; CI and Sail run 8.5; `config/database.php`
 imports `Pdo\Mysql`, which exists only from PHP 8.4. Pin `"php": "^8.5"` (or
 `^8.4`) so the lockfile, CI and the image agree.
+
+**Delivered** (ADR-0049 §10): `composer.json` pins `"php": "^8.5"`; the
+lockfile, CI and the image now agree.
 
 ### B11 — Object storage is the cluster default (no code, but confirm)
 
@@ -210,12 +260,21 @@ Hetzner or Garage with one endpoint and path-style addressing, and that
 `storage:doctor` can run non-interactively as a Job (the chart will offer it
 as a `helm test`).
 
+**Answered, no code** (ADR-0049 Consequences): needs no code — `storage:doctor`
+already runs non-interactively and the S3 path was exercised against Garage
+in slice 17.
+
 ### B12 — `APP_KEY` custody (documentation)
 
 Brand mail transports (ADR-0028), PSP keys (ADR-0046) and per-brand Reverb
 secrets are encrypted at rest with `APP_KEY`. The chart never generates it;
 it comes from OpenBao and must be stable for the life of the database.
 Document the rotation procedure via `APP_PREVIOUS_KEYS` in the repo.
+
+**Delivered** (ADR-0049 §12): `.env.example` documents `APP_KEY` custody —
+generated once, held in the deployment's secret store, stable for the life
+of the database — and the `APP_PREVIOUS_KEYS` rotation procedure, beside the
+key itself.
 
 ### Already right — no change needed
 

@@ -634,6 +634,17 @@ revisited on purpose.
   goes through Messaging in the brand's layout. Operators see the delivery
   log, resend, rewrite templates per brand behind an allow-list guard,
   preview, and send themselves a test mail.
+- **The production image and the deployment contract** — **Done** (ADR-0049,
+  2026-08-31): a multi-stage FrankenPHP image built and smoked by CI on every
+  push to `main` and published to GHCR; the browser derives its websocket
+  endpoint from the page so one bundle serves any deployment; SSR, backups
+  and the disk check became deployment switches; `konventix:migrate` syncs
+  permissions; `konventix:install` bootstraps a fresh instance without a
+  terminal; Horizon works the `messaging` queue — with a test that refuses
+  any queue no supervisor reads; migrations are expand/contract from here on.
+  The Helm chart lives in its own repository against
+  `docs/helm-chart-requirements.md`; the owed k6 rush run on real
+  infrastructure becomes possible once that chart deploys staging.
 
 ## Phase 3 — post-release
 
