@@ -238,17 +238,19 @@ return [
 
         // Mail and every other Messaging send (ADR-0048) run on their own
         // queue so a rush admitting a thousand arrivals and a batch of a
-        // thousand mails never starve each other. `timeout: 120` — an SMTP
-        // handshake plus a ZUGFeRD attachment can be slow, but two minutes
-        // means the transport is down, not busy. This is the largest timeout
-        // in the file: deployments size their termination grace period from
-        // it (ADR-0049 §7).
+        // thousand mails never starve each other. `timeout: 75` — it must stay
+        // below the redis connection's `retry_after` of 90 (config/queue.php),
+        // or Redis hands the job to a second worker while the first is still
+        // in its SMTP handshake and the payer gets the invoice twice; 75
+        // seconds is still generous for a handshake plus a ZUGFeRD
+        // attachment. This is the largest timeout in the file: deployments
+        // size their termination grace period from it (ADR-0049 §7).
         'messaging' => [
             'connection' => 'redis',
             'queue' => ['messaging'],
             'balance' => 'auto',
             'maxProcesses' => 1,
-            'timeout' => 120,
+            'timeout' => 75,
         ],
     ],
 
