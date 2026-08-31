@@ -7,11 +7,14 @@ import AppTopbarLayout from '@/layouts/AppTopbarLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
+import { resolveReverbEndpoint } from '@/lib/reverbEndpoint';
 
 /**
  * The Reverb app key is per brand (ADR-0025), so it rides in on the Inertia
  * page props embedded in the root element rather than a build-time VITE
- * constant. Host, port and scheme stay environment-static VITE values.
+ * constant. Host, port and scheme are resolved by `resolveReverbEndpoint`
+ * (ADR-0049 §5): dev keeps the build-time VITE values, production derives
+ * them from the page itself.
  */
 function brandReverbKey(): string | undefined {
     if (typeof document === 'undefined') {
@@ -34,6 +37,17 @@ function brandReverbKey(): string | undefined {
 configureEcho({
     broadcaster: 'reverb',
     key: brandReverbKey() ?? import.meta.env.VITE_REVERB_APP_KEY,
+    // SSR never opens a websocket; the placeholder location is inert there.
+    ...resolveReverbEndpoint(
+        typeof window === 'undefined'
+            ? { hostname: 'localhost', protocol: 'http:', port: '' }
+            : window.location,
+        {
+            host: import.meta.env.VITE_REVERB_HOST,
+            port: import.meta.env.VITE_REVERB_PORT,
+            scheme: import.meta.env.VITE_REVERB_SCHEME,
+        },
+    ),
 });
 
 /**
