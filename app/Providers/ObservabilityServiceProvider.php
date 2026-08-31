@@ -159,9 +159,12 @@ class ObservabilityServiceProvider extends ServiceProvider
 
             // Off-site copies. GoBD keeps archived invoices for ten years
             // (ADR-0031, §147 AO), which is far longer than any single disk
-            // should be trusted with them.
-            $schedule->command('backup:clean')->dailyAt('01:00');
-            $schedule->command('backup:run')->dailyAt('01:30');
+            // should be trusted with them. Skippable per ADR-0049 §8 where
+            // the platform below owns backups.
+            if (config()->boolean('backup.schedule_enabled')) {
+                $schedule->command('backup:clean')->dailyAt('01:00');
+                $schedule->command('backup:run')->dailyAt('01:30');
+            }
         });
     }
 

@@ -15,6 +15,14 @@ use Spatie\Backup\Tasks\Monitor\HealthChecks\MaximumStorageInMegabytes;
 
 return [
 
+    /*
+     * ADR-0049 §8: whether the schedule runs backups at all. A cluster where
+     * CloudNativePG owns database backups and object storage has its own
+     * durability story sets BACKUP_ENABLED=false; a single-host deployment
+     * keeps the default.
+     */
+    'schedule_enabled' => env('BACKUP_ENABLED', true),
+
     'backup' => [
         /*
          * The name of this application. You can use this name to monitor
@@ -91,9 +99,12 @@ return [
              *
              * For a complete list of available customization options, see https://github.com/spatie/db-dumper
              */
-            'databases' => [
-                env('DB_CONNECTION', 'mysql'),
-            ],
+            // BACKUP_INCLUDE_DATABASE=false leaves file backups in place and
+            // drops the dump — for deployments where the database operator
+            // (CNPG) owns that job (ADR-0049 §8).
+            'databases' => env('BACKUP_INCLUDE_DATABASE', true)
+                ? [env('DB_CONNECTION', 'pgsql')]
+                : [],
         ],
 
         /*
