@@ -132,12 +132,13 @@ Mail in the dev stack goes to Mailpit, not out: the `mailpit` service catches ev
 its inbox is at `http://localhost:8025`. A send only leaves the `messaging` queue once the
 `queue` container is up, so check that first if the inbox stays empty.
 
-Developing against object storage (ADR-0043) is opt-in — media and invoices stay on local
-disks by default:
+Developing against object storage (ADR-0043) is opt-in in the application, not in the stack:
+the `garage` container comes up with everything else, but media and invoices stay on local
+disks until you point the disks at it.
 
 ```bash
-# .env: COMPOSE_PROFILES=s3, plus the Garage block from .env.example
-./vendor/bin/sail up -d                 # brings Garage up with the profile set
+# .env: the Garage disk block from .env.example (MEDIA_DISK=media_s3, …)
+./vendor/bin/sail up -d
 ./vendor/bin/sail artisan storage:garage-init   # buckets, grants, website access — idempotent
 ./vendor/bin/sail artisan storage:doctor        # probes every configured disk
 ./vendor/bin/sail artisan storage:migrate       # moves existing files, verifying each copy
@@ -146,6 +147,85 @@ disks by default:
 Garage applies its own cluster layout and creates the first key and bucket at boot; the init
 command adds the second bucket and the anonymous read access that Garage only offers through
 website mode, having neither bucket policies nor ACLs.
+
+**compose.yaml deliberately defines no compose profiles.** `vendor/bin/sail` has no
+`--profile` handling anywhere in it — it forwards extra `-f` files through `SAIL_FILES` and
+nothing else — so a profile-gated service is unreachable through the command this project
+uses to drive the stack, and `COMPOSE_PROFILES` in `.env` only worked when you remembered to
+set it. Everything in the file therefore starts on `sail up`. If you want a service optional
+again, the sail-native way is a second compose file plus `SAIL_FILES=compose.extra.yaml`, not
+a profile.
+
+### Load testing the rush
+
+The rush from ADR-0047 point 6 — 1,000 arrivals against the seeded "Rush" brand, each one
+logging in, queueing, registering, buying a shirt and checking out — lives in
+`tests/Load/ticket-rush.js` and streams its metrics into Grafana while it runs:
+
+```bash
+./vendor/bin/sail artisan konventix:seed --rush     # the Rush brand, event and shop item
+docker compose run --rm k6 run /scripts/ticket-rush.js
+```
+
+Then open **http://localhost:3000** — Grafana needs no login and opens straight on the
+"Ticket rush (k6)" dashboard. The six tiles across the top read the whole selected time
+range, so they still show the run's totals after it finishes; the graphs below are windowed
+and are what show you *where* a run bends. The panel worth watching is "Throughput by
+response status": a 429 band means the waiting room or the per-IP cap is refusing arrivals,
+a red 5xx band means the app is actually falling over.
+
+The `k6` service is a `run` target, not a server. It sits at `Exited (0)` after `sail up`
+because its default command is `k6 version`; the command above replaces it. Metrics go to
+Prometheus (`http://localhost:9091`, a sink only — it scrapes nothing) via k6's remote-write
+output, which compose wires up through `K6_OUT`; pass `-e K6_OUT=` to skip the dashboard for
+one run. Either way `handleSummary` still writes `tests/Load/results/summary.json`, and that
+file — not the dashboard — is what `tests/Load/RushResultTest.php` asserts against.
+
+Default profile is 40 VUs × 25 sequential arrivals rather than 1,000 simultaneous
+connections, which collapse this single-process dev container; `VUS=1000 ARRIVALS_PER_VU=1
+docker compose run --rm -e VUS -e ARRIVALS_PER_VU k6 run /scripts/ticket-rush.js` reproduces
+the all-at-once profile. Grafana's dashboard is provisioned read-only from
+`contrib/grafana/`; edit a panel live if it helps, then export the JSON back into that
+directory or the next container rebuild loses it.
+
+#### Running the rush against the production image
+
+The dev stack is the wrong thing to measure — ROADMAP slice 24 said as much, and ADR-0049's
+consequences name the image as what makes an honest run possible. `compose.prod-local.yaml`
+is that rig: the same artifact CI builds, every role from it, its own compose project and its
+own volumes, so it can never touch the dev stack.
+
+```bash
+docker build -t konventix:local .
+docker compose -p konventix-prod -f compose.prod-local.yaml up -d      # migrate, install, seed, all roles
+docker compose -p konventix-prod -f compose.prod-local.yaml run --rm k6 run /scripts/ticket-rush.js
+```
+
+`up` runs `konventix:migrate` and `konventix:install` as one-shots the way the chart's
+pre-upgrade Job and post-install hook do, then seeds the rush fixture, then starts web,
+horizon, scheduler, pulse and reverb. The k6 service defaults to the **full** profile there
+(`VUS=1000 ARRIVALS_PER_VU=1`) — override with `VUS=… ARRIVALS_PER_VU=…` in the environment.
+Grafana is on the same http://localhost:3000 and the app itself answers on
+http://localhost:8000.
+
+Two things about that rig are not a real deployment, both explained at length in the file's
+header: it runs `APP_ENV=local`, because `CommerceServiceProvider` deliberately gives the
+`null` settlement provider a hosted checkout only outside production (ADR-0047 point 6) and
+the rush cannot otherwise complete a cart; and the fixture is seeded by the Sail image,
+because seeders use factories, factories need faker, and faker is `require-dev` and therefore
+absent from the artifact by design. Everything actually serving the load — dependencies,
+bundle, entrypoint caching, FrankenPHP, the non-root user — is the artifact.
+
+Afterwards, the database half of the result is a test:
+
+```bash
+docker compose -p konventix-prod -f compose.prod-local.yaml run --rm \
+    --entrypoint php seed artisan test --group=load tests/Load/RushResultTest.php
+```
+
+It reads `tests/Load/results/summary.json` next to the live `konventix` database and asserts
+what the rush must never violate: zero 5xx, quota consumed exactly 300, stock never past 200,
+and no more orders than arrivals the waiting room admitted.
 
 Requires PostgreSQL (see `.env.example`). Tests run against a separate `testing` database on
 the same Postgres server — `phpunit.xml` overrides `DB_DATABASE` only, so the connection stays
