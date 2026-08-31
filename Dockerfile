@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1
 # The production image (ADR-0049 §1): one image, every role — web (Octane/
 # FrankenPHP), horizon, scheduler, pulse, reverb, migrate, install — selected
-# by command override. Built WITHOUT VITE_REVERB_* on purpose: the bundle
-# then derives the websocket endpoint from the page (ADR-0049 §5).
+# by command override. The Vite build runs with VITE_REVERB_* stripped from
+# its throwaway .env on purpose: the bundle then derives the websocket
+# endpoint from the page (ADR-0049 §5).
 
 ARG PHP_IMAGE=dunglas/frankenphp:1-php8.5-bookworm
 
@@ -34,6 +35,12 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction --no-progre
 # A throwaway environment: wayfinder:generate (run by the Vite plugin) boots
 # the application, which needs a key. Nothing of this .env reaches the image.
 RUN cp .env.example .env && php artisan key:generate
+
+# .env.example carries the dev websocket endpoint (localhost:8080). Vite bakes
+# any VITE_* it can see into the bundle, so strip them: with none present the
+# client falls back to deriving host, port and scheme from the page it was
+# served by (ADR-0049 §5), which is what every deployment needs.
+RUN sed -i '/^VITE_REVERB_/d' .env
 
 RUN npm ci
 
@@ -84,5 +91,5 @@ USER konventix
 
 EXPOSE 8000
 
-ENTRYPOINT ["docker/entrypoint.sh"]
+ENTRYPOINT ["/var/www/html/docker/entrypoint.sh"]
 CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
