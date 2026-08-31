@@ -90,9 +90,21 @@ jobs:
         run: npm ci
 
       # Feature tests resolve Inertia pages through the Vite manifest, so the
-      # build has to precede the suite or every page test 500s.
+      # build has to precede the suite or every page test 500s. The SSR bundle
+      # is built too: SettingsLayoutTest asserts server-rendered HTML, which
+      # only exists when an SSR process answers (config/inertia.php has SSR on
+      # by default, ADR-0049 §6) — without it those ten cases fail exactly as
+      # they do in a dev container with no SSR running.
       - name: Build frontend
-        run: npm run build
+        run: npm run build:ssr
+
+      # Backgrounded with nohup so it outlives this step; the runner reaps it
+      # at job end. Inertia falls back to client rendering while it warms up,
+      # so the sleep is what makes the first suite request deterministic.
+      - name: Start Inertia SSR server
+        run: |
+          nohup php artisan inertia:start-ssr > ssr.log 2>&1 &
+          sleep 3
 
       # eslint, prettier, vue-tsc, pint, phpstan, and the Pest suite.
       - name: Run CI checks
