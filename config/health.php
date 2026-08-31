@@ -31,6 +31,17 @@ return [
 
     'endpoint_secret' => env('HEALTH_ENDPOINT_SECRET'),
 
+    /*
+     * ADR-0049 §11: in a cluster the container's root filesystem is ephemeral
+     * and shared with the node — measuring it alarms on a neighbour's disk.
+     * Point the check at the volume that holds application data where local
+     * disks are in use, or disable it and let the platform watch its nodes.
+     */
+    'disk' => [
+        'enabled' => env('HEALTH_DISK_CHECK', true),
+        'path' => env('HEALTH_DISK_CHECK_PATH'),
+    ],
+
     'result_stores' => [
         EloquentHealthResultStore::class => [
             'connection' => env('HEALTH_DB_CONNECTION', env('DB_CONNECTION')),

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 use Illuminate\Console\Scheduling\Schedule;
+use Spatie\Health\Checks\Checks\UsedDiskSpaceCheck;
+use Spatie\Health\Facades\Health;
 
 /**
  * ADR-0049: deployment switches ride in as env-backed config. These tests
@@ -23,4 +25,14 @@ test('backups are scheduled by default and carry the database', function () {
         ->filter(fn (string $command): bool => str_contains($command, 'backup:run'));
 
     expect($commands)->toHaveCount(1);
+});
+
+test('the disk space check is configurable', function () {
+    expect(config('health.disk.enabled'))->toBeTrue()
+        ->and(config('health.disk.path'))->toBeNull();
+
+    $checks = collect(Health::registeredChecks())
+        ->map(fn ($check): string => $check::class);
+
+    expect($checks)->toContain(UsedDiskSpaceCheck::class);
 });

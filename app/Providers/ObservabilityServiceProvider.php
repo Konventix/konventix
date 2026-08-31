@@ -106,7 +106,7 @@ class ObservabilityServiceProvider extends ServiceProvider
      */
     private function registerHealthChecks(): void
     {
-        Health::checks([
+        $checks = [
             DatabaseCheck::new(),
             RedisCheck::new(),
             CacheCheck::new(),
@@ -118,11 +118,24 @@ class ObservabilityServiceProvider extends ServiceProvider
             // draining its queue — WaitingRoomCheck reads the tick's own
             // heartbeat.
             WaitingRoomCheck::new(),
-            UsedDiskSpaceCheck::new()->warnWhenUsedSpaceIsAbovePercentage(80)->failWhenUsedSpaceIsAbovePercentage(90),
             // Debug mode in production leaks stack traces, environment and
             // query contents to whoever triggers an error.
             DebugModeCheck::new(),
-        ]);
+        ];
+
+        if (config()->boolean('health.disk.enabled')) {
+            $disk = UsedDiskSpaceCheck::new()
+                ->warnWhenUsedSpaceIsAbovePercentage(80)
+                ->failWhenUsedSpaceIsAbovePercentage(90);
+
+            if (is_string($path = config('health.disk.path'))) {
+                $disk->filesystemName($path);
+            }
+
+            $checks[] = $disk;
+        }
+
+        Health::checks($checks);
     }
 
     /**
