@@ -217,11 +217,16 @@ services:
             retries: 3
             timeout: 5s
 
-    # S3-compatible object storage for developing against ADR-0043, behind a
-    # compose profile: `COMPOSE_PROFILES=s3` in .env (sail sources it) or
-    # `sail --profile s3 up -d`. Off by default — the default dev loop keeps
-    # media on local disks, and an always-on service nobody exercises is how
-    # LanCore's Garage stack rotted unnoticed.
+    # S3-compatible object storage for developing against ADR-0043.
+    #
+    # This used to sit behind a `s3` compose profile. It no longer does:
+    # `vendor/bin/sail` has no `--profile` handling anywhere in it (grep the
+    # script — it forwards `-f` files via SAIL_FILES and nothing else), so a
+    # profile-gated service is unreachable through the command this project
+    # actually uses to drive the stack. Garage therefore comes up with every
+    # `sail up`. The application still ignores it unless the disks are
+    # pointed at S3, so the cost is a container and three host ports, not a
+    # behaviour change.
     #
     # `--single-node --default-bucket` applies the cluster layout and creates
     # the first key and bucket from the GARAGE_DEFAULT_* variables at boot
@@ -229,7 +234,6 @@ services:
     # and the website access that makes the public one anonymously readable.
     garage:
         image: 'dxflrs/garage:v2.3.0'
-        profiles: ['s3']
         command: ['/garage', 'server', '--single-node', '--default-bucket']
         environment:
             GARAGE_DEFAULT_ACCESS_KEY: '${AWS_ACCESS_KEY_ID:-GKkonventixdevaccesskey00000000}'
@@ -264,22 +268,127 @@ services:
             - sail
 
     # ADR-0047 point 6: the k6 rush against the seeded "Rush" brand
-    # (`tests/Load/ticket-rush.js`), behind a profile like `garage` — an
-    # always-on load-test runner nobody exercises during ordinary dev work
-    # is exactly the rot `garage`'s own doc warns about. `laravel.test` is
-    # reached by its compose service name on the `sail` network, at the
-    # port FrankenPHP listens on inside the container (80, regardless of
-    # `APP_PORT` — that env var only remaps the *host*-side publish); the
-    # script sends `Host: rush.localhost` on every request so brand
-    # resolution picks the seeded brand rather than 404ing on the bare
-    # service name.
+    # (`tests/Load/ticket-rush.js`). `laravel.test` is reached by its compose
+    # service name on the `sail` network, at the port FrankenPHP listens on
+    # inside the container (80, regardless of `APP_PORT` — that env var only
+    # remaps the *host*-side publish); the script sends `Host: rush.localhost`
+    # on every request so brand resolution picks the seeded brand rather than
+    # 404ing on the bare service name.
+    #
+    # This is a `run` target, not a server: the default command is `version`,
+    # so `sail up` leaves it at Exited (0) having done nothing rather than
+    # crash-looping on k6's usage message. The rush is started deliberately,
+    # from the host, with
+    #
+    #   docker compose run --rm k6 run /scripts/ticket-rush.js
+    #
+    # which overrides that command. `restart: 'no'` for the same reason the
+    # `migrate` one-shot has it — a container that is meant to exit must not
+    # be brought back.
+    #
+    # The run streams its metrics into `prometheus` as it goes and you watch
+    # it in `grafana` (both below) — `handleSummary` still writes
+    # tests/Load/results/summary.json at the end, which is the artefact
+    # RushResultTest asserts against. The live dashboard is for seeing
+    # *where* a run bends; the summary is what makes it pass or fail.
+    #
+    # `K6_OUT` here is what wires the two together, so the run command needs
+    # no extra flags. Drop the dashboard for one run with `-e K6_OUT=` and k6
+    # falls back to stdout only.
     k6:
-        image: grafana/k6
-        profiles: ['load']
+        image: 'grafana/k6:2.2.0'
+        command: ['version']
+        restart: 'no'
+        environment:
+            K6_OUT: '${K6_OUT-experimental-prometheus-rw}'
+            K6_PROMETHEUS_RW_SERVER_URL: 'http://prometheus:9090/api/v1/write'
+            K6_PROMETHEUS_RW_PUSH_INTERVAL: 5s
+            # Native histograms make every quantile aggregatable and windowed:
+            # histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds[1m])))
+            # answers "p95 over the last minute". Note the `_seconds` suffix
+            # and the unit that comes with it — k6 reports milliseconds on
+            # stdout but pushes seconds here. k6's alternative output —
+            # K6_PROMETHEUS_RW_TREND_STATS gauges — computes its percentiles
+            # over the whole run so far, so a spike halfway through never
+            # leaves the graph and the line only ever crawls upward. Requires
+            # --enable-feature=native-histograms on the Prometheus side.
+            #
+            # K6_FEATURES, not K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM:
+            # k6 2.x still honours that older variable but logs it as a
+            # deprecated legacy alias on every run.
+            K6_FEATURES: native-histograms
+            # Marks every series stale when the run ends, so the dashboard
+            # stops at the end of the test instead of drawing the last value
+            # forward as a flat line that looks like a hung run.
+            K6_PROMETHEUS_RW_STALE_MARKERS: 'true'
         volumes:
             - './tests/Load:/scripts'
         networks:
             - sail
+        depends_on:
+            prometheus:
+                condition: service_healthy
+
+    # Metrics sink for the k6 run: k6 pushes over remote write, nothing is
+    # scraped (contrib/prometheus.yml has an empty scrape_configs). Not
+    # application monitoring — Pulse already does that, with its own
+    # dashboard and its own ingest drain above.
+    prometheus:
+        image: 'prom/prometheus:v3.7.3'
+        command:
+            [
+                '--config.file=/etc/prometheus/prometheus.yml',
+                '--storage.tsdb.path=/prometheus',
+                '--storage.tsdb.retention.time=15d',
+                '--web.enable-remote-write-receiver',
+                '--enable-feature=native-histograms',
+            ]
+        ports:
+            # 9090 is Prometheus's own default and a busy port on developer
+            # machines (this one included) — same reason FORWARD_REVERB_PORT
+            # exists. Inside the network it is still plain 9090, which is what
+            # the k6 remote-write URL and the Grafana data source both use.
+            - '${FORWARD_PROMETHEUS_PORT:-9091}:9090'
+        volumes:
+            - './contrib/prometheus.yml:/etc/prometheus/prometheus.yml:ro'
+            - 'sail-prometheus:/prometheus'
+        networks:
+            - sail
+        healthcheck:
+            # The image has no shell and no curl; its own binary answers.
+            test: ['CMD', 'promtool', 'check', 'healthy', '--url=http://localhost:9090']
+            interval: 5s
+            retries: 10
+            timeout: 3s
+        restart: unless-stopped
+
+    # Reads the run. Data source and dashboard are provisioned from
+    # contrib/grafana, so `up` lands you on a working "Ticket rush" board at
+    # http://localhost:${FORWARD_GRAFANA_PORT:-3000} with no login and no
+    # setup wizard. Anonymous admin is a dev-stack convenience and is safe
+    # only because this file is never deployed — the production observability
+    # story is ADR-0049's, not this one's. Do not copy these two GF_AUTH_*
+    # lines anywhere that is reachable from outside a laptop.
+    grafana:
+        image: 'grafana/grafana:12.3.0'
+        environment:
+            GF_AUTH_ANONYMOUS_ENABLED: 'true'
+            GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+            GF_AUTH_BASIC_ENABLED: 'false'
+            # Land straight on the rush dashboard instead of an empty home.
+            GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/k6-ticket-rush.json
+        ports:
+            - '${FORWARD_GRAFANA_PORT:-3000}:3000'
+        volumes:
+            - './contrib/grafana/provisioning:/etc/grafana/provisioning:ro'
+            - './contrib/grafana/dashboards:/var/lib/grafana/dashboards:ro'
+            - 'sail-grafana:/var/lib/grafana'
+        networks:
+            - sail
+        depends_on:
+            prometheus:
+                condition: service_healthy
+        restart: unless-stopped
 
 networks:
     sail:
@@ -293,4 +402,8 @@ volumes:
     sail-garage-meta:
         driver: local
     sail-garage-data:
+        driver: local
+    sail-prometheus:
+        driver: local
+    sail-grafana:
         driver: local

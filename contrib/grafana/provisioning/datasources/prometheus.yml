@@ -1,0 +1,19 @@
+# Provisioned at boot, so the `load` profile comes up with a working data
+# source and nobody clicks through Grafana's setup. The uid is pinned because
+# the dashboard JSON references it by uid, not by name.
+apiVersion: 1
+
+datasources:
+    - name: k6
+      uid: konventix-k6-prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: false
+      jsonData:
+          # k6 pushes every 5s (K6_PROMETHEUS_RW_PUSH_INTERVAL in compose.yaml);
+          # telling Grafana that stops it from picking a coarser $__rate_interval
+          # and flat-lining short runs.
+          timeInterval: 5s
+          httpMethod: POST

@@ -1,0 +1,462 @@
+{
+  "uid": "konventix-k6-ticket-rush",
+  "title": "Ticket rush (k6)",
+  "description": "Live view of tests/Load/ticket-rush.js. The six stat tiles read the whole selected range, so they still show the run's totals after it has finished; the graphs are windowed. Metric names and queries were verified against k6 2.2.0 pushing native histograms into Prometheus 3.7 — http_req_duration arrives as k6_http_req_duration_seconds (seconds, not ms) and there is no k6_checks_total, only k6_checks_rate.",
+  "tags": ["k6", "load", "konventix"],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "annotations": { "list": [] },
+  "templating": { "list": [] },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Peak virtual users",
+      "description": "Concurrency actually reached. The rush script caps this at VUS (default 40) and gives each VU ARRIVALS_PER_VU sequential arrivals, so this is not the number of arrivals.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "max_over_time(k6_vus[$__range])",
+          "instant": true,
+          "legendFormat": "VUs"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Requests",
+      "description": "Every HTTP request the run made, over the selected range.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "sum(max_over_time(k6_http_reqs_total[$__range]))",
+          "instant": true,
+          "legendFormat": "requests"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Failed requests",
+      "description": "Share of requests outside the expected 200/302 (http.setResponseCallback in the script). Red past 1%, which is the bar k6's own http_req_failed threshold enforces. On this single-process dev container ~6% is the known concurrency ceiling, not a data-integrity fault — see ROADMAP slice 24.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "sum(max_over_time(k6_http_reqs_total{expected_response=\"false\"}[$__range])) / sum(max_over_time(k6_http_reqs_total[$__range]))",
+          "instant": true,
+          "legendFormat": "failed"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "min": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.01 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "5xx responses",
+      "description": "The script's own server_errors counter. Anything but zero fails the run's threshold. k6 never pushes a counter it did not increment, so `or vector(0)` is what makes a clean run read 0 instead of blank.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "sum(max_over_time(k6_server_errors_total[$__range])) or vector(0)",
+          "instant": true,
+          "legendFormat": "5xx"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Admitted through the waiting room",
+      "description": "Arrivals the waiting room let through (the script's admitted counter). The room releases 100 every 5s, so this is the line the throughput graph below follows.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "sum(max_over_time(k6_admitted_total[$__range])) or vector(0)",
+          "instant": true,
+          "legendFormat": "admitted"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "p95 response time",
+      "description": "95th percentile across the whole selected range, from the native histogram.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds[$__range])))",
+          "instant": true,
+          "legendFormat": "p95"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Throughput by response status",
+      "description": "Where a run bends. A 429 band means the waiting room or the per-IP cap is refusing arrivals; a 5xx band means the app is falling over.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "sum by (status) (rate(k6_http_reqs_total[$__rate_interval]))",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "mode": "normal", "group": "A" },
+            "axisPlacement": "auto"
+          },
+          "mappings": []
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": "5.." },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "429" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Response time percentiles",
+      "description": "Windowed quantiles from the native histogram — a spike leaves the graph once it passes, unlike k6's whole-run trend-stat gauges.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "histogram_quantile(0.50, sum(rate(k6_http_req_duration_seconds[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds[$__rate_interval])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "histogram_quantile(0.99, sum(rate(k6_http_req_duration_seconds[$__rate_interval])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto"
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Virtual users and completed arrivals",
+      "description": "VUs is concurrency held; arrivals/s is how fast whole flows (login through checkout) are completing.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 13 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "k6_vus",
+          "legendFormat": "VUs"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "sum(rate(k6_iterations_total[$__rate_interval]))",
+          "legendFormat": "arrivals/s"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto"
+          },
+          "mappings": []
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "arrivals/s" },
+            "properties": [
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "unit", "value": "ops" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Waiting room admissions",
+      "description": "Rate at which the room releases arrivals. A flat ceiling here with a growing queue behind it is the room working, not the app failing.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 13 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "sum(rate(k6_admitted_total[$__rate_interval]))",
+          "legendFormat": "admitted/s"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 25,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto"
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Checks passing",
+      "description": "Each check() in the script, as a pass ratio. This is the panel that names which step broke — 'admitted before the poll budget ran out' dropping is a different failure from 'checked out' dropping.",
+      "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 13 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "konventix-k6-prometheus" },
+          "expr": "k6_checks_rate",
+          "legendFormat": "{{check}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["min"] },
+        "tooltip": { "mode": "multi", "sort": "asc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisPlacement": "auto"
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

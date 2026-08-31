@@ -1,0 +1,17 @@
+# Loads every dashboard JSON in contrib/grafana/dashboards (mounted read-only).
+# allowUiUpdates lets you tweak a panel live while watching a run; the change
+# lives in Grafana's own volume and is overwritten the next time the file on
+# disk changes, so export and commit anything worth keeping.
+apiVersion: 1
+
+providers:
+    - name: konventix
+      orgId: 1
+      folder: 'Load testing'
+      type: file
+      disableDeletion: false
+      allowUiUpdates: true
+      updateIntervalSeconds: 10
+      options:
+          path: /var/lib/grafana/dashboards
+          foldersFromFilesStructure: false
