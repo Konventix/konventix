@@ -186,9 +186,10 @@ address). If HA via Cluster is wanted later, the split has to move to key
 prefixes on one database. Also required of the external Redis (ADR-0047 point
 6, compose.yaml): `maxmemory-policy noeviction`, `appendonly yes`, AUTH.
 
-**Answered, no code** (ADR-0049 Consequences): needs no code — `storage:doctor`
-already runs non-interactively and the S3 path was exercised against Garage
-in slice 17.
+**Answered, no code** (ADR-0049 Consequences): the chart assumes a
+single-endpoint standalone Redis and the numbered-database split stays, as
+this document's own D2 recommends; the external-Redis requirements
+(`noeviction`, AOF, AUTH) stand as section 3 states them.
 
 ### B7 — Backups: make them switchable (decision D4)
 
@@ -227,7 +228,9 @@ Good news first: `/up` is registered outside the `web` group, so it survives
 any `Host` and touches no database — usable as readiness/liveness for the web
 role. `/health-json` is guarded by `X-Health-Secret` (404 when the secret is
 unset) and host-agnostic — usable by an external monitor. Reverb ships `/up`
-on its own port. Horizon has `horizon:status`.
+on its own port; when `REVERB_SERVER_PATH` is set the whole route set moves
+under that prefix, so the probe path becomes `<path>/up` (`/ws/up` for the
+`/ws` this document recommends). Horizon has `horizon:status`.
 
 Two checks need a look: `UsedDiskSpaceCheck` measures the container's root
 filesystem, which is ephemeral and shared with the node; point it at the

@@ -21,6 +21,14 @@ use Spatie\Permission\PermissionRegistrar;
  * brand — idempotently, so a chart can run it as a post-install hook on
  * every release.
  *
+ * Idempotent here means "creates what is missing", never "restores what was
+ * changed" (ADR-0045): the Operator Admin role is granted its permissions
+ * once, when this command creates it, and the admin user is given that role
+ * once, when this command creates the user. An operator who narrows the role
+ * or moves the admin out of it keeps that decision across every later
+ * release; re-running this command is not a repair mechanism for edited
+ * roles, and there is deliberately none.
+ *
  * Cross-module composition (Platform models plus Identity's User) is legal
  * exactly here, in the host layer, for the same reason DatabaseSeeder does
  * it: modules may not import each other's models (ADR-0004), the host may.
@@ -67,7 +75,13 @@ class InstallCommand extends Command
 
         // Grants below reference permission rows; sync is idempotent and
         // cheap, so run it rather than assume the migrator role already did.
-        $this->callSilently('permissions:sync');
+        // A failure here would leave a freshly created role with an
+        // incomplete grant that nothing later repairs, so it stops the run.
+        if ($this->callSilently('permissions:sync') !== self::SUCCESS) {
+            $this->error('permissions:sync failed — no role was granted and no admin was created.');
+
+            return self::FAILURE;
+        }
 
         $operator = Operator::query()->firstOrCreate(
             ['name' => $operatorName],
@@ -88,11 +102,24 @@ class InstallCommand extends Command
             'guard_name' => 'web',
             'brand_id' => $operator->getKey(),
         ]);
-        $role->syncPermissions(Permission::query()->where('guard_name', 'web')->get());
+
+        // Only on the release that creates the role. Re-syncing on every run
+        // would silently undo an operator's own narrowing of it (ADR-0045).
+        if ($role->wasRecentlyCreated) {
+            $role->syncPermissions(Permission::query()->where('guard_name', 'web')->get());
+        }
 
         $admin = User::query()->firstWhere('email', $adminEmail);
 
-        if ($admin === null) {
+        if ($admin !== null) {
+            if ($this->passwordFromEnvironment() !== null) {
+                $this->info(sprintf(
+                    'Admin user %s already exists — %s is ignored; change the password in the console.',
+                    $adminEmail,
+                    (string) $this->option('admin-password-env'),
+                ));
+            }
+        } else {
             $password = $this->passwordFromEnvironment();
 
             if ($password === null) {
@@ -117,9 +144,12 @@ class InstallCommand extends Command
             ]);
             $admin->forceFill(['email_verified_at' => now()])->save();
             $this->info("Admin user: {$adminEmail}");
+
+            // Only for the user this run created: an operator who moved an
+            // existing admin out of the role meant it (ADR-0045).
+            $admin->assignRole('Operator Admin');
         }
 
-        $admin->assignRole('Operator Admin');
         $registrar->setPermissionsTeamId(null);
 
         if ($brandName !== '') {
