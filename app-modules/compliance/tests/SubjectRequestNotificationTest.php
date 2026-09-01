@@ -109,6 +109,26 @@ it('tells the subject a refusal and its legal ground', function (): void {
     expect($record->rendered_body)->toContain('art_12_5_excessive');
 });
 
+it('refuses an email-only request and mails the bare address (ADR-0050 §9 ruling 3)', function (): void {
+    $this->withBrand();
+
+    $request = DataSubjectRequest::factory()->forEmail('someone@example.de')->create([
+        'type' => DataSubjectRequestType::Rectification,
+    ]);
+
+    // No account behind this subject, so the console can still refuse the
+    // request — this must not TypeError on a non-nullable subjectId.
+    (new RefuseSubjectRequest)($request, 'art_12_5_excessive');
+
+    $record = MessageRecord::withoutBrandScope()
+        ->where('template_key', NotifySubjectOfRequestOutcome::REQUEST_REFUSED)
+        ->firstOrFail();
+
+    expect($record->recipient_email)->toBe('someone@example.de')
+        ->and($record->recipient_id)->toBeNull()
+        ->and($record->rendered_body)->toContain('art_12_5_excessive');
+});
+
 it('escalates an approaching deadline once, then again when it lapses', function (): void {
     $brand = $this->withBrand();
 

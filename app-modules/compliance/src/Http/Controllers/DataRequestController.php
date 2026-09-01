@@ -91,4 +91,33 @@ final class DataRequestController
         return Storage::disk((string) $model->archive_disk)
             ->download((string) $model->archive_path, 'my-data.json');
     }
+
+    /**
+     * The account-less counterpart of `download()` (ADR-0050 §9): a subject
+     * with no account cannot sign in, so authorization cannot be "the
+     * signed-in user matches the row" the way it is above. Instead the link
+     * itself carries a single-use credential — a hashed token mailed only
+     * to the address that completed the verification round-trip (ADR-0050
+     * §4). Looking it up by hash is the same shape `EntranceDevice` and
+     * `DataSubjectRequestVerification` use: a database read never hands out
+     * a working link.
+     *
+     * Consuming the link clears the hash before streaming, so a forwarded
+     * mail is already spent — the narrow, deliberate exposure the ADR
+     * accepts in place of "no delivery at all".
+     */
+    public function downloadWithToken(#[\SensitiveParameter] string $token): StreamedResponse
+    {
+        /** @var DataSubjectRequest|null $model */
+        $model = DataSubjectRequest::query()
+            ->where('archive_token_hash', hash('sha256', $token))
+            ->first();
+
+        abort_unless($model?->hasDownloadableArchive(), 404);
+
+        $model->forceFill(['archive_token_hash' => null])->save();
+
+        return Storage::disk((string) $model->archive_disk)
+            ->download((string) $model->archive_path, 'my-data.json');
+    }
 }

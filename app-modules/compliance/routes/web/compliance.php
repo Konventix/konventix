@@ -41,6 +41,15 @@ Route::get('/privacy/request/{token}', [PublicDataRequestController::class, 'ver
     ->middleware('throttle:10,1')
     ->name('data-requests.public.verify');
 
+// The account-less counterpart of `data-requests.download` (ADR-0050 §9):
+// a subject with no account cannot sign in, so their archive is fetched by
+// a second hashed, single-use token mailed to the address they already
+// verified. Deliberately its own path — `/{token}` above already belongs to
+// the verification link.
+Route::get('/privacy/request/archive/{token}', [DataRequestController::class, 'downloadWithToken'])
+    ->middleware('throttle:10,1')
+    ->name('data-requests.public.download');
+
 Route::middleware('auth')->group(function (): void {
     // Where the `require-consent` gate lands. Also reachable directly, so
     // someone can re-read what they are being asked to agree to.

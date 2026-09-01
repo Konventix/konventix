@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Konventix\Compliance\Database\Factories\DataSubjectRequestFactory;
 use Konventix\Compliance\Enums\DataSubjectRequestState;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
@@ -41,6 +42,7 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  * @property string|null $archive_path
  * @property string|null $archive_disk
  * @property Carbon|null $archive_expires_at
+ * @property string|null $archive_token_hash
  * @property Carbon|null $closed_at
  * @property string|null $reason_code
  * @property Carbon|null $created_at
@@ -87,6 +89,19 @@ class DataSubjectRequest extends Model
         return $this->archive_path !== null
             && $this->archive_disk !== null
             && ($this->archive_expires_at === null || $this->archive_expires_at->isFuture());
+    }
+
+    /**
+     * A single-use link for a subject who cannot sign in (ADR-0050 §9).
+     * Returns the plaintext once; only the hash is stored. Consuming the
+     * link clears the hash, so a forwarded mail is already spent.
+     */
+    public function issueArchiveToken(): string
+    {
+        $plain = Str::random(64);
+        $this->forceFill(['archive_token_hash' => hash('sha256', $plain)])->save();
+
+        return $plain;
     }
 
     /**

@@ -132,17 +132,31 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 'en' => 'Your data export is ready',
             ],
             bodies: [
+                // `@isset` rather than `@if`: `downloadUrl` is absent on the
+                // sample payload and on an account-backed subject's mail, and
+                // an unset variable inside `@if` throws (Blade::render() runs
+                // this string standalone, with no view data() to default it).
                 'de' => <<<'BLADE'
                     <p>Ihre Kopie der bei uns gespeicherten Daten ist fertig.</p>
+                    @isset($downloadUrl)
+                    <p>Sie können sie hier herunterladen: <a href="{{ $downloadUrl }}">Datenkopie herunterladen</a>.</p>
+                    <p>Der Link funktioniert nur einmal — danach ist er ungültig, auch wenn er weitergeleitet wird.</p>
+                    @else
                     <p>Sie finden sie unter „Einstellungen → Datenschutz“ zum Herunterladen.</p>
+                    @endisset
                     <p>Verfügbar bis: {{ $availableUntil ?? 'siehe Konto' }}.</p>
-                    <p>Aus Sicherheitsgründen verschicken wir die Datei nicht per E-Mail: der Download ist nur nach Anmeldung möglich.</p>
+                    <p>Aus Sicherheitsgründen verschicken wir die Datei nicht per E-Mail: der Download ist nur über den oben genannten Weg möglich.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>Your copy of the data we hold about you is ready.</p>
+                    @isset($downloadUrl)
+                    <p>You can download it here: <a href="{{ $downloadUrl }}">Download your data</a>.</p>
+                    <p>The link works once — after that it is spent, even if it was forwarded.</p>
+                    @else
                     <p>You can download it under “Settings → Privacy”.</p>
+                    @endisset
                     <p>Available until: {{ $availableUntil ?? 'see your account' }}.</p>
-                    <p>We deliberately do not attach the file: the download requires you to be signed in.</p>
+                    <p>We deliberately do not attach the file: the download is only available the way described above.</p>
                     BLADE,
             ],
             defaultLocale: 'de',

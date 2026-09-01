@@ -9,6 +9,7 @@ use Konventix\Compliance\Data\SubjectRequestMailData;
 use Konventix\Compliance\Events\DataExportCompleted;
 use Konventix\Compliance\Events\SubjectRequestRefused;
 use Konventix\Compliance\Events\UserDeletionRequested;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
@@ -65,10 +66,24 @@ final class NotifySubjectOfRequestOutcome
             return;
         }
 
-        $this->send($event->subjectId, $event->subjectEmail, $event->brandId, self::EXPORT_READY, new SubjectRequestMailData(
+        $subject = $request->subject();
+
+        // An account-backed subject is pointed at Settings → Privacy, same
+        // as today. A subject with no account has no such page to sign into
+        // (ADR-0050 §9) — the mail carries a freshly issued single-use
+        // download link instead, mailed to the address they already
+        // verified. Issued here, at send time, not earlier: a link minted
+        // when nobody has asked for it yet is a link that can go stale
+        // before it is ever read.
+        $downloadUrl = $subject->isAccountBacked()
+            ? null
+            : route('data-requests.public.download', ['token' => $request->issueArchiveToken()]);
+
+        $this->send($subject, $request->filed_on_brand_id, self::EXPORT_READY, new SubjectRequestMailData(
             requestType: $request->type->value,
             deadline: $request->deadline_at->format('d.m.Y'),
             availableUntil: $request->archive_expires_at?->format('d.m.Y'),
+            downloadUrl: $downloadUrl,
         ));
     }
 
@@ -80,7 +95,7 @@ final class NotifySubjectOfRequestOutcome
             return;
         }
 
-        $this->send($event->subjectId, $event->subjectEmail, $event->brandId, self::DELETION_ACKNOWLEDGED, new SubjectRequestMailData(
+        $this->send($request->subject(), $request->filed_on_brand_id, self::DELETION_ACKNOWLEDGED, new SubjectRequestMailData(
             requestType: $request->type->value,
             deadline: $request->deadline_at->format('d.m.Y'),
         ));
@@ -94,7 +109,7 @@ final class NotifySubjectOfRequestOutcome
             return;
         }
 
-        $this->send($event->subjectId, null, $event->brandId, self::REQUEST_REFUSED, new SubjectRequestMailData(
+        $this->send($request->subject(), $request->filed_on_brand_id, self::REQUEST_REFUSED, new SubjectRequestMailData(
             requestType: $request->type->value,
             deadline: $request->deadline_at->format('d.m.Y'),
             reasonCode: $event->reasonCode,
@@ -113,33 +128,36 @@ final class NotifySubjectOfRequestOutcome
      * thrown: the statutory obligation is to carry out the request, and the
      * operator console still shows its state.
      *
-     * `$subjectId`/`$subjectEmail` mirror `SubjectRef` (ADR-0050 §3): an
-     * account-backed subject is addressed by ULID, resolved through
-     * Messaging's own recipient read model; an account-less one has only the
-     * address they filed with, passed straight through as `recipientEmail`
-     * the same way an exhibitor billing contact already is.
+     * `$subject` is `SubjectRef` (ADR-0050 §3): an account-backed subject is
+     * addressed by ULID, resolved through Messaging's own recipient read
+     * model; an account-less one has only the address they filed with,
+     * passed straight through as `recipientEmail` the same way an exhibitor
+     * billing contact already is. Every caller builds it from the loaded
+     * request via `$request->subject()`, never from the event — the event's
+     * own `subjectId`/`subjectEmail` exist for the audit trail, not for
+     * addressing the mail.
      *
-     * `$brandId` is `''` when the request carries no `filed_on_brand_id`
-     * (ADR-0050 §1: provenance only, nullable) — Messaging's `brand_id`
-     * column is a real foreign key, so an empty string is fed to it as
-     * "unknown" (null) rather than as a value, which lets `SendMessage` fall
+     * `$brandId` is `null` when the request carries no `filed_on_brand_id`
+     * (ADR-0050 §1: provenance only, nullable), and an empty string is
+     * treated the same way — Messaging's `brand_id` column is a real foreign
+     * key, so neither is fed to it as a value, which lets `SendMessage` fall
      * back to the ambient `BrandContext` the way an unset override already
      * does.
      */
-    private function send(?string $subjectId, ?string $subjectEmail, string $brandId, string $templateKey, SubjectRequestMailData $payload): void
+    private function send(SubjectRef $subject, ?string $brandId, string $templateKey, SubjectRequestMailData $payload): void
     {
         try {
             $this->sendMessage->handle(new SendMessageRequest(
-                recipientId: $subjectId,
+                recipientId: $subject->userId,
                 templateKey: $templateKey,
                 payload: $payload,
-                recipientEmail: $subjectEmail,
-                brandId: $brandId === '' ? null : $brandId,
+                recipientEmail: $subject->email,
+                brandId: $brandId === null || $brandId === '' ? null : $brandId,
             ));
         } catch (Throwable $exception) {
             Log::warning('Could not notify the data subject about their request.', [
-                'subject_id' => $subjectId,
-                'subject_email' => $subjectEmail,
+                'subject_id' => $subject->userId,
+                'subject_email' => $subject->email,
                 'template' => $templateKey,
                 'reason' => $exception->getMessage(),
             ]);

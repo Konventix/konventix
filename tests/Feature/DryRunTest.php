@@ -95,6 +95,15 @@ function dryRunSkippedRoutes(): array
         // (ADR-0050 §4). PublicDataRequestTest mints one.
         'data-requests.public.verify' => 'needs a mailed verification token',
 
+        // Same shape again: the token only exists once
+        // `NotifySubjectOfRequestOutcome::handleExportCompleted` mails an
+        // account-less subject an archive link (ADR-0050 §9), which
+        // `konventix:seed` never triggers — no export request is ever
+        // fulfilled for a seeded person, so no `archive_token_hash` exists
+        // for this route's `{token}` to point at. `AccountLessArchiveTest`
+        // mints one directly.
+        'data-requests.public.download' => 'needs a mailed archive token',
+
         // Same shape: the signature *is* the authorization, minted during a
         // render that established ownership (see MyInvoiceDocumentController).
         // A URL built from route parameters alone cannot carry one.

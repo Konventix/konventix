@@ -16,12 +16,18 @@ use Konventix\Compliance\Audit\AuditEntry;
  * keeps data that a legal obligation requires. `reasonCode` is what makes
  * the refusal answerable to a supervisory authority later, which is why it
  * is required rather than free text on the side.
+ *
+ * `subjectId`/`subjectEmail` mirror the other three subject-request events
+ * (ADR-0050 §3): exactly one is set, because the console can refuse a
+ * request filed by a subject with no account behind it just as it can an
+ * account-backed one.
  */
 final class SubjectRequestRefused implements AuditableEvent
 {
     public function __construct(
         public readonly string $requestId,
-        public readonly string $subjectId,
+        public readonly ?string $subjectId,
+        public readonly ?string $subjectEmail,
         public readonly string $brandId,
         public readonly string $reasonCode,
     ) {}
