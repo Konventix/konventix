@@ -47,7 +47,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string $username
  * @property string|null $tagline
  * @property string|null $status_emoji
- * @property array|null $social_links
+ * @property array<string, string>|null $social_links
  * @property string $locale
  * @property string $timezone
  * @property AccountState $state
