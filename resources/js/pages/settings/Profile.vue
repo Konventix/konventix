@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Form, Head, useForm } from '@inertiajs/vue3';
+import { Form, Head, router, useForm } from '@inertiajs/vue3';
 import MembershipImageController from '@/actions/Konventix/Identity/Http/Controllers/MembershipImageController';
 import ProfileController from '@/actions/Konventix/Identity/Http/Controllers/ProfileController';
 import DeleteUser from '@/components/DeleteUser.vue';
@@ -21,7 +21,7 @@ defineOptions({
     },
 });
 
-const { profile, membershipImages } = defineProps<{
+const { profile, membershipImages, steamAvatarUrl } = defineProps<{
     profile: {
         name: string;
         email: string;
@@ -34,6 +34,7 @@ const { profile, membershipImages } = defineProps<{
         avatarUrl: string | null;
         bannerUrl: string | null;
     };
+    steamAvatarUrl: string | null;
 }>();
 
 const avatarForm = useForm<{ file: File | null }>({ file: null });
@@ -55,6 +56,10 @@ function submitAvatar(event: Event): void {
             input.value = '';
         },
     });
+}
+
+function copySteamAvatar(): void {
+    router.post(MembershipImageController.copySteam().url, {}, { preserveScroll: true });
 }
 
 function submitBanner(event: Event): void {
@@ -294,6 +299,16 @@ function submitBanner(event: Event): void {
                             @change="submitAvatar"
                         />
                         <InputError :message="avatarForm.errors.file" />
+                        <Button
+                            v-if="steamAvatarUrl"
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            data-test="use-steam-avatar-button"
+                            @click="copySteamAvatar"
+                        >
+                            Use my Steam avatar
+                        </Button>
                         <Form
                             v-if="membershipImages.avatarUrl"
                             v-bind="MembershipImageController.destroyAvatar.form()"

@@ -38,7 +38,18 @@ class ProfileController
                 'socialLinks' => $user->social_links ?? (object) [],
             ],
             'membershipImages' => $this->membershipImages($user, $media),
+            'steamAvatarUrl' => $this->steamAvatarUrl($user),
         ]);
+    }
+
+    /**
+     * The avatar url on the user's linked Steam identity, if any — not the
+     * brand-copied avatar (`membershipImages.avatarUrl`), the source Task
+     * 5's "Use my Steam avatar" button offers to copy from.
+     */
+    private function steamAvatarUrl(User $user): ?string
+    {
+        return $user->socialIdentities()->where('provider', 'steam')->first()?->avatar_url;
     }
 
     /**

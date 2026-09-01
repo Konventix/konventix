@@ -51,6 +51,7 @@ Route::middleware(['auth'])->group(function (): void {
 
     Route::post('settings/profile/avatar', [MembershipImageController::class, 'storeAvatar'])->name('profile.avatar.store');
     Route::delete('settings/profile/avatar', [MembershipImageController::class, 'destroyAvatar'])->name('profile.avatar.destroy');
+    Route::post('settings/profile/avatar/steam', [MembershipImageController::class, 'copySteam'])->name('profile.avatar.steam');
     Route::post('settings/profile/banner', [MembershipImageController::class, 'storeBanner'])->name('profile.banner.store');
     Route::delete('settings/profile/banner', [MembershipImageController::class, 'destroyBanner'])->name('profile.banner.destroy');
 });
