@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Konventix\Community\Providers;
 
+use Illuminate\Support\Facades\Event;
+use Konventix\Community\Listeners\ProjectCommunityMember;
+use Konventix\Community\Listeners\ProjectCommunityProfile;
+use Konventix\Identity\Events\BrandMembershipProfileUpdated;
+use Konventix\Identity\Events\UserProfileUpdated;
+use Konventix\Identity\Events\UserRegistered;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 
 /**
@@ -21,5 +27,19 @@ class CommunityServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'community';
+    }
+
+    /**
+     * The community profile read models (ADR-0004). Registered explicitly —
+     * modular event discovery is off and must stay off
+     * (.ai/rules/listeners.md). `ProjectCommunityMember` gates itself on the
+     * event's brand; `ProjectCommunityProfile` does not, because
+     * `community_profiles` is operator-wide (ADR-0016).
+     */
+    protected function registerListeners(): void
+    {
+        Event::listen(UserRegistered::class, ProjectCommunityProfile::class);
+        Event::listen(UserProfileUpdated::class, ProjectCommunityProfile::class);
+        Event::listen(BrandMembershipProfileUpdated::class, ProjectCommunityMember::class);
     }
 }
