@@ -1043,3 +1043,23 @@ public function store(Request $request, string $username): RedirectResponse
 ## Verification
 
 Full suite in the container (SSR running), `vendor/bin/pint --dirty`, `npm run build` clean, `npx eslint` is known-broken on this host (root-litter dirs) — rely on CI for eslint. The final whole-branch review gates the merge.
+
+---
+
+### Task 12: Container logs are well-formatted JSON
+
+Added mid-run at the user's request (2026-09-01) — deploy-facing, independent of the profile work.
+
+**Files:**
+- Modify: `config/logging.php` (only if the `stderr` channel lacks a `formatter`/`formatter_with` path — Laravel's default already reads `LOG_STDERR_FORMATTER`; verify and keep the delta minimal)
+- Modify: `.env.example` (document `LOG_CHANNEL=stderr` + `LOG_STDERR_FORMATTER=Monolog\Formatter\JsonFormatter` as the container defaults)
+- Test: `tests/Feature/StructuredLogsTest.php`
+
+**Interfaces:**
+- Produces: with `LOG_CHANNEL=stderr` and `LOG_STDERR_FORMATTER=Monolog\Formatter\JsonFormatter`, every log record — including a logged exception — leaves the container as one single-line JSON object on stderr. The konventix-helm ConfigMap ships those two env defaults (chart-side change, done in the chart repo with the v0.3.0 bump, not in this task).
+
+- [ ] **Step 1: Failing test** — with config `logging.default=stderr` and `logging.channels.stderr.formatter=Monolog\Formatter\JsonFormatter` set via `Config::set`, resolve the channel and assert its Monolog handler's formatter is a `JsonFormatter`; second case: format a `LogRecord` carrying an exception through that formatter and assert the output is a single line (`str_contains($line, "\n") === false` after rtrim) that `json_decode`s to an array with `message`, `level_name`, `context.exception`.
+- [ ] **Step 2: Run → FAIL (or pass immediately if Laravel's default config already wires it — then the test is the regression pin and the only code change is `.env.example`).**
+- [ ] **Step 3: Implement the minimal delta** `config/logging.php` needs, if any.
+- [ ] **Step 4: Run the test file + full suite (per the simplified policy: this file + smoke; CI covers the rest).**
+- [ ] **Step 5: Commit** — `git commit -m "Container logs leave as single-line JSON"`.
