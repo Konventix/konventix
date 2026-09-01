@@ -32,6 +32,12 @@ COPY . .
 # --no-dev: Telescope and all dev tooling are absent from the artifact.
 RUN composer install --no-dev --optimize-autoloader --no-interaction --no-progress
 
+# octane:start copies this stub into public/ at startup unless it already
+# exists — a copy that can never succeed on the chart's read-only root
+# filesystem, so it ships in the image (first deploy test, finding 4).
+RUN cp vendor/laravel/octane/src/Commands/stubs/frankenphp-worker.php \
+      public/frankenphp-worker.php
+
 # A throwaway environment: wayfinder:generate (run by the Vite plugin) boots
 # the application, which needs a key. Nothing of this .env reaches the image.
 RUN cp .env.example .env && php artisan key:generate
@@ -79,6 +85,17 @@ ARG APP_VERSION=dev
 ARG SENTRY_RELEASE=
 ENV APP_VERSION=${APP_VERSION} \
     SENTRY_RELEASE=${SENTRY_RELEASE}
+
+# The upstream frankenphp base grants cap_net_bind_service via setcap; under
+# the chart's allowPrivilegeEscalation=false (no_new_privs), exec of a
+# binary carrying file capabilities is EPERM before a single line of ours
+# runs (first deploy test, finding 5). We bind 8000 — the capability is
+# dead weight, and B1 promised "no setcap, no port 80" all along.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libcap2-bin \
+    && setcap -r /usr/local/bin/frankenphp \
+    && apt-get purge -y libcap2-bin && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1000 konventix
 
