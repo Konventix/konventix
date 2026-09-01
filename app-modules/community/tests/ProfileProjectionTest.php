@@ -41,6 +41,7 @@ function communityProfileUpdatedEventFor(string $userId): UserProfileUpdated
         tagline: 'Enchantress of numbers',
         statusEmoji: '💡',
         socialLinks: ['mastodon' => 'https://example.test/@ada'],
+        visibility: 'internal',
         locale: 'en',
         updatedAt: now()->toIso8601String(),
     );
@@ -99,6 +100,7 @@ it('stores null social links when the event carries an empty array', function ()
         tagline: null,
         statusEmoji: null,
         socialLinks: [],
+        visibility: 'internal',
         locale: 'en',
         updatedAt: now()->toIso8601String(),
     ));

@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Identity\Data\ProfileUpdateData;
+use Konventix\Identity\Enums\ProfileVisibility;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Http\Requests\ProfileDeleteRequest;
 use Konventix\Identity\Models\BrandMembership;
@@ -36,6 +37,7 @@ class ProfileController
                 'tagline' => $user->tagline,
                 'statusEmoji' => $user->status_emoji,
                 'socialLinks' => $user->social_links ?? (object) [],
+                'visibility' => $user->profile_visibility->value,
             ],
             'membershipImages' => $this->membershipImages($user, $media),
             'steamAvatarUrl' => $this->steamAvatarUrl($user),
@@ -90,6 +92,7 @@ class ProfileController
             'tagline' => $data->tagline !== '' ? $data->tagline : null,
             'status_emoji' => $data->statusEmoji !== '' ? $data->statusEmoji : null,
             'social_links' => array_filter($data->socialLinks ?? []) ?: null,
+            'profile_visibility' => ProfileVisibility::from($data->visibility),
         ]);
 
         if ($request->user()->isDirty('email')) {
@@ -108,6 +111,7 @@ class ProfileController
             tagline: $request->user()->tagline,
             statusEmoji: $request->user()->status_emoji,
             socialLinks: $request->user()->social_links ?? [],
+            visibility: $request->user()->profile_visibility->value,
             locale: $request->user()->locale,
             updatedAt: now()->toIso8601String(),
         ));

@@ -60,6 +60,7 @@ it('re-projects UserProfileUpdated over an existing row', function (): void {
         tagline: null,
         statusEmoji: null,
         socialLinks: [],
+        visibility: 'internal',
         locale: 'en',
         updatedAt: now()->toIso8601String(),
     ));

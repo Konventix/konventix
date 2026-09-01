@@ -49,6 +49,7 @@ class ReplayProfilesCommand extends Command
                         tagline: $user->tagline,
                         statusEmoji: $user->status_emoji,
                         socialLinks: $user->social_links ?? [],
+                        visibility: $user->profile_visibility->value,
                         locale: $user->locale,
                         updatedAt: ($user->updated_at ?? now())->toIso8601String(),
                     ));

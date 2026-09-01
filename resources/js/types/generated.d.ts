@@ -476,6 +476,7 @@ declare namespace Konventix {
                 readonly tagline: string | null;
                 readonly statusEmoji: string | null;
                 readonly socialLinks: Record<string, string> | null;
+                readonly visibility: string;
             };
             export type RegisterData = {
                 readonly name: string;
@@ -511,6 +512,7 @@ declare namespace Konventix {
                 | 'identity.revoke-user-sessions'
                 | 'identity.manage-social-providers'
                 | 'identity.impersonate-user';
+            export type ProfileVisibility = 'event' | 'internal' | 'public';
         }
     }
     namespace Messaging {

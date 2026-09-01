@@ -25,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $tagline
  * @property string|null $status_emoji
  * @property array<string, string>|null $social_links
+ * @property string $visibility
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -36,7 +37,7 @@ class CommunityProfile extends Model
 
     protected $keyType = 'string';
 
-    protected $fillable = ['id', 'username', 'display_name', 'tagline', 'status_emoji', 'social_links'];
+    protected $fillable = ['id', 'username', 'display_name', 'tagline', 'status_emoji', 'social_links', 'visibility'];
 
     /**
      * @return array<string, string>

@@ -7,10 +7,15 @@ namespace Konventix\Community\Providers;
 use Illuminate\Support\Facades\Event;
 use Konventix\Community\Listeners\ProjectCommunityMember;
 use Konventix\Community\Listeners\ProjectCommunityProfile;
+use Konventix\Community\Listeners\ProjectEventParticipation;
 use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Registration\Events\RegistrationCancelled;
+use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationRejected;
+use Konventix\Registration\Events\RegistrationSubmitted;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -35,11 +40,18 @@ class CommunityServiceProvider extends ModuleServiceProvider
      * (.ai/rules/listeners.md). `ProjectCommunityMember` gates itself on the
      * event's brand; `ProjectCommunityProfile` does not, because
      * `community_profiles` is operator-wide (ADR-0016).
+     * `ProjectEventParticipation` (ADR-0052 §3) gates itself the same way as
+     * `ProjectCommunityMember`, on the Registration event's own brand, and
+     * is registered for all four events it consumes.
      */
     protected function registerListeners(): void
     {
         Event::listen(UserRegistered::class, ProjectCommunityProfile::class);
         Event::listen(UserProfileUpdated::class, ProjectCommunityProfile::class);
         Event::listen(BrandMembershipProfileUpdated::class, ProjectCommunityMember::class);
+        Event::listen(RegistrationSubmitted::class, ProjectEventParticipation::class);
+        Event::listen(RegistrationConfirmed::class, ProjectEventParticipation::class);
+        Event::listen(RegistrationCancelled::class, ProjectEventParticipation::class);
+        Event::listen(RegistrationRejected::class, ProjectEventParticipation::class);
     }
 }

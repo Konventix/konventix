@@ -20,8 +20,11 @@ use Konventix\Identity\Events\UserRegistered;
  * events are the public contract between modules (ADR-0004).
  *
  * `UserRegistered` only carries username and display name, so that branch
- * writes those two fields; `UserProfileUpdated` carries the full profile and
- * writes all five, with an empty `socialLinks` array normalized to null.
+ * writes those two fields (and defaults `visibility` to `internal`, the
+ * same default Identity's own `profile_visibility` column ships with —
+ * `UserRegistered` predates ADR-0052 and carries no visibility of its own);
+ * `UserProfileUpdated` carries the full profile and writes all six, with an
+ * empty `socialLinks` array normalized to null.
  */
 final class ProjectCommunityProfile
 {
@@ -34,8 +37,9 @@ final class ProjectCommunityProfile
                 'tagline' => $event->tagline,
                 'status_emoji' => $event->statusEmoji,
                 'social_links' => $event->socialLinks === [] ? null : $event->socialLinks,
+                'visibility' => $event->visibility,
             ]
-            : ['username' => $event->username, 'display_name' => $event->displayName];
+            : ['username' => $event->username, 'display_name' => $event->displayName, 'visibility' => 'internal'];
 
         CommunityProfile::query()->updateOrCreate(['id' => $event->userId], $attributes);
     }

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Inertia\Testing\AssertableInertia;
+use Konventix\Identity\Enums\ProfileVisibility;
 use Konventix\Identity\Models\User;
 
 /**
@@ -20,6 +21,7 @@ function validProfilePayload(User $user, array $overrides = []): array
         'tagline' => 'First programmer',
         'statusEmoji' => '🚀',
         'socialLinks' => ['x' => 'ada', 'website' => 'https://example.test'],
+        'visibility' => 'internal',
     ], $overrides);
 }
 
@@ -32,6 +34,7 @@ it('updates the profile-of-record', function (): void {
         'username' => 'ada-lovelace', 'tagline' => 'First programmer',
         'statusEmoji' => '🚀',
         'socialLinks' => ['x' => 'ada', 'website' => 'https://example.test'],
+        'visibility' => 'internal',
     ])->assertRedirect();
 
     $user->refresh();
@@ -122,6 +125,7 @@ it('normalizes empty tagline and status emoji to null and empty social links to 
         'name' => $user->name, 'email' => $user->email,
         'username' => 'ada-lovelace', 'tagline' => '', 'statusEmoji' => '',
         'socialLinks' => ['steam' => '', 'x' => ''],
+        'visibility' => 'internal',
     ])->assertRedirect();
 
     $user->refresh();
@@ -137,6 +141,7 @@ it('passes the current profile-of-record as a page prop', function (): void {
         'tagline' => 'First programmer',
         'status_emoji' => '🚀',
         'social_links' => ['x' => 'ada'],
+        'profile_visibility' => ProfileVisibility::Public,
     ]);
 
     $this->actingAs($user)
@@ -149,5 +154,6 @@ it('passes the current profile-of-record as a page prop', function (): void {
             ->where('profile.username', 'ada-lovelace')
             ->where('profile.tagline', 'First programmer')
             ->where('profile.statusEmoji', '🚀')
-            ->where('profile.socialLinks', ['x' => 'ada']));
+            ->where('profile.socialLinks', ['x' => 'ada'])
+            ->where('profile.visibility', 'public'));
 });

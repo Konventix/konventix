@@ -41,6 +41,7 @@ final class UpdateUserAccount
                 tagline: $user->tagline,
                 statusEmoji: $user->status_emoji,
                 socialLinks: $user->social_links ?? [],
+                visibility: $user->profile_visibility->value,
                 locale: $user->locale,
                 updatedAt: now()->toIso8601String(),
             ));

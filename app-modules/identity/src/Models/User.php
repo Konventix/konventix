@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
 use Konventix\Identity\Data\AccountPreferencesData;
 use Konventix\Identity\Database\Factories\UserFactory;
 use Konventix\Identity\Enums\AccountState;
+use Konventix\Identity\Enums\ProfileVisibility;
 use Konventix\Identity\Mail\AuthMailer;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
@@ -48,6 +49,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string|null $tagline
  * @property string|null $status_emoji
  * @property array<string, string>|null $social_links
+ * @property ProfileVisibility $profile_visibility
  * @property string $locale
  * @property string $timezone
  * @property AccountState $state
@@ -59,7 +61,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'password', 'username', 'tagline', 'status_emoji', 'social_links', 'locale', 'timezone', 'preferences'])]
+#[Fillable(['name', 'email', 'password', 'username', 'tagline', 'status_emoji', 'social_links', 'profile_visibility', 'locale', 'timezone', 'preferences'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -77,6 +79,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'social_links' => 'array',
+            'profile_visibility' => ProfileVisibility::class,
             'state' => AccountState::class,
             'preferences' => AccountPreferencesData::class.':default',
             'two_factor_confirmed_at' => 'datetime',
