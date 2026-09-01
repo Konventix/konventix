@@ -938,6 +938,11 @@ Render only present keys; empty map renders no section ("filling a field is choo
 
 ---
 
+
+**Amendment (2026-09-01, user-directed — ADR-0052 profile visibility):** the 404 matrix above is superseded by the visibility-aware gate. `ResolvesProfiles::resolveProfileOrFail` becomes: (1) resolve profile by folded username, 404 if none; (2) resolve the subject's `CommunityMember` row for the current brand, 404 if none — the subject must be a member of this brand under EVERY visibility; (3) switch on `$profile->visibility`: `public` → no viewer checks at all (guests render the page); `internal` → viewer signed in AND has a CommunityMember row on this brand, else 404; `event` → the internal checks PLUS at least one shared confirmed event participation: `CommunityEventParticipation` rows (brand-scoped) where viewer and subject both have `confirmed = true` for the same `event_id`, else 404. All denials stay 404. Comments are internal-scope regardless of visibility: the `comments`/`canComment` props are computed only when the viewer passes the `internal` checks; a guest on a public profile gets `comments: null` and the page renders no comments section. Test matrix additions: public profile renders for a guest; public profile hides comments from a guest; event-only 404s for a member with no shared confirmed event; event-only renders when a shared confirmed participation exists on this brand; internal behaves as the original matrix. Consumes from Task 13: `CommunityProfile::$visibility`, `CommunityEventParticipation` (fields `id` = registrationId, `user_id`, `event_id`, `confirmed`, brand-scoped), and `Konventix\Identity\Enums\ProfileVisibility`.
+
+---
+
 ### Task 9: Profile-wall comments and reactions
 
 **Files:**
@@ -1063,3 +1068,47 @@ Added mid-run at the user's request (2026-09-01) — deploy-facing, independent 
 - [ ] **Step 3: Implement the minimal delta** `config/logging.php` needs, if any.
 - [ ] **Step 4: Run the test file + full suite (per the simplified policy: this file + smoke; CI covers the rest).**
 - [ ] **Step 5: Commit** — `git commit -m "Container logs leave as single-line JSON"`.
+
+
+---
+
+### Task 13: A profile chooses its audience — visibility (ADR-0052)
+
+Added mid-run at the user's request. MUST run before the amended Task 8.
+
+**Files:**
+- Create: `docs/decisions/0052-a-profile-chooses-its-audience.md`
+- Create: `app-modules/identity/src/Enums/ProfileVisibility.php`
+- Create: `app-modules/identity/database/migrations/2026_09_01_170000_add_profile_visibility_to_users_table.php`
+- Create: `app-modules/community/database/migrations/2026_09_01_171000_add_visibility_and_event_participations.php`
+- Create: `app-modules/community/src/Models/CommunityEventParticipation.php`, `app-modules/community/src/Listeners/ProjectEventParticipation.php`
+- Modify: `app-modules/identity/src/Models/User.php`, `app-modules/identity/src/Events/UserProfileUpdated.php` + every dispatch site (grep sweep as in Task 2), `app-modules/identity/src/Data/ProfileUpdateData.php`, `app-modules/identity/src/Http/Controllers/ProfileController.php`, `resources/js/pages/settings/Profile.vue`, `app-modules/community/src/Models/CommunityProfile.php`, `app-modules/community/src/Listeners/ProjectCommunityProfile.php`, `app-modules/community/src/Providers/CommunityServiceProvider.php`, `app-modules/identity/src/Gdpr/IdentityGdprHandler.php`
+- Test: `app-modules/identity/tests/ProfileVisibilityTest.php`, `app-modules/community/tests/EventParticipationProjectionTest.php`
+
+**Interfaces:**
+- Produces: `ProfileVisibility` string enum `Event = 'event'`, `Internal = 'internal'`, `Public = 'public'` with `label()` unnecessary (frontend copies inline). `users.profile_visibility` string default `'internal'`, cast to the enum. `UserProfileUpdated` gains required `public string $visibility` (after `socialLinks`). `community_profiles.visibility` string default `'internal'` (plain string in the read model). `community_event_participations`: `id` ULID PK = the REGISTRATION id from the event (no HasUlids), `brand_id` (BelongsToBrand, written via forceFill exactly like CommunityMember — never mass-assignable), `user_id` ulid indexed no FK, `event_id` ulid indexed no FK (ADR-0014), `confirmed` boolean default false, timestamps, index `(user_id, event_id)`. `ProjectEventParticipation` handles `RegistrationSubmitted|RegistrationConfirmed|RegistrationCancelled|RegistrationRejected`.
+
+- [ ] **Step 1: Write ADR-0052** (short, amends ADR-0051 §7): a per-account `profile_visibility` on the profile-of-record — `internal` (default; ADR-0051's members-only rule unchanged), `public` (the owner's explicit opt-in publishes the page to anyone including guests — the "membership is personal data" 404 is the default, not a prohibition on self-disclosure), `event` (viewer must share at least one CONFIRMED event registration with the owner on this brand — sourced from Registration's contract events via a Community read model, since Community may not read Registration models per ADR-0004). Comments stay internal-scope under every visibility. Participation is projected going forward only (Registration has no replay command yet — a brand enabling Community late starts with empty participation; note it). Status: accepted.
+- [ ] **Step 2: Failing tests.** Identity: settings PATCH persists `visibility` and the widened event carries it; invalid value rejected (`Rule::enum(ProfileVisibility::class)`); default is internal on a fresh user; anonymization resets visibility to internal. Community: `RegistrationSubmitted` creates an unconfirmed participation row keyed by registrationId (module gate on the EVENT's brand, same Feature::for pattern); `RegistrationConfirmed` flips `confirmed` true by registrationId; `RegistrationCancelled` and `RegistrationRejected` delete the row; module-off brand projects nothing; `UserProfileUpdated` projects `visibility` into community_profiles.
+- [ ] **Step 3: Implement.** Migration users: `$table->string('profile_visibility')->default('internal')->after('social_links');`. Enum + `#[Fillable]` + cast + `@property`. Event widening: required param, all dispatch sites pass `$user->profile_visibility->value` (or `visibility:` from the enum's value — event payloads carry scalars), tests fixed via grep sweep. `ProfileUpdateData`: `public readonly string $visibility` with `['required', Rule::enum(ProfileVisibility::class)]`. Settings form: a three-option radio group (semantic tokens; labels "Public — anyone, even without an account", "Internal — signed-in members of this brand", "Event only — people confirmed for the same event") with helper copy; profile prop gains `visibility`. `ProjectCommunityProfile` writes visibility (Registered branch: `'internal'`). `ProjectEventParticipation` per the CommunityMember forceFill pattern; registered explicitly for all four Registration events. `RegistrationRejected`'s payload must be checked before use (it may carry only registrationId — that suffices for delete). `IdentityGdprHandler`: export gains `profile_visibility`; anonymize tombstone sets `'profile_visibility' => ProfileVisibility::Internal`.
+- [ ] **Step 4: Scoped suites (identity, community, messaging, content, registration), pint, scoped phpstan, `npm run format`, build.**
+- [ ] **Step 5: Commit** — `git commit -m "A profile chooses its audience"`.
+
+---
+
+### Task 14: Status-emoji picker
+
+Added mid-run at the user's request (dependency approved by the user).
+
+**Files:**
+- Modify: `package.json` (+ lockfile) — add `vue3-emoji-picker` (pin exact version)
+- Modify: `resources/js/pages/settings/Profile.vue`
+- Test: build + existing ProfileOfRecordTest stays green (server contract unchanged)
+
+**Interfaces:** consumes the existing `statusEmoji` input; server-side validation unchanged (single emoji grapheme).
+
+- [ ] **Step 1:** `npm install vue3-emoji-picker` (exact pin). Import its css in the component scope only.
+- [ ] **Step 2:** Replace the bare statusEmoji text input with: a button (labelled with the current emoji or a placeholder, `aria-label="Choose status emoji"`, `aria-expanded`) toggling a popover hosting `<EmojiPicker :native="true" @select="..." />`; select writes the emoji into the (still present, now readonly) input + a visible "clear" button (`aria-label="Clear status emoji"`). Keyboard: Escape closes, focus returns to the trigger. Popover styled with semantic tokens; the picker's own theme prop set to follow dark mode if supported, else accept its default.
+- [ ] **Step 3:** `npm run format`, `npm run build` + `build:ssr` (picker must be SSR-safe — if it breaks SSR, lazy-load it client-only via `defineAsyncComponent` guarded by `typeof window !== 'undefined'`), `npx vue-tsc --noEmit`.
+- [ ] **Step 4:** Run tests/Feature/Settings + identity ProfileOfRecordTest (server unchanged, must stay green).
+- [ ] **Step 5: Commit** — `git commit -m "Pick the status emoji instead of typing it"`.
