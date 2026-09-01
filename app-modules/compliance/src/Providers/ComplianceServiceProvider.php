@@ -8,6 +8,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Konventix\Compliance\Console\ApplyRetentionRulesCommand;
+use Konventix\Compliance\Console\SweepUnverifiedRequestsCommand;
 use Konventix\Compliance\Console\WatchSubjectRequestDeadlinesCommand;
 use Konventix\Compliance\Enums\Permission;
 use Konventix\Compliance\Events\DataExportCompleted;
@@ -226,18 +227,21 @@ class ComplianceServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * The retention sweep and the deadline watch. Registered explicitly
-     * rather than by discovery: a sweep that silently failed to register
-     * would look like "nothing is out of retention" rather than like a bug.
+     * The retention sweep, the deadline watch, and the unverified request sweep.
+     * Registered explicitly rather than by discovery: a sweep that silently
+     * failed to register would look like "nothing is out of retention" rather
+     * than like a bug.
      */
     protected function registerSchedule(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([ApplyRetentionRulesCommand::class, WatchSubjectRequestDeadlinesCommand::class]);
+            $this->commands([ApplyRetentionRulesCommand::class, SweepUnverifiedRequestsCommand::class, WatchSubjectRequestDeadlinesCommand::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command(ApplyRetentionRulesCommand::class)->dailyAt('03:30');
+
+            $schedule->command(SweepUnverifiedRequestsCommand::class)->hourly();
 
             // Early enough that a warning is in the operator's inbox at the
             // start of the working day the deadline actually matters on.
