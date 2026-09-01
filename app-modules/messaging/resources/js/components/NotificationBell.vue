@@ -36,8 +36,9 @@ type Notification = {
 };
 
 const page = usePage();
-// Converted rather than cast: the shared auth prop types the id as a number,
-// while every id in this application is a ULID string (ADR-0014).
+// The shared auth prop already types the id as a ULID string (ADR-0014,
+// ADR-0051 §5) — this stays a conversion rather than a cast for the one
+// case that isn't a string: a signed-out visitor, where `user` is null.
 const userId = computed<string | undefined>(() => {
     const id = page.props.auth?.user?.id;
 

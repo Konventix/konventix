@@ -29,6 +29,7 @@ const { profile, membershipImages, steamAvatarUrl } = defineProps<{
         tagline: string | null;
         statusEmoji: string | null;
         socialLinks: Record<string, string>;
+        visibility: 'public' | 'internal' | 'event';
     };
     membershipImages: {
         avatarUrl: string | null;
@@ -175,6 +176,58 @@ function submitBanner(event: Event): void {
                 <p class="text-sm text-text-muted">A single emoji.</p>
                 <InputError class="mt-2" :message="errors.statusEmoji" />
             </div>
+
+            <fieldset class="grid gap-2">
+                <legend class="text-sm leading-none font-medium">
+                    Who can see your profile page
+                </legend>
+                <label class="flex items-start gap-2 text-sm">
+                    <input
+                        type="radio"
+                        name="visibility"
+                        value="public"
+                        class="mt-1 size-4 accent-accent"
+                        :checked="profile.visibility === 'public'"
+                    />
+                    <span>
+                        <span class="block">Public</span>
+                        <span class="block text-text-muted"
+                            >Anyone, even without an account</span
+                        >
+                    </span>
+                </label>
+                <label class="flex items-start gap-2 text-sm">
+                    <input
+                        type="radio"
+                        name="visibility"
+                        value="internal"
+                        class="mt-1 size-4 accent-accent"
+                        :checked="profile.visibility === 'internal'"
+                    />
+                    <span>
+                        <span class="block">Internal</span>
+                        <span class="block text-text-muted"
+                            >Signed-in members of this brand</span
+                        >
+                    </span>
+                </label>
+                <label class="flex items-start gap-2 text-sm">
+                    <input
+                        type="radio"
+                        name="visibility"
+                        value="event"
+                        class="mt-1 size-4 accent-accent"
+                        :checked="profile.visibility === 'event'"
+                    />
+                    <span>
+                        <span class="block">Event only</span>
+                        <span class="block text-text-muted"
+                            >People confirmed for the same event</span
+                        >
+                    </span>
+                </label>
+                <InputError class="mt-2" :message="errors.visibility" />
+            </fieldset>
 
             <div class="grid gap-4">
                 <p class="text-sm leading-none font-medium">Social links</p>

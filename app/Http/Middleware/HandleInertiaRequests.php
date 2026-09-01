@@ -7,6 +7,7 @@ namespace App\Http\Middleware;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Konventix\Commerce\Cart\CartSummary;
+use Konventix\Identity\Profile\AvatarUrlResolver;
 use Konventix\Platform\Blocks\BlockCompositionRenderer;
 use Konventix\Platform\Branding\BrandIdentityResolver;
 use Konventix\Platform\Brands\BrandContext;
@@ -66,7 +67,14 @@ class HandleInertiaRequests extends Middleware
             // null, and the shell falls back to the bundled mark.
             'brand' => $identity,
             'auth' => [
-                'user' => $request->user(),
+                // The four-field shape Identity's SPEC promises (ADR-0051 §5):
+                // ULID, display name, avatar URL, locale — never the whole model.
+                'user' => $request->user() === null ? null : [
+                    'id' => (string) $request->user()->getAuthIdentifier(),
+                    'name' => $request->user()->name,
+                    'avatarUrl' => app(AvatarUrlResolver::class)->forUser((string) $request->user()->getAuthIdentifier()),
+                    'locale' => $request->user()->locale,
+                ],
             ],
             // The current brand's Reverb app key (ADR-0025). Echo is
             // configured from this, because the key differs per brand and

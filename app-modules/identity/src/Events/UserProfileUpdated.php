@@ -10,7 +10,10 @@ namespace Konventix\Identity\Events;
  * registrant/holder models) re-project from this payload — idempotently,
  * since a replay carries the same current values. Scalars only (ADR-0004).
  * Widened by ADR-0051 §6: the profile-of-record travels here so per-module
- * read models can render it without reading Identity.
+ * read models can render it without reading Identity. Widened again by
+ * ADR-0052 §5: `visibility` carries the enum's scalar value — operator-wide,
+ * because `profile_visibility` lives on `User` like `username` does, not on
+ * the brand membership.
  */
 final readonly class UserProfileUpdated
 {
@@ -23,6 +26,7 @@ final readonly class UserProfileUpdated
         public ?string $statusEmoji,
         /** @var array<string, string> */
         public array $socialLinks,
+        public string $visibility,
         public string $locale,
         public string $updatedAt,
     ) {}

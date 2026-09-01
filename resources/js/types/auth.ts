@@ -1,16 +1,17 @@
-export type User = {
-    id: number;
+/**
+ * The shared `auth.user` prop (ADR-0051 §5): ULID, display name, avatar
+ * URL, locale — never the whole model. `HandleInertiaRequests` is the only
+ * place that builds this shape.
+ */
+export type AuthenticatedUser = {
+    id: string;
     name: string;
-    email: string;
-    avatar?: string;
-    email_verified_at: string | null;
-    created_at: string;
-    updated_at: string;
-    [key: string]: unknown;
+    avatarUrl: string | null;
+    locale: string;
 };
 
 export type Auth = {
-    user: User;
+    user: AuthenticatedUser | null;
 };
 
 /* @chisel-passkeys */

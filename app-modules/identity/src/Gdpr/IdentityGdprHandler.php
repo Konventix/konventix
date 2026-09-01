@@ -9,6 +9,7 @@ use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Identity\Enums\AccountState;
+use Konventix\Identity\Enums\ProfileVisibility;
 use Konventix\Identity\Events\UserAnonymized;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\Session;
@@ -67,6 +68,7 @@ final class IdentityGdprHandler implements GdprHandler
                 'locale' => $user->locale,
                 'timezone' => $user->timezone,
                 'state' => $user->state->value,
+                'profile_visibility' => $user->profile_visibility->value,
                 'email_verified_at' => $user->email_verified_at?->toIso8601String(),
                 'two_factor_enabled' => $user->two_factor_confirmed_at !== null,
                 'registered_at' => $user->created_at?->toIso8601String(),
@@ -158,6 +160,9 @@ final class IdentityGdprHandler implements GdprHandler
             'two_factor_recovery_codes' => null,
             'two_factor_confirmed_at' => null,
             'state' => AccountState::Anonymized,
+            // A scrubbed account has no audience left to choose a page for
+            // (ADR-0052 §5 consequences).
+            'profile_visibility' => ProfileVisibility::Internal,
         ])->save();
 
         event(new UserAnonymized(

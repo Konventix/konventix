@@ -60,6 +60,7 @@ it('emits UserProfileUpdated with the current values on a profile update', funct
             'name' => 'Countess of Lovelace',
             'email' => 'countess@example.test',
             'username' => $user->username,
+            'visibility' => 'internal',
         ])
         ->assertRedirect();
 
@@ -68,5 +69,6 @@ it('emits UserProfileUpdated with the current values on a profile update', funct
         && $event->displayName === 'Countess of Lovelace'
         && $event->username === $user->username
         && $event->tagline === null
-        && $event->socialLinks === []);
+        && $event->socialLinks === []
+        && $event->visibility === 'internal');
 });

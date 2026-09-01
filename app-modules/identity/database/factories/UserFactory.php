@@ -9,6 +9,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Konventix\Identity\Enums\AccountState;
+use Konventix\Identity\Enums\ProfileVisibility;
 use Konventix\Identity\Models\User;
 use Laravel\Fortify\Contracts\TwoFactorAuthenticationProvider;
 use Laravel\Fortify\Fortify;
@@ -57,6 +58,7 @@ class UserFactory extends Factory
             'tagline' => null,
             'status_emoji' => null,
             'social_links' => null,
+            'profile_visibility' => ProfileVisibility::Internal,
             'locale' => 'en',
             'timezone' => 'UTC',
             'state' => AccountState::Active,

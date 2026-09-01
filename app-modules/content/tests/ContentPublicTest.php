@@ -140,6 +140,7 @@ it('re-projects the author name when the profile changes', function (): void {
         tagline: null,
         statusEmoji: null,
         socialLinks: [],
+        visibility: 'internal',
         locale: 'de',
         updatedAt: now()->toIso8601String(),
     ));

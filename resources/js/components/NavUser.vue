@@ -21,6 +21,13 @@ const user = computed(() => page.props.auth.user);
 const { isMobile, state } = useSidebar();
 
 /**
+ * This renders only inside the console sidebar, which sits behind auth —
+ * `user` is always present there. The type is nullable because the shared
+ * prop is (a signed-out visitor on the brand shell), so this narrows for
+ * the child components below rather than passing a `null` they can't take.
+ */
+
+/**
  * Inertia caches the rendered page tree per history entry; logging out has
  * to drop it, or the back button shows the previous user's page.
  */
@@ -30,7 +37,7 @@ function handleLogout(): void {
 </script>
 
 <template>
-    <SidebarMenu>
+    <SidebarMenu v-if="user">
         <SidebarMenuItem>
             <DropdownMenu>
                 <DropdownMenuTrigger as-child>

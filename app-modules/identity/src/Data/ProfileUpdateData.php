@@ -7,6 +7,7 @@ namespace Konventix\Identity\Data;
 use Closure;
 use Illuminate\Validation\Rule;
 use Konventix\Identity\Concerns\ProfileValidationRules;
+use Konventix\Identity\Enums\ProfileVisibility;
 use Konventix\Identity\Models\User;
 use Konventix\Identity\Profile\SocialLinks;
 use Konventix\Identity\Profile\UsernameGenerator;
@@ -25,7 +26,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * shared `profileRules()` Concern; the new fields validate only here —
  * `ProfileValidationRules::profileRules()` stays untouched because
  * registration (`RegisterData`, `CompleteSocialSignupData`) reuses it and
- * must not ask for a username.
+ * must not ask for a username. Widened again by ADR-0052 §1: `visibility`,
+ * required and validated against the `ProfileVisibility` enum.
  */
 #[TypeScript]
 final class ProfileUpdateData extends Data
@@ -40,6 +42,7 @@ final class ProfileUpdateData extends Data
         public readonly ?string $statusEmoji,
         /** @var array<string, string>|null */
         public readonly ?array $socialLinks,
+        public readonly string $visibility,
     ) {}
 
     /**
@@ -79,6 +82,7 @@ final class ProfileUpdateData extends Data
             ],
             'socialLinks' => ['nullable', 'array:'.implode(',', SocialLinks::KEYS)],
             'socialLinks.website' => ['sometimes', 'nullable', 'string', 'url:http,https', 'max:255'],
+            'visibility' => ['required', Rule::enum(ProfileVisibility::class)],
         ]);
 
         foreach (SocialLinks::PLATFORMS as $platform => $regex) {
