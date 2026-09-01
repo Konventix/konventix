@@ -187,3 +187,29 @@ it('leaves a closed request alone and one whose deadline is far off', function (
         ->where('template_key', WatchSubjectRequestDeadlinesCommand::TEMPLATE_KEY)
         ->count())->toBe(0);
 });
+
+it('acknowledges an export request with its deadline', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('exports');
+
+    $user = User::factory()->create();
+    BrandMembership::factory()->create(['user_id' => $user->id]);
+    Recipient::query()->create([
+        'id' => $user->id,
+        'email' => 'alex@example.test',
+        'display_name' => 'Alex',
+        'locale' => 'de',
+    ]);
+
+    app(OpenSubjectRequest::class)(
+        SubjectRef::forUser($user->getKey()),
+        DataSubjectRequestType::Export,
+        null,
+        $brand->getKey(),
+    );
+
+    expect(MessageRecord::withoutBrandScope()
+        ->where('template_key', NotifySubjectOfRequestOutcome::REQUEST_ACKNOWLEDGED)
+        ->where('recipient_id', $user->getKey())
+        ->exists())->toBeTrue();
+});

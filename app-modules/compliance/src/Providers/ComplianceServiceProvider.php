@@ -90,6 +90,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // fan-out is what scrubs it, and under a synchronous queue it would
         // otherwise run first (see the listener's docblock).
         Event::listen(UserDeletionRequested::class, [NotifySubjectOfRequestOutcome::class, 'handleDeletionRequested']);
+        Event::listen(DataExportRequested::class, [NotifySubjectOfRequestOutcome::class, 'handleExportRequested']);
 
         Event::listen(DataExportRequested::class, [DispatchSubjectRequestFanOut::class, 'handleExport']);
         Event::listen(UserDeletionRequested::class, [DispatchSubjectRequestFanOut::class, 'handleDeletion']);

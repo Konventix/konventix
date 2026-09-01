@@ -7,6 +7,7 @@ namespace Konventix\Compliance\Listeners;
 use Illuminate\Support\Facades\Log;
 use Konventix\Compliance\Data\SubjectRequestMailData;
 use Konventix\Compliance\Events\DataExportCompleted;
+use Konventix\Compliance\Events\DataExportRequested;
 use Konventix\Compliance\Events\SubjectRequestRefused;
 use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\SubjectRef;
@@ -96,6 +97,20 @@ final class NotifySubjectOfRequestOutcome
         }
 
         $this->send($request->subject(), $request->filed_on_brand_id, self::DELETION_ACKNOWLEDGED, new SubjectRequestMailData(
+            requestType: $request->type->value,
+            deadline: $request->deadline_at->format('d.m.Y'),
+        ));
+    }
+
+    public function handleExportRequested(DataExportRequested $event): void
+    {
+        $request = $this->find($event->requestId);
+
+        if ($request === null) {
+            return;
+        }
+
+        $this->send($request->subject(), $request->filed_on_brand_id, self::REQUEST_ACKNOWLEDGED, new SubjectRequestMailData(
             requestType: $request->type->value,
             deadline: $request->deadline_at->format('d.m.Y'),
         ));
