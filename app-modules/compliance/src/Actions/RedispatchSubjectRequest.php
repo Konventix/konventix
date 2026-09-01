@@ -41,13 +41,15 @@ final class RedispatchSubjectRequest
             DataSubjectRequestType::Export => event(new DataExportRequested(
                 requestId: $request->id,
                 subjectId: $request->subject_id,
-                brandId: $request->brand_id,
+                subjectEmail: $request->subject_email,
+                brandId: $request->filed_on_brand_id ?? '',
                 requestedAt: now()->toIso8601String(),
             )),
             DataSubjectRequestType::Deletion => event(new UserDeletionRequested(
                 requestId: $request->id,
                 subjectId: $request->subject_id,
-                brandId: $request->brand_id,
+                subjectEmail: $request->subject_email,
+                brandId: $request->filed_on_brand_id ?? '',
                 mode: $request->mode->value,
             )),
             DataSubjectRequestType::Rectification => null,

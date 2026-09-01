@@ -43,7 +43,7 @@ final class WatchSubjectRequestDeadlinesCommand extends Command
 
     public function handle(SendMessage $sendMessage, OperatorSettings $operatorSettings): int
     {
-        $open = DataSubjectRequest::withoutBrandScope()
+        $open = DataSubjectRequest::query()
             ->whereIn('state', [DataSubjectRequestState::Received, DataSubjectRequestState::InProgress])
             ->orderBy('deadline_at')
             ->get();
@@ -63,7 +63,13 @@ final class WatchSubjectRequestDeadlinesCommand extends Command
                 continue;
             }
 
-            $recipient = $operatorSettings->contactEmailForBrand($request->brand_id);
+            // filed_on_brand_id is provenance only (ADR-0050 §1), but it is
+            // the sole route left to the operator whose console this
+            // request belongs to — a request with none (filed on the admin
+            // host) has no operator contact to escalate to at all.
+            $recipient = $request->filed_on_brand_id === null
+                ? null
+                : $operatorSettings->contactEmailForBrand($request->filed_on_brand_id);
 
             if ($recipient === null) {
                 // Recorded rather than guessed: an operator with no contact
@@ -71,7 +77,7 @@ final class WatchSubjectRequestDeadlinesCommand extends Command
                 // some administrator would hide it.
                 Log::warning('Subject request deadline approaching, but the operator has no contact address.', [
                     'request_id' => $request->getKey(),
-                    'brand_id' => $request->brand_id,
+                    'filed_on_brand_id' => $request->filed_on_brand_id,
                     'days_left' => $daysLeft,
                 ]);
 
@@ -90,7 +96,7 @@ final class WatchSubjectRequestDeadlinesCommand extends Command
                 ),
                 recipientEmail: $recipient,
                 recipientLocale: 'de',
-                brandId: $request->brand_id,
+                brandId: $request->filed_on_brand_id,
             ));
 
             $request->forceFill(['escalation_level' => $level])->save();

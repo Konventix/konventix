@@ -12,7 +12,9 @@ use Konventix\Compliance\Actions\OpenSubjectRequest;
 use Konventix\Compliance\Enums\DataSubjectRequestState;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Enums\DeletionMode;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\DataSubjectRequest;
+use Konventix\Platform\Brands\BrandContext;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -57,9 +59,10 @@ final class DataRequestController
         }
 
         $openSubjectRequest(
-            $subjectId,
+            SubjectRef::forUser($subjectId),
             $type,
             $type === DataSubjectRequestType::Deletion ? DeletionMode::Anonymize : null,
+            app(BrandContext::class)->current()?->getKey(),
         );
 
         Inertia::flash('toast', [

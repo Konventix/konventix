@@ -15,7 +15,6 @@ use Konventix\Compliance\Enums\ModuleResponseState;
 use Konventix\Compliance\Events\DataExportCompleted;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
-use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Throwable;
 
@@ -50,16 +49,12 @@ final class AssembleSubjectExport implements ShouldQueue
 
     public function __construct(
         public readonly string $requestId,
-        public readonly string $brandId,
     ) {}
 
     public function handle(GdprHandlerRegistry $registry, RecordModuleResponse $recordModuleResponse): void
     {
         /** @var DataSubjectRequest|null $request */
-        $request = DataSubjectRequest::withoutBrandScope()
-            ->where('brand_id', $this->brandId)
-            ->whereKey($this->requestId)
-            ->first();
+        $request = DataSubjectRequest::query()->find($this->requestId);
 
         if ($request === null || $request->state === DataSubjectRequestState::Refused) {
             return;
@@ -67,7 +62,7 @@ final class AssembleSubjectExport implements ShouldQueue
 
         $request->forceFill(['state' => DataSubjectRequestState::InProgress])->save();
 
-        $subject = SubjectRef::forUser($request->subject_id);
+        $subject = $request->subject();
 
         $contributions = [];
         $failed = false;
@@ -121,7 +116,8 @@ final class AssembleSubjectExport implements ShouldQueue
         event(new DataExportCompleted(
             requestId: $request->getKey(),
             subjectId: $request->subject_id,
-            brandId: $this->brandId,
+            subjectEmail: $request->subject_email,
+            brandId: $request->filed_on_brand_id ?? '',
             archiveExpiresAt: $expiresAt->toIso8601String(),
         ));
     }

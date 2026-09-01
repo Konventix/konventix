@@ -151,7 +151,11 @@ it('refuses a request with a legal ground and emits SubjectRequestRefused', func
     [, $admin] = complianceRequestOperator();
     $brand = $this->withBrand();
 
-    $request = DataSubjectRequest::factory()->create(['type' => DataSubjectRequestType::Deletion, 'mode' => DeletionMode::Anonymize]);
+    $request = DataSubjectRequest::factory()->create([
+        'filed_on_brand_id' => $brand->getKey(),
+        'type' => DataSubjectRequestType::Deletion,
+        'mode' => DeletionMode::Anonymize,
+    ]);
 
     Event::fake([SubjectRequestRefused::class]);
 

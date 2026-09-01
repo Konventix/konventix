@@ -13,6 +13,7 @@ use Konventix\Compliance\Enums\ModuleResponseState;
 use Konventix\Compliance\Events\DataExportRequested;
 use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\DataSubjectRequestResponse;
 
@@ -32,15 +33,17 @@ final class OpenSubjectRequest
 {
     public function __construct(private readonly GdprHandlerRegistry $registry) {}
 
-    public function __invoke(string $subjectId, DataSubjectRequestType $type, ?DeletionMode $mode = null): DataSubjectRequest
+    public function __invoke(SubjectRef $subject, DataSubjectRequestType $type, ?DeletionMode $mode = null, ?string $filedOnBrandId = null): DataSubjectRequest
     {
         if ($type === DataSubjectRequestType::Deletion && $mode === null) {
             throw new InvalidArgumentException('Opening a deletion request requires a DeletionMode.');
         }
 
-        return DB::transaction(function () use ($subjectId, $type, $mode): DataSubjectRequest {
+        return DB::transaction(function () use ($subject, $type, $mode, $filedOnBrandId): DataSubjectRequest {
             $request = DataSubjectRequest::create([
-                'subject_id' => $subjectId,
+                'subject_id' => $subject->userId,
+                'subject_email' => $subject->email,
+                'filed_on_brand_id' => $filedOnBrandId,
                 'type' => $type,
                 'state' => DataSubjectRequestState::Received,
                 'mode' => $mode,
@@ -67,13 +70,15 @@ final class OpenSubjectRequest
             DataSubjectRequestType::Export => event(new DataExportRequested(
                 requestId: $request->id,
                 subjectId: $request->subject_id,
-                brandId: $request->brand_id,
+                subjectEmail: $request->subject_email,
+                brandId: $request->filed_on_brand_id ?? '',
                 requestedAt: $request->created_at->toIso8601String(),
             )),
             DataSubjectRequestType::Deletion => event(new UserDeletionRequested(
                 requestId: $request->id,
                 subjectId: $request->subject_id,
-                brandId: $request->brand_id,
+                subjectEmail: $request->subject_email,
+                brandId: $request->filed_on_brand_id ?? '',
                 mode: $request->mode->value,
             )),
             DataSubjectRequestType::Rectification => null,

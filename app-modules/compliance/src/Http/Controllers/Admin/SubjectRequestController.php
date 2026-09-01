@@ -57,7 +57,7 @@ class SubjectRequestController
         $state = $this->filterValue($request, 'state', array_column(DataSubjectRequestState::cases(), 'value'));
         $type = $this->filterValue($request, 'type', array_column(DataSubjectRequestType::cases(), 'value'));
 
-        $requests = DataSubjectRequest::withoutBrandScope()
+        $requests = DataSubjectRequest::query()
             ->when($request->filled('search'), fn ($query) => $query->where('subject_id', 'ilike', '%'.$request->string('search')->trim().'%'))
             ->when($state !== null, fn ($query) => $query->where('state', $state))
             ->when($type !== null, fn ($query) => $query->where('type', $type))
@@ -79,7 +79,7 @@ class SubjectRequestController
             'requests' => $requests->through(fn (DataSubjectRequest $subjectRequest): array => [
                 'id' => $subjectRequest->getKey(),
                 'subjectId' => $subjectRequest->subject_id,
-                'brandName' => $brandNames[$subjectRequest->brand_id] ?? '—',
+                'brandName' => $brandNames[$subjectRequest->filed_on_brand_id] ?? '—',
                 'type' => $subjectRequest->type->value,
                 'state' => $subjectRequest->state->value,
                 'deadlineAt' => $subjectRequest->deadline_at->toDateString(),
@@ -122,7 +122,7 @@ class SubjectRequestController
             'request' => [
                 'id' => $model->getKey(),
                 'subjectId' => $model->subject_id,
-                'brandName' => Brand::query()->whereKey($model->brand_id)->value('name') ?? '—',
+                'brandName' => Brand::query()->whereKey($model->filed_on_brand_id)->value('name') ?? '—',
                 'type' => $model->type->value,
                 'state' => $model->state->value,
                 'mode' => $model->mode?->value,
@@ -190,7 +190,7 @@ class SubjectRequestController
         $auditRecorder->record(
             action: 'compliance.subject-export.downloaded',
             subjectId: $model->subject_id,
-            brandId: $model->brand_id,
+            brandId: $model->filed_on_brand_id,
             context: ['request_id' => $model->getKey()],
         );
 
@@ -201,7 +201,7 @@ class SubjectRequestController
     private function find(string $subjectRequest): DataSubjectRequest
     {
         /** @var DataSubjectRequest */
-        return DataSubjectRequest::withoutBrandScope()->findOrFail($subjectRequest);
+        return DataSubjectRequest::query()->findOrFail($subjectRequest);
     }
 
     /**

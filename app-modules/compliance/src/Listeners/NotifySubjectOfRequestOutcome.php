@@ -50,7 +50,7 @@ final class NotifySubjectOfRequestOutcome
             return;
         }
 
-        $this->send($event->subjectId, $event->brandId, self::EXPORT_READY, new SubjectRequestMailData(
+        $this->send($event->subjectId, $event->subjectEmail, $event->brandId, self::EXPORT_READY, new SubjectRequestMailData(
             requestType: $request->type->value,
             deadline: $request->deadline_at->format('d.m.Y'),
             availableUntil: $request->archive_expires_at?->format('d.m.Y'),
@@ -65,7 +65,7 @@ final class NotifySubjectOfRequestOutcome
             return;
         }
 
-        $this->send($event->subjectId, $event->brandId, self::DELETION_ACKNOWLEDGED, new SubjectRequestMailData(
+        $this->send($event->subjectId, $event->subjectEmail, $event->brandId, self::DELETION_ACKNOWLEDGED, new SubjectRequestMailData(
             requestType: $request->type->value,
             deadline: $request->deadline_at->format('d.m.Y'),
         ));
@@ -79,7 +79,7 @@ final class NotifySubjectOfRequestOutcome
             return;
         }
 
-        $this->send($event->subjectId, $event->brandId, self::REQUEST_REFUSED, new SubjectRequestMailData(
+        $this->send($event->subjectId, null, $event->brandId, self::REQUEST_REFUSED, new SubjectRequestMailData(
             requestType: $request->type->value,
             deadline: $request->deadline_at->format('d.m.Y'),
             reasonCode: $event->reasonCode,
@@ -97,21 +97,34 @@ final class NotifySubjectOfRequestOutcome
      * So the notice is attempted, and a failure is recorded rather than
      * thrown: the statutory obligation is to carry out the request, and the
      * operator console still shows its state.
+     *
+     * `$subjectId`/`$subjectEmail` mirror `SubjectRef` (ADR-0050 §3): an
+     * account-backed subject is addressed by ULID, resolved through
+     * Messaging's own recipient read model; an account-less one has only the
+     * address they filed with, passed straight through as `recipientEmail`
+     * the same way an exhibitor billing contact already is.
+     *
+     * `$brandId` is `''` when the request carries no `filed_on_brand_id`
+     * (ADR-0050 §1: provenance only, nullable) — Messaging's `brand_id`
+     * column is a real foreign key, so an empty string is fed to it as
+     * "unknown" (null) rather than as a value, which lets `SendMessage` fall
+     * back to the ambient `BrandContext` the way an unset override already
+     * does.
      */
-    private function send(string $subjectId, string $brandId, string $templateKey, SubjectRequestMailData $payload): void
+    private function send(?string $subjectId, ?string $subjectEmail, string $brandId, string $templateKey, SubjectRequestMailData $payload): void
     {
         try {
             $this->sendMessage->handle(new SendMessageRequest(
-                // By ULID: Messaging resolves the address and locale from its
-                // own recipient read model, and Compliance never learns either.
                 recipientId: $subjectId,
                 templateKey: $templateKey,
                 payload: $payload,
-                brandId: $brandId,
+                recipientEmail: $subjectEmail,
+                brandId: $brandId === '' ? null : $brandId,
             ));
         } catch (Throwable $exception) {
             Log::warning('Could not notify the data subject about their request.', [
                 'subject_id' => $subjectId,
+                'subject_email' => $subjectEmail,
                 'template' => $templateKey,
                 'reason' => $exception->getMessage(),
             ]);
@@ -121,6 +134,6 @@ final class NotifySubjectOfRequestOutcome
     private function find(string $requestId): ?DataSubjectRequest
     {
         /** @var DataSubjectRequest|null */
-        return DataSubjectRequest::withoutBrandScope()->find($requestId);
+        return DataSubjectRequest::query()->find($requestId);
     }
 }

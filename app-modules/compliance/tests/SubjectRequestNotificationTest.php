@@ -10,6 +10,7 @@ use Konventix\Compliance\Console\WatchSubjectRequestDeadlinesCommand;
 use Konventix\Compliance\Enums\DataSubjectRequestState;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Enums\DeletionMode;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Listeners\NotifySubjectOfRequestOutcome;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Identity\Models\BrandMembership;
@@ -35,7 +36,7 @@ it('tells the subject their export is ready, without attaching it', function ():
         'locale' => 'de',
     ]);
 
-    app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Export);
+    app(OpenSubjectRequest::class)(SubjectRef::forUser($user->id), DataSubjectRequestType::Export, null, $brand->getKey());
 
     $record = MessageRecord::withoutBrandScope()
         ->where('template_key', NotifySubjectOfRequestOutcome::EXPORT_READY)
@@ -60,7 +61,7 @@ it('acknowledges a deletion while the address still exists', function (): void {
         'locale' => 'de',
     ]);
 
-    app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
+    app(OpenSubjectRequest::class)(SubjectRef::forUser($user->id), DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
 
     // The mail itself is the proof of ordering: it left for the real address
     // before the fan-out scrubbed every trace of it. `MAIL_MAILER=array` in
@@ -115,6 +116,7 @@ it('escalates an approaching deadline once, then again when it lapses', function
     $brand->forceFill(['operator_id' => $operator->id])->save();
 
     $request = DataSubjectRequest::factory()->create([
+        'filed_on_brand_id' => $brand->getKey(),
         'state' => DataSubjectRequestState::Received,
         'deadline_at' => now()->addDays(3),
     ]);

@@ -575,7 +575,7 @@ it('seeds content, compliance paperwork and messaging history', function () {
 
     // Three subject requests, one already refused, each fanned out to every
     // registered module handler.
-    $requests = DataSubjectRequest::withoutBrandScope()->where('brand_id', $brand->getKey())->get();
+    $requests = DataSubjectRequest::query()->where('filed_on_brand_id', $brand->getKey())->get();
     expect($requests)->toHaveCount(3)
         ->and(DataSubjectRequestResponse::query()
             ->whereIn('data_subject_request_id', $requests->pluck('id'))

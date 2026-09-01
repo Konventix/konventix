@@ -53,7 +53,7 @@ final class ComplianceGdprHandler implements GdprHandler
                     'capture_context' => $consent->capture_context,
                 ])
                 ->all(),
-            'subject_requests' => DataSubjectRequest::withoutBrandScope()
+            'subject_requests' => DataSubjectRequest::query()
                 ->where('subject_id', $subjectId)
                 ->orderBy('created_at')
                 ->get()

@@ -183,8 +183,8 @@ function dryRunSeed(object $test): void
  */
 function dryRunDownloadableRequests(Brand $brand): Builder
 {
-    return DataSubjectRequest::withoutBrandScope()
-        ->where('brand_id', $brand->getKey())
+    return DataSubjectRequest::query()
+        ->where('filed_on_brand_id', $brand->getKey())
         ->whereNotNull('archive_path')
         ->whereNotNull('archive_disk')
         ->where(fn (Builder $query) => $query->whereNull('archive_expires_at')->orWhere('archive_expires_at', '>', now()));

@@ -55,7 +55,7 @@ it('seeds a pending response row for every registered module when a request open
     // OpenSubjectRequest does before any handler is called.
     Queue::fake();
 
-    $request = (new OpenSubjectRequest($registry))((string) Str::ulid(), DataSubjectRequestType::Export);
+    $request = (new OpenSubjectRequest($registry))(SubjectRef::forUser((string) Str::ulid()), DataSubjectRequestType::Export);
 
     expect($request->responses()->where('module', 'staffing')->count())->toBe(1);
 
@@ -70,7 +70,7 @@ it('records a module response idempotently — recording twice does not duplicat
     $this->withBrand();
     $registry = app(GdprHandlerRegistry::class);
     $registry->register(new FakeStaffingGdprHandler);
-    $request = (new OpenSubjectRequest($registry))((string) Str::ulid(), DataSubjectRequestType::Export);
+    $request = (new OpenSubjectRequest($registry))(SubjectRef::forUser((string) Str::ulid()), DataSubjectRequestType::Export);
 
     (new RecordModuleResponse)($request, 'staffing', ModuleResponseState::Completed);
     (new RecordModuleResponse)($request, 'staffing', ModuleResponseState::Completed);
@@ -87,7 +87,7 @@ it('re-dispatches the export fan-out event without duplicating or losing respons
     $this->withBrand();
     $registry = app(GdprHandlerRegistry::class);
     $registry->register(new FakeStaffingGdprHandler);
-    $request = (new OpenSubjectRequest($registry))((string) Str::ulid(), DataSubjectRequestType::Export);
+    $request = (new OpenSubjectRequest($registry))(SubjectRef::forUser((string) Str::ulid()), DataSubjectRequestType::Export);
     (new RecordModuleResponse)($request, 'staffing', ModuleResponseState::Failed);
 
     Event::fake([DataExportRequested::class, UserDeletionRequested::class]);
@@ -105,7 +105,7 @@ it('lets a module overwrite its failed response after re-dispatch, still without
     $this->withBrand();
     $registry = app(GdprHandlerRegistry::class);
     $registry->register(new FakeStaffingGdprHandler);
-    $request = (new OpenSubjectRequest($registry))((string) Str::ulid(), DataSubjectRequestType::Export);
+    $request = (new OpenSubjectRequest($registry))(SubjectRef::forUser((string) Str::ulid()), DataSubjectRequestType::Export);
     (new RecordModuleResponse)($request, 'staffing', ModuleResponseState::Failed);
 
     (new RedispatchSubjectRequest)($request);

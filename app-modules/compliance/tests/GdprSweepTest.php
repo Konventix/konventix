@@ -10,6 +10,7 @@ use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Enums\ModuleResponseState;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\DataSubjectRequestResponse;
 use Konventix\Compliance\Models\Policy;
@@ -60,7 +61,7 @@ it('assembles a real export from every registered module', function (): void {
         'locale' => 'de',
     ]);
 
-    $request = app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Export);
+    $request = app(OpenSubjectRequest::class)(SubjectRef::forUser($user->id), DataSubjectRequestType::Export);
     $request->refresh();
 
     $archive = json_decode(Storage::disk('exports')->get((string) $request->archive_path), true);
@@ -111,7 +112,7 @@ it('anonymizes across modules while every reference still resolves', function ()
         'content_encoding' => 'aes128gcm',
     ]);
 
-    app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
+    app(OpenSubjectRequest::class)(SubjectRef::forUser($user->id), DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
 
     $user->refresh();
 
@@ -149,7 +150,7 @@ it('anonymizes an account and removes every brand membership, even one belonging
     BrandMembership::factory()->create(['user_id' => $user->id]);
     $this->withBrand($brandA);
 
-    app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
+    app(OpenSubjectRequest::class)(SubjectRef::forUser($user->id), DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
 
     expect($user->refresh()->state)->toBe(AccountState::Anonymized)
         ->and(BrandMembership::withoutBrandScope()->where('user_id', $user->id)->count())->toBe(0);
@@ -164,7 +165,7 @@ it('leaves the consent record standing after a deletion', function (): void {
     $version = PolicyVersion::factory()->for(Policy::factory())->published()->create();
     Consent::factory()->create(['subject_id' => $user->id, 'policy_version_id' => $version->id]);
 
-    app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
+    app(OpenSubjectRequest::class)(SubjectRef::forUser($user->id), DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
 
     // Destroying the proof that consent was given, in order to honour a
     // deletion request, would destroy the proof the request was honoured.

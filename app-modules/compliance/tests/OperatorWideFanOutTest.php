@@ -31,11 +31,12 @@ it('exports one archive covering every brand the person belongs to', function ()
 
     $request = DataSubjectRequest::create([
         'subject_id' => $user->getKey(),
+        'filed_on_brand_id' => $second->getKey(),
         'type' => DataSubjectRequestType::Export,
         'deadline_at' => now()->addDays(30),
     ]);
 
-    (new AssembleSubjectExport($request->getKey(), $second->getKey()))
+    (new AssembleSubjectExport($request->getKey()))
         ->handle(app(GdprHandlerRegistry::class), app(RecordModuleResponse::class));
 
     $archive = json_decode(Storage::disk('exports')->get("subject-exports/{$request->getKey()}.json"), true);
