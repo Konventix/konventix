@@ -7,6 +7,7 @@ namespace Konventix\Compliance\Data;
 use Konventix\Compliance\Models\PolicyVersion;
 use Spatie\LaravelData\Attributes\Validation\BooleanType;
 use Spatie\LaravelData\Attributes\Validation\Date;
+use Spatie\LaravelData\Attributes\Validation\In;
 use Spatie\LaravelData\Attributes\Validation\Max;
 use Spatie\LaravelData\Attributes\Validation\Nullable;
 use Spatie\LaravelData\Attributes\Validation\Required;
@@ -39,6 +40,9 @@ final class PolicyVersionData extends Data
         #[Required, BooleanType]
         public readonly bool $requiresConsent,
 
+        #[Required, StringType, In(['consent', 'contract', 'legitimate_interest'])]
+        public readonly string $lawfulBasis,
+
         #[Nullable, Date]
         public readonly ?string $effectiveAt = null,
     ) {}
@@ -49,6 +53,7 @@ final class PolicyVersionData extends Data
             version: $version->version,
             content: $version->content,
             requiresConsent: $version->requires_consent,
+            lawfulBasis: $version->lawful_basis->value,
             effectiveAt: $version->effective_at?->format('Y-m-d H:i:s'),
         );
     }

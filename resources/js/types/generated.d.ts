@@ -287,6 +287,7 @@ declare namespace Konventix {
                 readonly version: string;
                 readonly content: string;
                 readonly requiresConsent: boolean;
+                readonly lawfulBasis: string;
                 readonly effectiveAt: string | null;
             };
         }
@@ -296,6 +297,8 @@ declare namespace Konventix {
             export type DataSubjectRequestType =
                 'export' | 'deletion' | 'rectification';
             export type DeletionMode = 'anonymize' | 'erase';
+            export type LawfulBasis =
+                'consent' | 'contract' | 'legitimate_interest';
             export type ModuleResponseState =
                 'pending' | 'completed' | 'failed';
             export type Permission =

@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Konventix\Compliance\Database\Factories\PolicyVersionFactory;
+use Konventix\Compliance\Enums\LawfulBasis;
 use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
@@ -28,6 +29,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $version
  * @property string $content
  * @property bool $requires_consent
+ * @property LawfulBasis $lawful_basis
  * @property PolicyVersionState $state
  * @property Carbon|null $effective_at
  * @property Carbon|null $published_at
@@ -45,6 +47,7 @@ class PolicyVersion extends Model
         'version',
         'content',
         'requires_consent',
+        'lawful_basis',
         'state',
         'effective_at',
         'published_at',
@@ -65,6 +68,7 @@ class PolicyVersion extends Model
     {
         return [
             'requires_consent' => 'boolean',
+            'lawful_basis' => LawfulBasis::class,
             'state' => PolicyVersionState::class,
             'effective_at' => 'datetime',
             'published_at' => 'datetime',

@@ -140,6 +140,7 @@ it('refuses to edit a published version', function (): void {
             'version' => 'v1',
             'content' => 'Rewritten text',
             'requiresConsent' => true,
+            'lawfulBasis' => 'consent',
         ])
         ->assertServerError();
 

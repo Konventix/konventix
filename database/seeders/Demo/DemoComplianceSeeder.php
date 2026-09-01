@@ -99,6 +99,7 @@ final class DemoComplianceSeeder
             version: 'v1.0',
             content: $this->body($name),
             requiresConsent: $requiresConsent,
+            lawfulBasis: 'consent',
         ));
 
         ($this->publishVersion)($version, now()->subMonths(6));
@@ -124,6 +125,7 @@ final class DemoComplianceSeeder
             version: 'v2.0',
             content: $this->body($terms->name).PHP_EOL.PHP_EOL.'Section 7 (house rules) was clarified in this revision.',
             requiresConsent: true,
+            lawfulBasis: 'consent',
         ));
 
         return ($this->publishVersion)($version, now()->subMonth());
