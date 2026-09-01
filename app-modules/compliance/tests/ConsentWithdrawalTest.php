@@ -194,3 +194,44 @@ it('flags self-service withdrawal versus a pending request on the privacy page',
                     && $pending['withdrawalPending'] === true;
             }));
 });
+
+it('shows no missing-modules warning for a ConsentWithdrawal request in the console', function (): void {
+    // OpenSubjectRequest gates the per-module response-seeding loop for
+    // ConsentWithdrawal (ADR-0050 §8) — no module was ever owed a response,
+    // so diffing the full registry against an empty response set must not
+    // read as "every module never addressed this."
+    [, $admin] = consentWithdrawalOperator(['platform.access-admin', 'compliance.view-subject-requests']);
+    $this->withBrand();
+
+    $version = PolicyVersion::factory()->create(['lawful_basis' => LawfulBasis::Contract]);
+    $consent = Consent::factory()->create(['policy_version_id' => $version->getKey()]);
+    $request = app(WithdrawConsent::class)($consent);
+
+    $this->actingAs($admin)
+        ->get("http://admin.consent-withdrawal.test/admin/subject-requests/{$request->getKey()}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/subject-requests/Show')
+            ->where('missingModules', []));
+});
+
+it('excludes a ConsentWithdrawal request from the privacy page request list', function (): void {
+    // The withdrawal already has its home next to the consent it names
+    // ("Withdrawal pending") — listing it again here would both duplicate
+    // it and mislabel it, since this list only knows export/deletion.
+    $this->withBrand();
+    $user = User::factory()->create();
+
+    $version = PolicyVersion::factory()->create(['lawful_basis' => LawfulBasis::Contract]);
+    $consent = Consent::factory()->create([
+        'subject_id' => $user->id,
+        'policy_version_id' => $version->getKey(),
+    ]);
+
+    app(WithdrawConsent::class)($consent);
+
+    $this->actingAs($user)
+        ->get('http://localhost/settings/privacy')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->has('requests', 0));
+});

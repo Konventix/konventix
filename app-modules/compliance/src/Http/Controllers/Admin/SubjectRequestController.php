@@ -113,11 +113,17 @@ class SubjectRequestController
         // Modules that registered a handler *after* this request opened have
         // no row of their own. Showing them as missing is the honest answer:
         // the fan-out never addressed them, and a re-dispatch is what fixes
-        // it.
-        $missing = array_values(array_diff(
-            $registry->moduleNames(),
-            $responses->pluck('module')->all(),
-        ));
+        // it. A ConsentWithdrawal request never seeded any per-module rows
+        // in the first place (OpenSubjectRequest gates that loop for this
+        // type, ADR-0050 §8) — diffing against the full registry here would
+        // falsely claim every module was never addressed, when none was
+        // ever owed a response.
+        $missing = $model->type === DataSubjectRequestType::ConsentWithdrawal
+            ? []
+            : array_values(array_diff(
+                $registry->moduleNames(),
+                $responses->pluck('module')->all(),
+            ));
 
         return Inertia::render('admin/subject-requests/Show', [
             'request' => [

@@ -76,8 +76,14 @@ final class PrivacyController
                     'slug' => $version->policy->slug,
                     'version' => $version->version,
                 ])->all(),
+            // ConsentWithdrawal requests are excluded here: they already have
+            // a home next to their consent above ("Withdrawal pending"),
+            // and listing one here too would both duplicate it and mislabel
+            // it — this list's type ternary in Privacy.vue only knows
+            // export/deletion (ADR-0050 §7/§8).
             'requests' => DataSubjectRequest::query()
                 ->where('subject_id', $subjectId)
+                ->where('type', '!=', DataSubjectRequestType::ConsentWithdrawal)
                 ->orderByDesc('created_at')
                 ->get()
                 ->map(fn (DataSubjectRequest $subjectRequest): array => [
