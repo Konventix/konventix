@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Konventix\Community\Gdpr\CommunityGdprHandler;
 use Konventix\Community\Models\CommunityComment;
@@ -103,8 +104,16 @@ it('exports the profile, membership, authored comments, reactions and event part
     $brand = $this->withBrand();
     $this->activateModule('community', $brand);
 
+    // Frozen so `member_since` (set from `now()->subDays(3)` inside the
+    // helper) has a value the assertion below can compare against exactly,
+    // rather than merely asserting the key is present.
+    Carbon::setTestNow(Carbon::parse('2026-02-01T12:00:00Z'));
+    $expectedMemberSince = now()->subDays(3)->toIso8601String();
+
     $subjectId = communityGdprMakeAccount($brand->getKey(), 'ada-lovelace', 'public');
     $otherId = communityGdprMakeAccount($brand->getKey(), 'grace-hopper');
+
+    Carbon::setTestNow();
 
     $eventId = communityGdprMakeParticipation($brand->getKey(), $subjectId, confirmed: true);
 
@@ -133,7 +142,7 @@ it('exports the profile, membership, authored comments, reactions and event part
         ->and($export['profile']['visibility'])->toBe('public')
         ->and($export['memberships'])->toHaveCount(1)
         ->and($export['memberships'][0]['brand_id'])->toBe($brand->getKey())
-        ->and($export['memberships'][0])->toHaveKey('member_since')
+        ->and($export['memberships'][0]['member_since'])->toBe($expectedMemberSince)
         ->and($export['memberships'][0]['avatar_url'])->toBe('https://example.test/ada-lovelace/avatar.png')
         ->and($export['memberships'][0]['banner_url'])->toBe('https://example.test/ada-lovelace/banner.png')
         ->and($export['comments'])->toHaveCount(1)

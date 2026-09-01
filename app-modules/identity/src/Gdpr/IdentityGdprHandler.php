@@ -41,8 +41,6 @@ use Konventix\Platform\Media\MediaLibrary;
  */
 final class IdentityGdprHandler implements GdprHandler
 {
-    public function __construct(private readonly MediaLibrary $media) {}
-
     public function module(): string
     {
         return 'identity';
@@ -133,18 +131,23 @@ final class IdentityGdprHandler implements GdprHandler
 
         $subjectId = $subject->userId;
 
+        // Resolved at call time: this handler lives in a boot-time singleton
+        // registry, and MediaLibrary must never be captured at boot —
+        // .ai/rules/providers.md (it depends on the scoped DiskResolver).
+        $media = app(MediaLibrary::class);
+
         // Release the media usage a membership's avatar/banner recorded
         // before the membership row itself goes — otherwise the MediaUsage
         // row survives, pinning the image in place while referencing a
         // membership that no longer exists.
         BrandMembership::withoutBrandScope()->where('user_id', $subjectId)->get()
-            ->each(function (BrandMembership $membership): void {
+            ->each(function (BrandMembership $membership) use ($media): void {
                 if ($membership->avatar_media_id !== null) {
-                    $this->media->releaseUsage($membership->avatar_media_id, 'identity', 'membership', $membership->getKey());
+                    $media->releaseUsage($membership->avatar_media_id, 'identity', 'membership', $membership->getKey());
                 }
 
                 if ($membership->banner_media_id !== null) {
-                    $this->media->releaseUsage($membership->banner_media_id, 'identity', 'membership', $membership->getKey());
+                    $media->releaseUsage($membership->banner_media_id, 'identity', 'membership', $membership->getKey());
                 }
             });
 

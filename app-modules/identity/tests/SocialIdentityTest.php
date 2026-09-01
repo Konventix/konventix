@@ -87,7 +87,7 @@ it('exports linked identities and erases them on anonymization', function (): vo
         'nickname' => 'gaben',
     ]);
 
-    $handler = app(IdentityGdprHandler::class);
+    $handler = new IdentityGdprHandler;
     $subject = SubjectRef::forUser((string) $user->getKey());
 
     $export = $handler->exportFor($subject);
@@ -118,7 +118,7 @@ it('exports the four account-shape fields and tombstones them on anonymization',
         'social_links' => ['mastodon' => 'https://example.test/@ada'],
     ]);
 
-    $handler = app(IdentityGdprHandler::class);
+    $handler = new IdentityGdprHandler;
     $subject = SubjectRef::forUser((string) $user->getKey());
 
     $export = $handler->exportFor($subject);
@@ -161,7 +161,7 @@ it('exports membership avatar/banner media ids and releases their usage on delet
     app(MediaLibrary::class)->recordUsage($avatar->getKey(), 'identity', 'membership', $membership->getKey());
     app(MediaLibrary::class)->recordUsage($banner->getKey(), 'identity', 'membership', $membership->getKey());
 
-    $handler = app(IdentityGdprHandler::class);
+    $handler = new IdentityGdprHandler;
     $subject = SubjectRef::forUser((string) $user->getKey());
 
     $export = $handler->exportFor($subject);
