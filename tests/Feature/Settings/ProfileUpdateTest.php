@@ -23,6 +23,7 @@ test('profile information can be updated', function () {
             'name' => 'Test User',
             'email' => 'test@example.com',
             'username' => $user->username,
+            'visibility' => 'internal',
         ]);
 
     $response
@@ -45,6 +46,7 @@ test('email verification status is unchanged when the email address is unchanged
             'name' => 'Test User',
             'email' => $user->email,
             'username' => $user->username,
+            'visibility' => 'internal',
         ]);
 
     $response
