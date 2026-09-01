@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use Konventix\Identity\Models\User;
+use Konventix\Identity\Profile\UsernameGenerator;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission;
@@ -137,10 +138,13 @@ class InstallCommand extends Command
             // through create() — Model::shouldBeStrict() (AppServiceProvider)
             // turns the silently-discarded attribute into a thrown exception
             // outside production.
+            $adminName = (string) $this->option('admin-name');
+
             $admin = User::query()->create([
-                'name' => (string) $this->option('admin-name'),
+                'name' => $adminName,
                 'email' => $adminEmail,
                 'password' => $password,
+                'username' => app(UsernameGenerator::class)->generate($adminName),
             ]);
             $admin->forceFill(['email_verified_at' => now()])->save();
             $this->info("Admin user: {$adminEmail}");

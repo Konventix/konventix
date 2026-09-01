@@ -285,6 +285,7 @@ final class DemoRushSeeder
             $user = User::factory()->create([
                 'name' => "Rush Arrival {$n}",
                 'email' => $email,
+                'username' => "rush-arrival-{$n}",
             ]);
 
             BrandMembership::query()->firstOrCreate(
