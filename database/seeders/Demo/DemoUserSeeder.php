@@ -8,6 +8,7 @@ use Closure;
 use Illuminate\Support\Collection;
 use Konventix\Identity\Actions\LockUserAccount;
 use Konventix\Identity\Enums\AccountState;
+use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
@@ -99,12 +100,28 @@ final class DemoUserSeeder
 
         // Brand context is set: the scope constrains the lookup and the
         // BelongsToBrand hook stamps brand_id (ADR-0010).
-        BrandMembership::query()->firstOrCreate(
+        $membership = BrandMembership::query()->firstOrCreate(
             ['user_id' => $user->getKey()],
             ['first_seen_at' => now()->subDays(random_int(0, 365))],
         );
 
         $this->announce($brand, $user);
+
+        // Community's per-brand membership read model (`community_members`)
+        // is fed by this event alone, the same way Registration's/Content's/
+        // Messaging's read models are fed by `UserRegistered` above —
+        // without it, a seeded account has no `CommunityMember` row and
+        // every profile-wall screen has nobody to render
+        // (`RecordBrandMembership`'s own emission on real login/registration
+        // is this event's precedent).
+        event(new BrandMembershipProfileUpdated(
+            userId: $membership->user_id,
+            brandId: $membership->brand_id,
+            avatarUrl: null,
+            bannerUrl: null,
+            firstSeenAt: $membership->first_seen_at->toIso8601String(),
+            updatedAt: now()->toIso8601String(),
+        ));
 
         return $user;
     }

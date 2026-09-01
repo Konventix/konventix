@@ -55,15 +55,19 @@ enum EventArchetype: string
     /**
      * Gateable modules switched on for the brand. Kernel and Core modules are
      * always on and never appear here; the remaining scaffolds stay off,
-     * which is what makes the gate visible on the brand page.
+     * which is what makes the gate visible on the brand page. `competition`
+     * is the one module deliberately toggled between archetypes to
+     * demonstrate the gate (ADR-0003) — `community` runs on both, the same
+     * way `resources`/`staffing` do, so its profile walls (Task 9) are
+     * demonstrable on every seeded brand rather than half of them.
      *
      * @return list<string>
      */
     public function activeModules(): array
     {
         return match ($this) {
-            self::Lan => ['competition', 'resources', 'staffing'],
-            self::Convention => ['resources', 'staffing'],
+            self::Lan => ['competition', 'resources', 'staffing', 'community'],
+            self::Convention => ['resources', 'staffing', 'community'],
         };
     }
 

@@ -37,6 +37,18 @@ class CommunityProfile extends Model
 
     protected $keyType = 'string';
 
+    /**
+     * Mirrors Identity's `ProfileVisibility` enum values (ADR-0052) as
+     * plain strings — a module may not import another module's enum
+     * (ADR-0004, `tests/Unit/ArchitectureTest.php`), so `visibility` is
+     * stored and matched on as the string the projected event carried.
+     */
+    public const string VISIBILITY_PUBLIC = 'public';
+
+    public const string VISIBILITY_INTERNAL = 'internal';
+
+    public const string VISIBILITY_EVENT = 'event';
+
     protected $fillable = ['id', 'username', 'display_name', 'tagline', 'status_emoji', 'social_links', 'visibility'];
 
     /**
