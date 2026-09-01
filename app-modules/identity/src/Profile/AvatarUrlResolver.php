@@ -30,6 +30,7 @@ final class AvatarUrlResolver
             return null;
         }
 
+        /** @var string|null $mediaId */
         $mediaId = BrandMembership::query()->where('user_id', $userId)->value('avatar_media_id');
 
         if ($mediaId === null) {
