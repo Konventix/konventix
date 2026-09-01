@@ -6,8 +6,11 @@ namespace Konventix\Identity\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
+use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
+use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Media\MediaLibrary;
 
 /**
  * Re-emits `UserProfileUpdated` for every account, carrying the row's current
@@ -28,14 +31,14 @@ class ReplayProfilesCommand extends Command
 
     protected $description = 'Re-emit UserProfileUpdated for every account so downstream read models can be rebuilt';
 
-    public function handle(): int
+    public function handle(MediaLibrary $media): int
     {
         $chunk = max(1, (int) $this->option('chunk'));
         $replayed = 0;
 
         User::query()
             ->orderBy('id')
-            ->chunkById($chunk, function (Collection $users) use (&$replayed): void {
+            ->chunkById($chunk, function (Collection $users) use (&$replayed, $media): void {
                 /** @var User $user */
                 foreach ($users as $user) {
                     event(new UserProfileUpdated(
@@ -50,6 +53,20 @@ class ReplayProfilesCommand extends Command
                         updatedAt: ($user->updated_at ?? now())->toIso8601String(),
                     ));
 
+                    // Every brand membership too — its avatar/banner and
+                    // "member since" (ruling 2) are their own contract, one
+                    // event per membership rather than per account.
+                    foreach (BrandMembership::withoutBrandScope()->where('user_id', $user->getKey())->get() as $membership) {
+                        event(new BrandMembershipProfileUpdated(
+                            userId: $membership->user_id,
+                            brandId: $membership->brand_id,
+                            avatarUrl: $this->urlOrNull($media, $membership->avatar_media_id),
+                            bannerUrl: $this->urlOrNull($media, $membership->banner_media_id),
+                            firstSeenAt: $membership->first_seen_at->toIso8601String(),
+                            updatedAt: ($membership->updated_at ?? now())->toIso8601String(),
+                        ));
+                    }
+
                     $replayed++;
                 }
             });
@@ -57,5 +74,10 @@ class ReplayProfilesCommand extends Command
         $this->info("Replayed {$replayed} account profile(s).");
 
         return self::SUCCESS;
+    }
+
+    private function urlOrNull(MediaLibrary $media, ?string $mediaId): ?string
+    {
+        return $mediaId === null ? null : ($media->urlFor($mediaId, 'thumb') ?? $media->urlFor($mediaId));
     }
 }

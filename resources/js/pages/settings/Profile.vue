@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Form, Head } from '@inertiajs/vue3';
+import { Form, Head, useForm } from '@inertiajs/vue3';
+import MembershipImageController from '@/actions/Konventix/Identity/Http/Controllers/MembershipImageController';
 import ProfileController from '@/actions/Konventix/Identity/Http/Controllers/ProfileController';
 import DeleteUser from '@/components/DeleteUser.vue';
 import Heading from '@/components/Heading.vue';
@@ -20,7 +21,7 @@ defineOptions({
     },
 });
 
-const { profile } = defineProps<{
+const { profile, membershipImages } = defineProps<{
     profile: {
         name: string;
         email: string;
@@ -29,7 +30,50 @@ const { profile } = defineProps<{
         statusEmoji: string | null;
         socialLinks: Record<string, string>;
     };
+    membershipImages: {
+        avatarUrl: string | null;
+        bannerUrl: string | null;
+    };
 }>();
+
+const avatarForm = useForm<{ file: File | null }>({ file: null });
+const bannerForm = useForm<{ file: File | null }>({ file: null });
+
+function submitAvatar(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    avatarForm.file = input.files?.[0] ?? null;
+
+    if (avatarForm.file === null) {
+        return;
+    }
+
+    avatarForm.post(MembershipImageController.storeAvatar().url, {
+        forceFormData: true,
+        preserveScroll: true,
+        onFinish: () => {
+            avatarForm.reset('file');
+            input.value = '';
+        },
+    });
+}
+
+function submitBanner(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    bannerForm.file = input.files?.[0] ?? null;
+
+    if (bannerForm.file === null) {
+        return;
+    }
+
+    bannerForm.post(MembershipImageController.storeBanner().url, {
+        forceFormData: true,
+        preserveScroll: true,
+        onFinish: () => {
+            bannerForm.reset('file');
+            input.value = '';
+        },
+    });
+}
 </script>
 
 <template>
@@ -217,6 +261,100 @@ const { profile } = defineProps<{
                 >
             </div>
         </Form>
+    </div>
+
+    <div class="flex flex-col space-y-6">
+        <Heading
+            variant="small"
+            title="Profile images"
+            description="Your avatar and banner as this brand's community sees them"
+        />
+
+        <div class="grid gap-6 sm:grid-cols-2">
+            <div class="grid gap-2">
+                <Label for="avatar">Avatar</Label>
+                <div class="flex items-center gap-4">
+                    <div
+                        class="h-16 w-16 shrink-0 overflow-hidden rounded-full border border-border bg-surface-muted"
+                        aria-hidden="true"
+                    >
+                        <img
+                            v-if="membershipImages.avatarUrl"
+                            :src="membershipImages.avatarUrl"
+                            alt=""
+                            class="h-full w-full object-cover"
+                        />
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <Input
+                            id="avatar"
+                            type="file"
+                            accept="image/png,image/jpeg,image/gif,image/webp"
+                            data-test="avatar-input"
+                            @change="submitAvatar"
+                        />
+                        <InputError :message="avatarForm.errors.file" />
+                        <Form
+                            v-if="membershipImages.avatarUrl"
+                            v-bind="MembershipImageController.destroyAvatar.form()"
+                            v-slot="{ processing: removingAvatar }"
+                        >
+                            <Button
+                                type="submit"
+                                variant="secondary"
+                                size="sm"
+                                :disabled="removingAvatar"
+                                data-test="remove-avatar-button"
+                            >
+                                Remove avatar
+                            </Button>
+                        </Form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid gap-2">
+                <Label for="banner">Banner</Label>
+                <div class="flex flex-col gap-2">
+                    <div
+                        class="h-24 w-full max-w-sm overflow-hidden rounded-lg border border-border bg-surface-muted"
+                        aria-hidden="true"
+                    >
+                        <img
+                            v-if="membershipImages.bannerUrl"
+                            :src="membershipImages.bannerUrl"
+                            alt=""
+                            class="h-full w-full object-cover"
+                        />
+                    </div>
+                    <Input
+                        id="banner"
+                        type="file"
+                        class="max-w-sm"
+                        accept="image/png,image/jpeg,image/gif,image/webp"
+                        data-test="banner-input"
+                        @change="submitBanner"
+                    />
+                    <InputError :message="bannerForm.errors.file" />
+                    <Form
+                        v-if="membershipImages.bannerUrl"
+                        v-bind="MembershipImageController.destroyBanner.form()"
+                        v-slot="{ processing: removingBanner }"
+                    >
+                        <Button
+                            type="submit"
+                            variant="secondary"
+                            size="sm"
+                            class="w-fit"
+                            :disabled="removingBanner"
+                            data-test="remove-banner-button"
+                        >
+                            Remove banner
+                        </Button>
+                    </Form>
+                </div>
+            </div>
+        </div>
     </div>
 
     <DeleteUser />

@@ -13,13 +13,16 @@ use Inertia\Response;
 use Konventix\Identity\Data\ProfileUpdateData;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Http\Requests\ProfileDeleteRequest;
+use Konventix\Identity\Models\BrandMembership;
+use Konventix\Identity\Models\User;
+use Konventix\Platform\Media\MediaLibrary;
 
 class ProfileController
 {
     /**
      * Show the user's profile settings page.
      */
-    public function edit(Request $request): Response
+    public function edit(Request $request, MediaLibrary $media): Response
     {
         $user = $request->user();
 
@@ -34,7 +37,34 @@ class ProfileController
                 'statusEmoji' => $user->status_emoji,
                 'socialLinks' => $user->social_links ?? (object) [],
             ],
+            'membershipImages' => $this->membershipImages($user, $media),
         ]);
+    }
+
+    /**
+     * The current brand membership's avatar/banner URLs (ADR-0051 §1) — both
+     * null when there is no brand in context or the account has not yet
+     * become a member here.
+     *
+     * @return array{avatarUrl: string|null, bannerUrl: string|null}
+     */
+    private function membershipImages(User $user, MediaLibrary $media): array
+    {
+        $membership = BrandMembership::query()->where('user_id', $user->getKey())->first();
+
+        if ($membership === null) {
+            return ['avatarUrl' => null, 'bannerUrl' => null];
+        }
+
+        return [
+            'avatarUrl' => $this->urlOrNull($media, $membership->avatar_media_id),
+            'bannerUrl' => $this->urlOrNull($media, $membership->banner_media_id),
+        ];
+    }
+
+    private function urlOrNull(MediaLibrary $media, ?string $mediaId): ?string
+    {
+        return $mediaId === null ? null : ($media->urlFor($mediaId, 'thumb') ?? $media->urlFor($mediaId));
     }
 
     /**
