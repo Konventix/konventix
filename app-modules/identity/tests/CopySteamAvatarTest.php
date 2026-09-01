@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Storage;
 use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\MediaUsage;
 
 /**
@@ -61,6 +62,9 @@ it('copies the steam avatar into the brand library and points the membership at 
         ->exists();
 
     expect($usageExists)->toBeTrue();
+
+    $item = MediaItem::withoutBrandScope()->findOrFail($membership->avatar_media_id);
+    Storage::disk('media')->assertExists($item->path);
 
     Event::assertDispatched(BrandMembershipProfileUpdated::class, fn (BrandMembershipProfileUpdated $event): bool => $event->userId === $user->getKey()
         && $event->brandId === $membership->brand_id
@@ -146,7 +150,11 @@ it('rejects the copy when the user has no membership on the current brand', func
         '*' => Http::response(steamAvatarPngBytes(), 200, ['Content-Type' => 'image/png']),
     ]);
 
+    // UpdateMembershipImage::membershipFor() throws keyed 'file' — every
+    // failure of the Steam flow must surface keyed 'steam' instead, since
+    // the user clicked a Steam button, not a file input (see
+    // CopySteamAvatar::handle()'s ValidationException remap).
     $this->actingAs($user)
         ->post('/settings/profile/avatar/steam')
-        ->assertInvalid(['file']);
+        ->assertInvalid(['steam']);
 });

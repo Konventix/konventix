@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Form, Head, router, useForm } from '@inertiajs/vue3';
+import { Form, Head, router, useForm, usePage } from '@inertiajs/vue3';
 import MembershipImageController from '@/actions/Konventix/Identity/Http/Controllers/MembershipImageController';
 import ProfileController from '@/actions/Konventix/Identity/Http/Controllers/ProfileController';
 import DeleteUser from '@/components/DeleteUser.vue';
@@ -39,6 +39,7 @@ const { profile, membershipImages, steamAvatarUrl } = defineProps<{
 
 const avatarForm = useForm<{ file: File | null }>({ file: null });
 const bannerForm = useForm<{ file: File | null }>({ file: null });
+const page = usePage();
 
 function submitAvatar(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -309,6 +310,7 @@ function submitBanner(event: Event): void {
                         >
                             Use my Steam avatar
                         </Button>
+                        <InputError :message="(page.props.errors as any)?.steam" />
                         <Form
                             v-if="membershipImages.avatarUrl"
                             v-bind="MembershipImageController.destroyAvatar.form()"
