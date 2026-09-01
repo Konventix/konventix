@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Konventix\Community\Providers;
 
 use Illuminate\Support\Facades\Event;
+use Konventix\Community\Gdpr\CommunityGdprHandler;
 use Konventix\Community\Listeners\ProjectCommunityMember;
 use Konventix\Community\Listeners\ProjectCommunityProfile;
 use Konventix\Community\Listeners\ProjectEventParticipation;
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
@@ -53,5 +55,15 @@ class CommunityServiceProvider extends ModuleServiceProvider
         Event::listen(RegistrationConfirmed::class, ProjectEventParticipation::class);
         Event::listen(RegistrationCancelled::class, ProjectEventParticipation::class);
         Event::listen(RegistrationRejected::class, ProjectEventParticipation::class);
+    }
+
+    /**
+     * The profile-wall shapes Task 9 built and ADR-0052's visibility/event-
+     * participation additions — see `CommunityGdprHandler`'s class docblock
+     * for the deletion order.
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register($this->app->make(CommunityGdprHandler::class));
     }
 }

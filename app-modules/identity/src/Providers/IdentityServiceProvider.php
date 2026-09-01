@@ -223,7 +223,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
      */
     protected function registerGdprExporters(): void
     {
-        $this->app->make(GdprHandlerRegistry::class)->register(new IdentityGdprHandler);
+        $this->app->make(GdprHandlerRegistry::class)->register($this->app->make(IdentityGdprHandler::class));
     }
 
     /**

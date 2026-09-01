@@ -15,6 +15,7 @@ use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\Session;
 use Konventix\Identity\Models\SocialIdentity;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Media\MediaLibrary;
 
 /**
  * Identity's contribution to GDPR export and deletion — the account itself,
@@ -40,6 +41,8 @@ use Konventix\Identity\Models\User;
  */
 final class IdentityGdprHandler implements GdprHandler
 {
+    public function __construct(private readonly MediaLibrary $media) {}
+
     public function module(): string
     {
         return 'identity';
@@ -65,6 +68,10 @@ final class IdentityGdprHandler implements GdprHandler
                 'id' => $user->getKey(),
                 'name' => $user->name,
                 'email' => $user->email,
+                'username' => $user->username,
+                'tagline' => $user->tagline,
+                'status_emoji' => $user->status_emoji,
+                'social_links' => $user->social_links,
                 'locale' => $user->locale,
                 'timezone' => $user->timezone,
                 'state' => $user->state->value,
@@ -83,6 +90,8 @@ final class IdentityGdprHandler implements GdprHandler
                 ->map(fn (BrandMembership $membership): array => [
                     'brand_id' => $membership->brand_id,
                     'first_seen_at' => $membership->first_seen_at->toIso8601String(),
+                    'avatar_media_id' => $membership->avatar_media_id,
+                    'banner_media_id' => $membership->banner_media_id,
                 ])
                 ->all(),
             // The device history a person is most likely to actually want:
@@ -124,6 +133,21 @@ final class IdentityGdprHandler implements GdprHandler
 
         $subjectId = $subject->userId;
 
+        // Release the media usage a membership's avatar/banner recorded
+        // before the membership row itself goes — otherwise the MediaUsage
+        // row survives, pinning the image in place while referencing a
+        // membership that no longer exists.
+        BrandMembership::withoutBrandScope()->where('user_id', $subjectId)->get()
+            ->each(function (BrandMembership $membership): void {
+                if ($membership->avatar_media_id !== null) {
+                    $this->media->releaseUsage($membership->avatar_media_id, 'identity', 'membership', $membership->getKey());
+                }
+
+                if ($membership->banner_media_id !== null) {
+                    $this->media->releaseUsage($membership->banner_media_id, 'identity', 'membership', $membership->getKey());
+                }
+            });
+
         // Every membership, not one brand's: the request spans the operator
         // (ADR-0050 §1), so a person leaving takes all of it with them. The
         // old "delete this brand's membership, anonymize only if it was the
@@ -153,6 +177,13 @@ final class IdentityGdprHandler implements GdprHandler
             // Unique and undeliverable: the column is unique, and `.invalid`
             // is reserved by RFC 2606 precisely so nothing tries to send here.
             'email' => 'anonymized-'.$user->getKey().'@invalid',
+            // Unique, same as email: a stray reference to the old username
+            // (a mention, a stale link) must not resolve to someone else's
+            // page once the slot is free again.
+            'username' => 'deleted-'.strtolower((string) $user->getKey()),
+            'tagline' => null,
+            'status_emoji' => null,
+            'social_links' => null,
             'email_verified_at' => null,
             'password' => Str::password(64),
             'remember_token' => null,
