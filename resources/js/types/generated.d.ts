@@ -472,6 +472,10 @@ declare namespace Konventix {
             export type ProfileUpdateData = {
                 readonly name: string;
                 readonly email: string;
+                readonly username: string;
+                readonly tagline: string | null;
+                readonly statusEmoji: string | null;
+                readonly socialLinks: Record<string, string> | null;
             };
             export type RegisterData = {
                 readonly name: string;
