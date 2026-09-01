@@ -8,8 +8,10 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
 use Konventix\Compliance\Actions\ApproveConsentWithdrawal;
 use Konventix\Compliance\Actions\RedispatchSubjectRequest;
 use Konventix\Compliance\Actions\RefuseSubjectRequest;
@@ -59,7 +61,16 @@ class SubjectRequestController
         $type = $this->filterValue($request, 'type', array_column(DataSubjectRequestType::cases(), 'value'));
 
         $requests = DataSubjectRequest::query()
-            ->when($request->filled('search'), fn ($query) => $query->where('subject_id', 'ilike', '%'.$request->string('search')->trim().'%'))
+            ->when($request->filled('search'), function ($query) use ($request): void {
+                $term = '%'.$request->string('search')->trim().'%';
+
+                // Wrapped so the OR does not swallow the state/type filters
+                // below into its own boolean group.
+                $query->where(function ($inner) use ($term): void {
+                    $inner->where('subject_id', 'ilike', $term)
+                        ->orWhere('subject_email', 'ilike', $term);
+                });
+            })
             ->when($state !== null, fn ($query) => $query->where('state', $state))
             ->when($type !== null, fn ($query) => $query->where('type', $type))
             ->orderBy($sort['column'], $sort['direction'])
@@ -79,7 +90,9 @@ class SubjectRequestController
         return Inertia::render('admin/subject-requests/Index', [
             'requests' => $requests->through(fn (DataSubjectRequest $subjectRequest): array => [
                 'id' => $subjectRequest->getKey(),
-                'subjectId' => $subjectRequest->subject_id,
+                // An email-only subject has no ULID (ADR-0050 §3) — the
+                // address is the only identity there is to show.
+                'subjectId' => $subjectRequest->subject_id ?? $subjectRequest->subject_email,
                 'brandName' => $brandNames[$subjectRequest->filed_on_brand_id] ?? '—',
                 'type' => $subjectRequest->type->value,
                 'state' => $subjectRequest->state->value,
@@ -128,7 +141,7 @@ class SubjectRequestController
         return Inertia::render('admin/subject-requests/Show', [
             'request' => [
                 'id' => $model->getKey(),
-                'subjectId' => $model->subject_id,
+                'subjectId' => $model->subject_id ?? $model->subject_email,
                 'brandName' => Brand::query()->whereKey($model->filed_on_brand_id)->value('name') ?? '—',
                 'type' => $model->type->value,
                 'state' => $model->state->value,
@@ -193,7 +206,14 @@ class SubjectRequestController
     {
         Gate::authorize(Permission::HandleSubjectRequests->value);
 
-        $approve($this->find($subjectRequest));
+        try {
+            $approve($this->find($subjectRequest));
+        } catch (InvalidArgumentException $exception) {
+            // Wrong type or wrong state (a refused or non-ConsentWithdrawal
+            // request) is a validation problem the operator can see and act
+            // on, not a server error.
+            throw ValidationException::withMessages(['request' => $exception->getMessage()]);
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Withdrawal accepted.')]);
 

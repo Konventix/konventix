@@ -51,9 +51,9 @@ final class NotifySubjectOfRequestOutcome
 
     /**
      * The Art. 12(3) acknowledgement shared by export and deletion
-     * (ADR-0050 §10). Registered here so the template exists; the listener
-     * that sends it on `DataExportRequested`/`UserDeletionRequested` is
-     * Task 7's — this class does not yet call it.
+     * (ADR-0050 §10). `handleExportRequested()` below sends it on
+     * `DataExportRequested`; `UserDeletionRequested` keeps its own,
+     * pre-existing `DELETION_ACKNOWLEDGED` instead of this one.
      */
     public const string REQUEST_ACKNOWLEDGED = 'compliance.request-acknowledged';
 

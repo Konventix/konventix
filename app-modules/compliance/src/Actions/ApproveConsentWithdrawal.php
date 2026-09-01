@@ -37,6 +37,13 @@ final class ApproveConsentWithdrawal
             return $request;
         }
 
+        // A refused request has already been closed with a reason — the
+        // operator's later decision must go through a fresh request, not
+        // silently reopen and fulfil this one behind the refusal's back.
+        if ($request->state === DataSubjectRequestState::Refused) {
+            throw new InvalidArgumentException('A refused withdrawal request cannot be accepted.');
+        }
+
         return DB::transaction(function () use ($request): DataSubjectRequest {
             /** @var Consent $consent */
             $consent = Consent::withoutBrandScope()->findOrFail($request->consent_id);

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Models\DataSubjectRequest;
@@ -60,6 +61,37 @@ it('resolves the address to an account when one exists', function (): void {
     // Indistinguishable from a self-service request from here on
     // (ADR-0050 §3).
     expect(DataSubjectRequest::query()->firstOrFail()->subject_id)->toBe($user->getKey());
+});
+
+it('opens only one request when the same address verifies the same type twice', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('exports');
+
+    // Without this the sync queue would carry the first request all the way
+    // to fulfilled before the second link is followed, and there would be
+    // nothing open left for the dedup guard to find (mirrors
+    // SubjectRequestConsoleTest's self-service equivalent).
+    Queue::fake();
+
+    [, $plainOne] = DataSubjectRequestVerification::issue('twice@example.de', DataSubjectRequestType::Export, $brand->getKey());
+    $this->get("/privacy/request/{$plainOne}")->assertOk();
+
+    $first = DataSubjectRequest::query()->firstOrFail();
+
+    [, $plainTwo] = DataSubjectRequestVerification::issue('twice@example.de', DataSubjectRequestType::Export, $brand->getKey());
+    $response = $this->get("/privacy/request/{$plainTwo}");
+
+    // Still indistinguishable from opening a fresh request: same success
+    // page, same deadline — the request already open, not a new one
+    // (ADR-0050 §5).
+    $response->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('opened.deadline', $first->deadline_at->toDateString()));
+
+    expect(DataSubjectRequest::query()->count())->toBe(1)
+        // Token spent either way — a verification round-trip is never left
+        // hanging just because it found a request already open.
+        ->and(DataSubjectRequestVerification::query()->count())->toBe(0);
 });
 
 it('throttles repeated submissions for one address', function (): void {

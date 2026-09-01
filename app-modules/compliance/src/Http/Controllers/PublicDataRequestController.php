@@ -12,11 +12,13 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Compliance\Actions\OpenSubjectRequest;
 use Konventix\Compliance\Data\RequestVerificationMailData;
+use Konventix\Compliance\Enums\DataSubjectRequestState;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Gdpr\SubjectResolver;
 use Konventix\Compliance\Listeners\NotifySubjectOfRequestOutcome;
+use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\DataSubjectRequestVerification;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
@@ -110,7 +112,22 @@ final class PublicDataRequestController
             ? SubjectRef::forUser($userId)
             : SubjectRef::forEmail($verification->email);
 
-        $request = $openSubjectRequest(
+        // Same guard `DataRequestController::store()` applies for the authed
+        // path: one open request per type per subject. Two verified links
+        // for the same address must not open two requests with two
+        // deadlines — the second link answers with the request that is
+        // already open rather than a new one (ADR-0050 §5).
+        $existing = DataSubjectRequest::query()
+            ->where('type', $verification->type)
+            ->whereIn('state', [DataSubjectRequestState::Received, DataSubjectRequestState::InProgress])
+            ->where(function ($query) use ($subject): void {
+                $subject->isAccountBacked()
+                    ? $query->where('subject_id', $subject->userId)
+                    : $query->where('subject_email', $subject->email);
+            })
+            ->first();
+
+        $request = $existing ?? $openSubjectRequest(
             $subject,
             $verification->type,
             $verification->type === DataSubjectRequestType::Deletion ? DeletionMode::Anonymize : null,
@@ -118,7 +135,8 @@ final class PublicDataRequestController
         );
 
         // Spending the token IS the replay guard, and the address has no
-        // further purpose here — the request carries it now.
+        // further purpose here — the request carries it now, whether this
+        // verification opened it or merely confirmed one already was.
         $verification->delete();
 
         return Inertia::render('privacy/RequestData', [

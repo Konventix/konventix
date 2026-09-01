@@ -7,6 +7,7 @@ namespace Konventix\Registration\Gdpr;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\SubjectRef;
+use Konventix\Registration\Models\Registrant;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\WaitlistEntry;
 
@@ -20,6 +21,15 @@ use Konventix\Registration\Models\WaitlistEntry;
  * stay resolvable, and the commercial fact "a registration existed" is
  * itself subject to statutory retention through its invoices. Both methods
  * are idempotent by construction.
+ *
+ * D-REG-08 keeps `registrant_user_id` non-nullable, so `registrations` and
+ * `waitlist_entries` never carry a bare address — a person with no account
+ * cannot have submitted one. But `Registrant` (SPEC.md "Consumes" —
+ * Identity's events), the display read model keyed by that same user id, is
+ * populated from Identity's account events and never cleaned up by them: an
+ * account Identity later anonymizes leaves its old address sitting in this
+ * projection, reachable only by the address itself once the account no
+ * longer resolves to it. That is this module's email branch (ADR-0050 §3).
  */
 final class RegistrationGdprHandler implements GdprHandler
 {
@@ -42,7 +52,17 @@ final class RegistrationGdprHandler implements GdprHandler
     public function exportFor(SubjectRef $subject): array
     {
         if (! $subject->isAccountBacked()) {
-            return [];
+            return [
+                'registrants' => Registrant::query()
+                    ->where('email', $subject->email)
+                    ->get()
+                    ->map(fn (Registrant $registrant): array => [
+                        'id' => $registrant->id,
+                        'display_name' => $registrant->display_name,
+                        'email' => $registrant->email,
+                    ])
+                    ->all(),
+            ];
         }
 
         $subjectId = $subject->userId;
@@ -84,6 +104,13 @@ final class RegistrationGdprHandler implements GdprHandler
     public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
         if (! $subject->isAccountBacked()) {
+            Registrant::query()
+                ->where('email', $subject->email)
+                ->update([
+                    'email' => 'anonymized-'.md5((string) $subject->email).'@invalid',
+                    'display_name' => 'Deleted account',
+                ]);
+
             return;
         }
 

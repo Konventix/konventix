@@ -97,7 +97,10 @@ final class AssembleSubjectExport implements ShouldQueue
         $disk = (string) config('filesystems.exports_disk', 'exports');
 
         Storage::disk($disk)->put($path, (string) json_encode([
+            // Exactly one of these is set (ADR-0050 §3) — an email-only
+            // archive still names who it is about, rather than a bare null.
             'subject_id' => $request->subject_id,
+            'subject_email' => $request->subject_email,
             'request_id' => $request->getKey(),
             'generated_at' => now()->toIso8601String(),
             'modules' => $contributions,

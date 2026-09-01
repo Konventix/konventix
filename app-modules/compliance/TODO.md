@@ -112,7 +112,10 @@ module built before it will otherwise be retrofitted.
       do not populate it without an account. Commerce owes an email lookup path once a
       guest-checkout flow populates the billing_party email without requiring a user_id.
       Newsletter has no `GdprHandler` at all; it is Phase 3 and holds no data yet, but
-      owes a handler before its first subscription is stored.
+      owes a handler before its first subscription is stored. Admission (claim links'
+      `intended_email`) and Registration (the registrant read model, reachable by email
+      once its account is gone) gained their own email branches in slice 20 — this item
+      now names only the two modules still owing one.
 - [ ] Single-use token flows (verification, archive download) check then
       consume with a race gap: `DataSubjectRequestVerification::findByToken()`
       + `->delete()` in `PublicDataRequestController::verify()`, and the

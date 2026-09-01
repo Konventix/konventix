@@ -22,7 +22,11 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  *
  * What is scrubbed is what this module collected *about* the person and
  * holds itself: the invitation address on a claim link (ADR-0032), which is
- * an email Admission stored rather than a reference to one.
+ * an email Admission stored rather than a reference to one. That is also
+ * the one thing this module can answer for a subject with no account at
+ * all (ADR-0050 §3): an invitee who never claimed a link has no
+ * `holder_user_id` to look up, only the `intended_email` the link was
+ * issued to.
  *
  * Both methods are idempotent.
  */
@@ -36,7 +40,20 @@ final class AdmissionGdprHandler implements GdprHandler
     public function exportFor(SubjectRef $subject): array
     {
         if (! $subject->isAccountBacked()) {
-            return [];
+            // An invitee who never claimed a link has no account and no
+            // admission of their own — the claim link's `intended_email` is
+            // the only trace of them this module holds.
+            return [
+                'claim_links' => AdmissionClaimLink::withoutBrandScope()
+                    ->where('intended_email', $subject->email)
+                    ->get()
+                    ->map(fn (AdmissionClaimLink $link): array => [
+                        'admission_id' => $link->admission_id,
+                        'intended_email' => $link->intended_email,
+                        'claimed_at' => $link->claimed_at?->toIso8601String(),
+                    ])
+                    ->all(),
+            ];
         }
 
         $subjectId = $subject->userId;
@@ -75,6 +92,10 @@ final class AdmissionGdprHandler implements GdprHandler
     public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
         if (! $subject->isAccountBacked()) {
+            AdmissionClaimLink::withoutBrandScope()
+                ->where('intended_email', $subject->email)
+                ->update(['intended_email' => null]);
+
             return;
         }
 

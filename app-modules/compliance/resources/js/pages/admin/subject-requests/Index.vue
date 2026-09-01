@@ -181,7 +181,7 @@ const columns: ColumnDef<RequestRow>[] = [
         <DataTableToolbar
             :search="filters.search ?? ''"
             :per-page="filters.per_page ?? 15"
-            search-placeholder="Search subject id…"
+            search-placeholder="Search subject id or email…"
             @update:search="setSearch"
             @update:per-page="setPerPage"
         >

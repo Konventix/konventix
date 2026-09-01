@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Event;
 use Konventix\Compliance\Actions\ApproveConsentWithdrawal;
+use Konventix\Compliance\Actions\RefuseSubjectRequest;
 use Konventix\Compliance\Actions\WithdrawConsent;
 use Konventix\Compliance\Enums\DataSubjectRequestState;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
@@ -130,6 +131,40 @@ it('accepts a pending withdrawal request, withdraws the consent and marks the re
 
     expect($repeat->state)->toBe(DataSubjectRequestState::Fulfilled);
     Event::assertNotDispatched(ConsentWithdrawn::class);
+});
+
+it('refuses to accept an already-refused withdrawal request', function (): void {
+    $this->withBrand();
+    $version = PolicyVersion::factory()->create(['lawful_basis' => LawfulBasis::Contract]);
+    $consent = Consent::factory()->create(['policy_version_id' => $version->getKey()]);
+    $request = app(WithdrawConsent::class)($consent);
+
+    app(RefuseSubjectRequest::class)($request, 'art_7_3_operator_declines');
+
+    // A refused request has already been closed with a stated reason — a
+    // later "accept" must not silently reopen and fulfil it.
+    expect(fn () => app(ApproveConsentWithdrawal::class)($request->fresh()))
+        ->toThrow(InvalidArgumentException::class);
+
+    expect($consent->fresh()->withdrawn_at)->toBeNull()
+        ->and($request->fresh()->state)->toBe(DataSubjectRequestState::Refused);
+});
+
+it('turns an invalid-state accept into a validation error from the console, not a 500', function (): void {
+    [, $admin] = consentWithdrawalOperator();
+    $this->withBrand();
+
+    $version = PolicyVersion::factory()->create(['lawful_basis' => LawfulBasis::Contract]);
+    $consent = Consent::factory()->create(['policy_version_id' => $version->getKey()]);
+    $request = app(WithdrawConsent::class)($consent);
+
+    app(RefuseSubjectRequest::class)($request, 'art_7_3_operator_declines');
+
+    $this->actingAs($admin)
+        ->post("http://admin.consent-withdrawal.test/admin/subject-requests/{$request->getKey()}/accept-consent-withdrawal")
+        ->assertSessionHasErrors('request');
+
+    expect($consent->fresh()->withdrawn_at)->toBeNull();
 });
 
 it('lets an operator accept a withdrawal request from the console', function (): void {
