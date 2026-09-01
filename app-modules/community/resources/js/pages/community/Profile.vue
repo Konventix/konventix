@@ -1,15 +1,26 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
+import { Heart, Trash2 } from '@lucide/vue';
 import { computed } from 'vue';
+import InputError from '@/components/InputError.vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import { useInitials } from '@/composables/useInitials';
+import {
+    destroy as destroyComment,
+    react,
+    store as storeComment,
+    unreact,
+} from '@/routes/community/profile/comments';
 
 /**
  * `u/{username}` — Community's first routed page (ADR-0051 §7, ADR-0052).
- * `viewerIsMember` rides alongside `profile` unused here on purpose: it is
- * exactly ADR-0052 §2's internal-scope comment-eligibility check, computed
- * once by `ResolvesProfiles` so Task 9's comments surface can build on it
- * without re-deriving it.
+ *
+ * Comments stay internal-scope under every visibility (ADR-0052 §2): the
+ * server computes `comments`/`canComment` ONLY when the viewer passed
+ * `resolveProfileForMemberOrFail`'s check, so a guest or non-member on a
+ * `public` profile gets `comments: null` and no comments section renders at
+ * all — the write endpoints 404 them the same way (Task 9).
  */
 type SocialLinks = Record<string, string>;
 
@@ -25,14 +36,66 @@ type ProfileProps = {
     isSelf: boolean;
 };
 
+type CommentProps = {
+    id: string;
+    body: string;
+    authorName: string;
+    authorUsername: string | null;
+    postedAt: string;
+    isMine: boolean;
+    canDelete: boolean;
+    reactionCount: number;
+    hasReacted: boolean;
+};
+
 type Props = {
     profile: ProfileProps;
     viewerIsMember: boolean;
+    comments: CommentProps[] | null;
+    canComment: boolean;
 };
 
 const props = defineProps<Props>();
 
 const { getInitials } = useInitials();
+
+const commentForm = useForm({ body: '' });
+
+const dateFormat = new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'long',
+    timeStyle: 'short',
+});
+
+function formatCommentDate(value: string): string {
+    return dateFormat.format(new Date(value));
+}
+
+function submitComment(): void {
+    commentForm.post(storeComment({ username: props.profile.username }).url, {
+        preserveScroll: true,
+        onSuccess: () => commentForm.reset(),
+    });
+}
+
+function deleteComment(comment: CommentProps): void {
+    router.delete(
+        destroyComment({
+            username: props.profile.username,
+            comment: comment.id,
+        }).url,
+        { preserveScroll: true },
+    );
+}
+
+function toggleReaction(comment: CommentProps): void {
+    const params = { username: props.profile.username, comment: comment.id };
+
+    if (comment.hasReacted) {
+        router.delete(unreact(params).url, { preserveScroll: true });
+    } else {
+        router.post(react(params).url, {}, { preserveScroll: true });
+    }
+}
 
 /**
  * Where each social key resolves to on the open web. `discord` has no
@@ -138,6 +201,101 @@ const memberSinceLabel = computed(() =>
                     <span v-else class="text-text">{{ entry.value }}</span>
                 </li>
             </ul>
+        </section>
+
+        <section
+            v-if="props.comments !== null"
+            class="flex flex-col gap-6 border-t border-border pt-8"
+        >
+            <h2 class="text-lg font-medium">
+                Comments ({{ props.comments.length }})
+            </h2>
+
+            <p
+                v-if="props.comments.length === 0"
+                class="text-sm text-text-muted"
+            >
+                Nothing here yet.
+            </p>
+
+            <div
+                v-for="comment in props.comments"
+                :key="comment.id"
+                class="flex flex-col gap-1 rounded-lg border border-border p-4"
+            >
+                <div
+                    class="flex items-center justify-between gap-2 text-xs text-text-muted"
+                >
+                    <span>
+                        <span class="font-medium text-text">
+                            {{ comment.authorName }}
+                        </span>
+                        <span v-if="comment.authorUsername">
+                            · @{{ comment.authorUsername }}
+                        </span>
+                        · {{ formatCommentDate(comment.postedAt) }}
+                        <span v-if="comment.isMine">· you</span>
+                    </span>
+                    <span class="flex items-center gap-3">
+                        <button
+                            v-if="!comment.isMine"
+                            type="button"
+                            class="inline-flex items-center gap-1 hover:text-accent"
+                            :class="comment.hasReacted && 'text-accent'"
+                            :aria-pressed="comment.hasReacted"
+                            :aria-label="`${comment.hasReacted ? 'Unlike' : 'Like'} (${comment.reactionCount})`"
+                            @click="toggleReaction(comment)"
+                        >
+                            <Heart
+                                class="size-3.5"
+                                :class="comment.hasReacted && 'fill-current'"
+                            />
+                            {{ comment.reactionCount }}
+                        </button>
+                        <span
+                            v-else-if="comment.reactionCount > 0"
+                            class="inline-flex items-center gap-1"
+                        >
+                            <Heart class="size-3.5" />
+                            {{ comment.reactionCount }}
+                        </span>
+                        <button
+                            v-if="comment.canDelete"
+                            type="button"
+                            class="hover:text-danger"
+                            :aria-label="`Delete comment by ${comment.authorName}`"
+                            @click="deleteComment(comment)"
+                        >
+                            <Trash2 class="size-3.5" />
+                        </button>
+                    </span>
+                </div>
+                <p class="text-sm whitespace-pre-line">
+                    {{ comment.body }}
+                </p>
+            </div>
+
+            <form
+                v-if="props.canComment"
+                class="flex flex-col gap-2"
+                @submit.prevent="submitComment"
+            >
+                <label for="comment-body" class="text-sm font-medium">
+                    Add a comment
+                </label>
+                <textarea
+                    id="comment-body"
+                    v-model="commentForm.body"
+                    rows="4"
+                    class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                />
+                <InputError :message="commentForm.errors.body" />
+                <div>
+                    <Button type="submit" :disabled="commentForm.processing">
+                        Post comment
+                    </Button>
+                </div>
+            </form>
         </section>
     </div>
 </template>

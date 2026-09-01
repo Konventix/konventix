@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Konventix\Community\Models\CommunityEventParticipation;
 use Konventix\Community\Models\CommunityMember;
 use Konventix\Community\Models\CommunityProfile;
-use Konventix\Identity\Enums\ProfileVisibility;
 
 /**
  * The whole visibility gate in one place (ADR-0052, superseding ADR-0051
@@ -52,13 +51,34 @@ trait ResolvesProfiles
         $viewerIsMember = $viewer !== null
             && CommunityMember::query()->where('user_id', (string) $viewer->getAuthIdentifier())->exists();
 
-        match (ProfileVisibility::from($profile->visibility)) {
-            ProfileVisibility::Public => null,
-            ProfileVisibility::Internal => abort_unless($viewerIsMember, 404),
-            ProfileVisibility::Event => $this->assertSharesConfirmedEvent($viewer, $viewerIsMember, $profile),
+        match ($profile->visibility) {
+            CommunityProfile::VISIBILITY_PUBLIC => null,
+            CommunityProfile::VISIBILITY_INTERNAL => abort_unless($viewerIsMember, 404),
+            CommunityProfile::VISIBILITY_EVENT => $this->assertSharesConfirmedEvent($viewer, $viewerIsMember, $profile),
+            default => abort(404),
         };
 
         return ['profile' => $profile, 'member' => $member, 'viewerIsMember' => $viewerIsMember];
+    }
+
+    /**
+     * The gate for comments (Task 9): every visibility's wall stays
+     * internal-scope (ADR-0052 §2), so on top of `resolveProfileOrFail`'s
+     * own visibility check — which a `public` profile passes for anyone,
+     * guests included — this additionally requires the viewer to BE a
+     * signed-in member of this brand. Same 404, never a 403 or a login
+     * redirect: a guest or non-member reading or writing a comment on a
+     * `public` profile must not be able to tell the wall exists.
+     *
+     * @return array{profile: CommunityProfile, member: CommunityMember, viewerIsMember: bool}
+     */
+    protected function resolveProfileForMemberOrFail(Request $request, string $username): array
+    {
+        $resolved = $this->resolveProfileOrFail($request, $username);
+
+        abort_unless($resolved['viewerIsMember'], 404);
+
+        return $resolved;
     }
 
     /**

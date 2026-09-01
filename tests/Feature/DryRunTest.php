@@ -12,6 +12,8 @@ use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Community\Models\CommunityMember;
+use Konventix\Community\Models\CommunityProfile;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Content\Models\ContentEntry;
@@ -232,6 +234,26 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             ->first();
 
         return $type === null ? null : ['event_ulid' => $type->event_id, 'type' => $type];
+    }
+
+    // Community's `internal`-by-default visibility gate (ADR-0052) means the
+    // walking viewer must themselves be a `CommunityMember` of this brand or
+    // the wall 404s — so this points at the walking member's OWN profile
+    // when there is one (a self-view always passes the gate), else at any
+    // `CommunityMember` on this brand (which only resolves once the walker
+    // is a member too). The console walk passes no `$member` at all, so this
+    // never matches there — `community.profile.show` is a public/account
+    // screen only.
+    if ($name === 'community.profile.show') {
+        $username = $member !== null
+            ? CommunityProfile::query()->whereKey($member->getKey())->value('username')
+            : null;
+
+        $username ??= CommunityProfile::query()
+            ->whereIn('id', CommunityMember::withoutBrandScope()->where('brand_id', $brand->getKey())->select('user_id'))
+            ->value('username');
+
+        return $username === null ? null : ['username' => $username];
     }
 
     $resolved = [];
