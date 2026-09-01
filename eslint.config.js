@@ -233,6 +233,8 @@ export default defineConfigWithVueTs(
             'resources/js/actions/**',
             'resources/js/routes/**',
             'resources/js/wayfinder/**',
+            // Runtime files, root-owned litter from container crashes
+            'storage',
         ],
     },
     prettier,

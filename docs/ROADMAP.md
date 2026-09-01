@@ -390,15 +390,13 @@ in the owning module's `TODO.md` when it lands.
     verification mail is the acknowledgement for a subject with no
     account. Both mails are Messaging templates with no topic, like the
     three Compliance already registers, because a legal notice is not a
-    notification anyone may switch off (ADR-0041). Two things this
-    reopens: the request is still brand-scoped while Round 6 settled it
-    spans the operator (Known gaps) — a public page on one brand's host
-    makes the two-archives problem visible to the public, so that decision
-    lands here; and holding an address for a subject who may have no
-    account is the copy-of-personal-data-for-deletion question Compliance's
-    `TODO.md` already refuses to answer with code alone. It needs a
-    retention rule for unverified requests (hours, then gone) written into
-    the same ADR.
+    notification anyone may switch off (ADR-0041). The request now spans
+    the operator (ADR-0050), resolving the Round 6 decision: a person
+    registered with two brands gets one archive, one deadline, one trial
+    outcome. Holding an address for a subject who may have no account is
+    the copy-of-personal-data-for-deletion question, answered by a 24-hour
+    sweep of unverified rows — the address is the shortest-lived personal
+    data in the system.
 
     Withdrawal as a per-policy setting. `WithdrawConsent` is
     unconditionally self-service: `DELETE /consents/{consent}` checks
@@ -423,6 +421,15 @@ in the owning module's `TODO.md` when it lands.
     legitimate interest, and leaving it is a request, not a right", and
     the UI should say that rather than offer a switch that reads as
     optional.
+    **Done** (ADR-0050, 2026-09-01): `SubjectRef` carries a ULID or an
+    email, exactly one; the fan-out contract takes a subject without a
+    brand; archives assemble operator-wide; `PolicyVersion::lawful_basis`
+    routes withdrawals to self-service or operator review; the public page
+    verifies before opening a request; unverified rows sweep after 24 hours;
+    email-only subjects download archives through a hashed, single-use token;
+    exports and deletions both acknowledge. All nine handlers updated in one
+    commit; Identity's deletion rule simplified; Compliance's Known gap
+    closes.
 
 21. **Footer content.** Platform. The link list, its editor and the
     `dialog` kind shipped on 2026-08-24; what is missing is content. Three
@@ -687,9 +694,6 @@ Findings that are nobody's slice yet. Each is a decision or a piece of work
 that has an owner in a module's `TODO.md` where one exists; this list is only
 so they are not rediscovered.
 
-- **A subject request is still brand-scoped** while Round 6 settled that it
-  spans the operator, so a person registered with two brands gets two
-  archives. (Compliance's `TODO.md`.)
 - **Telescope and Pulse hold personal data outside the retention machinery**,
   bounded only by their own prune schedules — a window, not a rule anybody can
   audit. (Compliance's `TODO.md`.)
