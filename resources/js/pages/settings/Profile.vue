@@ -60,7 +60,11 @@ function submitAvatar(event: Event): void {
 }
 
 function copySteamAvatar(): void {
-    router.post(MembershipImageController.copySteam().url, {}, { preserveScroll: true });
+    router.post(
+        MembershipImageController.copySteam().url,
+        {},
+        { preserveScroll: true },
+    );
 }
 
 function submitBanner(event: Event): void {
@@ -184,7 +188,10 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.steam ?? ''"
                         placeholder="Steam handle"
                     />
-                    <InputError class="mt-2" :message="errors['socialLinks.steam']" />
+                    <InputError
+                        class="mt-2"
+                        :message="errors['socialLinks.steam']"
+                    />
                 </div>
 
                 <div class="grid gap-2">
@@ -196,7 +203,10 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.discord ?? ''"
                         placeholder="Discord username"
                     />
-                    <InputError class="mt-2" :message="errors['socialLinks.discord']" />
+                    <InputError
+                        class="mt-2"
+                        :message="errors['socialLinks.discord']"
+                    />
                 </div>
 
                 <div class="grid gap-2">
@@ -208,7 +218,10 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.twitch ?? ''"
                         placeholder="Twitch channel"
                     />
-                    <InputError class="mt-2" :message="errors['socialLinks.twitch']" />
+                    <InputError
+                        class="mt-2"
+                        :message="errors['socialLinks.twitch']"
+                    />
                 </div>
 
                 <div class="grid gap-2">
@@ -220,7 +233,10 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.youtube ?? ''"
                         placeholder="@channel"
                     />
-                    <InputError class="mt-2" :message="errors['socialLinks.youtube']" />
+                    <InputError
+                        class="mt-2"
+                        :message="errors['socialLinks.youtube']"
+                    />
                 </div>
 
                 <div class="grid gap-2">
@@ -232,7 +248,10 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.x ?? ''"
                         placeholder="Handle"
                     />
-                    <InputError class="mt-2" :message="errors['socialLinks.x']" />
+                    <InputError
+                        class="mt-2"
+                        :message="errors['socialLinks.x']"
+                    />
                 </div>
 
                 <div class="grid gap-2">
@@ -244,7 +263,10 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.instagram ?? ''"
                         placeholder="Instagram handle"
                     />
-                    <InputError class="mt-2" :message="errors['socialLinks.instagram']" />
+                    <InputError
+                        class="mt-2"
+                        :message="errors['socialLinks.instagram']"
+                    />
                 </div>
 
                 <div class="grid gap-2">
@@ -257,7 +279,10 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.website ?? ''"
                         placeholder="https://example.com"
                     />
-                    <InputError class="mt-2" :message="errors['socialLinks.website']" />
+                    <InputError
+                        class="mt-2"
+                        :message="errors['socialLinks.website']"
+                    />
                 </div>
             </div>
 
@@ -310,10 +335,14 @@ function submitBanner(event: Event): void {
                         >
                             Use my Steam avatar
                         </Button>
-                        <InputError :message="(page.props.errors as any)?.steam" />
+                        <InputError
+                            :message="(page.props.errors as any)?.steam"
+                        />
                         <Form
                             v-if="membershipImages.avatarUrl"
-                            v-bind="MembershipImageController.destroyAvatar.form()"
+                            v-bind="
+                                MembershipImageController.destroyAvatar.form()
+                            "
                             v-slot="{ processing: removingAvatar }"
                         >
                             <Button

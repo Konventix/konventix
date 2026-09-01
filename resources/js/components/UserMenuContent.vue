@@ -13,7 +13,7 @@ import { iconFor } from '@/lib/navIcons';
 import { logout } from '@/routes';
 import { edit as editProfile } from '@/routes/profile';
 import { index as settingsIndex } from '@/routes/settings';
-import type { User } from '@/types';
+import type { AuthenticatedUser } from '@/types';
 
 /**
  * The account menu, in two presentations of one list.
@@ -25,7 +25,7 @@ import type { User } from '@/types';
  * duplicated into a second component.
  */
 type Props = {
-    user: User;
+    user: AuthenticatedUser;
     variant?: 'menu' | 'plain';
 };
 
@@ -60,7 +60,7 @@ const entries = computed(() => [
     <template v-if="variant === 'menu'">
         <DropdownMenuLabel class="p-0 font-normal">
             <div class="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <UserInfo :user="user" :show-email="true" />
+                <UserInfo :user="user" />
             </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
