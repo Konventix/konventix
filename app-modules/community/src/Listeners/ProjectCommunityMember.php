@@ -32,15 +32,25 @@ final class ProjectCommunityMember
             return;
         }
 
-        // Explicit brand_id bypasses the ambient-context stamp on purpose;
-        // withoutBrandScope() because the listener runs off any host.
-        CommunityMember::withoutBrandScope()->updateOrCreate(
-            ['user_id' => $event->userId, 'brand_id' => $event->brandId],
-            [
-                'avatar_url' => $event->avatarUrl,
-                'banner_url' => $event->bannerUrl,
-                'member_since' => $event->firstSeenAt,
-            ],
-        );
+        // withoutBrandScope() because this listener runs off any host, with
+        // no ambient brand in context. `brand_id` is NOT mass-assignable
+        // (.ai/rules/models.md — BelongsToBrand's invariant is that only the
+        // ambient-context `creating` hook or a named escape hatch sets it),
+        // so this projection-only writer sets it directly via forceFill()
+        // instead of putting it through fill()/mass assignment: the value
+        // comes from the event, never from ambient context, and must not
+        // become something an ordinary caller's array could override.
+        $member = CommunityMember::withoutBrandScope()
+            ->where('user_id', $event->userId)
+            ->where('brand_id', $event->brandId)
+            ->firstOrNew();
+
+        $member->forceFill([
+            'user_id' => $event->userId,
+            'brand_id' => $event->brandId,
+            'avatar_url' => $event->avatarUrl,
+            'banner_url' => $event->bannerUrl,
+            'member_since' => $event->firstSeenAt,
+        ])->save();
     }
 }

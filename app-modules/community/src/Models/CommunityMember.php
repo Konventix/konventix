@@ -36,14 +36,14 @@ class CommunityMember extends Model
 
     protected $table = 'community_members';
 
-    // `brand_id` is fillable alongside `user_id` deliberately: the projection
-    // listener explicitly stamps the EVENT's brand into `updateOrCreate`'s
-    // find-attributes (bypassing BelongsToBrand's ambient-context stamp on
-    // purpose, since the listener runs off any host), and those attributes
-    // are mass-assigned when the row is first created. `Model::shouldBeStrict()`
-    // is on outside production (AppServiceProvider), so leaving `brand_id`
-    // out throws MassAssignmentException instead of silently discarding it.
-    protected $fillable = ['user_id', 'brand_id', 'avatar_url', 'banner_url', 'member_since'];
+    // `brand_id` is deliberately NOT fillable — it is never mass-assigned.
+    // `BelongsToBrand`'s invariant (.ai/rules/models.md) is that the only
+    // way to set it is the ambient-context `creating` hook or the named
+    // `withoutBrandScope()` escape hatch; a mass-assignable `brand_id` would
+    // let any caller's array override it. The projection listener writes the
+    // event's brand via `forceFill()` instead — see
+    // `Listeners\ProjectCommunityMember` for why.
+    protected $fillable = ['user_id', 'avatar_url', 'banner_url', 'member_since'];
 
     /**
      * @return array<string, string>

@@ -118,6 +118,23 @@ it('converges to one row when UserRegistered is replayed', function (): void {
     expect(CommunityProfile::query()->count())->toBe(1);
 });
 
+it('converges to one row with the latest values when UserProfileUpdated is replayed', function (): void {
+    $brand = $this->withBrand();
+    $userId = (string) Str::ulid();
+
+    event(communityRegisteredEventFor($userId, $brand->getKey()));
+    event(communityProfileUpdatedEventFor($userId));
+    event(communityProfileUpdatedEventFor($userId));
+
+    expect(CommunityProfile::query()->count())->toBe(1);
+
+    $profile = CommunityProfile::query()->findOrFail($userId);
+
+    expect($profile->username)->toBe('countess-lovelace')
+        ->and($profile->display_name)->toBe('Countess of Lovelace')
+        ->and($profile->tagline)->toBe('Enchantress of numbers');
+});
+
 it('creates a member row from BrandMembershipProfileUpdated only when the module is active for that brand', function (): void {
     $brand = $this->withBrand();
     $this->activateModule('community', $brand);
