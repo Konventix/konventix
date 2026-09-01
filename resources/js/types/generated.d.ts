@@ -295,7 +295,7 @@ declare namespace Konventix {
             export type DataSubjectRequestState =
                 'received' | 'in_progress' | 'fulfilled' | 'refused';
             export type DataSubjectRequestType =
-                'export' | 'deletion' | 'rectification';
+                'export' | 'deletion' | 'rectification' | 'consent_withdrawal';
             export type DeletionMode = 'anonymize' | 'erase';
             export type LawfulBasis =
                 'consent' | 'contract' | 'legitimate_interest';

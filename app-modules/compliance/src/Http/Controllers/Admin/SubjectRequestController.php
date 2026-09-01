@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Compliance\Actions\ApproveConsentWithdrawal;
 use Konventix\Compliance\Actions\RedispatchSubjectRequest;
 use Konventix\Compliance\Actions\RefuseSubjectRequest;
 use Konventix\Compliance\Audit\AuditRecorder;
@@ -171,6 +172,24 @@ class SubjectRequestController
         $refuse($this->find($subjectRequest), $validated['reasonCode']);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Request refused.')]);
+
+        return back();
+    }
+
+    /**
+     * Accepts a ConsentWithdrawal request: withdraws the named consent
+     * through the same write the self-service path uses, without re-entering
+     * the lawful-basis guard, and closes the request Fulfilled (ADR-0050
+     * §7/§8, controller rulings 1-2). Same capability as refuse — accepting
+     * and refusing are the two ways a handler resolves a request.
+     */
+    public function acceptConsentWithdrawal(string $subjectRequest, ApproveConsentWithdrawal $approve): RedirectResponse
+    {
+        Gate::authorize(Permission::HandleSubjectRequests->value);
+
+        $approve($this->find($subjectRequest));
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Withdrawal accepted.')]);
 
         return back();
     }

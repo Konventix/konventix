@@ -28,34 +28,43 @@ use Konventix\Compliance\Models\DataSubjectRequestResponse;
  * still opens (and gets a state to progress through), it just dispatches
  * nothing. TODO.md tracks defining a RectificationRequested event as a
  * follow-up.
+ *
+ * ConsentWithdrawal seeds no per-module response rows and dispatches nothing
+ * either: it is Compliance answering about its own Consent record, not a
+ * cross-module obligation every GdprHandler must reply to (ADR-0050 §8). A
+ * Pending row per module would sit forever, showing every module as "not yet
+ * answered" for a request none of them will ever touch.
  */
 final class OpenSubjectRequest
 {
     public function __construct(private readonly GdprHandlerRegistry $registry) {}
 
-    public function __invoke(SubjectRef $subject, DataSubjectRequestType $type, ?DeletionMode $mode = null, ?string $filedOnBrandId = null): DataSubjectRequest
+    public function __invoke(SubjectRef $subject, DataSubjectRequestType $type, ?DeletionMode $mode = null, ?string $filedOnBrandId = null, ?string $consentId = null): DataSubjectRequest
     {
         if ($type === DataSubjectRequestType::Deletion && $mode === null) {
             throw new InvalidArgumentException('Opening a deletion request requires a DeletionMode.');
         }
 
-        return DB::transaction(function () use ($subject, $type, $mode, $filedOnBrandId): DataSubjectRequest {
+        return DB::transaction(function () use ($subject, $type, $mode, $filedOnBrandId, $consentId): DataSubjectRequest {
             $request = DataSubjectRequest::create([
                 'subject_id' => $subject->userId,
                 'subject_email' => $subject->email,
                 'filed_on_brand_id' => $filedOnBrandId,
+                'consent_id' => $consentId,
                 'type' => $type,
                 'state' => DataSubjectRequestState::Received,
                 'mode' => $mode,
                 'deadline_at' => now()->addDays(30),
             ]);
 
-            foreach ($this->registry->moduleNames() as $module) {
-                DataSubjectRequestResponse::create([
-                    'data_subject_request_id' => $request->id,
-                    'module' => $module,
-                    'state' => ModuleResponseState::Pending,
-                ]);
+            if ($type !== DataSubjectRequestType::ConsentWithdrawal) {
+                foreach ($this->registry->moduleNames() as $module) {
+                    DataSubjectRequestResponse::create([
+                        'data_subject_request_id' => $request->id,
+                        'module' => $module,
+                        'state' => ModuleResponseState::Pending,
+                    ]);
+                }
             }
 
             $this->dispatchFanOut($request);
@@ -82,6 +91,7 @@ final class OpenSubjectRequest
                 mode: $request->mode->value,
             )),
             DataSubjectRequestType::Rectification => null,
+            DataSubjectRequestType::ConsentWithdrawal => null,
         };
     }
 }

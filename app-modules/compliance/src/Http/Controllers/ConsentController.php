@@ -11,6 +11,7 @@ use Konventix\Compliance\Actions\GrantConsent;
 use Konventix\Compliance\Actions\WithdrawConsent;
 use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Models\Consent;
+use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\PolicyVersion;
 
 /**
@@ -62,6 +63,10 @@ final class ConsentController
      * (`WithdrawConsent`). Withdrawing a *required* policy's consent puts the
      * gate back in front of the person on their next gated request, which the
      * privacy page says out loud before they press the button.
+     *
+     * Where the policy's basis is not consent, `WithdrawConsent` opens a
+     * DataSubjectRequest instead of withdrawing (ADR-0050 §7) — the toast
+     * says so rather than claiming a withdrawal that has not happened yet.
      */
     public function destroy(Request $request, string $consent, WithdrawConsent $withdrawConsent): RedirectResponse
     {
@@ -74,11 +79,17 @@ final class ConsentController
         // check is what stops one account withdrawing another's consent.
         abort_unless($model->subject_id === (string) $request->user()->getAuthIdentifier(), 403);
 
-        if (! $model->isWithdrawn()) {
-            $withdrawConsent($model);
+        if ($model->isWithdrawn()) {
+            Inertia::flash('toast', ['type' => 'success', 'message' => __('Consent withdrawn.')]);
+
+            return back();
         }
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Consent withdrawn.')]);
+        $result = $withdrawConsent($model);
+
+        Inertia::flash('toast', $result instanceof DataSubjectRequest
+            ? ['type' => 'info', 'message' => __('Withdrawal requested — the operator will review it.')]
+            : ['type' => 'success', 'message' => __('Consent withdrawn.')]);
 
         return back();
     }

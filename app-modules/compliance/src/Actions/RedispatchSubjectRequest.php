@@ -53,6 +53,9 @@ final class RedispatchSubjectRequest
                 mode: $request->mode->value,
             )),
             DataSubjectRequestType::Rectification => null,
+            // A withdrawal request never fanned out to any module in the
+            // first place (ADR-0050 §8) — nothing to re-dispatch.
+            DataSubjectRequestType::ConsentWithdrawal => null,
         };
     }
 }

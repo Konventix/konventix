@@ -30,10 +30,14 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  * the address that is all we have for them. The database enforces this with
  * a check constraint; see `subject()`.
  *
+ * `consent_id` names the Consent a `ConsentWithdrawal` request is about
+ * (ADR-0050 §8); every other type leaves it null.
+ *
  * @property string $id
  * @property string|null $filed_on_brand_id
  * @property string|null $subject_id
  * @property string|null $subject_email
+ * @property string|null $consent_id
  * @property DataSubjectRequestType $type
  * @property DataSubjectRequestState $state
  * @property DeletionMode|null $mode
@@ -57,6 +61,7 @@ class DataSubjectRequest extends Model
         'filed_on_brand_id',
         'subject_id',
         'subject_email',
+        'consent_id',
         'type',
         'state',
         'mode',
