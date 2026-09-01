@@ -15,6 +15,7 @@ use Konventix\Compliance\Enums\ModuleResponseState;
 use Konventix\Compliance\Events\UserDeletionCompleted;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Throwable;
 
@@ -57,12 +58,13 @@ final class RunSubjectDeletion implements ShouldQueue
         $request->forceFill(['state' => DataSubjectRequestState::InProgress])->save();
 
         $mode = $request->mode ?? DeletionMode::Anonymize;
+        $subject = SubjectRef::forUser($request->subject_id);
         $failed = false;
 
         foreach ($registry->all() as $module => $handler) {
             /** @var GdprHandler $handler */
             try {
-                $handler->delete($request->subject_id, $this->brandId, $mode);
+                $handler->delete($subject, $mode);
                 $recordModuleResponse($request, $module, ModuleResponseState::Completed);
             } catch (Throwable $exception) {
                 $failed = true;

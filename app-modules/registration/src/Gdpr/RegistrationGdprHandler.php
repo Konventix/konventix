@@ -6,6 +6,7 @@ namespace Konventix\Registration\Gdpr;
 
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\WaitlistEntry;
 
@@ -38,10 +39,15 @@ final class RegistrationGdprHandler implements GdprHandler
         return 'registration';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
+        if (! $subject->isAccountBacked()) {
+            return [];
+        }
+
+        $subjectId = $subject->userId;
+
         $registrations = Registration::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('registrant_user_id', $subjectId)
             ->orderBy('submitted_at')
             ->get()
@@ -58,7 +64,6 @@ final class RegistrationGdprHandler implements GdprHandler
             ->all();
 
         $waitlist = WaitlistEntry::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('registrant_user_id', $subjectId)
             ->orderBy('queued_at')
             ->get()
@@ -76,17 +81,20 @@ final class RegistrationGdprHandler implements GdprHandler
         ];
     }
 
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+    public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
+        if (! $subject->isAccountBacked()) {
+            return;
+        }
+
+        $subjectId = $subject->userId;
         $scrub = array_fill_keys(self::BILLING_FIELDS, null);
 
         Registration::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('registrant_user_id', $subjectId)
             ->update($scrub);
 
         WaitlistEntry::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('registrant_user_id', $subjectId)
             ->update($scrub);
     }

@@ -8,6 +8,7 @@ use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionClaimLink;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
+use Konventix\Compliance\Gdpr\SubjectRef;
 
 /**
  * Admission's contribution to GDPR export and deletion.
@@ -32,10 +33,15 @@ final class AdmissionGdprHandler implements GdprHandler
         return 'admission';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
+        if (! $subject->isAccountBacked()) {
+            return [];
+        }
+
+        $subjectId = $subject->userId;
+
         $admissions = Admission::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('holder_user_id', $subjectId)
             ->orderBy('created_at')
             ->get();
@@ -52,7 +58,6 @@ final class AdmissionGdprHandler implements GdprHandler
                 ])
                 ->all(),
             'claim_links' => AdmissionClaimLink::withoutBrandScope()
-                ->where('brand_id', $brandId)
                 ->where(function ($query) use ($subjectId, $admissions): void {
                     $query->where('claimed_by_user_id', $subjectId)
                         ->orWhereIn('admission_id', $admissions->modelKeys());
@@ -67,15 +72,19 @@ final class AdmissionGdprHandler implements GdprHandler
         ];
     }
 
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+    public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
+        if (! $subject->isAccountBacked()) {
+            return;
+        }
+
+        $subjectId = $subject->userId;
+
         $admissionIds = Admission::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('holder_user_id', $subjectId)
             ->pluck('id');
 
         AdmissionClaimLink::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where(function ($query) use ($subjectId, $admissionIds): void {
                 $query->where('claimed_by_user_id', $subjectId)
                     ->orWhereIn('admission_id', $admissionIds);

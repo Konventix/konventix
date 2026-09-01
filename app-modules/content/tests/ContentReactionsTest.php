@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Compliance\Enums\DeletionMode;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Content\Actions\ReactToComment;
 use Konventix\Content\Actions\UnreactToComment;
 use Konventix\Content\Enums\CommentState;
@@ -108,17 +109,18 @@ it('refuses a guest, the author, and a comment that is not public', function ():
 });
 
 it('exports a subject\'s reactions and removes them on deletion, recounting', function (): void {
-    $brand = $this->withBrand();
+    $this->withBrand();
     $user = User::factory()->create();
     $comment = ContentComment::factory()->create();
     app(ReactToComment::class)->handle($comment, $user->id);
     app(ReactToComment::class)->handle($comment, (string) Str::ulid());
 
     $handler = new ContentGdprHandler;
+    $subject = SubjectRef::forUser($user->id);
 
-    expect($handler->exportFor($user->id, $brand->getKey())['reactions'])->toHaveCount(1);
+    expect($handler->exportFor($subject)['reactions'])->toHaveCount(1);
 
-    $handler->delete($user->id, $brand->getKey(), DeletionMode::Erase);
+    $handler->delete($subject, DeletionMode::Erase);
 
     expect(ContentReaction::query()->where('user_id', $user->id)->exists())->toBeFalse()
         ->and($comment->refresh()->reaction_count)->toBe(1);

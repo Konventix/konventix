@@ -6,6 +6,7 @@ namespace Konventix\Messaging\Gdpr;
 
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Messaging\Models\InboxNotification;
 use Konventix\Messaging\Models\MessageRecord;
 use Konventix\Messaging\Models\NotificationPreference;
@@ -44,8 +45,37 @@ final class MessagingGdprHandler implements GdprHandler
         return 'messaging';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
+        if (! $subject->isAccountBacked()) {
+            return [
+                // Keyed on the address, and deliberately outliving any
+                // account: a suppression exists because that address said no.
+                'suppressions' => Suppression::withoutBrandScope()
+                    ->where('email', $subject->email)
+                    ->get()
+                    ->map(fn (Suppression $s): array => [
+                        'channel' => $s->channel->value,
+                        'reason' => $s->reason_code,
+                        'lifted_at' => $s->lifted_at?->toIso8601String(),
+                    ])
+                    ->all(),
+                'messages' => MessageRecord::withoutBrandScope()
+                    ->where('recipient_email', $subject->email)
+                    ->orderBy('queued_at')
+                    ->get()
+                    ->map(fn (MessageRecord $r): array => [
+                        'template' => $r->template_key,
+                        'channel' => $r->channel->value,
+                        'status' => $r->status->value,
+                        'queued_at' => $r->queued_at->toIso8601String(),
+                    ])
+                    ->all(),
+            ];
+        }
+
+        $subjectId = $subject->userId;
+
         /** @var Recipient|null $recipient */
         $recipient = Recipient::query()->find($subjectId);
 
@@ -66,7 +96,6 @@ final class MessagingGdprHandler implements GdprHandler
                 ])
                 ->all(),
             'messages' => MessageRecord::withoutBrandScope()
-                ->where('brand_id', $brandId)
                 ->where('recipient_id', $subjectId)
                 ->orderBy('queued_at')
                 ->get()
@@ -81,17 +110,32 @@ final class MessagingGdprHandler implements GdprHandler
         ];
     }
 
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+    public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
+        if (! $subject->isAccountBacked()) {
+            // The delivery log for that address is scrubbed like any other,
+            // but the suppression's `email` is never touched — it is the key
+            // that stops a future send to an address that already said no.
+            MessageRecord::withoutBrandScope()
+                ->where('recipient_email', $subject->email)
+                ->update([
+                    'recipient_email' => 'anonymized-'.md5((string) $subject->email).'@invalid',
+                    'rendered_subject' => null,
+                    'rendered_body' => null,
+                ]);
+
+            return;
+        }
+
+        $subjectId = $subject->userId;
+
         PushSubscription::query()->where('recipient_id', $subjectId)->delete();
 
         InboxNotification::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('recipient_id', $subjectId)
             ->delete();
 
         MessageRecord::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('recipient_id', $subjectId)
             ->update([
                 'recipient_email' => 'anonymized-'.$subjectId.'@invalid',
@@ -102,7 +146,6 @@ final class MessagingGdprHandler implements GdprHandler
         // Kept as a suppression, stripped of the account link: the address
         // itself is the key that stops a future send.
         Suppression::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('recipient_id', $subjectId)
             ->update(['recipient_id' => null]);
 

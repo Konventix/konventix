@@ -15,6 +15,7 @@ use Konventix\Compliance\Enums\ModuleResponseState;
 use Konventix\Compliance\Events\DataExportRequested;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectRef;
 
 /**
  * A minimal fake handler, standing in for a real module's Gdpr/ handler —
@@ -27,12 +28,12 @@ final class FakeStaffingGdprHandler implements GdprHandler
         return 'staffing';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
         return ['shifts' => []];
     }
 
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void {}
+    public function delete(SubjectRef $subject, DeletionMode $mode): void {}
 }
 
 /*

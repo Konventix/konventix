@@ -7,6 +7,7 @@ namespace Konventix\Identity\Gdpr;
 use Illuminate\Support\Str;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Identity\Enums\AccountState;
 use Konventix\Identity\Events\UserAnonymized;
 use Konventix\Identity\Models\BrandMembership;
@@ -19,19 +20,14 @@ use Konventix\Identity\Models\User;
  * which makes it the handler with the one genuinely hard question in the
  * fan-out.
  *
- * **An account spans the operator; a request arrives per brand.** ADR-0016
- * gives one account across every brand of an operator, and Round 6 (D-BATCH)
- * settled that a subject request spans the operator too — but the fan-out
- * that reaches this handler is still keyed by brand. Anonymizing the shared
- * account because one brand was asked to delete would silently end the
- * person's participation in the operator's other brands.
- *
- * So this handler removes the membership for the brand it was asked about,
- * and anonymizes the account only when that was the last one. A person who
- * leaves one convention keeps their account for the others; a person who
- * leaves the operator entirely is anonymized. That rule is defensible in
- * both directions, and it stops being needed the day requests are opened
- * operator-wide (Compliance TODO).
+ * **An account spans the operator, and so does a request.** ADR-0016 gives
+ * one account across every brand of an operator, and ADR-0050 settled that a
+ * subject request spans the operator too: a deletion removes every
+ * membership, not one brand's, and the account is anonymized unconditionally
+ * — a person who asks to be forgotten is forgotten everywhere, not kept on
+ * for brands nobody asked about on their behalf. The old "delete this
+ * brand's membership, anonymize only if it was the last" rule existed
+ * because the fan-out used to arrive per brand; it no longer does.
  *
  * Anonymization is a tombstone, never a delete (Round 6 D-BATCH): the row
  * survives with its ULID so every `*_user_id` in every other module still
@@ -48,8 +44,14 @@ final class IdentityGdprHandler implements GdprHandler
         return 'identity';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
+        if (! $subject->isAccountBacked()) {
+            return [];
+        }
+
+        $subjectId = $subject->userId;
+
         /** @var User|null $user */
         $user = User::query()->find($subjectId);
 
@@ -112,19 +114,20 @@ final class IdentityGdprHandler implements GdprHandler
         ];
     }
 
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+    public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
-        BrandMembership::withoutBrandScope()
-            ->where('user_id', $subjectId)
-            ->where('brand_id', $brandId)
-            ->delete();
-
-        // Unscoped on purpose — the question is whether this person still
-        // belongs to ANY of the operator's brands, and BrandScope would
-        // answer only for the one that happens to be resolved.
-        if (BrandMembership::withoutBrandScope()->where('user_id', $subjectId)->exists()) {
+        if (! $subject->isAccountBacked()) {
             return;
         }
+
+        $subjectId = $subject->userId;
+
+        // Every membership, not one brand's: the request spans the operator
+        // (ADR-0050 §1), so a person leaving takes all of it with them. The
+        // old "delete this brand's membership, anonymize only if it was the
+        // last" rule existed because the fan-out arrived per brand; it no
+        // longer does.
+        BrandMembership::withoutBrandScope()->where('user_id', $subjectId)->delete();
 
         /** @var User|null $user */
         $user = User::query()->find($subjectId);

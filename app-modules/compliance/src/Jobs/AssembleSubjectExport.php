@@ -15,6 +15,7 @@ use Konventix\Compliance\Enums\ModuleResponseState;
 use Konventix\Compliance\Events\DataExportCompleted;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Throwable;
 
@@ -66,13 +67,15 @@ final class AssembleSubjectExport implements ShouldQueue
 
         $request->forceFill(['state' => DataSubjectRequestState::InProgress])->save();
 
+        $subject = SubjectRef::forUser($request->subject_id);
+
         $contributions = [];
         $failed = false;
 
         foreach ($registry->all() as $module => $handler) {
             /** @var GdprHandler $handler */
             try {
-                $contributions[$module] = $handler->exportFor($request->subject_id, $this->brandId);
+                $contributions[$module] = $handler->exportFor($subject);
                 $recordModuleResponse($request, $module, ModuleResponseState::Completed);
             } catch (Throwable $exception) {
                 $failed = true;
@@ -92,12 +95,14 @@ final class AssembleSubjectExport implements ShouldQueue
 
         $expiresAt = now()->addDays(self::ARCHIVE_DAYS);
 
-        $path = sprintf('%s/%s.json', $this->brandId, $request->getKey());
+        // No brand in the path: one archive per request, for the whole
+        // operator (ADR-0050 §1). `archive_disk` is sealed on the row, so
+        // archives written under the old {brandId}/ path stay readable.
+        $path = sprintf('subject-exports/%s.json', $request->getKey());
         $disk = (string) config('filesystems.exports_disk', 'exports');
 
         Storage::disk($disk)->put($path, (string) json_encode([
             'subject_id' => $request->subject_id,
-            'brand_id' => $this->brandId,
             'request_id' => $request->getKey(),
             'generated_at' => now()->toIso8601String(),
             'modules' => $contributions,

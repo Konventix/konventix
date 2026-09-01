@@ -134,14 +134,16 @@ it('anonymizes across modules while every reference still resolves', function ()
     expect($comment->body)->not->toBeEmpty();
 });
 
-it('keeps an account that still belongs to another brand', function (): void {
+it('anonymizes an account and removes every brand membership, even one belonging to another brand (ADR-0050)', function (): void {
     $brandA = $this->withBrand();
     $brandB = Brand::factory()->create();
 
     $user = User::factory()->create();
 
     // One membership per brand, each stamped by the context it was created
-    // in (ADR-0010) — the request below arrives for brand A only.
+    // in (ADR-0010). Before ADR-0050 a deletion request arrived per brand and
+    // this membership pair is exactly what made the account survive; now the
+    // request is about the person, not the person-at-a-brand, so both go.
     BrandMembership::factory()->create(['user_id' => $user->id]);
     $this->withBrand($brandB);
     BrandMembership::factory()->create(['user_id' => $user->id]);
@@ -149,13 +151,8 @@ it('keeps an account that still belongs to another brand', function (): void {
 
     app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
 
-    // One brand asked; the account spans the operator (ADR-0016) and the
-    // person is still registered elsewhere. The membership that survives is
-    // the other brand's — count across brands, not brand A's own scope,
-    // which the queue propagator (Task 3) now leaves ambient after the
-    // sync-dispatched deletion job restores it.
-    expect($user->refresh()->state)->toBe(AccountState::Active)
-        ->and(BrandMembership::withoutBrandScope()->where('user_id', $user->id)->count())->toBe(1);
+    expect($user->refresh()->state)->toBe(AccountState::Anonymized)
+        ->and(BrandMembership::withoutBrandScope()->where('user_id', $user->id)->count())->toBe(0);
 });
 
 it('leaves the consent record standing after a deletion', function (): void {

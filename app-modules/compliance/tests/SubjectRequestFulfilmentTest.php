@@ -15,6 +15,7 @@ use Konventix\Compliance\Events\DataExportCompleted;
 use Konventix\Compliance\Events\UserDeletionCompleted;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\DataSubjectRequestResponse;
 
@@ -44,7 +45,7 @@ function complianceFakeHandler(string $module, array $export = [], bool $throws 
             return $this->module;
         }
 
-        public function exportFor(string $subjectId, string $brandId): array
+        public function exportFor(SubjectRef $subject): array
         {
             if ($this->throws) {
                 throw new RuntimeException('handler exploded');
@@ -53,13 +54,13 @@ function complianceFakeHandler(string $module, array $export = [], bool $throws 
             return $this->export;
         }
 
-        public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+        public function delete(SubjectRef $subject, DeletionMode $mode): void
         {
             if ($this->throws) {
                 throw new RuntimeException('handler exploded');
             }
 
-            $this->deletions[] = ['subject' => $subjectId, 'mode' => $mode->value];
+            $this->deletions[] = ['subject' => $subject->userId, 'mode' => $mode->value];
         }
     };
 }
