@@ -59,6 +59,7 @@ it('emits UserProfileUpdated with the current values on a profile update', funct
         ->patch('/settings/profile', [
             'name' => 'Countess of Lovelace',
             'email' => 'countess@example.test',
+            'username' => $user->username,
         ])
         ->assertRedirect();
 

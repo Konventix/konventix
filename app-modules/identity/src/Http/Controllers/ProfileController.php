@@ -21,9 +21,19 @@ class ProfileController
      */
     public function edit(Request $request): Response
     {
+        $user = $request->user();
+
         return Inertia::render('settings/Profile', [
-            'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
+            'mustVerifyEmail' => $user instanceof MustVerifyEmail,
             'status' => $request->session()->get('status'),
+            'profile' => [
+                'name' => $user->name,
+                'email' => $user->email,
+                'username' => $user->username,
+                'tagline' => $user->tagline,
+                'statusEmoji' => $user->status_emoji,
+                'socialLinks' => $user->social_links ?? (object) [],
+            ],
         ]);
     }
 
@@ -32,7 +42,14 @@ class ProfileController
      */
     public function update(Request $request, ProfileUpdateData $data): RedirectResponse
     {
-        $request->user()->fill(['name' => $data->name, 'email' => $data->email]);
+        $request->user()->fill([
+            'name' => $data->name,
+            'email' => $data->email,
+            'username' => $data->username,
+            'tagline' => $data->tagline !== '' ? $data->tagline : null,
+            'status_emoji' => $data->statusEmoji !== '' ? $data->statusEmoji : null,
+            'social_links' => array_filter($data->socialLinks ?? []) ?: null,
+        ]);
 
         if ($request->user()->isDirty('email')) {
             $request->user()->email_verified_at = null;
