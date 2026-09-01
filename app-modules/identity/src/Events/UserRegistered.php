@@ -17,6 +17,7 @@ final readonly class UserRegistered
         public string $brandId,
         public string $email,
         public string $displayName,
+        public string $username,
         public string $locale,
         public string $registeredAt,
     ) {}

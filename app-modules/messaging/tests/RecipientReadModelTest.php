@@ -25,6 +25,7 @@ function registeredEventFor(string $userId, string $brandId, string $email = 'ad
         brandId: $brandId,
         email: $email,
         displayName: 'Ada Lovelace',
+        username: 'ada-lovelace',
         locale: 'de',
         registeredAt: now()->toIso8601String(),
     );
@@ -55,6 +56,10 @@ it('re-projects UserProfileUpdated over an existing row', function (): void {
         userId: $userId,
         email: 'countess@example.test',
         displayName: 'Countess of Lovelace',
+        username: 'countess-lovelace',
+        tagline: null,
+        statusEmoji: null,
+        socialLinks: [],
         locale: 'en',
         updatedAt: now()->toIso8601String(),
     ));

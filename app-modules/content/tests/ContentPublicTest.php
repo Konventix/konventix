@@ -102,6 +102,7 @@ it('bylines from the author read model rather than an account id', function (): 
         brandId: (string) $this->withBrand()->getKey(),
         email: $user->email,
         displayName: 'Ada Editor',
+        username: 'ada-editor',
         locale: 'de',
         registeredAt: now()->toIso8601String(),
     ));
@@ -126,6 +127,7 @@ it('re-projects the author name when the profile changes', function (): void {
         brandId: (string) $this->withBrand()->getKey(),
         email: $user->email,
         displayName: 'Original Name',
+        username: 'original-name',
         locale: 'de',
         registeredAt: now()->toIso8601String(),
     ));
@@ -134,6 +136,10 @@ it('re-projects the author name when the profile changes', function (): void {
         userId: $user->id,
         email: $user->email,
         displayName: 'Renamed',
+        username: 'original-name',
+        tagline: null,
+        statusEmoji: null,
+        socialLinks: [],
         locale: 'de',
         updatedAt: now()->toIso8601String(),
     ));

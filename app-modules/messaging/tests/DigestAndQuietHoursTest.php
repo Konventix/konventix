@@ -54,6 +54,7 @@ function digestQuietHoursSetup(bool $digestable = true): string
         brandId: (string) Str::ulid(),
         email: 'erika@example.test',
         displayName: 'Erika',
+        username: 'erika',
         locale: 'en',
         registeredAt: now()->toIso8601String(),
     ));
@@ -230,6 +231,7 @@ it('keeps holds in separate windows per recipient', function (): void {
         brandId: (string) Str::ulid(),
         email: 'max@example.test',
         displayName: 'Max',
+        username: 'max',
         locale: 'en',
         registeredAt: now()->toIso8601String(),
     ));

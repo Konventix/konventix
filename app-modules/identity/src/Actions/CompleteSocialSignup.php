@@ -53,6 +53,7 @@ final class CompleteSocialSignup
                 brandId: app(BrandContext::class)->currentOrFail()->getKey(),
                 email: $user->email,
                 displayName: $user->name,
+                username: $user->username,
                 locale: $user->locale,
                 registeredAt: now()->toIso8601String(),
             ));

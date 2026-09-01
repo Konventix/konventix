@@ -46,6 +46,10 @@ class ProfileController
             userId: $request->user()->id,
             email: $request->user()->email,
             displayName: $request->user()->name,
+            username: $request->user()->username,
+            tagline: $request->user()->tagline,
+            statusEmoji: $request->user()->status_emoji,
+            socialLinks: $request->user()->social_links ?? [],
             locale: $request->user()->locale,
             updatedAt: now()->toIso8601String(),
         ));

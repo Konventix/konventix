@@ -73,6 +73,7 @@ function pushChannelSetup(): array
         brandId: (string) Str::ulid(),
         email: 'erika@example.test',
         displayName: 'Erika',
+        username: 'erika',
         locale: 'en',
         registeredAt: now()->toIso8601String(),
     ));

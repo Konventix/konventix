@@ -42,6 +42,10 @@ class ReplayProfilesCommand extends Command
                         userId: $user->getKey(),
                         email: $user->email,
                         displayName: $user->name,
+                        username: $user->username,
+                        tagline: $user->tagline,
+                        statusEmoji: $user->status_emoji,
+                        socialLinks: $user->social_links ?? [],
                         locale: $user->locale,
                         updatedAt: ($user->updated_at ?? now())->toIso8601String(),
                     ));
