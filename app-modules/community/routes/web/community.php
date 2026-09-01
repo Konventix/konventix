@@ -14,3 +14,14 @@ declare(strict_types=1);
  * So: declare bare routes here. Do not re-apply `web` or the module gate, and
  * never register these routes from routes/web.php.
  */
+
+use Illuminate\Support\Facades\Route;
+use Konventix\Community\Http\Controllers\ProfileController;
+
+// The account's public page (ADR-0051 §7, ADR-0052). Deliberately NOT in an
+// auth group: a guest may view a `public` profile, and every other denial
+// must read as 404 rather than a login redirect — the gate itself lives in
+// ProfileController::show() via ResolvesProfiles.
+Route::get('/u/{username}', [ProfileController::class, 'show'])
+    ->where('username', '[A-Za-z0-9-]{1,64}')
+    ->name('community.profile.show');
