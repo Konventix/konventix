@@ -32,6 +32,22 @@ it('emits UserRegistered with scalar account data when an account is created', f
         && $event->locale === $user->locale);
 });
 
+it('emits UserRegistered with the account\'s username', function (): void {
+    $this->withBrand();
+
+    Event::fake([UserRegistered::class]);
+
+    $user = app(CreateNewUser::class)->create([
+        'name' => 'Ada Lovelace',
+        'email' => 'ada@example.test',
+        'password' => 'correct-horse-battery',
+        'password_confirmation' => 'correct-horse-battery',
+    ]);
+
+    Event::assertDispatched(UserRegistered::class, fn (UserRegistered $event): bool => $event->userId === $user->id
+        && $event->username === $user->username);
+});
+
 it('emits UserProfileUpdated with the current values on a profile update', function (): void {
     $this->withBrand();
 
@@ -43,10 +59,14 @@ it('emits UserProfileUpdated with the current values on a profile update', funct
         ->patch('/settings/profile', [
             'name' => 'Countess of Lovelace',
             'email' => 'countess@example.test',
+            'username' => $user->username,
         ])
         ->assertRedirect();
 
     Event::assertDispatched(UserProfileUpdated::class, fn (UserProfileUpdated $event): bool => $event->userId === $user->id
         && $event->email === 'countess@example.test'
-        && $event->displayName === 'Countess of Lovelace');
+        && $event->displayName === 'Countess of Lovelace'
+        && $event->username === $user->username
+        && $event->tagline === null
+        && $event->socialLinks === []);
 });

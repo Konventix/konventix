@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Identity\Http\Controllers\LinkedAccountController;
+use Konventix\Identity\Http\Controllers\MembershipImageController;
 use Konventix\Identity\Http\Controllers\ProfileController;
 use Konventix\Identity\Http\Controllers\SecurityController;
 use Konventix\Identity\Http\Controllers\SessionController;
@@ -47,6 +48,12 @@ Route::middleware(['auth'])->group(function (): void {
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
+
+    Route::post('settings/profile/avatar', [MembershipImageController::class, 'storeAvatar'])->name('profile.avatar.store');
+    Route::delete('settings/profile/avatar', [MembershipImageController::class, 'destroyAvatar'])->name('profile.avatar.destroy');
+    Route::post('settings/profile/avatar/steam', [MembershipImageController::class, 'copySteam'])->name('profile.avatar.steam');
+    Route::post('settings/profile/banner', [MembershipImageController::class, 'storeBanner'])->name('profile.banner.store');
+    Route::delete('settings/profile/banner', [MembershipImageController::class, 'destroyBanner'])->name('profile.banner.destroy');
 });
 
 Route::middleware(['auth', 'verified'])->group(function (): void {

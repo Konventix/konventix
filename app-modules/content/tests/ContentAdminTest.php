@@ -452,6 +452,7 @@ it('shows the moderation queue an author name and a link to the account, never a
         brandId: (string) $brand->getKey(),
         email: $author->email,
         displayName: 'Ada Lovelace',
+        username: 'ada-lovelace',
         locale: 'de',
         registeredAt: now()->toIso8601String(),
     ));

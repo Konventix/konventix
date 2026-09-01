@@ -37,7 +37,7 @@ class DatabaseSeeder extends Seeder
         // existing dev database must be safe.
         User::query()->firstOrCreate(
             ['email' => 'test@example.com'],
-            ['name' => 'Test User', 'password' => 'password'],
+            ['name' => 'Test User', 'password' => 'password', 'username' => 'test-user'],
         );
     }
 
@@ -58,7 +58,7 @@ class DatabaseSeeder extends Seeder
 
         $admin = User::query()->firstOrCreate(
             ['email' => 'admin@konventix.test'],
-            ['name' => 'Operator Admin', 'password' => 'password'],
+            ['name' => 'Operator Admin', 'password' => 'password', 'username' => 'operator-admin'],
         );
 
         $admin->assignRole('Operator Admin');

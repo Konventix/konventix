@@ -121,6 +121,7 @@ final class DemoUserSeeder
             brandId: $brand->getKey(),
             email: $user->email,
             displayName: $user->name,
+            username: $user->username,
             locale: $user->locale,
             registeredAt: $user->created_at?->toIso8601String() ?? now()->toIso8601String(),
         ));

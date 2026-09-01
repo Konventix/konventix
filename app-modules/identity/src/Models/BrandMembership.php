@@ -23,6 +23,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $brand_id
  * @property Carbon $first_seen_at
  * @property array<string, mixed>|null $preferences
+ * @property string|null $avatar_media_id
+ * @property string|null $banner_media_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -33,7 +35,7 @@ class BrandMembership extends Model
     /** @use HasFactory<BrandMembershipFactory> */
     use HasFactory, HasUlids;
 
-    protected $fillable = ['user_id', 'first_seen_at', 'preferences'];
+    protected $fillable = ['user_id', 'first_seen_at', 'preferences', 'avatar_media_id', 'banner_media_id'];
 
     /**
      * @return BelongsTo<User, $this>

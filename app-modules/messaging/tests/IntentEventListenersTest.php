@@ -24,6 +24,7 @@ function intentEventsRecipient(string $email = 'erika@example.test'): string
         brandId: (string) Str::ulid(),
         email: $email,
         displayName: 'Erika',
+        username: 'erika',
         locale: 'en',
         registeredAt: now()->toIso8601String(),
     ));

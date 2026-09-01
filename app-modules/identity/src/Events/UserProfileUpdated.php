@@ -9,6 +9,8 @@ namespace Konventix\Identity\Events;
  * Consumers maintaining read models (Messaging recipients, future
  * registrant/holder models) re-project from this payload — idempotently,
  * since a replay carries the same current values. Scalars only (ADR-0004).
+ * Widened by ADR-0051 §6: the profile-of-record travels here so per-module
+ * read models can render it without reading Identity.
  */
 final readonly class UserProfileUpdated
 {
@@ -16,6 +18,11 @@ final readonly class UserProfileUpdated
         public string $userId,
         public string $email,
         public string $displayName,
+        public string $username,
+        public ?string $tagline,
+        public ?string $statusEmoji,
+        /** @var array<string, string> */
+        public array $socialLinks,
         public string $locale,
         public string $updatedAt,
     ) {}

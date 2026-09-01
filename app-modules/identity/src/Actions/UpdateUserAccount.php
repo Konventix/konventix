@@ -37,6 +37,10 @@ final class UpdateUserAccount
                 userId: $user->id,
                 email: $user->email,
                 displayName: $user->name,
+                username: $user->username,
+                tagline: $user->tagline,
+                statusEmoji: $user->status_emoji,
+                socialLinks: $user->social_links ?? [],
                 locale: $user->locale,
                 updatedAt: now()->toIso8601String(),
             ));

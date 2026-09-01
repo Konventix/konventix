@@ -47,6 +47,7 @@ function regMailsRecipient(string $brandId): User
         brandId: $brandId,
         email: $user->email,
         displayName: $user->name,
+        username: $user->username,
         locale: $user->locale,
         registeredAt: now()->toIso8601String(),
     ));

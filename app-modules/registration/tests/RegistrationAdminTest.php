@@ -77,7 +77,15 @@ it('lists registrations with registrant read-model names and bulk-approves', fun
     $brand = $this->withBrand();
 
     $registrantId = (string) Str::ulid();
-    event(new UserRegistered($registrantId, $brand->getKey(), 'ada@example.test', 'Ada Lovelace', 'de', now()->toIso8601String()));
+    event(new UserRegistered(
+        userId: $registrantId,
+        brandId: $brand->getKey(),
+        email: 'ada@example.test',
+        displayName: 'Ada Lovelace',
+        username: 'ada-lovelace',
+        locale: 'de',
+        registeredAt: now()->toIso8601String(),
+    ));
 
     $type = RegistrationType::factory()->requiringApproval()->create();
     $registration = Registration::factory()->forType($type)->forRegistrant($registrantId)->create();

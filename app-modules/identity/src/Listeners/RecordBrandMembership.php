@@ -6,6 +6,7 @@ namespace Konventix\Identity\Listeners;
 
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Registered;
+use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Brands\BrandContext;
@@ -34,9 +35,22 @@ class RecordBrandMembership
         // The brand scope constrains the lookup to the current brand and the
         // BelongsToBrand creating hook stamps brand_id — no manual brand
         // handling, per ADR-0010.
-        BrandMembership::query()->firstOrCreate(
+        $membership = BrandMembership::query()->firstOrCreate(
             ['user_id' => $user->getKey()],
             ['first_seen_at' => now()],
         );
+
+        if ($membership->wasRecentlyCreated) {
+            // First contact: no image yet, but "member since" must be
+            // replayable from the moment it exists (ruling 2).
+            event(new BrandMembershipProfileUpdated(
+                userId: $membership->user_id,
+                brandId: $membership->brand_id,
+                avatarUrl: null,
+                bannerUrl: null,
+                firstSeenAt: $membership->first_seen_at->toIso8601String(),
+                updatedAt: now()->toIso8601String(),
+            ));
+        }
     }
 }
