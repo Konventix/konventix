@@ -16,6 +16,7 @@ use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
+use Konventix\Compliance\Gdpr\SubjectRef;
 
 /**
  * Commerce's contribution to GDPR export and deletion (ADR-0044, ADR-0047).
@@ -50,10 +51,15 @@ final class CommerceGdprHandler implements GdprHandler
         return 'commerce';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
+        if (! $subject->isAccountBacked()) {
+            return [];
+        }
+
+        $subjectId = $subject->userId;
+
         $orders = Order::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('payer_user_id', $subjectId)
             ->with('lines')
             ->orderBy('created_at')
@@ -66,7 +72,6 @@ final class CommerceGdprHandler implements GdprHandler
         $creditNotes = CreditNote::withoutBrandScope()->whereIn('order_id', $orderIds)->orderBy('issued_on')->get()->groupBy('order_id');
 
         $carts = Cart::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('payer_user_id', $subjectId)
             ->with('lines')
             ->orderBy('created_at')
@@ -136,10 +141,15 @@ final class CommerceGdprHandler implements GdprHandler
      * `checked_out`/`expired` carts are left alone: one is already an
      * order, the other already released its stock through the sweep.
      */
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+    public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
+        if (! $subject->isAccountBacked()) {
+            return;
+        }
+
+        $subjectId = $subject->userId;
+
         $openCarts = Cart::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('payer_user_id', $subjectId)
             ->open()
             ->get();

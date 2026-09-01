@@ -9,23 +9,35 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Konventix\Compliance\Database\Factories\DataSubjectRequestFactory;
 use Konventix\Compliance\Enums\DataSubjectRequestState;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Enums\DeletionMode;
-use Konventix\Platform\Models\Concerns\BelongsToBrand;
+use Konventix\Compliance\Gdpr\SubjectRef;
 
 /**
  * A data subject's export/deletion/rectification request and its workflow:
  * state, the statutory deadline, and — via `responses()` — which of the
  * registered GdprHandler modules have replied (SPEC "Owns").
  *
- * `subject_id` carries the same non-account-tolerant shape as Consent's; see
- * that model's docblock and decision-log Round 5 D-REG-08.
+ * Not brand-scoped (ADR-0050 §1): a request is owed against the operator as
+ * a single controller, not against one of its brands. `filed_on_brand_id`
+ * carries provenance only — which brand's host the request arrived on.
+ *
+ * `subject_id`/`subject_email`: exactly one identifies the subject
+ * (ADR-0050 §3) — an account-backed subject by ULID, an account-less one by
+ * the address that is all we have for them. The database enforces this with
+ * a check constraint; see `subject()`.
+ *
+ * `consent_id` names the Consent a `ConsentWithdrawal` request is about
+ * (ADR-0050 §8); every other type leaves it null.
  *
  * @property string $id
- * @property string $brand_id
- * @property string $subject_id
+ * @property string|null $filed_on_brand_id
+ * @property string|null $subject_id
+ * @property string|null $subject_email
+ * @property string|null $consent_id
  * @property DataSubjectRequestType $type
  * @property DataSubjectRequestState $state
  * @property DeletionMode|null $mode
@@ -34,6 +46,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $archive_path
  * @property string|null $archive_disk
  * @property Carbon|null $archive_expires_at
+ * @property string|null $archive_token_hash
  * @property Carbon|null $closed_at
  * @property string|null $reason_code
  * @property Carbon|null $created_at
@@ -41,13 +54,14 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  */
 class DataSubjectRequest extends Model
 {
-    use BelongsToBrand;
-
     /** @use HasFactory<DataSubjectRequestFactory> */
     use HasFactory, HasUlids;
 
     protected $fillable = [
+        'filed_on_brand_id',
         'subject_id',
+        'subject_email',
+        'consent_id',
         'type',
         'state',
         'mode',
@@ -61,6 +75,17 @@ class DataSubjectRequest extends Model
     ];
 
     /**
+     * Who this request is about (ADR-0050 §3). The check constraint
+     * guarantees exactly one column is set, so this is total.
+     */
+    public function subject(): SubjectRef
+    {
+        return $this->subject_id !== null
+            ? SubjectRef::forUser($this->subject_id)
+            : SubjectRef::forEmail((string) $this->subject_email);
+    }
+
+    /**
      * An archive that exists and has not expired yet — the only state in
      * which a download may be served (see SubjectExportController).
      */
@@ -69,6 +94,19 @@ class DataSubjectRequest extends Model
         return $this->archive_path !== null
             && $this->archive_disk !== null
             && ($this->archive_expires_at === null || $this->archive_expires_at->isFuture());
+    }
+
+    /**
+     * A single-use link for a subject who cannot sign in (ADR-0050 §9).
+     * Returns the plaintext once; only the hash is stored. Consuming the
+     * link clears the hash, so a forwarded mail is already spent.
+     */
+    public function issueArchiveToken(): string
+    {
+        $plain = Str::random(64);
+        $this->forceFill(['archive_token_hash' => hash('sha256', $plain)])->save();
+
+        return $plain;
     }
 
     /**

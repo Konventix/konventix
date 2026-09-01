@@ -6,6 +6,7 @@ namespace Konventix\Content\Gdpr;
 
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Content\Models\Author;
 use Konventix\Content\Models\ContentComment;
 use Konventix\Content\Models\ContentReaction;
@@ -31,11 +32,16 @@ final class ContentGdprHandler implements GdprHandler
         return 'content';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
+        if (! $subject->isAccountBacked()) {
+            return [];
+        }
+
+        $subjectId = $subject->userId;
+
         return [
             'comments' => ContentComment::withoutBrandScope()
-                ->where('brand_id', $brandId)
                 ->where('author_user_id', $subjectId)
                 ->orderBy('created_at')
                 ->get()
@@ -48,7 +54,6 @@ final class ContentGdprHandler implements GdprHandler
                 ])
                 ->all(),
             'reactions' => ContentReaction::withoutBrandScope()
-                ->where('brand_id', $brandId)
                 ->where('user_id', $subjectId)
                 ->orderBy('created_at')
                 ->get()
@@ -63,8 +68,14 @@ final class ContentGdprHandler implements GdprHandler
         ];
     }
 
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+    public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
+        if (! $subject->isAccountBacked()) {
+            return;
+        }
+
+        $subjectId = $subject->userId;
+
         // The read model row survives with its ULID so a comment still has an
         // author to render — a tombstone, like everywhere else.
         Author::query()->whereKey($subjectId)->update(['display_name' => 'Deleted account']);
@@ -72,7 +83,6 @@ final class ContentGdprHandler implements GdprHandler
         // A reaction is an opinion, not retained data: gone in both modes,
         // and the comments it counted towards are recounted.
         $reactions = ContentReaction::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('user_id', $subjectId)
             ->get();
 

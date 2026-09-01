@@ -26,6 +26,7 @@ class DataSubjectRequestFactory extends Factory
     {
         return [
             'subject_id' => (string) Str::ulid(),
+            'subject_email' => null,
             'type' => DataSubjectRequestType::Export,
             'state' => DataSubjectRequestState::Received,
             'mode' => null,
@@ -38,6 +39,17 @@ class DataSubjectRequestFactory extends Factory
         return $this->state(fn (): array => [
             'type' => DataSubjectRequestType::Deletion,
             'mode' => DeletionMode::Anonymize,
+        ]);
+    }
+
+    /**
+     * An account-less subject (ADR-0050 §3): the address is all we have.
+     */
+    public function forEmail(string $email): static
+    {
+        return $this->state(fn (): array => [
+            'subject_id' => null,
+            'subject_email' => $email,
         ]);
     }
 }

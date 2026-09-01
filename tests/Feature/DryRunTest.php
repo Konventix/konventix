@@ -89,6 +89,21 @@ function dryRunSkippedRoutes(): array
         'password.reset' => 'needs a password-reset token',
         'verification.verify' => 'needs a signed verification link',
 
+        // Same shape: konventix:seed never posts to the public data-request
+        // form, so no `DataSubjectRequestVerification` row — and therefore no
+        // valid token — exists for this route's `{token}` to point at
+        // (ADR-0050 §4). PublicDataRequestTest mints one.
+        'data-requests.public.verify' => 'needs a mailed verification token',
+
+        // Same shape again: the token only exists once
+        // `NotifySubjectOfRequestOutcome::handleExportCompleted` mails an
+        // account-less subject an archive link (ADR-0050 §9), which
+        // `konventix:seed` never triggers — no export request is ever
+        // fulfilled for a seeded person, so no `archive_token_hash` exists
+        // for this route's `{token}` to point at. `AccountLessArchiveTest`
+        // mints one directly.
+        'data-requests.public.download' => 'needs a mailed archive token',
+
         // Same shape: the signature *is* the authorization, minted during a
         // render that established ownership (see MyInvoiceDocumentController).
         // A URL built from route parameters alone cannot carry one.
@@ -183,8 +198,8 @@ function dryRunSeed(object $test): void
  */
 function dryRunDownloadableRequests(Brand $brand): Builder
 {
-    return DataSubjectRequest::withoutBrandScope()
-        ->where('brand_id', $brand->getKey())
+    return DataSubjectRequest::query()
+        ->where('filed_on_brand_id', $brand->getKey())
         ->whereNotNull('archive_path')
         ->whereNotNull('archive_disk')
         ->where(fn (Builder $query) => $query->whereNull('archive_expires_at')->orWhere('archive_expires_at', '>', now()));

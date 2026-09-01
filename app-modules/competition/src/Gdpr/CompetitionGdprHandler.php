@@ -7,6 +7,7 @@ namespace Konventix\Competition\Gdpr;
 use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
+use Konventix\Compliance\Gdpr\SubjectRef;
 
 /**
  * Competition's contribution to GDPR export and deletion.
@@ -25,11 +26,16 @@ final class CompetitionGdprHandler implements GdprHandler
         return 'competition';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
+        if (! $subject->isAccountBacked()) {
+            return [];
+        }
+
+        $subjectId = $subject->userId;
+
         return [
             'team_memberships' => CompetitionTeamMember::withoutBrandScope()
-                ->where('brand_id', $brandId)
                 ->where('user_id', $subjectId)
                 ->orderBy('created_at')
                 ->get()
@@ -41,7 +47,7 @@ final class CompetitionGdprHandler implements GdprHandler
         ];
     }
 
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+    public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
         // Nothing to scrub — see the class docblock.
     }

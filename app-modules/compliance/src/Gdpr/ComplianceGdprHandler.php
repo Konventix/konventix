@@ -31,11 +31,16 @@ final class ComplianceGdprHandler implements GdprHandler
         return 'compliance';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
+        if (! $subject->isAccountBacked()) {
+            return [];
+        }
+
+        $subjectId = $subject->userId;
+
         return [
             'consents' => Consent::withoutBrandScope()
-                ->where('brand_id', $brandId)
                 ->where('subject_id', $subjectId)
                 ->with('policyVersion.policy')
                 ->orderBy('granted_at')
@@ -48,8 +53,7 @@ final class ComplianceGdprHandler implements GdprHandler
                     'capture_context' => $consent->capture_context,
                 ])
                 ->all(),
-            'subject_requests' => DataSubjectRequest::withoutBrandScope()
-                ->where('brand_id', $brandId)
+            'subject_requests' => DataSubjectRequest::query()
                 ->where('subject_id', $subjectId)
                 ->orderBy('created_at')
                 ->get()
@@ -65,7 +69,7 @@ final class ComplianceGdprHandler implements GdprHandler
         ];
     }
 
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+    public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
         // Intentionally empty — see the class docblock.
     }

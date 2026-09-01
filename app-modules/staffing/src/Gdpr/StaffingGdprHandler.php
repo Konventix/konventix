@@ -6,6 +6,7 @@ namespace Konventix\Staffing\Gdpr;
 
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Staffing\Models\Assignment;
 
 /**
@@ -29,11 +30,16 @@ final class StaffingGdprHandler implements GdprHandler
         return 'staffing';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
+        if (! $subject->isAccountBacked()) {
+            return [];
+        }
+
+        $subjectId = $subject->userId;
+
         return [
             'assignments' => Assignment::withoutBrandScope()
-                ->where('brand_id', $brandId)
                 ->where('user_id', $subjectId)
                 ->orderBy('created_at')
                 ->get()
@@ -48,7 +54,7 @@ final class StaffingGdprHandler implements GdprHandler
         ];
     }
 
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+    public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
         // Nothing to scrub — see the class docblock. Declared rather than
         // omitted so the fan-out records a real answer from this module.

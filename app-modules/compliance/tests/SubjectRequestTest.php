@@ -11,6 +11,7 @@ use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Events\DataExportRequested;
 use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectRef;
 
 it('opens an export request, sets the statutory 30-day deadline, and emits DataExportRequested', function (): void {
     $brand = $this->withBrand();
@@ -19,8 +20,10 @@ it('opens an export request, sets the statutory 30-day deadline, and emits DataE
     Event::fake([DataExportRequested::class, UserDeletionRequested::class]);
 
     $request = (new OpenSubjectRequest(app(GdprHandlerRegistry::class)))(
-        $subjectId,
+        SubjectRef::forUser($subjectId),
         DataSubjectRequestType::Export,
+        null,
+        $brand->getKey(),
     );
 
     expect($request->type)->toBe(DataSubjectRequestType::Export)
@@ -43,7 +46,7 @@ it('opens a deletion request with a mode and emits UserDeletionRequested', funct
     Event::fake([DataExportRequested::class, UserDeletionRequested::class]);
 
     $request = (new OpenSubjectRequest(app(GdprHandlerRegistry::class)))(
-        $subjectId,
+        SubjectRef::forUser($subjectId),
         DataSubjectRequestType::Deletion,
         DeletionMode::Erase,
     );
@@ -62,7 +65,7 @@ it('refuses to open a deletion request with no mode', function (): void {
     $this->withBrand();
 
     (new OpenSubjectRequest(app(GdprHandlerRegistry::class)))(
-        (string) Str::ulid(),
+        SubjectRef::forUser((string) Str::ulid()),
         DataSubjectRequestType::Deletion,
     );
 })->throws(InvalidArgumentException::class);
@@ -73,7 +76,7 @@ it('opens a rectification request without dispatching an event, since SPEC defin
     Event::fake([DataExportRequested::class, UserDeletionRequested::class]);
 
     $request = (new OpenSubjectRequest(app(GdprHandlerRegistry::class)))(
-        (string) Str::ulid(),
+        SubjectRef::forUser((string) Str::ulid()),
         DataSubjectRequestType::Rectification,
     );
 

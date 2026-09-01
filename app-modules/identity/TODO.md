@@ -83,12 +83,8 @@ person behind it. The value here is in what is left out.
       `UserAnonymized`. `AccountState::Anonymized` landed with it and
       `AuthenticateUser` refuses it. Social identities join the export when
       social login lands (slice 15).
-      The rule worth knowing: a per-brand deletion request drops that brand's
-      membership and anonymizes the account **only when it was the last one**
-      — the account is operator-wide (ADR-0016) and one brand may not end a
-      person's participation in another. That rule exists because Compliance
-      opens requests per brand today; when requests become operator-wide it
-      becomes redundant rather than wrong.
+      Deletion is now operator-wide (ADR-0050), so the handler deletes all
+      memberships and anonymizes once, not conditionally per brand.
 - [ ] ADR-0016 gap, flagged rather than worked around (`RegisterData`'s
       docblock): a duplicate email on the registration form surfaces as an
       ordinary "already taken" validation error, not the "indistinguishable

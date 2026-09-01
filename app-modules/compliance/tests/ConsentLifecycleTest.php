@@ -46,7 +46,7 @@ it('withdraws a granted consent and emits ConsentWithdrawn', function (): void {
 
     Event::fake([ConsentGranted::class, ConsentWithdrawn::class]);
 
-    $withdrawn = (new WithdrawConsent)($consent);
+    $withdrawn = app(WithdrawConsent::class)($consent);
 
     expect($withdrawn->isWithdrawn())->toBeTrue()
         ->and($withdrawn->withdrawn_at)->not->toBeNull();

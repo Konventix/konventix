@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 
 /**
@@ -31,12 +32,12 @@ final class FakeExportingModuleServiceProvider extends ModuleServiceProvider
                 return 'fake-exporting-module';
             }
 
-            public function exportFor(string $subjectId, string $brandId): array
+            public function exportFor(SubjectRef $subject): array
             {
                 return ['probe' => true];
             }
 
-            public function delete(string $subjectId, string $brandId, DeletionMode $mode): void {}
+            public function delete(SubjectRef $subject, DeletionMode $mode): void {}
         });
     }
 }
@@ -56,7 +57,7 @@ it('registers a handler when a fake module boots its own ServiceProvider, mirror
     $handler = $registry->get('fake-exporting-module');
 
     expect($handler)->not->toBeNull()
-        ->and($handler->exportFor('subject', 'brand'))->toBe(['probe' => true]);
+        ->and($handler->exportFor(SubjectRef::forUser('subject')))->toBe(['probe' => true]);
 });
 
 it('is a boot-time singleton, so a module registering twice does not create two entries', function (): void {

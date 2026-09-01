@@ -7,6 +7,7 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Events\InvoiceIssued;
 use Konventix\Compliance\Enums\DeletionMode;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
@@ -138,19 +139,20 @@ it('freezes the billing party once InvoiceIssued lands for the registration', fu
 })->throws(ValidationException::class);
 
 it('exports and anonymizes a subject through the GDPR handler, keeping the tombstone rows', function (): void {
-    $brand = $this->withBrand();
+    $this->withBrand();
 
     $registrantId = (string) Str::ulid();
     $registration = Registration::factory()->withBillingParty()->forRegistrant($registrantId)->create();
 
     $handler = new RegistrationGdprHandler;
+    $subject = SubjectRef::forUser($registrantId);
 
-    $export = $handler->exportFor($registrantId, $brand->getKey());
+    $export = $handler->exportFor($subject);
     expect($export['registrations'])->toHaveCount(1)
         ->and($export['registrations'][0]['organization_name'])->not->toBeNull();
 
-    $handler->delete($registrantId, $brand->getKey(), DeletionMode::Anonymize);
-    $handler->delete($registrantId, $brand->getKey(), DeletionMode::Anonymize);
+    $handler->delete($subject, DeletionMode::Anonymize);
+    $handler->delete($subject, DeletionMode::Anonymize);
 
     $registration->refresh();
     // Tombstone: the row and its ULID survive, the person does not.

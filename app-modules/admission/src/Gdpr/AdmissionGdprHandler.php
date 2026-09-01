@@ -8,6 +8,7 @@ use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionClaimLink;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
+use Konventix\Compliance\Gdpr\SubjectRef;
 
 /**
  * Admission's contribution to GDPR export and deletion.
@@ -21,7 +22,11 @@ use Konventix\Compliance\Gdpr\GdprHandler;
  *
  * What is scrubbed is what this module collected *about* the person and
  * holds itself: the invitation address on a claim link (ADR-0032), which is
- * an email Admission stored rather than a reference to one.
+ * an email Admission stored rather than a reference to one. That is also
+ * the one thing this module can answer for a subject with no account at
+ * all (ADR-0050 §3): an invitee who never claimed a link has no
+ * `holder_user_id` to look up, only the `intended_email` the link was
+ * issued to.
  *
  * Both methods are idempotent.
  */
@@ -32,10 +37,28 @@ final class AdmissionGdprHandler implements GdprHandler
         return 'admission';
     }
 
-    public function exportFor(string $subjectId, string $brandId): array
+    public function exportFor(SubjectRef $subject): array
     {
+        if (! $subject->isAccountBacked()) {
+            // An invitee who never claimed a link has no account and no
+            // admission of their own — the claim link's `intended_email` is
+            // the only trace of them this module holds.
+            return [
+                'claim_links' => AdmissionClaimLink::withoutBrandScope()
+                    ->where('intended_email', $subject->email)
+                    ->get()
+                    ->map(fn (AdmissionClaimLink $link): array => [
+                        'admission_id' => $link->admission_id,
+                        'intended_email' => $link->intended_email,
+                        'claimed_at' => $link->claimed_at?->toIso8601String(),
+                    ])
+                    ->all(),
+            ];
+        }
+
+        $subjectId = $subject->userId;
+
         $admissions = Admission::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('holder_user_id', $subjectId)
             ->orderBy('created_at')
             ->get();
@@ -52,7 +75,6 @@ final class AdmissionGdprHandler implements GdprHandler
                 ])
                 ->all(),
             'claim_links' => AdmissionClaimLink::withoutBrandScope()
-                ->where('brand_id', $brandId)
                 ->where(function ($query) use ($subjectId, $admissions): void {
                     $query->where('claimed_by_user_id', $subjectId)
                         ->orWhereIn('admission_id', $admissions->modelKeys());
@@ -67,15 +89,23 @@ final class AdmissionGdprHandler implements GdprHandler
         ];
     }
 
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+    public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
+        if (! $subject->isAccountBacked()) {
+            AdmissionClaimLink::withoutBrandScope()
+                ->where('intended_email', $subject->email)
+                ->update(['intended_email' => null]);
+
+            return;
+        }
+
+        $subjectId = $subject->userId;
+
         $admissionIds = Admission::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where('holder_user_id', $subjectId)
             ->pluck('id');
 
         AdmissionClaimLink::withoutBrandScope()
-            ->where('brand_id', $brandId)
             ->where(function ($query) use ($subjectId, $admissionIds): void {
                 $query->where('claimed_by_user_id', $subjectId)
                     ->orWhereIn('admission_id', $admissionIds);

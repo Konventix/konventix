@@ -18,7 +18,8 @@ final class UserDeletionCompleted
 {
     public function __construct(
         public readonly string $requestId,
-        public readonly string $subjectId,
+        public readonly ?string $subjectId,
+        public readonly ?string $subjectEmail,
         public readonly string $brandId,
         public readonly string $completedAt,
     ) {}

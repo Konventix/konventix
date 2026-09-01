@@ -41,6 +41,16 @@ final class PrivacyController
             ->orderByDesc('granted_at')
             ->get();
 
+        // Consents with a ConsentWithdrawal request already awaiting the
+        // operator's decision (ADR-0050 §7/§8) — the page shows "pending"
+        // instead of a button that would just open a second one.
+        $pendingWithdrawalConsentIds = DataSubjectRequest::query()
+            ->where('subject_id', $subjectId)
+            ->where('type', DataSubjectRequestType::ConsentWithdrawal)
+            ->whereIn('state', [DataSubjectRequestState::Received, DataSubjectRequestState::InProgress])
+            ->pluck('consent_id')
+            ->all();
+
         return Inertia::render('settings/Privacy', [
             'consents' => $consents->map(fn (Consent $consent): array => [
                 'id' => $consent->getKey(),
@@ -54,6 +64,10 @@ final class PrivacyController
                 // the page says so rather than surprising the person with it.
                 'required' => $consent->policyVersion->requires_consent
                     && $consent->policyVersion->state === PolicyVersionState::Published,
+                // Art. 7(3) only applies where the basis really is consent
+                // (ADR-0050 §7) — everywhere else the button files a request.
+                'selfServiceWithdrawal' => $consent->policyVersion->lawful_basis->allowsSelfServiceWithdrawal(),
+                'withdrawalPending' => in_array($consent->getKey(), $pendingWithdrawalConsentIds, true),
             ])->all(),
             'outstanding' => $outstanding->forSubject($subjectId)
                 ->map(fn (PolicyVersion $version): array => [
@@ -62,8 +76,14 @@ final class PrivacyController
                     'slug' => $version->policy->slug,
                     'version' => $version->version,
                 ])->all(),
+            // ConsentWithdrawal requests are excluded here: they already have
+            // a home next to their consent above ("Withdrawal pending"),
+            // and listing one here too would both duplicate it and mislabel
+            // it — this list's type ternary in Privacy.vue only knows
+            // export/deletion (ADR-0050 §7/§8).
             'requests' => DataSubjectRequest::query()
                 ->where('subject_id', $subjectId)
+                ->where('type', '!=', DataSubjectRequestType::ConsentWithdrawal)
                 ->orderByDesc('created_at')
                 ->get()
                 ->map(fn (DataSubjectRequest $subjectRequest): array => [

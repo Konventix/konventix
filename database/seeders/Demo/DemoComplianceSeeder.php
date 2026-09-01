@@ -17,6 +17,7 @@ use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Enums\RetentionClockStart;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Listeners\PruneAuditTrail;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\DataSubjectRequest;
@@ -98,6 +99,7 @@ final class DemoComplianceSeeder
             version: 'v1.0',
             content: $this->body($name),
             requiresConsent: $requiresConsent,
+            lawfulBasis: 'consent',
         ));
 
         ($this->publishVersion)($version, now()->subMonths(6));
@@ -123,6 +125,7 @@ final class DemoComplianceSeeder
             version: 'v2.0',
             content: $this->body($terms->name).PHP_EOL.PHP_EOL.'Section 7 (house rules) was clarified in this revision.',
             requiresConsent: true,
+            lawfulBasis: 'consent',
         ));
 
         return ($this->publishVersion)($version, now()->subMonth());
@@ -245,11 +248,11 @@ final class DemoComplianceSeeder
             return;
         }
 
-        ($this->openRequest)($exporter->getKey(), DataSubjectRequestType::Export);
+        ($this->openRequest)(SubjectRef::forUser($exporter->getKey()), DataSubjectRequestType::Export, null, $brand->getKey());
 
-        ($this->openRequest)($deleter->getKey(), DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
+        ($this->openRequest)(SubjectRef::forUser($deleter->getKey()), DataSubjectRequestType::Deletion, DeletionMode::Anonymize, $brand->getKey());
 
-        $toRefuse = ($this->openRequest)($refused->getKey(), DataSubjectRequestType::Export);
+        $toRefuse = ($this->openRequest)(SubjectRef::forUser($refused->getKey()), DataSubjectRequestType::Export, null, $brand->getKey());
 
         // Refusal is an auditable act (Art. 12(4) needs a reason on record),
         // so this also puts a genuine entry in the audit trail.

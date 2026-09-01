@@ -15,12 +15,14 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectResolver;
 use Konventix\Identity\Actions\AuthenticateUser;
 use Konventix\Identity\Actions\CreateNewUser;
 use Konventix\Identity\Actions\ResetUserPassword;
 use Konventix\Identity\Console\ReplayProfilesCommand;
 use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
+use Konventix\Identity\Gdpr\IdentitySubjectResolver;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Listeners\SendWelcomeOnVerified;
 use Konventix\Identity\Social\SocialProviderRegistry;
@@ -128,6 +130,11 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
             return $registry;
         });
+
+        // Compliance's public verification link resolves an address to an
+        // account without ever importing Identity's User model (ADR-0004) —
+        // see SubjectResolver's docblock.
+        $this->app->bind(SubjectResolver::class, IdentitySubjectResolver::class);
     }
 
     /**

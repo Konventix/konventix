@@ -103,6 +103,15 @@ say so.
    up by hash, the same shape `EntranceDevice` uses for its bearer
    token, so a database read does not hand out working links.
 
+   Operationally, the verify link is a mutating GET: following it opens
+   the request, not just displays it. A mail client's link-prefetch (or a
+   security scanner reading the mailbox before the person does) can
+   therefore consume the token before the person ever clicks. Single-use
+   makes this visible rather than dangerous — the person finds a spent
+   link and the request already open, not a silent no-op — and the
+   recovery is the same as for any other spent link: ask again on
+   `/privacy/request`.
+
 5. **The submission response does not depend on what we hold.** The page
    answers identically whether the address matches an account, matches
    nothing, or already has an open request. Any other behaviour is an
@@ -208,15 +217,19 @@ say so.
 - An operator now holds addresses for people with no account, in a table
   with a 24-hour sweep. That is a new category of personal data in the
   system, and it is deliberately the shortest-lived one.
-- Only Messaging and Compliance can answer for an email-only subject
-  today. Commerce cannot: an order is keyed by `payer_user_id` and
-  carries no billing address column, so a guest-checkout order is not
-  reachable by email — if guest checkout later stores one, Commerce's
-  handler owes an email branch. Newsletter has no `GdprHandler` at all;
-  it is a Phase 3 module holding no data yet, and it owes one before it
-  stores its first subscription. Every other handler no-ops for an
-  email-only subject, which is honest rather than lossy — but an
-  export that says little must not be mistaken for proof we hold
+- Messaging, Compliance, Admission and Registration can answer for an
+  email-only subject now (slice 20): Admission's claim links carry
+  `intended_email` for an invitee who never claimed a slot (ADR-0032), and
+  Registration's registrant read model can hold an address with no
+  resolvable account behind it, both reachable and tombstoned by email the
+  same way their account-backed rows already are. Commerce still cannot: an
+  order is keyed by `payer_user_id` and carries no billing address column,
+  so a guest-checkout order is not reachable by email — if guest checkout
+  later stores one, Commerce's handler owes an email branch. Newsletter has
+  no `GdprHandler` at all; it is a Phase 3 module holding no data yet, and
+  it owes one before it stores its first subscription. Every other handler
+  no-ops for an email-only subject, which is honest rather than lossy —
+  but an export that says little must not be mistaken for proof we hold
   little.
 - `lawful_basis` has no sensible default for existing rows. Every
   `PolicyVersion` in flight is backfilled to `consent`, which preserves

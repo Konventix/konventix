@@ -127,6 +127,39 @@ it('shows per-module responses and names modules the fan-out never addressed', f
             ->where('canDownload', true));
 });
 
+it('shows an email-only request by its address rather than a null subject id', function (): void {
+    [, $admin] = complianceRequestOperator();
+    $this->withBrand();
+
+    $request = DataSubjectRequest::factory()->forEmail('nobody@example.de')->create([
+        'type' => DataSubjectRequestType::Export,
+    ]);
+
+    $this->actingAs($admin)
+        ->get("http://admin.dsr.test/admin/subject-requests/{$request->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/subject-requests/Show')
+            ->where('request.subjectId', 'nobody@example.de'));
+});
+
+it('finds an email-only request by searching its address in the queue', function (): void {
+    [, $admin] = complianceRequestOperator();
+    $this->withBrand();
+
+    $match = DataSubjectRequest::factory()->forEmail('findme@example.de')->create();
+    DataSubjectRequest::factory()->forEmail('someoneelse@example.de')->create();
+
+    $this->actingAs($admin)
+        ->get('http://admin.dsr.test/admin/subject-requests?search=findme')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/subject-requests/Index')
+            ->has('requests.data', 1)
+            ->where('requests.data.0.id', $match->id)
+            ->where('requests.data.0.subjectId', 'findme@example.de'));
+});
+
 it('hides the handling actions from an operator who may only read the queue', function (): void {
     [, $admin] = complianceRequestOperator(['platform.access-admin', 'compliance.view-subject-requests']);
     $this->withBrand();
@@ -151,7 +184,11 @@ it('refuses a request with a legal ground and emits SubjectRequestRefused', func
     [, $admin] = complianceRequestOperator();
     $brand = $this->withBrand();
 
-    $request = DataSubjectRequest::factory()->create(['type' => DataSubjectRequestType::Deletion, 'mode' => DeletionMode::Anonymize]);
+    $request = DataSubjectRequest::factory()->create([
+        'filed_on_brand_id' => $brand->getKey(),
+        'type' => DataSubjectRequestType::Deletion,
+        'mode' => DeletionMode::Anonymize,
+    ]);
 
     Event::fake([SubjectRequestRefused::class]);
 

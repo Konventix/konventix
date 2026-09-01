@@ -32,6 +32,8 @@ type ConsentRow = {
     withdrawnAt: string | null;
     captureContext: string;
     required: boolean;
+    selfServiceWithdrawal: boolean;
+    withdrawalPending: boolean;
 };
 
 type OutstandingRow = {
@@ -153,7 +155,16 @@ const stateLabels: Record<
                 </div>
 
                 <div
-                    v-if="!consent.withdrawnAt"
+                    v-if="!consent.withdrawnAt && consent.withdrawalPending"
+                    class="flex flex-col items-end gap-1"
+                >
+                    <span class="text-xs text-text-muted" role="status">
+                        Withdrawal pending
+                    </span>
+                </div>
+
+                <div
+                    v-else-if="!consent.withdrawnAt"
                     class="flex flex-col items-end gap-1"
                 >
                     <Button
@@ -161,7 +172,11 @@ const stateLabels: Record<
                         size="sm"
                         @click="withdraw(consent)"
                     >
-                        Withdraw
+                        {{
+                            consent.selfServiceWithdrawal
+                                ? 'Withdraw'
+                                : 'Request withdrawal'
+                        }}
                     </Button>
                     <span
                         v-if="consent.required"

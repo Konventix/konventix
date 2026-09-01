@@ -29,11 +29,11 @@ final class DispatchSubjectRequestFanOut
 {
     public function handleExport(DataExportRequested $event): void
     {
-        AssembleSubjectExport::dispatch($event->requestId, $event->brandId)->afterCommit();
+        AssembleSubjectExport::dispatch($event->requestId)->afterCommit();
     }
 
     public function handleDeletion(UserDeletionRequested $event): void
     {
-        RunSubjectDeletion::dispatch($event->requestId, $event->brandId)->afterCommit();
+        RunSubjectDeletion::dispatch($event->requestId)->afterCommit();
     }
 }

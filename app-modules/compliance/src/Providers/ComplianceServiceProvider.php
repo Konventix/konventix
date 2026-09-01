@@ -8,6 +8,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Konventix\Compliance\Console\ApplyRetentionRulesCommand;
+use Konventix\Compliance\Console\SweepUnverifiedRequestsCommand;
 use Konventix\Compliance\Console\WatchSubjectRequestDeadlinesCommand;
 use Konventix\Compliance\Enums\Permission;
 use Konventix\Compliance\Events\DataExportCompleted;
@@ -89,6 +90,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // fan-out is what scrubs it, and under a synchronous queue it would
         // otherwise run first (see the listener's docblock).
         Event::listen(UserDeletionRequested::class, [NotifySubjectOfRequestOutcome::class, 'handleDeletionRequested']);
+        Event::listen(DataExportRequested::class, [NotifySubjectOfRequestOutcome::class, 'handleExportRequested']);
 
         Event::listen(DataExportRequested::class, [DispatchSubjectRequestFanOut::class, 'handleExport']);
         Event::listen(UserDeletionRequested::class, [DispatchSubjectRequestFanOut::class, 'handleDeletion']);
@@ -131,17 +133,31 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 'en' => 'Your data export is ready',
             ],
             bodies: [
+                // `@isset` rather than `@if`: `downloadUrl` is absent on the
+                // sample payload and on an account-backed subject's mail, and
+                // an unset variable inside `@if` throws (Blade::render() runs
+                // this string standalone, with no view data() to default it).
                 'de' => <<<'BLADE'
                     <p>Ihre Kopie der bei uns gespeicherten Daten ist fertig.</p>
+                    @isset($downloadUrl)
+                    <p>Sie können sie hier herunterladen: <a href="{{ $downloadUrl }}">Datenkopie herunterladen</a>.</p>
+                    <p>Der Link funktioniert nur einmal — danach ist er ungültig, auch wenn er weitergeleitet wird.</p>
+                    @else
                     <p>Sie finden sie unter „Einstellungen → Datenschutz“ zum Herunterladen.</p>
+                    @endisset
                     <p>Verfügbar bis: {{ $availableUntil ?? 'siehe Konto' }}.</p>
-                    <p>Aus Sicherheitsgründen verschicken wir die Datei nicht per E-Mail: der Download ist nur nach Anmeldung möglich.</p>
+                    <p>Aus Sicherheitsgründen verschicken wir die Datei nicht per E-Mail: der Download ist nur über den oben genannten Weg möglich.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>Your copy of the data we hold about you is ready.</p>
+                    @isset($downloadUrl)
+                    <p>You can download it here: <a href="{{ $downloadUrl }}">Download your data</a>.</p>
+                    <p>The link works once — after that it is spent, even if it was forwarded.</p>
+                    @else
                     <p>You can download it under “Settings → Privacy”.</p>
+                    @endisset
                     <p>Available until: {{ $availableUntil ?? 'see your account' }}.</p>
-                    <p>We deliberately do not attach the file: the download requires you to be signed in.</p>
+                    <p>We deliberately do not attach the file: the download is only available the way described above.</p>
                     BLADE,
             ],
             defaultLocale: 'de',
@@ -197,6 +213,51 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         ));
 
         $registry->register(new MessageTemplate(
+            key: NotifySubjectOfRequestOutcome::REQUEST_VERIFICATION,
+            subjects: [
+                'de' => 'Bitte bestätigen Sie Ihre Anfrage',
+                'en' => 'Please confirm your request',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Jemand — hoffentlich Sie — hat unter dieser Adresse eine {{ $requestType }}-Anfrage zu den bei uns gespeicherten Daten gestellt.</p>
+                    <p>Um fortzufahren: <a href="{{ $verifyUrl }}">Anfrage bestätigen</a>.</p>
+                    <p>Der Link ist {{ $expiresInHours }} Stunden gültig. Falls Sie diese Anfrage nicht gestellt haben, können Sie diese Nachricht ignorieren — es passiert nichts, ohne dass der Link geöffnet wird.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Someone — hopefully you — asked, at this address, for a {{ $requestType }} of the data we hold.</p>
+                    <p>To proceed: <a href="{{ $verifyUrl }}">Confirm the request</a>.</p>
+                    <p>The link is valid for {{ $expiresInHours }} hours. If you did not make this request, you can ignore this message — nothing happens unless the link is opened.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            // Legally significant: what we told a data subject, and when.
+            logBodies: true,
+            sample: ['requestType' => 'export', 'verifyUrl' => 'https://example.test/privacy/request/abc123', 'expiresInHours' => 24],
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: NotifySubjectOfRequestOutcome::REQUEST_ACKNOWLEDGED,
+            subjects: [
+                'de' => 'Ihre Anfrage ist eingegangen',
+                'en' => 'We received your request',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Wir haben Ihre {{ $requestType }}-Anfrage erhalten und bearbeiten sie bis spätestens {{ $deadline }}.</p>
+                    <p>Sie erhalten eine weitere Nachricht, sobald sie abgeschlossen ist.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>We received your {{ $requestType }} request and will complete it by {{ $deadline }} at the latest.</p>
+                    <p>You will hear from us again once it is done.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            logBodies: true,
+            sample: ['requestType' => 'export', 'deadline' => '28.08.2026'],
+        ));
+
+        $registry->register(new MessageTemplate(
             key: WatchSubjectRequestDeadlinesCommand::TEMPLATE_KEY,
             subjects: [
                 'de' => 'Frist für einen Betroffenenantrag',
@@ -226,18 +287,21 @@ class ComplianceServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * The retention sweep and the deadline watch. Registered explicitly
-     * rather than by discovery: a sweep that silently failed to register
-     * would look like "nothing is out of retention" rather than like a bug.
+     * The retention sweep, the deadline watch, and the unverified request sweep.
+     * Registered explicitly rather than by discovery: a sweep that silently
+     * failed to register would look like "nothing is out of retention" rather
+     * than like a bug.
      */
     protected function registerSchedule(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([ApplyRetentionRulesCommand::class, WatchSubjectRequestDeadlinesCommand::class]);
+            $this->commands([ApplyRetentionRulesCommand::class, SweepUnverifiedRequestsCommand::class, WatchSubjectRequestDeadlinesCommand::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command(ApplyRetentionRulesCommand::class)->dailyAt('03:30');
+
+            $schedule->command(SweepUnverifiedRequestsCommand::class)->hourly();
 
             // Early enough that a warning is in the operator's inbox at the
             // start of the working day the deadline actually matters on.

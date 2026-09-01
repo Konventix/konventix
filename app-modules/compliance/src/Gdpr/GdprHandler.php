@@ -32,17 +32,20 @@ interface GdprHandler
 
     /**
      * This module's scalar contribution to a subject's export archive.
-     * Calling it twice for the same subject must yield the same shape —
-     * export assembly (TODO.md backlog) may call it more than once.
+     * Calling it twice for the same subject must yield the same shape.
+     *
+     * The subject is a person, not a person-at-a-brand (ADR-0050 §2): query
+     * with `withoutBrandScope()` and no brand filter. A handler that cannot
+     * answer for an email-only subject returns an empty array — that is a
+     * no-op, not an error.
      *
      * @return array<string, mixed>
      */
-    public function exportFor(string $subjectId, string $brandId): array;
+    public function exportFor(SubjectRef $subject): array;
 
     /**
-     * Anonymize or erase this module's rows for the subject. Must be safe to
-     * call more than once: a subject with no data in this module, or one
-     * already deleted, is a no-op — not an error.
+     * Anonymize or erase this module's rows for the subject, across every
+     * brand of the operator. Must be safe to call more than once.
      */
-    public function delete(string $subjectId, string $brandId, DeletionMode $mode): void;
+    public function delete(SubjectRef $subject, DeletionMode $mode): void;
 }

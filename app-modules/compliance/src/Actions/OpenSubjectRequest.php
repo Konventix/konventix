@@ -13,6 +13,7 @@ use Konventix\Compliance\Enums\ModuleResponseState;
 use Konventix\Compliance\Events\DataExportRequested;
 use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\DataSubjectRequestResponse;
 
@@ -27,32 +28,43 @@ use Konventix\Compliance\Models\DataSubjectRequestResponse;
  * still opens (and gets a state to progress through), it just dispatches
  * nothing. TODO.md tracks defining a RectificationRequested event as a
  * follow-up.
+ *
+ * ConsentWithdrawal seeds no per-module response rows and dispatches nothing
+ * either: it is Compliance answering about its own Consent record, not a
+ * cross-module obligation every GdprHandler must reply to (ADR-0050 §8). A
+ * Pending row per module would sit forever, showing every module as "not yet
+ * answered" for a request none of them will ever touch.
  */
 final class OpenSubjectRequest
 {
     public function __construct(private readonly GdprHandlerRegistry $registry) {}
 
-    public function __invoke(string $subjectId, DataSubjectRequestType $type, ?DeletionMode $mode = null): DataSubjectRequest
+    public function __invoke(SubjectRef $subject, DataSubjectRequestType $type, ?DeletionMode $mode = null, ?string $filedOnBrandId = null, ?string $consentId = null): DataSubjectRequest
     {
         if ($type === DataSubjectRequestType::Deletion && $mode === null) {
             throw new InvalidArgumentException('Opening a deletion request requires a DeletionMode.');
         }
 
-        return DB::transaction(function () use ($subjectId, $type, $mode): DataSubjectRequest {
+        return DB::transaction(function () use ($subject, $type, $mode, $filedOnBrandId, $consentId): DataSubjectRequest {
             $request = DataSubjectRequest::create([
-                'subject_id' => $subjectId,
+                'subject_id' => $subject->userId,
+                'subject_email' => $subject->email,
+                'filed_on_brand_id' => $filedOnBrandId,
+                'consent_id' => $consentId,
                 'type' => $type,
                 'state' => DataSubjectRequestState::Received,
                 'mode' => $mode,
                 'deadline_at' => now()->addDays(30),
             ]);
 
-            foreach ($this->registry->moduleNames() as $module) {
-                DataSubjectRequestResponse::create([
-                    'data_subject_request_id' => $request->id,
-                    'module' => $module,
-                    'state' => ModuleResponseState::Pending,
-                ]);
+            if ($type !== DataSubjectRequestType::ConsentWithdrawal) {
+                foreach ($this->registry->moduleNames() as $module) {
+                    DataSubjectRequestResponse::create([
+                        'data_subject_request_id' => $request->id,
+                        'module' => $module,
+                        'state' => ModuleResponseState::Pending,
+                    ]);
+                }
             }
 
             $this->dispatchFanOut($request);
@@ -67,16 +79,19 @@ final class OpenSubjectRequest
             DataSubjectRequestType::Export => event(new DataExportRequested(
                 requestId: $request->id,
                 subjectId: $request->subject_id,
-                brandId: $request->brand_id,
+                subjectEmail: $request->subject_email,
+                brandId: $request->filed_on_brand_id ?? '',
                 requestedAt: $request->created_at->toIso8601String(),
             )),
             DataSubjectRequestType::Deletion => event(new UserDeletionRequested(
                 requestId: $request->id,
                 subjectId: $request->subject_id,
-                brandId: $request->brand_id,
+                subjectEmail: $request->subject_email,
+                brandId: $request->filed_on_brand_id ?? '',
                 mode: $request->mode->value,
             )),
             DataSubjectRequestType::Rectification => null,
+            DataSubjectRequestType::ConsentWithdrawal => null,
         };
     }
 }

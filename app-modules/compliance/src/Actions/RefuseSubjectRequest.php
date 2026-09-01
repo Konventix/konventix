@@ -43,7 +43,8 @@ final class RefuseSubjectRequest
             event(new SubjectRequestRefused(
                 requestId: $request->getKey(),
                 subjectId: $request->subject_id,
-                brandId: $request->brand_id,
+                subjectEmail: $request->subject_email,
+                brandId: $request->filed_on_brand_id ?? '',
                 reasonCode: $reasonCode,
             ));
 

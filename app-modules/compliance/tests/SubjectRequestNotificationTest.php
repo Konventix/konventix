@@ -10,6 +10,7 @@ use Konventix\Compliance\Console\WatchSubjectRequestDeadlinesCommand;
 use Konventix\Compliance\Enums\DataSubjectRequestState;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Enums\DeletionMode;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Listeners\NotifySubjectOfRequestOutcome;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Identity\Models\BrandMembership;
@@ -35,7 +36,7 @@ it('tells the subject their export is ready, without attaching it', function ():
         'locale' => 'de',
     ]);
 
-    app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Export);
+    app(OpenSubjectRequest::class)(SubjectRef::forUser($user->id), DataSubjectRequestType::Export, null, $brand->getKey());
 
     $record = MessageRecord::withoutBrandScope()
         ->where('template_key', NotifySubjectOfRequestOutcome::EXPORT_READY)
@@ -60,7 +61,7 @@ it('acknowledges a deletion while the address still exists', function (): void {
         'locale' => 'de',
     ]);
 
-    app(OpenSubjectRequest::class)($user->id, DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
+    app(OpenSubjectRequest::class)(SubjectRef::forUser($user->id), DataSubjectRequestType::Deletion, DeletionMode::Anonymize);
 
     // The mail itself is the proof of ordering: it left for the real address
     // before the fan-out scrubbed every trace of it. `MAIL_MAILER=array` in
@@ -108,6 +109,26 @@ it('tells the subject a refusal and its legal ground', function (): void {
     expect($record->rendered_body)->toContain('art_12_5_excessive');
 });
 
+it('refuses an email-only request and mails the bare address (ADR-0050 §9 ruling 3)', function (): void {
+    $this->withBrand();
+
+    $request = DataSubjectRequest::factory()->forEmail('someone@example.de')->create([
+        'type' => DataSubjectRequestType::Rectification,
+    ]);
+
+    // No account behind this subject, so the console can still refuse the
+    // request — this must not TypeError on a non-nullable subjectId.
+    (new RefuseSubjectRequest)($request, 'art_12_5_excessive');
+
+    $record = MessageRecord::withoutBrandScope()
+        ->where('template_key', NotifySubjectOfRequestOutcome::REQUEST_REFUSED)
+        ->firstOrFail();
+
+    expect($record->recipient_email)->toBe('someone@example.de')
+        ->and($record->recipient_id)->toBeNull()
+        ->and($record->rendered_body)->toContain('art_12_5_excessive');
+});
+
 it('escalates an approaching deadline once, then again when it lapses', function (): void {
     $brand = $this->withBrand();
 
@@ -115,6 +136,7 @@ it('escalates an approaching deadline once, then again when it lapses', function
     $brand->forceFill(['operator_id' => $operator->id])->save();
 
     $request = DataSubjectRequest::factory()->create([
+        'filed_on_brand_id' => $brand->getKey(),
         'state' => DataSubjectRequestState::Received,
         'deadline_at' => now()->addDays(3),
     ]);
@@ -164,4 +186,30 @@ it('leaves a closed request alone and one whose deadline is far off', function (
     expect(MessageRecord::withoutBrandScope()
         ->where('template_key', WatchSubjectRequestDeadlinesCommand::TEMPLATE_KEY)
         ->count())->toBe(0);
+});
+
+it('acknowledges an export request with its deadline', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('exports');
+
+    $user = User::factory()->create();
+    BrandMembership::factory()->create(['user_id' => $user->id]);
+    Recipient::query()->create([
+        'id' => $user->id,
+        'email' => 'alex@example.test',
+        'display_name' => 'Alex',
+        'locale' => 'de',
+    ]);
+
+    app(OpenSubjectRequest::class)(
+        SubjectRef::forUser($user->getKey()),
+        DataSubjectRequestType::Export,
+        null,
+        $brand->getKey(),
+    );
+
+    expect(MessageRecord::withoutBrandScope()
+        ->where('template_key', NotifySubjectOfRequestOutcome::REQUEST_ACKNOWLEDGED)
+        ->where('recipient_id', $user->getKey())
+        ->exists())->toBeTrue();
 });

@@ -50,12 +50,10 @@ module built before it will otherwise be retrofitted.
       state whose failure mode is data that never gets deleted). If the
       event-scoped emissions ever grow past a few hundred a day, the fix is a
       per-clock high-water mark, not a flag on the rule.
-- [ ] `AssembleSubjectExport` treats a subject request as brand-scoped, but
+- [x] `AssembleSubjectExport` treated a subject request as brand-scoped, but
       Round 6 (D-BATCH) settled that a request *spans the operator*
-      (ADR-0016). A person registered with two of an operator's brands gets
-      two archives today. Closing that means opening one request per brand
-      from one form, or an archive assembled across brands — decide which
-      before an operator runs two brands in production.
+      (ADR-0050). The fan-out contract now takes a `SubjectRef` without a
+      brand, and archives assemble operator-wide (slice 20).
 - [ ] Only four actions are marked auditable so far (policy publication,
       deletion dispatch, request refusal, registration approve/reject) plus
       two recorded reads (the registrant CSV export, a subject-export
@@ -78,9 +76,11 @@ module built before it will otherwise be retrofitted.
       (`Gate::authorize(Permission::X->value)`), which is what every other
       module does — `src/Policies/` is still empty and would only pay off for
       per-row decisions, which no Compliance row has. Revisit if one appears.
-- [ ] Policy *withdrawal*: SPEC proposes `PolicyWithdrawn`, but nothing can
-      un-publish a version today. A brand that publishes the wrong text must
-      publish a corrected version over it. Needs the event class first.
+- [x] Consent *withdrawal* as a request type: `ConsentWithdrawal` in
+      `DataSubjectRequestType` with `PolicyVersion::lawful_basis` declared
+      (ADR-0050) to route to self-service or operator review. The operator
+      console handles it with the same deadline watch, audit trail, and
+      refusal machinery. Completed in slice 20.
 - [ ] The consent gate is opt-in per route (`require-consent`) and only
       Registration's public form carries it. Every other route a person can
       reach without having agreed is a decision nobody has made yet — walk
@@ -107,6 +107,28 @@ module built before it will otherwise be retrofitted.
       is enforced solely inside `PublishPolicyVersion`'s transaction, which is
       correct for the single-writer path this Action guarantees but not
       immune to two concurrent direct writes bypassing the Action.
+- [ ] Commerce's handler cannot answer for an email-only subject: `orders.billing_party`
+      (JSON) carries an `email` sub-field via BillingPartyData, but guest-checkout paths
+      do not populate it without an account. Commerce owes an email lookup path once a
+      guest-checkout flow populates the billing_party email without requiring a user_id.
+      Newsletter has no `GdprHandler` at all; it is Phase 3 and holds no data yet, but
+      owes a handler before its first subscription is stored. Admission (claim links'
+      `intended_email`) and Registration (the registrant read model, reachable by email
+      once its account is gone) gained their own email branches in slice 20 — this item
+      now names only the two modules still owing one.
+- [ ] Single-use token flows (verification, archive download) check then
+      consume with a race gap: `DataSubjectRequestVerification::findByToken()`
+      + `->delete()` in `PublicDataRequestController::verify()`, and the
+      `archive_token_hash` column consumed inline in
+      `DataRequestController::downloadWithToken()`. A shared conditional-UPDATE
+      pattern (`UPDATE … WHERE … RETURNING …`) would close the window a
+      parallel request can exploit to burn the token twice.
+- [ ] `auditEntry()` context for `SubjectRequestRefused` and
+      `UserDeletionRequested` drops `subject_email` for requests filed by
+      email-only subjects, because the `user_id` foreign key would fail. The
+      context needs the address so the operator can see who was affected; a
+      nullable `subject_email` on `audit_log_entries` or an `email_addr`
+      column on those events would fix it.
 
 ## Done
 

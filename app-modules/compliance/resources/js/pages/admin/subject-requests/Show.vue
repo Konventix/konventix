@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+    acceptConsentWithdrawal as acceptConsentWithdrawalRequest,
     download as downloadArchive,
     index as requestsIndex,
     redispatch as redispatchRequest,
@@ -74,6 +75,14 @@ function refuse(): void {
         preserveScroll: true,
         onSuccess: () => refusal.reset(),
     });
+}
+
+function acceptConsentWithdrawal(): void {
+    router.post(
+        acceptConsentWithdrawalRequest(props.request.id).url,
+        {},
+        { preserveScroll: true },
+    );
 }
 </script>
 
@@ -208,6 +217,25 @@ function refuse(): void {
                                 failed ones — handlers are idempotent by
                                 contract, and Compliance never learns which rows
                                 one already touched.
+                            </p>
+                        </div>
+
+                        <div
+                            v-if="
+                                props.request.type === 'consent_withdrawal' &&
+                                props.request.state !== 'fulfilled'
+                            "
+                            class="flex flex-col gap-2"
+                        >
+                            <Button
+                                variant="outline"
+                                @click="acceptConsentWithdrawal"
+                            >
+                                Accept withdrawal
+                            </Button>
+                            <p class="text-xs text-text-muted">
+                                Withdraws the named consent and closes this
+                                request as fulfilled.
                             </p>
                         </div>
 

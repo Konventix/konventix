@@ -254,6 +254,7 @@ final class DemoRushSeeder
             version: 'v1.0',
             content: "Rush Terms\n\nArrive, queue, buy a ticket. That's it.",
             requiresConsent: true,
+            lawfulBasis: 'consent',
         ));
 
         return ($this->publishVersion)($version, now()->subDay());

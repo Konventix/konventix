@@ -117,7 +117,7 @@ final class ApplyRetentionRulesCommand extends Command
      */
     private function purgeExpiredArchives(bool $dryRun): int
     {
-        $expired = DataSubjectRequest::withoutBrandScope()
+        $expired = DataSubjectRequest::query()
             ->whereNotNull('archive_path')
             ->where('archive_expires_at', '<=', now())
             ->get();

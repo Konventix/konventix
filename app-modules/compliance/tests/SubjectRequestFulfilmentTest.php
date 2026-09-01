@@ -15,6 +15,7 @@ use Konventix\Compliance\Events\DataExportCompleted;
 use Konventix\Compliance\Events\UserDeletionCompleted;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\DataSubjectRequestResponse;
 
@@ -44,7 +45,7 @@ function complianceFakeHandler(string $module, array $export = [], bool $throws 
             return $this->module;
         }
 
-        public function exportFor(string $subjectId, string $brandId): array
+        public function exportFor(SubjectRef $subject): array
         {
             if ($this->throws) {
                 throw new RuntimeException('handler exploded');
@@ -53,13 +54,13 @@ function complianceFakeHandler(string $module, array $export = [], bool $throws 
             return $this->export;
         }
 
-        public function delete(string $subjectId, string $brandId, DeletionMode $mode): void
+        public function delete(SubjectRef $subject, DeletionMode $mode): void
         {
             if ($this->throws) {
                 throw new RuntimeException('handler exploded');
             }
 
-            $this->deletions[] = ['subject' => $subjectId, 'mode' => $mode->value];
+            $this->deletions[] = ['subject' => $subject->userId, 'mode' => $mode->value];
         }
     };
 }
@@ -76,7 +77,7 @@ it('assembles every handler contribution into one archive and closes the request
 
     Event::fake([DataExportCompleted::class]);
 
-    $request = app(OpenSubjectRequest::class)($subjectId, DataSubjectRequestType::Export);
+    $request = app(OpenSubjectRequest::class)(SubjectRef::forUser($subjectId), DataSubjectRequestType::Export, null, $brand->getKey());
     $request->refresh();
 
     expect($request->state)->toBe(DataSubjectRequestState::Fulfilled)
@@ -115,7 +116,7 @@ it('leaves a request open when one module fails, and writes no partial archive',
     $registry->register(complianceFakeHandler('registration', ['registrations' => []]));
     $registry->register(complianceFakeHandler('commerce', throws: true));
 
-    $request = app(OpenSubjectRequest::class)((string) Str::ulid(), DataSubjectRequestType::Export);
+    $request = app(OpenSubjectRequest::class)(SubjectRef::forUser((string) Str::ulid()), DataSubjectRequestType::Export);
     $request->refresh();
 
     expect($request->state)->toBe(DataSubjectRequestState::InProgress)
@@ -142,7 +143,7 @@ it('runs every handler for a deletion and records the mode', function (): void {
     Event::fake([UserDeletionCompleted::class]);
 
     $request = app(OpenSubjectRequest::class)(
-        $subjectId,
+        SubjectRef::forUser($subjectId),
         DataSubjectRequestType::Deletion,
         DeletionMode::Anonymize,
     );
@@ -160,7 +161,7 @@ it('re-dispatching a failed fan-out completes it', function (): void {
     $registry = app(GdprHandlerRegistry::class);
     $registry->register(complianceFakeHandler('commerce', throws: true));
 
-    $request = app(OpenSubjectRequest::class)((string) Str::ulid(), DataSubjectRequestType::Export);
+    $request = app(OpenSubjectRequest::class)(SubjectRef::forUser((string) Str::ulid()), DataSubjectRequestType::Export);
 
     expect($request->refresh()->state)->toBe(DataSubjectRequestState::InProgress);
 

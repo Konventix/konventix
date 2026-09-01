@@ -16,6 +16,13 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import {
     edit as editPolicy,
@@ -84,6 +91,7 @@ const versionForm = useForm({
     version: props.selected?.version ?? '',
     content: props.selected?.content ?? '',
     requiresConsent: props.selected?.requiresConsent ?? true,
+    lawfulBasis: props.selected?.lawfulBasis ?? 'consent',
     effectiveAt: toLocalInput(props.selected?.effectiveAt ?? null),
 });
 
@@ -110,6 +118,7 @@ const draftForm = useForm({
     version: '',
     content: '',
     requiresConsent: true,
+    lawfulBasis: 'consent',
     effectiveAt: '',
 });
 
@@ -271,6 +280,39 @@ function openVersion(id: string): void {
                                 front of everyone who has not agreed to it, on
                                 every route that carries the gate.
                             </p>
+
+                            <div class="grid gap-2">
+                                <Label for="version-lawful-basis">
+                                    Lawful basis
+                                </Label>
+                                <Select
+                                    v-model="versionForm.lawfulBasis"
+                                    :disabled="!props.selected.editable"
+                                >
+                                    <SelectTrigger
+                                        id="version-lawful-basis"
+                                        class="w-full"
+                                    >
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="consent">
+                                            Consent — the person may withdraw at
+                                            any time
+                                        </SelectItem>
+                                        <SelectItem value="contract">
+                                            Contract — withdrawal is a request
+                                        </SelectItem>
+                                        <SelectItem value="legitimate_interest">
+                                            Legitimate interest — withdrawal is
+                                            a request
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <InputError
+                                    :message="versionForm.errors.lawfulBasis"
+                                />
+                            </div>
 
                             <div class="grid gap-2">
                                 <div class="flex items-center justify-between">
@@ -489,6 +531,40 @@ function openVersion(id: string): void {
                                         <Label for="draft-consent">
                                             Requires explicit agreement
                                         </Label>
+                                    </div>
+                                    <div class="grid gap-2">
+                                        <Label for="draft-lawful-basis">
+                                            Lawful basis
+                                        </Label>
+                                        <Select v-model="draftForm.lawfulBasis">
+                                            <SelectTrigger
+                                                id="draft-lawful-basis"
+                                                class="w-full"
+                                            >
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="consent">
+                                                    Consent — the person may
+                                                    withdraw at any time
+                                                </SelectItem>
+                                                <SelectItem value="contract">
+                                                    Contract — withdrawal is a
+                                                    request
+                                                </SelectItem>
+                                                <SelectItem
+                                                    value="legitimate_interest"
+                                                >
+                                                    Legitimate interest —
+                                                    withdrawal is a request
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <InputError
+                                            :message="
+                                                draftForm.errors.lawfulBasis
+                                            "
+                                        />
                                     </div>
                                     <Button
                                         type="submit"

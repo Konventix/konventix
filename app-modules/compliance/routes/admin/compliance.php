@@ -33,6 +33,7 @@ Route::get('/subject-requests', [SubjectRequestController::class, 'index'])->nam
 Route::get('/subject-requests/{subjectRequest}', [SubjectRequestController::class, 'show'])->name('admin.subject-requests.show');
 Route::post('/subject-requests/{subjectRequest}/redispatch', [SubjectRequestController::class, 'redispatch'])->name('admin.subject-requests.redispatch');
 Route::post('/subject-requests/{subjectRequest}/refuse', [SubjectRequestController::class, 'refuse'])->name('admin.subject-requests.refuse');
+Route::post('/subject-requests/{subjectRequest}/accept-consent-withdrawal', [SubjectRequestController::class, 'acceptConsentWithdrawal'])->name('admin.subject-requests.accept-consent-withdrawal');
 Route::get('/subject-requests/{subjectRequest}/download', [SubjectRequestController::class, 'download'])->name('admin.subject-requests.download');
 
 // The audit trail. Read-only by design — there is no write endpoint, and
