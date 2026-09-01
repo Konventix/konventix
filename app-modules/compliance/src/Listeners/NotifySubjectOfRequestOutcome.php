@@ -40,6 +40,21 @@ final class NotifySubjectOfRequestOutcome
 
     public const string REQUEST_REFUSED = 'compliance.request-refused';
 
+    /**
+     * The public page's verification link (ADR-0050 §4). Sent by
+     * `PublicDataRequestController::store`, not by a listener here — the
+     * request this notice is about does not exist yet.
+     */
+    public const string REQUEST_VERIFICATION = 'compliance.request-verification';
+
+    /**
+     * The Art. 12(3) acknowledgement shared by export and deletion
+     * (ADR-0050 §10). Registered here so the template exists; the listener
+     * that sends it on `DataExportRequested`/`UserDeletionRequested` is
+     * Task 7's — this class does not yet call it.
+     */
+    public const string REQUEST_ACKNOWLEDGED = 'compliance.request-acknowledged';
+
     public function __construct(private readonly SendMessage $sendMessage) {}
 
     public function handleExportCompleted(DataExportCompleted $event): void

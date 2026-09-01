@@ -89,6 +89,12 @@ function dryRunSkippedRoutes(): array
         'password.reset' => 'needs a password-reset token',
         'verification.verify' => 'needs a signed verification link',
 
+        // Same shape: konventix:seed never posts to the public data-request
+        // form, so no `DataSubjectRequestVerification` row — and therefore no
+        // valid token — exists for this route's `{token}` to point at
+        // (ADR-0050 §4). PublicDataRequestTest mints one.
+        'data-requests.public.verify' => 'needs a mailed verification token',
+
         // Same shape: the signature *is* the authorization, minted during a
         // render that established ownership (see MyInvoiceDocumentController).
         // A URL built from route parameters alone cannot carry one.

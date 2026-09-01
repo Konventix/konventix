@@ -198,6 +198,51 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         ));
 
         $registry->register(new MessageTemplate(
+            key: NotifySubjectOfRequestOutcome::REQUEST_VERIFICATION,
+            subjects: [
+                'de' => 'Bitte bestätigen Sie Ihre Anfrage',
+                'en' => 'Please confirm your request',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Jemand — hoffentlich Sie — hat unter dieser Adresse eine {{ $requestType }}-Anfrage zu den bei uns gespeicherten Daten gestellt.</p>
+                    <p>Um fortzufahren: <a href="{{ $verifyUrl }}">Anfrage bestätigen</a>.</p>
+                    <p>Der Link ist {{ $expiresInHours }} Stunden gültig. Falls Sie diese Anfrage nicht gestellt haben, können Sie diese Nachricht ignorieren — es passiert nichts, ohne dass der Link geöffnet wird.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Someone — hopefully you — asked, at this address, for a {{ $requestType }} of the data we hold.</p>
+                    <p>To proceed: <a href="{{ $verifyUrl }}">Confirm the request</a>.</p>
+                    <p>The link is valid for {{ $expiresInHours }} hours. If you did not make this request, you can ignore this message — nothing happens unless the link is opened.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            // Legally significant: what we told a data subject, and when.
+            logBodies: true,
+            sample: ['requestType' => 'export', 'verifyUrl' => 'https://example.test/privacy/request/abc123', 'expiresInHours' => 24],
+        ));
+
+        $registry->register(new MessageTemplate(
+            key: NotifySubjectOfRequestOutcome::REQUEST_ACKNOWLEDGED,
+            subjects: [
+                'de' => 'Ihre Anfrage ist eingegangen',
+                'en' => 'We received your request',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Wir haben Ihre {{ $requestType }}-Anfrage erhalten und bearbeiten sie bis spätestens {{ $deadline }}.</p>
+                    <p>Sie erhalten eine weitere Nachricht, sobald sie abgeschlossen ist.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>We received your {{ $requestType }} request and will complete it by {{ $deadline }} at the latest.</p>
+                    <p>You will hear from us again once it is done.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            logBodies: true,
+            sample: ['requestType' => 'export', 'deadline' => '28.08.2026'],
+        ));
+
+        $registry->register(new MessageTemplate(
             key: WatchSubjectRequestDeadlinesCommand::TEMPLATE_KEY,
             subjects: [
                 'de' => 'Frist für einen Betroffenenantrag',

@@ -18,7 +18,7 @@ use Konventix\Compliance\Enums\DataSubjectRequestType;
  * @property string $id
  * @property string|null $filed_on_brand_id
  * @property string $email
- * @property string $type
+ * @property DataSubjectRequestType $type
  * @property string $token_hash
  * @property Carbon $expires_at
  * @property Carbon|null $created_at

@@ -20,12 +20,26 @@ use Konventix\Compliance\Http\Controllers\ConsentController;
 use Konventix\Compliance\Http\Controllers\DataRequestController;
 use Konventix\Compliance\Http\Controllers\PolicyController;
 use Konventix\Compliance\Http\Controllers\PrivacyController;
+use Konventix\Compliance\Http\Controllers\PublicDataRequestController;
 
 // The published text of one policy, open to everyone: an imprint or privacy
 // link that only works for logged-in visitors is not a published policy.
 // Never carries `require-consent` — a gate that blocks the page explaining
 // what you are agreeing to is a loop.
 Route::get('/policies/{slug}', [PolicyController::class, 'show'])->name('policies.show');
+
+// Public Art. 15 / Art. 17 entry (ADR-0050 §4). Deliberately outside
+// `auth`: the obligation does not depend on whether the subject can log in.
+Route::get('/privacy/request', [PublicDataRequestController::class, 'create'])
+    ->name('data-requests.public.create');
+
+Route::post('/privacy/request', [PublicDataRequestController::class, 'store'])
+    ->middleware('throttle:6,1')
+    ->name('data-requests.public.store');
+
+Route::get('/privacy/request/{token}', [PublicDataRequestController::class, 'verify'])
+    ->middleware('throttle:10,1')
+    ->name('data-requests.public.verify');
 
 Route::middleware('auth')->group(function (): void {
     // Where the `require-consent` gate lands. Also reachable directly, so
