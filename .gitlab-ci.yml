@@ -1,0 +1,434 @@
+# The pipeline is the one instance that sees every change (#59). It runs on
+# every merge request, on main and on tags — and never twice for one commit.
+#
+# One thing from .github/workflows is deliberately not ported: image.yml has no
+# `needs` on tests.yml, so an image there can be published from a commit whose
+# tests are red. Here `build:image` needs the analysis, test and scan jobs, and
+# nothing reaches the registry without them.
+#
+# Ordering is a DAG, not a ladder: `needs:` lets the scanners start at pipeline
+# time and the four checks start the moment `verify` is green, so the stage list
+# below is the story the pipeline graph tells, not the order it runs in.
+
+include:
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+  - template: Jobs/SAST.gitlab-ci.yml
+  - template: Jobs/Dependency-Scanning.gitlab-ci.yml
+  - template: Jobs/Container-Scanning.gitlab-ci.yml
+
+stages:
+  - prepare
+  - verify
+  - analyse
+  - test
+  - scan
+  - build
+  - release
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    # A branch push without an open merge request builds nothing. With several
+    # agents pushing at once the runners are the scarce resource, and the merge
+    # request pipeline is the one whose result anybody acts on.
+
+variables:
+  # Dependency caches must live under the project directory — it is the only
+  # path GitLab's cache carries between jobs.
+  COMPOSER_CACHE_DIR: $CI_PROJECT_DIR/.cache/composer
+  COMPOSER_NO_INTERACTION: "1"
+  npm_config_cache: $CI_PROJECT_DIR/.cache/npm
+
+  # The security templates skip merge request pipelines unless this is set:
+  # every scanner's rules read `$AST_ENABLE_MR_PIPELINES == "true" &&
+  # $CI_PIPELINE_SOURCE == "merge_request_event"`. Without it the scans would
+  # only ever run on main — after the merge they were supposed to block.
+  AST_ENABLE_MR_PIPELINES: "true"
+  # PHP and Vue are among the languages GitLab Advanced SAST covers and semgrep
+  # then steps aside for (the template excludes them from semgrep's paths when
+  # this is on). Ultimate is licensed here; use the better analyzer.
+  GITLAB_ADVANCED_SAST_ENABLED: "true"
+
+  # The CI image is the Dockerfile's `toolchain` stage. Bump the tag when that
+  # stage changes in a way the published image must reflect immediately —
+  # `prepare:toolchain` republishes the tag from main whenever the Dockerfile
+  # moves, and merge requests always run on the published one.
+  TOOLCHAIN_IMAGE: $CI_REGISTRY_IMAGE/ci-toolchain
+  TOOLCHAIN_TAG: php8.5-node22
+
+  # ADR-0049 §1: immutable tags only. A moving `main` tag would make "which
+  # image is running" unanswerable — a push to main is found by its sha.
+  IMAGE_SHA_TAG: sha-$CI_COMMIT_SHORT_SHA
+
+.docker:
+  image: docker:29.1.4-cli
+  services:
+    - name: docker:29.1.4-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: /certs
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: /certs/client
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    # The default `docker` driver cannot export a registry cache; a
+    # docker-container builder inside dind can, and still `--load`s into the
+    # daemon so the smoke test boots the very image that gets pushed.
+    - docker buildx create --driver docker-container --name konventix --use
+
+.cache-pull: &cache-pull
+  - key:
+      prefix: composer
+      files: [composer.lock]
+    paths: [.cache/composer]
+    policy: pull
+  - key:
+      prefix: npm
+      files: [package-lock.json]
+    paths: [.cache/npm]
+    policy: pull
+
+.app:
+  image:
+    name: $TOOLCHAIN_IMAGE:$TOOLCHAIN_TAG
+    # The FrankenPHP base carries an entrypoint; the runner needs a plain shell.
+    entrypoint: [""]
+  cache: *cache-pull
+  before_script:
+    # `.env` before `composer install`, not after: package:discover runs as a
+    # post-autoload hook and reads config, which reads .env — a package that
+    # rejects a missing value fails the install itself rather than failing
+    # later, which is how the GitHub pipeline broke once already.
+    - cp .env.example .env
+    - composer install --prefer-dist --no-progress
+    - php artisan key:generate
+    - npm ci --no-audit --no-fund
+    # resources/js/{routes,actions,wayfinder} are generated and gitignored.
+    # eslint's import resolver, vue-tsc and vitest all fail on the missing
+    # imports without them. --with-form matches vite.config.ts's formVariants.
+    - php artisan wayfinder:generate --with-form
+
+########## prepare ##########
+
+prepare:toolchain:
+  stage: prepare
+  extends: .docker
+  rules:
+    # Merge requests consume the published tag. A Dockerfile change is proven
+    # by `build:image`, which builds the whole file including this stage, so a
+    # broken toolchain still fails its own merge request.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: $CI_COMMIT_TAG
+    - changes: [Dockerfile]
+      variables:
+        TOOLCHAIN_REBUILD: "yes"
+    - when: on_success
+  script:
+    - |
+      if [ "$TOOLCHAIN_REBUILD" != "yes" ] \
+         && docker manifest inspect "$TOOLCHAIN_IMAGE:$TOOLCHAIN_TAG" > /dev/null 2>&1; then
+        echo "$TOOLCHAIN_IMAGE:$TOOLCHAIN_TAG is published — nothing to build."
+        exit 0
+      fi
+      docker buildx build --target toolchain \
+        --cache-from "type=registry,ref=$TOOLCHAIN_IMAGE:cache" \
+        --cache-to "type=registry,ref=$TOOLCHAIN_IMAGE:cache,mode=max" \
+        --tag "$TOOLCHAIN_IMAGE:$TOOLCHAIN_TAG" \
+        --push .
+
+########## verify — the fast run (#64), and the gate on everything after ##########
+
+verify:
+  stage: verify
+  extends: .app
+  # The only job that writes the caches. Everything downstream pulls what this
+  # one left behind, so a green verify also means warm caches.
+  cache:
+    - key:
+        prefix: composer
+        files: [composer.lock]
+      paths: [.cache/composer]
+      policy: pull-push
+    - key:
+        prefix: npm
+        files: [package-lock.json]
+      paths: [.cache/npm]
+      policy: pull-push
+  script:
+    - composer lint:check
+    - npm run lint:check
+    - npm run format:check
+
+########## analyse ##########
+
+analyse:php:
+  stage: analyse
+  extends: .app
+  needs: [verify]
+  script:
+    - composer types:check
+
+analyse:js:
+  stage: analyse
+  extends: .app
+  needs: [verify]
+  script:
+    - npm run types:check
+
+########## test ##########
+
+test:js:
+  stage: test
+  extends: .app
+  needs: [verify]
+  script:
+    - npm run test:js
+
+test:php:
+  stage: test
+  extends: .app
+  needs: [verify]
+  # The suite runs against PostgreSQL, not SQLite: phpunit.xml overrides
+  # DB_DATABASE and nothing else, so the connection stays pgsql. Several tests
+  # depend on that on purpose — Resources' exclusion constraints (ADR-0020) and
+  # the `UNIQUE NULLS NOT DISTINCT` retention rules have no SQLite equivalent.
+  services:
+    - name: postgres:17
+      alias: postgres
+    - name: redis:7-alpine
+      alias: redis
+  variables:
+    POSTGRES_DB: testing
+    POSTGRES_USER: konventix
+    POSTGRES_PASSWORD: password
+    # Laravel's Dotenv is immutable: a real environment variable wins over the
+    # .env copied above, which still carries the compose hostnames.
+    DB_HOST: postgres
+    DB_DATABASE: testing
+    DB_USERNAME: konventix
+    DB_PASSWORD: password
+    REDIS_HOST: redis
+  script:
+    # The runner only waits for the service port to open; Postgres accepts a
+    # connection slightly before initdb has handed over the database.
+    - |
+      for i in $(seq 1 30); do
+        php -r 'new PDO("pgsql:host=postgres;dbname=testing", "konventix", "password");' 2>/dev/null && break
+        sleep 1
+      done
+    # Feature tests resolve Inertia pages through the Vite manifest, so the
+    # build has to precede the suite or every page test 500s. The SSR bundle is
+    # built too: SettingsLayoutTest asserts server-rendered HTML, which only
+    # exists when an SSR process answers (config/inertia.php has SSR on by
+    # default, ADR-0049 §6).
+    - npm run build:ssr
+    # Backgrounded so it outlives this command; the runner reaps it at job end.
+    # Inertia falls back to client rendering while it warms up, so the sleep is
+    # what makes the first suite request deterministic.
+    - nohup php artisan inertia:start-ssr > ssr.log 2>&1 &
+    - sleep 3
+    - php artisan test
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths: [ssr.log]
+
+########## scan ##########
+#
+# The scanners need neither the toolchain image nor a green verify, so they
+# carry `needs: []` and start with the pipeline. `scan:gate` is what turns
+# their reports into a merge blocker: the analyzers themselves exit 0 with
+# findings, and their allow_failure only covers the analyzer crashing.
+#
+# The GitLab-native alternative is a merge request approval policy (Ultimate),
+# which requires approval instead of failing the pipeline. It lives in a
+# separate security policy project and would be invisible from this repository;
+# this gate is in the file everyone already reads.
+
+secret_detection:
+  stage: scan
+  needs: []
+  allow_failure: false
+
+gitlab-advanced-sast:
+  stage: scan
+  needs: []
+  allow_failure: false
+
+semgrep-sast:
+  stage: scan
+  needs: []
+  allow_failure: false
+
+gemnasium-dependency_scanning:
+  stage: scan
+  needs: []
+  allow_failure: false
+
+scan:gate:
+  stage: scan
+  image: alpine:3.22
+  needs:
+    # Optional throughout: which analyzers a commit produces depends on the
+    # files it touches, and a scanner that did not run is not a finding.
+    - job: secret_detection
+      artifacts: true
+      optional: true
+    - job: gitlab-advanced-sast
+      artifacts: true
+      optional: true
+    - job: semgrep-sast
+      artifacts: true
+      optional: true
+    - job: gemnasium-dependency_scanning
+      artifacts: true
+      optional: true
+  before_script:
+    - apk add --no-cache jq
+  script:
+    - |
+      set -eu
+      status=0
+
+      # A secret in the tree is a secret whatever its severity says: any
+      # finding fails. This is the case the issue asks a human to prove by
+      # committing a dummy credential into a merge request.
+      if [ -f gl-secret-detection-report.json ]; then
+        n=$(jq '[.vulnerabilities[]] | length' gl-secret-detection-report.json)
+        echo "secret detection: $n finding(s)"
+        if [ "$n" -gt 0 ]; then
+          jq -r '.vulnerabilities[] | "  \(.location.file):\(.location.start_line // 0)  \(.name)"' \
+            gl-secret-detection-report.json
+          status=1
+        fi
+      else
+        echo "secret detection: no report"
+      fi
+
+      # Code and dependency findings block at High and above. Lower severities
+      # are reported in the merge request's security widget and triaged there —
+      # a base image's steady drip of Low CVEs must not be able to stop every
+      # merge in the repository.
+      for report in gl-sast-report.json gl-dependency-scanning-report.json; do
+        [ -f "$report" ] || { echo "$report: no report"; continue; }
+        n=$(jq '[.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")] | length' "$report")
+        total=$(jq '[.vulnerabilities[]] | length' "$report")
+        echo "$report: $n of $total finding(s) at High or above"
+        if [ "$n" -gt 0 ]; then
+          jq -r '.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")
+                 | "  [\(.severity)] \(.location.file // "-"):\(.location.start_line // 0)  \(.name)"' "$report"
+          status=1
+        fi
+      done
+
+      exit "$status"
+
+########## build ##########
+
+build:image:
+  stage: build
+  extends: .docker
+  needs:
+    - verify
+    - analyse:php
+    - analyse:js
+    - test:php
+    - test:js
+    - scan:gate
+  script:
+    # Built once, into dind's daemon, under the tag that will be pushed: the
+    # image the smoke test boots is byte-for-byte the image that reaches the
+    # registry.
+    - |
+      docker buildx build \
+        --load \
+        --tag "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG" \
+        --build-arg "APP_VERSION=${CI_COMMIT_TAG:-$CI_COMMIT_SHA}" \
+        --build-arg "SENTRY_RELEASE=$CI_COMMIT_SHA" \
+        --cache-from "type=registry,ref=$CI_REGISTRY_IMAGE/cache:build" \
+        --cache-to "type=registry,ref=$CI_REGISTRY_IMAGE/cache:build,mode=max" \
+        .
+    # The cheapest honest proof the artifact starts (ADR-0049 §1). As written
+    # /up contacts neither Postgres nor Redis — AUTO_MIGRATE=false and nothing
+    # touches the database at boot — so no database runs beside it here; the
+    # variables stay set so a future /up that does reach for one fails loudly
+    # instead of passing on an unconfigured connection. REVERB_APP_ID/KEY/SECRET
+    # are present-and-empty on purpose: routes/channels.php builds the Pusher
+    # client at boot and its string parameters are a fatal TypeError on null.
+    - |
+      docker run -d --rm --name smoke \
+        -e APP_KEY="base64:$(head -c 32 /dev/urandom | base64)" \
+        -e APP_ENV=production -e APP_DEBUG=false \
+        -e DB_HOST=postgres -e DB_DATABASE=konventix \
+        -e DB_USERNAME=konventix -e DB_PASSWORD=password \
+        -e REDIS_HOST=redis -e SESSION_DRIVER=redis \
+        -e CACHE_STORE=redis -e QUEUE_CONNECTION=redis \
+        -e REVERB_APP_ID= -e REVERB_APP_KEY= -e REVERB_APP_SECRET= \
+        -e INERTIA_SSR_ENABLED=false -e AUTO_MIGRATE=false -e LOG_CHANNEL=stderr \
+        "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+      ok=
+      for i in $(seq 1 20); do
+        docker exec smoke curl -sf http://localhost:8000/up && ok=1 && break
+        sleep 3
+      done
+    # ADR-0049 §5: the bundle must carry no baked websocket endpoint, or every
+    # deployment talks to the developer's laptop. `resolveReverbEndpoint` is
+    # called with `{host: …, port: …, scheme: …}` filled from VITE_REVERB_*;
+    # with them stripped the minifier writes `host:void 0`, with them baked it
+    # writes the .env.example value. Matching the pair rather than a bare
+    # `localhost` avoids laravel-echo's own hardcoded `wsHost:"localhost"`
+    # default and the SSR `hostname:"localhost"` fallback, both of which are in
+    # every bundle.
+    - |
+      if docker exec smoke sh -c "grep -rlE 'localhost:8080|host:.?localhost.?,port:' public/build/assets/"; then
+        echo "the built bundle contains the dev websocket endpoint" >&2
+        docker stop smoke
+        exit 1
+      fi
+      docker logs smoke | tail -40
+      docker stop smoke
+      test "$ok" = "1"
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] || [ -n "${CI_COMMIT_TAG:-}" ]; then
+        docker push "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+      else
+        echo "merge request pipeline: image built and smoked, deliberately not published."
+      fi
+
+container_scanning:
+  stage: build
+  needs:
+    - job: build:image
+  variables:
+    CS_IMAGE: $CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG
+  rules:
+    # Only where build:image published something to scan. A merge request's
+    # image never leaves the runner, so there is nothing in the registry yet.
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  # Not in scan:gate: the base image's OS packages produce findings on their own
+  # schedule, and a Debian CVE published overnight must not block every merge.
+  # It reports into the security dashboard, where it is triaged.
+  allow_failure: true
+
+########## release ##########
+
+release:image:
+  stage: release
+  extends: .docker
+  needs: [build:image]
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    # `imagetools create` copies the manifest, so the released tag and the sha
+    # tag are the same digest — the release is the image that was smoked, named
+    # a second time. This is the tag the chart pins (#82): Chart.yaml's
+    # appVersion is "0.4.0", not "v0.4.0".
+    - docker buildx imagetools create
+        --tag "$CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}"
+        "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+    - docker buildx imagetools inspect "$CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}"

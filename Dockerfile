@@ -15,17 +15,27 @@ RUN install-php-extensions \
 
 WORKDIR /var/www/html
 
-########## build: composer, wayfinder, vite ##########
-FROM base AS build
+########## toolchain: composer + Node on top of base ##########
+# Also the CI image: .gitlab-ci.yml builds this stage and publishes it, so the
+# pipeline lints, analyses and tests on the same PHP build, extension set and
+# Node major that produce the release artifact — not on a lookalike. Nothing
+# here reaches `runtime`, which starts again from `base` and copies only
+# /var/www/html out of `build`.
+FROM base AS toolchain
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Node 22 for the Vite build only — the runtime stage never sees it.
+# Node 22 for the Vite build only — the runtime stage never sees it. git and
+# unzip are composer's: the image build never needs them (--prefer-dist over
+# the zip extension), the pipeline's dev-dependency install does.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg git unzip \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+########## build: composer, wayfinder, vite ##########
+FROM toolchain AS build
 
 COPY . .
 
