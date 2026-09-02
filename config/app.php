@@ -40,9 +40,34 @@ return [
     | running in. This may determine how you prefer to configure various
     | services the application utilizes. Set this in your ".env" file.
     |
+    | The default is deliberately NOT "production" (ADR-0053): an instance
+    | that never said what it is runs as a non-production one — strict
+    | models, the environment ribbon on every page, mail held back to the
+    | allowlist — and gets noticed, instead of quietly passing for
+    | production. Only the literal "production" switches that off.
+    |
     */
 
-    'env' => env('APP_ENV', 'production'),
+    'env' => env('APP_ENV', 'undeclared'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Environment Ribbon
+    |--------------------------------------------------------------------------
+    |
+    | The corner ribbon every non-production instance wears (GitLab #68).
+    | `visible` follows the environment when unset — shown unless APP_ENV is
+    | "production" — and may be forced either way. The label defaults to the
+    | environment name; the color is any CSS color, the danger token by
+    | default. Read through Konventix\Platform\Environment\DeploymentEnvironment.
+    |
+    */
+
+    'environment_ribbon' => [
+        'visible' => env('ENVIRONMENT_RIBBON'),
+        'label' => env('ENVIRONMENT_RIBBON_LABEL'),
+        'color' => env('ENVIRONMENT_RIBBON_COLOR', 'var(--danger)'),
+    ],
 
     /*
     |--------------------------------------------------------------------------

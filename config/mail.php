@@ -117,4 +117,24 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Konventix')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Non-Production Guard
+    |--------------------------------------------------------------------------
+    |
+    | Off production (app.env is anything but "production") mail only reaches
+    | the addresses on this list (GitLab #68, ADR-0053). Comma separated:
+    | full addresses, `@domain` suffixes, or "*" when a mailcatcher sits
+    | behind the mailer and nothing can escape anyway. Empty means nothing
+    | leaves, and every withheld message is logged. Subjects carry the
+    | environment name in front unless tagging is switched off — the test
+    | suite does, to assert them verbatim.
+    |
+    */
+
+    'guard' => [
+        'allowlist' => env('MAIL_ALLOWLIST', ''),
+        'tag_subjects' => (bool) env('MAIL_TAG_SUBJECTS', true),
+    ],
+
 ];
