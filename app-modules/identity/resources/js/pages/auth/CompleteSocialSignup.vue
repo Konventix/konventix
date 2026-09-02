@@ -63,6 +63,23 @@ defineOptions({
                     />
                     <InputError :message="errors.name" />
                 </div>
+                <div class="grid gap-2">
+                    <Label for="username">Username</Label>
+                    <Input
+                        id="username"
+                        name="username"
+                        type="text"
+                        required
+                        autocomplete="username"
+                        placeholder="ada-lovelace"
+                    />
+                    <InputError :message="errors.username" />
+                    <p class="text-xs text-text-muted">
+                        Your public handle: lowercase letters, numbers and
+                        hyphens only, starting and ending with a letter or
+                        number.
+                    </p>
+                </div>
 
                 <div class="grid gap-2">
                     <Label for="email">Email address</Label>

@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\DB;
 use Konventix\Identity\Data\RegisterData;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
-use Konventix\Identity\Profile\UsernameGenerator;
 use Konventix\Platform\Brands\BrandContext;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
 
@@ -43,7 +42,7 @@ final class CreateNewUser implements CreatesNewUsers
                 'name' => $data->name,
                 'email' => $data->email,
                 'password' => $data->password,
-                'username' => app(UsernameGenerator::class)->generate($data->name),
+                'username' => $data->username,
                 'locale' => $this->resolveLocale(),
             ]);
 

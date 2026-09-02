@@ -25,6 +25,9 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * auto-login on a duplicate, which means replacing Fortify's stock
  * registration controller/response wiring — out of scope for this PR. Flagged
  * rather than worked around silently; see TODO.md.
+ *
+ * Amended 2026-09-02 (#143, ADR-0051 §3): the person picks their username at
+ * registration under the same rules as the profile form; nothing is generated.
  */
 #[TypeScript]
 final class RegisterData extends Data
@@ -34,6 +37,7 @@ final class RegisterData extends Data
 
     public function __construct(
         public readonly string $name,
+        public readonly string $username,
         public readonly string $email,
         public readonly string $password,
     ) {}
@@ -45,8 +49,17 @@ final class RegisterData extends Data
     {
         return [
             'name' => self::nameRules(),
+            'username' => self::usernameRules(),
             'email' => self::emailRules(),
             'password' => self::passwordRules(),
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function messages(): array
+    {
+        return self::usernameMessages();
     }
 }

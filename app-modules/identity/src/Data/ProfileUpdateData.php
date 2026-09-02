@@ -8,9 +8,7 @@ use Closure;
 use Illuminate\Validation\Rule;
 use Konventix\Identity\Concerns\ProfileValidationRules;
 use Konventix\Identity\Enums\ProfileVisibility;
-use Konventix\Identity\Models\User;
 use Konventix\Identity\Profile\SocialLinks;
-use Konventix\Identity\Profile\UsernameGenerator;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -23,10 +21,10 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  *
  * Widened by ADR-0051 §3/§6 to the profile-of-record: username, tagline,
  * status emoji, social links. `name`/`email` still validate through the
- * shared `profileRules()` Concern; the new fields validate only here —
- * `ProfileValidationRules::profileRules()` stays untouched because
- * registration (`RegisterData`, `CompleteSocialSignupData`) reuses it and
- * must not ask for a username. Widened again by ADR-0052 §1: `visibility`,
+ * shared `profileRules()` Concern, and since 2026-09-02 (#143) the username
+ * does too — `usernameRules()` is shared with `RegisterData` and
+ * `CompleteSocialSignupData`, which ask for it at signup; tagline, emoji and
+ * social links validate only here. Widened again by ADR-0052 §1: `visibility`,
  * required and validated against the `ProfileVisibility` enum.
  */
 #[TypeScript]
@@ -54,20 +52,7 @@ final class ProfileUpdateData extends Data
         $userId = $userId !== null ? (string) $userId : null;
 
         $rules = array_merge(self::profileRules($userId), [
-            'username' => [
-                'required', 'string', 'regex:'.UsernameGenerator::FORMAT,
-                Rule::notIn(UsernameGenerator::RESERVED),
-                function (string $attribute, mixed $value, Closure $fail) use ($userId): void {
-                    $taken = User::query()
-                        ->whereRaw('lower(username) = ?', [mb_strtolower((string) $value)])
-                        ->when($userId !== null, fn ($query) => $query->whereKeyNot($userId))
-                        ->exists();
-
-                    if ($taken) {
-                        $fail(__('This username is already taken.'));
-                    }
-                },
-            ],
+            'username' => self::usernameRules($userId),
             'tagline' => ['nullable', 'string', 'max:140'],
             'statusEmoji' => ['nullable', 'string', 'max:32',
                 function (string $attribute, mixed $value, Closure $fail): void {
@@ -90,5 +75,24 @@ final class ProfileUpdateData extends Data
         }
 
         return $rules;
+    }
+
+    /**
+     * A malformed handle gets told what shape the platform expects, not
+     * "format is invalid" (#110).
+     *
+     * @return array<string, string>
+     */
+    public static function messages(): array
+    {
+        return array_merge(self::usernameMessages(), [
+            'socialLinks.steam.regex' => __('Steam: the custom URL name only, 2-32 letters, digits, - or _ (not the full profile link).'),
+            'socialLinks.discord.regex' => __('Discord: the username only, 2-32 lowercase letters, digits, . or _.'),
+            'socialLinks.twitch.regex' => __('Twitch: the channel name only, 3-25 letters, digits or _.'),
+            'socialLinks.youtube.regex' => __('YouTube: the handle only, 3-30 letters, digits, . _ or -, with or without the leading @.'),
+            'socialLinks.x.regex' => __('X: the handle only, 1-15 letters, digits or _, without the @.'),
+            'socialLinks.instagram.regex' => __('Instagram: the username only, 1-30 letters, digits, . or _.'),
+            'socialLinks.website.url' => __('Website: a full address starting with http:// or https://.'),
+        ]);
     }
 }

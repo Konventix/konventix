@@ -10,7 +10,9 @@ use Konventix\Identity\Models\User;
 /**
  * Derives a free handle from a display name (ADR-0051 §3). The database's
  * unique index on lower(username) is the final guard; this class only makes
- * collisions unlikely, it does not lock.
+ * collisions unlikely, it does not lock. Since 2026-09-02 (#143) signup asks
+ * the person for their handle; this generator serves factories, seeders and
+ * the migration backfill.
  */
 final class UsernameGenerator
 {

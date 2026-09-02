@@ -450,6 +450,7 @@ declare namespace Konventix {
             };
             export type CompleteSocialSignupData = {
                 readonly name: string;
+                readonly username: string;
                 readonly email: string;
             };
             export type LinkedAccountData = {
@@ -480,6 +481,7 @@ declare namespace Konventix {
             };
             export type RegisterData = {
                 readonly name: string;
+                readonly username: string;
                 readonly email: string;
                 readonly password: string;
             };

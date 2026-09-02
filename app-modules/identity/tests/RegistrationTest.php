@@ -34,6 +34,7 @@ test('a new user can register on a brand host', function () {
 
     $response = $this->post(route('register.store'), [
         'name' => 'Test User',
+        'username' => 'test-user',
         'email' => 'test@example.com',
         'password' => 'password',
         'password_confirmation' => 'password',
@@ -44,6 +45,7 @@ test('a new user can register on a brand host', function () {
 
     $user = User::where('email', 'test@example.com')->firstOrFail();
     expect($user->name)->toBe('Test User');
+    expect($user->username)->toBe('test-user');
     expect($user->hasVerifiedEmail())->toBeFalse();
 
     // ADR-0016: registering establishes the user↔brand membership via the
@@ -59,16 +61,17 @@ test('a new user can register on a brand host', function () {
     );
 });
 
-test('registration requires a name, email and password', function () {
+test('registration requires a name, username, email and password', function () {
     $response = $this->post(route('register.store'), []);
 
-    $response->assertSessionHasErrors(['name', 'email', 'password']);
+    $response->assertSessionHasErrors(['name', 'username', 'email', 'password']);
     $this->assertGuest();
 });
 
 test('registration requires the password confirmation to match', function () {
     $response = $this->post(route('register.store'), [
         'name' => 'Test User',
+        'username' => 'test-user',
         'email' => 'test@example.com',
         'password' => 'password',
         'password_confirmation' => 'not-the-same-password',
@@ -87,11 +90,29 @@ test('registration rejects an email already used on another brand', function () 
 
     $response = $this->post(route('register.store'), [
         'name' => 'Test User',
+        'username' => 'test-user',
         'email' => 'taken@example.com',
         'password' => 'password',
         'password_confirmation' => 'password',
     ]);
 
     $response->assertSessionHasErrors('email');
+    $this->assertGuest();
+});
+
+test('registration explains the username shape and refuses reserved or taken handles', function () {
+    User::factory()->create(['username' => 'ada-lovelace']);
+
+    $attempt = fn (string $username) => $this->post(route('register.store'), [
+        'name' => 'Test User',
+        'username' => $username,
+        'email' => 'test@example.com',
+        'password' => 'password',
+        'password_confirmation' => 'password',
+    ]);
+
+    $attempt('Ada Lovelace')->assertSessionHasErrors(['username' => 'Use 3-32 lowercase letters, digits and hyphens, starting and ending with a letter or digit.']);
+    $attempt('admin')->assertSessionHasErrors(['username' => 'This username is reserved.']);
+    $attempt('ada-lovelace')->assertSessionHasErrors(['username' => 'This username is already taken.']);
     $this->assertGuest();
 });

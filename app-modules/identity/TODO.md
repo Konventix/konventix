@@ -137,6 +137,14 @@ person behind it. The value here is in what is left out.
       make "signed-in non-member" impossible, which the ADR-0052 gate and its
       tests rely on. `tests/BrandMembershipTest.php` reproduces the Octane case
       with a cloned container; rule recorded in `.ai/rules/listeners.md`.
+- [x] Registration asks for the username (#143, ADR-0051 §3 amended):
+      `RegisterData` and `CompleteSocialSignupData` require it under the shared
+      `ProfileValidationRules::usernameRules()`; `UsernameGenerator` stays for
+      factories, seeders and the backfill. Username and social-link validation
+      messages now say what shape is expected, and the profile form carries a
+      hint per platform (#110).
+<!-- Move completed items here with the PR that finished them. -->
+
 - [x] ADR-0048 point 5: verification, password reset and the welcome that
       follows the first verification go through Messaging instead of
       Laravel's stock `Illuminate\Auth\Notifications\*` — `Mail\AuthMailer`

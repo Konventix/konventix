@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\DB;
 use Konventix\Identity\Data\CompleteSocialSignupData;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
-use Konventix\Identity\Profile\UsernameGenerator;
 use Konventix\Identity\Social\SocialIdentityData;
 use Konventix\Platform\Brands\BrandContext;
 
@@ -30,10 +29,7 @@ use Konventix\Platform\Brands\BrandContext;
  */
 final class CompleteSocialSignup
 {
-    public function __construct(
-        private readonly LinkSocialIdentity $link,
-        private readonly UsernameGenerator $usernames,
-    ) {}
+    public function __construct(private readonly LinkSocialIdentity $link) {}
 
     public function handle(CompleteSocialSignupData $data, SocialIdentityData $identity): User
     {
@@ -42,7 +38,7 @@ final class CompleteSocialSignup
                 'name' => $data->name,
                 'email' => $data->email,
                 'password' => null,
-                'username' => $this->usernames->generate($data->name),
+                'username' => $data->username,
                 'locale' => request()->getPreferredLanguage() ?? (string) config('app.locale'),
             ]);
 

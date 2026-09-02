@@ -64,6 +64,11 @@ real users to handles would be machinery for users who do not exist.
    `^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$` (3–32 chars, lowercase,
    digits, inner hyphens), with a reserved list (`admin`, `konventix`,
    `operator`, `api`, `www`) refused at validation.
+   > Amended 2026-09-02 (#143): registration asks for the handle.
+   > `RegisterData` and `CompleteSocialSignupData` require `username` under
+   > the same rules as the profile form (`ProfileValidationRules::
+   > usernameRules()`); the generator stays for factories, seeders and the
+   > migration backfill.
 
 4. **The Steam avatar is copied, once.** "Use my Steam avatar" fetches
    the linked identity's `avatar_url` into the *current brand's* media
