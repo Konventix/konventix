@@ -81,9 +81,14 @@ it('opens pulse for an operator holding the diagnostics capability', function ()
 it('opens horizon for an operator holding the diagnostics capability', function (): void {
     [$admin] = observabilityOperator(['platform.access-admin', 'platform.view-diagnostics']);
 
+    // The status alone would also pass for an empty page. The dashboard is a
+    // Vue app mounting on `#horizon`, with its assets inlined by Horizon 5 —
+    // so the root element in the body is what "the dashboard mounts under
+    // the admin host" (GitLab #61) actually proves.
     $this->actingAs($admin)
         ->get('http://admin.observability.test/admin/horizon')
-        ->assertOk();
+        ->assertOk()
+        ->assertSee('id="horizon"', false);
 });
 
 it('refuses pulse and horizon to console access alone', function (): void {

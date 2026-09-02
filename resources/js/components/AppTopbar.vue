@@ -113,7 +113,8 @@ function handleLogout(): void {
                     class="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-4 sm:px-6"
                     aria-label="Main"
                 >
-                    <Link
+                    <component
+                        :is="item.external ? 'a' : Link"
                         v-for="item in navItems"
                         :key="item.url"
                         :href="item.url"
@@ -131,7 +132,7 @@ function handleLogout(): void {
                         >
                             {{ cartCount }}
                         </span>
-                    </Link>
+                    </component>
 
                     <template v-if="user">
                         <span class="my-2 border-t border-border" />
