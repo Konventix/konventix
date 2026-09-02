@@ -42,6 +42,16 @@ configuration.
    `ghcr.io/konventix/konventix`; the workflow boots the built image against
    throwaway Postgres/Redis and asserts `/up` answers 200 before pushing.
 
+   *Amended 2026-09-02 (#59, #121): the pipeline is `.gitlab-ci.yml` and the
+   registry is `registry.sxcs.de/konventix/konventix`. The contract is
+   unchanged — immutable tags only, `sha-<short>` on every published build
+   and the semver name added to that same digest on a tag, and nothing
+   published from a commit whose tests are red. What changed is where: builds
+   happen on pushes to `develop` and `main` and on any tag, so a tag on
+   `develop` publishes a release candidate the same way a tag on `main`
+   publishes a release. The GitHub workflow is left in place and still names
+   GHCR; it fires only on a push to the archived remote.*
+
 2. **Laravel's caches are built at container start, never at image
    build.** `config:cache` freezes the environment it sees, and the
    environment differs per deployment — so an entrypoint runs

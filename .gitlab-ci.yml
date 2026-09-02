@@ -409,12 +409,23 @@ secret_detection:
 
 gitlab-advanced-sast:
   stage: scan
-  # Release tier only. Twenty-four minutes, and no amount of hardware changes
-  # that: three of its six passes analyse a single rule each with
+  # Release tier, and a release candidate is not a release. Twenty-four minutes
+  # in isolation and sixty when the runners are busy, and no amount of hardware
+  # changes that: three of its six passes analyse a single rule each with
   # `timeout_for_interfile_analysis 0`, and those are the cross-file taint
   # analyses that make it worth having. On the merge request loop it was the
   # whole reason a review took forty minutes.
-  rules: *tier-release
+  #
+  # A semver prerelease tag — v0.4.3-rc.1 — skips it and gets semgrep instead,
+  # so cutting a candidate off develop stays cheap. v0.4.3 does not skip it:
+  # nothing ships without the cross-file scan. The pattern deliberately matches
+  # only a prerelease *version*, so an oddly named tag runs the full scan
+  # rather than silently skipping it.
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+-/
+      when: never
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
   needs: []
   allow_failure: false
   variables:
@@ -433,6 +444,11 @@ semgrep-sast:
   # the same pipeline as gitlab-advanced-sast — both write gl-sast-report.json
   # and scan:gate would read whichever landed last.
   rules:
+    # First, so it wins over the blanket tag exclusion below: on a prerelease
+    # tag the advanced analyzer stands down and this one takes its place.
+    # Without this the pipeline would carry no SAST report at all and
+    # `scan:gate` would fail on the one it could not find.
+    - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+-/
     - if: $CI_COMMIT_TAG
       when: never
     - if: $CI_COMMIT_BRANCH == "main"

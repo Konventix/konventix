@@ -110,6 +110,7 @@ it('sends an actual identity.verify-email mail end to end on registration', func
 
     $this->post(route('register.store'), [
         'name' => 'Ada Lovelace',
+        'username' => 'ada-e2e',
         'email' => 'ada-e2e@example.test',
         'password' => 'password',
         'password_confirmation' => 'password',

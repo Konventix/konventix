@@ -74,8 +74,13 @@ Where the Dockerfile lives is decision D7; the recommendation is the
 konventix repository, next to `compose.yaml`, built by its CI.
 
 **Delivered** (ADR-0049 §1): `Dockerfile`, `docker/entrypoint.sh` and
-`.dockerignore`, built and smoked by `.github/workflows/image.yml` on every
-push to `main` and on `v*` tags, published to `ghcr.io/konventix/konventix`.
+`.dockerignore`, built and smoked by `.gitlab-ci.yml` on every push to
+`develop` and `main` and on every tag, published to
+`registry.sxcs.de/konventix/konventix` (#59, #121). A tag additionally names
+the same digest after the chart's `appVersion` form — `0.4.2`, not `v0.4.2`.
+`.github/workflows/image.yml` still exists and still pushes to
+`ghcr.io/konventix/konventix`, but only fires on a push to the archived
+GitHub remote.
 
 ### B2 — Runtime-configurable browser endpoint for Reverb (blocker)
 
@@ -348,6 +353,7 @@ Sessions and cache live in Redis; nothing else is stateful in a pod.
 ### Environment (ConfigMap, non-secret)
 
 `APP_NAME APP_ENV=production APP_DEBUG=false APP_URL APP_VERSION APP_LOCALE
+ENVIRONMENT_RIBBON ENVIRONMENT_RIBBON_LABEL ENVIRONMENT_RIBBON_COLOR
 APP_FALLBACK_LOCALE LOG_CHANNEL=stderr LOG_LEVEL LOG_STDERR_FORMATTER
 TRUSTED_PROXIES APP_MAINTENANCE_DRIVER=cache APP_MAINTENANCE_STORE=redis
 OCTANE_SERVER=frankenphp DB_CONNECTION=pgsql DB_SSLMODE AUTO_MIGRATE
@@ -360,10 +366,18 @@ REVERB_APP_MAX_CONNECTIONS MEDIA_DISK INVOICES_DISK EXPORTS_DISK
 FILESYSTEM_DISK AWS_DEFAULT_REGION AWS_ENDPOINT AWS_USE_PATH_STYLE_ENDPOINT
 AWS_MEDIA_BUCKET AWS_MEDIA_URL AWS_MEDIA_PUBLIC_DIRECT AWS_INVOICES_BUCKET
 AWS_EXPORTS_BUCKET MAIL_MAILER MAIL_HOST MAIL_PORT MAIL_SCHEME
-MAIL_FROM_ADDRESS MAIL_FROM_NAME HORIZON_PATH PULSE_PATH HEALTH_TO_ADDRESS
+MAIL_FROM_ADDRESS MAIL_FROM_NAME MAIL_ALLOWLIST MAIL_TAG_SUBJECTS HORIZON_PATH
+PULSE_PATH HEALTH_TO_ADDRESS
 BACKUP_DESTINATION_DISK BACKUP_NOTIFICATION_EMAIL SENTRY_ENVIRONMENT
 SENTRY_RELEASE SENTRY_TRACES_SAMPLE_RATE VAPID_SUBJECT INERTIA_SSR_ENABLED
 INERTIA_SSR_URL`
+
+`APP_ENV` is the one switch for "is this production" (ADR-0053): anything
+but the literal `production` — a staging instance, a typo, a value the chart
+forgot — wears the environment ribbon, runs strict models and holds mail
+back to `MAIL_ALLOWLIST` (addresses, `@domain` suffixes, or `*` behind a
+mailcatcher; empty sends nothing). A non-production values file is not
+complete without that list.
 
 ### Secrets (OpenBao → ESO → `Secret`, referenced by name)
 

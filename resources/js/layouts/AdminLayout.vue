@@ -11,6 +11,7 @@ import { usePage } from '@inertiajs/vue3';
 import AdminSidebar from '@/components/admin/AdminSidebar.vue';
 import AppContent from '@/components/AppContent.vue';
 import AppSidebarHeader from '@/components/AppSidebarHeader.vue';
+import EnvironmentRibbon from '@/components/EnvironmentRibbon.vue';
 import SkipToContent from '@/components/SkipToContent.vue';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Toaster } from '@/components/ui/sonner';
@@ -43,6 +44,7 @@ const cookieSettingsDialog = resolveRegisteredComponent(
 <template>
     <SidebarProvider :default-open="isOpen">
         <SkipToContent />
+        <EnvironmentRibbon />
         <AdminSidebar />
         <AppContent variant="sidebar" class="overflow-x-hidden">
             <AppSidebarHeader :breadcrumbs="breadcrumbs" />

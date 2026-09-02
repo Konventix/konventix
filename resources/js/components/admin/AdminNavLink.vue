@@ -12,12 +12,24 @@ import {
 } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 
-const props = defineProps<{
-    label: string;
-    url: string;
-    icon: Component;
-    pinned: boolean;
-}>();
+const props = withDefaults(
+    defineProps<{
+        label: string;
+        url: string;
+        icon: Component;
+        pinned: boolean;
+        /**
+         * Not an Inertia page (Horizon, Pulse, the health page): a plain
+         * anchor lets the browser load it whole. An Inertia `Link` would
+         * fetch its HTML over XHR and show it in the error modal — the
+         * "empty page with the Horizon background" of GitLab #61.
+         */
+        external?: boolean;
+    }>(),
+    {
+        external: false,
+    },
+);
 
 const emit = defineEmits<{
     (e: 'togglePin'): void;
@@ -36,10 +48,14 @@ const isActive = computed(() => isCurrentUrl(props.url));
                 nothing to a screen reader; aria-current is what announces
                 "you are here" (WCAG 1.3.1).
             -->
-            <Link :href="url" :aria-current="isActive ? 'page' : undefined">
+            <component
+                :is="external ? 'a' : Link"
+                :href="url"
+                :aria-current="isActive ? 'page' : undefined"
+            >
                 <component :is="icon" />
                 <span>{{ label }}</span>
-            </Link>
+            </component>
         </SidebarMenuButton>
         <SidebarMenuAction
             show-on-hover

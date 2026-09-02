@@ -73,7 +73,7 @@ it('renders the brand\'s logo, the accent colour, the seller line and the imprin
         expect($html)->toContain('<img')
             ->toContain('alt="Sund-Xplosion mark"')
             ->toContain($brand->themeTokens()['accent'] ?? 'hsl(0 0% 9%)')
-            ->toContain($brand->operator->legal_name)
+            ->toContain(e($brand->operator->legal_name))
             ->toContain('/impressum')
             ->toContain('>Impressum<');
 
@@ -92,8 +92,13 @@ it('renders the brand name and the theme catalogue\'s default colours when the b
     Mail::assertSent(TemplatedMail::class, function (TemplatedMail $mail) use ($brand): bool {
         $html = $mail->render();
 
+        // e(), not the raw value: the layout prints the name through Blade's
+        // escaping echo, and BrandFactory takes it from fake()->company(),
+        // which produces apostrophes often enough to matter — "Anderson,
+        // Deckow and O'Kon" is what turned this into a flake that failed on
+        // main and passed on develop for the very same commit.
         expect($html)->not->toContain('<img')
-            ->toContain($brand->name)
+            ->toContain(e($brand->name))
             ->toContain('hsl(0 0% 9%)')
             ->toContain('hsl(0 0% 98%)');
 

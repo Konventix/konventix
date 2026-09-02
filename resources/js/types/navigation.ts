@@ -24,4 +24,10 @@ export type BrandNavItem = {
     url: string;
     icon: string | null;
     order: number;
+    /**
+     * Not an Inertia page (Horizon, Pulse, the health page): render a plain
+     * anchor so the browser loads it whole. An Inertia visit would fetch the
+     * HTML over XHR and show it in the error modal.
+     */
+    external: boolean;
 };

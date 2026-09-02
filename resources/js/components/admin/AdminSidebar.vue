@@ -33,6 +33,7 @@ type AdminNavItem = {
     url: string;
     icon: string | null;
     order: number;
+    external: boolean;
 };
 
 /** 'game-ops' -> 'Game Ops' — group label from the module's kebab-case name. */
@@ -57,6 +58,19 @@ const admin = computed(
 
 const { favorites, isPinned, toggle, reorder } = useAdminFavorites();
 const { open: openCookieSettings } = useCookieSettingsDialog();
+
+/**
+ * A pinned favorite stores only a label and a URL; whether that URL is an
+ * Inertia page is known here, from the entry it was pinned from.
+ */
+const externalUrls = computed(
+    () =>
+        new Set(
+            (admin.value?.navigation ?? [])
+                .filter((item) => item.external)
+                .map((item) => item.url),
+        ),
+);
 
 const searchQuery = ref('');
 const searchActive = computed(() => searchQuery.value.trim().length > 0);
@@ -117,6 +131,7 @@ const groups = computed(() => {
         <SidebarContent>
             <AdminFavoritesNav
                 :favorites="favorites"
+                :external-urls="externalUrls"
                 @unpin="toggle"
                 @reorder="reorder"
             />
@@ -134,6 +149,7 @@ const groups = computed(() => {
                         :label="item.label"
                         :url="item.url"
                         :icon="iconFor(item.icon)"
+                        :external="item.external"
                         :pinned="isPinned(item.url)"
                         @toggle-pin="toggle(item)"
                     />

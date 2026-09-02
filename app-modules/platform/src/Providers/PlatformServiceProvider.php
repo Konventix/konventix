@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Konventix\Platform\Providers;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Blocks\Types\CardsBlock;
@@ -20,12 +22,14 @@ use Konventix\Platform\Cookies\CookiePreferences;
 use Konventix\Platform\Cookies\CookieRegistry;
 use Konventix\Platform\Enums\CookieCategory;
 use Konventix\Platform\Enums\Permission;
+use Konventix\Platform\Environment\DeploymentEnvironment;
 use Konventix\Platform\Features\BrandFeatureRegistry;
 use Konventix\Platform\Http\Controllers\CaddyAskController;
 use Konventix\Platform\Http\Controllers\MediaFileController;
 use Konventix\Platform\Http\Middleware\EnsureFeatureIsActive;
 use Konventix\Platform\Http\Middleware\EnsureModuleIsActive;
 use Konventix\Platform\Http\Middleware\EnsureWaitingRoomAdmission;
+use Konventix\Platform\Listeners\GuardNonProductionMail;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
@@ -150,6 +154,10 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->app->singleton(CookieRegistry::class);
         $this->app->singleton(BrandFeatureRegistry::class);
 
+        // Config-derived and request-free: which kind of instance this is
+        // does not change between two requests a worker serves.
+        $this->app->singleton(DeploymentEnvironment::class);
+
         // Scoped, not singleton: DiskResolver memoizes built filesystems —
         // including a brand's own bucket (ADR-0043 point 6) — and those must
         // not survive into the next request an Octane worker serves.
@@ -159,6 +167,18 @@ class PlatformServiceProvider extends ModuleServiceProvider
         // depend on the brand's storage settings and must not outlive the
         // request that resolved them.
         $this->app->scoped(BrandIdentityResolver::class);
+    }
+
+    /**
+     * Every mail the application sends passes the non-production guard
+     * (GitLab #68, ADR-0053) — Fortify's notifications and Messaging's
+     * channel alike, which is why it hangs on the mailer's own event rather
+     * than on any one sender. Registered here because Platform owns the
+     * notion of "which kind of instance is this".
+     */
+    protected function registerListeners(): void
+    {
+        Event::listen(MessageSending::class, GuardNonProductionMail::class);
     }
 
     /**
@@ -282,23 +302,29 @@ class PlatformServiceProvider extends ModuleServiceProvider
                 order: 0,
                 area: NavigationItem::AREA_BRAND,
             ),
+            // The packages' own dashboards and the health page are Blade, not
+            // Inertia: `external` makes the shell render a plain anchor, the
+            // same way `DiagnosticsCard` already does. Their paths are config
+            // (the chart may move them), so they are read from it here too.
             new NavigationItem(
                 module: 'platform',
                 label: 'Diagnostics',
-                url: '/admin/pulse',
+                url: '/'.config('pulse.path'),
                 icon: 'activity',
                 order: 90,
                 permission: Permission::ViewDiagnostics->value,
                 area: NavigationItem::AREA_ADMIN,
+                external: true,
             ),
             new NavigationItem(
                 module: 'platform',
                 label: 'Queues',
-                url: '/admin/horizon',
+                url: '/'.config('horizon.path'),
                 icon: 'list-checks',
                 order: 91,
                 permission: Permission::ViewDiagnostics->value,
                 area: NavigationItem::AREA_ADMIN,
+                external: true,
             ),
             new NavigationItem(
                 module: 'platform',
@@ -308,6 +334,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
                 order: 92,
                 permission: Permission::ViewDiagnostics->value,
                 area: NavigationItem::AREA_ADMIN,
+                external: true,
             ),
             new NavigationItem(
                 module: 'platform',

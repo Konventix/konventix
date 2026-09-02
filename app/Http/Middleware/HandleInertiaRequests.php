@@ -15,6 +15,7 @@ use Konventix\Platform\Cookies\CookiePreferences;
 use Konventix\Platform\Cookies\CookieRegistry;
 use Konventix\Platform\Data\BrandIdentityData;
 use Konventix\Platform\Data\FooterLinkData;
+use Konventix\Platform\Environment\DeploymentEnvironment;
 use Konventix\Platform\Models\AdminFavorite;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\FooterColumn;
@@ -133,6 +134,10 @@ class HandleInertiaRequests extends Middleware
                 'columns' => $this->footerColumns(),
                 'version' => config('app.version'),
             ],
+            // The corner ribbon a non-production instance wears (GitLab #68):
+            // null on production, and the shell renders nothing then. The
+            // decision is the server's, never the component's.
+            'environment' => app(DeploymentEnvironment::class)->ribbon(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             // The topbar's cart badge (ADR-0047, Task 11). The query itself
             // lives behind Commerce's own `CartSummary` service — the host
