@@ -74,8 +74,13 @@ Where the Dockerfile lives is decision D7; the recommendation is the
 konventix repository, next to `compose.yaml`, built by its CI.
 
 **Delivered** (ADR-0049 §1): `Dockerfile`, `docker/entrypoint.sh` and
-`.dockerignore`, built and smoked by `.github/workflows/image.yml` on every
-push to `main` and on `v*` tags, published to `ghcr.io/konventix/konventix`.
+`.dockerignore`, built and smoked by `.gitlab-ci.yml` on every push to
+`develop` and `main` and on every tag, published to
+`registry.sxcs.de/konventix/konventix` (#59, #121). A tag additionally names
+the same digest after the chart's `appVersion` form — `0.4.2`, not `v0.4.2`.
+`.github/workflows/image.yml` still exists and still pushes to
+`ghcr.io/konventix/konventix`, but only fires on a push to the archived
+GitHub remote.
 
 ### B2 — Runtime-configurable browser endpoint for Reverb (blocker)
 
