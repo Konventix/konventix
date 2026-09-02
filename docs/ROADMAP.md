@@ -588,6 +588,13 @@ in the owning module's `TODO.md` when it lands.
     is where "invite to a group" will go; groups and clans are Community's
     next slice after this one and are not designed here. Needs P1, which
     is what gives every existing account a profile on day one.
+    **Done** (ADR-0051/0052, v0.4.0; the GDPR clause of ADR-0051 §9 on the
+    slice tail): the profile-of-record fields on `User`, avatar and banner
+    per brand membership, Community's profile read models, `u/{username}`
+    with its wall on slice 22's reactions and comments, three visibilities
+    with the attended-event read model, and both modules' GDPR handlers
+    exercised by `GdprSweepTest`. Still open in Identity's `TODO.md`: the
+    four-field `auth.user` prop.
 
 26. **Galleries.** Platform for the storage, Community for the feed. The
     media library stores raster images up to 10 MB and generates

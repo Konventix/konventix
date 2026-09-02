@@ -85,6 +85,16 @@ person behind it. The value here is in what is left out.
       social login lands (slice 15).
       Deletion is now operator-wide (ADR-0050), so the handler deletes all
       memberships and anonymizes once, not conditionally per brand.
+      Slice 25 tail (ADR-0051 §9): the four profile-of-record fields
+      (`username`, `tagline`, `status_emoji`, `social_links`) join the export
+      and are tombstoned with the account — `username` becomes
+      `deleted-<ulid>`, unique and meaningless because the column is NOT NULL
+      and the freed handle must not resolve to someone else's page. The
+      memberships map carries `avatar_media_id`/`banner_media_id`, and a
+      deletion releases their `MediaUsage` rows before the membership rows go.
+      `MediaLibrary` is resolved at call time, never captured at boot
+      (.ai/rules/providers.md). `tests/SocialIdentityTest.php` (Task 10 cases)
+      and Compliance's `GdprSweepTest`.
 - [ ] ADR-0016 gap, flagged rather than worked around (`RegisterData`'s
       docblock): a duplicate email on the registration form surfaces as an
       ordinary "already taken" validation error, not the "indistinguishable

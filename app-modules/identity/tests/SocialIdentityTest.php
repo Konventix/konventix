@@ -7,8 +7,12 @@ use Illuminate\Support\Facades\Hash;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
+use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\SocialIdentity;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Media\MediaLibrary;
+use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Models\MediaUsage;
 
 /**
  * The table behind social login, and the one change it forces on password
@@ -97,4 +101,76 @@ it('exports linked identities and erases them on anonymization', function (): vo
     // the person who asked to be forgotten, and leaving it would keep the
     // Steam login working against an anonymized account.
     expect(SocialIdentity::query()->where('user_id', $user->getKey())->exists())->toBeFalse();
+});
+
+/**
+ * Task 10: username/tagline/status_emoji/social_links join the export and
+ * the tombstone, alongside profile_visibility (already covered elsewhere —
+ * Task 13's Identity export/tombstone additions).
+ */
+it('exports the four account-shape fields and tombstones them on anonymization', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create([
+        'username' => 'ada-lovelace',
+        'tagline' => 'Enchantress of numbers',
+        'status_emoji' => '💡',
+        'social_links' => ['mastodon' => 'https://example.test/@ada'],
+    ]);
+
+    $handler = new IdentityGdprHandler;
+    $subject = SubjectRef::forUser((string) $user->getKey());
+
+    $export = $handler->exportFor($subject);
+
+    expect($export['account']['username'])->toBe('ada-lovelace')
+        ->and($export['account']['tagline'])->toBe('Enchantress of numbers')
+        ->and($export['account']['status_emoji'])->toBe('💡')
+        ->and($export['account']['social_links'])->toBe(['mastodon' => 'https://example.test/@ada']);
+
+    $handler->delete($subject, DeletionMode::Anonymize);
+
+    $user->refresh();
+
+    expect($user->username)->toBe('deleted-'.strtolower((string) $user->getKey()))
+        ->and($user->tagline)->toBeNull()
+        ->and($user->status_emoji)->toBeNull()
+        ->and($user->social_links)->toBeNull();
+});
+
+/**
+ * Task 10: the memberships map gains avatar_media_id/banner_media_id, and a
+ * deletion releases the media usage those columns recorded before the
+ * membership row itself is removed — a stale MediaUsage would otherwise pin
+ * the image forever, referencing a membership that no longer exists.
+ */
+it('exports membership avatar/banner media ids and releases their usage on deletion', function (): void {
+    $brand = $this->withBrand();
+
+    $user = User::factory()->create();
+
+    $avatar = MediaItem::factory()->create(['brand_id' => $brand->getKey()]);
+    $banner = MediaItem::factory()->create(['brand_id' => $brand->getKey()]);
+
+    $membership = BrandMembership::factory()->create([
+        'user_id' => $user->getKey(),
+        'avatar_media_id' => $avatar->getKey(),
+        'banner_media_id' => $banner->getKey(),
+    ]);
+
+    app(MediaLibrary::class)->recordUsage($avatar->getKey(), 'identity', 'membership', $membership->getKey());
+    app(MediaLibrary::class)->recordUsage($banner->getKey(), 'identity', 'membership', $membership->getKey());
+
+    $handler = new IdentityGdprHandler;
+    $subject = SubjectRef::forUser((string) $user->getKey());
+
+    $export = $handler->exportFor($subject);
+
+    expect($export['brand_memberships'][0]['avatar_media_id'])->toBe($avatar->getKey())
+        ->and($export['brand_memberships'][0]['banner_media_id'])->toBe($banner->getKey());
+
+    $handler->delete($subject, DeletionMode::Anonymize);
+
+    expect(MediaUsage::withoutBrandScope()->where('media_item_id', $avatar->getKey())->exists())->toBeFalse()
+        ->and(MediaUsage::withoutBrandScope()->where('media_item_id', $banner->getKey())->exists())->toBeFalse();
 });

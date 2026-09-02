@@ -5,6 +5,9 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Storage;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionClaimLink;
+use Konventix\Community\Models\CommunityComment;
+use Konventix\Community\Models\CommunityMember;
+use Konventix\Community\Models\CommunityProfile;
 use Konventix\Compliance\Actions\OpenSubjectRequest;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Enums\DeletionMode;
@@ -43,6 +46,7 @@ it('registers a handler for every module that holds personal data', function ():
         'compliance',
         'staffing',
         'competition',
+        'community',
     );
 });
 
@@ -50,7 +54,12 @@ it('assembles a real export from every registered module', function (): void {
     $brand = $this->withBrand();
     Storage::fake('exports');
 
-    $user = User::factory()->create(['name' => 'Alex Muster', 'email' => 'alex@example.test']);
+    $user = User::factory()->create([
+        'name' => 'Alex Muster',
+        'email' => 'alex@example.test',
+        'username' => 'alex-muster',
+        'tagline' => 'Brings the cables',
+    ]);
     BrandMembership::factory()->create(['user_id' => $user->id]);
     Registration::factory()->create(['registrant_user_id' => $user->id]);
     Admission::factory()->create(['holder_user_id' => $user->id]);
@@ -60,6 +69,17 @@ it('assembles a real export from every registered module', function (): void {
         'display_name' => $user->name,
         'locale' => 'de',
     ]);
+    // Community's rows are projections of Identity's events (ADR-0004); the
+    // sweep arranges them directly, the way it does Content's Author and
+    // Messaging's Recipient above.
+    CommunityProfile::query()->create([
+        'id' => $user->id,
+        'username' => 'alex-muster',
+        'display_name' => 'Alex Muster',
+        'tagline' => 'Brings the cables',
+        'visibility' => 'internal',
+    ]);
+    CommunityMember::query()->create(['user_id' => $user->id, 'member_since' => now()]);
 
     $request = app(OpenSubjectRequest::class)(SubjectRef::forUser($user->id), DataSubjectRequestType::Export);
     $request->refresh();
@@ -67,9 +87,13 @@ it('assembles a real export from every registered module', function (): void {
     $archive = json_decode(Storage::disk('exports')->get((string) $request->archive_path), true);
 
     expect($archive['modules']['identity']['account']['email'])->toBe('alex@example.test')
+        ->and($archive['modules']['identity']['account']['username'])->toBe('alex-muster')
+        ->and($archive['modules']['identity']['account']['tagline'])->toBe('Brings the cables')
         ->and($archive['modules']['registration']['registrations'])->toHaveCount(1)
         ->and($archive['modules']['admission']['admissions'])->toHaveCount(1)
         ->and($archive['modules']['messaging']['recipient']['display_name'])->toBe('Alex Muster')
+        ->and($archive['modules']['community']['profile']['username'])->toBe('alex-muster')
+        ->and($archive['modules']['community']['memberships'])->toHaveCount(1)
         ->and($archive['modules'])->toHaveKeys(['compliance', 'content', 'staffing', 'competition']);
 
     expect(DataSubjectRequestResponse::query()
@@ -81,8 +105,22 @@ it('assembles a real export from every registered module', function (): void {
 it('anonymizes across modules while every reference still resolves', function (): void {
     $brand = $this->withBrand();
 
-    $user = User::factory()->create(['name' => 'Alex Muster']);
+    $user = User::factory()->create([
+        'name' => 'Alex Muster',
+        'username' => 'alex-muster',
+        'tagline' => 'Brings the cables',
+        'status_emoji' => '🔌',
+        'social_links' => ['mastodon' => 'https://example.test/@alex'],
+    ]);
     BrandMembership::factory()->create(['user_id' => $user->id]);
+    CommunityProfile::query()->create([
+        'id' => $user->id,
+        'username' => 'alex-muster',
+        'display_name' => 'Alex Muster',
+        'visibility' => 'internal',
+    ]);
+    CommunityMember::query()->create(['user_id' => $user->id, 'member_since' => now()]);
+    $wallComment = CommunityComment::factory()->create(['author_user_id' => $user->id]);
 
     $registration = Registration::factory()->create([
         'registrant_user_id' => $user->id,
@@ -119,6 +157,12 @@ it('anonymizes across modules while every reference still resolves', function ()
     expect($user->state)->toBe(AccountState::Anonymized)
         ->and($user->name)->toBe('Deleted account')
         ->and($user->email)->toContain('@invalid')
+        // The profile shapes go with the account (ADR-0051 §9): the freed
+        // username slot must not resolve to someone else's page.
+        ->and($user->username)->toBe('deleted-'.strtolower((string) $user->getKey()))
+        ->and($user->tagline)->toBeNull()
+        ->and($user->status_emoji)->toBeNull()
+        ->and($user->social_links)->toBeNull()
         // The tombstone: every foreign reference still points at a row.
         ->and($registration->refresh()->registrant_user_id)->toBe($user->id)
         ->and($admission->refresh()->holder_user_id)->toBe($user->id)
@@ -133,6 +177,13 @@ it('anonymizes across modules while every reference still resolves', function ()
     // The comment body survives — a thread other people replied to is not one
     // person's to rewrite (see ContentGdprHandler).
     expect($comment->body)->not->toBeEmpty();
+
+    // Community holds read models and the person's own words on other
+    // people's walls; nothing outside the module references either, so they
+    // are removed rather than tombstoned (see CommunityGdprHandler).
+    expect(CommunityProfile::query()->find($user->id))->toBeNull()
+        ->and(CommunityMember::withoutBrandScope()->where('user_id', $user->id)->exists())->toBeFalse()
+        ->and(CommunityComment::withoutBrandScope()->whereKey($wallComment->getKey())->exists())->toBeFalse();
 });
 
 it('anonymizes an account and removes every brand membership, even one belonging to another brand (ADR-0050)', function (): void {
