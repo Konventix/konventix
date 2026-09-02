@@ -43,6 +43,7 @@ it('sends identity.verify-email with a signed link on registration, and followin
 
     $this->post(route('register.store'), [
         'name' => 'Ada Lovelace',
+        'username' => 'ada-lovelace',
         'email' => 'ada@example.test',
         'password' => 'password',
         'password_confirmation' => 'password',
