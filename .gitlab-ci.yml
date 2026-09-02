@@ -164,6 +164,25 @@ variables:
   js:
     - npm ci --no-audit --no-fund
 
+# .env.example points DB_HOST at `pgsql` and REDIS_HOST at `redis` — the compose
+# hostnames — and sets CACHE_STORE, SESSION_DRIVER and QUEUE_CONNECTION to redis.
+# In a job with no such services those names do not resolve, and every
+# `php artisan` boot stalls on them. That is not a small tax: the identical
+# `wayfinder:generate --with-form` takes 246s in verify:lint and 3.4s inside
+# test:php's Vite build, and `key:generate` 30s against 0.7s. The only
+# difference is that test:php has a database and a redis beside it.
+#
+# So the jobs without services point at a loopback that refuses immediately and
+# keep the framework's stores in memory. Nothing here runs application code that
+# needs either backend — pint, prettier, eslint, phpstan and route generation
+# read files.
+.offline-services: &offline-services
+  DB_HOST: 127.0.0.1
+  REDIS_HOST: 127.0.0.1
+  CACHE_STORE: array
+  SESSION_DRIVER: array
+  QUEUE_CONNECTION: sync
+
 .toolchain:
   image:
     name: $TOOLCHAIN_IMAGE:$TOOLCHAIN_TAG
@@ -234,6 +253,7 @@ prepare:toolchain:
 verify:format:
   stage: verify
   extends: .php-js
+  variables: *offline-services
   # Tier 0: the fast lane. pint and prettier need nothing generated, so this is
   # the whole feedback loop on a feature branch push.
   rules: *tier-everywhere
@@ -258,6 +278,7 @@ verify:format:
 verify:lint:
   stage: verify
   extends: .php-js
+  variables: *offline-services
   # Tier 1: four minutes of wayfinder is too much for a per-push loop.
   rules: *tier-reviewed
   needs: [prepare:toolchain]
@@ -278,6 +299,7 @@ verify:lint:
 analyse:php:
   stage: analyse
   extends: .php
+  variables: *offline-services
   # Tier 0. phpstan needs neither node nor the generated routes, so it costs
   # nothing to run it on every push, in parallel with verify:format rather than
   # behind it — at 83 seconds it is cheaper than the wait would be.
