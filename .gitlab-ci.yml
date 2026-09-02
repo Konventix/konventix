@@ -68,16 +68,19 @@ variables:
     - name: docker:29.1.4-dind
       alias: docker
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: /certs
-    DOCKER_TLS_VERIFY: "1"
-    DOCKER_CERT_PATH: /certs/client
+    # dind's TLS certificates live in a volume the job container only sees when
+    # the runner is configured to share `/certs/client`; these runners are not,
+    # and the client dies on `open /certs/client/ca.pem`. The daemon is reached
+    # over the job's private network, which no other pipeline can join.
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
     # The default `docker` driver cannot export a registry cache; a
     # docker-container builder inside dind can, and still `--load`s into the
     # daemon so the smoke test boots the very image that gets pushed.
     - docker buildx create --driver docker-container --name konventix --use
+        || docker buildx use konventix
 
 .cache-pull: &cache-pull
   - key:
