@@ -20,6 +20,7 @@ it('emits UserRegistered with scalar account data when an account is created', f
 
     $user = app(CreateNewUser::class)->create([
         'name' => 'Ada Lovelace',
+        'username' => 'ada-lovelace',
         'email' => 'ada@example.test',
         'password' => 'correct-horse-battery',
         'password_confirmation' => 'correct-horse-battery',
@@ -39,6 +40,7 @@ it('emits UserRegistered with the account\'s username', function (): void {
 
     $user = app(CreateNewUser::class)->create([
         'name' => 'Ada Lovelace',
+        'username' => 'ada-lovelace',
         'email' => 'ada@example.test',
         'password' => 'correct-horse-battery',
         'password_confirmation' => 'correct-horse-battery',
