@@ -8,6 +8,7 @@ use Konventix\Platform\Blocks\StaticPageRenderer;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Http\Middleware\EnsureOperatorHost;
 use Konventix\Platform\Models\StaticPage;
+use Konventix\Platform\Operators\OperatorContext;
 use Spatie\Health\Http\Controllers\HealthCheckResultsController;
 
 /*
@@ -46,9 +47,14 @@ Route::middleware(['web', EnsureOperatorHost::class, 'auth', 'can:'.Permission::
     ->name('admin.health');
 
 Route::middleware(['auth', 'verified'])->group(function (): void {
-    // Brand hosts have no dashboard — the brand landing page is the hub
-    // (a shop joins it later). The route name survives as the post-login
-    // redirect target (config/fortify.php `home`) and for any generated
-    // links, so nothing dangles.
-    Route::redirect('dashboard', '/')->name('dashboard');
+    // Where a fresh login lands (config/fortify.php `home`) and where every
+    // "already signed in, go home" redirect points, so the answer depends on
+    // the host it was asked on. Brand hosts have no dashboard — the brand
+    // landing page is the hub (a shop joins it later). The admin host has no
+    // public content at all (ADR-0029), so there the console is home. The
+    // switch is the operator context, a host fact: what the console shows
+    // next is the capability's business, never this route's.
+    Route::get('dashboard', fn (OperatorContext $operator) => redirect()->to(
+        $operator->hasOperator() ? route('admin.dashboard', absolute: false) : '/',
+    ))->name('dashboard');
 });
