@@ -1,15 +1,30 @@
-# The pipeline is the one instance that sees every change (#59). It runs on
-# every merge request, on main and on tags — and never twice for one commit.
+# The pipeline is the one instance that sees every change (#59), and it runs at
+# four different depths depending on how far the change has travelled.
+#
+#   feature branch, no merge request  ~2 min   format, phpstan, vitest, secrets
+#   merge request                    ~16 min   + eslint, vue-tsc, the Pest suite,
+#                                              semgrep, dependency scanning
+#   push to develop                  ~26 min   + the image, built and pushed
+#   push to main, and tags           ~40 min   + cross-file SAST, container scan,
+#                                              and on a tag the release
+#
+# The shape follows from one measurement: gitlab-advanced-sast takes 24 minutes
+# and cannot go faster — three of its passes are uncapped cross-file analyses of
+# a single rule each, so cores do not help. Leaving it on the merge request loop
+# made every review wait 40 minutes for a scan nobody was reading yet. It runs
+# where a release is actually cut instead.
+#
+# develop is the integration branch and the default: feature branches merge into
+# it, and it merges into main for a release.
 #
 # One thing from .github/workflows is deliberately not ported: image.yml has no
 # `needs` on tests.yml, so an image there can be published from a commit whose
 # tests are red. Here `build:image` needs the analysis, test and scan jobs, and
 # nothing reaches the registry without them.
 #
-# Ordering is a DAG, not a ladder: `needs:` lets the scanners start at pipeline
-# time and the four checks start the moment both verify jobs are green, so the
-# stage list below is the story the pipeline graph tells, not the order it runs
-# in.
+# Ordering is a DAG, not a ladder: `needs:` is what decides what waits for what,
+# so the stage list below is the story the pipeline graph tells, not the order
+# it runs in.
 
 include:
   - template: Jobs/Secret-Detection.gitlab-ci.yml
@@ -36,10 +51,38 @@ workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    # A branch push without an open merge request builds nothing. With several
-    # agents pushing at once the runners are the scarce resource, and the merge
-    # request pipeline is the one whose result anybody acts on.
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    # Once a merge request is open its pipeline is the one anybody reads, and
+    # running both would spend a runner twice on the same commit.
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    # Any other branch push gets the fast lane — see `.tier-0` below.
+    - if: $CI_COMMIT_BRANCH
+
+# Which pipelines a job belongs to. Referenced rather than repeated so that a
+# job's tier is one line and the tiers stay comparable.
+.tiers:
+  # Everywhere, including a bare feature branch push.
+  everywhere: &tier-everywhere
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
+  # Merge requests and the two long-lived branches — never a bare feature push.
+  reviewed: &tier-reviewed
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+  # Where an image is published: integration onwards.
+  published: &tier-published
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+  # Release only. The 24-minute scan lives here.
+  release: &tier-release
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
 
 variables:
   # Dependency caches must live under the project directory — it is the only
@@ -150,13 +193,15 @@ prepare:toolchain:
   stage: prepare
   extends: .docker
   rules:
-    # A merge request runs this job but can only ever create the tag, never
-    # republish it: one merge request's Dockerfile experiment must not change
-    # the image every other pipeline is running on. Its own Dockerfile change
-    # is proven by `build:image`, which builds the whole file including this
-    # stage, so a broken toolchain still fails the merge request that broke it.
+    # Every pipeline runs this, because every job below needs the image to
+    # exist — but only develop and main may republish the tag. One merge
+    # request's Dockerfile experiment must not change the image every other
+    # pipeline is running on; its own change is still proven by `build:image`,
+    # which builds the whole file including this stage. Elsewhere the job is a
+    # manifest lookup that exits in about thirty seconds.
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH != "main" && $CI_COMMIT_BRANCH != "develop"
     - changes: [Dockerfile]
       variables:
         TOOLCHAIN_REBUILD: "yes"
@@ -189,6 +234,10 @@ prepare:toolchain:
 verify:format:
   stage: verify
   extends: .php-js
+  # Tier 0: the fast lane. pint and prettier need nothing generated, so this is
+  # the whole feedback loop on a feature branch push.
+  rules: *tier-everywhere
+  needs: [prepare:toolchain]
   # The only job that writes the caches. Everything downstream pulls what this
   # one left behind, so a green verify also means warm caches.
   cache:
@@ -209,6 +258,9 @@ verify:format:
 verify:lint:
   stage: verify
   extends: .php-js
+  # Tier 1: four minutes of wayfinder is too much for a per-push loop.
+  rules: *tier-reviewed
+  needs: [prepare:toolchain]
   script:
     # --with-form matches vite.config.ts's formVariants. Generated once here
     # and handed to the jobs downstream; this is the four minutes.
@@ -226,16 +278,21 @@ verify:lint:
 analyse:php:
   stage: analyse
   extends: .php
-  needs: [verify:format, verify:lint]
+  # Tier 0. phpstan needs neither node nor the generated routes, so it costs
+  # nothing to run it on every push, in parallel with verify:format rather than
+  # behind it — at 83 seconds it is cheaper than the wait would be.
+  rules: *tier-everywhere
+  needs: [prepare:toolchain]
   script:
     - composer types:check
 
 analyse:js:
   stage: analyse
   extends: .js
-  # Inherits verify:lint's generated routes and actions rather than spending
-  # another four minutes producing the same files.
-  needs: [verify:format, verify:lint]
+  # Tier 1. Inherits verify:lint's generated routes and actions rather than
+  # spending another four minutes producing the same files.
+  rules: *tier-reviewed
+  needs: [verify:lint]
   script:
     - npm run types:check
 
@@ -244,14 +301,23 @@ analyse:js:
 test:js:
   stage: test
   extends: .js
-  needs: [verify:format, verify:lint]
+  # Tier 0. vitest.config.ts is deliberately standalone — no Laravel, no
+  # manifest, no wayfinder — so these tests need only node_modules.
+  rules: *tier-everywhere
+  needs: [prepare:toolchain]
   script:
     - npm run test:js
 
 test:php:
   stage: test
   extends: .php-js
-  needs: [verify:format, verify:lint]
+  # Tier 1, and the critical path of every merge request. It deliberately does
+  # not wait for verify:lint: `npm run build:ssr` runs wayfinder itself, so
+  # starting at pipeline time and generating its own copy beats idling for four
+  # minutes to inherit one. That trade is worth re-measuring once #140 cuts the
+  # suite itself — the shorter the suite, the more the wait would dominate.
+  rules: *tier-reviewed
+  needs: [prepare:toolchain]
   # The suite runs against PostgreSQL, not SQLite: phpunit.xml overrides
   # DB_DATABASE and nothing else, so the connection stays pgsql. Several tests
   # depend on that on purpose — Resources' exclusion constraints (ADR-0020) and
@@ -281,9 +347,9 @@ test:php:
         sleep 1
       done
     # Feature tests resolve Inertia pages through the Vite manifest, so the
-    # build has to precede the suite or every page test 500s. This job does not
-    # generate wayfinder itself: it inherits verify:lint's artifact, and with
-    # those files already on disk the whole build:ssr is a matter of seconds. The SSR bundle is
+    # build has to precede the suite or every page test 500s. The Vite plugin
+    # generates wayfinder as part of this, which is what lets the job stand on
+    # its own instead of waiting for verify:lint's artifact. The SSR bundle is
     # built too: SettingsLayoutTest asserts server-rendered HTML, which only
     # exists when an SSR process answers (config/inertia.php has SSR on by
     # default, ADR-0049 §6).
@@ -313,11 +379,20 @@ test:php:
 
 secret_detection:
   stage: scan
+  # Tier 0: sixteen seconds, and the one finding that must never reach a shared
+  # branch unnoticed. It runs on feature branch pushes too.
+  rules: *tier-everywhere
   needs: []
   allow_failure: false
 
 gitlab-advanced-sast:
   stage: scan
+  # Release tier only. Twenty-four minutes, and no amount of hardware changes
+  # that: three of its six passes analyse a single rule each with
+  # `timeout_for_interfile_analysis 0`, and those are the cross-file taint
+  # analyses that make it worth having. On the merge request loop it was the
+  # whole reason a review took forty minutes.
+  rules: *tier-release
   needs: []
   allow_failure: false
   variables:
@@ -331,17 +406,56 @@ gitlab-advanced-sast:
 
 semgrep-sast:
   stage: scan
+  # Stands in for the advanced analyzer wherever that one does not run: single
+  # file pattern matching, no cross-file dataflow, sixty-nine seconds. Never in
+  # the same pipeline as gitlab-advanced-sast — both write gl-sast-report.json
+  # and scan:gate would read whichever landed last.
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "develop"
   needs: []
   allow_failure: false
 
 gemnasium-dependency_scanning:
   stage: scan
+  # Tier 1: a lockfile only changes in a reviewed change, so a bare feature
+  # push has nothing new to say here.
+  rules: *tier-reviewed
   needs: []
   allow_failure: false
+  # The template lists gl-dependency-scanning-report.json only under
+  # artifacts:reports, and a report-type artifact cannot be downloaded by a
+  # later job — so scan:gate saw "no report" and passed. Secret detection and
+  # both SAST analyzers list their JSON under paths, which is why only this one
+  # went missing. Re-declaring artifacts replaces the key wholesale, so the
+  # reports have to be repeated here or the security dashboard loses them.
+  artifacts:
+    access: developer
+    reports:
+      dependency_scanning: [gl-dependency-scanning-report.json]
+      cyclonedx: ['**/gl-sbom-*.cdx.json']
+    paths:
+      - gl-dependency-scanning-report.json
+      - '**/gl-sbom-*.cdx.json'
 
 scan:gate:
   stage: scan
   image: alpine:3.22
+  rules:
+    # On a feature branch only secret detection ran, so the gate checks only
+    # that. Twelve seconds, and it means a credential cannot sit unnoticed on a
+    # shared branch just because no merge request exists yet.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH
+      variables:
+        GATE_SECRETS_ONLY: "yes"
   needs:
     # Optional throughout: which analyzers a commit produces depends on the
     # files it touches, and a scanner that did not run is not a finding.
@@ -364,10 +478,24 @@ scan:gate:
       set -eu
       status=0
 
+      # A missing report fails the gate. It used to print "no report" and carry
+      # on, which is how dependency scanning went unchecked for a whole run: the
+      # job was green, the file never arrived, and the gate waved it through. A
+      # scanner that cannot hand over its findings is indistinguishable from one
+      # that found nothing, so it has to be treated as the worse of the two.
+      require() {
+        [ -f "$1" ] && return 0
+        echo "MISSING: $1 — no scanner handed this over." >&2
+        echo "  Check that the producing job ran and lists the file under artifacts:paths;" >&2
+        echo "  a report declared only under artifacts:reports cannot be downloaded." >&2
+        status=1
+        return 1
+      }
+
       # A secret in the tree is a secret whatever its severity says: any
       # finding fails. This is the case the issue asks a human to prove by
       # committing a dummy credential into a merge request.
-      if [ -f gl-secret-detection-report.json ]; then
+      if require gl-secret-detection-report.json; then
         n=$(jq '[.vulnerabilities[]] | length' gl-secret-detection-report.json)
         echo "secret detection: $n finding(s)"
         if [ "$n" -gt 0 ]; then
@@ -375,8 +503,11 @@ scan:gate:
             gl-secret-detection-report.json
           status=1
         fi
-      else
-        echo "secret detection: no report"
+      fi
+
+      if [ "${GATE_SECRETS_ONLY:-no}" = "yes" ]; then
+        echo "feature branch: secret detection only, the rest runs from the merge request on."
+        exit "$status"
       fi
 
       # Code and dependency findings block at High and above. Lower severities
@@ -384,7 +515,7 @@ scan:gate:
       # a base image's steady drip of Low CVEs must not be able to stop every
       # merge in the repository.
       for report in gl-sast-report.json gl-dependency-scanning-report.json; do
-        [ -f "$report" ] || { echo "$report: no report"; continue; }
+        require "$report" || continue
         n=$(jq '[.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")] | length' "$report")
         total=$(jq '[.vulnerabilities[]] | length' "$report")
         echo "$report: $n of $total finding(s) at High or above"
@@ -402,6 +533,29 @@ scan:gate:
 build:image:
   stage: build
   extends: .docker
+  rules:
+    # From develop onwards the image is always built and published: that is what
+    # gives a staging instance something immutable to track (#82) and what keeps
+    # the Dockerfile continuously proven instead of only at release.
+    - if: $CI_COMMIT_TAG
+      variables:
+        PUBLISH_IMAGE: "yes"
+    - if: $CI_COMMIT_BRANCH == "main"
+      variables:
+        PUBLISH_IMAGE: "yes"
+    - if: $CI_COMMIT_BRANCH == "develop"
+      variables:
+        PUBLISH_IMAGE: "yes"
+    # On a merge request only when the change could plausibly break the build.
+    # A one-line Vue change cannot, and making every review wait ten minutes to
+    # prove that again is the single biggest thing that was wrong here.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - Dockerfile
+        - .dockerignore
+        - docker/**/*
+        - composer.lock
+        - package-lock.json
   needs:
     - verify:format
     - verify:lint
@@ -415,13 +569,22 @@ build:image:
     # image the smoke test boots is byte-for-byte the image that reaches the
     # registry.
     - |
+      # Only a pipeline that publishes the image writes the cache. `mode=max`
+      # uploads every intermediate layer and cost minutes of the first run's
+      # 1024s; on a merge request, which pushes nothing, that is work thrown
+      # away. Reading the cache is free either way.
+      cache_to=
+      if [ -n "${PUBLISH_IMAGE:-}" ]; then
+        cache_to="--cache-to type=registry,ref=$CI_REGISTRY_IMAGE/cache:build,mode=max"
+      fi
+      # shellcheck disable=SC2086
       docker buildx build \
         --load \
         --tag "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG" \
         --build-arg "APP_VERSION=${CI_COMMIT_TAG:-$CI_COMMIT_SHA}" \
         --build-arg "SENTRY_RELEASE=$CI_COMMIT_SHA" \
         --cache-from "type=registry,ref=$CI_REGISTRY_IMAGE/cache:build" \
-        --cache-to "type=registry,ref=$CI_REGISTRY_IMAGE/cache:build,mode=max" \
+        $cache_to \
         .
     # The cheapest honest proof the artifact starts (ADR-0049 §1). As written
     # /up contacts neither Postgres nor Redis — AUTO_MIGRATE=false and nothing
@@ -464,7 +627,7 @@ build:image:
       docker stop smoke
       test "$ok" = "1"
     - |
-      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] || [ -n "${CI_COMMIT_TAG:-}" ]; then
+      if [ -n "${PUBLISH_IMAGE:-}" ]; then
         docker push "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
       else
         echo "merge request pipeline: image built and smoked, deliberately not published."
@@ -476,11 +639,9 @@ container_scanning:
     - job: build:image
   variables:
     CS_IMAGE: $CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG
-  rules:
-    # Only where build:image published something to scan. A merge request's
-    # image never leaves the runner, so there is nothing in the registry yet.
-    - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  # Only where build:image published something to scan. A merge request's image
+  # never leaves the runner, so there is nothing in the registry yet.
+  rules: *tier-published
   # Not in scan:gate: the base image's OS packages produce findings on their own
   # schedule, and a Debian CVE published overnight must not block every merge.
   # It reports into the security dashboard, where it is triaged.
