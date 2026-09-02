@@ -592,9 +592,9 @@ in the owning module's `TODO.md` when it lands.
     slice tail): the profile-of-record fields on `User`, avatar and banner
     per brand membership, Community's profile read models, `u/{username}`
     with its wall on slice 22's reactions and comments, three visibilities
-    with the attended-event read model, and both modules' GDPR handlers
-    exercised by `GdprSweepTest`. Still open in Identity's `TODO.md`: the
-    four-field `auth.user` prop.
+    with the attended-event read model, the four-field `auth.user` prop in
+    `HandleInertiaRequests`, and both modules' GDPR handlers exercised by
+    `GdprSweepTest`.
 
 26. **Galleries.** Platform for the storage, Community for the feed. The
     media library stores raster images up to 10 MB and generates
