@@ -7,8 +7,9 @@
 # nothing reaches the registry without them.
 #
 # Ordering is a DAG, not a ladder: `needs:` lets the scanners start at pipeline
-# time and the four checks start the moment `verify` is green, so the stage list
-# below is the story the pipeline graph tells, not the order it runs in.
+# time and the four checks start the moment both verify jobs are green, so the
+# stage list below is the story the pipeline graph tells, not the order it runs
+# in.
 
 include:
   - template: Jobs/Secret-Detection.gitlab-ci.yml
@@ -174,8 +175,18 @@ prepare:toolchain:
         --push .
 
 ########## verify — the fast run (#64), and the gate on everything after ##########
+#
+# Split in two because one of the three checks is not like the others.
+# `resources/js/{routes,actions,wayfinder}` are generated and gitignored, and
+# eslint is not merely inconvenienced without them: `import/order` cannot
+# resolve `@/routes/...`, files it under the wrong group, and reports eighteen
+# errors that are not in the source. Generating them costs four minutes.
+#
+# pint and prettier need none of that. Keeping them in a separate job is what
+# makes the first stage fail fast on the mistake that is actually common — a
+# file nobody formatted — in about a minute and a half rather than six.
 
-verify:
+verify:format:
   stage: verify
   extends: .php-js
   # The only job that writes the caches. Everything downstream pulls what this
@@ -192,16 +203,17 @@ verify:
       paths: [.cache/npm]
       policy: pull-push
   script:
-    # resources/js/{routes,actions,wayfinder} are generated and gitignored, and
-    # eslint is not merely inconvenienced without them: `import/order` cannot
-    # resolve `@/routes/...`, classifies it as a different group, and reports
-    # eighteen errors that are not in the source. Generated here, once, and
-    # handed to the jobs downstream. --with-form matches vite.config.ts's
-    # formVariants. This is the four minutes in the middle of this job.
-    - php artisan wayfinder:generate --with-form
     - composer lint:check
-    - npm run lint:check
     - npm run format:check
+
+verify:lint:
+  stage: verify
+  extends: .php-js
+  script:
+    # --with-form matches vite.config.ts's formVariants. Generated once here
+    # and handed to the jobs downstream; this is the four minutes.
+    - php artisan wayfinder:generate --with-form
+    - npm run lint:check
   artifacts:
     expire_in: 1 day
     paths:
@@ -214,16 +226,16 @@ verify:
 analyse:php:
   stage: analyse
   extends: .php
-  needs: [verify]
+  needs: [verify:format, verify:lint]
   script:
     - composer types:check
 
 analyse:js:
   stage: analyse
   extends: .js
-  # Inherits verify's generated routes and actions rather than spending another
-  # four minutes producing the same files.
-  needs: [verify]
+  # Inherits verify:lint's generated routes and actions rather than spending
+  # another four minutes producing the same files.
+  needs: [verify:format, verify:lint]
   script:
     - npm run types:check
 
@@ -232,14 +244,14 @@ analyse:js:
 test:js:
   stage: test
   extends: .js
-  needs: [verify]
+  needs: [verify:format, verify:lint]
   script:
     - npm run test:js
 
 test:php:
   stage: test
   extends: .php-js
-  needs: [verify]
+  needs: [verify:format, verify:lint]
   # The suite runs against PostgreSQL, not SQLite: phpunit.xml overrides
   # DB_DATABASE and nothing else, so the connection stays pgsql. Several tests
   # depend on that on purpose — Resources' exclusion constraints (ADR-0020) and
@@ -269,8 +281,9 @@ test:php:
         sleep 1
       done
     # Feature tests resolve Inertia pages through the Vite manifest, so the
-    # build has to precede the suite or every page test 500s. The Vite plugin
-    # runs wayfinder itself, which is why this job does not generate separately. The SSR bundle is
+    # build has to precede the suite or every page test 500s. This job does not
+    # generate wayfinder itself: it inherits verify:lint's artifact, and with
+    # those files already on disk the whole build:ssr is a matter of seconds. The SSR bundle is
     # built too: SettingsLayoutTest asserts server-rendered HTML, which only
     # exists when an SSR process answers (config/inertia.php has SSR on by
     # default, ADR-0049 §6).
@@ -307,6 +320,14 @@ gitlab-advanced-sast:
   stage: scan
   needs: []
   allow_failure: false
+  variables:
+    # The analyzer's own log: "Detected 8 cores but using 3; set --multi-core
+    # or MAX_UNVERIFIED_CORES for more". On three cores a full cross-file scan
+    # of this repository takes ~25 minutes and is the pipeline's critical path
+    # — longer than the entire test suite. Six of the eight leaves headroom for
+    # the other jobs sharing the host.
+    SAST_SCANNER_ALLOWED_CLI_OPTS: "--multi-core 6"
+    MAX_UNVERIFIED_CORES: "6"
 
 semgrep-sast:
   stage: scan
@@ -382,7 +403,8 @@ build:image:
   stage: build
   extends: .docker
   needs:
-    - verify
+    - verify:format
+    - verify:lint
     - analyse:php
     - analyse:js
     - test:php
