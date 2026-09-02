@@ -117,11 +117,12 @@ prepare:toolchain:
   stage: prepare
   extends: .docker
   rules:
-    # Merge requests consume the published tag. A Dockerfile change is proven
-    # by `build:image`, which builds the whole file including this stage, so a
-    # broken toolchain still fails its own merge request.
+    # A merge request runs this job but can only ever create the tag, never
+    # republish it: one merge request's Dockerfile experiment must not change
+    # the image every other pipeline is running on. Its own Dockerfile change
+    # is proven by `build:image`, which builds the whole file including this
+    # stage, so a broken toolchain still fails the merge request that broke it.
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      when: never
     - if: $CI_COMMIT_TAG
     - changes: [Dockerfile]
       variables:
@@ -129,7 +130,7 @@ prepare:toolchain:
     - when: on_success
   script:
     - |
-      if [ "$TOOLCHAIN_REBUILD" != "yes" ] \
+      if [ "${TOOLCHAIN_REBUILD:-no}" != "yes" ] \
          && docker manifest inspect "$TOOLCHAIN_IMAGE:$TOOLCHAIN_TAG" > /dev/null 2>&1; then
         echo "$TOOLCHAIN_IMAGE:$TOOLCHAIN_TAG is published — nothing to build."
         exit 0
