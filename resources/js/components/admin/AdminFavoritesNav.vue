@@ -19,9 +19,16 @@ import type { AdminFavorite } from '@/composables/useAdminFavorites';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { useDragReorder } from '@/composables/useDragReorder';
 
-const props = defineProps<{
-    favorites: AdminFavorite[];
-}>();
+const props = withDefaults(
+    defineProps<{
+        favorites: AdminFavorite[];
+        /** URLs that are not Inertia pages — rendered as plain anchors. */
+        externalUrls?: Set<string>;
+    }>(),
+    {
+        externalUrls: () => new Set<string>(),
+    },
+);
 
 const emit = defineEmits<{
     (e: 'unpin', favorite: AdminFavorite): void;
@@ -96,9 +103,13 @@ const {
                     :is-active="isCurrentUrl(favorite.url)"
                     :tooltip="favorite.label"
                 >
-                    <Link :href="favorite.url" draggable="false">
+                    <component
+                        :is="externalUrls.has(favorite.url) ? 'a' : Link"
+                        :href="favorite.url"
+                        draggable="false"
+                    >
                         <span>{{ favorite.label }}</span>
-                    </Link>
+                    </component>
                 </SidebarMenuButton>
                 <SidebarMenuAction
                     show-on-hover

@@ -34,6 +34,9 @@ class NavigationItem
      * @param  string|null  $permission  capability required to see the entry
      * @param  string  $area  which shell shows it: brand topbar, account menu, or operator admin (ADR-0029)
      * @param  string|null  $feature  per-brand feature (ADR-0047) required to see the entry, on top of module activation
+     * @param  bool  $external  the URL is not an Inertia page (Horizon, Pulse, the health page), so the shell must
+     *                          render a plain anchor and let the browser load it whole — an Inertia visit would
+     *                          fetch its HTML over XHR and show it in the error modal instead
      */
     public function __construct(
         public readonly string $module,
@@ -44,10 +47,11 @@ class NavigationItem
         public readonly ?string $permission = null,
         public readonly string $area = self::AREA_BRAND,
         public readonly ?string $feature = null,
+        public readonly bool $external = false,
     ) {}
 
     /**
-     * @return array{module: string, label: string, url: string, icon: string|null, order: int}
+     * @return array{module: string, label: string, url: string, icon: string|null, order: int, external: bool}
      */
     public function toArray(): array
     {
@@ -57,6 +61,7 @@ class NavigationItem
             'url' => $this->url,
             'icon' => $this->icon,
             'order' => $this->order,
+            'external' => $this->external,
         ];
     }
 }

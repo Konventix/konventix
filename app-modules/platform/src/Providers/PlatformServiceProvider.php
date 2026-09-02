@@ -282,23 +282,29 @@ class PlatformServiceProvider extends ModuleServiceProvider
                 order: 0,
                 area: NavigationItem::AREA_BRAND,
             ),
+            // The packages' own dashboards and the health page are Blade, not
+            // Inertia: `external` makes the shell render a plain anchor, the
+            // same way `DiagnosticsCard` already does. Their paths are config
+            // (the chart may move them), so they are read from it here too.
             new NavigationItem(
                 module: 'platform',
                 label: 'Diagnostics',
-                url: '/admin/pulse',
+                url: '/'.config('pulse.path'),
                 icon: 'activity',
                 order: 90,
                 permission: Permission::ViewDiagnostics->value,
                 area: NavigationItem::AREA_ADMIN,
+                external: true,
             ),
             new NavigationItem(
                 module: 'platform',
                 label: 'Queues',
-                url: '/admin/horizon',
+                url: '/'.config('horizon.path'),
                 icon: 'list-checks',
                 order: 91,
                 permission: Permission::ViewDiagnostics->value,
                 area: NavigationItem::AREA_ADMIN,
+                external: true,
             ),
             new NavigationItem(
                 module: 'platform',
@@ -308,6 +314,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
                 order: 92,
                 permission: Permission::ViewDiagnostics->value,
                 area: NavigationItem::AREA_ADMIN,
+                external: true,
             ),
             new NavigationItem(
                 module: 'platform',
