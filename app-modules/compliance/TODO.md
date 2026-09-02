@@ -169,7 +169,11 @@ module built before it will otherwise be retrofitted.
 
 - [x] A `Gdpr/` handler in every module that holds personal data (slice 14's
       sweep): identity, admission, content, messaging, compliance, staffing,
-      competition — joining registration's.
+      competition — joining registration's. Community followed with the
+      slice 25 tail (profile read models, wall comments and reactions, event
+      participations; `CommunityGdprHandler`'s docblock has the deletion
+      order), and Identity's handler grew the profile-of-record fields with
+      it (ADR-0051 §9).
       Identity's carries the hard question. An account spans the operator
       (ADR-0016) but the fan-out arrives per brand, so its handler drops the
       membership for the brand that asked and anonymizes the account **only
@@ -191,7 +195,8 @@ module built before it will otherwise be retrofitted.
       staying silent.
       `tests/GdprSweepTest.php` proves the whole fan-out end to end: every
       module contributes to one archive, and a deletion leaves every foreign
-      reference resolvable.
+      reference resolvable — since slice 25 including Community's rows and
+      the `username` tombstone.
 
 - [x] Retention rules, their clocks, and the daily sweep (D-CPL-01).
       `RetentionRule` names a *data category*, never a table: Compliance
