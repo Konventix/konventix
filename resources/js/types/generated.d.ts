@@ -718,6 +718,12 @@ declare namespace Konventix {
                 readonly slug: string;
                 readonly brandId: string | null;
             };
+            export type EnvironmentRibbonData = {
+                name: string;
+                label: string;
+                color: string;
+                release: string;
+            };
             export type FooterColumnData = {
                 heading: string | null;
                 blocks: Konventix.Platform.Data.Blocks.BlockData[];

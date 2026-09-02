@@ -20,6 +20,12 @@ depends on brand resolution and gating working.
 
 ## Backlog
 
+- [ ] Environment ribbon follow-ups (GitLab #68, ADR-0053): the ticket-PDF
+      watermark "TESTSYSTEM" once a ticket renderer exists — ask
+      `DeploymentEnvironment`, never `env()`; and the branch name on the
+      ribbon for the review environments of #120, where a wildcard subdomain
+      is the only other hint which instance one is on.
+
 - [x] `permissions:sync` must run in every deploy (ADR-0013, ADR-0045) and
       nothing automates it — `konventix:migrate` runs migrations only. Decide
       whether the migrate command runs the sync afterwards or the runbook

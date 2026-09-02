@@ -41,6 +41,10 @@
         <env name="DB_DATABASE" value="testing"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
+        <!-- The array transport delivers nothing, and the suite asserts subjects
+             verbatim; the guard itself is exercised by NonProductionMailGuardTest. -->
+        <env name="MAIL_ALLOWLIST" value="*"/>
+        <env name="MAIL_TAG_SUBJECTS" value="false"/>
         <!--
             The suite runs against the local-disk deployment, whatever backend
             the developer's .env picks. Tests assert the fallback disk by name

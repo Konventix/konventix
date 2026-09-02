@@ -34,6 +34,8 @@ declare module '@inertiajs/core' {
                 }[];
                 version: string | null;
             };
+            /** The corner ribbon off production; null on production. */
+            environment: Konventix.Platform.Data.EnvironmentRibbonData | null;
             auth: Auth;
             sidebarOpen: boolean;
             cookies: {
