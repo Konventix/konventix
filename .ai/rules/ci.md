@@ -1,0 +1,37 @@
+---
+paths:
+  - '.gitlab-ci.yml'
+  - '.github/workflows/**'
+---
+
+# CI
+
+## The security templates ignore merge requests unless AST_ENABLE_MR_PIPELINES is set
+Every scanner's rules in `Jobs/Secret-Detection`, `Jobs/SAST`, `Jobs/Dependency-Scanning` and `Jobs/Container-Scanning` read `$AST_ENABLE_MR_PIPELINES == "true" && $CI_PIPELINE_SOURCE == "merge_request_event"`, and their remaining branches only match `$CI_COMMIT_BRANCH`. Since `workflow:` here creates no branch pipeline outside main, leaving the variable unset means the scans never see a merge request — they run on main, after the merge they exist to block, and the pipeline still looks green all the way through. Set it once at the top level, not per job.
+
+Two related shapes on this instance (GitLab 19.3-ee, Ultimate): the new `dependency_scanning` job is `rules: [when: never]`, so `gemnasium-dependency_scanning` is the job that actually runs and the one to name in `needs:`; and `semgrep-sast` steps aside for the languages `gitlab-advanced-sast` covers once `GITLAB_ADVANCED_SAST_ENABLED` is on, so on a PHP/Vue commit only the advanced analyzer appears. Anything downstream must use `needs: [{job: …, optional: true}]` — which analyzers a commit produces depends on the files it touched, and a scanner that did not run is not a finding.
+
+## The analyzers exit 0 with findings; scan:gate is what fails the pipeline
+`allow_failure` on a scanner only covers the analyzer crashing. A report full of vulnerabilities is a successful job. `scan:gate` reads `gl-secret-detection-report.json`, `gl-sast-report.json` and `gl-dependency-scanning-report.json` and is the job that goes red: any secret at all, High and above for code and dependencies. Container scanning is deliberately outside the gate — the base image's OS packages produce CVEs on their own schedule and must not be able to stop every merge in the repository.
+
+## dind needs plain TCP: these runners do not share the TLS cert volume
+`DOCKER_TLS_CERTDIR: "/certs"` is the documented setup and it dies here on `Failed to initialize: unable to resolve docker endpoint: open /certs/client/ca.pem: no such file or directory`, before the job's first line — the runner config would have to mount `/certs/client` into the job container and does not. Use `DOCKER_HOST: tcp://docker:2375` with `DOCKER_TLS_CERTDIR: ""`. The daemon is only reachable on the job's own network. The same jobs also need `docker buildx create --driver docker-container`: the default `docker` driver cannot export `--cache-to type=registry`, and a retry on the same runner must fall through to `docker buildx use`.
+
+## The pipeline runs at four depths, and a job's tier is one `rules: *tier-…` line
+`develop` is the integration branch and the default; feature branches merge into it, it merges into `main` for a release. The anchors under `.tiers` decide where a job runs: `*tier-everywhere` (feature branch pushes included), `*tier-reviewed` (merge requests, develop, main, tags), `*tier-published` (develop onwards, wherever an image exists), `*tier-release` (main and tags). Put a new job in the cheapest tier that can actually say something useful, and never reach for `$CI_DEFAULT_BRANCH` — it now means `develop`, so the release branch must be named literally.
+
+Two consequences worth knowing. `semgrep-sast` and `gitlab-advanced-sast` both write `gl-sast-report.json`, so their rules are written to guarantee they never appear in the same pipeline — semgrep on merge requests and develop, the advanced analyzer on main and tags. And `scan:gate` runs on feature branches too, in a secrets-only mode (`GATE_SECRETS_ONLY`), because the other reports do not exist there; without that mode it would fail on the reports it could not find.
+
+## gitlab-advanced-sast takes 24 minutes and hardware will not change that
+Its six passes split as three of ~500-1600 rules finishing in 11-12 minutes, and three of **one rule each** taking ~24 minutes. Those three are the `-deep_inter_file` cross-file taint analyses, run with `timeout_for_interfile_analysis 0`. Raising `--multi-core` from 3 to 6 moved the job from >31 to 24.3 minutes and cannot do better, because the floor is one uncapped pass. This is why the scan lives on the release tier: on the merge request loop it alone made a review take forty minutes.
+
+## The CI image is the Dockerfile's `toolchain` stage, published from develop and main only
+Jobs run on `$CI_REGISTRY_IMAGE/ci-toolchain:$TOOLCHAIN_TAG`, built with `--target toolchain` so the pipeline's PHP build, extension set and Node major are the ones that produce the release artifact. A merge request or a feature branch may create that tag when it is missing but never republishes it — one branch's Dockerfile experiment must not change the image every other pipeline runs on. Its own Dockerfile change is still proven, because `build:image` builds the whole file including that stage. If you change `toolchain` in a way every job must see at once, bump `TOOLCHAIN_TAG` in the same commit; a Dockerfile change alone republishes the tag only when it reaches develop or main.
+
+## A job without a database pays ~40x on every `php artisan` boot
+`.env.example` points `DB_HOST` at `pgsql` and `REDIS_HOST` at `redis` — the compose hostnames — and puts `CACHE_STORE`, `SESSION_DRIVER` and `QUEUE_CONNECTION` on redis. In a job with no such services those names do not resolve and every artisan start stalls on them. The controlled comparison, the same command in two jobs (the Vite plugin shells out to exactly `php artisan wayfinder:generate --with-form`): 246s in `verify:lint` with no services against 3.4s inside `test:php`, which has a postgres and a redis beside it; `key:generate` 30s against 0.7s. Pointing the service-less jobs at `127.0.0.1` — refused immediately, no timeout — with in-memory cache, session and queue took `verify:lint` from 358s to 88s and `verify:format` from 113s to 78s.
+
+Anything new that runs artisan without services gets `variables: *offline-services`. The symptom to recognise is not an error: the job passes, just forty times slower, and it looks like the tool being slow rather than the network. It bites locally too, if `.env` names the compose hosts from outside the containers.
+
+## eslint needs the generated routes, and it does not merely complain without them
+`resources/js/{routes,actions,wayfinder}` are gitignored, so a fresh clone has none of them. Without them `import/order` cannot resolve `@/routes/...`, files it under the wrong group, and reports eighteen errors that are nowhere in the source — reproduced by moving the three directories aside and running `npx eslint .`. `vue-tsc` needs them too; vitest does not, because `vitest.config.ts` is deliberately standalone. `verify:lint` generates them once (`--with-form` matches `formVariants: true` in vite.config.ts) and hands them on as an artifact; `test:php` does not take that artifact, because `npm run build:ssr` runs the generator itself and standing alone beats waiting for the job that produces it.
