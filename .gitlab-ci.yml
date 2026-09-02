@@ -16,6 +16,12 @@ include:
   - template: Jobs/Dependency-Scanning.gitlab-ci.yml
   - template: Jobs/Container-Scanning.gitlab-ci.yml
 
+default:
+  # A push that supersedes a pipeline should not leave the old one holding a
+  # runner: with several agents in the repository the runners are the scarce
+  # resource.
+  interruptible: true
+
 stages:
   - prepare
   - verify
@@ -94,13 +100,16 @@ variables:
     paths: [.cache/npm]
     policy: pull
 
-.app:
-  image:
-    name: $TOOLCHAIN_IMAGE:$TOOLCHAIN_TAG
-    # The FrankenPHP base carries an entrypoint; the runner needs a plain shell.
-    entrypoint: [""]
-  cache: *cache-pull
-  before_script:
+# Setup steps, referenced by the job bases below. Each job installs only what it
+# runs: `wayfinder:generate` takes four minutes on this codebase, so exactly one
+# job pays for it and passes the result on as an artifact.
+.setup:
+  php:
+    # The FrankenPHP base ships PHP's default 128M. spatie/laravel-data's type
+    # inference exhausts it partway through the suite, and phpstan needs the
+    # headroom too. GitHub's setup-php defaults to -1, which is why tests.yml
+    # never had to say this.
+    - echo 'memory_limit = -1' > /usr/local/etc/php/conf.d/99-ci.ini
     # `.env` before `composer install`, not after: package:discover runs as a
     # post-autoload hook and reads config, which reads .env — a package that
     # rejects a missing value fails the install itself rather than failing
@@ -108,11 +117,31 @@ variables:
     - cp .env.example .env
     - composer install --prefer-dist --no-progress
     - php artisan key:generate
+  js:
     - npm ci --no-audit --no-fund
-    # resources/js/{routes,actions,wayfinder} are generated and gitignored.
-    # eslint's import resolver, vue-tsc and vitest all fail on the missing
-    # imports without them. --with-form matches vite.config.ts's formVariants.
-    - php artisan wayfinder:generate --with-form
+
+.toolchain:
+  image:
+    name: $TOOLCHAIN_IMAGE:$TOOLCHAIN_TAG
+    # The FrankenPHP base carries an entrypoint; the runner needs a plain shell.
+    entrypoint: [""]
+  cache: *cache-pull
+
+.php:
+  extends: .toolchain
+  before_script:
+    - !reference [.setup, php]
+
+.js:
+  extends: .toolchain
+  before_script:
+    - !reference [.setup, js]
+
+.php-js:
+  extends: .toolchain
+  before_script:
+    - !reference [.setup, php]
+    - !reference [.setup, js]
 
 ########## prepare ##########
 
@@ -148,7 +177,7 @@ prepare:toolchain:
 
 verify:
   stage: verify
-  extends: .app
+  extends: .php-js
   # The only job that writes the caches. Everything downstream pulls what this
   # one left behind, so a green verify also means warm caches.
   cache:
@@ -163,22 +192,37 @@ verify:
       paths: [.cache/npm]
       policy: pull-push
   script:
+    # resources/js/{routes,actions,wayfinder} are generated and gitignored, and
+    # eslint is not merely inconvenienced without them: `import/order` cannot
+    # resolve `@/routes/...`, classifies it as a different group, and reports
+    # eighteen errors that are not in the source. Generated here, once, and
+    # handed to the jobs downstream. --with-form matches vite.config.ts's
+    # formVariants. This is the four minutes in the middle of this job.
+    - php artisan wayfinder:generate --with-form
     - composer lint:check
     - npm run lint:check
     - npm run format:check
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - resources/js/routes
+      - resources/js/actions
+      - resources/js/wayfinder
 
 ########## analyse ##########
 
 analyse:php:
   stage: analyse
-  extends: .app
+  extends: .php
   needs: [verify]
   script:
     - composer types:check
 
 analyse:js:
   stage: analyse
-  extends: .app
+  extends: .js
+  # Inherits verify's generated routes and actions rather than spending another
+  # four minutes producing the same files.
   needs: [verify]
   script:
     - npm run types:check
@@ -187,14 +231,14 @@ analyse:js:
 
 test:js:
   stage: test
-  extends: .app
+  extends: .js
   needs: [verify]
   script:
     - npm run test:js
 
 test:php:
   stage: test
-  extends: .app
+  extends: .php-js
   needs: [verify]
   # The suite runs against PostgreSQL, not SQLite: phpunit.xml overrides
   # DB_DATABASE and nothing else, so the connection stays pgsql. Several tests
@@ -225,7 +269,8 @@ test:php:
         sleep 1
       done
     # Feature tests resolve Inertia pages through the Vite manifest, so the
-    # build has to precede the suite or every page test 500s. The SSR bundle is
+    # build has to precede the suite or every page test 500s. The Vite plugin
+    # runs wayfinder itself, which is why this job does not generate separately. The SSR bundle is
     # built too: SettingsLayoutTest asserts server-rendered HTML, which only
     # exists when an SSR process answers (config/inertia.php has SSR on by
     # default, ADR-0049 §6).
