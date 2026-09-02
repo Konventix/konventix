@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Str;
 use Symfony\Component\Finder\Finder;
 
 /**
@@ -60,3 +61,21 @@ test('no horizon supervisor outlives its connection retry_after', function () {
         );
     }
 });
+
+/**
+ * Horizon picks its supervisor plan by environment name — `Str::is` over
+ * the keys of `horizon.environments`, first match wins — and a name that
+ * matches nothing starts a master with no supervisors: no error, no failed
+ * job, just queues nobody works. ADR-0053 made "anything but production" a
+ * family of names (`staging`, `undeclared`, a typo), so the plan needs a
+ * wildcard arm, and it needs every supervisor the defaults declare. The
+ * first staging day on dev ran zero supervisors for want of one (#160).
+ */
+test('every environment name resolves to a complete horizon supervisor plan', function (string $environment) {
+    $plan = collect(config('horizon.environments'))
+        ->first(fn (array $supervisors, string $name): bool => Str::is($name, $environment));
+
+    expect($plan)->toBeArray(
+        "Environment [{$environment}] matches no key of horizon.environments — Horizon would run no supervisors there.",
+    )->and(array_keys($plan))->toEqual(array_keys(config('horizon.defaults')));
+})->with(['production', 'local', 'staging', 'testing', 'undeclared']);

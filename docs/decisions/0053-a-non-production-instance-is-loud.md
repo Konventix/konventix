@@ -67,3 +67,11 @@ is the point — the failure that costs least is the one you notice.
 - `DeploymentEnvironment` is the place for every future "not on
   production" behaviour, and a sender that wants to bypass the guard has
   no hook to do it with; that is intentional.
+- Configuration keyed by environment *name* needs an arm for the whole
+  non-production family, not just `local`: Horizon's supervisor plan had
+  `production` and `local` only, and the first `staging` day on dev ran no
+  workers at all — no error, just queues nobody served (#160). It has a
+  `*` arm now; anything similar (`environment('local')` switches) should
+  ask `isProduction()` or name the family. Commerce's local checkout
+  adapter stays `local`/`testing` on purpose: staging talks to a real PSP
+  sandbox.
