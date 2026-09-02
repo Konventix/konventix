@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Auth\Events\Login;
+use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
@@ -75,4 +77,21 @@ it('keeps first_seen_at from the first contact', function (): void {
     );
 
     expect($membership->fresh()->first_seen_at->isSameDay(now()->subDays(30)))->toBeTrue();
+});
+
+it('records the membership when built from another container, the way Octane\'s dispatcher builds listeners', function (): void {
+    $user = User::factory()->create();
+
+    // Octane constructs listeners from the worker's base application while
+    // the request runs in a cloned sandbox holding the resolved brand. The
+    // clone below is that base application: it never saw a brand (#142).
+    app()->forgetScopedInstances();
+    $base = clone app();
+    $listener = $base->make(RecordBrandMembership::class);
+
+    $this->withBrand();
+
+    $listener->handle(new Login('web', $user, false));
+
+    expect(BrandMembership::withoutBrandScope()->where('user_id', $user->getKey())->count())->toBe(1);
 });

@@ -19,16 +19,24 @@ use Konventix\Platform\Brands\BrandContext;
  * With no brand in context (console, tests without a request) it does nothing;
  * membership is a statement about a brand interaction, and without a brand
  * there was none.
+ *
+ * `BrandContext` is resolved at call time, never constructor-injected. The
+ * event dispatcher is a boot-time singleton that builds listeners with the
+ * container it was constructed with; under Octane that is the worker's base
+ * application, while the request runs in a cloned sandbox whose scoped
+ * `BrandContext` is the one `ResolveBrand` filled. Injected at construction,
+ * this listener read the base application's empty context on every request
+ * and never wrote a membership — invisible to the test suite, where both
+ * containers are the same object (.ai/rules/listeners.md, #142).
  */
 class RecordBrandMembership
 {
-    public function __construct(private readonly BrandContext $context) {}
-
     public function handle(Login|Registered $event): void
     {
         $user = $event->user;
+        $context = app(BrandContext::class);
 
-        if (! $user instanceof User || ! $this->context->hasBrand()) {
+        if (! $user instanceof User || ! $context->hasBrand()) {
             return;
         }
 

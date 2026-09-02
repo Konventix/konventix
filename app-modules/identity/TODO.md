@@ -128,8 +128,15 @@ person behind it. The value here is in what is left out.
 
 ## Done
 
-<!-- Move completed items here with the PR that finished them. -->
-
+- [x] `RecordBrandMembership` resolves `BrandContext` at call time (#142). Under
+      Octane the event dispatcher builds listeners from the worker's base
+      application, so the constructor-injected context was always empty and no
+      membership was ever written on the dev cluster. First contact stays
+      registration or login (a session from before the fix needs one fresh
+      login per brand): treating every authenticated request as contact would
+      make "signed-in non-member" impossible, which the ADR-0052 gate and its
+      tests rely on. `tests/BrandMembershipTest.php` reproduces the Octane case
+      with a cloned container; rule recorded in `.ai/rules/listeners.md`.
 - [x] ADR-0048 point 5: verification, password reset and the welcome that
       follows the first verification go through Messaging instead of
       Laravel's stock `Illuminate\Auth\Notifications\*` — `Mail\AuthMailer`
