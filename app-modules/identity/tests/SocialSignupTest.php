@@ -30,6 +30,7 @@ it('creates a passwordless account and links the identity', function (): void {
     $this->withSession(['identity.social.pending' => identityPendingSteamSignup()])
         ->post('http://localhost/auth/steam/complete', [
             'name' => 'Ada Lovelace',
+            'username' => 'ada-lovelace',
             'email' => 'ada@example.test',
         ])->assertRedirect();
 
@@ -54,6 +55,7 @@ it('announces the new account exactly as ordinary registration does', function (
     $this->withSession(['identity.social.pending' => identityPendingSteamSignup()])
         ->post('http://localhost/auth/steam/complete', [
             'name' => 'Grace Hopper',
+            'username' => 'grace-hopper',
             'email' => 'grace@example.test',
         ]);
 
@@ -67,6 +69,7 @@ it('sends the verification mail to the address the person gave', function (): vo
     $this->withSession(['identity.social.pending' => identityPendingSteamSignup()])
         ->post('http://localhost/auth/steam/complete', [
             'name' => 'Ada Lovelace',
+            'username' => 'ada-lovelace',
             'email' => 'ada@example.test',
         ]);
 
@@ -87,6 +90,7 @@ it('ignores a provider identity the request tries to name itself', function (): 
     $this->withSession(['identity.social.pending' => identityPendingSteamSignup()])
         ->post('http://localhost/auth/steam/complete', [
             'name' => 'Ada Lovelace',
+            'username' => 'ada-lovelace',
             'email' => 'ada@example.test',
             'providerUserId' => '76561198000000999',
             'provider_user_id' => '76561198000000999',
@@ -104,6 +108,7 @@ it('sends somebody back to the start when the handshake has expired', function (
 
     $this->post('http://localhost/auth/steam/complete', [
         'name' => 'Ada Lovelace',
+        'username' => 'ada-lovelace',
         'email' => 'ada@example.test',
     ])->assertRedirect(route('login'));
 
@@ -123,6 +128,7 @@ it('refuses a signup naming an address that already exists, and links nothing', 
     $this->withSession(['identity.social.pending' => identityPendingSteamSignup()])
         ->post('http://localhost/auth/steam/complete', [
             'name' => 'Impostor',
+            'username' => 'impostor',
             'email' => 'taken@example.test',
         ])->assertSessionHasErrors('email');
 

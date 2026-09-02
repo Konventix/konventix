@@ -44,13 +44,31 @@ defineOptions({
             </div>
 
             <div class="grid gap-2">
+                <Label for="username">Username</Label>
+                <Input
+                    id="username"
+                    type="text"
+                    name="username"
+                    required
+                    :tabindex="2"
+                    autocomplete="username"
+                    placeholder="ada-lovelace"
+                />
+                <p class="text-sm text-text-muted">
+                    Your public handle: lowercase letters, numbers and hyphens
+                    only, starting and ending with a letter or number.
+                </p>
+                <InputError :message="errors.username" />
+            </div>
+
+            <div class="grid gap-2">
                 <Label for="email">Email address</Label>
                 <Input
                     id="email"
                     type="email"
                     name="email"
                     required
-                    :tabindex="2"
+                    :tabindex="3"
                     autocomplete="email"
                     placeholder="email@example.com"
                 />
@@ -63,7 +81,7 @@ defineOptions({
                     id="password"
                     name="password"
                     required
-                    :tabindex="3"
+                    :tabindex="4"
                     autocomplete="new-password"
                     placeholder="Password"
                 />
@@ -76,7 +94,7 @@ defineOptions({
                     id="password_confirmation"
                     name="password_confirmation"
                     required
-                    :tabindex="4"
+                    :tabindex="5"
                     autocomplete="new-password"
                     placeholder="Confirm password"
                 />
@@ -86,7 +104,7 @@ defineOptions({
             <Button
                 type="submit"
                 class="mt-2 w-full"
-                :tabindex="5"
+                :tabindex="6"
                 :disabled="processing"
                 data-test="register-user-button"
             >

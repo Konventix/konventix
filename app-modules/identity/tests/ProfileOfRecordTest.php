@@ -8,9 +8,9 @@ use Konventix\Identity\Models\User;
 
 /**
  * The `/settings/profile` form widened to the profile-of-record fields
- * (ADR-0051): username, tagline, status emoji, social links. Registration
- * stays untouched — `ProfileValidationRules::profileRules()` is not widened,
- * these rules live only in `ProfileUpdateData::rules()`.
+ * (ADR-0051): username, tagline, status emoji, social links. The username
+ * rules are shared with registration (`ProfileValidationRules::usernameRules()`,
+ * #143); tagline, emoji and social links live only in `ProfileUpdateData`.
  */
 function validProfilePayload(User $user, array $overrides = []): array
 {
@@ -156,4 +156,16 @@ it('passes the current profile-of-record as a page prop', function (): void {
             ->where('profile.statusEmoji', '🚀')
             ->where('profile.socialLinks', ['x' => 'ada'])
             ->where('profile.visibility', 'public'));
+});
+
+it('explains the expected shape of a malformed social handle', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->patch('/settings/profile', validProfilePayload($user, ['socialLinks' => ['x' => '@ada', 'website' => 'example.test']]))
+        ->assertInvalid([
+            'socialLinks.x' => 'X: the handle only, 1-15 letters, digits or _, without the @.',
+            'socialLinks.website' => 'Website: a full address starting with http:// or https://.',
+        ]);
 });

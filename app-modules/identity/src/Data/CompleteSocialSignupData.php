@@ -34,6 +34,7 @@ final class CompleteSocialSignupData extends Data
 
     public function __construct(
         public readonly string $name,
+        public readonly string $username,
         public readonly string $email,
     ) {}
 
@@ -44,7 +45,16 @@ final class CompleteSocialSignupData extends Data
     {
         return [
             'name' => self::nameRules(),
+            'username' => self::usernameRules(),
             'email' => self::emailRules(),
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function messages(): array
+    {
+        return self::usernameMessages();
     }
 }

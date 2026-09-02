@@ -241,6 +241,10 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.steam ?? ''"
                         placeholder="Steam handle"
                     />
+                    <p class="text-sm text-text-muted">
+                        Your custom URL name, not the full link: 2-32 letters,
+                        digits, - or _.
+                    </p>
                     <InputError
                         class="mt-2"
                         :message="errors['socialLinks.steam']"
@@ -256,6 +260,9 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.discord ?? ''"
                         placeholder="Discord username"
                     />
+                    <p class="text-sm text-text-muted">
+                        Username only: 2-32 lowercase letters, digits, . or _.
+                    </p>
                     <InputError
                         class="mt-2"
                         :message="errors['socialLinks.discord']"
@@ -271,6 +278,9 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.twitch ?? ''"
                         placeholder="Twitch channel"
                     />
+                    <p class="text-sm text-text-muted">
+                        Channel name: 3-25 letters, digits or _.
+                    </p>
                     <InputError
                         class="mt-2"
                         :message="errors['socialLinks.twitch']"
@@ -286,6 +296,10 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.youtube ?? ''"
                         placeholder="@channel"
                     />
+                    <p class="text-sm text-text-muted">
+                        Handle: 3-30 letters, digits, . _ or -; the @ is
+                        optional.
+                    </p>
                     <InputError
                         class="mt-2"
                         :message="errors['socialLinks.youtube']"
@@ -301,6 +315,9 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.x ?? ''"
                         placeholder="Handle"
                     />
+                    <p class="text-sm text-text-muted">
+                        Handle without the @: 1-15 letters, digits or _.
+                    </p>
                     <InputError
                         class="mt-2"
                         :message="errors['socialLinks.x']"
@@ -316,6 +333,9 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.instagram ?? ''"
                         placeholder="Instagram handle"
                     />
+                    <p class="text-sm text-text-muted">
+                        Username: 1-30 letters, digits, . or _.
+                    </p>
                     <InputError
                         class="mt-2"
                         :message="errors['socialLinks.instagram']"
@@ -332,6 +352,9 @@ function submitBanner(event: Event): void {
                         :default-value="profile.socialLinks.website ?? ''"
                         placeholder="https://example.com"
                     />
+                    <p class="text-sm text-text-muted">
+                        Full address including https://.
+                    </p>
                     <InputError
                         class="mt-2"
                         :message="errors['socialLinks.website']"
