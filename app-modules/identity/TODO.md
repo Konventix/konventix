@@ -22,12 +22,13 @@ person behind it. The value here is in what is left out.
       FormRequests — a delete confirmation and a stateless 2FA-state gate are
       not really "forms" in the ADR-0009 sense, and Fortify's own contract for
       the latter (`InteractsWithTwoFactorState`) expects a FormRequest.
-- [ ] Minimal shared Inertia props: ULID, display name, avatar URL, locale.
+- [x] Minimal shared Inertia props: ULID, display name, avatar URL, locale.
       Nothing computed, nothing eager-loaded, no permission map
       (lessons-from-lancore #5).
-      Still open — `auth.user` in `App\Http\Middleware\HandleInertiaRequests`
-      (host-level, out of this module's file scope) shares the full user
-      model today rather than the four-field shape SPEC.md describes.
+      Done with slice 25 (v0.4.0): `auth.user` in
+      `App\Http\Middleware\HandleInertiaRequests` (host-level, out of this
+      module's file scope) shares exactly the four fields, the avatar URL
+      resolved through `AvatarUrlResolver`.
 
 ## Backlog
 
