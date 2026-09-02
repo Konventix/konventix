@@ -284,6 +284,28 @@ return [
                 'maxProcesses' => 1,
             ],
         ],
+
+        // Every other environment name — `staging`, `testing`, the
+        // `undeclared` APP_ENV falls back to, a typo. Horizon matches these
+        // keys with `Str::is`, in order, and a name that matches nothing
+        // starts a master with no supervisors at all: no error, no failed
+        // job, just queues nobody works. ADR-0053 made "anything but
+        // production" a family of names, so the plan needs this arm; the
+        // first staging day on dev ran zero supervisors for want of it
+        // (GitLab #160). Keep it last, or it shadows the arms above.
+        '*' => [
+            'supervisor-1' => [
+                'maxProcesses' => 3,
+            ],
+
+            'waiting-room' => [
+                'maxProcesses' => 2,
+            ],
+
+            'messaging' => [
+                'maxProcesses' => 1,
+            ],
+        ],
     ],
 
     /*
