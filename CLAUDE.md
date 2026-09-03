@@ -233,3 +233,35 @@ It points you at, in order:
 3. `docs/decisions/` — ADRs; these are settled, do not re-litigate them in code
 4. `.ai/rules/index.md` — path-scoped rules; read every file whose globs match
 5. `docs/lessons-from-lancore.md` — why the rules exist
+
+## Verifying a change
+
+Full verification is the pipeline's job (#59). Locally, verification is scoped
+to what the change can have broken, and formatting is nobody's decision (#64):
+
+- **Formatting and linting run from a hook, not by hand.** `.claude/settings.json`
+  runs `contrib/hooks/format-on-edit.sh` after every Edit or Write: pint for
+  PHP (through Sail), prettier and `eslint --fix` for the frontend. If an Edit
+  is refused because the file changed since you read it, the hook reformatted
+  it — read it again and continue. Claude Code loads that settings file only
+  from the directory the session started in; a session started in the
+  multi-repo parent needs the same hook entry in the parent's own
+  `.claude/settings.json` (the script's header says how).
+- **After every change, run `vendor/bin/sail composer verify`.** Pint on the
+  changed PHP files, phpstan, then only the test directories the changed paths
+  map to (`contrib/verify-plan.sh` is the mapping): a module's own tests for a
+  change inside that module, the root suites for `app/`, vitest for
+  `resources/js`. Name modules to override the mapping:
+  `vendor/bin/sail composer verify -- commerce identity`. Measured on
+  2026-09-03 with a warm phpstan cache: pint 1 s, phpstan 3 s, the commerce
+  module's 297 tests 85 s, the root Feature and Unit suites 180 s.
+- **The full suite is the pipeline's, and runs locally at most once per
+  change.** `composer verify` says when it is owed — the change touches
+  config, routes, migrations, the lockfile, the platform module or the test
+  bootstrap. Even then, push and let the merge request pipeline run it; run
+  `vendor/bin/sail composer test` yourself only when you need the answer
+  before pushing, such as a migration or a `TestCase` change every module's
+  tests go through. Everything else — the whole Pest suite on every merge
+  request, the scanners, the image — is the pipeline's.
+- Never run two test processes at once; they share one database
+  (`.ai/rules/tests.md`).

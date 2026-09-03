@@ -121,6 +121,10 @@
             "@types:check",
             "@php artisan test --compact"
         ],
+        "verify": [
+            "Composer\\Config::disableProcessTimeout",
+            "bash contrib/verify.sh"
+        ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
             "npm run lint:check",

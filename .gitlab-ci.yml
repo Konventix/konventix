@@ -4,15 +4,19 @@
 #   feature branch, no merge request  ~2 min   format, phpstan, vitest, secrets
 #   merge request                    ~16 min   + eslint, vue-tsc, the Pest suite,
 #                                              semgrep, dependency scanning
-#   push to develop                  ~26 min   + the image, built and pushed
-#   push to main, and tags           ~40 min   + cross-file SAST, container scan,
-#                                              and on a tag the release
+#   develop, main, dev tag           ~26 min   + the image, built, pushed and
+#   (v0.4.5-dev)                               container-scanned; a tag names it
+#   candidate and release tag        ~40 min   + the cross-file SAST
+#   (v0.4.5-rc.1, v0.4.5)
 #
 # The shape follows from one measurement: gitlab-advanced-sast takes 24 minutes
 # and cannot go faster — three of its passes are uncapped cross-file analyses of
 # a single rule each, so cores do not help. Leaving it on the merge request loop
 # made every review wait 40 minutes for a scan nobody was reading yet. It runs
-# where a release is actually cut instead.
+# on the tags that reach an instance other people use — a candidate or a
+# release — and nowhere else. Not on a push to main: the release tag lands on
+# the same commit a moment later, and v0.4.4 showed what two copies of the scan
+# do to each other on shared runners (22 minutes on main, 67 on the tag).
 #
 # develop is the integration branch and the default: feature branches merge into
 # it, and it merges into main for a release.
@@ -79,10 +83,15 @@ workflow:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
-  # Release only. The 24-minute scan lives here.
+  # A candidate or a release: every tag except a dev tag. The 24-minute scan
+  # lives here. The pattern matches the dev form exactly — v0.4.5-dev,
+  # v0.4.5-dev.2 — so an oddly named tag lands in this tier rather than
+  # silently outside it. A push to main is deliberately not here: the release
+  # tag that follows covers the same commit.
   release: &tier-release
+    - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+-dev(\.[0-9]+)?$/
+      when: never
     - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == "main"
 
 variables:
   # Dependency caches must live under the project directory — it is the only
@@ -409,23 +418,19 @@ secret_detection:
 
 gitlab-advanced-sast:
   stage: scan
-  # Release tier, and a release candidate is not a release. Twenty-four minutes
-  # in isolation and sixty when the runners are busy, and no amount of hardware
-  # changes that: three of its six passes analyse a single rule each with
-  # `timeout_for_interfile_analysis 0`, and those are the cross-file taint
-  # analyses that make it worth having. On the merge request loop it was the
-  # whole reason a review took forty minutes.
+  # Release tier: a candidate or a release, never a dev tag, never a branch.
+  # Twenty-four minutes in isolation and sixty when the runners are busy, and
+  # no amount of hardware changes that: three of its six passes analyse a
+  # single rule each with `timeout_for_interfile_analysis 0`, and those are the
+  # cross-file taint analyses that make it worth having. On the merge request
+  # loop it was the whole reason a review took forty minutes.
   #
-  # A semver prerelease tag — v0.4.3-rc.1 — skips it and gets semgrep instead,
-  # so cutting a candidate off develop stays cheap. v0.4.3 does not skip it:
-  # nothing ships without the cross-file scan. The pattern deliberately matches
-  # only a prerelease *version*, so an oddly named tag runs the full scan
-  # rather than silently skipping it.
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+-/
-      when: never
-    - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == "main"
+  # A dev tag — v0.4.5-dev — is an immutable image for a development instance
+  # and gets semgrep instead. A release candidate — v0.4.5-rc.1 — is what a
+  # staging instance runs before the same commit becomes v0.4.5, so it pays
+  # for the scan the release would. Nothing that reaches other people ships
+  # without the cross-file scan; nothing else pays for it twice.
+  rules: *tier-release
   needs: []
   allow_failure: false
   variables:
@@ -444,16 +449,16 @@ semgrep-sast:
   # the same pipeline as gitlab-advanced-sast — both write gl-sast-report.json
   # and scan:gate would read whichever landed last.
   rules:
-    # First, so it wins over the blanket tag exclusion below: on a prerelease
-    # tag the advanced analyzer stands down and this one takes its place.
-    # Without this the pipeline would carry no SAST report at all and
-    # `scan:gate` would fail on the one it could not find.
-    - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+-/
+    # First, so it wins over the blanket tag exclusion below: on a dev tag the
+    # advanced analyzer stands down and this one takes its place. Without this
+    # the pipeline would carry no SAST report at all and `scan:gate` would
+    # fail on the one it could not find. The pattern is the release tier's,
+    # negated — keep the two in step.
+    - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+-dev(\.[0-9]+)?$/
     - if: $CI_COMMIT_TAG
       when: never
-    - if: $CI_COMMIT_BRANCH == "main"
-      when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
   needs: []
   allow_failure: false
