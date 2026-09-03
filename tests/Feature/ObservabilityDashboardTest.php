@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Http\Middleware\EnsureOperatorHost;
@@ -9,6 +11,16 @@ use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
+use Laravel\Pulse\Livewire\Cache as CacheCard;
+use Laravel\Pulse\Livewire\Exceptions;
+use Laravel\Pulse\Livewire\Queues;
+use Laravel\Pulse\Livewire\Servers;
+use Laravel\Pulse\Livewire\SlowJobs;
+use Laravel\Pulse\Livewire\SlowOutgoingRequests;
+use Laravel\Pulse\Livewire\SlowQueries;
+use Laravel\Pulse\Livewire\SlowRequests;
+use Laravel\Pulse\Livewire\Usage;
+use Livewire\Livewire;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -168,4 +180,62 @@ it('does not exist on a host belonging to nobody', function (): void {
     $this->actingAs($admin)
         ->get('http://stranger.observability.test/admin/pulse')
         ->assertNotFound();
+});
+
+/**
+ * Every Pulse card remembers its rows for five seconds through the default
+ * cache store, as a Collection of stdClass rows — plus a CarbonImmutable on the
+ * servers and exceptions cards. The deployed store is Redis, and Laravel 13
+ * unserializes a cache hit through `cache.serializable_classes`
+ * (config/cache.php): a class missing from that list comes back as a
+ * `__PHP_Incomplete_Class`, and the card view dies on `->isEmpty()` with "The
+ * script tried to call a method on an incomplete object". With the skeleton's
+ * `false` that was a 500 on roughly every third dashboard poll — the polls that
+ * landed inside the five-second window — while the initial lazy loads, always a
+ * cache miss, rendered fine.
+ *
+ * The suite's array store never serializes, so it cannot see any of this. This
+ * test switches it to serializing before rendering each card twice: the second
+ * render is the hit, and it has to survive.
+ */
+it('renders every pulse card from a cache hit', function (): void {
+    config()->set('cache.stores.array.serialize', true);
+    Cache::forgetDriver('array');
+
+    // One reporting server, so the servers card caches a CarbonImmutable and
+    // nested Collections rather than an empty list.
+    DB::table('pulse_values')->insert([
+        'timestamp' => now()->getTimestamp(),
+        'type' => 'system',
+        'key' => 'observability-test-box',
+        'value' => json_encode([
+            'name' => 'observability-test-box',
+            'cpu' => 12,
+            'memory_used' => 512,
+            'memory_total' => 2048,
+            'storage' => [['directory' => '/', 'used' => 10, 'total' => 100]],
+        ], JSON_THROW_ON_ERROR),
+    ]);
+
+    $cards = [
+        Servers::class,
+        Usage::class,
+        Queues::class,
+        CacheCard::class,
+        SlowQueries::class,
+        Exceptions::class,
+        SlowRequests::class,
+        SlowJobs::class,
+        SlowOutgoingRequests::class,
+    ];
+
+    // `lazy => false` renders the card itself instead of its placeholder.
+    foreach ($cards as $card) {
+        Livewire::test($card, ['lazy' => false])->assertOk();
+
+        // The second render within the TTL reads what the first one cached.
+        Livewire::test($card, ['lazy' => false])->assertOk();
+    }
+
+    Livewire::test(Servers::class, ['lazy' => false])->assertSee('observability-test-box');
 });

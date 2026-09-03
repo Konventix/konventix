@@ -3,6 +3,7 @@ paths:
   - config/octane.php
   - config/app.php
   - config/mail.php
+  - config/cache.php
 ---
 
 # Config
@@ -15,3 +16,6 @@ paths:
 
 ## Octane watch list must cover app-modules, or the dev server serves stale domain code
 All domain code lives in `app-modules/` (not `app/`), but Octane's stock `watch` list only covered `app`, `config`, `routes` etc. Result: the dev web role (octane:start --watch) kept executing pre-edit module code from worker memory while fresh-process runs (tests, tinker) used the new code — a fix "passed all tests" yet the browser still reproduced the bug. The watch list now includes `app-modules/*/{src,routes,database}/**/*.php`; keep it in sync if module layout grows. When in doubt whether workers are stale: `sail restart laravel.test` (queue/scheduler/reverb workers hold code in memory too — restart them after backend changes they execute).
+
+## `cache.serializable_classes` is an allowlist, and a cache hit is the only place it bites
+Laravel 13 unserializes every cache hit through `cache.serializable_classes` (config/cache.php); a class not on the list comes back as `__PHP_Incomplete_Class`, and the first method call on it is a PHP `Error`. The skeleton default `false` broke the Pulse dashboard on the dev cluster: Pulse remembers each card's rows for five seconds as a Collection of stdClass rows (CarbonImmutable on the servers and exceptions cards), so roughly every third `wire:poll` — the ones inside the window — answered 500 while the lazy first loads, always a miss, rendered fine. The list now names exactly those three classes; extend it, never flip it to `true`, when something else genuinely has to cache an object. Two things hide this from you: the suite's array store never serializes (the regression test in `ObservabilityDashboardTest` switches it to `serialize => true` and renders each card twice), and on the cluster the app's JSON log lines reach `kubectl logs` only as Octane's `ERROR unknown error.` (its FrankenPHP output parser expects Caddy's `msg` key) — Pulse's own `exception` entries in `pulse_entries` were the evidence.

@@ -5,7 +5,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | Applies to | Rule file |
 | --- | --- |
 | app-modules/*/src/** | .ai/rules/app-modules-src.md |
-| config/octane.php, config/app.php, config/mail.php | .ai/rules/config.md |
+| config/octane.php, config/app.php, config/mail.php, config/cache.php | .ai/rules/config.md |
 | app-modules/*/src/Data/** | .ai/rules/data.md |
 | .gitlab-ci.yml, .github/workflows/** | .ai/rules/ci.md |
 | phpstan.neon, compose.yaml, compose.prod-local.yaml, Dockerfile, contrib/**, .env.example, README.md | .ai/rules/general.md |
