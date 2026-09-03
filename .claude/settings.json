@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/contrib/hooks/format-on-edit.sh",
+            "timeout": 60,
+            "statusMessage": "pint / prettier / eslint on the edited file"
+          }
+        ]
+      }
+    ]
+  }
+}
