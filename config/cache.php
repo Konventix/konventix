@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 return [
@@ -131,8 +133,24 @@ return [
     | storage. By default, no PHP classes will be unserialized from your
     | cache to prevent gadget chain attacks if your APP_KEY is leaked.
     |
+    | An allowlist rather than the skeleton's `false`, and deliberately not
+    | `true`. Nothing in app/ or app-modules/ caches an object (they cache
+    | nothing at all), but Laravel Pulse remembers every dashboard card's rows
+    | for five seconds as a Collection of stdClass rows, with a CarbonImmutable
+    | on the servers and exceptions cards. With `false` a cache hit hands the
+    | card an `__PHP_Incomplete_Class`, and the poll dies with "The script tried
+    | to call a method on an incomplete object" — a 500 on roughly every third
+    | Livewire update of /admin/pulse, the polls that landed inside the window,
+    | while the lazy first loads (always a miss) rendered fine. The three
+    | classes below are what Pulse stores and nothing more; add to the list
+    | when something else genuinely has to cache an object, and say what.
+    |
     */
 
-    'serializable_classes' => false,
+    'serializable_classes' => [
+        Collection::class,
+        CarbonImmutable::class,
+        stdClass::class,
+    ],
 
 ];
