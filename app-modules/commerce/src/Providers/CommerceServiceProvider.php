@@ -56,6 +56,7 @@ use Konventix\Commerce\Settlement\NullSettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Settlement\Stripe\SdkStripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
+use Konventix\Commerce\Settlement\Stripe\StripeNotConfiguredException;
 use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
 use Konventix\Commerce\Settlement\Unzer\SdkUnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
@@ -87,7 +88,6 @@ use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Konventix\Platform\WaitingRoom\WaitingRoomGate;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
 use Laravel\Pennant\Feature;
-use RuntimeException;
 use Stripe\StripeClient;
 
 /**
@@ -311,13 +311,14 @@ class CommerceServiceProvider extends ModuleServiceProvider
 
         // Bound lazily: the platform key is only required the moment a
         // Stripe-connected brand actually settles something (ADR-0039).
+        // The throw is a typed one so a caller that can say something
+        // useful — the settlement console — catches exactly this and shows
+        // the operator what to configure, rather than a bare 500 (#194).
         $this->app->bind(StripeApi::class, function (): StripeApi {
             $secret = config('services.stripe.secret');
 
             if (! is_string($secret) || $secret === '') {
-                throw new RuntimeException(
-                    'STRIPE_SECRET is not configured; a Stripe-connected brand cannot settle without the platform key (ADR-0039).',
-                );
+                throw StripeNotConfiguredException::missingPlatformKey();
             }
 
             return new SdkStripeApi(new StripeClient($secret));
