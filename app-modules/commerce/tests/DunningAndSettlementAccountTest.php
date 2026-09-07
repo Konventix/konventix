@@ -126,10 +126,12 @@ it('runs from the scheduled console command', function (): void {
 });
 
 it('refuses to invent an adapter for an unregistered provider', function (): void {
-    // Slice 7b registers Stripe and Mollie here; until then, asking for one
+    // Stripe, Mollie, Unzer and the manual sentinel are all registered
+    // (CommerceServiceProvider::registerSettlementAdapters) — 'paypal'
+    // names no adapter and never will from this test, so asking for it
     // must fail loudly rather than silently settle through something else.
-    expect(fn () => app(SettlementAdapterRegistry::class)->forProvider('stripe'))
-        ->toThrow(RuntimeException::class);
+    expect(fn () => app(SettlementAdapterRegistry::class)->forProvider('paypal'))
+        ->toThrow(RuntimeException::class, 'No settlement adapter is registered for provider [paypal]. Register one in a ServiceProvider before a brand can settle through it (ADR-0007).');
 });
 
 it('allows one live settlement account per provider per brand', function (): void {
