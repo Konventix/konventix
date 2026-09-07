@@ -131,7 +131,9 @@ final class OperatorLegalTextsSeeder extends Seeder
             lawfulBasis: 'contract',
         ));
 
-        ($this->publishVersion)($version);
+        // Effective immediately, said out loud: publishing no longer invents
+        // a date for a version that has none (GitLab #203).
+        ($this->publishVersion)($version, now()->toImmutable());
     }
 
     private function exemptionSentence(): string

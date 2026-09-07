@@ -62,7 +62,9 @@ function complianceAuditOperator(array $permissions = [
 it('records an auditable event of this module without anyone calling the recorder', function (): void {
     $brand = $this->withBrand();
 
-    $version = PolicyVersion::factory()->for(Policy::factory()->create(['slug' => 'terms']))->create();
+    $version = PolicyVersion::factory()
+        ->for(Policy::factory()->create(['slug' => 'terms']))
+        ->create(['effective_at' => now()->subMinute()]);
 
     (new PublishPolicyVersion)($version);
 

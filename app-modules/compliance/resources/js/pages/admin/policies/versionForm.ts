@@ -78,3 +78,43 @@ export function formatInstant(value: string | null): string {
         ? 'no date'
         : instantFormat.format(date);
 }
+
+/** The subset of a selected version the editor's form is built out of. */
+export type SelectedVersion = {
+    version: string;
+    content: string;
+    requiresConsent: boolean;
+    lawfulBasis: string;
+    effectiveAt: string | null;
+};
+
+export type VersionFormValues = {
+    version: string;
+    content: string;
+    requiresConsent: boolean;
+    lawfulBasis: string;
+    effectiveAt: string;
+};
+
+/**
+ * The form state for the version currently selected — the page's single
+ * source for it, on first render and on every later change of selection.
+ *
+ * Inertia keeps the same page component across a redirect that renders the
+ * same page, so `setup()` runs once for the whole session: after "New draft
+ * version" redirected to the new draft's editor, the form still held the
+ * previously opened version's label and saving wrote it onto the new row.
+ * That violates `policy_versions(policy_id, version)` — a 500, with the draft
+ * already created. The page re-seeds from here whenever the selection moves.
+ */
+export function versionFormValues(
+    selected: SelectedVersion | null,
+): VersionFormValues {
+    return {
+        version: selected?.version ?? '',
+        content: selected?.content ?? '',
+        requiresConsent: selected?.requiresConsent ?? true,
+        lawfulBasis: selected?.lawfulBasis ?? 'consent',
+        effectiveAt: toLocalInput(selected?.effectiveAt ?? null),
+    };
+}

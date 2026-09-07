@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Konventix\Compliance\Actions\DraftPolicyVersion;
 use Konventix\Compliance\Actions\PublishPolicyVersion;
@@ -39,6 +40,8 @@ class PolicyVersionController
 
         $model = $this->findPolicy($policy);
 
+        $this->validateVersionLabel($request, $model->getKey());
+
         $version = $draftPolicyVersion($model, PolicyVersionData::validateAndCreate($request->all()));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Draft version created.')]);
@@ -51,6 +54,8 @@ class PolicyVersionController
         Gate::authorize(Permission::ManagePolicies->value);
 
         $model = $this->findVersion($version);
+
+        $this->validateVersionLabel($request, $model->policy_id, $model->getKey());
 
         $updatePolicyVersion($model, PolicyVersionData::validateAndCreate($request->all()));
 
@@ -75,7 +80,12 @@ class PolicyVersionController
 
         $model = $this->findVersion($version);
 
-        $validated = $request->validate(['effectiveAt' => ['nullable', 'date']]);
+        // Required unless the draft already carries one — publishing takes
+        // the stored date, and a version that has none must not get today's
+        // by default (GitLab #203).
+        $validated = $request->validate([
+            'effectiveAt' => [$model->effective_at === null ? 'required' : 'nullable', 'date'],
+        ]);
         $effectiveAt = $validated['effectiveAt'] ?? null;
 
         $publishPolicyVersion(
@@ -86,6 +96,26 @@ class PolicyVersionController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Version published.')]);
 
         return to_route('admin.policies.edit', [$model->policy_id, 'version' => $model->getKey()]);
+    }
+
+    /**
+     * The version label is unique per policy at the database level, and the
+     * console used to reach that index with a label the operator never typed
+     * (GitLab #201, #203): a duplicate is a form error on the field, not a
+     * `UniqueConstraintViolationException` with the row already written.
+     */
+    private function validateVersionLabel(Request $request, string $policyId, ?string $ignore = null): void
+    {
+        $unique = Rule::unique('policy_versions', 'version')->where('policy_id', $policyId);
+
+        if ($ignore !== null) {
+            $unique->ignore($ignore);
+        }
+
+        $request->validate(
+            ['version' => ['required', 'string', 'max:50', $unique]],
+            ['version.unique' => __('This policy already has a version with that label.')],
+        );
     }
 
     private function findPolicy(string $policy): Policy

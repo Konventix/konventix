@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { formatInstant, toInstant, toLocalInput } from './versionForm';
+import {
+    formatInstant,
+    toInstant,
+    toLocalInput,
+    versionFormValues,
+} from './versionForm';
 
 /**
  * The `datetime-local` round trip of the policy version editor. Pure
@@ -63,5 +68,60 @@ describe('formatInstant', () => {
         // countries otherwise see two different hours and no way to tell.
         expect(rendered.length).toBeGreaterThan('2026'.length);
         expect(rendered).not.toBe('2026-09-07T20:44:00+00:00');
+    });
+});
+
+/**
+ * Inertia keeps the same page component across a redirect that renders the
+ * same page, so `setup()` — and with it `useForm`'s initial values — runs
+ * once for the whole session. After "New draft version" redirected to the
+ * editor of the *new* draft, the form still held the previously opened
+ * version's label, and saving wrote it onto the new row: a unique-index
+ * violation on `policy_versions(policy_id, version)` and a 500, with the
+ * draft row already standing.
+ *
+ * The page re-seeds the form from the props on every version change; this is
+ * the function it re-seeds from.
+ */
+describe('versionFormValues', () => {
+    const version = {
+        version: '2026-002',
+        content: 'Die neuen Bedingungen.',
+        requiresConsent: false,
+        lawfulBasis: 'contract',
+        effectiveAt: null,
+    };
+
+    it('takes every field from the version it is given', () => {
+        expect(versionFormValues(version)).toEqual({
+            version: '2026-002',
+            content: 'Die neuen Bedingungen.',
+            requiresConsent: false,
+            lawfulBasis: 'contract',
+            effectiveAt: '',
+        });
+    });
+
+    it('carries nothing over from the version opened before it', () => {
+        const previous = versionFormValues({
+            ...version,
+            version: '2026-001',
+            content: 'Die alten Bedingungen.',
+            effectiveAt: '2026-09-07T20:44:00+00:00',
+        });
+
+        expect(versionFormValues(version).version).not.toBe(previous.version);
+        expect(versionFormValues(version).content).not.toBe(previous.content);
+        expect(versionFormValues(version).effectiveAt).toBe('');
+    });
+
+    it('opens an empty form for a policy with no versions yet', () => {
+        expect(versionFormValues(null)).toEqual({
+            version: '',
+            content: '',
+            requiresConsent: true,
+            lawfulBasis: 'consent',
+            effectiveAt: '',
+        });
     });
 });
