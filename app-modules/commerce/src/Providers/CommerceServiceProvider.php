@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Konventix\Admission\Events\AdmissionCheckedIn;
+use Konventix\Commerce\Console\CancelUnpaidReversals;
 use Konventix\Commerce\Console\ExpireCartsCommand;
 use Konventix\Commerce\Console\ProbeInvoiceNumbering;
 use Konventix\Commerce\Console\ReconcilePayments;
@@ -350,7 +351,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // sweep that silently fails to register would look like "no invoices
         // are overdue" rather than like a bug.
         if ($this->app->runningInConsole()) {
-            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class, ExpireCartsCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class, ReconcilePayments::class]);
+            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class, ExpireCartsCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class, ReconcilePayments::class, CancelUnpaidReversals::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
@@ -372,6 +373,12 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // a brand with a long backlog must not stack a second sweep's
             // provider calls on top of the first's.
             $schedule->command(ReconcilePayments::class)->hourly()->withoutOverlapping();
+
+            // ADR-0057 point 4's deadline sweep, in the morning beside the
+            // dunning sweep it hands checked-in orders to. Daily because
+            // `repay_due_on` is a date: a more frequent run would ask the
+            // same question repeatedly to reach the same answer.
+            $schedule->command(CancelUnpaidReversals::class)->dailyAt('07:05');
 
             // A cart's twenty-minute reservation (ADR-0047, Task 9) needs a
             // sweep on the same cadence as the waitlist offer expiry it
