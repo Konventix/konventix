@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Middleware\AssignCorrelationId;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\VerifyHealthSecret;
@@ -38,6 +39,12 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Every request gets its correlation ID before anything else runs,
+        // so the very first log line of a request already carries it
+        // (ADR-0056). Global rather than `web`: health probes, PSP webhooks
+        // and the router's own 404s are requests too.
+        $middleware->prepend(AssignCorrelationId::class);
+
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'cookie_preferences']);
 
         // TLS terminates at a reverse proxy that is not part of this

@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Observability\CorrelationId;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Konventix\Commerce\Health\WaitingRoomCheck;
@@ -89,6 +93,38 @@ class ObservabilityServiceProvider extends ServiceProvider
         $this->authorizeTelescope();
         $this->registerHealthChecks();
         $this->scheduleHousekeeping();
+        $this->correlateJobsAndCommands();
+    }
+
+    /**
+     * The half of ADR-0056 that is not a request. A request gets its ID from
+     * `AssignCorrelationId`; everything else that writes log lines starts
+     * here.
+     *
+     * A queued job normally inherits the ID of the request that dispatched
+     * it — the framework carries `Context` in the payload and restores it on
+     * `JobProcessing`, flushing whatever the worker held before. That
+     * restore runs first (the context provider is a framework provider and
+     * boots before this one), so `addIf` here sees the inherited ID and
+     * keeps it, and only a job that inherited none — dispatched by the
+     * scheduler, by a command, by another such job — mints its own.
+     * `CorrelationIdTest` pins that order with two orphan jobs whose IDs
+     * must differ.
+     *
+     * `CommandStarting` covers the rest: every artisan run, which under
+     * `schedule:run` means every scheduled task, since each runs in a
+     * process of its own. `addIf` again, so a command called from inside a
+     * request or a job stays in that unit of work.
+     */
+    private function correlateJobsAndCommands(): void
+    {
+        Event::listen(JobProcessing::class, function (): void {
+            CorrelationId::ensure();
+        });
+
+        Event::listen(CommandStarting::class, function (): void {
+            CorrelationId::ensure();
+        });
     }
 
     /**
