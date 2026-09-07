@@ -51,9 +51,9 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property BillingPartyData|null $billing_party
  * @property OrderStatus $status
  * @property string $currency
- * @property string $total_net
- * @property string $total_tax
- * @property string $total_gross
+ * @property numeric-string $total_net
+ * @property numeric-string $total_tax
+ * @property numeric-string $total_gross
  * @property TaxTreatment $tax_treatment
  * @property string $price_display
  * @property Carbon|null $paid_at

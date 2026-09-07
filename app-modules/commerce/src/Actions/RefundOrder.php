@@ -7,10 +7,8 @@ namespace Konventix\Commerce\Actions;
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
-use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Exceptions\RefundBlockedByCheckInException;
 use Konventix\Commerce\Models\CheckedInAdmission;
-use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
@@ -32,6 +30,10 @@ use RuntimeException;
  *
  * Cancellation is deliberately not blocked here — only the money flow.
  *
+ * The guards and the provider call are what this Action *is*; the credit
+ * note, the status and `OrderRefunded` live in `RecordRefund`, which the
+ * `external_refund` reversal path reaches without them (ADR-0057 point 1).
+ *
  * ADR-0037 accepts a known gap: an offline device reconciles late (ADR-0033),
  * so a refund executed inside that sync window can slip past a check-in that
  * has happened but not yet arrived. That is a risk the ADR takes knowingly
@@ -40,7 +42,7 @@ use RuntimeException;
 final class RefundOrder
 {
     public function __construct(
-        private readonly IssueCreditNote $issueCreditNote,
+        private readonly RecordRefund $recordRefund,
         private readonly SettlementAdapterRegistry $registry,
     ) {}
 
@@ -62,45 +64,16 @@ final class RefundOrder
             // treat a second refund of the same payment as already done.
             $this->refundThroughProvider($order, $amount);
 
-            // An order paid at checkout was never invoiced, so there is no
-            // document to correct (ADR-0031) — the money still goes back, it
-            // simply produces no paperwork.
-            $creditNote = Invoice::withoutBrandScope()
-                ->where('brand_id', $order->brand_id)
-                ->where('order_id', $order->id)
-                ->exists()
-                    ? $this->issueCreditNote->handle(
-                        order: $order,
-                        reasonCode: IssueCreditNote::REASON_REFUND,
-                        reasonNote: $reasonNote,
-                        totalGross: $amount,
-                    )
-                    : null;
-
-            $order->forceFill(['status' => OrderStatus::Refunded])->save();
-
-            $totalGross = (string) $order->total_gross;
-
-            event(new OrderRefunded(
-                orderId: $order->id,
-                brandId: $order->brand_id,
-                settlesType: $order->settles_type,
-                settlesId: $order->settles_id,
-                amountRefunded: $amount ?? $totalGross,
-                currency: $order->currency,
-                creditNoteId: $creditNote?->id,
+            // Everything after the money is the refund's domain leg, shared
+            // with the reversal path (ADR-0057 point 1): a refund the
+            // operator made in the provider's own dashboard has already
+            // moved the money and reaches `RecordRefund` directly.
+            return $this->recordRefund->handle(
+                order: $order,
                 reasonCode: $reasonCode,
-                refundedAt: now()->toIso8601String(),
-                // ADR-0057 point 5: Registration cannot tell a full refund
-                // from a partial one from the amount alone. Both operands
-                // are guarded numeric — bccomp itself requires
-                // numeric-string, not the wider string `total_gross` and
-                // `$amount` carry.
-                whole: $amount === null
-                    || (is_numeric($amount) && is_numeric($totalGross) && bccomp($amount, $totalGross, 2) === 0),
-            ));
-
-            return $order->refresh();
+                reasonNote: $reasonNote,
+                amount: $amount,
+            );
         });
     }
 
