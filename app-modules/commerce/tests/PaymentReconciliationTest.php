@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
+use Konventix\Commerce\Actions\RecordPaymentSuccess;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
@@ -43,8 +44,21 @@ final class ReconciliationTestStripeApi implements StripeApi
     /** @var list<array{sessionId: string, account: string}> */
     public array $sessionFetches = [];
 
-    /** @var array{status: string, payment_status: string, payment_intent: ?string} */
-    public array $session = ['status' => 'open', 'payment_status' => 'unpaid', 'payment_intent' => null];
+    /** @var array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string} */
+    public array $session = [
+        'status' => 'open',
+        'payment_status' => 'unpaid',
+        'payment_intent' => null,
+        'payment_intent_status' => null,
+    ];
+
+    /**
+     * Runs just before the fake answers — the seam a test uses to simulate a
+     * webhook winning the race while the sweep was already asking.
+     *
+     * @var ?callable(): void
+     */
+    public $beforeAnswering = null;
 
     public function createCheckoutSession(array $params, string $stripeAccountId): StripeCheckoutSession
     {
@@ -68,9 +82,16 @@ final class ReconciliationTestStripeApi implements StripeApi
         return ['card_payments' => 'unknown'];
     }
 
+    /**
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
     public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array
     {
         $this->sessionFetches[] = ['sessionId' => $sessionId, 'account' => $stripeAccountId];
+
+        if ($this->beforeAnswering !== null) {
+            ($this->beforeAnswering)();
+        }
 
         return $this->session;
     }
@@ -247,7 +268,7 @@ it('settles a pending Stripe payment the webhook never reported', function (): v
     [$order, $payment, $account] = reconciliationTestStripePending();
 
     $stripe = new ReconciliationTestStripeApi;
-    $stripe->session = ['status' => 'complete', 'payment_status' => 'paid', 'payment_intent' => 'pi_recon_1'];
+    $stripe->session = ['status' => 'complete', 'payment_status' => 'paid', 'payment_intent' => 'pi_recon_1', 'payment_intent_status' => 'succeeded'];
     app()->instance(StripeApi::class, $stripe);
 
     Event::fake([OrderPaid::class]);
@@ -266,7 +287,7 @@ it('fails a pending Stripe payment whose session expired', function (): void {
     [$order, $payment] = reconciliationTestStripePending();
 
     $stripe = new ReconciliationTestStripeApi;
-    $stripe->session = ['status' => 'expired', 'payment_status' => 'unpaid', 'payment_intent' => null];
+    $stripe->session = ['status' => 'expired', 'payment_status' => 'unpaid', 'payment_intent' => null, 'payment_intent_status' => null];
     app()->instance(StripeApi::class, $stripe);
 
     Event::fake([PaymentFailed::class]);
@@ -283,7 +304,7 @@ it('leaves a payment younger than fifteen minutes to the webhook', function (): 
     [, $payment] = reconciliationTestStripePending(ageMinutes: 5);
 
     $stripe = new ReconciliationTestStripeApi;
-    $stripe->session = ['status' => 'complete', 'payment_status' => 'paid', 'payment_intent' => 'pi_recon_2'];
+    $stripe->session = ['status' => 'complete', 'payment_status' => 'paid', 'payment_intent' => 'pi_recon_2', 'payment_intent_status' => 'succeeded'];
     app()->instance(StripeApi::class, $stripe);
 
     $this->artisan('commerce:reconcile-payments')->assertSuccessful();
@@ -296,7 +317,7 @@ it('leaves a pending payment older than seven days alone', function (): void {
     [, $payment] = reconciliationTestStripePending(ageMinutes: 60 * 24 * 8);
 
     $stripe = new ReconciliationTestStripeApi;
-    $stripe->session = ['status' => 'complete', 'payment_status' => 'paid', 'payment_intent' => 'pi_recon_3'];
+    $stripe->session = ['status' => 'complete', 'payment_status' => 'paid', 'payment_intent' => 'pi_recon_3', 'payment_intent_status' => 'succeeded'];
     app()->instance(StripeApi::class, $stripe);
 
     $this->artisan('commerce:reconcile-payments')->assertSuccessful();
@@ -416,7 +437,7 @@ it('tells the shop operators that reconciliation, not the webhook, found the pay
     $holder = reconciliationTestOperator($payment->brand_id);
 
     $stripe = new ReconciliationTestStripeApi;
-    $stripe->session = ['status' => 'complete', 'payment_status' => 'paid', 'payment_intent' => 'pi_recon_4'];
+    $stripe->session = ['status' => 'complete', 'payment_status' => 'paid', 'payment_intent' => 'pi_recon_4', 'payment_intent_status' => 'succeeded'];
     app()->instance(StripeApi::class, $stripe);
 
     Queue::fake();
@@ -432,4 +453,121 @@ it('tells the shop operators that reconciliation, not the webhook, found the pay
             && $job->message->recipientId === $holder->id
             && $payload['kind'] === 'payment-reconciled';
     });
+});
+
+it('fails a pending Stripe payment whose asynchronous attempt was refused', function (): void {
+    [, $payment] = reconciliationTestStripePending();
+
+    // A lost `checkout.session.async_payment_failed`: the session completed
+    // while still unpaid (SEPA, bank transfer) and the intent fell back to
+    // wanting a payment method. `status` never becomes `expired`, so the
+    // session alone cannot say the attempt failed.
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->session = [
+        'status' => 'complete',
+        'payment_status' => 'unpaid',
+        'payment_intent' => 'pi_recon_async',
+        'payment_intent_status' => 'requires_payment_method',
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    Event::fake([PaymentFailed::class]);
+
+    $this->artisan('commerce:reconcile-payments')->assertSuccessful();
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Failed)
+        ->and($payment->failure_reason)->toBe('async_payment_failed');
+
+    Event::assertDispatched(PaymentFailed::class);
+});
+
+it('leaves an asynchronous attempt that is still processing alone', function (): void {
+    [, $payment] = reconciliationTestStripePending();
+
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->session = [
+        'status' => 'complete',
+        'payment_status' => 'unpaid',
+        'payment_intent' => 'pi_recon_processing',
+        'payment_intent_status' => 'processing',
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    $this->artisan('commerce:reconcile-payments')->assertSuccessful();
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Pending);
+});
+
+it('counts nothing and tells nobody when a webhook won the race', function (): void {
+    [, $payment] = reconciliationTestStripePending();
+    reconciliationTestOperator($payment->brand_id);
+
+    // The webhook settles the row while the sweep is mid-question. The
+    // sweep's own `RecordPaymentSuccess` is then a no-op, and claiming "the
+    // notification never arrived" would be false.
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->session = [
+        'status' => 'complete',
+        'payment_status' => 'paid',
+        'payment_intent' => 'pi_recon_race',
+        'payment_intent_status' => 'succeeded',
+    ];
+    $stripe->beforeAnswering = function () use ($payment): void {
+        app(RecordPaymentSuccess::class)->handle($payment->fresh());
+    };
+    app()->instance(StripeApi::class, $stripe);
+
+    Queue::fake();
+
+    $this->artisan('commerce:reconcile-payments')
+        ->expectsOutputToContain('0 corrected')
+        ->assertSuccessful();
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Succeeded);
+
+    Queue::assertNotPushed(SendQueuedMessage::class);
+});
+
+it('records every transferred dashboard refund in one snapshot, not just the first', function (): void {
+    [$order, $payment] = reconciliationTestMollieSettled();
+
+    $mollie = new ReconciliationTestMollieApi;
+    $mollie->status = 'paid';
+    $mollie->refunds = [
+        [
+            'id' => 're_recon_1',
+            'amount' => '60.00',
+            'reason' => 'Teilerstattung 1',
+            'createdAt' => now()->subDay()->toIso8601String(),
+            'status' => 'refunded',
+        ],
+        [
+            'id' => 're_recon_2',
+            'amount' => '59.00',
+            'reason' => 'Teilerstattung 2',
+            'createdAt' => now()->subHours(2)->toIso8601String(),
+            'status' => 'refunded',
+        ],
+        // Not transferred yet: money that has not moved is not a reversal.
+        [
+            'id' => 're_recon_3',
+            'amount' => '10.00',
+            'reason' => 'noch offen',
+            'createdAt' => now()->toIso8601String(),
+            'status' => 'pending',
+        ],
+    ];
+    app()->instance(MollieApi::class, $mollie);
+
+    $this->artisan('commerce:reconcile-payments')->assertSuccessful();
+
+    $reversals = PaymentReversal::withoutBrandScope()
+        ->where('order_id', $order->id)
+        ->orderBy('provider_reference')
+        ->get();
+
+    expect($reversals)->toHaveCount(2)
+        ->and($reversals->pluck('provider_reference')->all())->toBe(['re_recon_1', 're_recon_2'])
+        ->and($reversals->every(fn (PaymentReversal $r): bool => $r->kind === ReversalKind::ExternalRefund))->toBeTrue()
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
 });

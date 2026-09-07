@@ -40,9 +40,16 @@ interface StripeApi
      * (`unpaid`, `paid`, `no_payment_required`), the same field
      * `StripeWebhookController::settled()` gates on, because with
      * delayed-notification methods a session completes while still unpaid.
-     * `payment_intent` is the money identifier a later refund needs.
+     * `payment_intent` is the money identifier a later refund needs, and
+     * `payment_intent_status` is what the session alone cannot say: with a
+     * delayed-notification method the session reaches `complete` while
+     * still `unpaid`, and a *refused* attempt never turns the session
+     * `expired` — only the intent falling back to `requires_payment_method`
+     * (or `canceled`) reports it. That is the same fact
+     * `checkout.session.async_payment_failed` carries, which is why the
+     * reconciliation has to read it. Null where the session has no intent.
      *
-     * @return array{status: string, payment_status: string, payment_intent: ?string}
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
      */
     public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array;
 

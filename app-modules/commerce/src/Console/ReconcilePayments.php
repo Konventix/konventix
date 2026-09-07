@@ -96,6 +96,17 @@ final class ReconcilePayments extends Command
      */
     private const string MOLLIE_REFUND_TRANSFERRED = 'refunded';
 
+    /**
+     * Stripe PaymentIntent statuses that mean the attempt will not settle:
+     * `requires_payment_method` is where a refused asynchronous payment
+     * lands (the intent asks for another method), `canceled` is the
+     * terminal give-up. `processing` and `requires_action` are deliberately
+     * absent — money still in flight must never be failed by a sweep.
+     *
+     * @var list<string>
+     */
+    private const array REFUSED_INTENT_STATUSES = ['requires_payment_method', 'canceled'];
+
     protected $signature = 'commerce:reconcile-payments {--brand= : Restrict the sweep to one brand}';
 
     protected $description = 'Ask each PSP what really happened to payments whose notification may have been lost (Commerce, #71).';
@@ -248,16 +259,71 @@ final class ReconcilePayments extends Command
         }
 
         if ($session['payment_status'] !== 'unpaid') {
-            $recordSuccess->handle($payment);
-            $this->correction($payment, 'succeeded', $session['payment_status']);
+            $this->applyTransition(
+                $payment,
+                fn () => $recordSuccess->handle($payment),
+                'succeeded',
+                $session['payment_status'],
+            );
 
             return;
         }
 
         if ($session['status'] === 'expired') {
-            $recordFailure->handle($payment, 'checkout_expired', expired: true);
-            $this->correction($payment, 'expired', $session['status']);
+            $this->applyTransition(
+                $payment,
+                fn () => $recordFailure->handle($payment, 'checkout_expired', expired: true),
+                'expired',
+                $session['status'],
+            );
+
+            return;
         }
+
+        // The lost `checkout.session.async_payment_failed`: with a
+        // delayed-notification method the session completes while still
+        // unpaid and never turns `expired`, so only the intent says the
+        // attempt was refused. `processing` is money still in flight and
+        // must not be failed; `requires_payment_method` and `canceled` are
+        // the two terminal answers the webhook's own arm reacts to.
+        if ($session['status'] === 'complete' && in_array($session['payment_intent_status'], self::REFUSED_INTENT_STATUSES, true)) {
+            $this->applyTransition(
+                $payment,
+                fn () => $recordFailure->handle($payment, 'async_payment_failed'),
+                'failed',
+                (string) $session['payment_intent_status'],
+            );
+        }
+    }
+
+    /**
+     * Applies one transition and reports it **only if it actually moved**.
+     *
+     * `RecordPaymentSuccess`/`RecordPaymentFailure` are no-ops on a row that
+     * already left `pending`, so a webhook that settled the payment while
+     * this sweep was mid-question makes the call do nothing — and counting
+     * it as "corrected" would raise a notice claiming a notification never
+     * arrived when it had just arrived. The status before and after is the
+     * only honest test of that.
+     */
+    private function applyTransition(Payment $payment, callable $apply, string $newState, string $providerState): void
+    {
+        // Re-read first: the cursor loaded this row before the provider was
+        // asked, and asking took a network round trip. The status the row
+        // has *now* is the only baseline a comparison may use.
+        $payment->refresh();
+
+        $before = $payment->status;
+
+        $apply();
+
+        $payment->refresh();
+
+        if ($payment->status === $before) {
+            return;
+        }
+
+        $this->correction($payment, $newState, $providerState);
     }
 
     /**
@@ -288,8 +354,7 @@ final class ReconcilePayments extends Command
 
     private function applyMollieSuccess(Payment $payment, RecordPaymentSuccess $recordSuccess): void
     {
-        $recordSuccess->handle($payment);
-        $this->correction($payment, 'succeeded', 'paid');
+        $this->applyTransition($payment, fn () => $recordSuccess->handle($payment), 'succeeded', 'paid');
     }
 
     private function applyMollieFailure(
@@ -298,8 +363,12 @@ final class ReconcilePayments extends Command
         string $reasonCode,
         bool $expired = false,
     ): void {
-        $recordFailure->handle($payment, $reasonCode, expired: $expired);
-        $this->correction($payment, $expired ? 'expired' : 'failed', $reasonCode);
+        $this->applyTransition(
+            $payment,
+            fn () => $recordFailure->handle($payment, $reasonCode, expired: $expired),
+            $expired ? 'expired' : 'failed',
+            $reasonCode,
+        );
     }
 
     private function reconcileSettled(Payment $payment, RecordPaymentReversal $recordReversal): void
@@ -313,10 +382,11 @@ final class ReconcilePayments extends Command
 
     /**
      * The same fetch-back `MollieWebhookController::recordReversals()` does,
-     * asked on a schedule instead of on a notification: every chargeback is
-     * a `return` keyed by its own `chb_…` id, and a transferred refund
-     * beside a still-`paid` order is the operator refunding in Mollie's
-     * dashboard. `RecordPaymentReversal` is idempotent under the unique
+     * in the same order and with the same guards, asked on a schedule
+     * instead of on a notification: every chargeback is a `return` keyed by
+     * its own `chb_…` id, and a transferred refund found beside an order
+     * that was still `paid` when the scan began is the operator refunding
+     * in Mollie's dashboard. `RecordPaymentReversal` is idempotent under the unique
      * `(provider, provider_reference)` key, so re-reading the same
      * chargeback every hour records it once.
      */
@@ -345,8 +415,21 @@ final class ReconcilePayments extends Command
             $payment->refresh();
         }
 
+        // Asked **once**, above the loop, exactly as
+        // `MollieWebhookController::recordReversals()` asks it: recording
+        // the first external refund moves the order to `refunded`, so
+        // re-asking per refund would drop every further refund of the same
+        // snapshot — and the next run would drop them again, leaving a
+        // two-part dashboard refund half recorded forever.
+        if (! $this->orderStillPaid($payment)) {
+            return;
+        }
+
         foreach ($snapshot->refunds as $refund) {
-            if ($refund['status'] !== self::MOLLIE_REFUND_TRANSFERRED || ! $this->orderStillPaid($payment)) {
+            // Only money that actually reached the payer is a reversal.
+            // `queued`, `pending` and `processing` have not moved yet and
+            // may still be cancelled; `failed` and `canceled` never will.
+            if ($refund['status'] !== self::MOLLIE_REFUND_TRANSFERRED) {
                 continue;
             }
 
