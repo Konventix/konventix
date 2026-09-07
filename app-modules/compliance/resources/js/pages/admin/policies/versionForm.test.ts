@@ -1,0 +1,67 @@
+import { describe, expect, it } from 'vitest';
+import { formatInstant, toInstant, toLocalInput } from './versionForm';
+
+/**
+ * The `datetime-local` round trip of the policy version editor. Pure
+ * functions, tested here rather than through the rendered page for the reason
+ * `resources/js/entrance/lib/evaluate.test.ts` gives: the rule is the
+ * function, and a field that showed the wrong hour is a bug in the rule.
+ *
+ * What they exist for: the control hands back a bare wall clock with no zone,
+ * the server read it in `config('app.timezone')` (UTC), and every version an
+ * operator in Berlin meant as "from now on" was dated one offset into the
+ * future — `Policy::currentVersion()` filters on `effective_at <= now()`, so
+ * `/policies/{slug}` answered 404 for exactly that long.
+ *
+ * The assertions are written to hold in whatever zone the test host runs in:
+ * what they pin is that a wall clock and its instant describe the same moment.
+ */
+describe('toInstant', () => {
+    it('resolves the typed wall clock against the operator’s own zone', () => {
+        expect(toInstant('2026-09-07T22:44')).toBe(
+            new Date(2026, 8, 7, 22, 44).toISOString(),
+        );
+    });
+
+    it('has no instant for an empty field', () => {
+        expect(toInstant('')).toBeNull();
+    });
+});
+
+describe('toLocalInput', () => {
+    it('puts a stored instant back as the wall clock that produced it', () => {
+        expect(toLocalInput(toInstant('2026-09-07T22:44'))).toBe(
+            '2026-09-07T22:44',
+        );
+    });
+
+    it('reads the offset the server sends rather than the digits', () => {
+        // 20:44 UTC is 22:44 in Berlin. Whichever zone the reader is in, the
+        // field has to show *their* wall clock for that one instant.
+        const instant = new Date('2026-09-07T20:44:00Z');
+        const field = toLocalInput('2026-09-07T20:44:00+00:00');
+
+        expect(field).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+        expect(new Date(field).getTime()).toBe(instant.getTime());
+    });
+
+    it('leaves the field empty for a version that has no date yet', () => {
+        expect(toLocalInput(null)).toBe('');
+    });
+});
+
+describe('formatInstant', () => {
+    it('says a version has no date rather than printing an empty string', () => {
+        expect(formatInstant(null)).toBe('no date');
+    });
+
+    it('renders the instant in the reader’s zone and names it', () => {
+        const rendered = formatInstant('2026-09-07T20:44:00+00:00');
+
+        expect(rendered).toContain('2026');
+        // The zone is written out: two people reading the same list from two
+        // countries otherwise see two different hours and no way to tell.
+        expect(rendered.length).toBeGreaterThan('2026'.length);
+        expect(rendered).not.toBe('2026-09-07T20:44:00+00:00');
+    });
+});

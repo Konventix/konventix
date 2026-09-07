@@ -24,6 +24,7 @@ import {
     index as policiesIndex,
     store as storePolicy,
 } from '@/routes/admin/policies';
+import { formatInstant } from './versionForm';
 
 /**
  * Every brand's legal documents in one list. The column that matters is
@@ -150,10 +151,14 @@ const columns: ColumnDef<PolicyRow>[] = [
                 ? h('span', { class: 'text-text-muted' }, 'Not published')
                 : h('div', { class: 'flex flex-col' }, [
                       h('span', {}, row.original.publishedVersion),
+                      // Rendered in the reader's own zone and naming it:
+                      // the stored instant is UTC, and a legal effective
+                      // date shown as bare digits reads as a different hour
+                      // in every country the operator sells into.
                       h(
                           'span',
                           { class: 'text-xs text-text-muted' },
-                          row.original.effectiveAt ?? '',
+                          formatInstant(row.original.effectiveAt),
                       ),
                   ]),
     },

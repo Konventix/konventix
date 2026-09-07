@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Compliance\Http\Controllers\Admin;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -62,6 +63,11 @@ class PolicyVersionController
      * Publishing is the moment the text becomes binding. `effectiveAt` may be
      * in the future — the version publishes now and starts applying then,
      * which is what a "our terms change on 1 January" notice needs.
+     *
+     * It arrives as an ISO-8601 instant with the operator's offset and is
+     * normalised to UTC here: `policy_versions.effective_at` is a zone-less
+     * column, so an offset left on the Carbon would be written down as local
+     * digits.
      */
     public function publish(Request $request, string $version, PublishPolicyVersion $publishPolicyVersion): RedirectResponse
     {
@@ -72,7 +78,10 @@ class PolicyVersionController
         $validated = $request->validate(['effectiveAt' => ['nullable', 'date']]);
         $effectiveAt = $validated['effectiveAt'] ?? null;
 
-        $publishPolicyVersion($model, $effectiveAt === null ? null : now()->parse($effectiveAt));
+        $publishPolicyVersion(
+            $model,
+            $effectiveAt === null ? null : CarbonImmutable::parse($effectiveAt)->utc(),
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Version published.')]);
 

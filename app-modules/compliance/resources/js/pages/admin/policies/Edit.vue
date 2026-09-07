@@ -34,6 +34,7 @@ import {
     store as storeVersion,
     update as updateVersion,
 } from '@/routes/admin/policy-versions';
+import { formatInstant, toInstant, toLocalInput } from './versionForm';
 
 /**
  * One policy: its identity on the left, its versions on the right.
@@ -79,15 +80,6 @@ const policyForm = useForm({
     name: props.policy.name,
     slug: props.policy.slug,
 });
-
-/**
- * `datetime-local` wants `YYYY-MM-DDTHH:MM`; the backend sends and accepts a
- * plain datetime string. Converting in both directions here keeps the Data
- * object free of a browser input's formatting quirk.
- */
-function toLocalInput(value: string | null): string {
-    return value === null ? '' : value.replace(' ', 'T').slice(0, 16);
-}
 
 const versionForm = useForm({
     version: props.selected?.version ?? '',
@@ -136,7 +128,7 @@ function saveVersion(): void {
     versionForm
         .transform((data) => ({
             ...data,
-            effectiveAt: data.effectiveAt === '' ? null : data.effectiveAt,
+            effectiveAt: toInstant(data.effectiveAt),
         }))
         .put(updateVersion(props.selected.id).url, { preserveScroll: true });
 }
@@ -145,7 +137,7 @@ function createDraft(): void {
     draftForm
         .transform((data) => ({
             ...data,
-            effectiveAt: data.effectiveAt === '' ? null : data.effectiveAt,
+            effectiveAt: toInstant(data.effectiveAt),
         }))
         .post(storeVersion(props.policy.id).url, {
             onSuccess: () => {
@@ -162,10 +154,7 @@ function publish(): void {
 
     router.post(
         publishVersion(props.selected.id).url,
-        {
-            effectiveAt:
-                versionForm.effectiveAt === '' ? null : versionForm.effectiveAt,
-        },
+        { effectiveAt: toInstant(versionForm.effectiveAt) },
         { preserveScroll: true },
     );
 }
@@ -461,7 +450,7 @@ function openVersion(id: string): void {
                                 </span>
                             </span>
                             <span class="text-xs text-text-muted">
-                                {{ version.effectiveAt ?? 'no date' }} ·
+                                {{ formatInstant(version.effectiveAt) }} ·
                                 {{ version.consents }} agreement{{
                                     version.consents === 1 ? '' : 's'
                                 }}

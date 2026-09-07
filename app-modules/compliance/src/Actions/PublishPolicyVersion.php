@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Compliance\Actions;
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Konventix\Compliance\Enums\PolicyVersionState;
@@ -30,6 +31,12 @@ final class PublishPolicyVersion
 {
     public function __invoke(PolicyVersion $version, ?CarbonInterface $effectiveAt = null): PolicyVersion
     {
+        // `policy_versions.effective_at` is a zone-less column and Eloquent
+        // writes a Carbon in whatever zone the instance carries, so an
+        // argument still holding the operator's `+02:00` would be stored as
+        // its local digits and read back two hours wrong.
+        $effectiveAt = $effectiveAt === null ? null : CarbonImmutable::instance($effectiveAt)->utc();
+
         return DB::transaction(function () use ($version, $effectiveAt): PolicyVersion {
             PolicyVersion::withoutBrandScope()
                 ->where('policy_id', $version->policy_id)
