@@ -3,12 +3,16 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Commerce\Actions\CancelOrderForUnpaidReversal;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
+use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Events\OrderPaid;
+use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
@@ -134,6 +138,91 @@ it('403s payment booking without the book-manual-payment capability', function (
         ->assertForbidden();
 
     expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+});
+
+/**
+ * ADR-0057 point 4: the operator's manual "cancel now" for a reversed order
+ * whose payment never came back — the deadline sweep does the same thing
+ * automatically, this lets the operator do it earlier. Same capability as
+ * booking a payment: both are treasury actions on a reversed order
+ * (`OrderAdminController::cancelReversed`).
+ */
+it('cancels a payment_reversed order by hand, emitting OrderCancelled', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->create(['status' => OrderStatus::PaymentReversed]);
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/cancel-reversed")
+        ->assertRedirect();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Cancelled);
+
+    Event::assertDispatched(OrderCancelled::class, fn (OrderCancelled $event): bool => $event->orderId === $order->id
+        && $event->reasonCode === CancelOrderForUnpaidReversal::REASON_REVERSAL_UNPAID
+        && $event->cancelledByUserId === $admin->id);
+});
+
+it('422s cancelling an order that is not payment_reversed, leaving it unchanged', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->create(['status' => OrderStatus::Paid, 'paid_at' => now()]);
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/cancel-reversed")
+        ->assertStatus(422);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+/**
+ * `CancelOrderForUnpaidReversal` deliberately does not re-guard the
+ * checked-in admission the sweep skips for (its own docblock: "An operator
+ * who cancels by hand has already made that judgement") — the mirror of
+ * `RefundBlockedByCheckInException`'s "cancellation is deliberately not
+ * blocked, only the money flow" for the refund path. Only the sweep defers
+ * to dunning instead of cancelling; the manual button does not.
+ */
+it('still cancels by hand when the admission is checked in, unlike the automatic sweep', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $registrationId = (string) Str::ulid();
+    $order = Order::factory()->create([
+        'status' => OrderStatus::PaymentReversed,
+        'settles_type' => 'registration',
+        'settles_id' => $registrationId,
+    ]);
+    CheckedInAdmission::query()->create([
+        'admission_id' => (string) Str::ulid(),
+        'registration_id' => $registrationId,
+        'first_checked_in_at' => now()->subDay(),
+    ]);
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/cancel-reversed")
+        ->assertRedirect();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Cancelled);
+});
+
+it('403s cancelling a reversed order without the book-manual-payment capability', function (): void {
+    [, $admin] = commerceOperator(['platform.access-admin', 'commerce.view-orders']);
+
+    $this->withBrand();
+    $order = Order::factory()->create(['status' => OrderStatus::PaymentReversed]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/cancel-reversed")
+        ->assertForbidden();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::PaymentReversed);
 });
 
 it('shows one order with lines, invoice, payments and credit notes', function (): void {

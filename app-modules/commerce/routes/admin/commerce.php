@@ -28,6 +28,10 @@ Route::delete('/products/{product}', [ProductAdminController::class, 'destroy'])
 Route::get('/orders', [OrderAdminController::class, 'index'])->name('admin.orders.index');
 Route::get('/orders/{order}', [OrderAdminController::class, 'show'])->name('admin.orders.show');
 Route::post('/orders/{order}/payment', [OrderAdminController::class, 'bookPayment'])->name('admin.orders.book-payment');
+// The operator's manual "cancel now" for a reversed order whose payment
+// never came back (ADR-0057 point 4) — the deadline sweep does the same
+// thing automatically, this lets the operator do it earlier.
+Route::post('/orders/{order}/cancel-reversed', [OrderAdminController::class, 'cancelReversed'])->name('admin.orders.cancel-reversed');
 Route::get('/invoices/{invoice}/document', [InvoiceDocumentController::class, 'download'])->name('admin.invoices.document');
 Route::get('/credit-notes/{creditNote}/document', [CreditNoteDocumentController::class, 'download'])->name('admin.credit-notes.document');
 

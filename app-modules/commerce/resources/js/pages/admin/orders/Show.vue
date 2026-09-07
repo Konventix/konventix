@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
-import { AlertCircle, FileText, Landmark } from '@lucide/vue';
+import { AlertCircle, FileText, Landmark, XCircle } from '@lucide/vue';
 import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { document as creditNoteDocument } from '@/routes/admin/credit-notes';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
-import { bookPayment } from '@/routes/admin/orders';
+import { bookPayment, cancelReversed } from '@/routes/admin/orders';
 import type { OrderReversal, UnappliedPayment } from './reversals';
 import {
     orderStatusLabel,
@@ -127,6 +127,28 @@ function paymentVariant(
 function submitBookPayment(): void {
     router.post(bookPayment(props.order.id).url, {}, { preserveScroll: true });
 }
+
+/**
+ * ADR-0057 point 4: the operator's manual "cancel now" for a reversed order
+ * whose payment never came back — the deadline sweep does the same thing
+ * automatically, this button lets the operator do it earlier. A credit note
+ * corrects the invoice where one exists; the confirmation follows the same
+ * plain-`confirm()` pattern the products page uses for its own destructive
+ * action (`products/Edit.vue`).
+ */
+function submitCancelReversed(): void {
+    if (
+        confirm(
+            'Cancel this order? Where an invoice exists it will be credited, and the reversed payment will no longer be chased.',
+        )
+    ) {
+        router.post(
+            cancelReversed(props.order.id).url,
+            {},
+            { preserveScroll: true },
+        );
+    }
+}
 </script>
 
 <template>
@@ -153,6 +175,14 @@ function submitBookPayment(): void {
             >
                 <Landmark class="size-4" />
                 Book bank transfer
+            </Button>
+            <Button
+                v-if="order.status === 'payment_reversed'"
+                variant="ghost"
+                @click="submitCancelReversed"
+            >
+                <XCircle class="size-4 text-danger" />
+                Cancel order
             </Button>
         </AdminPageHeader>
 

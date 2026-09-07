@@ -8,9 +8,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Actions\BookManualPayment;
+use Konventix\Commerce\Actions\CancelOrderForUnpaidReversal;
 use Konventix\Commerce\Data\OrderReversalData;
 use Konventix\Commerce\Data\UnappliedPaymentData;
 use Konventix\Commerce\Enums\Permission;
@@ -24,6 +26,7 @@ use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\ConsoleSelection;
+use RuntimeException;
 
 /**
  * Operator console: orders and their invoices (ADR-0029). Route middleware
@@ -310,6 +313,40 @@ class OrderAdminController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Payment booked.')]);
 
         // Back to wherever the booking happened — index dialog or detail page.
+        return back();
+    }
+
+    /**
+     * The operator's manual "cancel now" for a reversed order whose payment
+     * never came back (ADR-0057 point 4): `commerce:cancel-unpaid-reversals`
+     * does the same thing automatically once `repay_due_on` passes, this
+     * lets the operator do it earlier. Same capability as booking a
+     * payment — both are treasury actions on a reversed order.
+     *
+     * `CancelOrderForUnpaidReversal` does not re-guard a checked-in
+     * admission the way the sweep does (its own docblock: "An operator who
+     * cancels by hand has already made that judgement", the same principle
+     * `RefundBlockedByCheckInException` states for the refund path —
+     * cancellation is never blocked, only the money flow). This controller
+     * adds no guard of its own; the Action's refusal — only a
+     * `payment_reversed` order can be cancelled this way — becomes a form
+     * error rather than a 500, the shape `CommentController::store` uses.
+     */
+    public function cancelReversed(string $order, Request $request, CancelOrderForUnpaidReversal $cancel): RedirectResponse
+    {
+        Gate::authorize(Permission::BookManualPayment->value);
+
+        /** @var Order $model */
+        $model = Order::withoutBrandScope()->findOrFail($order);
+
+        try {
+            $cancel->handle($model, (string) $request->user()->getAuthIdentifier());
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['order' => $e->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Order cancelled.')]);
+
         return back();
     }
 }
