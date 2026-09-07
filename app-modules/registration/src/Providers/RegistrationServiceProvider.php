@@ -9,8 +9,12 @@ use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Events\CartLineExpired;
 use Konventix\Commerce\Events\CartLineRemoved;
 use Konventix\Commerce\Events\InvoiceIssued;
+use Konventix\Commerce\Events\OrderCancelled;
+use Konventix\Commerce\Events\OrderLineReversed;
 use Konventix\Commerce\Events\OrderLineSettled;
 use Konventix\Commerce\Events\OrderPaid;
+use Konventix\Commerce\Events\OrderRefunded;
+use Konventix\Commerce\Events\PaymentReversed;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
@@ -36,6 +40,7 @@ use Konventix\Registration\Events\RegistrationRejected;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Gdpr\RegistrationGdprHandler;
 use Konventix\Registration\Listeners\CancelPendingRegistrationOnCartLineGone;
+use Konventix\Registration\Listeners\CancelRegistrationOnOrderUndone;
 use Konventix\Registration\Listeners\MailOnRegistrationApproved;
 use Konventix\Registration\Listeners\MailOnRegistrationCancelled;
 use Konventix\Registration\Listeners\MailOnRegistrationConfirmed;
@@ -47,6 +52,8 @@ use Konventix\Registration\Listeners\ProjectRegistrant;
 use Konventix\Registration\Listeners\PromoteOnQuotaReleased;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderLineSettled;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
+use Konventix\Registration\Listeners\RecordReversalOnOrderLineReversed;
+use Konventix\Registration\Listeners\RecordReversalOnPaymentReversed;
 use Konventix\Registration\Models\RegistrationType;
 
 /**
@@ -100,6 +107,19 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // ADR-0047 point 4 (Task 11): the counterpart for a cart order,
         // whose lines `OrderPaid` alone cannot tell apart.
         Event::listen(OrderLineSettled::class, RecordPaymentOnOrderLineSettled::class);
+
+        // ADR-0057 point 5: a settled payment that left again revives the
+        // receivable — `payment_status` back to pending — while the seat and
+        // its quota stay held until the repayment deadline. The per-line twin
+        // is a cart order's, exactly as with `OrderLineSettled`.
+        Event::listen(PaymentReversed::class, RecordReversalOnPaymentReversed::class);
+        Event::listen(OrderLineReversed::class, RecordReversalOnOrderLineReversed::class);
+
+        // ADR-0057 point 5: the order no longer stands at all — the deadline
+        // passed (`reversal_unpaid`) or the whole order was refunded — so the
+        // contractual act ends too, releasing the quota to the waitlist.
+        Event::listen(OrderCancelled::class, CancelRegistrationOnOrderUndone::class);
+        Event::listen(OrderRefunded::class, CancelRegistrationOnOrderUndone::class);
 
         // D-REG-12: a freed quota unit promotes the oldest queued waitlist
         // entry — including units released by expired offers, which is what

@@ -17,6 +17,15 @@ use Konventix\Registration\Models\Registration;
  * `Rejected`/`Cancelled` — including `Confirmed`, unlike `RejectRegistration`
  * which only ever runs pre-confirmation. Releases the quota units the
  * registration held and emits `RegistrationCancelled`.
+ *
+ * `$cancelledByUserId` is nullable because ADR-0057 point 4 introduced a
+ * cancellation with no human behind it: the `commerce:cancel-unpaid-reversals`
+ * sweep cancels the order when the repayment deadline passes, `OrderCancelled`
+ * carries `cancelledByUserId: null` to say so, and
+ * `Listeners\CancelRegistrationOnOrderUndone` passes that through. Null is
+ * recorded as null — `registrations.cancelled_by_user_id` has always been
+ * nullable — rather than attributed to a synthetic system user, so the audit
+ * column never claims a person acted who did not.
  */
 final class CancelRegistration
 {
@@ -31,7 +40,7 @@ final class CancelRegistration
         RegistrationStatus::Confirmed,
     ];
 
-    public function handle(Registration $registration, string $cancelledByUserId, string $reasonCode): Registration
+    public function handle(Registration $registration, ?string $cancelledByUserId, string $reasonCode): Registration
     {
         return DB::transaction(function () use ($registration, $cancelledByUserId, $reasonCode): Registration {
             $this->guardTransition($registration);
