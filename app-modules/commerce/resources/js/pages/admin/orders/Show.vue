@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
-import { FileText, Landmark } from '@lucide/vue';
+import { AlertCircle, FileText, Landmark } from '@lucide/vue';
+import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { document as creditNoteDocument } from '@/routes/admin/credit-notes';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
 import { bookPayment } from '@/routes/admin/orders';
+import type { OrderReversal, UnappliedPayment } from './columns';
 
 /**
  * One order end to end: lines, invoice with billing party, payment
@@ -74,6 +77,10 @@ type Props = {
         issuedOn: string;
         documentReady: boolean;
     }[];
+    /** ADR-0057 point 8 — every row the order has, withdrawn ones included. */
+    reversals: OrderReversal[];
+    /** ADR-0057 point 9 / #6 — money the order could not take. */
+    unappliedPayment: UnappliedPayment | null;
 };
 
 const props = defineProps<Props>();
@@ -85,7 +92,54 @@ function statusVariant(
         return 'default';
     }
 
-    return status === 'cancelled' ? 'destructive' : 'secondary';
+    return status === 'cancelled' || status === 'payment_reversed'
+        ? 'destructive'
+        : 'secondary';
+}
+
+/**
+ * `payment_reversed` is the one status whose raw value misleads: the sale
+ * stands and the amount is owed again (ADR-0057 point 3), which is not
+ * something "payment_reversed" says on its own.
+ */
+const statusLabels: Record<string, string> = {
+    payment_reversed: 'Payment reversed',
+};
+
+const reversalKindLabels: Record<string, string> = {
+    return: 'Return',
+    dispute: 'Dispute',
+    external_refund: 'Dashboard refund',
+};
+
+/**
+ * The day the money is owed back by — the newest final reversal's deadline
+ * (ADR-0057 point 4). An open dispute has none: the provider still holds
+ * the money and nothing is owed yet.
+ */
+const repaymentDeadline = computed<string | null>(
+    () =>
+        props.reversals.find(
+            (reversal) =>
+                reversal.status === 'final' && reversal.repayDueOn !== null,
+        )?.repayDueOn ?? null,
+);
+
+/**
+ * A reversed payment is not "some non-succeeded state" (ADR-0057's
+ * consequences say the detail page must show it as what it is): the money
+ * arrived and left again, which reads as loss, not as pending.
+ */
+function paymentVariant(
+    status: string,
+): 'default' | 'secondary' | 'destructive' {
+    if (status === 'succeeded') {
+        return 'default';
+    }
+
+    return status === 'failed' || status === 'reversed'
+        ? 'destructive'
+        : 'secondary';
 }
 
 function submitBookPayment(): void {
@@ -102,8 +156,14 @@ function submitBookPayment(): void {
             :description="`${order.brand} — created ${order.createdAt ?? 'unknown'}`"
         >
             <Badge :variant="statusVariant(order.status)">{{
-                order.status
+                statusLabels[order.status] ?? order.status
             }}</Badge>
+            <span
+                v-if="order.status === 'payment_reversed' && repaymentDeadline"
+                class="text-sm text-text-muted"
+            >
+                — owed again until {{ repaymentDeadline }}
+            </span>
             <Button
                 v-if="!order.paidAt && order.status !== 'cancelled'"
                 variant="outline"
@@ -113,6 +173,26 @@ function submitBookPayment(): void {
                 Book bank transfer
             </Button>
         </AdminPageHeader>
+
+        <Alert v-if="unappliedPayment">
+            <AlertCircle class="size-4" />
+            <AlertTitle>Unapplied payment</AlertTitle>
+            <AlertDescription>
+                {{ unappliedPayment.provider }} reported
+                {{ unappliedPayment.amount }} {{ unappliedPayment.currency }}
+                received
+                {{ unappliedPayment.receivedAt ?? 'at an unknown time' }}, and
+                this order is not paid. The money moved; what happens to it is
+                yours to decide — refunding it goes through the payment's own
+                account in the provider's dashboard.
+                <span
+                    v-if="unappliedPayment.externalId"
+                    class="font-mono text-xs"
+                >
+                    {{ unappliedPayment.externalId }}
+                </span>
+            </AlertDescription>
+        </Alert>
 
         <div class="grid gap-6 xl:grid-cols-3">
             <Card class="xl:col-span-2">
@@ -365,11 +445,7 @@ function submitBookPayment(): void {
                                 <td class="p-3">
                                     <Badge
                                         :variant="
-                                            payment.status === 'succeeded'
-                                                ? 'default'
-                                                : payment.status === 'failed'
-                                                  ? 'destructive'
-                                                  : 'secondary'
+                                            paymentVariant(payment.status)
                                         "
                                     >
                                         {{ payment.status }}
@@ -392,6 +468,116 @@ function submitBookPayment(): void {
                                         payment.receivedAt ??
                                         payment.failedAt ??
                                         '—'
+                                    }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </CardContent>
+        </Card>
+
+        <Card v-if="reversals.length">
+            <CardHeader>
+                <CardTitle>Reversals</CardTitle>
+            </CardHeader>
+            <CardContent class="flex flex-col gap-3">
+                <p class="text-sm text-text-muted">
+                    Money that left again after it had settled (ADR-0057). The
+                    sale stands and the invoice is unchanged; a final reversal
+                    revives the receivable until the deadline below.
+                </p>
+                <div class="overflow-x-auto rounded-md border border-border">
+                    <table class="w-full text-sm">
+                        <caption class="sr-only">
+                            Reversals recorded against this order
+                        </caption>
+                        <thead>
+                            <tr
+                                class="border-b border-border text-left text-text-muted"
+                            >
+                                <th scope="col" class="p-3 font-medium">
+                                    Kind
+                                </th>
+                                <th scope="col" class="p-3 font-medium">
+                                    Status
+                                </th>
+                                <th
+                                    scope="col"
+                                    class="p-3 text-right font-medium"
+                                >
+                                    Amount
+                                </th>
+                                <th scope="col" class="p-3 font-medium">
+                                    Reference
+                                </th>
+                                <th scope="col" class="p-3 font-medium">
+                                    Reason
+                                </th>
+                                <th scope="col" class="p-3 font-medium">
+                                    Owed again until
+                                </th>
+                                <th scope="col" class="p-3 font-medium">
+                                    When
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                v-for="reversal in reversals"
+                                :key="reversal.id"
+                                class="border-b border-border last:border-0"
+                            >
+                                <td class="p-3">
+                                    {{
+                                        reversalKindLabels[reversal.kind] ??
+                                        reversal.kind
+                                    }}
+                                    <span class="text-xs text-text-muted">
+                                        · {{ reversal.provider }}
+                                    </span>
+                                </td>
+                                <td class="p-3">
+                                    <Badge
+                                        :variant="
+                                            reversal.status === 'final'
+                                                ? 'destructive'
+                                                : 'secondary'
+                                        "
+                                    >
+                                        {{ reversal.status }}
+                                    </Badge>
+                                </td>
+                                <td class="p-3 text-right">
+                                    {{ reversal.amount }}
+                                    {{ reversal.currency }}
+                                    <!-- ADR-0007: the provider's fee is the
+                                         organizer's own cost, never a line on
+                                         our invoice — and only Stripe
+                                         disputes report one. -->
+                                    <p
+                                        v-if="reversal.feeAmount"
+                                        class="text-xs text-text-muted"
+                                    >
+                                        + {{ reversal.feeAmount }}
+                                        {{ reversal.currency }} fee
+                                    </p>
+                                </td>
+                                <td
+                                    class="p-3 font-mono text-xs text-text-muted"
+                                >
+                                    {{ reversal.providerReference }}
+                                </td>
+                                <td class="p-3 text-text-muted">
+                                    {{ reversal.reasonCode ?? '—' }}
+                                </td>
+                                <td class="p-3 text-text-muted">
+                                    {{ reversal.repayDueOn ?? '—' }}
+                                </td>
+                                <td class="p-3 text-text-muted">
+                                    {{
+                                        reversal.finalizedAt ??
+                                        reversal.occurredAt
                                     }}
                                 </td>
                             </tr>

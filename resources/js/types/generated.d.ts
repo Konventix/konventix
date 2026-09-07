@@ -237,9 +237,13 @@ declare namespace Konventix {
             export type OperationsNoticeKind =
                 'stock-exhausted' | 'payment-failed';
             export type OrderStatus =
-                'pending' | 'paid' | 'cancelled' | 'refunded';
+                | 'pending'
+                | 'paid'
+                | 'cancelled'
+                | 'refunded'
+                | 'payment_reversed';
             export type PaymentStatus =
-                'pending' | 'succeeded' | 'failed' | 'expired';
+                'pending' | 'succeeded' | 'failed' | 'expired' | 'reversed';
             export type Permission =
                 | 'commerce.view-orders'
                 | 'commerce.view-invoices'
@@ -255,6 +259,8 @@ declare namespace Konventix {
                 | 'commerce.view-products'
                 | 'commerce.manage-products';
             export type PriceDisplay = 'net' | 'gross';
+            export type ReversalKind = 'return' | 'dispute' | 'external_refund';
+            export type ReversalStatus = 'open' | 'final' | 'withdrawn';
             export type TaxClass = 'standard' | 'reduced';
             export type TaxTreatment =
                 'standard' | 'reverse_charge' | 'small_business';
