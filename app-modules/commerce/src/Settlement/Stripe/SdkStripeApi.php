@@ -51,6 +51,32 @@ final class SdkStripeApi implements StripeApi
         );
     }
 
+    /**
+     * @return array{status: string, payment_status: string, payment_intent: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array
+    {
+        $session = $this->client->checkout->sessions->retrieve(
+            $sessionId,
+            [],
+            ['stripe_account' => $stripeAccountId],
+        );
+
+        $intent = $session->payment_intent;
+
+        return [
+            // The SDK types `status` nullable (a session that has not been
+            // categorised yet); `payment_status` is always one of `paid`,
+            // `unpaid`, `no_payment_required`.
+            'status' => $session->status ?? 'unknown',
+            'payment_status' => $session->payment_status,
+            // Expanded, `payment_intent` is a `PaymentIntent` object rather
+            // than its id; unexpanded it is the id, which is the only form
+            // this call asks for and the only one a refund can use.
+            'payment_intent' => is_string($intent) ? $intent : null,
+        ];
+    }
+
     public function createConnectedAccount(string $displayName, string $contactEmail, string $country): string
     {
         $account = $this->client->v2->core->accounts->create([

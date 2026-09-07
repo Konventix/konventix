@@ -70,6 +70,17 @@ final class MultiProviderSettlementTestFakeStripe implements StripeApi
 
         return $this->capabilities;
     }
+
+    /**
+     * Unused here: only `commerce:reconcile-payments` (#71) reads a session
+     * back, and this fake never drives it.
+     *
+     * @return array{status: string, payment_status: string, payment_intent: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array
+    {
+        return ['status' => 'open', 'payment_status' => 'unpaid', 'payment_intent' => null];
+    }
 }
 
 /**

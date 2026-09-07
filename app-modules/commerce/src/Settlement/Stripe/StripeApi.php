@@ -28,6 +28,25 @@ interface StripeApi
     public function createRefund(array $params, string $stripeAccountId): void;
 
     /**
+     * The current state of a Checkout Session, read back from Stripe —
+     * the fetch-back half Stripe otherwise does not need, because its
+     * webhook is signed and complete (ADR-0039). The scheduled
+     * reconciliation of #71 asks it anyway: a notification lost between
+     * Stripe and this deployment leaves a `pending` payment for money that
+     * moved, and only the provider can say so.
+     *
+     * `status` is the session's own lifecycle (`open`, `complete`,
+     * `expired`); `payment_status` is what settles the payment
+     * (`unpaid`, `paid`, `no_payment_required`), the same field
+     * `StripeWebhookController::settled()` gates on, because with
+     * delayed-notification methods a session completes while still unpaid.
+     * `payment_intent` is the money identifier a later refund needs.
+     *
+     * @return array{status: string, payment_status: string, payment_intent: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array;
+
+    /**
      * Creates the v2 connected account in the SaaS shape ADR-0039 pins:
      * full dashboard, merchant configuration with card payments, Stripe
      * collecting its own fees and carrying the losses — the organizer runs

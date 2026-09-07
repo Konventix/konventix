@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\URL;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Console\ExpireCartsCommand;
 use Konventix\Commerce\Console\ProbeInvoiceNumbering;
+use Konventix\Commerce\Console\ReconcilePayments;
 use Konventix\Commerce\Console\RefreshSettlementCapabilities;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
@@ -349,7 +350,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // sweep that silently fails to register would look like "no invoices
         // are overdue" rather than like a bug.
         if ($this->app->runningInConsole()) {
-            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class, ExpireCartsCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class]);
+            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class, ExpireCartsCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class, ReconcilePayments::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
@@ -363,6 +364,14 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // A Stripe account can activate — or be restricted — on
             // Stripe's own timeline, well after onboarding's return trip.
             $schedule->command(RefreshSettlementCapabilities::class)->dailyAt('06:30');
+
+            // The provider reconciliation #71 asks for. Hourly rather than
+            // daily: a lost notification leaves an order unpaid on every
+            // screen while the money has moved, and a payer who has paid
+            // must not wait a day to see it. `withoutOverlapping()` because
+            // a brand with a long backlog must not stack a second sweep's
+            // provider calls on top of the first's.
+            $schedule->command(ReconcilePayments::class)->hourly()->withoutOverlapping();
 
             // A cart's twenty-minute reservation (ADR-0047, Task 9) needs a
             // sweep on the same cadence as the waitlist offer expiry it

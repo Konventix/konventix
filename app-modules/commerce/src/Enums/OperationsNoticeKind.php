@@ -18,4 +18,12 @@ enum OperationsNoticeKind: string
 {
     case StockExhausted = 'stock-exhausted';
     case PaymentFailed = 'payment-failed';
+
+    /**
+     * `commerce:reconcile-payments` (#71) found a payment the webhook never
+     * reported and corrected it. Distinct from the settlement events the
+     * correction itself raises: this one says the *notification path* is
+     * lossy, which is an operations fact rather than a money fact.
+     */
+    case PaymentReconciled = 'payment-reconciled';
 }
