@@ -12,6 +12,7 @@ import { document as invoiceDocument } from '@/routes/admin/invoices';
 import { bookPayment, cancelReversed } from '@/routes/admin/orders';
 import type { OrderReversal, UnappliedPayment } from './reversals';
 import {
+    canBookPayment,
     orderStatusLabel,
     repaymentDeadline,
     reversalKindLabel,
@@ -169,7 +170,7 @@ function submitCancelReversed(): void {
                 — owed again until {{ deadline }}
             </span>
             <Button
-                v-if="!order.paidAt && order.status !== 'cancelled'"
+                v-if="canBookPayment(order.status)"
                 variant="outline"
                 @click="submitBookPayment"
             >

@@ -30,6 +30,7 @@ import {
 } from '@/routes/admin/orders';
 import { columns as baseColumns, reversalColumn } from './columns';
 import type { OrderRow } from './columns';
+import { canBookPayment } from './reversals';
 
 interface PaginatedOrders {
     data: OrderRow[];
@@ -165,7 +166,7 @@ const columns = computed<ColumnDef<OrderRow>[]>(() => [
                 );
             }
 
-            if (row.original.status === 'pending') {
+            if (canBookPayment(row.original.status)) {
                 cells.push(
                     h(
                         Button,

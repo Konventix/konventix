@@ -565,3 +565,31 @@ it('shows the unapplied-payment callout for money that arrived after cancellatio
             ->whereNot('unappliedPayment.receivedAt', null)
             ->has('reversals', 0));
 });
+
+/**
+ * The contract the console's "Book bank transfer" button depends on
+ * (I2): `RecordPaymentReversal` keeps `paid_at` on purpose, so the button's
+ * old `!paidAt` test hid it for every reversed order — the manual
+ * repayment path ADR-0057 point 3 names ("the door POS or a bank transfer")
+ * was unreachable in the UI while the route behind it worked all along.
+ * `resources/js/pages/admin/orders/reversals.test.ts` pins the condition
+ * itself.
+ */
+it('books a manual payment on a payment_reversed order, the way the console now offers', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->paid()->create(['total_gross' => '119.00']);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
+
+    Event::fake([OrderPaid::class]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/payment")
+        ->assertRedirect();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid);
+
+    Event::assertDispatched(OrderPaid::class, fn (OrderPaid $event): bool => $event->orderId === $order->id
+        && $event->settlementMethod === 'manual');
+});

@@ -39,6 +39,21 @@ export function reversalKindLabel(
 }
 
 /**
+ * Whether the console still offers to book a payment by hand — a bank
+ * transfer the organizer received, or money taken at the door (ADR-0018).
+ *
+ * `payment_reversed` belongs here beside `pending` (ADR-0057 point 3): the
+ * sale stands and the amount is owed again, and `BookManualPayment` settles
+ * that status exactly as it settles a pending one. Deliberately not a
+ * `!paidAt` test — `RecordPaymentReversal` keeps `paid_at` on purpose (the
+ * order *was* paid), so that test hid the button for every reversed order
+ * and left the manual repayment path unreachable in the console.
+ */
+export function canBookPayment(status: string): boolean {
+    return status === 'pending' || status === 'payment_reversed';
+}
+
+/**
  * The day the money is owed back by — the deadline of the newest final
  * reversal (ADR-0057 point 4). An open dispute has none: the provider still
  * holds the money and nothing is owed yet.
