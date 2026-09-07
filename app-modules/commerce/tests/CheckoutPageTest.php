@@ -11,6 +11,11 @@ use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
+use Konventix\Compliance\Models\Consent;
+use Konventix\Compliance\Models\Policy;
+use Konventix\Compliance\Models\PolicyVersion;
+use Konventix\Compliance\Support\CheckoutLegalTexts;
+use Konventix\Identity\Models\User;
 
 /**
  * The public checkout page for `instant` settlement (ADR-0039), addressed
@@ -159,4 +164,104 @@ it('pays the latest order when an amendment added a second one', function (): vo
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('order.id', $delta->id)
             ->where('order.totalGross', '35.70'));
+});
+
+/*
+|--------------------------------------------------------------------------
+| Consent at the registration checkout (GitLab #2)
+|--------------------------------------------------------------------------
+|
+| The same rule as the cart: the AGB and the Widerrufsbelehrung are in front
+| of the payer before the order button, and the agreement is a Consent row
+| against the exact version, not a checkbox nobody kept.
+|
+*/
+
+/**
+ * The two purchase texts published operator-wide for the brand in context
+ * (#76), so the checkout reads the inherited fallback.
+ */
+function checkoutPageLegalTexts(): void
+{
+    foreach ([['terms', 'Terms of Participation'], ['withdrawal', 'Withdrawal Information']] as [$slug, $name]) {
+        $policy = Policy::factory()->operatorWide()->create(['slug' => $slug, 'name' => $name]);
+        PolicyVersion::factory()->for($policy)->operatorWide()->published()->create([
+            'version' => $slug.'-v1',
+            'requires_consent' => $slug === 'terms',
+        ]);
+    }
+}
+
+it('puts the purchase texts and the withdrawal exemption on the payment page', function (): void {
+    [$registrationId] = checkoutPageOrder();
+    checkoutPageLegalTexts();
+
+    $this->get('/pay/registration/'.$registrationId)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('consentSlots', 1)
+            ->where('consentSlots.0.component', 'compliance/CheckoutConsent')
+            ->where('consentSlots.0.props.required', true)
+            ->where('consentSlots.0.props.policies.1.url', '/policies/withdrawal')
+            ->where('consentSlots.0.props.exemptionNotice', CheckoutLegalTexts::EXEMPTION_NOTICE));
+});
+
+it('claims no agreement on the payment page of an instance with no published texts', function (): void {
+    [$registrationId] = checkoutPageOrder();
+
+    $this->get('/pay/registration/'.$registrationId)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('consentSlots.0.props.required', false)
+            ->where('consentSlots.0.props.policies', []));
+});
+
+it('refuses to start a checkout that did not accept the terms, and takes no payment', function (): void {
+    [$registrationId, $order, $account] = checkoutPageOrder();
+    checkoutPageLegalTexts();
+
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => $account->id])
+        ->assertRedirect()
+        ->assertSessionHasErrors('accept_terms');
+
+    expect(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+});
+
+it('records one consent per purchase text for the signed-in payer starting a checkout', function (): void {
+    [$registrationId, , $account] = checkoutPageOrder();
+    checkoutPageLegalTexts();
+    $payer = User::factory()->create();
+
+    $this->actingAs($payer)
+        ->post('/pay/registration/'.$registrationId.'/start', [
+            'account' => $account->id,
+            'accept_terms' => true,
+        ])
+        ->assertRedirect('https://checkout.stripe.test/session');
+
+    $consents = Consent::query()->where('subject_id', $payer->getKey())->get();
+
+    expect($consents)->toHaveCount(2)
+        ->and($consents->pluck('capture_context')->unique()->all())->toBe(['checkout']);
+});
+
+/**
+ * `/pay/registration/{registration}` deliberately carries no `auth`
+ * middleware, so a guest can reach it. The declaration is still required —
+ * the payer has to be shown the texts either way — but there is no subject
+ * to record it against until Compliance issues an account-less subject
+ * identity (see the Consent model's docblock). Recording it under a
+ * fabricated id would be worse than not recording it.
+ */
+it('accepts a guest checkout that ticked the box and records no consent for it', function (): void {
+    [$registrationId, $order, $account] = checkoutPageOrder();
+    checkoutPageLegalTexts();
+
+    $this->post('/pay/registration/'.$registrationId.'/start', [
+        'account' => $account->id,
+        'accept_terms' => true,
+    ])->assertRedirect('https://checkout.stripe.test/session');
+
+    expect(Consent::query()->count())->toBe(0)
+        ->and(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
 });

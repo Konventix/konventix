@@ -24,6 +24,7 @@ use Konventix\Commerce\Data\CartLineQuantityData;
 use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Exceptions\CartCheckoutRefusedException;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
 use Konventix\Commerce\Models\Cart;
@@ -36,6 +37,7 @@ use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Operators\OperatorSettings;
+use Konventix\Platform\Slots\SlotRegistry;
 use LogicException;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
@@ -54,6 +56,7 @@ final class CartController
         private readonly TaxCalculator $taxCalculator,
         private readonly OperatorSettings $operatorSettings,
         private readonly SettlementAdapterRegistry $registry,
+        private readonly SlotRegistry $slots,
     ) {}
 
     public function show(Request $request, BrandContext $brandContext): Response
@@ -96,6 +99,12 @@ final class CartController
         })->all());
 
         return Inertia::render('cart/Show', [
+            // Compliance's consent control (GitLab #2). Commerce may not read
+            // a policy row, so the module that owns the legal texts computes
+            // its own props here through Platform's slot registry (ADR-0003
+            // enforcement point 3), exactly as Registration contributes to
+            // Event's landing page.
+            'consentSlots' => $this->consentSlots(),
             'cart' => CartData::ofCart(
                 $cart,
                 $lineData,
@@ -167,9 +176,18 @@ final class CartController
 
     public function checkout(Request $request): SymfonyResponse
     {
-        $validated = $request->validate([
-            'account' => ['required', 'ulid'],
-        ]);
+        $consentSlots = $this->consentSlots();
+
+        // "Zahlungspflichtig bestellen" concludes the contract, so the
+        // declaration is a field of this request, not a courtesy on the page
+        // (GitLab #2). `accepted` is what puts the error on `accept_terms`
+        // for the control that raised it (ADR-0055). Demanded only where
+        // there is something to declare: an instance with no published texts
+        // renders no control, and a checkout that insisted on one anyway
+        // could never be completed.
+        $validated = $request->validate($this->consentRequired($consentSlots)
+            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
+            : ['account' => ['required', 'ulid']]);
 
         $cart = $this->cartForCheckout($request);
 
@@ -192,6 +210,19 @@ final class CartController
             (string) $request->user()->name,
             (string) $request->user()->email,
         );
+
+        // Recorded before the order is placed: the declaration is what
+        // authorizes it, and an adapter failure a moment later must not lose
+        // the record that it was made. Compliance decides which documents
+        // and which version — Commerce never writes a consent row (ADR-0004).
+        if ($this->consentRequired($consentSlots)) {
+            event(new CheckoutConsentGiven(
+                brandId: $cart->brand_id,
+                subjectId: (string) $request->user()->getAuthIdentifier(),
+                captureContext: 'checkout',
+                acceptedAt: now()->toIso8601String(),
+            ));
+        }
 
         // Only the Action's own guards (cart state, account offered) are
         // caught here — a real adapter failure past that point must reach
@@ -247,6 +278,42 @@ final class CartController
             ->firstOrFail();
 
         return $cart->lines()->findOrFail($line);
+    }
+
+    /**
+     * Compliance's contribution to the consent control, resolved through
+     * Platform's slot registry — same shape and same reason as
+     * `CheckoutController::consentSlots()`.
+     *
+     * @return list<array{module: string, component: string, props: array<string, mixed>}>
+     */
+    private function consentSlots(): array
+    {
+        return array_values($this->slots->for('checkout.consent')
+            ->map(fn (array $entry): array => [
+                'module' => $entry['module'],
+                'component' => $entry['component'],
+                'props' => $entry['props'],
+            ])
+            ->all());
+    }
+
+    /**
+     * Whether a contribution says the payer must confirm it before the order
+     * is placed — the whole of what this module knows about the control it
+     * renders. Same as `CheckoutController::consentRequired()`.
+     *
+     * @param  list<array{module: string, component: string, props: array<string, mixed>}>  $consentSlots
+     */
+    private function consentRequired(array $consentSlots): bool
+    {
+        foreach ($consentSlots as $slot) {
+            if (($slot['props']['required'] ?? false) === true) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -12,12 +12,14 @@ use Inertia\Response;
 use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
+use Konventix\Platform\Slots\SlotRegistry;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
@@ -36,6 +38,7 @@ class CheckoutController
 {
     public function __construct(
         private readonly SettlementAdapterRegistry $registry,
+        private readonly SlotRegistry $slots,
     ) {}
 
     public function show(string $registration): Response
@@ -67,16 +70,25 @@ class CheckoutController
                 $this->registry->forProvider($account->provider),
             )->toArray())->values()->all(),
             'paymentStatus' => $latestPayment?->status->value,
+            // Compliance's consent control (GitLab #2) — see
+            // `CartController::consentSlots()` for why it arrives as a slot
+            // contribution rather than as props this controller computes.
+            'consentSlots' => $this->consentSlots(),
         ]);
     }
 
     public function start(Request $request, string $registration): SymfonyResponse
     {
         $order = $this->orderFor($registration);
+        $consentSlots = $this->consentSlots();
 
-        $validated = $request->validate([
-            'account' => ['required', 'ulid'],
-        ]);
+        // The AGB and the Widerrufsbelehrung are confirmed before the order
+        // button, not after it (GitLab #2). `accepted` puts the error on
+        // `accept_terms`, which is the field the control raised it from
+        // (ADR-0055). Only demanded where something is published to accept.
+        $validated = $request->validate($this->consentRequired($consentSlots)
+            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
+            : ['account' => ['required', 'ulid']]);
 
         abort_unless($order->status === OrderStatus::Pending, 409, 'This order is not payable.');
         abort_if(
@@ -98,6 +110,23 @@ class CheckoutController
             ]);
         }
 
+        // This route deliberately carries no `auth` (see the route file), so
+        // a guest may reach it. They are shown the texts and must confirm
+        // them like anyone else, but there is no subject to record the
+        // declaration against until Compliance issues an account-less
+        // subject identity — recording it under a fabricated id would be
+        // worse than not recording it (see Compliance's Consent model).
+        $payerId = $request->user()?->getAuthIdentifier();
+
+        if ($this->consentRequired($consentSlots) && $payerId !== null) {
+            event(new CheckoutConsentGiven(
+                brandId: $order->brand_id,
+                subjectId: (string) $payerId,
+                captureContext: 'checkout',
+                acceptedAt: now()->toIso8601String(),
+            ));
+        }
+
         $adapter = $this->registry->forProvider($account->provider);
 
         // offeredAccounts() only returns accounts whose adapter implements
@@ -112,6 +141,41 @@ class CheckoutController
 
         // A hard redirect out of the SPA to the provider's hosted page.
         return Inertia::location($redirect->url);
+    }
+
+    /**
+     * Compliance's contribution to the consent control, resolved through
+     * Platform's slot registry — same shape and same reason as
+     * `CartController::consentSlots()`.
+     *
+     * @return list<array{module: string, component: string, props: array<string, mixed>}>
+     */
+    private function consentSlots(): array
+    {
+        return array_values($this->slots->for('checkout.consent')
+            ->map(fn (array $entry): array => [
+                'module' => $entry['module'],
+                'component' => $entry['component'],
+                'props' => $entry['props'],
+            ])
+            ->all());
+    }
+
+    /**
+     * Whether a contribution says the payer must confirm it before the order
+     * is placed. Same as `CartController::consentRequired()`.
+     *
+     * @param  list<array{module: string, component: string, props: array<string, mixed>}>  $consentSlots
+     */
+    private function consentRequired(array $consentSlots): bool
+    {
+        foreach ($consentSlots as $slot) {
+            if (($slot['props']['required'] ?? false) === true) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
