@@ -15,6 +15,11 @@ type Props = {
     policy: {
         name: string;
         slug: string;
+        /**
+         * 'operator' when this is the operator's own text, inherited by
+         * every brand that has not published its own (GitLab #76).
+         */
+        scope: 'operator' | 'brand';
         version: string;
         effectiveAt: string | null;
         requiresConsent: boolean;
@@ -44,6 +49,9 @@ function formatDate(value: string | null): string {
                 <template v-if="props.policy.effectiveAt">
                     · in effect since
                     {{ formatDate(props.policy.effectiveAt) }}
+                </template>
+                <template v-if="props.policy.scope === 'operator'">
+                    · published by the operator for all of its brands
                 </template>
             </p>
         </header>

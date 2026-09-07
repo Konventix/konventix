@@ -115,9 +115,30 @@ it('refunds a paid order and issues a credit note documenting it', function (): 
         OrderRefunded::class,
         fn (OrderRefunded $e): bool => $e->orderId === $order->id
             && $e->settlesId === $order->settles_id
-            && $e->creditNoteId !== null,
+            && $e->creditNoteId !== null
+            && $e->whole === true,
     );
     Event::assertDispatched(CreditNoteIssued::class);
+});
+
+it('flags a partial refund as not whole, so Registration knows the order still owes', function (): void {
+    // ADR-0057 point 5: `OrderRefunded.whole` is the only way Registration
+    // can tell a full refund from a partial one — the amount alone cannot.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+    $partialAmount = bcdiv((string) $order->total_gross, '2', 2);
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request', amount: $partialAmount);
+
+    Event::assertDispatched(
+        OrderRefunded::class,
+        fn (OrderRefunded $e): bool => $e->orderId === $order->id
+            && $e->amountRefunded === $partialAmount
+            && $e->whole === false,
+    );
 });
 
 it('blocks the refund when the registration has a checked-in admission', function (): void {

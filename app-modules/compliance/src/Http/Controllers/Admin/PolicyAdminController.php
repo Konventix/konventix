@@ -73,17 +73,34 @@ class PolicyAdminController
         /** @var array<string, string> $brandNames */
         $brandNames = $brands->pluck('name', 'id')->all();
 
+        $shadows = $this->shadowCounts($policies->getCollection());
+
         return Inertia::render('admin/policies/Index', [
-            'policies' => $policies->through(function (Policy $policy) use ($brandNames, $versions): array {
+            'policies' => $policies->through(function (Policy $policy) use ($brandNames, $shadows, $versions): array {
                 /** @var Collection<int, PolicyVersion> $own */
                 $own = $versions->get($policy->getKey(), collect());
                 $published = $own->firstWhere('state', PolicyVersionState::Published);
+                $operatorWide = $policy->isOperatorWide();
 
                 return [
                     'id' => $policy->getKey(),
                     'name' => $policy->name,
                     'slug' => $policy->slug,
-                    'brandName' => $brandNames[$policy->brand_id] ?? '—',
+                    // Which of the two scopes this row is (GitLab #76). A
+                    // list that showed only "Brand: —" for the operator's own
+                    // texts would read as broken data rather than as the
+                    // fallback every brand inherits.
+                    'scope' => $operatorWide ? 'operator' : 'brand',
+                    'brandName' => $operatorWide
+                        ? __('Operator-wide')
+                        : ($brandNames[$policy->brand_id] ?? '—'),
+                    // How many brands have overridden this operator text —
+                    // an operator text binds fewer brands than it looks like
+                    // it does once one of them publishes its own.
+                    'shadowedByBrands' => $operatorWide ? ($shadows['brandCounts'][$policy->slug] ?? 0) : 0,
+                    // ... and, from the other side, whether this brand row is
+                    // the override.
+                    'shadowsOperator' => ! $operatorWide && in_array($policy->slug, $shadows['operatorSlugs'], true),
                     'versions' => $own->count(),
                     'publishedVersion' => $published?->version,
                     'requiresConsent' => (bool) $published?->requires_consent,
@@ -99,7 +116,11 @@ class PolicyAdminController
     {
         Gate::authorize(Permission::ManagePolicies->value);
 
-        $brandId = $request->validate(['brand_id' => ['required', 'ulid', 'exists:brands,id']])['brand_id'];
+        // Nullable: no brand means the *operator's* copy of a text, which
+        // every brand inherits until it publishes its own (GitLab #76). Only
+        // reachable from the operator host in the first place (ADR-0029),
+        // which is where writing for the whole operator belongs.
+        $brandId = $request->validate(['brand_id' => ['nullable', 'ulid', 'exists:brands,id']])['brand_id'] ?? null;
         $policy = $createPolicy($brandId, PolicyData::validateAndCreate($request->all()));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Policy created.')]);
@@ -132,7 +153,10 @@ class PolicyAdminController
         return Inertia::render('admin/policies/Edit', [
             'policy' => [
                 'id' => $model->getKey(),
-                'brandName' => Brand::query()->whereKey($model->brand_id)->value('name') ?? '—',
+                'scope' => $model->isOperatorWide() ? 'operator' : 'brand',
+                'brandName' => $model->isOperatorWide()
+                    ? __('Operator-wide')
+                    : (Brand::query()->whereKey($model->brand_id)->value('name') ?? '—'),
                 'slugFrozen' => $versions->contains(
                     fn (PolicyVersion $version): bool => $version->state !== PolicyVersionState::Draft,
                 ),
@@ -169,6 +193,34 @@ class PolicyAdminController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Policy saved.')]);
 
         return to_route('admin.policies.edit', $model->getKey());
+    }
+
+    /**
+     * Which slugs on this page are operator-wide, and how many brand rows
+     * exist per slug — the two numbers the "shadowed" columns are read out
+     * of. One query, not one per row.
+     *
+     * Counted across every brand, not only the ones on this page: the point
+     * of the column is that an operator text is *not* what some brand reads,
+     * and pagination must not change that answer.
+     *
+     * @param  Collection<int, Policy>  $policies
+     * @return array{operatorSlugs: list<string>, brandCounts: array<string, int>}
+     */
+    private function shadowCounts(Collection $policies): array
+    {
+        $slugs = $policies->pluck('slug')->unique()->values();
+
+        $rows = Policy::withoutBrandScope()
+            ->whereIn('slug', $slugs)
+            ->get(['slug', 'brand_id']);
+
+        return [
+            'operatorSlugs' => array_values($rows->whereNull('brand_id')->pluck('slug')->unique()->all()),
+            'brandCounts' => $rows->whereNotNull('brand_id')
+                ->countBy(fn (Policy $policy): string => $policy->slug)
+                ->all(),
+        ];
     }
 
     private function find(string $policy): Policy

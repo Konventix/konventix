@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Commerce\Http\Controllers\Admin\BookkeepingExportController;
+use Konventix\Commerce\Http\Controllers\Admin\CommerceBrandSettingsAdminController;
 use Konventix\Commerce\Http\Controllers\Admin\CreditNoteDocumentController;
 use Konventix\Commerce\Http\Controllers\Admin\InvoiceDocumentController;
 use Konventix\Commerce\Http\Controllers\Admin\OrderAdminController;
@@ -27,6 +28,10 @@ Route::delete('/products/{product}', [ProductAdminController::class, 'destroy'])
 Route::get('/orders', [OrderAdminController::class, 'index'])->name('admin.orders.index');
 Route::get('/orders/{order}', [OrderAdminController::class, 'show'])->name('admin.orders.show');
 Route::post('/orders/{order}/payment', [OrderAdminController::class, 'bookPayment'])->name('admin.orders.book-payment');
+// The operator's manual "cancel now" for a reversed order whose payment
+// never came back (ADR-0057 point 4) — the deadline sweep does the same
+// thing automatically, this lets the operator do it earlier.
+Route::post('/orders/{order}/cancel-reversed', [OrderAdminController::class, 'cancelReversed'])->name('admin.orders.cancel-reversed');
 Route::get('/invoices/{invoice}/document', [InvoiceDocumentController::class, 'download'])->name('admin.invoices.document');
 Route::get('/credit-notes/{creditNote}/document', [CreditNoteDocumentController::class, 'download'])->name('admin.credit-notes.document');
 
@@ -44,6 +49,15 @@ Route::put('/settlement-accounts/{account}/label', [SettlementAccountAdminContro
 // Platform's own Brand implicitly, same as BrandAdminController's routes:
 // Brand is not brand-scoped itself, so no BrandScope hardening applies.
 Route::put('/brands/{brand}/waiting-room', [WaitingRoomSettingsAdminController::class, 'update'])->name('admin.brands.waiting-room.update');
+
+// The brand's Commerce settings (ADR-0057 point 4) — today the repayment
+// window a reversed payment gets. `{brand}` binds Platform's own Brand
+// implicitly, same as the waiting-room route above. The form lives on the
+// settlement-accounts page rather than the brand edit page: the brand
+// page's only module extension point is `BrandFeature::settingsComponent`,
+// which renders solely for a per-brand feature that is switched *on*, and
+// a repayment window applies to every brand that ever took money.
+Route::put('/brands/{brand}/commerce-settings', [CommerceBrandSettingsAdminController::class, 'update'])->name('admin.brands.commerce-settings.update');
 
 Route::get('/bookkeeping', [BookkeepingExportController::class, 'index'])->name('admin.bookkeeping.index');
 Route::put('/bookkeeping/settings', [BookkeepingExportController::class, 'saveSettings'])->name('admin.bookkeeping.settings');

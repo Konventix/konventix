@@ -115,6 +115,10 @@ it('draws exactly one invoice number when IssueInvoice is called twice for the s
     // locked (`lockForUpdate`) inside the transaction, before the
     // existence check, not before the transaction opens — is read
     // directly off `IssueInvoice::handle()`'s source, not asserted here.
+    //
+    // The number range's half of that story *is* proven, by real racing
+    // processes rather than by reading: `commerce:probe-invoice-numbering`
+    // and `InvoiceNumberingProbeTest` (#74).
     $first = app(IssueInvoice::class)->handle($order, $order->billing_party, $seller, termsDays: 0, paid: $paid);
     $second = app(IssueInvoice::class)->handle($order, $order->billing_party, $seller, termsDays: 0, paid: $paid);
 

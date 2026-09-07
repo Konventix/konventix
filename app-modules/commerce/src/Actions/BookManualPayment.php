@@ -30,9 +30,13 @@ final class BookManualPayment
 
     public function handle(Order $order): Order
     {
-        if ($order->status !== OrderStatus::Pending) {
+        // ADR-0057 point 3: a `payment_reversed` order is owed again exactly
+        // as a pending one is — the door POS or a bank transfer is one of
+        // the ways the money comes back, alongside the pay link
+        // (`RecordPaymentSuccess`). Every other status stays refused.
+        if (! in_array($order->status, [OrderStatus::Pending, OrderStatus::PaymentReversed], true)) {
             throw new RuntimeException(sprintf(
-                'Order [%s] is not pending (status: %s) — only a pending order can take a manual payment.',
+                'Order [%s] is not pending or payment_reversed (status: %s) — only one of those can take a manual payment.',
                 $order->id,
                 $order->status->value,
             ));

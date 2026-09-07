@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Settlement\Stripe;
 
 use Illuminate\Support\Arr;
 use RuntimeException;
+use Stripe\PaymentIntent;
 use Stripe\StripeClient;
 
 /**
@@ -49,6 +50,39 @@ final class SdkStripeApi implements StripeApi
             $params,
             ['stripe_account' => $stripeAccountId],
         );
+    }
+
+    /**
+     * The intent is expanded rather than left as an id: a delayed
+     * notification method (SEPA, bank transfer) completes the session while
+     * it is still `unpaid`, and only the intent's own status distinguishes
+     * "still processing" from "the attempt was refused" — the fact
+     * `checkout.session.async_payment_failed` would have carried.
+     *
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array
+    {
+        $session = $this->client->checkout->sessions->retrieve(
+            $sessionId,
+            ['expand' => ['payment_intent']],
+            ['stripe_account' => $stripeAccountId],
+        );
+
+        $intent = $session->payment_intent;
+
+        return [
+            // The SDK types `status` nullable (a session that has not been
+            // categorised yet); `payment_status` is always one of `paid`,
+            // `unpaid`, `no_payment_required`.
+            'status' => $session->status ?? 'unknown',
+            'payment_status' => $session->payment_status,
+            // Expanded it is the object; a session Stripe declined to
+            // expand still carries the plain id, which is what a refund
+            // needs.
+            'payment_intent' => $intent instanceof PaymentIntent ? $intent->id : (is_string($intent) ? $intent : null),
+            'payment_intent_status' => $intent instanceof PaymentIntent ? $intent->status : null,
+        ];
     }
 
     public function createConnectedAccount(string $displayName, string $contactEmail, string $country): string

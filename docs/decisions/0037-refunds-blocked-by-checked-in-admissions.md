@@ -58,3 +58,6 @@ ADR-0004 — and the first such import would normalize boundary violations.
 - If a future partial-refund flow refunds *unused* admissions of a
   partially checked-in group, the guard needs per-admission granularity;
   the read model's per-admission keying already permits that.
+- ADR-0057 governs the involuntary reversal — a chargeback, a
+  Rücklastschrift, a dispute — that leaves settled money without a refund
+  ever being requested; this ADR's guard covers only the voluntary path.

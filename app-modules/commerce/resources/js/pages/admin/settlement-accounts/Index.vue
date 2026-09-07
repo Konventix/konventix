@@ -20,6 +20,7 @@ import {
     stripe as connectStripe,
     unzer as connectUnzer,
 } from '@/routes/admin/settlement-accounts';
+import CommerceBrandSettingsCard from '../../../components/admin/CommerceBrandSettingsCard.vue';
 import SettlementAccountCard from '../../../components/admin/SettlementAccountCard.vue';
 import type { SettlementAccount } from '../../../components/admin/SettlementAccountCard.vue';
 
@@ -39,6 +40,7 @@ type Props = {
         name: string;
         accounts: SettlementAccount[];
         connectableProviders: Provider[];
+        commerceSettings: Konventix.Commerce.Data.CommerceBrandSettingsData;
     }[];
 };
 
@@ -257,6 +259,16 @@ function submitConnect(): void {
                         Connect a provider
                     </Button>
                 </template>
+
+                <!--
+                    ADR-0057 point 4: the repayment window for money that
+                    left again through one of the accounts above.
+                -->
+                <hr class="border-border" />
+                <CommerceBrandSettingsCard
+                    :brand-id="brand.id"
+                    :settings="brand.commerceSettings"
+                />
             </CardContent>
         </Card>
     </div>

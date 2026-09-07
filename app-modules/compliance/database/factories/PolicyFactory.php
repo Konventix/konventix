@@ -33,9 +33,28 @@ class PolicyFactory extends Factory
         ];
     }
 
+    /**
+     * The operator's own copy of a text (GitLab #76): `brand_id` explicitly
+     * null, which is how a caller asks for an operator-wide row rather than
+     * the resolved brand's (see Models\Concerns\MayBeOperatorWide).
+     */
+    public function operatorWide(): static
+    {
+        return $this->state(fn (): array => ['brand_id' => null]);
+    }
+
     public function terms(): static
     {
         return $this->state(fn (): array => ['slug' => 'terms', 'name' => 'Terms of Participation']);
+    }
+
+    /**
+     * The Widerrufsbelehrung (GitLab #76). Canonical slug `withdrawal`,
+     * beside `terms` — the pair the public purchase paths ask for.
+     */
+    public function withdrawal(): static
+    {
+        return $this->state(fn (): array => ['slug' => 'withdrawal', 'name' => 'Withdrawal Information']);
     }
 
     public function privacy(): static

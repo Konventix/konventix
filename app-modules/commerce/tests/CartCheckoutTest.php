@@ -32,6 +32,10 @@ use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
+use Konventix\Compliance\Models\Consent;
+use Konventix\Compliance\Models\Policy;
+use Konventix\Compliance\Models\PolicyVersion;
+use Konventix\Compliance\Support\CheckoutLegalTexts;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -72,6 +76,22 @@ final class CartCheckoutTestFakeStripe implements StripeApi
     public function fetchAccount(string $stripeAccountId): array
     {
         return ['card_payments' => 'unknown'];
+    }
+
+    /**
+     * Unused here: only `commerce:reconcile-payments` (#71) reads a session
+     * back, and this fake never drives it.
+     *
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array
+    {
+        return [
+            'status' => 'open',
+            'payment_status' => 'unpaid',
+            'payment_intent' => null,
+            'payment_intent_status' => null,
+        ];
     }
 }
 
@@ -515,4 +535,133 @@ it('is zero when the shop feature is off even for a signed-in member with an old
     test()->actingAs($user)
         ->get('/')
         ->assertInertia(fn (AssertableInertia $page) => $page->where('cart.count', 0));
+});
+
+/*
+|--------------------------------------------------------------------------
+| Consent at the cart checkout (GitLab #2)
+|--------------------------------------------------------------------------
+|
+| "Zahlungspflichtig bestellen" is where the contract is concluded, so the
+| AGB and the Widerrufsbelehrung have to be in front of the payer before it,
+| and the agreement is recorded as a Consent row against the exact policy
+| version — never as a checkbox nobody kept.
+|
+| Commerce never writes that row: it emits CheckoutConsentGiven and Compliance
+| records it (ADR-0004 — events are the only contract between modules, and
+| the architecture test allows nothing else).
+|
+*/
+
+/**
+ * The two purchase texts published for the brand in context, operator-wide
+ * so the fallback is what the checkout reads (#76).
+ */
+function cartCheckoutLegalTexts(): void
+{
+    foreach ([['terms', 'Terms of Participation'], ['withdrawal', 'Withdrawal Information']] as [$slug, $name]) {
+        $policy = Policy::factory()->operatorWide()->create(['slug' => $slug, 'name' => $name]);
+        PolicyVersion::factory()->for($policy)->operatorWide()->published()->create([
+            'version' => $slug.'-v1',
+            'requires_consent' => $slug === 'terms',
+        ]);
+    }
+}
+
+it('puts the purchase texts and the withdrawal exemption on the cart page', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    cartCheckoutLegalTexts();
+    $user = User::factory()->create();
+    cartCheckoutMixedCart($brand, $user->getKey());
+
+    test()->actingAs($user)
+        ->get('/cart')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('cart/Show')
+            ->has('consentSlots', 1)
+            ->where('consentSlots.0.component', 'compliance/CheckoutConsent')
+            ->where('consentSlots.0.props.required', true)
+            ->where('consentSlots.0.props.policies.0.slug', 'terms')
+            ->where('consentSlots.0.props.policies.0.url', '/policies/terms')
+            ->where('consentSlots.0.props.policies.1.slug', 'withdrawal')
+            ->where('consentSlots.0.props.exemptionNotice', CheckoutLegalTexts::EXEMPTION_NOTICE));
+});
+
+it('claims no agreement on the cart page of an instance with no published texts', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    cartCheckoutMixedCart($brand, $user->getKey());
+
+    test()->actingAs($user)
+        ->get('/cart')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('consentSlots.0.props.required', false)
+            ->where('consentSlots.0.props.policies', []));
+});
+
+it('refuses a cart checkout that did not accept the terms, and places no order', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    cartCheckoutLegalTexts();
+    $user = User::factory()->create();
+    cartCheckoutMixedCart($brand, $user->getKey());
+    $account = cartCheckoutAccount();
+
+    test()->actingAs($user)
+        ->post('/cart/checkout', ['account' => $account->id])
+        ->assertRedirect()
+        ->assertSessionHasErrors('accept_terms');
+
+    expect(Order::query()->count())->toBe(0)
+        ->and(Consent::query()->count())->toBe(0);
+});
+
+it('records one consent per purchase text against the current version when the cart is checked out', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    cartCheckoutLegalTexts();
+    $user = User::factory()->create();
+    cartCheckoutMixedCart($brand, $user->getKey());
+    $account = cartCheckoutAccount();
+
+    test()->actingAs($user)
+        ->post('/cart/checkout', ['account' => $account->id, 'accept_terms' => true])
+        ->assertRedirect('https://checkout.stripe.test/cart-session');
+
+    $consents = Consent::query()->where('subject_id', $user->getKey())->get();
+
+    expect($consents)->toHaveCount(2)
+        ->and($consents->pluck('capture_context')->unique()->all())->toBe(['checkout'])
+        ->and($consents->pluck('brand_id')->unique()->all())->toBe([$brand->getKey()]);
+
+    $versions = PolicyVersion::withoutBrandScope()
+        ->whereIn('id', $consents->pluck('policy_version_id'))
+        ->pluck('version')
+        ->sort()
+        ->values()
+        ->all();
+
+    expect($versions)->toBe(['terms-v1', 'withdrawal-v1']);
+});
+
+it('checks out and records nothing on an instance whose purchase texts are unpublished', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    cartCheckoutMixedCart($brand, $user->getKey());
+    $account = cartCheckoutAccount();
+
+    // No accept_terms in the payload: there is nothing to accept, and a
+    // checkout that demanded agreement to a document nobody published would
+    // be unusable on a fresh instance.
+    test()->actingAs($user)
+        ->post('/cart/checkout', ['account' => $account->id])
+        ->assertRedirect('https://checkout.stripe.test/cart-session');
+
+    expect(Order::query()->count())->toBe(1)
+        ->and(Consent::query()->count())->toBe(0);
 });

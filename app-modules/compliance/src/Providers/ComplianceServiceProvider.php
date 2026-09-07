@@ -7,6 +7,7 @@ namespace Konventix\Compliance\Providers;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
+use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Compliance\Console\ApplyRetentionRulesCommand;
 use Konventix\Compliance\Console\SweepUnverifiedRequestsCommand;
 use Konventix\Compliance\Console\WatchSubjectRequestDeadlinesCommand;
@@ -23,14 +24,18 @@ use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
 use Konventix\Compliance\Listeners\NotifySubjectOfRequestOutcome;
 use Konventix\Compliance\Listeners\PruneAuditTrail;
 use Konventix\Compliance\Listeners\RecordAuditableEvents;
+use Konventix\Compliance\Listeners\RecordCheckoutConsent;
 use Konventix\Compliance\Listeners\StartRetentionClock;
+use Konventix\Compliance\Support\CheckoutLegalTexts;
 use Konventix\Compliance\Support\PolicyMarkdown;
 use Konventix\Event\Events\EventConcluded;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Slots\SlotRegistry;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -65,6 +70,10 @@ class ComplianceServiceProvider extends ModuleServiceProvider
     {
         $this->app->singleton(GdprHandlerRegistry::class);
         $this->app->singleton(PolicyMarkdown::class);
+
+        // Stateless: it holds two slugs and one statutory sentence, and
+        // resolves everything else per call.
+        $this->app->singleton(CheckoutLegalTexts::class);
     }
 
     public function boot(): void
@@ -106,6 +115,12 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // module uses.
         Event::listen(EventConcluded::class, StartRetentionClock::class);
         Event::listen(RetentionPeriodElapsed::class, PruneAuditTrail::class);
+
+        // A payer's declaration at a public checkout becomes Consent rows
+        // here (GitLab #2). Commerce emits the event and never touches this
+        // module's tables — events are the only contract between modules
+        // (ADR-0004), and the architecture test allows nothing else.
+        Event::listen(CheckoutConsentGiven::class, [RecordCheckoutConsent::class, 'handle']);
 
         // Telling the subject what happened to their request (Art. 12(3)).
         // Deletion is acknowledged when it *starts* — see the listener for
@@ -307,6 +322,52 @@ class ComplianceServiceProvider extends ModuleServiceProvider
             // start of the working day the deadline actually matters on.
             $schedule->command(WatchSubjectRequestDeadlinesCommand::class)->dailyAt('06:45');
         });
+    }
+
+    /**
+     * The consent control every public purchase path has to render before
+     * its order button (GitLab #2).
+     *
+     * A UI slot rather than a prop the purchasing module computes: Commerce
+     * may not read a policy row, and a legal control whose wording each
+     * checkout writes for itself is a wording that drifts. The contract of
+     * `checkout.consent` is that a contribution declares `required: true`
+     * when the payer must confirm it before the order is placed — that is
+     * all the rendering page needs to know about it.
+     *
+     * The closure is `static` deliberately — `SlotRegistry` is a singleton
+     * that outlives the request under Octane, and a closure capturing `$this`
+     * would pin this provider in memory with it.
+     */
+    protected function registerSlots(): void
+    {
+        $this->app->make(SlotRegistry::class)->add(
+            slot: 'checkout.consent',
+            module: 'compliance',
+            component: 'compliance/CheckoutConsent',
+            props: static function (): array {
+                $brandId = app(BrandContext::class)->id();
+                $texts = $brandId === null ? [] : app(CheckoutLegalTexts::class)->forBrand($brandId);
+
+                return [
+                    // False on an instance that has published neither text:
+                    // the control renders nothing rather than asking someone
+                    // to agree to documents that do not exist, and the
+                    // checkout stays usable.
+                    'required' => $texts !== [],
+                    // Version ids stay on the server. The page needs a name
+                    // and a link; which version a consent binds is resolved
+                    // again when it is recorded, so a client cannot name one.
+                    'policies' => array_map(static fn (array $text): array => [
+                        'slug' => $text['slug'],
+                        'name' => $text['name'],
+                        'url' => $text['url'],
+                    ], $texts),
+                    'exemptionNotice' => CheckoutLegalTexts::EXEMPTION_NOTICE,
+                ];
+            },
+            order: 10,
+        );
     }
 
     /**

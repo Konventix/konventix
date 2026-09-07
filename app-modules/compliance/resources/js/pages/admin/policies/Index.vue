@@ -34,7 +34,13 @@ type PolicyRow = {
     id: string;
     name: string;
     slug: string;
+    /** 'operator' when every brand inherits this text (GitLab #76). */
+    scope: 'operator' | 'brand';
     brandName: string;
+    /** Brands that override this operator text with one of their own. */
+    shadowedByBrands: number;
+    /** Whether this brand row is such an override. */
+    shadowsOperator: boolean;
     versions: number;
     publishedVersion: string | null;
     requiresConsent: boolean;
@@ -104,9 +110,37 @@ const columns: ColumnDef<PolicyRow>[] = [
     },
     {
         id: 'brand',
-        header: 'Brand',
+        header: 'Scope',
         cell: ({ row }) =>
-            h('span', { class: 'text-text-muted' }, row.original.brandName),
+            h('div', { class: 'flex flex-col' }, [
+                h(
+                    'span',
+                    {
+                        class:
+                            row.original.scope === 'operator'
+                                ? 'font-medium text-text'
+                                : 'text-text-muted',
+                    },
+                    row.original.brandName,
+                ),
+                // What the scope actually means for who is bound. An
+                // operator text every brand has overridden binds nobody.
+                row.original.scope === 'operator' &&
+                row.original.shadowedByBrands > 0
+                    ? h(
+                          'span',
+                          { class: 'text-xs text-warning' },
+                          `overridden by ${row.original.shadowedByBrands} brand${row.original.shadowedByBrands === 1 ? '' : 's'}`,
+                      )
+                    : null,
+                row.original.shadowsOperator
+                    ? h(
+                          'span',
+                          { class: 'text-xs text-text-muted' },
+                          'overrides the operator text',
+                      )
+                    : null,
+            ]),
     },
     {
         id: 'published',
@@ -217,12 +251,16 @@ function submit(): void {
                             @submit.prevent="submit"
                         >
                             <div class="grid gap-2">
-                                <Label for="policy-brand">Brand</Label>
+                                <Label for="policy-brand">Scope</Label>
                                 <select
                                     id="policy-brand"
                                     v-model="form.brand_id"
                                     class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                                    aria-describedby="policy-brand-hint"
                                 >
+                                    <option value="">
+                                        Operator-wide (all brands)
+                                    </option>
                                     <option
                                         v-for="brand in props.brands"
                                         :key="brand.id"
@@ -231,6 +269,14 @@ function submit(): void {
                                         {{ brand.name }}
                                     </option>
                                 </select>
+                                <p
+                                    id="policy-brand-hint"
+                                    class="text-xs text-text-muted"
+                                >
+                                    An operator-wide text applies to every brand
+                                    that has not published its own under the
+                                    same slug.
+                                </p>
                                 <InputError :message="form.errors.brand_id" />
                             </div>
                             <div class="grid gap-2">

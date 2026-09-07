@@ -24,6 +24,7 @@ use Konventix\Commerce\Settlement\Mollie\MollieSettlementAdapter;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
 use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
+use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 
 /**
@@ -68,6 +69,22 @@ final class MultiProviderSettlementTestFakeStripe implements StripeApi
         $this->fetchedAccountIds[] = $stripeAccountId;
 
         return $this->capabilities;
+    }
+
+    /**
+     * Unused here: only `commerce:reconcile-payments` (#71) reads a session
+     * back, and this fake never drives it.
+     *
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array
+    {
+        return [
+            'status' => 'open',
+            'payment_status' => 'unpaid',
+            'payment_intent' => null,
+            'payment_intent_status' => null,
+        ];
     }
 }
 
@@ -237,6 +254,9 @@ it('names the provider and the account on the settlement events', function (): v
 
 it('lists every offered hosted account on the checkout page with its label', function (): void {
     $this->withBrand();
+    // Both `/pay/registration/...` routes carry `auth` since #2 — a
+    // declaration at checkout needs a subject to record it against.
+    $this->actingAs(User::factory()->create());
     $registrationId = (string) Str::ulid();
 
     Order::factory()->create([
@@ -269,6 +289,9 @@ it('lists every offered hosted account on the checkout page with its label', fun
 
 it('starts the hosted checkout on the chosen account and records it on the payment', function (): void {
     $this->withBrand();
+    // Both `/pay/registration/...` routes carry `auth` since #2 — a
+    // declaration at checkout needs a subject to record it against.
+    $this->actingAs(User::factory()->create());
     $registrationId = (string) Str::ulid();
 
     $order = Order::factory()->create([
@@ -294,6 +317,9 @@ it('starts the hosted checkout on the chosen account and records it on the payme
 
 it('refuses an account that is not offered, not this brand\'s, or missing', function (): void {
     $brand = $this->withBrand();
+    // Both `/pay/registration/...` routes carry `auth` since #2 — a
+    // declaration at checkout needs a subject to record it against.
+    $this->actingAs(User::factory()->create());
     $registrationId = (string) Str::ulid();
 
     Order::factory()->create([
@@ -331,6 +357,9 @@ it('refuses an account that is not offered, not this brand\'s, or missing', func
 
 it('refuses a second account once a payment succeeded', function (): void {
     $this->withBrand();
+    // Both `/pay/registration/...` routes carry `auth` since #2 — a
+    // declaration at checkout needs a subject to record it against.
+    $this->actingAs(User::factory()->create());
     $registrationId = (string) Str::ulid();
 
     $order = Order::factory()->create([

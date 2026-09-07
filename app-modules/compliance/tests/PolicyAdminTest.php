@@ -206,3 +206,102 @@ it('freezes the slug once a version has been published', function (): void {
     expect($policy->refresh()->slug)->toBe('terms')
         ->and($policy->name)->toBe('Terms');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Operator-wide policies (GitLab #76)
+|--------------------------------------------------------------------------
+|
+| The operator is one legal entity behind all its brands (ADR-0016), so the
+| console writes its AGB and Widerrufsbelehrung once and every brand inherits
+| them. The list has to say which scope a row has, and whether a brand has
+| shadowed an operator text with its own — a legal reviewer who cannot see
+| that is reading a list that lies by omission.
+|
+*/
+
+it('creates an operator-wide policy when no brand is chosen', function (): void {
+    [, $admin] = complianceOperator();
+    $this->withBrand();
+
+    $this->actingAs($admin)
+        ->post('http://admin.compliance.test/admin/policies', [
+            'brand_id' => null,
+            'name' => 'Withdrawal Information',
+            'slug' => 'withdrawal',
+        ])
+        ->assertRedirect();
+
+    $policy = Policy::withoutBrandScope()->where('slug', 'withdrawal')->sole();
+
+    expect($policy->brand_id)->toBeNull()
+        ->and($policy->isOperatorWide())->toBeTrue();
+});
+
+it('drafts and publishes a version of an operator-wide policy without stamping a brand', function (): void {
+    [, $admin] = complianceOperator();
+    $this->withBrand();
+
+    $policy = Policy::factory()->operatorWide()->withdrawal()->create();
+
+    $this->actingAs($admin)
+        ->post("http://admin.compliance.test/admin/policies/{$policy->id}/versions", [
+            'version' => 'v1.0',
+            'content' => 'Placeholder text.',
+            'requiresConsent' => false,
+            'lawfulBasis' => 'contract',
+        ])
+        ->assertRedirect();
+
+    $version = PolicyVersion::withoutBrandScope()->where('policy_id', $policy->id)->sole();
+
+    expect($version->brand_id)->toBeNull();
+
+    $this->actingAs($admin)
+        ->post("http://admin.compliance.test/admin/policy-versions/{$version->id}/publish", [])
+        ->assertRedirect();
+
+    expect($version->refresh()->state)->toBe(PolicyVersionState::Published)
+        ->and($version->brand_id)->toBeNull();
+});
+
+it('marks each row with its scope and says when a brand shadows an operator text', function (): void {
+    [, $admin] = complianceOperator();
+    $brand = $this->withBrand();
+
+    Policy::factory()->operatorWide()->terms()->create(['name' => 'Operator Terms']);
+    Policy::factory()->operatorWide()->withdrawal()->create();
+    Policy::factory()->terms()->create(['name' => 'Brand Terms']);
+
+    $this->actingAs($admin)
+        ->get('http://admin.compliance.test/admin/policies?sort=slug&dir=asc')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/policies/Index')
+            ->has('policies.data', 3)
+            // Ordered by slug: the two `terms` rows, then `withdrawal`.
+            ->where('policies.data.0.scope', 'operator')
+            ->where('policies.data.0.brandName', 'Operator-wide')
+            // An operator text a brand has overridden binds fewer brands
+            // than it looks like it does.
+            ->where('policies.data.0.shadowedByBrands', 1)
+            ->where('policies.data.1.scope', 'brand')
+            ->where('policies.data.1.brandName', $brand->name)
+            ->where('policies.data.1.shadowsOperator', true)
+            ->where('policies.data.2.slug', 'withdrawal')
+            ->where('policies.data.2.shadowedByBrands', 0));
+});
+
+it('shows the scope on the editor of an operator-wide policy', function (): void {
+    [, $admin] = complianceOperator();
+    $this->withBrand();
+
+    $policy = Policy::factory()->operatorWide()->withdrawal()->create();
+
+    $this->actingAs($admin)
+        ->get("http://admin.compliance.test/admin/policies/{$policy->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('policy.scope', 'operator')
+            ->where('policy.brandName', 'Operator-wide'));
+});

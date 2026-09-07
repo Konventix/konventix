@@ -28,6 +28,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event as EventDispatcher;
 use Illuminate\Support\Str;
+use Konventix\Compliance\Database\Seeders\OperatorLegalTextsSeeder;
 use Konventix\Event\Models\Event;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Brands\BrandContext;
@@ -144,6 +145,13 @@ class SeedDemoDataCommand extends Command
 
         // Baseline: capabilities, dev brand, operator + admin login.
         Artisan::call('db:seed', ['--force' => true], $this->output);
+
+        // The operator's own AGB and Widerrufsbelehrung, as placeholders
+        // (#76). Operator-wide rather than per brand, so it belongs here and
+        // not in the per-brand loop below: without them the public checkouts
+        // have nothing to put in front of a payer and render no consent
+        // control at all (#2). Idempotent per slug.
+        app(OperatorLegalTextsSeeder::class)->run();
 
         $this->linkPublicStorage();
 

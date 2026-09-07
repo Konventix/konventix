@@ -78,3 +78,7 @@ times.
   ADR-0037 check-in guard passes.
 - A fourth provider is: one adapter class, one `register()` line, one
   webhook route, and rows in no new tables.
+- ADR-0057 extends the webhook's authority to the involuntary reversal — a
+  chargeback, a Rücklastschrift, a PayPal dispute — the same
+  settlement-truth-from-webhook rule this ADR establishes, applied to money
+  leaving after `OrderPaid` instead of arriving.

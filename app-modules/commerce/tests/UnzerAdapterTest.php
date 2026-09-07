@@ -5,9 +5,13 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\ReversalKind;
+use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\OrderPaid;
+use Konventix\Commerce\Events\PaymentReversed;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaymentSnapshot;
@@ -33,6 +37,9 @@ final class UnzerAdapterTestFakeApi implements UnzerApi
 
     public ?string $fetchOrderId = null;
 
+    /** @var list<array{id: string, amount: string, currency: string, date: ?string}> */
+    public array $fetchChargebacks = [];
+
     public function createPaypage(
         float $amount,
         string $currency,
@@ -55,7 +62,12 @@ final class UnzerAdapterTestFakeApi implements UnzerApi
     {
         $this->fetches[] = ['paymentId' => $paymentId, 'privateKey' => $privateKey];
 
-        return new UnzerPaymentSnapshot(id: $paymentId, state: $this->fetchState, orderId: $this->fetchOrderId);
+        return new UnzerPaymentSnapshot(
+            id: $paymentId,
+            state: $this->fetchState,
+            orderId: $this->fetchOrderId,
+            chargebacks: $this->fetchChargebacks,
+        );
     }
 
     public function refundPayment(string $paymentId, float $amount, string $privateKey): void
@@ -205,4 +217,48 @@ it('refunds through the brand key against the recorded Unzer payment', function 
         ->and($fake->refunds[0]['paymentId'])->toBe('s-pay-9')
         ->and($fake->refunds[0]['amount'])->toBe(119.00)
         ->and($fake->refunds[0]['privateKey'])->toBe('s-priv-fake');
+});
+
+/**
+ * The reversal half of the same account-level fetch-back (ADR-0057
+ * point 7): state `chargeback` on a settled payment is no longer a code
+ * comment.
+ */
+it('records an Unzer chargeback on a settled payment', function (): void {
+    [$account, $order, $fake] = unzerAdapterTestSetup();
+
+    $redirect = app(UnzerSettlementAdapter::class)->startCheckout($account, $order, 'https://brand.test/return');
+
+    $fake->fetchState = 'completed';
+    $fake->fetchOrderId = $redirect->paymentId;
+    test()->post('/api/commerce/webhooks/unzer/'.$account->id, ['paymentId' => 's-pay-1'])->assertOk();
+
+    $fake->fetchState = 'chargeback';
+    $fake->fetchChargebacks = [[
+        'id' => 's-cbk-1',
+        'amount' => '119.00',
+        'currency' => 'EUR',
+        'date' => '2026-09-07 09:00:00',
+    ]];
+
+    Event::fake([PaymentReversed::class]);
+
+    test()->post('/api/commerce/webhooks/unzer/'.$account->id, ['paymentId' => 's-pay-1'])->assertOk();
+
+    $reversal = PaymentReversal::withoutBrandScope()->sole();
+
+    expect($reversal->kind)->toBe(ReversalKind::Return)
+        ->and($reversal->status)->toBe(ReversalStatus::Final)
+        ->and($reversal->provider_reference)->toBe('s-cbk-1')
+        ->and((string) $reversal->amount)->toBe('119.00')
+        ->and($order->refresh()->status)->toBe(OrderStatus::PaymentReversed)
+        ->and(Payment::withoutBrandScope()->findOrFail($redirect->paymentId)->status)
+        ->toBe(PaymentStatus::Reversed);
+
+    Event::assertDispatched(PaymentReversed::class, fn (PaymentReversed $e): bool => $e->kind === 'return');
+
+    // Unzer notifies per account and repeats; the chargeback converges.
+    test()->post('/api/commerce/webhooks/unzer/'.$account->id, ['paymentId' => 's-pay-1'])->assertOk();
+
+    expect(PaymentReversal::withoutBrandScope()->count())->toBe(1);
 });

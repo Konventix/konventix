@@ -15,6 +15,12 @@ namespace Konventix\Commerce\Events;
  * `settlesType`/`settlesId` are carried so Registration can react without a
  * lookup, exactly as `OrderPaid` does.
  *
+ * `whole` is true when the refund covers the order's full gross total.
+ * `amountRefunded` alone cannot say that — a partial refund and a full one
+ * both carry an amount — and ADR-0057 point 5 needs the distinction:
+ * Registration cancels the registration only on a whole-order refund,
+ * exactly as it does on `OrderCancelled` with reason `reversal_unpaid`.
+ *
  * Payload is scalars/ULIDs only (ADR-0004).
  */
 final readonly class OrderRefunded
@@ -29,5 +35,6 @@ final readonly class OrderRefunded
         public ?string $creditNoteId,
         public string $reasonCode,
         public string $refundedAt,
+        public bool $whole,
     ) {}
 }

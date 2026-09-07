@@ -22,4 +22,17 @@ enum PaymentStatus: string
      * which says the payer tried and the payment did not go through.
      */
     case Expired = 'expired';
+
+    /**
+     * The money left again after it had settled (ADR-0057 point 1) —
+     * written only when a `payment_reversals` row becomes final for this
+     * payment's **whole** amount, so every existing "did this pay?"
+     * question stays a one-column read while the row says why and how much.
+     * A partial reversal leaves the payment `Succeeded` and is an operator
+     * case until #35's partial payments exist.
+     *
+     * Terminal for the refund guards: a reversed payment is not refundable,
+     * because there is nothing left to refund.
+     */
+    case Reversed = 'reversed';
 }

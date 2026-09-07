@@ -347,6 +347,34 @@ licensing.
   not a workaround.
 - **Refunds and partial credit notes** as domain flows, with PSP calls as side
   effects.
+- **Payment reversals and their reconciliation** (ADR-0057): the
+  `payment_reversals` row, `PaymentStatus::Reversed`,
+  `OrderStatus::PaymentReversed`, and `RecordPaymentReversal`, called from
+  Stripe's `charge.dispute.*`/`charge.refunded` webhooks and from Mollie's
+  and Unzer's fetch-back adapters. `commerce:reconcile-payments` — hourly
+  (#71). Asks each PSP what really happened to a `pending` payment between
+  15 minutes and 7 days old, and re-reads every settled Mollie/Unzer
+  payment of the last 90 days for chargebacks and dashboard refunds.
+  Corrections go through the same Actions the webhooks use and are logged
+  at warning with "found by reconciliation"; each one raises the
+  `payment-reconciled` operator notice. Pending *Unzer* payments are out of
+  scope until `UnzerApi` carries an order-id lookup — a Paypage id is not a
+  payment id. `commerce:cancel-unpaid-reversals` — daily at 07:05
+  (ADR-0057 point 4). Cancels every order whose final `return`/`dispute`
+  reversal passed its `repay_due_on` unpaid, issuing a credit note with
+  reason `cancellation` where an invoice exists. An order with a
+  checked-in admission is never cancelled: its invoice's `overdue_at` is
+  set to the missed deadline and the dunning ladder takes it from there.
+  The deadline itself is a per-brand setting,
+  `commerce_brand_settings.reversal_repayment_days` (1..60, default 7, set
+  beside the brand's settlement accounts). The orders console carries the
+  reversal surface of ADR-0057 point 8: a "Reversals & unapplied money"
+  view listing every order with an open or final reversal beside every
+  order holding a succeeded payment its status cannot take, and an order
+  page that shows every reversal row (withdrawn ones included), the
+  repayment deadline, and the unapplied-payment callout of ADR-0057
+  point 9. A withdrawn dispute is deliberately absent from the list: it
+  moved no money and is no operator task.
 - **Settlement adapters** behind a single contract, **account-scoped from day
   one** (ADR-0007): each brand or operator connects its own Stripe, Mollie or
   Unzer account, and every adapter call carries that account. ADR-0039 pins
@@ -404,8 +432,13 @@ implemented and their payloads are the contract.
 | `PaymentReceived` | Any payment is recorded — a webhook-confirmed PSP payment or a manually booked bank transfer. Distinct from `OrderPaid`: this is about the money that arrived, that one about what it means for the order | `payment_id`, `order_id`, `brand_id`, `amount`, `currency`, `settlement_method`, `external_reference` (nullable — manual bookings have none), `received_at`, `settlement_account_id` (nullable — manual bookings have none) |
 | `PaymentFailed` | An adapter reports a failed or expired attempt (ADR-0039). The order stays pending — a new checkout may follow | `payment_id`, `order_id`, `brand_id`, `settlement_method`, `reason_code`, `failed_at`, `settlement_account_id` (nullable — manual bookings have none) |
 | `SettlementAccountConnected` | A brand finishes connecting its own PSP account (ADR-0007) — from this moment its orders settle through that provider | `settlement_account_id`, `brand_id`, `provider`, `connected_at` |
-| `OrderCancelled` (proposed) | An order is cancelled before or after settlement | `order_id`, `cancelled_by_user_id`, `reason_code`, `cancelled_at` |
-| `OrderRefunded` | Money went back to the payer. Distinct from `CreditNoteIssued`: that is the document, this is the money. An ADR-0036 transfer issues the first without the second, so a consumer counting refunds must listen here | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_refunded`, `currency`, `credit_note_id` (nullable — an uninvoiced order has no document), `reason_code`, `refunded_at` | implemented |
+| `OrderCancelled` (ADR-0057 point 4) | An order is cancelled before or after settlement. First producer: `CancelOrderForUnpaidReversal`, reached either from the daily `commerce:cancel-unpaid-reversals` sweep once `repay_due_on` has passed, or from an operator cancelling by hand before it. **Registration consumes this** — on `reason_code: 'reversal_unpaid'` it cancels the registration through `CancelRegistration`, releasing the quota (ADR-0057 point 5) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `cancelled_by_user_id` (nullable — the sweep has none), `reason_code`, `credit_note_id` (nullable — an uninvoiced order has no document), `cancelled_at` |
+| `OrderLineCancelled` (ADR-0057 points 4 and 5) | One order line's sale was undone by the order's cancellation — the mirror of `OrderLineReversed`, emitted per `registration`-kind line alongside `OrderCancelled`, **only for an order whose `settles_type` is `cart`**. Without it a cancelled cart order would leave its registration lines confirmed and their quota held: `OrderCancelled` alone cannot say which lines it undid, and Registration may not read the lines (ADR-0004). **Registration consumes this** (`CancelRegistrationOnOrderLineCancelled`) | `order_id`, `brand_id`, `kind`, `ref_id`, `order_request_key`, `reason_code`, `cancelled_by_user_id` (nullable), `cancelled_at` |
+| `OrderRefunded` | Money went back to the payer. Distinct from `CreditNoteIssued`: that is the document, this is the money. An ADR-0036 transfer issues the first without the second, so a consumer counting refunds must listen here | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_refunded`, `currency`, `credit_note_id` (nullable — an uninvoiced order has no document), `reason_code`, `refunded_at`, `whole` (ADR-0057 point 5: the amount alone cannot say whether the whole order was refunded, and Registration cancels the registration only when it was) |
+| `PaymentReversed` (ADR-0057) | Money that had settled left again and the reversal is final — a `return` on arrival, a `dispute` on loss. Emitted once from `RecordPaymentReversal`; never for an open or withdrawn dispute. **Registration consumes this** to set `payment_status` back to `pending` while leaving `status` and the held quota alone (ADR-0057 point 5). **Admission never listens** — ADR-0057 point 6 | `reversal_id`, `payment_id`, `order_id`, `brand_id`, `settles_type`, `settles_id`, `kind`, `amount`, `currency`, `settlement_method`, `settlement_account_id` (nullable), `provider_reference`, `reason_code` (nullable — the provider's own string), `repay_due_on` (nullable), `reversed_at` |
+| `OrderLineReversed` (ADR-0057) | One order line's settlement was undone — the mirror of `OrderLineSettled`, emitted per `registration`-kind line alongside `PaymentReversed`, **only for an order whose `settles_type` is `cart`**, for the same reason `OrderLineSettled` exists. **Registration consumes this** (`RecordReversalOnOrderLineReversed`) | `order_id`, `brand_id`, `kind`, `ref_id`, `order_request_key`, `amount_gross`, `currency`, `reversed_at`, `settlement_account_id` (nullable) |
+| `PaymentReversalRecorded` (ADR-0057) | **Module-internal.** A `payment_reversals` row was created or moved — every reversal, every transition, including an opened dispute, a won one and a partial return, none of which crosses the module boundary. Carries the operator notice (ADR-0057 point 8), not a contract | `reversal_id`, `payment_id`, `order_id`, `brand_id`, `kind`, `status`, `amount`, `currency`, `provider`, `provider_reference`, `reason_code` (nullable), `occurred_at` |
+| `PaymentUnapplied` (ADR-0057 point 9, #6) | **Module-internal.** A PSP success arrived for an order the checkout-grace sweep had already cancelled: the money moved and the order cannot take it. What happens next is the operator's decision, which this event does not make. The data definition is `Payment.status = succeeded AND order.status = cancelled`, queried by `Payment::scopeUnapplied()` — a `refunded` order's payment also stays `succeeded`, but that money went back on purpose (ADR-0037) and is nothing to apply | `payment_id`, `order_id`, `brand_id`, `amount`, `currency`, `provider`, `settlement_account_id` (nullable), `received_at` |
 | `InvoiceIssued` | An invoice number is drawn from the brand's range and the invoice is finalized — immutable from this moment (ADR-0031) | `invoice_id`, `order_id`, `brand_id`, `invoice_number`, `issued_on`, `due_on`, `total_gross`, `currency` |
 | `InvoiceOverdue` | An issued invoice passes its due date with its order unpaid. Emitted **once per invoice**, not once per sweep — the sweep runs daily and re-emitting would make one unpaid invoice a daily notification about the same fact | `invoice_id`, `invoice_number`, `order_id`, `brand_id`, `total_gross`, `currency`, `due_on`, `days_overdue`, `detected_at` | implemented |
 | `DunningLevelRaised` | An overdue invoice reached the next days-overdue threshold. Commerce declares *that* a level was reached; Messaging decides what a level means to a recipient — the same split D-CNT-08 draws for announcements, which is why no mail is sent from here | `invoice_id`, `invoice_number`, `order_id`, `brand_id`, `level`, `days_overdue`, `raised_at`, `billing_name`, `billing_email` (nullable — the contact may have no account), `total_gross`, `currency`, `due_on` (billing scalars added for ADR-0041 point 8: Messaging's listener must not read this module's models) | implemented |

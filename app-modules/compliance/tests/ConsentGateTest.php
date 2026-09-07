@@ -7,6 +7,7 @@ use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\Brand;
 
 /**
  * The public consent surface: the published policy page, the
@@ -217,4 +218,43 @@ it('re-raises the gate after a required consent is withdrawn', function (): void
     $this->actingAs($user)
         ->get('http://localhost/regate-fixture')
         ->assertRedirect(route('policies.required', absolute: false));
+});
+
+it('refuses to record consent to another brand\'s own text', function (): void {
+    // The form posts version ids back and the controller escapes BrandScope
+    // on purpose (ADR-0010, #76): a version of an *operator-wide* policy
+    // carries no `brand_id`, and the scoped query would drop exactly the
+    // texts every brand inherits. Escaping it for everything, though, also
+    // accepted a neighbouring brand's own published version — a consent row
+    // pointing at wording this brand never serves. Only the policies
+    // `Policy::resolvedFor()` yields may be agreed to here.
+    $mine = $this->withBrand();
+    $user = User::factory()->create();
+
+    $this->withBrand(Brand::factory()->create());
+    $foreign = PolicyVersion::factory()->for(Policy::factory())->published()->create();
+
+    $this->withBrand($mine);
+
+    $this->actingAs($user)
+        ->post('http://localhost/consents', ['versionIds' => [$foreign->id]])
+        ->assertRedirect();
+
+    expect(Consent::withoutBrandScope()->count())->toBe(0);
+});
+
+it('still records consent to the operator-wide text every brand inherits', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+
+    $version = PolicyVersion::factory()
+        ->for(Policy::factory()->operatorWide())
+        ->published()
+        ->create(['brand_id' => null]);
+
+    $this->actingAs($user)
+        ->post('http://localhost/consents', ['versionIds' => [$version->id]])
+        ->assertRedirect();
+
+    expect(Consent::query()->where('policy_version_id', $version->id)->count())->toBe(1);
 });

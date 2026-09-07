@@ -8,19 +8,21 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
-use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Compliance\Support\OutstandingConsents;
 use Konventix\Compliance\Support\PolicyMarkdown;
+use Konventix\Platform\Brands\BrandContext;
 
 /**
  * The public policy surface on the brand's own domain: the currently
  * published text of one policy, and the screen that asks for agreement when
  * the `require-consent` gate has blocked a route.
  *
- * Brand scoping is `BelongsToBrand`'s global scope — this is a brand host, so
- * nothing here escapes it (ADR-0010).
+ * Brand scoping is `BelongsToBrand`'s global scope everywhere except the two
+ * reads that must see the operator's inherited texts as well: those go
+ * through `Policy::resolveFor()`/`OutstandingConsents`, which escape it
+ * deliberately and say why (ADR-0010, GitLab #76).
  *
  * Only a *published* version is ever readable, and only once its effective
  * date has arrived. A draft is not a legal text, and a version dated for
@@ -28,19 +30,20 @@ use Konventix\Compliance\Support\PolicyMarkdown;
  */
 final class PolicyController
 {
-    public function show(string $slug, PolicyMarkdown $markdown): Response
+    public function show(string $slug, PolicyMarkdown $markdown, BrandContext $brandContext): Response
     {
-        /** @var Policy|null $policy */
-        $policy = Policy::query()->where('slug', $slug)->first();
+        $brandId = $brandContext->id();
+
+        abort_if($brandId === null, 404);
+
+        // The brand's own text where it published one, the operator's
+        // otherwise (GitLab #76) — `Policy::resolveFor()` is the single place
+        // that decides, and the only one that escapes BrandScope for it.
+        $policy = Policy::resolveFor($brandId, $slug);
 
         abort_if($policy === null, 404);
 
-        /** @var PolicyVersion|null $version */
-        $version = PolicyVersion::query()
-            ->where('policy_id', $policy->getKey())
-            ->where('state', PolicyVersionState::Published)
-            ->where('effective_at', '<=', now())
-            ->first();
+        $version = $policy->currentVersion();
 
         abort_if($version === null, 404);
 
@@ -48,6 +51,11 @@ final class PolicyController
             'policy' => [
                 'name' => $policy->name,
                 'slug' => $policy->slug,
+                // Which of the two texts this is. The page says so out loud:
+                // "published by the operator" is a different statement from
+                // "published by this brand", and a visitor comparing two
+                // brands' terms deserves to know which one they are reading.
+                'scope' => $policy->isOperatorWide() ? 'operator' : 'brand',
                 'version' => $version->version,
                 'effectiveAt' => $version->effective_at?->toDateString(),
                 'requiresConsent' => $version->requires_consent,

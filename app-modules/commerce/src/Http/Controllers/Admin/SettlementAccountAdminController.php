@@ -14,9 +14,11 @@ use Konventix\Commerce\Actions\DisconnectSettlementAccount;
 use Konventix\Commerce\Actions\MarkSettlementAccountConnected;
 use Konventix\Commerce\Actions\RefreshSettlementAccountCapabilities;
 use Konventix\Commerce\Actions\UpdateSettlementAccountLabel;
+use Konventix\Commerce\Data\CommerceBrandSettingsData;
 use Konventix\Commerce\Data\UpdateSettlementAccountLabelData;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
+use Konventix\Commerce\Models\CommerceBrandSettings;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
@@ -81,6 +83,13 @@ class SettlementAccountAdminController
                             self::PROVIDERS,
                             $brandAccounts->pluck('provider')->all(),
                         )),
+                        // ADR-0057 point 4: how long a payer has to put back
+                        // money that was reversed. It belongs beside the
+                        // accounts the money left through, and `forBrand()`
+                        // answers for a brand that never opened the form.
+                        'commerceSettings' => CommerceBrandSettingsData::ofModel(
+                            CommerceBrandSettings::forBrand((string) $brand->getKey()),
+                        )->toArray(),
                     ];
                 })
                 ->values()

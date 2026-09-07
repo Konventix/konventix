@@ -57,6 +57,8 @@ type VersionRow = {
 type Props = {
     policy: Konventix.Compliance.Data.PolicyData & {
         id: string;
+        /** 'operator' when every brand inherits this text (GitLab #76). */
+        scope: 'operator' | 'brand';
         brandName: string;
         slugFrozen: boolean;
     };
@@ -183,7 +185,11 @@ function openVersion(id: string): void {
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="props.policy.name"
-            :description="`${props.policy.slug} · ${props.policy.brandName}`"
+            :description="
+                props.policy.scope === 'operator'
+                    ? `${props.policy.slug} · ${props.policy.brandName} — every brand inherits this text unless it publishes its own`
+                    : `${props.policy.slug} · ${props.policy.brandName}`
+            "
         >
             <Button variant="outline" as-child>
                 <Link :href="policiesIndex().url">

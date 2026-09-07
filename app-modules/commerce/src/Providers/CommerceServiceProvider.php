@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Konventix\Admission\Events\AdmissionCheckedIn;
+use Konventix\Commerce\Console\CancelUnpaidReversals;
 use Konventix\Commerce\Console\ExpireCartsCommand;
+use Konventix\Commerce\Console\ProbeInvoiceNumbering;
+use Konventix\Commerce\Console\ReconcilePayments;
 use Konventix\Commerce\Console\RefreshSettlementCapabilities;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
@@ -21,15 +27,21 @@ use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderPlaced;
 use Konventix\Commerce\Events\PaymentFailed;
+use Konventix\Commerce\Events\PaymentReversalRecorded;
+use Konventix\Commerce\Events\PaymentReversed;
+use Konventix\Commerce\Events\PaymentUnapplied;
 use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Commerce\Gdpr\CommerceGdprHandler;
 use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
 use Konventix\Commerce\Listeners\IssueInvoiceOnOrderPaid;
 use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentFailed;
+use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentReversalRecorded;
+use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentUnapplied;
 use Konventix\Commerce\Listeners\NotifyOperatorsOnStockExhausted;
 use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
 use Konventix\Commerce\Listeners\SendOrderConfirmationOnOrderPlaced;
 use Konventix\Commerce\Listeners\SendPaymentFailedMailOnPaymentFailed;
+use Konventix\Commerce\Listeners\SendPaymentReversedMailOnPaymentReversed;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
@@ -122,6 +134,40 @@ class CommerceServiceProvider extends ModuleServiceProvider
     }
 
     /**
+     * `parent::boot()` first — the route files it loads carry the
+     * `throttle:commerce-webhooks` middleware the limiter below names, and
+     * the limiter itself is resolved per request, not at registration.
+     */
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->configureRateLimiting();
+    }
+
+    /**
+     * The PSP webhook throttle (#71). `bootstrap/app.php` declares no `api`
+     * throttler, so without this the three endpoints of
+     * `routes/api/commerce.php` are unlimited — and Mollie's and Unzer's
+     * handlers answer *every* request with a call to the provider's own API
+     * (ADR-0039's fetch-back model), so a flood spends the organizer's own
+     * API quota, not just log lines. Stripe's is cheaper (a signature check
+     * first), but the limiter is per route group so all three share it.
+     *
+     * 120 per minute per IP is deliberately generous: it is a ceiling on
+     * abuse, never a shaper of real traffic. A provider replaying a backlog
+     * after an outage, or a busy sale settling, arrives in bursts from a
+     * small set of provider IPs, and a webhook the PSP retries for days
+     * because we answered 429 is worse than the flood this guards against.
+     * Keyed by IP rather than by route: one attacker must not be able to
+     * lock out a provider by flooding a different endpoint.
+     */
+    private function configureRateLimiting(): void
+    {
+        RateLimiter::for('commerce-webhooks', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip() ?? 'unknown'));
+    }
+
+    /**
      * ADR-0047: Commerce is Core and cannot be switched off, so the shop and
      * the waiting room in front of it are per-brand Pennant features instead
      * of module gates. Both default to off — a brand opts in explicitly.
@@ -208,6 +254,19 @@ class CommerceServiceProvider extends ModuleServiceProvider
         Event::listen(PaymentFailed::class, SendPaymentFailedMailOnPaymentFailed::class);
         Event::listen(StockExhausted::class, NotifyOperatorsOnStockExhausted::class);
         Event::listen(PaymentFailed::class, NotifyOperatorsOnPaymentFailed::class);
+
+        // ADR-0057 point 8: both sides of a reversal. The operator hears
+        // about every row that means something — an opened dispute, a final
+        // return or lost dispute — off the module-internal
+        // `PaymentReversalRecorded`; the payer hears about the money leaving
+        // again off the cross-domain `PaymentReversed`, which fires only
+        // when a reversal is final. A won dispute produces neither.
+        Event::listen(PaymentReversalRecorded::class, NotifyOperatorsOnPaymentReversalRecorded::class);
+        Event::listen(PaymentReversed::class, SendPaymentReversedMailOnPaymentReversed::class);
+
+        // ADR-0057 point 9 / #6: money for an order the grace sweep already
+        // cancelled. Operators only — what happens next is their decision.
+        Event::listen(PaymentUnapplied::class, NotifyOperatorsOnPaymentUnapplied::class);
     }
 
     /**
@@ -311,7 +370,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // sweep that silently fails to register would look like "no invoices
         // are overdue" rather than like a bug.
         if ($this->app->runningInConsole()) {
-            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class, ExpireCartsCommand::class, WaitingRoomTick::class]);
+            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class, ExpireCartsCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class, ReconcilePayments::class, CancelUnpaidReversals::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
@@ -325,6 +384,27 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // A Stripe account can activate — or be restricted — on
             // Stripe's own timeline, well after onboarding's return trip.
             $schedule->command(RefreshSettlementCapabilities::class)->dailyAt('06:30');
+
+            // The provider reconciliation #71 asks for, split by the two
+            // questions it asks. Hourly for the pending one: a lost
+            // notification leaves an order unpaid on every screen while the
+            // money has moved, and a payer who has paid must not wait a day
+            // to see it. Daily for the settled one (ADR-0057 point 7): a
+            // chargeback is a fact that changes at most once, and re-reading
+            // ninety days of settled payments hourly would spend one
+            // provider call per settled payment per hour to learn nothing.
+            // `withoutOverlapping()` because a brand with a long backlog
+            // must not stack a second sweep's provider calls on top of the
+            // first's — the two entries carry different command strings, so
+            // they take different mutexes and never block each other.
+            $schedule->command(ReconcilePayments::class, ['--pending'])->hourly()->withoutOverlapping();
+            $schedule->command(ReconcilePayments::class, ['--settled'])->dailyAt('06:40')->withoutOverlapping();
+
+            // ADR-0057 point 4's deadline sweep, in the morning beside the
+            // dunning sweep it hands checked-in orders to. Daily because
+            // `repay_due_on` is a date: a more frequent run would ask the
+            // same question repeatedly to reach the same answer.
+            $schedule->command(CancelUnpaidReversals::class)->dailyAt('07:05');
 
             // A cart's twenty-minute reservation (ADR-0047, Task 9) needs a
             // sweep on the same cadence as the waitlist offer expiry it
@@ -606,11 +686,108 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
         ));
 
+        // ADR-0057 point 8: money that had settled left again, explained to
+        // the payer with the deadline of point 4 and the link back to paying
+        // (`SendPaymentReversedMailOnPaymentReversed`). `reasonDe`/`reasonEn`
+        // arrive as finished sentences, so this template branches on nothing
+        // — the raw bank or network code never reaches the payer, because
+        // "the mail informs, it does not accuse".
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'commerce.payment-reversed',
+            subjects: [
+                'de' => 'Zahlung zu Bestellung {{ $orderNumberShort }} wurde zurückgebucht',
+                'en' => 'Payment for order {{ $orderNumberShort }} was reversed',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag,</p>
+                    <p>der Betrag von <strong>{{ $amount }} {{ $currency }}</strong> zur
+                    Bestellung <strong>{{ $orderNumberShort }}</strong> wurde zurückgebucht.
+                    {{ $reasonDe }}</p>
+                    <p>Ihre Bestellung bleibt bestehen. Bitte gleichen Sie den Betrag bis zum
+                    <strong>{{ $dueOn }}</strong> aus.</p>
+                    <p><a href="{{ $payUrl }}">Jetzt bezahlen</a></p>
+                    <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>the amount of <strong>{{ $amount }} {{ $currency }}</strong> for order
+                    <strong>{{ $orderNumberShort }}</strong> was reversed. {{ $reasonEn }}</p>
+                    <p>Your order stands. Please settle the amount by
+                    <strong>{{ $dueOn }}</strong>.</p>
+                    <p><a href="{{ $payUrl }}">Pay now</a></p>
+                    <p><a href="{{ $ordersUrl }}">My orders</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'orderNumberShort' => 'A1B2C3',
+                'amount' => '119.00',
+                'currency' => 'EUR',
+                'reasonDe' => 'Die Bank meldet, dass das Konto zum Zeitpunkt der Abbuchung nicht ausreichend gedeckt war.',
+                'reasonEn' => 'The bank reports that the account did not have sufficient funds at the time of the debit.',
+                'dueOn' => '14.09.2026',
+                'payUrl' => 'https://example.test/pay/A1B2C3',
+                'ordersUrl' => 'https://example.test/my/orders',
+            ],
+        ));
+
+        // The same fact for an order that cannot be repaid online: a cart
+        // order, because `CheckoutController` is addressed by registration
+        // ULID and repaying a reversed cart is a follow-up. Its own key
+        // rather than an `@if ($payUrl)` branch — a branch-free template is
+        // what keeps a per-brand `TemplateOverride` branch-free too
+        // (`.ai/rules/app-modules-src.md`), the same split
+        // `commerce.invoice-issued`/`commerce.invoice-paid` draws.
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'commerce.payment-reversed-manual',
+            subjects: [
+                'de' => 'Zahlung zu Bestellung {{ $orderNumberShort }} wurde zurückgebucht',
+                'en' => 'Payment for order {{ $orderNumberShort }} was reversed',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag,</p>
+                    <p>der Betrag von <strong>{{ $amount }} {{ $currency }}</strong> zur
+                    Bestellung <strong>{{ $orderNumberShort }}</strong> wurde zurückgebucht.
+                    {{ $reasonDe }}</p>
+                    <p>Ihre Bestellung bleibt bestehen; der Betrag ist bis zum
+                    <strong>{{ $dueOn }}</strong> erneut offen. Eine Online-Zahlung ist für
+                    diese Bestellung derzeit nicht möglich — der Veranstalter kann eine
+                    Überweisung oder eine Zahlung vor Ort verbuchen.</p>
+                    <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>the amount of <strong>{{ $amount }} {{ $currency }}</strong> for order
+                    <strong>{{ $orderNumberShort }}</strong> was reversed. {{ $reasonEn }}</p>
+                    <p>Your order stands; the amount is owed again by
+                    <strong>{{ $dueOn }}</strong>. Paying online is not available for this
+                    order at the moment — the organizer can book a bank transfer or a
+                    payment at the door.</p>
+                    <p><a href="{{ $ordersUrl }}">My orders</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'orderNumberShort' => 'A1B2C3',
+                'amount' => '119.00',
+                'currency' => 'EUR',
+                'reasonDe' => 'Die Bank meldet, dass das Konto zum Zeitpunkt der Abbuchung nicht ausreichend gedeckt war.',
+                'reasonEn' => 'The bank reports that the account did not have sufficient funds at the time of the debit.',
+                'dueOn' => '14.09.2026',
+                'ordersUrl' => 'https://example.test/my/orders',
+            ],
+        ));
+
         // ADR-0048 point 3: one template for every shop-operator notice on
         // the `commerce.operations` topic — `title`/`detail`/`url` are
         // already composed by the sending listener
-        // (`NotifyOperatorsOnStockExhausted`, `NotifyOperatorsOnPaymentFailed`),
-        // so this stays branch-free regardless of `kind`.
+        // (`NotifyOperatorsOnStockExhausted`, `NotifyOperatorsOnPaymentFailed`,
+        // `NotifyOperatorsOnPaymentReversalRecorded`,
+        // `NotifyOperatorsOnPaymentUnapplied`, and `ReconcilePayments`), so
+        // this stays branch-free regardless of `kind` — ADR-0057 point 8's
+        // new kinds needed no template change at all.
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
             key: 'commerce.operations-notice',
             subjects: [

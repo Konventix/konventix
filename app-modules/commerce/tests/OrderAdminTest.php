@@ -3,14 +3,22 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Commerce\Actions\CancelOrderForUnpaidReversal;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\ReversalKind;
+use Konventix\Commerce\Enums\ReversalStatus;
+use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Events\OrderPaid;
+use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -132,6 +140,91 @@ it('403s payment booking without the book-manual-payment capability', function (
     expect($order->refresh()->status)->toBe(OrderStatus::Pending);
 });
 
+/**
+ * ADR-0057 point 4: the operator's manual "cancel now" for a reversed order
+ * whose payment never came back — the deadline sweep does the same thing
+ * automatically, this lets the operator do it earlier. Same capability as
+ * booking a payment: both are treasury actions on a reversed order
+ * (`OrderAdminController::cancelReversed`).
+ */
+it('cancels a payment_reversed order by hand, emitting OrderCancelled', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->create(['status' => OrderStatus::PaymentReversed]);
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/cancel-reversed")
+        ->assertRedirect();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Cancelled);
+
+    Event::assertDispatched(OrderCancelled::class, fn (OrderCancelled $event): bool => $event->orderId === $order->id
+        && $event->reasonCode === CancelOrderForUnpaidReversal::REASON_REVERSAL_UNPAID
+        && $event->cancelledByUserId === $admin->id);
+});
+
+it('422s cancelling an order that is not payment_reversed, leaving it unchanged', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->create(['status' => OrderStatus::Paid, 'paid_at' => now()]);
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/cancel-reversed")
+        ->assertStatus(422);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+/**
+ * `CancelOrderForUnpaidReversal` deliberately does not re-guard the
+ * checked-in admission the sweep skips for (its own docblock: "An operator
+ * who cancels by hand has already made that judgement") — the mirror of
+ * `RefundBlockedByCheckInException`'s "cancellation is deliberately not
+ * blocked, only the money flow" for the refund path. Only the sweep defers
+ * to dunning instead of cancelling; the manual button does not.
+ */
+it('still cancels by hand when the admission is checked in, unlike the automatic sweep', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $registrationId = (string) Str::ulid();
+    $order = Order::factory()->create([
+        'status' => OrderStatus::PaymentReversed,
+        'settles_type' => 'registration',
+        'settles_id' => $registrationId,
+    ]);
+    CheckedInAdmission::query()->create([
+        'admission_id' => (string) Str::ulid(),
+        'registration_id' => $registrationId,
+        'first_checked_in_at' => now()->subDay(),
+    ]);
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/cancel-reversed")
+        ->assertRedirect();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Cancelled);
+});
+
+it('403s cancelling a reversed order without the book-manual-payment capability', function (): void {
+    [, $admin] = commerceOperator(['platform.access-admin', 'commerce.view-orders']);
+
+    $this->withBrand();
+    $order = Order::factory()->create(['status' => OrderStatus::PaymentReversed]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/cancel-reversed")
+        ->assertForbidden();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::PaymentReversed);
+});
+
 it('shows one order with lines, invoice, payments and credit notes', function (): void {
     [, $admin] = commerceOperator();
 
@@ -208,4 +301,295 @@ it('defaults the brand filter to the console selection and lets the list clear i
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('filters.brand', null)
             ->count('orders.data', 2));
+});
+
+/**
+ * ADR-0057 point 8: the orders console gains the reversal list. The view
+ * gathers two different kinds of trouble — money taken back (an open or a
+ * final reversal) and money that arrived for an order that cannot take it
+ * (ADR-0057 point 9, #6) — because both are the same operator task.
+ */
+it('lists orders with an open or final reversal and orders with unapplied money under the reversals view', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+
+    $untouched = Order::factory()->create(['status' => OrderStatus::Paid, 'paid_at' => now()]);
+
+    $reversedOrder = Order::factory()->create([
+        'status' => OrderStatus::PaymentReversed,
+        'currency' => 'EUR',
+        'paid_at' => now()->subDay(),
+    ]);
+    $reversedPayment = Payment::factory()->create([
+        'order_id' => $reversedOrder->id,
+        'provider' => 'stripe',
+        'status' => PaymentStatus::Reversed,
+        'amount' => '119.00',
+    ]);
+    PaymentReversal::factory()->create([
+        'order_id' => $reversedOrder->id,
+        'payment_id' => $reversedPayment->id,
+        'kind' => ReversalKind::Return,
+        'status' => ReversalStatus::Final,
+        'amount' => '119.00',
+        'provider_reference' => 'dp_return_1',
+        'reason_code' => 'insufficient_funds',
+        'repay_due_on' => '2026-09-14',
+    ]);
+
+    $disputedOrder = Order::factory()->create(['status' => OrderStatus::Paid, 'paid_at' => now()]);
+    PaymentReversal::factory()->open()->create([
+        'order_id' => $disputedOrder->id,
+        'provider_reference' => 'dp_open_1',
+    ]);
+
+    // A dispute the organizer won moved no money and is not a task.
+    $wonOrder = Order::factory()->create(['status' => OrderStatus::Paid, 'paid_at' => now()]);
+    PaymentReversal::factory()->create([
+        'order_id' => $wonOrder->id,
+        'status' => ReversalStatus::Withdrawn,
+        'provider_reference' => 'dp_won_1',
+    ]);
+
+    $cancelledOrder = Order::factory()->create(['status' => OrderStatus::Cancelled, 'currency' => 'EUR']);
+    Payment::factory()->succeeded()->create([
+        'order_id' => $cancelledOrder->id,
+        'provider' => 'mollie',
+        'amount' => '59.00',
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->get('http://admin.commerce.test/admin/orders?view=reversals')
+        ->assertOk();
+
+    $rows = collect($response->viewData('page')['props']['orders']['data']);
+
+    expect($rows->pluck('id')->sort()->values()->all())->toBe(
+        collect([$reversedOrder->id, $disputedOrder->id, $cancelledOrder->id])->sort()->values()->all()
+    );
+
+    $reversedRow = $rows->firstWhere('id', $reversedOrder->id);
+
+    // ADR-0009: `OrderReversalData` is the single source of this shape, and
+    // the generated TypeScript the pages read is built from the same class —
+    // so the key set is worth pinning, not just the values.
+    expect(array_keys($reversedRow['reversals'][0]))->toBe([
+        'id',
+        'provider',
+        'kind',
+        'status',
+        'amount',
+        'currency',
+        'providerReference',
+        'reasonCode',
+        'feeAmount',
+        'occurredAt',
+        'finalizedAt',
+        'repayDueOn',
+    ]);
+
+    expect($reversedRow['reversals'])->toHaveCount(1)
+        ->and($reversedRow['reversals'][0]['kind'])->toBe('return')
+        ->and($reversedRow['reversals'][0]['status'])->toBe('final')
+        ->and($reversedRow['reversals'][0]['amount'])->toBe('119.00')
+        ->and($reversedRow['reversals'][0]['providerReference'])->toBe('dp_return_1')
+        ->and($reversedRow['reversals'][0]['reasonCode'])->toBe('insufficient_funds')
+        ->and($reversedRow['reversals'][0]['repayDueOn'])->toBe('2026-09-14')
+        ->and($reversedRow['unappliedPayment'])->toBeNull();
+
+    $disputedRow = $rows->firstWhere('id', $disputedOrder->id);
+
+    expect($disputedRow['reversals'][0]['status'])->toBe('open')
+        ->and($disputedRow['reversals'][0]['kind'])->toBe('dispute')
+        ->and($disputedRow['reversals'][0]['repayDueOn'])->toBeNull();
+
+    $unappliedRow = $rows->firstWhere('id', $cancelledOrder->id);
+
+    expect(array_keys($unappliedRow['unappliedPayment']))->toBe([
+        'id',
+        'provider',
+        'amount',
+        'currency',
+        'externalId',
+        'receivedAt',
+    ]);
+
+    expect($unappliedRow['reversals'])->toBe([])
+        ->and($unappliedRow['unappliedPayment']['provider'])->toBe('mollie')
+        ->and($unappliedRow['unappliedPayment']['amount'])->toBe('59.00')
+        ->and($unappliedRow['unappliedPayment']['receivedAt'])->not->toBeNull();
+
+    expect($rows->firstWhere('id', $untouched->id))->toBeNull()
+        ->and($rows->firstWhere('id', $wonOrder->id))->toBeNull();
+});
+
+it('echoes the reversals view back and drops a view it does not offer', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    Order::factory()->create();
+
+    $this->actingAs($admin)
+        ->get('http://admin.commerce.test/admin/orders?view=reversals')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('filters.view', 'reversals'));
+
+    $this->actingAs($admin)
+        ->get('http://admin.commerce.test/admin/orders?view=nonsense')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.view', null)
+            ->count('orders.data', 1));
+});
+
+it('keeps the reversals view inside the brand filter', function (): void {
+    [, $admin] = commerceOperator();
+
+    $sxlan = $this->withBrand(Brand::factory()->create(['name' => 'SXLan']));
+    $sxlanOrder = Order::factory()->create(['status' => OrderStatus::PaymentReversed]);
+    PaymentReversal::factory()->create([
+        'order_id' => $sxlanOrder->id,
+        'provider_reference' => 'dp_sxlan',
+    ]);
+    // Same brand, nothing wrong with it: the count below only holds if the
+    // view filter and the brand filter both apply.
+    Order::factory()->create(['status' => OrderStatus::Paid, 'paid_at' => now()]);
+
+    $this->withBrand(Brand::factory()->create(['name' => 'Xpertise']));
+    $otherOrder = Order::factory()->create(['status' => OrderStatus::PaymentReversed]);
+    PaymentReversal::factory()->create([
+        'order_id' => $otherOrder->id,
+        'provider_reference' => 'dp_xpertise',
+    ]);
+
+    $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders?view=reversals&brand={$sxlan->getKey()}")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->count('orders.data', 1)
+            ->where('orders.data.0.id', $sxlanOrder->id));
+
+    $this->actingAs($admin)
+        ->get('http://admin.commerce.test/admin/orders?view=reversals&brand=all')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->count('orders.data', 2));
+});
+
+/**
+ * ADR-0057 point 8 on the detail page: every reversal row the order has,
+ * withdrawn ones included — the console is where an operator reconstructs
+ * what the provider did, and a won dispute is part of that story.
+ */
+it('shows the order reversals, withdrawn ones included, with their deadline', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->create([
+        'status' => OrderStatus::PaymentReversed,
+        'currency' => 'EUR',
+        'paid_at' => now()->subDay(),
+    ]);
+    $payment = Payment::factory()->create([
+        'order_id' => $order->id,
+        'provider' => 'stripe',
+        'status' => PaymentStatus::Reversed,
+    ]);
+    PaymentReversal::factory()->create([
+        'order_id' => $order->id,
+        'payment_id' => $payment->id,
+        'kind' => ReversalKind::Return,
+        'status' => ReversalStatus::Final,
+        'amount' => '119.00',
+        'provider_reference' => 'dp_return_show',
+        'reason_code' => 'insufficient_funds',
+        'fee_amount' => '15.00',
+        'repay_due_on' => '2026-09-14',
+        'occurred_at' => now()->subHours(2),
+    ]);
+    PaymentReversal::factory()->create([
+        'order_id' => $order->id,
+        'payment_id' => $payment->id,
+        'kind' => ReversalKind::Dispute,
+        'status' => ReversalStatus::Withdrawn,
+        'provider_reference' => 'dp_won_show',
+        'repay_due_on' => null,
+        'occurred_at' => now()->subDays(3),
+    ]);
+
+    $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders/{$order->id}")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/orders/Show')
+            ->has('reversals', 2)
+            ->where('reversals.0.providerReference', 'dp_return_show')
+            ->where('reversals.0.kind', 'return')
+            ->where('reversals.0.status', 'final')
+            ->where('reversals.0.amount', '119.00')
+            ->where('reversals.0.currency', 'EUR')
+            ->where('reversals.0.provider', 'stripe')
+            ->where('reversals.0.reasonCode', 'insufficient_funds')
+            ->where('reversals.0.feeAmount', '15.00')
+            ->where('reversals.0.repayDueOn', '2026-09-14')
+            ->where('reversals.1.providerReference', 'dp_won_show')
+            ->where('reversals.1.status', 'withdrawn')
+            ->where('reversals.1.repayDueOn', null)
+            ->where('unappliedPayment', null));
+});
+
+/**
+ * ADR-0057 point 9 / #6: a succeeded payment on an order that is not paid
+ * is money nobody applied. The callout names the provider, the amount and
+ * when it arrived; what to do about it stays the operator's decision.
+ */
+it('shows the unapplied-payment callout for money that arrived after cancellation', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->create(['status' => OrderStatus::Cancelled, 'currency' => 'EUR']);
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'stripe',
+        'amount' => '59.00',
+    ]);
+
+    $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders/{$order->id}")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('unappliedPayment.id', $payment->id)
+            ->where('unappliedPayment.provider', 'stripe')
+            ->where('unappliedPayment.amount', '59.00')
+            ->where('unappliedPayment.currency', 'EUR')
+            ->whereNot('unappliedPayment.receivedAt', null)
+            ->has('reversals', 0));
+});
+
+/**
+ * The contract the console's "Book bank transfer" button depends on
+ * (I2): `RecordPaymentReversal` keeps `paid_at` on purpose, so the button's
+ * old `!paidAt` test hid it for every reversed order — the manual
+ * repayment path ADR-0057 point 3 names ("the door POS or a bank transfer")
+ * was unreachable in the UI while the route behind it worked all along.
+ * `resources/js/pages/admin/orders/reversals.test.ts` pins the condition
+ * itself.
+ */
+it('books a manual payment on a payment_reversed order, the way the console now offers', function (): void {
+    [, $admin] = commerceOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->paid()->create(['total_gross' => '119.00']);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
+
+    Event::fake([OrderPaid::class]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/payment")
+        ->assertRedirect();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid);
+
+    Event::assertDispatched(OrderPaid::class, fn (OrderPaid $event): bool => $event->orderId === $order->id
+        && $event->settlementMethod === 'manual');
 });

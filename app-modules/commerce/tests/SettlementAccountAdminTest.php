@@ -57,6 +57,22 @@ final class SettlementAdminTestFakeStripe implements StripeApi
     {
         return ['card_payments' => 'unknown'];
     }
+
+    /**
+     * Unused here: only `commerce:reconcile-payments` (#71) reads a session
+     * back, and this fake never drives it.
+     *
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array
+    {
+        return [
+            'status' => 'open',
+            'payment_status' => 'unpaid',
+            'payment_intent' => null,
+            'payment_intent_status' => null,
+        ];
+    }
 }
 
 final class SettlementAdminTestFakeUnzer implements UnzerApi

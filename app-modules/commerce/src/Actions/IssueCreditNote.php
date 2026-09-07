@@ -16,10 +16,12 @@ use Konventix\Commerce\Models\Order;
  * Issues a credit note against an order — the only way to correct an issued
  * invoice, which is immutable (ADR-0031).
  *
- * Two callers, distinguished by `$reasonCode`: a refund (ADR-0037) and a
- * post-invoice transfer to a different billing party (ADR-0036). The document
- * is identical; what differs is what happens next, which is why the reason
- * travels on the event rather than being inferred by consumers.
+ * Three callers, distinguished by `$reasonCode`: a refund (ADR-0037), a
+ * post-invoice transfer to a different billing party (ADR-0036), and the
+ * cancellation of an order whose reversed payment went unpaid (ADR-0057
+ * point 4). The document is identical; what differs is what happens next,
+ * which is why the reason travels on the event rather than being inferred
+ * by consumers.
  *
  * **Requires an invoice.** A credit note is the correction of an invoice
  * (ADR-0031); an order that was never invoiced — an `instant`-settled one
@@ -39,6 +41,17 @@ final class IssueCreditNote
     public const string REASON_REFUND = 'refund';
 
     public const string REASON_TRANSFER = 'transfer';
+
+    /**
+     * ADR-0057 point 4: the order was cancelled because a reversed payment
+     * went unpaid past its deadline. Document and counter-document then sum
+     * to zero and the money side — payment in, return out — is the PSP
+     * statement's, which is why no credit note is issued for the reversal
+     * itself. `CancelOrderForUnpaidReversal` is the only caller; the DATEV
+     * export books it exactly as it books the other two (ADR-0040 books
+     * documents, and this is one).
+     */
+    public const string REASON_CANCELLATION = 'cancellation';
 
     public function __construct(
         private readonly DrawCreditNoteNumber $drawNumber,

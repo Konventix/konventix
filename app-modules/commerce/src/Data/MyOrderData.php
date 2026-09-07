@@ -88,7 +88,11 @@ final class MyOrderData extends Data
             totalGross: $order->total_gross,
             invoiceNumber: $invoice?->invoice_number,
             invoicePaid: $invoice?->paid_at !== null,
-            payUrl: $order->status === OrderStatus::Pending && $order->settles_type === 'registration'
+            // ADR-0057 point 3: a reversed order is owed again and
+            // `CheckoutController::start()` takes it, so the pay link stays
+            // beside `pending` rather than disappearing with the reversal.
+            payUrl: in_array($order->status, [OrderStatus::Pending, OrderStatus::PaymentReversed], true)
+                && $order->settles_type === 'registration'
                 ? route('commerce.pay.show', ['registration' => $order->settles_id], absolute: false)
                 : null,
             documentUrl: $invoice?->document_path === null ? null : URL::temporarySignedRoute(
