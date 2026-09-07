@@ -111,6 +111,7 @@ it('tells the payer their money was taken back, with the deadline and a pay link
     Queue::fake();
 
     $order = Order::factory()->paid()->create(['settles_type' => 'registration', 'payer_user_id' => $payer->id]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
     $dueOn = now()->addDays(7);
 
     event(reversalMailsEvent($order, repayDueOn: $dueOn->toDateString()));
@@ -135,6 +136,7 @@ it('maps a known return code to a plain, non-accusatory sentence in both languag
     Queue::fake();
 
     $order = Order::factory()->paid()->create(['settles_type' => 'cart', 'payer_user_id' => $payer->id]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
 
     event(reversalMailsEvent($order, reasonCode: 'AM04'));
 
@@ -158,6 +160,7 @@ it('falls back to a neutral sentence for a reason code it does not know', functi
     Queue::fake();
 
     $order = Order::factory()->paid()->create(['settles_type' => 'cart', 'payer_user_id' => $payer->id]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
 
     event(reversalMailsEvent($order, reasonCode: 'ZZ99'));
 
@@ -179,6 +182,7 @@ it('renders the reversal mail in the payer\'s own locale', function (): void {
     Queue::fake();
 
     $order = Order::factory()->paid()->create(['settles_type' => 'cart', 'payer_user_id' => $payer->id]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
 
     event(reversalMailsEvent($order));
 
@@ -196,6 +200,7 @@ it('sends no payer mail for an order with no payer', function (): void {
     Queue::fake();
 
     $order = Order::factory()->paid()->create(['settles_type' => 'cart', 'payer_user_id' => null]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
 
     event(reversalMailsEvent($order));
 
@@ -326,4 +331,26 @@ it('promises a cart order no pay link, and names the ways the organizer can take
 
     expect($rendered->body)->not->toContain('/pay/registration/')
         ->and($rendered->body)->toContain('Überweisung');
+});
+
+it('sends no payer mail for a reversal on an order that is not payment_reversed', function (): void {
+    // `RecordPaymentReversal` emits `PaymentReversed` even when the order is
+    // cancelled, refunded or already reversed — the money really did leave,
+    // and the operator notice and the console entry are owed regardless.
+    // The *payer* mail is not: telling someone whose order was already
+    // refunded that "your order stands, please pay by <date>" asks for money
+    // nobody owes (I4).
+    $brand = $this->withBrand();
+    $payer = reversalMailsRecipient($brand->id);
+    Queue::fake();
+
+    $order = Order::factory()->paid()->create(['settles_type' => 'registration', 'payer_user_id' => $payer->id]);
+    $order->forceFill(['status' => OrderStatus::Refunded])->save();
+
+    event(reversalMailsEvent($order));
+
+    Queue::assertNotPushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-reversed',
+    );
 });

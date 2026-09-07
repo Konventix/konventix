@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Listeners;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Data\PaymentReversedMailData;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\PaymentReversed;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Settlement\RepaymentWindow;
@@ -34,6 +35,10 @@ use RuntimeException;
  * state what the bank reported, never what the payer did. An unknown code
  * gets a neutral sentence rather than a guess; the codes are a moving
  * target and a wrong translation of one would be worse than saying less.
+ *
+ * Only a `payment_reversed` order is mailed: `PaymentReversed` also fires
+ * for an order that was already cancelled, refunded or reversed once
+ * before, and none of those owes the amount again.
  *
  * No payer (`payer_user_id` null) is logged and skipped, not an error: an
  * order an operator books manually may have none. A `SendMessage` failure
@@ -145,6 +150,19 @@ final class SendPaymentReversedMailOnPaymentReversed
         $order = Order::withoutBrandScope()->whereKey($event->orderId)->first();
 
         if ($order === null) {
+            return;
+        }
+
+        // `RecordPaymentReversal` emits `PaymentReversed` whenever money
+        // left for good — including for an order that is already cancelled,
+        // refunded or reversed a second time, because the operator notice
+        // and the console entry are owed in every one of those cases. This
+        // mail is not: it says "your order stands, please settle the amount
+        // by <date>", and only a `payment_reversed` order actually owes it.
+        // A payer whose refund was itself returned by the bank must not be
+        // asked to pay for a sale that was undone (ADR-0057 point 3 defines
+        // the revived receivable as exactly this status).
+        if ($order->status !== OrderStatus::PaymentReversed) {
             return;
         }
 
