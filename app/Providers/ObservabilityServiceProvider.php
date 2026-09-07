@@ -181,20 +181,23 @@ class ObservabilityServiceProvider extends ServiceProvider
      * the Horizon process alone leaves it permanently blank, which reads as
      * "Horizon is broken" rather than "nobody scheduled the snapshot".
      *
-     * `telescope:prune` and Pulse's trim keep two stores of personal data from
-     * growing without bound. Telescope holds request bodies and Pulse holds
-     * user ids, and neither is covered by Compliance's retention rules
-     * (D-CPL-01 names the delivery log and the audit trail). Until they are,
-     * these windows are the only thing bounding them — deliberately shorter
-     * than anything Compliance governs, because nothing here is evidence of
-     * anything.
+     * `telescope:prune` keeps one of two stores of personal data from growing
+     * without bound; Pulse holds the other (user ids) and trims itself, via
+     * `ingest.trim.lottery` and `storage.trim.keep` in `config/pulse.php`,
+     * with nothing to schedule here. Neither store is covered by Compliance's
+     * retention rules (D-CPL-01 names the delivery log and the audit trail).
+     * Until it is, these windows are the only thing bounding them —
+     * deliberately shorter than anything Compliance governs, because nothing
+     * here is evidence of anything.
      */
     private function scheduleHousekeeping(): void
     {
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command('horizon:snapshot')->everyFiveMinutes();
 
-            $schedule->command('pulse:trim')->hourly();
+            // Pulse trims itself: `ingest.trim.lottery` runs a chance of it
+            // on every ingest, and `storage.trim.keep` bounds what survives.
+            // There is no `pulse:trim` artisan command to schedule here.
 
             if (class_exists(Telescope::class)) {
                 $schedule->command('telescope:prune --hours=48')->daily();

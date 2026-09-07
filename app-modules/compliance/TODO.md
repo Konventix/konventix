@@ -9,8 +9,9 @@
 - [ ] Two stores of personal data now sit outside the retention machinery:
       Telescope's request bodies (development only — a `require-dev` package
       that never reaches production) and Pulse's user-keyed aggregates. Both
-      are bounded today only by their own schedules —
-      `telescope:prune --hours=48` and an hourly `pulse:trim` — which is a
+      are bounded today only by their own trims —
+      `telescope:prune --hours=48` on the schedule, and Pulse's own
+      `ingest.trim.lottery`/`storage.trim.keep` — which is a
       window, not a rule anybody can see or audit. D-CPL-01 named the delivery
       log and the audit trail; these are the same question asked about
       operational telemetry, and the answer may well be "these are not
