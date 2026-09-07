@@ -16,6 +16,7 @@ use Konventix\Commerce\Events\OrderLineSettled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Events\PaymentReversed;
+use Konventix\Commerce\Events\RegistrationLinePlacedInCart;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
@@ -52,6 +53,7 @@ use Konventix\Registration\Listeners\MarkInvoicedOnInvoiceIssued;
 use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Listeners\ProjectRegistrant;
 use Konventix\Registration\Listeners\PromoteOnQuotaReleased;
+use Konventix\Registration\Listeners\RecordCartHoldOnLinePlaced;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderLineSettled;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
 use Konventix\Registration\Listeners\RecordReversalOnOrderLineReversed;
@@ -135,6 +137,11 @@ class RegistrationServiceProvider extends ModuleServiceProvider
 
         // ADR-0036: billing party freezes at first invoice.
         Event::listen(InvoiceIssued::class, MarkInvoicedOnInvoiceIssued::class);
+
+        // #210: the sibling on creation — a settlement that went into the
+        // cart instead of into an order, so the confirmation mail can name
+        // the cart and its hold without reading Commerce's tables.
+        Event::listen(RegistrationLinePlacedInCart::class, RecordCartHoldOnLinePlaced::class);
 
         // ADR-0047 point 3: a cart line that dies — expired or removed —
         // cancels the still-pending registration it was holding.
@@ -452,6 +459,9 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @else
                     <p>Ihre Anmeldung ({{ $registrationTypeName }}) ist bestätigt.</p>
                     @endif
+                    @if ($cartUrl)
+                    <p>Die Zahlung läuft über Ihren <a href="{{ $cartUrl }}">Warenkorb</a>. Ihr Platz ist dort bis {{ $cartHoldExpiresAt }} reserviert — danach wird die Reservierung freigegeben.</p>
+                    @endif
                     <p>Alles Weitere (Einlass, Unterlagen) finden Sie auf Ihrer <a href="{{ $registrationUrl }}">Anmeldeseite</a>.</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -465,6 +475,9 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @else
                     <p>Your registration ({{ $registrationTypeName }}) is confirmed.</p>
                     @endif
+                    @if ($cartUrl)
+                    <p>Payment goes through your <a href="{{ $cartUrl }}">cart</a>. Your place is reserved there until {{ $cartHoldExpiresAt }} — after that the reservation is released.</p>
+                    @endif
                     <p>Everything else (admission, documents) is on your <a href="{{ $registrationUrl }}">registration page</a>.</p>
                     BLADE,
             ],
@@ -474,6 +487,8 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 'eventName' => 'SXLan 2026',
                 'registrationTypeName' => 'Teilnehmer-Ticket',
                 'registrationUrl' => 'https://example.test/my/registrations/abc123',
+                'cartUrl' => 'https://example.test/cart',
+                'cartHoldExpiresAt' => '08.09.2026 00:30 UTC',
             ],
         ));
 

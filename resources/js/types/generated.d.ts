@@ -1005,6 +1005,8 @@ declare namespace Konventix {
                 readonly reason: string | null;
                 readonly cancelReason: string | null;
                 readonly wasPaid: boolean;
+                readonly cartUrl: string | null;
+                readonly cartHoldExpiresAt: string | null;
             };
             export type RegistrationTypeData = {
                 readonly eventId: string;

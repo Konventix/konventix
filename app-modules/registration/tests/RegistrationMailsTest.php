@@ -423,3 +423,67 @@ it('renders the registrant-vs-operator cancellation phrasing and the refund sent
         ->toContain('durch den Veranstalter')
         ->toContain('Gutschrift');
 });
+
+/**
+ * #210 acceptance point 5. With `commerce:shop` on, an `instant` settlement
+ * becomes a cart line rather than an order (ADR-0047 point 3), and for every
+ * gate but `on_payment` the person is not standing in the shop when that
+ * happens — the confirmation mail is the only push they get. It has to say
+ * where the money is paid and how long the hold lasts, or the twenty minutes
+ * run out on a page nobody was sent to.
+ */
+it('names the cart and its hold deadline in registration.confirmed when the settlement went to the cart', function (): void {
+    $brand = $this->withBrand();
+    $registrant = regMailsRecipient($brand->id);
+    $this->activateFeature('commerce:shop', $brand);
+    Queue::fake();
+
+    $type = RegistrationType::factory()
+        ->settlement(RegistrationSettlement::Instant)
+        ->confirmationGate(ConfirmationGate::OnSubmit)
+        ->priced(unitAmountNet: '30.00')
+        ->create();
+
+    app(SubmitRegistration::class)->handle($type, $registrant->id, regMailsBilledSubmission());
+
+    $confirmed = regMailsPushed('registration.confirmed');
+    expect($confirmed)->toHaveCount(1);
+
+    $payload = $confirmed[0]->message->payload->toArray();
+    expect($payload['cartUrl'])->toContain('/cart')
+        ->and($payload['cartHoldExpiresAt'])->not->toBeNull();
+
+    expect(regMailsRender('registration.confirmed', $confirmed[0]->message->payload))
+        ->toContain('Warenkorb')
+        ->toContain($payload['cartUrl'])
+        ->toContain($payload['cartHoldExpiresAt']);
+
+    expect(regMailsRender('registration.confirmed', $confirmed[0]->message->payload, 'en'))
+        ->toContain('cart')
+        ->toContain($payload['cartUrl']);
+});
+
+it('leaves the confirmed mail free of any cart wording on the invoice and shop-off paths', function (): void {
+    $brand = $this->withBrand();
+    $registrant = regMailsRecipient($brand->id);
+    Event::fake([RegistrationSettlementRequested::class]);
+    Queue::fake();
+
+    // Shop off: `CreateOrderOnSettlementRequested` places an order, and the
+    // pay link on the registration page is the way to it.
+    $type = RegistrationType::factory()
+        ->settlement(RegistrationSettlement::Instant)
+        ->confirmationGate(ConfirmationGate::OnSubmit)
+        ->priced(unitAmountNet: '30.00')
+        ->create();
+
+    app(SubmitRegistration::class)->handle($type, $registrant->id, regMailsBilledSubmission());
+
+    $payload = regMailsPushed('registration.confirmed')[0]->message->payload;
+
+    expect($payload->toArray()['cartUrl'])->toBeNull()
+        ->and($payload->toArray()['cartHoldExpiresAt'])->toBeNull();
+
+    expect(regMailsRender('registration.confirmed', $payload))
+        ->not->toContain('Warenkorb');
+});
