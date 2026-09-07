@@ -42,6 +42,29 @@ describe('formatDateTime', () => {
     });
 });
 
+describe('a legal effective date', () => {
+    it('lands on the day the operator meant, for a reader in that zone', () => {
+        // B5/#203: a Berlin operator dating a version 2026-09-08T00:30
+        // stores 2026-09-07T22:30Z. Sent as a bare `toDateString()` the
+        // public page printed "7 September" to everybody; sent as the
+        // instant, a Berlin reader sees the 8th.
+        const berlin = formatDateTime('2026-09-07T22:30:00+00:00', {
+            dateStyle: 'long',
+            timeStyle: undefined,
+            timeZone: 'Europe/Berlin',
+        });
+
+        expect(berlin).toContain('8');
+        expect(berlin).not.toBe(
+            formatDateTime('2026-09-07T22:30:00+00:00', {
+                dateStyle: 'long',
+                timeStyle: undefined,
+                timeZone: 'UTC',
+            }),
+        );
+    });
+});
+
 describe('withZoneName', () => {
     it('names the zone the instant is rendered in', () => {
         // `dateStyle`/`timeStyle` are mutually exclusive with `timeZoneName`,
