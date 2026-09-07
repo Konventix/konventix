@@ -273,9 +273,9 @@ function submit(): void {
                                     id="policy-brand-hint"
                                     class="text-xs text-text-muted"
                                 >
-                                    An operator-wide text applies to every
-                                    brand that has not published its own under
-                                    the same slug.
+                                    An operator-wide text applies to every brand
+                                    that has not published its own under the
+                                    same slug.
                                 </p>
                                 <InputError :message="form.errors.brand_id" />
                             </div>
