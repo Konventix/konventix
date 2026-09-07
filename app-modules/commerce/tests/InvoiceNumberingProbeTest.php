@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\InvoiceNumberRange;
 use Konventix\Platform\Models\Brand;
 
@@ -33,6 +33,15 @@ beforeEach(function (): void {
     DB::rollBack();
 });
 
+afterEach(function (): void {
+    // Everything after that rollBack committed for real, so the next test has
+    // to start from a fresh schema. RefreshDatabase's own teardown happens to
+    // notice a connection that left its transaction and set this itself, but
+    // that is an implementation detail of a framework trait — say it outright
+    // rather than depend on it.
+    RefreshDatabaseState::$migrated = false;
+});
+
 it('proves parallel draws produce a gapless, duplicate-free invoice series', function (): void {
     $brand = Brand::factory()->create();
 
@@ -59,6 +68,32 @@ it('fails loudly when the brand does not exist', function (): void {
         '--draws' => 1,
     ]);
 
+    // The range row is what the command would have written — it draws
+    // numbers, it never creates an Invoice, so counting invoices here would
+    // have been true whatever the command did.
     expect($exit)->not->toBe(0)
-        ->and(Invoice::withoutBrandScope()->count())->toBe(0);
+        ->and(InvoiceNumberRange::withoutBrandScope()->count())->toBe(0);
+});
+
+it('reports a worker that hangs instead of throwing out of the run', function (): void {
+    $brand = Brand::factory()->create();
+
+    // A timeout below a child's own boot time stands in for the deadlock this
+    // probe exists to catch: the point is that the run ends in the report, not
+    // in a ProcessTimedOutException.
+    $exit = Artisan::call('commerce:probe-invoice-numbering', [
+        'brand' => $brand->id,
+        '--workers' => 2,
+        '--draws' => 5,
+        '--timeout' => 0.05,
+    ]);
+
+    $output = Artisan::output();
+
+    expect($exit)->not->toBe(0)
+        ->and($output)->toContain('Worker 0 timed out')
+        ->and($output)->toContain('Worker 1 timed out')
+        // The five checks are still printed: a hung worker is reported like
+        // any other failure, not instead of the report.
+        ->and($output)->toContain('worker(s) exited 0');
 });

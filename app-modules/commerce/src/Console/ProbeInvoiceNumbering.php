@@ -11,6 +11,7 @@ use Konventix\Commerce\Actions\DrawInvoiceNumber;
 use Konventix\Commerce\Models\InvoiceNumberRange;
 use Konventix\Platform\Environment\DeploymentEnvironment;
 use Konventix\Platform\Models\Brand;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 
 /**
@@ -42,16 +43,21 @@ final class ProbeInvoiceNumbering extends Command
     private const int DRAW_ATTEMPTS = 5;
 
     /**
-     * A child has to finish `draws` serialized draws behind up to `workers`
-     * other children; generous enough for a loaded dev box, short enough that
-     * a real lock-up fails the run instead of hanging CI.
+     * Default seconds a child may run. A child has to finish `draws`
+     * serialized draws behind up to `workers` other children; generous enough
+     * for a loaded dev box, short enough that a real lock-up fails the run
+     * with a report instead of hanging CI. `--timeout` overrides it — a
+     * deadlock is the most interesting failure this probe can find, so the
+     * path that reports one is itself exercised by a test that sets the
+     * timeout below a child's boot time.
      */
-    private const int WORKER_TIMEOUT_SECONDS = 120;
+    private const float WORKER_TIMEOUT_SECONDS = 120.0;
 
     protected $signature = 'commerce:probe-invoice-numbering
         {brand : Brand ULID whose invoice-number range the probe draws from}
         {--workers=4 : Child processes drawing in parallel}
         {--draws=25 : Numbers each child draws}
+        {--timeout= : Seconds a child may run before the probe gives up on it (default 120)}
         {--worker : Internal — run as one child, printing each drawn number on its own line}';
 
     protected $description = 'Prove concurrent invoice-number draws stay gapless and duplicate-free — consumes real numbers, never run on production (Commerce).';
@@ -144,7 +150,9 @@ final class ProbeInvoiceNumbering extends Command
             $before,
         ));
 
-        [$numbers, $failures] = $this->runWorkers($brandId, $draws, $workers);
+        $timeout = (float) ($this->option('timeout') ?: self::WORKER_TIMEOUT_SECONDS);
+
+        [$numbers, $failures] = $this->runWorkers($brandId, $draws, $workers, $timeout);
 
         $after = $this->counterFor($brandId, $year);
         $counters = array_map($this->counterOf(...), $numbers);
@@ -205,9 +213,11 @@ final class ProbeInvoiceNumbering extends Command
      * `phpunit.xml`, and a child reading `.env` would probe the dev database
      * instead and prove nothing.
      *
+     * A child that hangs is reported, not thrown: see the catch below.
+     *
      * @return array{0: list<string>, 1: list<string>}
      */
-    private function runWorkers(string $brandId, int $draws, int $workers): array
+    private function runWorkers(string $brandId, int $draws, int $workers, float $timeout): array
     {
         $environment = $this->childEnvironment();
 
@@ -222,7 +232,7 @@ final class ProbeInvoiceNumbering extends Command
                 $brandId,
                 '--draws='.$draws,
                 '--worker',
-            ], base_path(), $environment, null, self::WORKER_TIMEOUT_SECONDS);
+            ], base_path(), $environment, null, $timeout);
 
             $process->start();
 
@@ -233,7 +243,19 @@ final class ProbeInvoiceNumbering extends Command
         $failures = [];
 
         foreach ($processes as $worker => $process) {
-            $process->wait();
+            try {
+                $process->wait();
+            } catch (ProcessTimedOutException) {
+                // A child that never returns is exactly what this probe hunts:
+                // a lock nobody released. Symfony throws out of wait(), which
+                // would abort the loop, leave the remaining children unwaited
+                // and print a stack trace instead of the five ok/FAILED rows —
+                // reporting the most interesting failure worst of all. Collect
+                // it like any other failure and carry on.
+                $failures[] = sprintf('Worker %d timed out after %ss', $worker, $timeout);
+
+                continue;
+            }
 
             if (! $process->isSuccessful()) {
                 $failures[] = sprintf(

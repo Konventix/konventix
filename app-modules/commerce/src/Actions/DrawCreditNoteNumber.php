@@ -52,7 +52,10 @@ final class DrawCreditNoteNumber
             $range->save();
 
             // Re-acquire under lock — another transaction may have raced the
-            // insert; unique(brand_id, year) makes one of them fail and retry.
+            // insert; unique(brand_id, year) makes one of them fail. Nothing
+            // here retries: the loser's transaction rolls back whole, so it
+            // burns no number, but the caller has to draw again — same as
+            // DrawInvoiceNumber.
             $range = CreditNoteNumberRange::withoutBrandScope()
                 ->where('brand_id', $brandId)
                 ->where('year', $year)

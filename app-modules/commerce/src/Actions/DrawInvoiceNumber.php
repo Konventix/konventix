@@ -52,8 +52,11 @@ final class DrawInvoiceNumber
             $range->save();
 
             // Re-acquire under lock — another transaction may have raced the
-            // insert; the unique(brand_id, year) index makes one of them fail
-            // and retry naturally.
+            // insert; the unique(brand_id, year) index makes one of them fail.
+            // Nothing here retries: the loser's whole transaction rolls back,
+            // so it burns no number and the series stays gapless, but the
+            // caller has to draw again. `commerce:probe-invoice-numbering`
+            // does exactly that in its worker loop.
             $range = InvoiceNumberRange::withoutBrandScope()
                 ->where('brand_id', $brandId)
                 ->where('year', $year)
