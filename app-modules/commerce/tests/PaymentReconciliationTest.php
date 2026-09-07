@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Console\Scheduling\Event as ScheduledEvent;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -570,4 +572,55 @@ it('records every transferred dashboard refund in one snapshot, not just the fir
         ->and($reversals->pluck('provider_reference')->all())->toBe(['re_recon_1', 're_recon_2'])
         ->and($reversals->every(fn (PaymentReversal $r): bool => $r->kind === ReversalKind::ExternalRefund))->toBeTrue()
         ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
+});
+
+/**
+ * I3: the settled pass re-read every Mollie and Unzer payment of the last
+ * ninety days on every hourly run — one `fetchPayment` per settled payment
+ * per hour, at the provider, for a question whose answer changes at most
+ * once. The ledger ruling was a daily settled pass, so the two passes are
+ * separable and the schedule runs them on their own cadences.
+ */
+it('asks the provider only about pending payments with --pending', function (): void {
+    [, $payment] = reconciliationTestMollieSettled();
+
+    $mollie = new ReconciliationTestMollieApi;
+    $mollie->status = 'paid';
+    $mollie->chargebacks = [[
+        'id' => 'chb_hourly_1',
+        'amount' => '119.00',
+        'reason' => 'AC04',
+        'createdAt' => now()->subDay()->toIso8601String(),
+    ]];
+    app()->instance(MollieApi::class, $mollie);
+
+    $this->artisan('commerce:reconcile-payments', ['--pending' => true])->assertSuccessful();
+
+    expect($mollie->fetches)->toBe([])
+        ->and(PaymentReversal::withoutBrandScope()->count())->toBe(0)
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Succeeded);
+});
+
+it('asks the provider only about settled payments with --settled', function (): void {
+    [$order, $payment] = reconciliationTestStripePending();
+
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->session = ['status' => 'complete', 'payment_status' => 'paid', 'payment_intent' => 'pi_recon_1', 'payment_intent_status' => 'succeeded'];
+    app()->instance(StripeApi::class, $stripe);
+
+    $this->artisan('commerce:reconcile-payments', ['--settled' => true])->assertSuccessful();
+
+    expect($stripe->sessionFetches)->toBe([])
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Pending)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Pending);
+});
+
+it('runs the pending pass hourly and the settled pass daily', function (): void {
+    $entries = collect(app(Schedule::class)->events())
+        ->filter(fn (ScheduledEvent $event): bool => str_contains((string) $event->command, 'commerce:reconcile-payments'))
+        ->mapWithKeys(fn (ScheduledEvent $event): array => [$event->expression => (string) $event->command]);
+
+    expect($entries)->toHaveCount(2)
+        ->and($entries->get('0 * * * *'))->toContain('--pending')
+        ->and($entries->get('40 6 * * *'))->toContain('--settled');
 });

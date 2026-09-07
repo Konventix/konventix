@@ -385,13 +385,20 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // Stripe's own timeline, well after onboarding's return trip.
             $schedule->command(RefreshSettlementCapabilities::class)->dailyAt('06:30');
 
-            // The provider reconciliation #71 asks for. Hourly rather than
-            // daily: a lost notification leaves an order unpaid on every
-            // screen while the money has moved, and a payer who has paid
-            // must not wait a day to see it. `withoutOverlapping()` because
-            // a brand with a long backlog must not stack a second sweep's
-            // provider calls on top of the first's.
-            $schedule->command(ReconcilePayments::class)->hourly()->withoutOverlapping();
+            // The provider reconciliation #71 asks for, split by the two
+            // questions it asks. Hourly for the pending one: a lost
+            // notification leaves an order unpaid on every screen while the
+            // money has moved, and a payer who has paid must not wait a day
+            // to see it. Daily for the settled one (ADR-0057 point 7): a
+            // chargeback is a fact that changes at most once, and re-reading
+            // ninety days of settled payments hourly would spend one
+            // provider call per settled payment per hour to learn nothing.
+            // `withoutOverlapping()` because a brand with a long backlog
+            // must not stack a second sweep's provider calls on top of the
+            // first's — the two entries carry different command strings, so
+            // they take different mutexes and never block each other.
+            $schedule->command(ReconcilePayments::class, ['--pending'])->hourly()->withoutOverlapping();
+            $schedule->command(ReconcilePayments::class, ['--settled'])->dailyAt('06:40')->withoutOverlapping();
 
             // ADR-0057 point 4's deadline sweep, in the morning beside the
             // dunning sweep it hands checked-in orders to. Daily because

@@ -54,6 +54,14 @@ use Throwable;
  *    the webhook, and the `StripeApi` seam has no dispute listing behind
  *    it (ADR-0039 keeps the seam to what the adapter needs).
  *
+ * The two questions run on their own cadences, which is what `--pending`
+ * and `--settled` are for. A lost settlement notification leaves a payer
+ * looking at an unpaid order, so that pass is hourly; a chargeback is a
+ * fact that changes at most once, and re-reading ninety days of settled
+ * payments every hour would spend one provider call per settled payment
+ * per hour to learn nothing — so the settled pass is daily. Neither option
+ * means both, the shape a hand run wants.
+ *
  * The provider-state → transition mapping is deliberately re-implemented
  * here rather than shared with `Http\Controllers\Api\StripeWebhookController`,
  * `MollieWebhookController` and `UnzerWebhookController`: those handlers map
@@ -107,7 +115,10 @@ final class ReconcilePayments extends Command
      */
     private const array REFUSED_INTENT_STATUSES = ['requires_payment_method', 'canceled'];
 
-    protected $signature = 'commerce:reconcile-payments {--brand= : Restrict the sweep to one brand}';
+    protected $signature = 'commerce:reconcile-payments
+        {--brand= : Restrict the sweep to one brand}
+        {--pending : Only ask about payments that never settled}
+        {--settled : Only ask about settled payments, for chargebacks and dashboard refunds}';
 
     protected $description = 'Ask each PSP what really happened to payments whose notification may have been lost (Commerce, #71).';
 
@@ -134,14 +145,22 @@ final class ReconcilePayments extends Command
         RecordPaymentFailure $recordFailure,
         RecordPaymentReversal $recordReversal,
     ): int {
-        foreach ($this->pendingPayments()->cursor() as $payment) {
-            $this->checked++;
+        if ($this->runs('pending')) {
+            foreach ($this->pendingPayments()->cursor() as $payment) {
+                $this->checked++;
 
-            try {
-                $this->reconcilePending($payment, $recordSuccess, $recordFailure);
-            } catch (Throwable $e) {
-                $this->reportFailure($payment, $e);
+                try {
+                    $this->reconcilePending($payment, $recordSuccess, $recordFailure);
+                } catch (Throwable $e) {
+                    $this->reportFailure($payment, $e);
+                }
             }
+        }
+
+        if (! $this->runs('settled')) {
+            $this->report();
+
+            return self::SUCCESS;
         }
 
         foreach ($this->settledPayments()->cursor() as $payment) {
@@ -158,14 +177,38 @@ final class ReconcilePayments extends Command
             }
         }
 
+        $this->report();
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Which passes this run makes. Neither option means both — the shape a
+     * hand run wants ("tell me everything that drifted"); either option on
+     * its own is the schedule's, which asks the pending question hourly and
+     * the settled one once a day. Both options together is the default said
+     * out loud rather than an error.
+     */
+    private function runs(string $pass): bool
+    {
+        $pending = (bool) $this->option('pending');
+        $settled = (bool) $this->option('settled');
+
+        if ($pending === $settled) {
+            return true;
+        }
+
+        return $pass === 'pending' ? $pending : $settled;
+    }
+
+    private function report(): void
+    {
         $this->components->info(sprintf(
             'Reconciliation complete: %d payment(s) checked, %d corrected, %d reversal(s) found.',
             $this->checked,
             $this->corrected,
             $this->reversalsFound,
         ));
-
-        return self::SUCCESS;
     }
 
     /**
