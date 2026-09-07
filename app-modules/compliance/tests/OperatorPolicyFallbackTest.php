@@ -3,6 +3,11 @@
 declare(strict_types=1);
 
 use Illuminate\Database\QueryException;
+use Konventix\Compliance\Actions\GrantConsent;
+use Konventix\Compliance\Actions\WithdrawConsent;
+use Konventix\Compliance\Enums\LawfulBasis;
+use Konventix\Compliance\Gdpr\ComplianceGdprHandler;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
@@ -174,4 +179,42 @@ it('never stamps the resolved brand onto an operator-wide row created inside a b
     expect($policy->fresh()?->brand_id)->toBeNull()
         ->and(PolicyVersion::withoutBrandScope()->where('policy_id', $policy->getKey())->value('brand_id'))
         ->toBeNull();
+});
+
+/*
+ * The relation loads on the way back out. A Consent is stamped with the
+ * brand it was given in, but the version and policy behind it may be
+ * operator-wide — so every eager load that walks from a consent to its text
+ * has to escape BrandScope or it comes back null on the very brand host that
+ * recorded it (.ai/rules/app-modules-src.md).
+ */
+
+it('withdraws a consent to an operator-wide version from the brand host that recorded it', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+
+    $policy = operatorPolicyWide('photo-consent', 'Photo Consent');
+    $version = PolicyVersion::factory()->for($policy)->operatorWide()->published()->create([
+        'lawful_basis' => LawfulBasis::Consent,
+    ]);
+
+    $consent = app(GrantConsent::class)($user->getKey(), $version, 'privacy_settings');
+
+    app(WithdrawConsent::class)($consent);
+
+    expect($consent->refresh()->withdrawn_at)->not->toBeNull();
+});
+
+it('names the operator-wide policy in a subject export', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+
+    $policy = operatorPolicyWide('terms', 'Operator Terms');
+    $version = PolicyVersion::factory()->for($policy)->operatorWide()->published()->create();
+
+    app(GrantConsent::class)($user->getKey(), $version, 'checkout');
+
+    $export = (new ComplianceGdprHandler)->exportFor(SubjectRef::forUser($user->getKey()));
+
+    expect($export['consents'][0]['policy'])->toBe('terms');
 });

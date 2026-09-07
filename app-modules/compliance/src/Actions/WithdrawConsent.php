@@ -33,7 +33,12 @@ final class WithdrawConsent
 
     public function __invoke(Consent $consent, ?CarbonInterface $withdrawnAt = null): Consent|DataSubjectRequest
     {
-        $consent->loadMissing('policyVersion');
+        // Escapes BrandScope: an operator-wide policy's version carries no
+        // `brand_id` (#76), so the scoped relation load comes back null on
+        // the very brand host that recorded the consent
+        // (.ai/rules/app-modules-src.md) — same reason
+        // `withdrawImmediately()` below escapes it for the admin host.
+        $consent->loadMissing(['policyVersion' => fn ($query) => $query->withoutGlobalScope(BrandScope::class)]);
 
         if (! $consent->policyVersion->lawful_basis->allowsSelfServiceWithdrawal()) {
             // Idempotence: a second withdraw attempt while one is already
