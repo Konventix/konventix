@@ -162,6 +162,36 @@ it('records a manual booking as a first-class payment', function (): void {
     Event::assertDispatched(OrderPaid::class);
 });
 
+/**
+ * ADR-0057 point 3: the money can come back by the pay link, the door POS
+ * or a bank transfer, and each of them ends in `OrderPaid` — this is the
+ * door-POS/bank-transfer leg, `RecordPaymentSuccess`'s sibling test above is
+ * the pay-link leg.
+ */
+it('books a manual payment on a payment_reversed order exactly like a pending one', function (): void {
+    $this->withBrand();
+    $order = paymentLifecycleOrder(OrderStatus::PaymentReversed);
+
+    Event::fake([PaymentReceived::class, OrderPaid::class]);
+
+    app(BookManualPayment::class)->handle($order);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and($order->paid_at)->not->toBeNull();
+
+    Event::assertDispatched(OrderPaid::class, fn (OrderPaid $event): bool => $event->orderId === $order->id
+        && $event->settlementMethod === 'manual');
+});
+
+it('refuses a manual payment on a refunded order', function (): void {
+    $this->withBrand();
+    $order = paymentLifecycleOrder(OrderStatus::Refunded);
+
+    Event::fake([PaymentReceived::class, OrderPaid::class]);
+
+    app(BookManualPayment::class)->handle($order);
+})->throws(RuntimeException::class);
+
 it('settles a payment_reversed order exactly like a pending one', function (): void {
     // ADR-0057 point 3: the money can come back by the pay link, the door
     // POS or a bank transfer, and each of them ends in OrderPaid with
