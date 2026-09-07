@@ -1,6 +1,7 @@
 # The pipeline is the one instance that sees every change (#59), and it runs at
 # four different depths depending on how far the change has travelled.
 #
+#   docs/ branch, with or without MR  ~1 min   the docs-only guard, secrets
 #   feature branch, no merge request  ~2 min   format, phpstan, vitest, secrets
 #   merge request                    ~16 min   + eslint, vue-tsc, the Pest suite,
 #                                              semgrep, dependency scanning
@@ -20,6 +21,13 @@
 #
 # develop is the integration branch and the default: feature branches merge into
 # it, and it merges into main for a release.
+#
+# A branch named docs/… is documentation by declaration, and its pipeline is
+# the `docs:only` guard plus secret detection. Nothing else in a pipeline knows
+# what a change touched, and `rules:changes` cannot say "only these files", so
+# a list of code globs on every job would silently skip CI the day someone adds
+# a path. The guard is what makes the declaration safe: a non-documentation
+# file on a docs/ branch fails the pipeline instead of merging unverified.
 #
 # One thing from .github/workflows is deliberately not ported: image.yml has no
 # `needs` on tests.yml, so an image there can be published from a commit whose
@@ -53,6 +61,11 @@ stages:
 
 workflow:
   rules:
+    # A docs/ branch gets the documentation shape — see `docs:only` below. The
+    # branch name is read only here; every job reads the variable.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /^docs\//
+      variables:
+        PIPELINE_SHAPE: docs
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == "main"
@@ -61,25 +74,36 @@ workflow:
     # running both would spend a runner twice on the same commit.
     - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
       when: never
+    - if: $CI_COMMIT_BRANCH =~ /^docs\//
+      variables:
+        PIPELINE_SHAPE: docs
     # Any other branch push gets the fast lane — see `.tier-0` below.
     - if: $CI_COMMIT_BRANCH
 
 # Which pipelines a job belongs to. Referenced rather than repeated so that a
-# job's tier is one line and the tiers stay comparable.
+# job's tier is one line and the tiers stay comparable. Every tier starts by
+# stepping aside for the documentation shape (`PIPELINE_SHAPE`, set in
+# `workflow:rules`); the jobs with hand-written rules do the same.
 .tiers:
   # Everywhere, including a bare feature branch push.
   everywhere: &tier-everywhere
+    - if: $PIPELINE_SHAPE == "docs"
+      when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH
   # Merge requests and the two long-lived branches — never a bare feature push.
   reviewed: &tier-reviewed
+    - if: $PIPELINE_SHAPE == "docs"
+      when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
   # Where an image is published: integration onwards.
   published: &tier-published
+    - if: $PIPELINE_SHAPE == "docs"
+      when: never
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
@@ -89,6 +113,8 @@ workflow:
   # silently outside it. A push to main is deliberately not here: the release
   # tag that follows covers the same commit.
   release: &tier-release
+    - if: $PIPELINE_SHAPE == "docs"
+      when: never
     - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+-dev(\.[0-9]+)?$/
       when: never
     - if: $CI_COMMIT_TAG
@@ -99,6 +125,10 @@ variables:
   COMPOSER_CACHE_DIR: $CI_PROJECT_DIR/.cache/composer
   COMPOSER_NO_INTERACTION: "1"
   npm_config_cache: $CI_PROJECT_DIR/.cache/npm
+
+  # Which shape this pipeline has. `workflow:rules` sets it to `docs` for a
+  # docs/ branch; the tiers and the hand-ruled jobs read it, nothing else does.
+  PIPELINE_SHAPE: full
 
   # The security templates skip merge request pipelines unless this is set:
   # every scanner's rules read `$AST_ENABLE_MR_PIPELINES == "true" &&
@@ -226,7 +256,10 @@ prepare:toolchain:
     # request's Dockerfile experiment must not change the image every other
     # pipeline is running on; its own change is still proven by `build:image`,
     # which builds the whole file including this stage. Elsewhere the job is a
-    # manifest lookup that exits in about thirty seconds.
+    # manifest lookup that exits in about thirty seconds. The documentation
+    # shape has no job that runs on the image, so not even the lookup.
+    - if: $PIPELINE_SHAPE == "docs"
+      when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH != "main" && $CI_COMMIT_BRANCH != "develop"
@@ -246,6 +279,44 @@ prepare:toolchain:
         --cache-to "type=registry,ref=$TOOLCHAIN_IMAGE:cache,mode=max" \
         --tag "$TOOLCHAIN_IMAGE:$TOOLCHAIN_TAG" \
         --push .
+
+########## the documentation shape ##########
+#
+# A docs/ branch runs this guard and secret detection, nothing else. The guard
+# is the whole reason a branch name may switch the pipeline off: a change that
+# is not documentation fails here, with the files named, instead of reaching
+# develop unverified. Rename the branch or split the change.
+
+docs:only:
+  stage: verify
+  image: alpine:3.22
+  rules:
+    - if: $PIPELINE_SHAPE == "docs"
+  needs: []
+  variables:
+    # The diff base is an ancestor the shallow default clone may not hold.
+    GIT_DEPTH: "0"
+  before_script:
+    - apk add --no-cache git
+  script:
+    - |
+      set -eu
+      if [ -n "${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}" ]; then
+        base="$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+      else
+        git fetch --quiet --no-tags origin +refs/heads/develop:refs/remotes/origin/develop
+        base="$(git merge-base origin/develop HEAD)"
+      fi
+      echo "documentation shape: comparing against $base"
+      git diff --name-only "$base" HEAD > changed-files.txt
+      offending="$(grep -vE '^(docs/|\.ai/|LICENSE$)' changed-files.txt | grep -vE '\.md$' || true)"
+      if [ -n "$offending" ]; then
+        echo "Not documentation, so not for a docs/ branch:" >&2
+        echo "$offending" | sed 's/^/  /' >&2
+        echo "Rename the branch (feat/, fix/, ci/ …) or split the change." >&2
+        exit 1
+      fi
+      echo "$(wc -l < changed-files.txt) changed file(s), all documentation."
 
 ########## verify — the fast run (#64), and the gate on everything after ##########
 #
@@ -411,8 +482,14 @@ test:php:
 secret_detection:
   stage: scan
   # Tier 0: sixteen seconds, and the one finding that must never reach a shared
-  # branch unnoticed. It runs on feature branch pushes too.
-  rules: *tier-everywhere
+  # branch unnoticed. It runs on feature branch pushes too, and it is the one
+  # scanner the documentation shape keeps: a README with a real key is the
+  # finding the fleet repository actually had.
+  rules:
+    - if: $PIPELINE_SHAPE == "docs"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
   needs: []
   allow_failure: false
 
@@ -449,7 +526,9 @@ semgrep-sast:
   # the same pipeline as gitlab-advanced-sast — both write gl-sast-report.json
   # and scan:gate would read whichever landed last.
   rules:
-    # First, so it wins over the blanket tag exclusion below: on a dev tag the
+    - if: $PIPELINE_SHAPE == "docs"
+      when: never
+    # Ahead of the blanket tag exclusion below, so it wins: on a dev tag the
     # advanced analyzer stands down and this one takes its place. Without this
     # the pipeline would carry no SAST report at all and `scan:gate` would
     # fail on the one it could not find. The pattern is the release tier's,
@@ -491,7 +570,11 @@ scan:gate:
   rules:
     # On a feature branch only secret detection ran, so the gate checks only
     # that. Twelve seconds, and it means a credential cannot sit unnoticed on a
-    # shared branch just because no merge request exists yet.
+    # shared branch just because no merge request exists yet. The documentation
+    # shape is the same case with a merge request.
+    - if: $PIPELINE_SHAPE == "docs"
+      variables:
+        GATE_SECRETS_ONLY: "yes"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == "main"
@@ -549,7 +632,7 @@ scan:gate:
       fi
 
       if [ "${GATE_SECRETS_ONLY:-no}" = "yes" ]; then
-        echo "feature branch: secret detection only, the rest runs from the merge request on."
+        echo "secret detection only: the rest runs from a merge request on, and never in the documentation shape."
         exit "$status"
       fi
 
@@ -579,7 +662,11 @@ build:image:
   rules:
     # From develop onwards the image is always built and published: that is what
     # gives a staging instance something immutable to track (#82) and what keeps
-    # the Dockerfile continuously proven instead of only at release.
+    # the Dockerfile continuously proven instead of only at release. A docs/
+    # merge request may touch docker/README.md, which `changes` below would
+    # take for a Dockerfile change — so the shape is read first.
+    - if: $PIPELINE_SHAPE == "docs"
+      when: never
     - if: $CI_COMMIT_TAG
       variables:
         PUBLISH_IMAGE: "yes"
