@@ -34,6 +34,15 @@ class PolicyVersionFactory extends Factory
     }
 
     /**
+     * A version of an operator-wide policy: `brand_id` explicitly null, the
+     * same signal the policy row itself carries (GitLab #76).
+     */
+    public function operatorWide(): static
+    {
+        return $this->state(fn (): array => ['brand_id' => null]);
+    }
+
+    /**
      * A version already in its published state, without going through
      * PublishPolicyVersion — useful for tests that need a published version
      * as a fixture rather than as the thing under test.

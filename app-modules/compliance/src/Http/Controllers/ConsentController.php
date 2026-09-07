@@ -40,7 +40,13 @@ final class ConsentController
         $subjectId = (string) $request->user()->getAuthIdentifier();
         $context = $validated['captureContext'] ?? 'consent_form';
 
-        $versions = PolicyVersion::query()
+        // Escapes BrandScope on purpose (ADR-0010): a version of an
+        // operator-wide policy carries no `brand_id` (GitLab #76), so the
+        // scoped query would silently drop exactly the texts every brand
+        // inherits. `OutstandingConsents` decided which versions may be
+        // offered; this narrows the ids the form posted back to those still
+        // published and effective.
+        $versions = PolicyVersion::withoutBrandScope()
             ->whereIn('id', $validated['versionIds'])
             ->where('state', PolicyVersionState::Published)
             ->where('effective_at', '<=', now())

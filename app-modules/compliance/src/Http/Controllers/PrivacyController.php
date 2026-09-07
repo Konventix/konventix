@@ -14,6 +14,7 @@ use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Compliance\Support\OutstandingConsents;
+use Konventix\Platform\Models\Scopes\BrandScope;
 
 /**
  * The account's privacy page: what this person has agreed to, when, and what
@@ -35,9 +36,16 @@ final class PrivacyController
     {
         $subjectId = (string) $request->user()->getAuthIdentifier();
 
+        // The consent rows stay brand-scoped — a consent is always recorded
+        // in a brand context — but the version and policy behind one may be
+        // operator-wide (GitLab #76), and a scoped eager load would hand this
+        // page a null version to name (.ai/rules/app-modules-src.md).
         $consents = Consent::query()
             ->where('subject_id', $subjectId)
-            ->with('policyVersion.policy')
+            ->with([
+                'policyVersion' => fn ($query) => $query->withoutGlobalScope(BrandScope::class)
+                    ->with(['policy' => fn ($inner) => $inner->withoutGlobalScope(BrandScope::class)]),
+            ])
             ->orderByDesc('granted_at')
             ->get();
 

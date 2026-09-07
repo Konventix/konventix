@@ -15,6 +15,12 @@ use Konventix\Compliance\Models\Policy;
  * context: the operator console creates policies for a brand it is not
  * currently resolved into (ADR-0029), same as Content's `CreateEntry`.
  *
+ * A null `brandId` creates the *operator's* copy of a text, which every one
+ * of its brands inherits until it publishes its own (GitLab #76). Passing
+ * the key explicitly — null included — is what tells `Policy`'s creating
+ * hook this row is deliberately operator-wide rather than missing its brand
+ * (see Models\Concerns\MayBeOperatorWide).
+ *
  * No first version is created here. A policy with no published version is a
  * legitimate intermediate state (the operator is still drafting), and
  * creating an empty draft as a side effect would put a blank legal document
@@ -22,7 +28,7 @@ use Konventix\Compliance\Models\Policy;
  */
 final class CreatePolicy
 {
-    public function __invoke(string $brandId, PolicyData $data): Policy
+    public function __invoke(?string $brandId, PolicyData $data): Policy
     {
         return DB::transaction(function () use ($brandId, $data): Policy {
             $policy = new Policy([
