@@ -175,6 +175,13 @@ login drivers a brand offers is per-brand configuration, not module activation.
   (global unique email); per-brand first-seen, roles and preferences live in
   `brand_memberships`. `UserRegistered.brand_id` names the brand the account
   was created through, not an owner.
+- ~~Does a person who only ever used brand A have any presence on brand B —
+  in lists, on profile pages, in consents, in sends?~~ **Settled by
+  ADR-0054:** presence is the membership. An account with no
+  `brand_memberships` row on a brand has nothing shown and nothing sent
+  there; the account itself is named on every auth surface together with the
+  operator's other brands (#184), and a duplicate registration is answered
+  as ADR-0016 requires, with the explanatory mail (#18).
 - Can a person exist as a registrant without ever holding an account (guest
   registration)? ADR-0005 separates Registration from Admission, which suggests
   yes — and then Compliance needs a subject identity that is not a user ULID.

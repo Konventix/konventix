@@ -711,6 +711,12 @@ so they are not rediscovered.
   filtering, announcement audience narrowing, suppression-list operator
   screens (the delivery log itself now has one, ADR-0048), provider bounce
   webhooks, a real-browser push pass. (Messaging's `TODO.md`.)
+- **The announcement fan-out ignores brand membership** (GitLab #25). ADR-0054
+  makes the membership the unit of every brand's audience; until #25 lands,
+  a deployment with more than one brand must not publish announcements to
+  `everyone` or `logged-in`. The auth surfaces that name the operator and
+  list its brands (#184) and the enumeration-safe registration (#18) are
+  Phase 2. (Identity's and Messaging's `TODO.md`.)
 - **`Data\OpeningPeriodData` carries no `#[TypeScript]` attribute**, so the
   venues form spells its shape out by hand and the two can drift. Add the
   attribute when the opening-times editor lands.
