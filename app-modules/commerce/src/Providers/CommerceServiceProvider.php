@@ -56,6 +56,7 @@ use Konventix\Commerce\Settlement\NullSettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Settlement\Stripe\SdkStripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
+use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
 use Konventix\Commerce\Settlement\Stripe\StripeNotConfiguredException;
 use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
 use Konventix\Commerce\Settlement\Unzer\SdkUnzerApi;
@@ -309,15 +310,18 @@ class CommerceServiceProvider extends ModuleServiceProvider
         $this->app->bind(MollieApi::class, SdkMollieApi::class);
         $this->app->bind(UnzerApi::class, SdkUnzerApi::class);
 
-        // Bound lazily: the platform key is only required the moment a
-        // Stripe-connected brand actually settles something (ADR-0039).
+        // The one place the Stripe key is resolved (ADR-0058 point 2):
+        // `StripeCredentials` answers row-before-environment, and every
+        // call is made on this instance's own account — no Connect, no
+        // `Stripe-Account` header. Bound lazily: the key is only required
+        // the moment a Stripe-enabled brand actually settles something.
         // The throw is a typed one so a caller that can say something
         // useful — the settlement console — catches exactly this and shows
         // the operator what to configure, rather than a bare 500 (#194).
         $this->app->bind(StripeApi::class, function (): StripeApi {
-            $secret = config('services.stripe.secret');
+            $secret = $this->app->make(StripeCredentials::class)->secret();
 
-            if (! is_string($secret) || $secret === '') {
+            if ($secret === null) {
                 throw StripeNotConfiguredException::missingPlatformKey();
             }
 

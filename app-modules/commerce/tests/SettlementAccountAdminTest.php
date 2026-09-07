@@ -9,8 +9,10 @@ use Konventix\Commerce\Actions\ConnectSettlementAccount;
 use Konventix\Commerce\Events\SettlementAccountConnected;
 use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Models\StripeSettings;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
+use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
 use Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaymentSnapshot;
@@ -217,17 +219,16 @@ it('still offers the remaining providers once one is connected', function (): vo
 });
 
 /*
- * The "Before you connect" block of the Stripe branch (#161, ADR-0039
- * point 4/5). Everything an operator needs to set the platform credentials
- * up is a page prop, because they hit the dialog before they hit the docs:
- * the endpoint URL for *this* instance, the events that endpoint has to
- * listen to on connected accounts, and whether the two platform secrets
- * are set at all — never their values.
+ * The instance's own Stripe account card (ADR-0058 point 2, #215).
+ * Everything an operator needs is a page prop, because they meet the
+ * console before they meet the docs: the endpoint URL for *this* instance,
+ * the seven events it must be subscribed to, which key is installed and
+ * where it came from — never a key's value.
  */
 it('tells the operator the webhook endpoint and the events it must listen to', function (): void {
     [$admin] = settlementAdminOperator();
 
-    config()->set('services.stripe.secret', 'sk_test_x');
+    config()->set('services.stripe.secret', 'sk_test_abcd');
     config()->set('services.stripe.webhook_secret', 'whsec_x');
 
     $this->actingAs($admin)
@@ -241,13 +242,17 @@ it('tells the operator the webhook endpoint and the events it must listen to', f
             ->where('stripeSetup.webhookUrl', 'http://admin.settlement.test/api/commerce/webhooks/stripe')
             ->where('stripeSetup.events', StripeWebhookEvents::ALL)
             ->has('stripeSetup.events', 7)
-            ->where('stripeSetup.platformConfigured', true)
+            ->where('stripeSetup.configured', true)
+            ->where('stripeSetup.webhookSecretSet', true)
+            ->where('stripeSetup.source', 'environment')
+            ->where('stripeSetup.mode', 'test')
+            ->where('stripeSetup.lastFour', 'abcd')
             ->where('stripeSetup.secretGroupHint', fn (string $hint): bool => str_contains($hint, 'STRIPE_SECRET')
                 && str_contains($hint, 'STRIPE_WEBHOOK_SECRET')
                 && str_contains($hint, 'secrets.payments')));
 });
 
-it('reports the platform credentials as missing when either one is blank', function (string $secret, string $webhookSecret): void {
+it('reports the credentials as missing when either one is blank', function (string $secret, string $webhookSecret, bool $configured, bool $webhookSet): void {
     [$admin] = settlementAdminOperator();
 
     config()->set('services.stripe.secret', $secret);
@@ -257,14 +262,111 @@ it('reports the platform credentials as missing when either one is blank', funct
         ->get('http://admin.settlement.test/admin/settlement-accounts')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('stripeSetup.platformConfigured', false)
-            // Never the values themselves — the prop says configured or not.
+            ->where('stripeSetup.configured', $configured)
+            ->where('stripeSetup.webhookSecretSet', $webhookSet)
+            // Never the values themselves — the prop says whether, not what.
             ->where('stripeSetup.webhookUrl', 'http://admin.settlement.test/api/commerce/webhooks/stripe'));
 })->with([
-    'neither set' => ['', ''],
-    'no platform key' => ['', 'whsec_x'],
-    'no signing secret' => ['sk_test_x', ''],
+    'neither set' => ['', '', false, false],
+    'no secret key' => ['', 'whsec_x', false, true],
+    'no signing secret' => ['sk_test_x', '', true, false],
 ]);
+
+it('saves this instance\'s Stripe keys from the console, encrypted, and prefers them over the environment', function (): void {
+    [$admin] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', 'sk_test_environment_9999');
+    config()->set('services.stripe.webhook_secret', 'whsec_environment');
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => 'sk_test_console_1234',
+            'webhookSecret' => 'whsec_console',
+            'publishableKey' => 'pk_test_console',
+        ])
+        ->assertRedirect('http://admin.settlement.test/admin/settlement-accounts');
+
+    $settings = StripeSettings::query()->sole();
+
+    expect($settings->secret_key)->toBe('sk_test_console_1234')
+        ->and($settings->webhook_secret)->toBe('whsec_console')
+        ->and(app(StripeCredentials::class)->secret())->toBe('sk_test_console_1234');
+
+    // The console reads back which key is installed, never the key.
+    $this->actingAs($admin)
+        ->get('http://admin.settlement.test/admin/settlement-accounts')
+        ->assertOk()
+        ->assertDontSee('sk_test_console_1234')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('stripeSetup.source', 'database')
+            ->where('stripeSetup.mode', 'test')
+            ->where('stripeSetup.lastFour', '1234')
+            ->where('stripeSetup.publishableKeySet', true));
+});
+
+it('refuses keys that are not the Stripe shapes they claim to be', function (array $payload, string $field): void {
+    [$admin] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', $payload)
+        ->assertSessionHasErrors($field);
+
+    expect(StripeSettings::query()->count())->toBe(0);
+})->with([
+    'a publishable key in the secret field' => [
+        ['secretKey' => 'pk_test_nope', 'webhookSecret' => 'whsec_x', 'publishableKey' => null],
+        'secretKey',
+    ],
+    'an endpoint id instead of its signing secret' => [
+        ['secretKey' => 'sk_test_x', 'webhookSecret' => 'we_1234', 'publishableKey' => null],
+        'webhookSecret',
+    ],
+    'a secret key in the publishable field' => [
+        ['secretKey' => 'sk_test_x', 'webhookSecret' => 'whsec_x', 'publishableKey' => 'sk_test_x'],
+        'publishableKey',
+    ],
+]);
+
+it('clears the console keys so the environment applies again', function (): void {
+    [$admin] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', 'sk_test_environment_9999');
+    config()->set('services.stripe.webhook_secret', 'whsec_environment');
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => 'sk_test_console_1234',
+            'webhookSecret' => 'whsec_console',
+            'publishableKey' => null,
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->delete('http://admin.settlement.test/admin/settlement-accounts/stripe/settings')
+        ->assertRedirect('http://admin.settlement.test/admin/settlement-accounts');
+
+    expect(StripeSettings::query()->count())->toBe(0)
+        ->and(app(StripeCredentials::class)->secret())->toBe('sk_test_environment_9999')
+        ->and(app(StripeCredentials::class)->source())->toBe('environment');
+});
+
+it('403s an admin without the manage capability on the Stripe keys', function (): void {
+    [$admin] = settlementAdminOperator(['platform.access-admin']);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => 'sk_test_console_1234',
+            'webhookSecret' => 'whsec_console',
+            'publishableKey' => null,
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($admin)
+        ->delete('http://admin.settlement.test/admin/settlement-accounts/stripe/settings')
+        ->assertForbidden();
+
+    expect(StripeSettings::query()->count())->toBe(0);
+});
 
 it('saves a custom checkout label', function (): void {
     [$admin, $brand] = settlementAdminOperator();
@@ -487,7 +589,9 @@ it('names the missing Stripe platform key instead of answering 500', function ()
         ->and($error)->toContain('STRIPE_WEBHOOK_SECRET')
         ->and($error)->toContain('services.stripe.secret')
         ->and($error)->toContain('secrets.payments')
-        ->and($error)->toContain('ADR-0039');
+        // Both places a key may live are named (ADR-0058 point 2).
+        ->and($error)->toContain('operator console')
+        ->and($error)->toContain('ADR-0058');
 
     // Nothing was created: the brand still has no Stripe row to clean up.
     expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->count())->toBe(0);

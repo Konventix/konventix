@@ -38,6 +38,12 @@ Route::get('/credit-notes/{creditNote}/document', [CreditNoteDocumentController:
 Route::get('/settlement-accounts', [SettlementAccountAdminController::class, 'index'])->name('admin.settlement-accounts.index');
 Route::post('/settlement-accounts/stripe', [SettlementAccountAdminController::class, 'connectStripe'])->name('admin.settlement-accounts.stripe');
 Route::get('/settlement-accounts/stripe/return/{account}', [SettlementAccountAdminController::class, 'stripeReturn'])->name('admin.settlement-accounts.stripe-return');
+// This instance's own Stripe account (ADR-0058 point 2): one encrypted
+// operator row, entered here, winning over STRIPE_SECRET /
+// STRIPE_WEBHOOK_SECRET from the environment. Not per brand — a brand's
+// Stripe row is only the flag that says it sells through this account.
+Route::put('/settlement-accounts/stripe/settings', [SettlementAccountAdminController::class, 'saveStripeSettings'])->name('admin.settlement-accounts.stripe-settings.update');
+Route::delete('/settlement-accounts/stripe/settings', [SettlementAccountAdminController::class, 'clearStripeSettings'])->name('admin.settlement-accounts.stripe-settings.destroy');
 Route::post('/settlement-accounts/mollie', [SettlementAccountAdminController::class, 'connectMollie'])->name('admin.settlement-accounts.mollie');
 Route::post('/settlement-accounts/unzer', [SettlementAccountAdminController::class, 'connectUnzer'])->name('admin.settlement-accounts.unzer');
 Route::post('/settlement-accounts/{account}/disconnect', [SettlementAccountAdminController::class, 'disconnect'])->name('admin.settlement-accounts.disconnect');

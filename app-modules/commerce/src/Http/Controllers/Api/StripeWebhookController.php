@@ -19,6 +19,7 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\MinorUnits;
+use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
 use Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents;
 use Stripe\Event as StripeEvent;
 use Stripe\Exception\SignatureVerificationException;
@@ -27,10 +28,17 @@ use UnexpectedValueException;
 
 /**
  * Stripe's notification endpoint — the only place a Stripe payment becomes
- * settlement truth (ADR-0039). Signature-verified against the platform
- * signing secret before a byte of the payload is trusted; Connect delivers
- * connected-account events to this one platform endpoint, and the Checkout
- * Session id correlates them to our `Payment` row.
+ * settlement truth (ADR-0039). Signature-verified before a byte of the
+ * payload is trusted, against the secret `StripeCredentials` resolves —
+ * the operator's console-entered row first, the environment otherwise
+ * (ADR-0058 point 2), so an operator who rotates the pair in the console
+ * does not silently keep verifying against a stale environment value.
+ *
+ * One ordinary endpoint on this instance's own Stripe account, *not* a
+ * Connect endpoint: every Checkout Session is created on that account
+ * (ADR-0058 point 5), so nothing needs "Listen to events on connected
+ * accounts". The Checkout Session id correlates each event to our
+ * `Payment` row.
  *
  * Fulfills on both `completed` and `async_payment_succeeded`, gated on
  * `payment_status`: with delayed-notification methods (SEPA, bank transfer)
@@ -53,6 +61,7 @@ class StripeWebhookController
 {
     public function __invoke(
         Request $request,
+        StripeCredentials $credentials,
         RecordPaymentSuccess $recordSuccess,
         RecordPaymentFailure $recordFailure,
         RecordPaymentReversal $recordReversal,
@@ -61,7 +70,10 @@ class StripeWebhookController
             $event = Webhook::constructEvent(
                 $request->getContent(),
                 $request->header('Stripe-Signature', ''),
-                config()->string('services.stripe.webhook_secret'),
+                // No signing secret at all verifies nothing: an empty
+                // secret makes every signature invalid, which is the safe
+                // direction — a 400 Stripe retries, not a settled order.
+                $credentials->webhookSecret() ?? '',
             );
         } catch (SignatureVerificationException|UnexpectedValueException) {
             return response()->json(['error' => 'invalid signature'], 400);

@@ -16,16 +16,20 @@ use Konventix\Commerce\Actions\MarkSettlementAccountConnected;
 use Konventix\Commerce\Actions\RefreshSettlementAccountCapabilities;
 use Konventix\Commerce\Actions\UpdateSettlementAccountLabel;
 use Konventix\Commerce\Data\CommerceBrandSettingsData;
+use Konventix\Commerce\Data\SaveStripeSettingsData;
 use Konventix\Commerce\Data\StripeSetupData;
 use Konventix\Commerce\Data\UpdateSettlementAccountLabelData;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
 use Konventix\Commerce\Models\CommerceBrandSettings;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Models\StripeSettings;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
+use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
 use Konventix\Commerce\Settlement\Stripe\StripeNotConfiguredException;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\OperatorContext;
 use Stripe\Exception\ApiErrorException;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
@@ -56,7 +60,7 @@ class SettlementAccountAdminController
         SettlementAccount::PROVIDER_UNZER,
     ];
 
-    public function index(): Response
+    public function index(StripeCredentials $credentials): Response
     {
         Gate::authorize(Permission::ManageSettlementAccount->value);
 
@@ -72,12 +76,13 @@ class SettlementAccountAdminController
             ->groupBy('brand_id');
 
         return Inertia::render('admin/settlement-accounts/Index', [
-            // #161: the connect dialog is where an operator finds out the
-            // platform credentials are missing, so it is where the answer
-            // belongs — which env names, which chart secret group, and the
-            // webhook endpoint of *this* instance with the events it has to
-            // listen to on connected accounts (ADR-0039 point 5).
-            'stripeSetup' => StripeSetupData::ofConfig()->toArray(),
+            // This instance's own Stripe account (ADR-0058 point 2): the
+            // console is where an operator sets or rotates the key, and
+            // where they find out one is missing — so it carries which
+            // key is installed (mode and last four, never the value),
+            // where it came from, and the webhook endpoint of *this*
+            // instance with the seven events it has to be subscribed to.
+            'stripeSetup' => StripeSetupData::ofCredentials($credentials)->toArray(),
             'brands' => Brand::query()->orderBy('name')->get(['id', 'name'])
                 ->map(function (Brand $brand) use ($accounts): array {
                     $brandAccounts = $accounts->get((string) $brand->getKey()) ?? collect();
@@ -201,6 +206,50 @@ class SettlementAccountAdminController
         return redirect()
             ->route('admin.settlement-accounts.index')
             ->with('success', 'Stripe account connected. Checkout goes live once Stripe activates card payments for it.');
+    }
+
+    /**
+     * Sets or replaces this instance's own Stripe account (ADR-0058
+     * point 2). Operator-level, not per brand: Konventix is not a
+     * marketplace, so one instance settles into one Stripe account.
+     *
+     * `updateOrCreate` rather than a partial update — a rotation replaces
+     * the pair, and leaving a stale webhook secret beside a new key would
+     * verify tomorrow's events against yesterday's endpoint.
+     */
+    public function saveStripeSettings(SaveStripeSettingsData $data, OperatorContext $operator): RedirectResponse
+    {
+        Gate::authorize(Permission::ManageSettlementAccount->value);
+
+        StripeSettings::query()->updateOrCreate(
+            ['operator_id' => $operator->id()],
+            [
+                'secret_key' => $data->secretKey,
+                'webhook_secret' => $data->webhookSecret,
+                'publishable_key' => $data->publishableKey,
+            ],
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Stripe account saved.')]);
+
+        return redirect()->route('admin.settlement-accounts.index');
+    }
+
+    /**
+     * Clears the console-entered keys. Not a disconnect: the environment
+     * pair, if this deployment has one, takes over again the moment the
+     * row is gone — which is exactly the fallback half of ADR-0058
+     * point 2, and why clearing is safe to offer.
+     */
+    public function clearStripeSettings(OperatorContext $operator): RedirectResponse
+    {
+        Gate::authorize(Permission::ManageSettlementAccount->value);
+
+        StripeSettings::query()->where('operator_id', $operator->id())->delete();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Stripe keys cleared — the environment applies again.')]);
+
+        return redirect()->route('admin.settlement-accounts.index');
     }
 
     public function connectMollie(Request $request, ConnectSettlementAccount $connect): RedirectResponse
