@@ -470,12 +470,17 @@ function openVersion(id: string): void {
                                 </span>
                             </span>
                             <span class="text-xs text-text-muted">
-                                {{
-                                    formatDateTime(
-                                        version.effectiveAt,
-                                        withZoneName,
-                                    ) || 'no date'
-                                }}
+                                <time
+                                    v-if="version.effectiveAt"
+                                    :datetime="version.effectiveAt"
+                                    >{{
+                                        formatDateTime(
+                                            version.effectiveAt,
+                                            withZoneName,
+                                        )
+                                    }}</time
+                                >
+                                <template v-else>no date</template>
                                 · {{ version.consents }} agreement{{
                                     version.consents === 1 ? '' : 's'
                                 }}
@@ -614,14 +619,16 @@ function openVersion(id: string): void {
                             class="text-sm text-text-muted"
                         >
                             Effective from
-                            <span class="font-medium text-text">
-                                {{
+                            <time
+                                class="font-medium text-text"
+                                :datetime="props.selected.effectiveAt ?? ''"
+                                >{{
                                     formatDateTime(
                                         props.selected.effectiveAt,
                                         withZoneName,
                                     )
-                                }}
-                            </span>
+                                }}</time
+                            >
                             — until then the text is not served under its public
                             URL.
                         </p>

@@ -41,12 +41,37 @@ export function allowNavigation(): void {
 }
 
 /**
- * Re-arm every guard on the page. Called when Inertia renders a page:
- * the document did not leave after all, so unsaved changes are once
- * again worth a prompt.
+ * Re-arm every guard on the page: the document did not leave after all,
+ * so unsaved changes are once again worth a prompt.
+ *
+ * Three moments say that, and `navigate` is only one of them — a release
+ * that waits for it alone outlives the navigation it was meant for.
+ * `pageshow` covers the browser handing a page back from the bfcache
+ * (which fires *instead of* `navigate`, since nothing re-rendered), and
+ * `onBeforeUnmount` covers a guard leaving the page it belonged to.
  */
 export function rearmNavigationGuard(): void {
     navigationAllowed = false;
+}
+
+/**
+ * Whether an `inertia:location` event actually means the document is about
+ * to leave.
+ *
+ * Not every one does. Inertia fires `location` first and only then decides:
+ * on an asset-version change during an `async` visit it returns without
+ * touching `window.location` at all (`Response.locationVisit()`), so the
+ * page stays exactly where it is — with the guard released and no
+ * `navigate` coming to re-arm it. From then on the form silently lost its
+ * unsaved changes on the next reload.
+ *
+ * The event carries `versionChange` but not `async`, so this errs towards
+ * the prompt: a version-change location is treated as "may not leave", and
+ * the worst case is one confirmation dialog on a redirect that does leave.
+ * A dropped form is not recoverable; a dialog is.
+ */
+export function shouldReleaseForLocation(versionChange: boolean): boolean {
+    return !versionChange;
 }
 
 /**
@@ -82,6 +107,15 @@ export function useUnsavedChanges(isDirty: () => boolean): {
         }
     }
 
+    /**
+     * The document is here after all — either it never left, or the browser
+     * restored it from the bfcache, which renders no page and therefore
+     * fires no `navigate`.
+     */
+    function onPageShow(): void {
+        rearmNavigationGuard();
+    }
+
     onMounted(() => {
         removeListeners.push(
             router.on('before', (event) => {
@@ -100,9 +134,13 @@ export function useUnsavedChanges(isDirty: () => boolean): {
             }),
             // The response to `Inertia::location()`: this fires immediately
             // before the hard `window.location.href` assignment, which is
-            // what would otherwise trigger the leave prompt.
-            router.on('location', () => {
-                allowNavigation();
+            // what would otherwise trigger the leave prompt — except when
+            // Inertia decides not to assign it after all, which is what
+            // `shouldReleaseForLocation()` is about.
+            router.on('location', (event) => {
+                if (shouldReleaseForLocation(event.detail.versionChange)) {
+                    allowNavigation();
+                }
             }),
             // The page rendered instead of leaving — guard back on.
             router.on('navigate', () => {
@@ -111,12 +149,18 @@ export function useUnsavedChanges(isDirty: () => boolean): {
         );
 
         window.addEventListener('beforeunload', onBeforeUnload);
+        window.addEventListener('pageshow', onPageShow);
     });
 
     onBeforeUnmount(() => {
         removeListeners.forEach((remove) => remove());
         removeListeners.length = 0;
         window.removeEventListener('beforeunload', onBeforeUnload);
+        window.removeEventListener('pageshow', onPageShow);
+
+        // The guard is going away; it must not leave the document released
+        // for whatever mounts next.
+        rearmNavigationGuard();
     });
 
     return { allowNavigation };

@@ -4,8 +4,12 @@ vi.mock('@inertiajs/vue3', () => ({
     router: { on: () => () => {} },
 }));
 
-const { allowNavigation, rearmNavigationGuard, shouldPreventUnload } =
-    await import('./useUnsavedChanges');
+const {
+    allowNavigation,
+    rearmNavigationGuard,
+    shouldPreventUnload,
+    shouldReleaseForLocation,
+} = await import('./useUnsavedChanges');
 
 /**
  * The rule behind the `beforeunload` listener (ADR-0038). Clicking
@@ -51,5 +55,46 @@ describe('useUnsavedChanges — the unload rule', () => {
         rearmNavigationGuard();
 
         expect(shouldPreventUnload(dirty)).toBe(true);
+    });
+
+    it('is armed again when the browser hands the page back from the bfcache', () => {
+        // `pageshow` is the only signal there: nothing re-rendered, so
+        // Inertia fires no `navigate`, and a release that waits for one
+        // outlives the navigation it was meant for. The composable listens
+        // for `pageshow` and calls this.
+        allowNavigation();
+        rearmNavigationGuard();
+
+        expect(shouldPreventUnload(dirty)).toBe(true);
+    });
+
+    it('is armed again when a guard leaves the page it belonged to', () => {
+        // `onBeforeUnmount`: a released document must not be handed to
+        // whatever mounts next.
+        allowNavigation();
+        rearmNavigationGuard();
+
+        expect(shouldPreventUnload(dirty)).toBe(true);
+    });
+});
+
+/**
+ * `inertia:location` fires before Inertia decides whether to assign
+ * `window.location` at all: on an asset-version change during an `async`
+ * visit it returns without navigating (`Response.locationVisit()`). The
+ * guard used to be released for that one too, and nothing re-armed it —
+ * the page had not moved, so no `navigate` and no `pageshow` followed.
+ */
+describe('useUnsavedChanges — the location rule', () => {
+    beforeEach(() => {
+        rearmNavigationGuard();
+    });
+
+    it('releases for a location visit that really does leave', () => {
+        expect(shouldReleaseForLocation(false)).toBe(true);
+    });
+
+    it('keeps the guard armed for a version-change location, which may not leave', () => {
+        expect(shouldReleaseForLocation(true)).toBe(false);
     });
 });

@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Http\Controllers;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -264,8 +265,17 @@ class CheckoutController
      *
      * Only a *live* line redirects: an expired or checked-out cart no
      * longer has anything payable here, and sending the payer to an empty
-     * cart would be a second dead end. Those, and a genuinely unknown
-     * registration, get a 404 that says what it means instead of nothing.
+     * cart would be a second dead end.
+     *
+     * Those, and a genuinely unknown registration, go back to the
+     * registration page carrying the sentence — not `abort(404, $message)`.
+     * The production error page is `errors::404`, which yields a hard-coded
+     * `__('Not Found')` into `errors::minimal`: the message handed to
+     * `abort()` is rendered nowhere and the person is told nothing at all.
+     * A redirect with a flash is the only shape that actually reaches them.
+     * `Route::has()` because Registration's account routes are its own to
+     * publish; without them the bare 404 is still better than a redirect to
+     * nowhere.
      */
     private function cartHandoff(string $registration): RedirectResponse
     {
@@ -275,7 +285,13 @@ class CheckoutController
             ->whereIn('cart_id', Cart::query()->open()->where('expires_at', '>', now())->select('id'))
             ->exists();
 
-        abort_unless($liveLine, 404, __('No payment is open for this registration.'));
+        if (! $liveLine) {
+            abort_unless(Route::has('registration.mine.show'), 404, __('No payment is open for this registration.'));
+
+            Inertia::flash('toast', ['type' => 'info', 'message' => __('No payment is open for this registration.')]);
+
+            return redirect()->route('registration.mine.show', ['registration' => $registration]);
+        }
 
         Inertia::flash('toast', ['type' => 'info', 'message' => __('This registration is waiting in your cart — check out there.')]);
 

@@ -39,8 +39,12 @@ const props = defineProps<{
  * limit is visible and explained, and never silently extended).
  */
 const cartExpiresAt = computed<string>(() =>
+    // Date *and* time: a hold that says "until 21:35" and nothing else is
+    // ambiguous the moment the page is read the next morning. Same markup
+    // as the registration timestamps (#208) — a `<time datetime>` carrying
+    // the instant, with the reader's own wall clock inside it.
     formatDateTime(props.cart?.expiresAt, {
-        dateStyle: undefined,
+        dateStyle: 'medium',
         timeStyle: 'short',
     }),
 );
@@ -75,8 +79,13 @@ const statusTone: Record<string, string> = {
                 class="text-sm text-text-muted"
                 role="status"
             >
-                Waiting in your cart<template v-if="cartExpiresAt">
-                    — reserved until {{ cartExpiresAt }}</template
+                Waiting in your cart<template
+                    v-if="props.cart.expiresAt && cartExpiresAt"
+                >
+                    — reserved until
+                    <time :datetime="props.cart.expiresAt">{{
+                        cartExpiresAt
+                    }}</time></template
                 >.
             </p>
             <p

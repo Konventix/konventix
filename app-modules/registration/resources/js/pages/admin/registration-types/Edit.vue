@@ -183,11 +183,32 @@ function submit(): void {
                                 </select>
                                 <InputError :message="form.errors.visibility" />
                                 <p class="text-sm text-text-muted">
-                                    Public types are offered on the event's own
-                                    public page, never in the shop, and appear
-                                    there as soon as you save.
+                                    <template
+                                        v-if="form.visibility === 'public'"
+                                        >This type is offered on the event's own
+                                        public page, never in the shop, and
+                                        appears there as soon as you
+                                        save.</template
+                                    >
+                                    <template
+                                        v-else-if="
+                                            form.visibility === 'invite_only'
+                                        "
+                                        >This type is not offered on the event's
+                                        public page. It is reachable by
+                                        invitation only — an invited person gets
+                                        their own link.</template
+                                    >
+                                    <template v-else
+                                        >This type is not offered on the event's
+                                        public page. It is reachable only by
+                                        someone who has the link.</template
+                                    >
                                     <a
-                                        v-if="props.eventPageUrl"
+                                        v-if="
+                                            props.eventPageUrl &&
+                                            form.visibility === 'public'
+                                        "
                                         :href="props.eventPageUrl"
                                         target="_blank"
                                         rel="noopener"

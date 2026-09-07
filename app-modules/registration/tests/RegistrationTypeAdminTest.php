@@ -437,4 +437,14 @@ it('offers no event-page link while the event summary has not arrived', function
         ->get("http://admin.regtypes.test/admin/registration-types/{$type->getKey()}/edit")
         ->assertOk()
         ->assertInertia(fn ($page) => $page->where('eventPageUrl', null));
+
+    // The list resolves name and slug for the events it shows in one pass;
+    // a row whose summary has not arrived falls back to the raw ULID and
+    // offers no link, rather than dying on a missing key.
+    $this->actingAs($admin)
+        ->get('http://admin.regtypes.test/admin/registration-types')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('types.data.0.eventName', $type->event_id)
+            ->where('types.data.0.eventPageUrl', null));
 });

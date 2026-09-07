@@ -65,16 +65,18 @@ class RegistrationTypeAdminController
             ->paginate($perPage)
             ->withQueryString();
 
-        /** @var array<string, string> $eventNames */
-        $eventNames = EventSummary::withoutBrandScope()->pluck('name', 'event_id')->all();
-
-        // Where a type is actually offered (A1): the event's public page on
-        // the brand's own host. The slug is Registration's own projection of
-        // Event's contract event (ADR-0004), and the origin comes from
-        // `BrandUrl` because `route()` on the admin host names the admin host
-        // (ADR-0029). One domain lookup for the page, not one per row.
-        /** @var array<string, string> $eventSlugs */
-        $eventSlugs = EventSummary::withoutBrandScope()->pluck('slug', 'event_id')->all();
+        // Name and slug in one pass, for the events this page actually
+        // shows: two `pluck()` sweeps over the whole projection read every
+        // event of every brand twice, on a list that never shows more than
+        // one page of types. The slug is Registration's own projection of
+        // Event's contract event (ADR-0004), and it is what "where a type is
+        // actually offered" (A1) is built from — the event's public page on
+        // the brand's own host, whose origin comes from `BrandUrl` because
+        // `route()` on the admin host names the admin host (ADR-0029).
+        $events = EventSummary::withoutBrandScope()
+            ->whereIn('event_id', $types->getCollection()->pluck('event_id')->unique()->all())
+            ->get(['event_id', 'name', 'slug'])
+            ->keyBy('event_id');
 
         $brandBases = $brandUrl->basesFor(
             Brand::query()
@@ -94,10 +96,10 @@ class RegistrationTypeAdminController
             'types' => $types->through(fn (RegistrationType $type): array => [
                 'id' => $type->getKey(),
                 'name' => $type->name,
-                'eventName' => $eventNames[$type->event_id] ?? $type->event_id,
+                'eventName' => $events[$type->event_id]->name ?? $type->event_id,
                 'eventPageUrl' => $this->eventPageUrl(
                     $brandBases[$type->brand_id] ?? null,
-                    $eventSlugs[$type->event_id] ?? null,
+                    $events[$type->event_id]->slug ?? null,
                 ),
                 'visibility' => $type->visibility->value,
                 'approval' => $type->approval->value,

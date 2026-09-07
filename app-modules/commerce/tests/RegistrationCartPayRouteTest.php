@@ -45,15 +45,20 @@ it('redirects a checkout start to the cart when the registration settled into a 
         ->assertRedirect('/cart');
 });
 
-it('still 404s a registration with neither an order nor a live cart line', function (): void {
+it('sends a registration with neither an order nor a live cart line back to its own page, saying why', function (): void {
+    // Not `abort(404, $message)`: `errors::404` yields a hard-coded
+    // "Not Found" into `errors::minimal`, so the sentence handed to
+    // `abort()` reaches nobody. A redirect carrying a flash does.
     $this->withBrand();
+    $registrationId = (string) Str::ulid();
 
     $this->actingAs(User::factory()->create())
-        ->get('/pay/registration/'.Str::ulid())
-        ->assertNotFound();
+        ->get('/pay/registration/'.$registrationId)
+        ->assertRedirect('/my/registrations/'.$registrationId)
+        ->assertSessionHas('inertia.flash_data.toast.message', 'No payment is open for this registration.');
 });
 
-it('404s once the cart line\'s reservation has lapsed rather than sending the payer to an empty cart', function (): void {
+it('sends the payer back with the same sentence once the cart line\'s reservation has lapsed', function (): void {
     $brand = $this->withBrand();
     $this->activateFeature('commerce:shop', $brand);
 
@@ -64,5 +69,6 @@ it('404s once the cart line\'s reservation has lapsed rather than sending the pa
 
     $this->actingAs($payer)
         ->get('/pay/registration/'.$registrationId)
-        ->assertNotFound();
+        ->assertRedirect('/my/registrations/'.$registrationId)
+        ->assertSessionHas('inertia.flash_data.toast.message', 'No payment is open for this registration.');
 });

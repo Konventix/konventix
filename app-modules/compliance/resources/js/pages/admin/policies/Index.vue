@@ -155,14 +155,23 @@ const columns: ColumnDef<PolicyRow>[] = [
                       // the stored instant is UTC, and a legal effective
                       // date shown as bare digits reads as a different hour
                       // in every country the operator sells into.
-                      h(
-                          'span',
-                          { class: 'text-xs text-text-muted' },
-                          formatDateTime(
-                              row.original.effectiveAt,
-                              withZoneName,
-                          ) || 'no date',
-                      ),
+                      row.original.effectiveAt === null
+                          ? h(
+                                'span',
+                                { class: 'text-xs text-text-muted' },
+                                'no date',
+                            )
+                          : h(
+                                'time',
+                                {
+                                    class: 'text-xs text-text-muted',
+                                    datetime: row.original.effectiveAt,
+                                },
+                                formatDateTime(
+                                    row.original.effectiveAt,
+                                    withZoneName,
+                                ),
+                            ),
                   ]),
     },
     {
