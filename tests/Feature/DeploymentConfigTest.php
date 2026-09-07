@@ -4,6 +4,7 @@ declare(strict_types=1);
 use GuzzleHttp\Psr7\UriResolver;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Artisan;
 use Spatie\Health\Checks\Checks\UsedDiskSpaceCheck;
 use Spatie\Health\Facades\Health;
 
@@ -31,6 +32,30 @@ test('backups are scheduled by default and carry the database', function () {
         ->filter(fn (string $command): bool => str_contains($command, 'backup:run'));
 
     expect($commands)->toHaveCount(1);
+});
+
+/**
+ * Nothing schedules a command that does not exist. `pulse:trim` did for a
+ * while — Pulse ships no such command (only check, clear, restart, work) —
+ * and `schedule:run` swallowed the failure into a Pulse exception log entry
+ * every hour instead of a boot-time error anyone would notice.
+ */
+test('every scheduled artisan command exists in the console application', function () {
+    $known = array_keys(Artisan::all());
+
+    $scheduledCommands = collect(app(Schedule::class)->events())
+        ->map(fn ($event): string => (string) $event->command)
+        ->map(function (string $command): string {
+            preg_match('/(?<=\s)([a-zA-Z][\w-]*:[\w-]+)/', $command, $matches);
+
+            return $matches[1] ?? $command;
+        });
+
+    expect($scheduledCommands)->not->toBeEmpty();
+
+    foreach ($scheduledCommands as $commandName) {
+        expect($known)->toContain($commandName);
+    }
 });
 
 test('the disk space check is configurable', function () {
