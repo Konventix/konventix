@@ -283,3 +283,35 @@ it('names the operator who cancelled by hand', function (): void {
         fn (OrderCancelled $e): bool => $e->cancelledByUserId === $userId,
     );
 });
+
+it('leaves a re-reversed order alone until its own new deadline passes', function (): void {
+    // R1's deadline passed, the payer put the money back, and weeks later a
+    // second chargeback arrived with a deadline a week out. Reading every
+    // historical final row would find R1 still matching and cancel the order
+    // the next morning, days before the deadline the payer was given.
+    $this->withBrand();
+    [$order, $first] = sweepTestReversedOrder(dueDaysAgo: 30);
+
+    PaymentReversal::factory()->create([
+        'order_id' => $order->id,
+        'payment_id' => $first->payment_id,
+        'provider' => SettlementAccount::PROVIDER_MOLLIE,
+        'provider_reference' => 'chb_second_'.Str::random(6),
+        'kind' => ReversalKind::Return,
+        'status' => ReversalStatus::Final,
+        'amount' => (string) $order->total_gross,
+        'currency' => $order->currency,
+        'occurred_at' => now()->subDay(),
+        'finalized_at' => now()->subDay(),
+        'repay_due_on' => now()->addDays(6)->startOfDay(),
+    ]);
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->artisan('commerce:cancel-unpaid-reversals')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::PaymentReversed)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+
+    Event::assertNotDispatched(OrderCancelled::class);
+});

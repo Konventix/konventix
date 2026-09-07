@@ -18,9 +18,17 @@ use Throwable;
 
 /**
  * The deadline sweep of ADR-0057 point 4, shaped like `RunDunningSweep` and
- * scheduled beside it: every final `return` or `dispute` whose
- * `repay_due_on` has passed and whose order is still `payment_reversed`
- * loses the order.
+ * scheduled beside it: every `payment_reversed` order whose newest final
+ * `return` or `dispute` has an expired `repay_due_on` loses the order.
+ *
+ * **Driven from the orders, not from the reversal rows.** An order can be
+ * reversed, repaid and reversed again: the first reversal's deadline is
+ * long past, and a sweep that iterated every historical final row would
+ * find it still matching and cancel the order the morning after the second
+ * reversal — days before the deadline that payer was actually given. Only
+ * the newest final reversal decides, the same rule the operator console's
+ * `repaymentDeadline()` reads. It also stops the sweep re-reading every
+ * reversal the deployment has ever recorded, every day.
  *
  * Daily rather than hourly, for the reason the dunning sweep gives: the
  * deadline is a date, so a more frequent run would do the same work
@@ -58,12 +66,9 @@ final class CancelUnpaidReversals extends Command
         $cancelled = 0;
         $heldForDunning = 0;
 
-        $query = PaymentReversal::withoutBrandScope()
-            ->where('status', ReversalStatus::Final)
-            ->whereIn('kind', [ReversalKind::Return->value, ReversalKind::Dispute->value])
-            ->whereNotNull('repay_due_on')
-            ->whereDate('repay_due_on', '<', now()->startOfDay())
-            ->orderBy('repay_due_on');
+        $query = Order::withoutBrandScope()
+            ->where('status', OrderStatus::PaymentReversed)
+            ->orderBy('id');
 
         $brandId = $this->option('brand');
 
@@ -71,13 +76,13 @@ final class CancelUnpaidReversals extends Command
             $query->where('brand_id', $brandId);
         }
 
-        foreach ($query->cursor() as $reversal) {
-            $order = Order::withoutBrandScope()->find($reversal->order_id);
+        foreach ($query->cursor() as $order) {
+            $reversal = $this->deadlineReversal($order);
 
-            // Several reversals may name one order — the first cancellation
-            // takes it out of `payment_reversed` and the rest fall through
-            // here, which is also what makes a second run a no-op.
-            if ($order === null || $order->status !== OrderStatus::PaymentReversed) {
+            // No final reversal with a deadline yet (an open dispute holds
+            // none), or the deadline has not passed: nothing is owed today.
+            if ($reversal === null || $reversal->repay_due_on === null
+                || ! $reversal->repay_due_on->startOfDay()->isBefore(now()->startOfDay())) {
                 continue;
             }
 
@@ -107,6 +112,23 @@ final class CancelUnpaidReversals extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The reversal whose deadline decides — the newest final `return` or
+     * `dispute` the order has. An `external_refund` is excluded because it
+     * is not a receivable at all (the order is already `refunded`), and a
+     * `withdrawn` dispute because the money stayed.
+     */
+    private function deadlineReversal(Order $order): ?PaymentReversal
+    {
+        return PaymentReversal::withoutBrandScope()
+            ->where('order_id', $order->id)
+            ->where('status', ReversalStatus::Final)
+            ->whereIn('kind', [ReversalKind::Return->value, ReversalKind::Dispute->value])
+            ->whereNotNull('repay_due_on')
+            ->orderByDesc('occurred_at')
+            ->first();
     }
 
     /**
