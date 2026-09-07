@@ -87,8 +87,8 @@ const statusTone: Record<string, string> = {
                 Checkout started — finish it from your orders.
             </p>
             <p v-else class="text-sm text-text-muted" role="status">
-                Your cart reservation ran out before this registration was
-                paid, so it was released. Register again to take the spot.
+                Your cart reservation ran out before this registration was paid,
+                so it was released. Register again to take the spot.
             </p>
 
             <span class="flex-1" />
