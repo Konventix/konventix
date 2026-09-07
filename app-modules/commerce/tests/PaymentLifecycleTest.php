@@ -260,5 +260,11 @@ it('finds every unapplied payment through the scope', function (): void {
     // Cancelled order, pending payment: no money ever moved.
     Payment::factory()->create(['order_id' => $cancelled->id]);
 
+    // Refunded order, succeeded payment: an ordinary refund (ADR-0037).
+    // The money is already back with the payer, so it is not unapplied —
+    // fix round 1, finding 2.
+    $refunded = paymentLifecycleOrder(OrderStatus::Refunded);
+    Payment::factory()->succeeded()->create(['order_id' => $refunded->id]);
+
     expect(Payment::withoutBrandScope()->unapplied()->pluck('id')->all())->toBe([$unapplied->id]);
 });

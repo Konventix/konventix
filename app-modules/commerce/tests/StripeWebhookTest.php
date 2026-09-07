@@ -227,14 +227,23 @@ function stripeWebhookTestSettled(string $settlesType = 'registration'): array
 }
 
 /**
+ * `$eventCreated` is the *notification's* own timestamp, which is what says
+ * when a dispute closed — the dispute object's `created` is its birth,
+ * weeks earlier for a card dispute.
+ *
  * @param  array<string, mixed>  $object
  */
-function stripeWebhookTestPostObject(string $type, string $objectName, array $object): TestResponse
-{
+function stripeWebhookTestPostObject(
+    string $type,
+    string $objectName,
+    array $object,
+    ?string $eventCreated = null,
+): TestResponse {
     $payload = json_encode([
         'id' => 'evt_test_2',
         'object' => 'event',
         'type' => $type,
+        'created' => Carbon::parse($eventCreated ?? '2026-09-07 09:00:00')->getTimestamp(),
         'data' => ['object' => ['object' => $objectName, ...$object]],
     ], JSON_THROW_ON_ERROR);
 
@@ -503,4 +512,79 @@ it('records money that arrives after the reservation has expired', function (): 
         PaymentUnapplied::class,
         fn (PaymentUnapplied $e): bool => $e->orderId === $order->id && $e->amount === '119.00',
     );
+});
+
+it('dates the deadline from the day the dispute was lost, not the day it opened', function (): void {
+    // Fix round 1, finding 1. A card dispute stays open 20-75 days; taking
+    // the dispute's own `created` for the closing moment put `repay_due_on`
+    // in the past, so the deadline sweep (ADR-0057 point 4) would cancel
+    // the order on its first run and the payer would get no days at all.
+    [$order] = stripeWebhookTestSettled();
+
+    $opened = stripeWebhookTestDispute('needs_response', [
+        'created' => Carbon::parse('2026-07-20 08:00:00')->getTimestamp(),
+    ]);
+
+    stripeWebhookTestPostObject('charge.dispute.created', 'dispute', $opened, '2026-07-20 08:00:00')
+        ->assertOk();
+
+    Event::fake([PaymentReversed::class]);
+
+    stripeWebhookTestPostObject(
+        'charge.dispute.closed',
+        'dispute',
+        stripeWebhookTestDispute('lost', ['created' => Carbon::parse('2026-07-20 08:00:00')->getTimestamp()]),
+        '2026-09-07 09:00:00',
+    )->assertOk();
+
+    $reversal = PaymentReversal::withoutBrandScope()->sole();
+
+    expect($reversal->occurred_at->toDateString())->toBe('2026-07-20')
+        ->and($reversal->finalized_at?->toDateString())->toBe('2026-09-07')
+        ->and($reversal->repay_due_on?->toDateString())->toBe('2026-09-14')
+        ->and($order->refresh()->status)->toBe(OrderStatus::PaymentReversed);
+
+    Event::assertDispatched(
+        PaymentReversed::class,
+        fn (PaymentReversed $e): bool => $e->repayDueOn === '2026-09-14'
+            && str_starts_with($e->reversedAt, '2026-09-07'),
+    );
+});
+
+it('dates a dashboard refund from the refund, not from the charge', function (): void {
+    [$order] = stripeWebhookTestSettled();
+
+    stripeWebhookTestPostObject('charge.refunded', 'charge', [
+        'id' => 'ch_test_1',
+        'payment_intent' => 'pi_test_settled',
+        'amount' => 11900,
+        'amount_refunded' => 11900,
+        'currency' => 'eur',
+        // The charge is old; the refund happened today.
+        'created' => Carbon::parse('2026-07-20 08:00:00')->getTimestamp(),
+        'refunds' => ['object' => 'list', 'data' => [[
+            'id' => 're_test_1',
+            'created' => Carbon::parse('2026-09-07 09:00:00')->getTimestamp(),
+        ]]],
+    ], '2026-09-07 09:00:00')->assertOk();
+
+    expect(PaymentReversal::withoutBrandScope()->sole()->occurred_at->toDateString())->toBe('2026-09-07')
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
+});
+
+it('acknowledges a dispute in a currency it cannot read as minor units', function (): void {
+    // Fix round 1, finding 3. MinorUnits refuses zero-decimal currencies
+    // rather than mis-billing them; letting that throw out of the webhook
+    // would answer 500 and make Stripe retry for days, against this
+    // endpoint's own 200-on-anything-we-cannot-act-on contract.
+    [$order, $payment] = stripeWebhookTestSettled();
+
+    stripeWebhookTestPostObject('charge.dispute.created', 'dispute', stripeWebhookTestDispute('lost', [
+        'currency' => 'jpy',
+        'amount' => 11900,
+    ]))->assertOk();
+
+    expect(PaymentReversal::withoutBrandScope()->count())->toBe(0)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Succeeded);
 });

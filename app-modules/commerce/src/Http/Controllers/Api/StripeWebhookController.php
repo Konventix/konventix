@@ -7,6 +7,8 @@ namespace Konventix\Commerce\Http\Controllers\Api;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Konventix\Commerce\Actions\RecordPaymentFailure;
 use Konventix\Commerce\Actions\RecordPaymentReversal;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
@@ -121,11 +123,10 @@ class StripeWebhookController
      */
     private function disputeCreated(StripeEvent $event, RecordPaymentReversal $recordReversal): JsonResponse
     {
-        $dispute = $event->data->object;
-        $lost = ($dispute->status ?? null) === 'lost';
+        $lost = ($event->data->object->status ?? null) === 'lost';
 
         return $this->recordDispute(
-            $dispute,
+            $event,
             $recordReversal,
             $lost ? ReversalKind::Return : ReversalKind::Dispute,
             $lost ? ReversalStatus::Final : ReversalStatus::Open,
@@ -139,9 +140,7 @@ class StripeWebhookController
      */
     private function disputeClosed(StripeEvent $event, RecordPaymentReversal $recordReversal): JsonResponse
     {
-        $dispute = $event->data->object;
-
-        $status = match ($dispute->status ?? null) {
+        $status = match ($event->data->object->status ?? null) {
             'lost' => ReversalStatus::Final,
             'won' => ReversalStatus::Withdrawn,
             default => null,
@@ -149,15 +148,25 @@ class StripeWebhookController
 
         return $status === null
             ? response()->json(['received' => true])
-            : $this->recordDispute($dispute, $recordReversal, ReversalKind::Dispute, $status);
+            : $this->recordDispute($event, $recordReversal, ReversalKind::Dispute, $status);
     }
 
+    /**
+     * The moment is the **event's** timestamp, never the dispute's own
+     * `created`. A card dispute stays open for weeks; on
+     * `charge.dispute.closed` the object still carries the day it was born,
+     * and taking that as the moment it was lost would date
+     * `repay_due_on` into the past — the deadline sweep of ADR-0057 point 4
+     * would then cancel the order on its first run and the payer would get
+     * no days at all.
+     */
     private function recordDispute(
-        object $dispute,
+        StripeEvent $event,
         RecordPaymentReversal $recordReversal,
         ReversalKind $kind,
         ReversalStatus $status,
     ): JsonResponse {
+        $dispute = $event->data->object;
         $payment = $this->paymentForTransaction($dispute);
         $reference = $dispute->id ?? null;
 
@@ -167,16 +176,22 @@ class StripeWebhookController
 
         $currency = strtoupper((string) ($dispute->currency ?? $payment->currency));
 
+        $amount = $this->toDecimal((int) ($dispute->amount ?? 0), $currency);
+
+        if ($amount === null) {
+            return response()->json(['received' => true]);
+        }
+
         $recordReversal->handle(
             payment: $payment,
             kind: $kind,
             status: $status,
-            amount: MinorUnits::toDecimal((int) ($dispute->amount ?? 0), $currency),
+            amount: $amount,
             currency: $currency,
             providerReference: $reference,
             reasonCode: is_string($dispute->reason ?? null) ? $dispute->reason : null,
             feeAmount: $this->disputeFee($dispute, $currency),
-            occurredAt: $this->occurredAt($dispute),
+            occurredAt: $this->occurredAt($event->created),
         );
 
         return response()->json(['received' => true]);
@@ -198,6 +213,8 @@ class StripeWebhookController
             return response()->json(['received' => true]);
         }
 
+        // Escapes BrandScope explicitly (ADR-0010): webhooks arrive on the
+        // stateless api surface, where no brand is resolved from the host.
         $order = Order::withoutBrandScope()->find($payment->order_id);
 
         if ($order === null || $order->status !== OrderStatus::Paid) {
@@ -216,16 +233,25 @@ class StripeWebhookController
 
         $currency = strtoupper((string) ($charge->currency ?? $payment->currency));
 
+        $amount = $this->toDecimal((int) ($charge->amount_refunded ?? 0), $currency);
+
+        if ($amount === null) {
+            return response()->json(['received' => true]);
+        }
+
         $recordReversal->handle(
             payment: $payment,
             kind: ReversalKind::ExternalRefund,
             status: ReversalStatus::Final,
-            amount: MinorUnits::toDecimal((int) ($charge->amount_refunded ?? 0), $currency),
+            amount: $amount,
             currency: $currency,
             providerReference: $reference,
             reasonCode: is_string($refund->reason ?? null) ? $refund->reason : null,
             feeAmount: null,
-            occurredAt: $this->occurredAt($charge),
+            // The refund's own moment, not the charge's: the charge may be
+            // months old, and the deadline and the payer mail both read
+            // this.
+            occurredAt: $this->occurredAt($refund->created ?? $event->created),
         );
 
         return response()->json(['received' => true]);
@@ -245,11 +271,30 @@ class StripeWebhookController
             : null;
     }
 
-    private function occurredAt(object $object): Carbon
+    /**
+     * `MinorUnits` refuses a zero-decimal currency rather than inventing
+     * cents, and this endpoint answers 200 to everything it cannot act on:
+     * a 500 here would make Stripe retry the same unreadable event for
+     * days. Null means "acknowledged, nothing recorded".
+     */
+    private function toDecimal(int $minorUnits, string $currency): ?string
     {
-        $created = $object->created ?? null;
+        try {
+            return MinorUnits::toDecimal($minorUnits, $currency);
+        } catch (InvalidArgumentException $e) {
+            Log::warning('Stripe reversal in a currency without minor units; acknowledged without a record.', [
+                'currency' => $currency,
+                'minor_units' => $minorUnits,
+                'reason' => $e->getMessage(),
+            ]);
 
-        return is_int($created) ? Carbon::createFromTimestampUTC($created) : Carbon::now();
+            return null;
+        }
+    }
+
+    private function occurredAt(mixed $timestamp): Carbon
+    {
+        return is_int($timestamp) ? Carbon::createFromTimestampUTC($timestamp) : Carbon::now();
     }
 
     private function paymentFor(object $session): ?Payment

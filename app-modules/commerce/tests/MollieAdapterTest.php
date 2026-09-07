@@ -43,7 +43,7 @@ final class MollieAdapterTestFakeApi implements MollieApi
     /** @var list<array{id: string, amount: string, reason: ?string, createdAt: string}> */
     public array $fetchChargebacks = [];
 
-    /** @var list<array{id: string, amount: string, reason: ?string, createdAt: string}> */
+    /** @var list<array{id: string, amount: string, reason: ?string, createdAt: string, status: string}> */
     public array $fetchRefunds = [];
 
     public function createPayment(array $params, string $apiKey): MolliePaymentSnapshot
@@ -291,6 +291,7 @@ it('records a Mollie refund we did not make as an external refund', function ():
         'amount' => '119.00',
         'reason' => 'operator refunded in the dashboard',
         'createdAt' => '2026-09-07T09:00:00+00:00',
+        'status' => 'refunded',
     ]];
     $fake->fetchAmountRefunded = '119.00';
 
@@ -302,4 +303,36 @@ it('records a Mollie refund we did not make as an external refund', function ():
         ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
 
     Event::assertDispatched(OrderRefunded::class, fn (OrderRefunded $e): bool => $e->whole === true);
+});
+
+it('ignores a Mollie refund that never reached the payer', function (): void {
+    // Fix round 1, finding 4. A queued or failed refund is not money that
+    // moved; recording it would set the order to refunded and issue a
+    // credit note for a refund the bank never made.
+    [, $order, $fake] = mollieAdapterTestSetup();
+
+    $redirect = app(MollieSettlementAdapter::class)->startCheckout(
+        SettlementAccount::withoutBrandScope()->firstOrFail(),
+        $order,
+        'https://brand.test/return',
+    );
+
+    test()->post('/api/commerce/webhooks/mollie/'.$redirect->paymentId)->assertOk();
+
+    $fake->fetchRefunds = [[
+        'id' => 're_test_failed',
+        'amount' => '119.00',
+        'reason' => null,
+        'createdAt' => '2026-09-07T09:00:00+00:00',
+        'status' => 'failed',
+    ]];
+
+    Event::fake([OrderRefunded::class]);
+
+    test()->post('/api/commerce/webhooks/mollie/'.$redirect->paymentId)->assertOk();
+
+    expect(PaymentReversal::withoutBrandScope()->count())->toBe(0)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+
+    Event::assertNotDispatched(OrderRefunded::class);
 });

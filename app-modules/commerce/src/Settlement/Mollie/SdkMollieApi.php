@@ -46,10 +46,10 @@ final class SdkMollieApi implements MollieApi
             // only followed where the payment says they exist — otherwise
             // every settlement notification would pay for two extra reads.
             chargebacks: $payment->hasChargebacks()
-                ? $this->entries($payment->chargebacks()->getArrayCopy())
+                ? $this->chargebackEntries($payment->chargebacks()->getArrayCopy())
                 : [],
             refunds: $payment->hasRefunds()
-                ? $this->entries($payment->refunds()->getArrayCopy())
+                ? $this->refundEntries($payment->refunds()->getArrayCopy())
                 : [],
         );
     }
@@ -74,28 +74,53 @@ final class SdkMollieApi implements MollieApi
     }
 
     /**
-     * Chargebacks and refunds differ in one field: a chargeback carries a
-     * `reason` object with the bank's code, a refund a free-text
-     * `description`. Both become the reversal row's `reason_code`, stored
-     * verbatim (ADR-0057 point 1).
+     * A chargeback carries a `reason` object with the bank's code; both
+     * become the reversal row's `reason_code`, stored verbatim (ADR-0057
+     * point 1).
      *
-     * @param  array<int|string, Chargeback|Refund>  $resources
+     * @param  array<int|string, Chargeback>  $chargebacks
      * @return list<array{id: string, amount: string, reason: ?string, createdAt: string}>
      */
-    private function entries(array $resources): array
+    private function chargebackEntries(array $chargebacks): array
     {
         $entries = [];
 
-        foreach ($resources as $resource) {
-            $reason = $resource instanceof Chargeback
-                ? ($resource->reason->code ?? null)
-                : $resource->description;
+        foreach ($chargebacks as $chargeback) {
+            $reason = $chargeback->reason->code ?? null;
 
             $entries[] = [
-                'id' => (string) $resource->id,
-                'amount' => $this->amount($resource->amount) ?? '0.00',
+                'id' => (string) $chargeback->id,
+                'amount' => $this->amount($chargeback->amount) ?? '0.00',
                 'reason' => is_string($reason) ? $reason : null,
-                'createdAt' => (string) ($resource->createdAt ?? ''),
+                'createdAt' => (string) ($chargeback->createdAt ?? ''),
+            ];
+        }
+
+        return $entries;
+    }
+
+    /**
+     * A refund has a free-text `description` where a chargeback has a
+     * reason code, and — unlike a chargeback — a lifecycle: `status` is
+     * carried so the controller can ignore a refund whose money never left
+     * (`queued`, `pending`, `processing`, `failed`, `canceled`).
+     *
+     * @param  array<int|string, Refund>  $refunds
+     * @return list<array{id: string, amount: string, reason: ?string, createdAt: string, status: string}>
+     */
+    private function refundEntries(array $refunds): array
+    {
+        $entries = [];
+
+        foreach ($refunds as $refund) {
+            $entries[] = [
+                'id' => (string) $refund->id,
+                'amount' => $this->amount($refund->amount) ?? '0.00',
+                'reason' => is_string($refund->description) ? $refund->description : null,
+                // Non-nullable on a refund, unlike a chargeback's (SDK
+                // v3.13).
+                'createdAt' => $refund->createdAt,
+                'status' => (string) $refund->status,
             ];
         }
 

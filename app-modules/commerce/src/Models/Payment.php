@@ -100,11 +100,20 @@ class Payment extends Model
 
     /**
      * Money that arrived for an order that cannot take it (ADR-0057
-     * point 9, #6). The data definition is exactly this: the payment
-     * succeeded and its order is not paid — a PSP success that landed
-     * after `ExpireCarts`' checkout-grace sweep cancelled the order, or
-     * after a refund. `PaymentUnapplied` announces the moment; this scope
-     * finds every case, including the ones that predate the event.
+     * point 9, #6): the payment succeeded and its order is `cancelled` —
+     * a PSP success that landed after `ExpireCarts`' checkout-grace sweep
+     * had already called the order off.
+     *
+     * **Not every order that is not `paid`.** A `refunded` order's payment
+     * also stays `succeeded`, but that money went back to the payer on
+     * purpose (ADR-0037) and is nothing for an operator to apply; listing
+     * it beside genuine late money would bury the cases that need a
+     * decision. A `payment_reversed` order is a receivable, not unapplied
+     * money, and `pending` means the payment is not succeeded at all.
+     *
+     * `PaymentUnapplied` announces the moment and is emitted under exactly
+     * this condition; this scope finds every case, including the ones that
+     * predate the event.
      *
      * @param  Builder<Payment>  $query
      * @return Builder<Payment>
@@ -117,7 +126,7 @@ class Payment extends Model
                 ->select(DB::raw('1'))
                 ->from('orders')
                 ->whereColumn('orders.id', 'payments.order_id')
-                ->where('orders.status', '!=', OrderStatus::Paid->value));
+                ->where('orders.status', OrderStatus::Cancelled->value));
     }
 
     public function isSettled(): bool

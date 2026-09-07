@@ -14,12 +14,17 @@ namespace Konventix\Commerce\Settlement\Mollie;
  * it in the request body, so the controller re-reads the payment and finds
  * `amountChargedBack`, `amountRefunded` and the two lists here. They stay
  * null/empty on a snapshot built at creation time, where neither exists.
+ *
+ * A refund carries its `status` because a Mollie refund has a lifecycle a
+ * chargeback does not: `queued`, `pending` and `processing` are money that
+ * has not moved yet, and `failed`/`canceled` money that never will. Only
+ * `refunded` is a reversal.
  */
 final readonly class MolliePaymentSnapshot
 {
     /**
      * @param  list<array{id: string, amount: string, reason: ?string, createdAt: string}>  $chargebacks
-     * @param  list<array{id: string, amount: string, reason: ?string, createdAt: string}>  $refunds
+     * @param  list<array{id: string, amount: string, reason: ?string, createdAt: string, status: string}>  $refunds
      */
     public function __construct(
         public string $id,

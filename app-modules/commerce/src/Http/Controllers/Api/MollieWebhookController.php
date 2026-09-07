@@ -39,6 +39,13 @@ use Konventix\Commerce\Settlement\Mollie\MolliePaymentSnapshot;
  */
 class MollieWebhookController
 {
+    /**
+     * `Mollie\Api\Types\RefundStatus::REFUNDED` — the only status where
+     * the amount has been transferred to the payer (SDK v3.13, which also
+     * exposes it as `Refund::isTransferred()`).
+     */
+    private const string MOLLIE_REFUND_TRANSFERRED = 'refunded';
+
     public function __invoke(
         string $payment,
         MollieApi $mollie,
@@ -132,6 +139,8 @@ class MollieWebhookController
             return;
         }
 
+        // Escapes BrandScope explicitly (ADR-0010): webhooks arrive on the
+        // stateless api surface, where no brand is resolved from the host.
         $order = Order::withoutBrandScope()->find($row->order_id);
 
         if ($order === null || $order->status !== OrderStatus::Paid) {
@@ -139,6 +148,15 @@ class MollieWebhookController
         }
 
         foreach ($snapshot->refunds as $refund) {
+            // Only money that actually reached the payer is a reversal.
+            // `queued`, `pending` and `processing` have not moved yet and
+            // may still be cancelled; `failed` and `canceled` never will.
+            // Recording one of those would set the order to `refunded` and
+            // issue a credit note for a refund the bank never made.
+            if ($refund['status'] !== self::MOLLIE_REFUND_TRANSFERRED) {
+                continue;
+            }
+
             $recordReversal->handle(
                 payment: $row,
                 kind: ReversalKind::ExternalRefund,
