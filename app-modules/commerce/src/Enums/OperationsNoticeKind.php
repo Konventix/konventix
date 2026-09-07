@@ -26,4 +26,26 @@ enum OperationsNoticeKind: string
      * lossy, which is an operations fact rather than a money fact.
      */
     case PaymentReconciled = 'payment-reconciled';
+
+    /**
+     * ADR-0057 point 8: a reversal became final — a Rücklastschrift on
+     * arrival, a dispute on loss. The receivable revived and the order is
+     * waiting for the money again.
+     */
+    case PaymentReversed = 'payment-reversed';
+
+    /**
+     * ADR-0057 point 8: the provider withholds the money and has not
+     * decided. Nothing downstream moves; evidence is filed in the
+     * provider's own dashboard (ADR-0039 point 5), which is why this
+     * notice exists at all.
+     */
+    case DisputeOpened = 'dispute-opened';
+
+    /**
+     * ADR-0057 point 9 / #6: a PSP success arrived for an order the
+     * checkout-grace sweep had already cancelled. The money moved and the
+     * order cannot take it; what happens next is the operator's decision.
+     */
+    case PaymentUnapplied = 'payment-unapplied';
 }

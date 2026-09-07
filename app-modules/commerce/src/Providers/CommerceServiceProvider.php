@@ -27,15 +27,21 @@ use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderPlaced;
 use Konventix\Commerce\Events\PaymentFailed;
+use Konventix\Commerce\Events\PaymentReversalRecorded;
+use Konventix\Commerce\Events\PaymentReversed;
+use Konventix\Commerce\Events\PaymentUnapplied;
 use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Commerce\Gdpr\CommerceGdprHandler;
 use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
 use Konventix\Commerce\Listeners\IssueInvoiceOnOrderPaid;
 use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentFailed;
+use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentReversalRecorded;
+use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentUnapplied;
 use Konventix\Commerce\Listeners\NotifyOperatorsOnStockExhausted;
 use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
 use Konventix\Commerce\Listeners\SendOrderConfirmationOnOrderPlaced;
 use Konventix\Commerce\Listeners\SendPaymentFailedMailOnPaymentFailed;
+use Konventix\Commerce\Listeners\SendPaymentReversedMailOnPaymentReversed;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
@@ -248,6 +254,19 @@ class CommerceServiceProvider extends ModuleServiceProvider
         Event::listen(PaymentFailed::class, SendPaymentFailedMailOnPaymentFailed::class);
         Event::listen(StockExhausted::class, NotifyOperatorsOnStockExhausted::class);
         Event::listen(PaymentFailed::class, NotifyOperatorsOnPaymentFailed::class);
+
+        // ADR-0057 point 8: both sides of a reversal. The operator hears
+        // about every row that means something — an opened dispute, a final
+        // return or lost dispute — off the module-internal
+        // `PaymentReversalRecorded`; the payer hears about the money leaving
+        // again off the cross-domain `PaymentReversed`, which fires only
+        // when a reversal is final. A won dispute produces neither.
+        Event::listen(PaymentReversalRecorded::class, NotifyOperatorsOnPaymentReversalRecorded::class);
+        Event::listen(PaymentReversed::class, SendPaymentReversedMailOnPaymentReversed::class);
+
+        // ADR-0057 point 9 / #6: money for an order the grace sweep already
+        // cancelled. Operators only — what happens next is their decision.
+        Event::listen(PaymentUnapplied::class, NotifyOperatorsOnPaymentUnapplied::class);
     }
 
     /**
@@ -660,11 +679,60 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
         ));
 
+        // ADR-0057 point 8: money that had settled left again, explained to
+        // the payer with the deadline of point 4 and the link back to paying
+        // (`SendPaymentReversedMailOnPaymentReversed`). `reasonDe`/`reasonEn`
+        // arrive as finished sentences, so this template branches on nothing
+        // — the raw bank or network code never reaches the payer, because
+        // "the mail informs, it does not accuse".
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'commerce.payment-reversed',
+            subjects: [
+                'de' => 'Zahlung zu Bestellung {{ $orderNumberShort }} wurde zurückgebucht',
+                'en' => 'Payment for order {{ $orderNumberShort }} was reversed',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag,</p>
+                    <p>der Betrag von <strong>{{ $amount }} {{ $currency }}</strong> zur
+                    Bestellung <strong>{{ $orderNumberShort }}</strong> wurde zurückgebucht.
+                    {{ $reasonDe }}</p>
+                    <p>Ihre Bestellung bleibt bestehen. Bitte gleichen Sie den Betrag bis zum
+                    <strong>{{ $dueOn }}</strong> aus.</p>
+                    <p><a href="{{ $payUrl }}">Jetzt bezahlen</a></p>
+                    <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>the amount of <strong>{{ $amount }} {{ $currency }}</strong> for order
+                    <strong>{{ $orderNumberShort }}</strong> was reversed. {{ $reasonEn }}</p>
+                    <p>Your order stands. Please settle the amount by
+                    <strong>{{ $dueOn }}</strong>.</p>
+                    <p><a href="{{ $payUrl }}">Pay now</a></p>
+                    <p><a href="{{ $ordersUrl }}">My orders</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'orderNumberShort' => 'A1B2C3',
+                'amount' => '119.00',
+                'currency' => 'EUR',
+                'reasonDe' => 'Die Bank meldet, dass das Konto zum Zeitpunkt der Abbuchung nicht ausreichend gedeckt war.',
+                'reasonEn' => 'The bank reports that the account did not have sufficient funds at the time of the debit.',
+                'dueOn' => '14.09.2026',
+                'payUrl' => 'https://example.test/pay/A1B2C3',
+                'ordersUrl' => 'https://example.test/my/orders',
+            ],
+        ));
+
         // ADR-0048 point 3: one template for every shop-operator notice on
         // the `commerce.operations` topic — `title`/`detail`/`url` are
         // already composed by the sending listener
-        // (`NotifyOperatorsOnStockExhausted`, `NotifyOperatorsOnPaymentFailed`),
-        // so this stays branch-free regardless of `kind`.
+        // (`NotifyOperatorsOnStockExhausted`, `NotifyOperatorsOnPaymentFailed`,
+        // `NotifyOperatorsOnPaymentReversalRecorded`,
+        // `NotifyOperatorsOnPaymentUnapplied`, and `ReconcilePayments`), so
+        // this stays branch-free regardless of `kind` — ADR-0057 point 8's
+        // new kinds needed no template change at all.
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
             key: 'commerce.operations-notice',
             subjects: [

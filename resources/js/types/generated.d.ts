@@ -159,6 +159,16 @@ declare namespace Konventix {
                 readonly retryUrl: string;
                 readonly ordersUrl: string;
             };
+            export type PaymentReversedMailData = {
+                readonly orderNumberShort: string;
+                readonly amount: string;
+                readonly currency: string;
+                readonly reasonDe: string;
+                readonly reasonEn: string;
+                readonly dueOn: string;
+                readonly payUrl: string;
+                readonly ordersUrl: string;
+            };
             export type ProductData = {
                 readonly id: string;
                 readonly brandId: string;
@@ -260,7 +270,12 @@ declare namespace Konventix {
             export type CartLineKind = 'product' | 'registration';
             export type CartStatus = 'open' | 'expired' | 'checked_out';
             export type OperationsNoticeKind =
-                'stock-exhausted' | 'payment-failed' | 'payment-reconciled';
+                | 'stock-exhausted'
+                | 'payment-failed'
+                | 'payment-reconciled'
+                | 'payment-reversed'
+                | 'dispute-opened'
+                | 'payment-unapplied';
             export type OrderStatus =
                 | 'pending'
                 | 'paid'
