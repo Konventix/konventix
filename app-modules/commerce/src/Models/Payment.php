@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Database\Factories\PaymentFactory;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
@@ -92,6 +96,28 @@ class Payment extends Model
             ->where('provider', $provider)
             ->where('provider_transaction_id', $transactionId)
             ->first();
+    }
+
+    /**
+     * Money that arrived for an order that cannot take it (ADR-0057
+     * point 9, #6). The data definition is exactly this: the payment
+     * succeeded and its order is not paid — a PSP success that landed
+     * after `ExpireCarts`' checkout-grace sweep cancelled the order, or
+     * after a refund. `PaymentUnapplied` announces the moment; this scope
+     * finds every case, including the ones that predate the event.
+     *
+     * @param  Builder<Payment>  $query
+     * @return Builder<Payment>
+     */
+    public function scopeUnapplied(Builder $query): Builder
+    {
+        return $query
+            ->where('status', PaymentStatus::Succeeded)
+            ->whereExists(fn (QueryBuilder $orders): QueryBuilder => $orders
+                ->select(DB::raw('1'))
+                ->from('orders')
+                ->whereColumn('orders.id', 'payments.order_id')
+                ->where('orders.status', '!=', OrderStatus::Paid->value));
     }
 
     public function isSettled(): bool

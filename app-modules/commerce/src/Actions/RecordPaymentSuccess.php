@@ -11,6 +11,7 @@ use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Events\OrderLineSettled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\PaymentReceived;
+use Konventix\Commerce\Events\PaymentUnapplied;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
@@ -70,13 +71,17 @@ final class RecordPaymentSuccess
      * the first one, and the duplicate money is an operator refund case,
      * not a second confirmation.
      *
-     * The same early return also now catches a PSP success arriving for an
-     * order `ExpireCarts`' checkout-grace sweep already cancelled (Task 11
-     * fix round 1) — that money moved on the provider's side with nothing
-     * here to record it against, which is not a case to return from
-     * silently. Logged as a warning rather than thrown: the webhook caller
-     * still needs a 2xx so the provider stops retrying, and a refund path
-     * for this late payment is a known gap (`TODO.md`).
+     * A `payment_reversed` order settles exactly like a pending one
+     * (ADR-0057 point 3): the receivable revived, and this is the money
+     * coming back — by the pay link, the door POS or a bank transfer. Each
+     * of them ends in `OrderPaid` with nothing new to teach downstream.
+     *
+     * A `cancelled` order is the mirror case (ADR-0057 point 9, #6): the
+     * checkout-grace sweep called the order off and the money moved anyway.
+     * That is a domain fact, not a log line — `PaymentUnapplied` records it
+     * so the operator sees it beside the reversals and decides. Still a
+     * warning too, and still a 2xx to the provider: refusing the webhook
+     * would only make it retry.
      */
     private function settleOrder(Payment $payment): void
     {
@@ -85,12 +90,14 @@ final class RecordPaymentSuccess
             ->lockForUpdate()
             ->firstOrFail();
 
-        if ($order->status !== OrderStatus::Pending) {
-            Log::warning('Payment succeeded for an order that is not pending; ignoring.', [
+        if ($order->status !== OrderStatus::Pending && $order->status !== OrderStatus::PaymentReversed) {
+            Log::warning('Payment succeeded for an order that cannot be settled; recording it unapplied.', [
                 'order_id' => $order->id,
                 'provider' => $payment->provider,
                 'order_status' => $order->status->value,
             ]);
+
+            $this->announceUnapplied($order, $payment);
 
             return;
         }
@@ -113,6 +120,31 @@ final class RecordPaymentSuccess
         ));
 
         $this->emitOrderLineSettled($order, $payment);
+    }
+
+    /**
+     * ADR-0057 point 9's "unapplied": money that arrived for an order that
+     * was called off. Deliberately not emitted for an order that is
+     * already `paid` — that one got what it was owed, and a duplicate
+     * payment against it is an ordinary refund case the operator sees on
+     * the order itself.
+     */
+    private function announceUnapplied(Order $order, Payment $payment): void
+    {
+        if ($order->status !== OrderStatus::Cancelled) {
+            return;
+        }
+
+        event(new PaymentUnapplied(
+            paymentId: $payment->id,
+            orderId: $order->id,
+            brandId: $order->brand_id,
+            amount: (string) $payment->amount,
+            currency: $payment->currency,
+            provider: $payment->provider,
+            settlementAccountId: $payment->settlement_account_id,
+            receivedAt: $payment->received_at?->toIso8601String() ?? now()->toIso8601String(),
+        ));
     }
 
     /**
