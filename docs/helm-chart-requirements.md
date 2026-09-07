@@ -399,6 +399,43 @@ Chart shape: `secrets.<group>.existingSecret: <name>`; with
 group from `externalSecrets.storeRef` and `secrets.<group>.baoPath`
 (OpenBao KV v2; ESO's `vault` provider is OpenBao-compatible).
 
+#### Stripe credentials per environment
+
+The `payments` group is the *platform's* Stripe pair, not a brand's
+(ADR-0039 point 4): the organizer's money moves through their own connected
+account, which Connect onboarding creates — these two values only let this
+deployment drive that onboarding and read the events back.
+
+- **`STRIPE_SECRET`** is the platform Stripe account's standard secret key,
+  from the dashboard under **Developers → API keys**. One account, two
+  keys: use the sandbox key for development and staging and the live key
+  for production (#146) — an environment holding the wrong one settles real
+  money against test data, or the reverse.
+- **`STRIPE_WEBHOOK_SECRET`** is not found next to it. It belongs to one
+  webhook endpoint, created under **Developers → Webhooks** with the
+  endpoint URL `https://<any host of the instance>/api/commerce/webhooks/stripe`
+  and **"Listen to events on connected accounts"** enabled. Konventix
+  creates every Checkout Session *on* the connected account (ADR-0039
+  point 5, the `Stripe-Account` header), so without that flag the endpoint
+  is subscribed to events that never fire and no payment ever becomes
+  settlement truth. Subscribe it to exactly seven events:
+  `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+  `checkout.session.async_payment_failed`, `checkout.session.expired`,
+  `charge.dispute.created`, `charge.dispute.closed`, `charge.refunded`
+  (`Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents` is the source
+  of truth for that list). The endpoint's detail page then shows a
+  **Signing secret** behind a *Reveal* — that `whsec_…` is this
+  environment's `STRIPE_WEBHOOK_SECRET`.
+
+The signing secret is per endpoint, so **every environment needs its own
+endpoint and carries its own secret**; pointing two environments at one
+endpoint sends each one the other's events. The settlement console's
+connect dialog shows the endpoint URL and the event list for the instance
+you are looking at, and says whether both values are set — it never shows
+them. Local development creates no endpoint at all: `stripe listen` tunnels
+the same events outbound and prints its own signing secret, see
+[Stripe webhooks in local development](../README.md#stripe-webhooks-in-local-development).
+
 ## 3. External services and what the chart assumes of them
 
 | Service | Requirement |

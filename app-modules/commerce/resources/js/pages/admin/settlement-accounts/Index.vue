@@ -42,6 +42,7 @@ type Props = {
         connectableProviders: Provider[];
         commerceSettings: Konventix.Commerce.Data.CommerceBrandSettingsData;
     }[];
+    stripeSetup: Konventix.Commerce.Data.StripeSetupData;
 };
 
 const providerLabels: Record<Provider, string> = {
@@ -53,6 +54,26 @@ const providerLabels: Record<Provider, string> = {
 const props = defineProps<Props>();
 
 const connectingBrandId = ref<string | null>(null);
+
+/**
+ * What was last copied out of the "Before you connect" block, announced in
+ * a `role="status"` region rather than only flashed on the button (#161,
+ * ADR-0055). `navigator.clipboard` is unavailable over plain HTTP and in
+ * older browsers, so the values stay in readable, selectable elements and
+ * copying is only the convenience on top of them — a failed copy says
+ * nothing rather than claiming success. Two buttons on one page do not
+ * earn a composable; the second page that needs one can extract it.
+ */
+const copied = ref<string | null>(null);
+
+async function copyToClipboard(what: string, value: string): Promise<void> {
+    try {
+        await navigator.clipboard.writeText(value);
+        copied.value = what;
+    } catch {
+        copied.value = null;
+    }
+}
 
 const form = useForm({
     // Overwritten by `transform()` on submit, but declared here so the key
@@ -147,8 +168,19 @@ function submitConnect(): void {
 
                 <template v-if="brand.connectableProviders.length > 0">
                     <template v-if="connectingBrandId === brand.id">
+                        <!--
+                            Wider on the Stripe branch: the endpoint URL
+                            below is a full absolute URL next to a copy
+                            button, which does not read in the width two
+                            short credential fields need.
+                        -->
                         <form
-                            class="flex max-w-md flex-col gap-4"
+                            class="flex flex-col gap-4"
+                            :class="
+                                form.provider === 'stripe'
+                                    ? 'max-w-2xl'
+                                    : 'max-w-md'
+                            "
                             @submit.prevent="submitConnect"
                         >
                             <div class="flex flex-col gap-2">
@@ -168,6 +200,156 @@ function submitConnect(): void {
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            <!--
+                                #161/ADR-0039 point 4 and 5: an operator
+                                meets this dialog before they meet the
+                                docs, so what a Stripe connection needs of
+                                the *deployment* is answered here — the two
+                                platform-level keys for the Connect
+                                onboarding, and the webhook endpoint
+                                without which no payment ever becomes
+                                settlement truth.
+                            -->
+                            <section
+                                v-if="form.provider === 'stripe'"
+                                aria-labelledby="stripe_setup_heading"
+                                class="flex flex-col gap-3 rounded-md border border-border bg-surface-muted p-4"
+                            >
+                                <h4
+                                    id="stripe_setup_heading"
+                                    class="text-sm font-semibold text-text"
+                                >
+                                    Before you connect
+                                </h4>
+
+                                <p class="text-xs text-text-muted">
+                                    <span
+                                        class="font-medium"
+                                        :class="
+                                            props.stripeSetup.platformConfigured
+                                                ? 'text-success'
+                                                : 'text-danger'
+                                        "
+                                    >
+                                        {{
+                                            props.stripeSetup.platformConfigured
+                                                ? 'Platform keys configured'
+                                                : 'Platform keys missing'
+                                        }}
+                                    </span>
+                                    — {{ props.stripeSetup.secretGroupHint }}
+                                    See "Stripe credentials per environment" in
+                                    <code>docs/helm-chart-requirements.md</code
+                                    >.
+                                </p>
+
+                                <div class="flex flex-col gap-2">
+                                    <Label for="stripe_webhook_url"
+                                        >Webhook endpoint for this
+                                        instance</Label
+                                    >
+                                    <div class="flex items-center gap-2">
+                                        <Input
+                                            id="stripe_webhook_url"
+                                            :model-value="
+                                                props.stripeSetup.webhookUrl
+                                            "
+                                            readonly
+                                            class="font-mono text-xs"
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            @click="
+                                                copyToClipboard(
+                                                    'Webhook endpoint',
+                                                    props.stripeSetup
+                                                        .webhookUrl,
+                                                )
+                                            "
+                                        >
+                                            Copy<span class="sr-only">
+                                                the webhook endpoint URL</span
+                                            >
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div class="flex flex-col gap-2">
+                                    <p
+                                        id="stripe_events_heading"
+                                        class="text-sm font-medium text-text"
+                                    >
+                                        Events this endpoint must receive
+                                    </p>
+                                    <ul
+                                        aria-labelledby="stripe_events_heading"
+                                        class="flex flex-col font-mono text-xs text-text-muted"
+                                    >
+                                        <li
+                                            v-for="event in props.stripeSetup
+                                                .events"
+                                            :key="event"
+                                        >
+                                            {{ event }}
+                                        </li>
+                                    </ul>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        class="self-start"
+                                        @click="
+                                            copyToClipboard(
+                                                'Event list',
+                                                props.stripeSetup.events.join(
+                                                    ',',
+                                                ),
+                                            )
+                                        "
+                                    >
+                                        Copy all<span class="sr-only">
+                                            event names, comma-separated for the
+                                            Stripe dashboard or the CLI</span
+                                        >
+                                    </Button>
+                                </div>
+
+                                <p role="status" class="text-xs text-success">
+                                    <template v-if="copied !== null"
+                                        >{{ copied }} copied to the
+                                        clipboard.</template
+                                    >
+                                </p>
+
+                                <p class="text-xs text-text-muted">
+                                    Create that endpoint in the Stripe dashboard
+                                    under Developers → Webhooks with "Listen to
+                                    events on connected accounts" enabled —
+                                    Konventix creates every Checkout Session on
+                                    the organizer's connected account, so
+                                    without it none of the events above ever
+                                    reach this instance. The endpoint's own
+                                    signing secret, revealed on its detail page
+                                    in the dashboard, is this environment's
+                                    <code>STRIPE_WEBHOOK_SECRET</code> — every
+                                    environment has its own endpoint and
+                                    therefore its own secret.
+                                </p>
+
+                                <p class="text-xs text-text-muted">
+                                    The Secret Key is the platform account's
+                                    standard key under Developers → API keys:
+                                    the sandbox key for development and staging,
+                                    the live key for production. Local
+                                    development needs no endpoint at all —
+                                    <code>contrib/stripe-listen.sh</code>
+                                    tunnels the same events and prints the
+                                    signing secret to use instead.
+                                </p>
+                            </section>
 
                             <div
                                 v-if="form.provider === 'stripe'"

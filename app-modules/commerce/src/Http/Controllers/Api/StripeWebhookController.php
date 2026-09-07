@@ -19,6 +19,7 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\MinorUnits;
+use Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents;
 use Stripe\Event as StripeEvent;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\Webhook;
@@ -66,14 +67,18 @@ class StripeWebhookController
             return response()->json(['error' => 'invalid signature'], 400);
         }
 
+        // `StripeWebhookEvents::ALL` is the same list the operator console
+        // tells an operator to subscribe the endpoint to, and the tunnel
+        // script forwards (#161) — the arms below are that list, so a new
+        // event cannot be handled here without becoming visible there.
         return match ($event->type) {
-            'checkout.session.completed',
-            'checkout.session.async_payment_succeeded' => $this->settled($event, $recordSuccess),
-            'checkout.session.async_payment_failed' => $this->failed($event, $recordFailure, 'async_payment_failed'),
-            'checkout.session.expired' => $this->failed($event, $recordFailure, 'checkout_expired', expired: true),
-            'charge.dispute.created' => $this->disputeCreated($event, $recordReversal),
-            'charge.dispute.closed' => $this->disputeClosed($event, $recordReversal),
-            'charge.refunded' => $this->chargeRefunded($event, $recordReversal),
+            StripeWebhookEvents::CheckoutSessionCompleted,
+            StripeWebhookEvents::CheckoutSessionAsyncPaymentSucceeded => $this->settled($event, $recordSuccess),
+            StripeWebhookEvents::CheckoutSessionAsyncPaymentFailed => $this->failed($event, $recordFailure, 'async_payment_failed'),
+            StripeWebhookEvents::CheckoutSessionExpired => $this->failed($event, $recordFailure, 'checkout_expired', expired: true),
+            StripeWebhookEvents::ChargeDisputeCreated => $this->disputeCreated($event, $recordReversal),
+            StripeWebhookEvents::ChargeDisputeClosed => $this->disputeClosed($event, $recordReversal),
+            StripeWebhookEvents::ChargeRefunded => $this->chargeRefunded($event, $recordReversal),
             default => response()->json(['received' => true]),
         };
     }

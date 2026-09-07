@@ -182,6 +182,11 @@ to print only the webhook signing secret — for pasting into `STRIPE_WEBHOOK_SE
 starting a listener. Sail/Octane reads `.env` live in dev, but a cached config does not follow
 along; run `sail artisan config:clear` if `STRIPE_WEBHOOK_SECRET` was already cached.
 
+A deployed instance has no tunnel and needs a real webhook endpoint instead — where both
+`STRIPE_SECRET` and `STRIPE_WEBHOOK_SECRET` come from in the Stripe dashboard, and why each
+environment carries its own signing secret, is
+[Stripe credentials per environment](docs/helm-chart-requirements.md#stripe-credentials-per-environment).
+
 ### Load testing the rush
 
 The rush from ADR-0047 point 6 — 1,000 arrivals against the seeded "Rush" brand, each one

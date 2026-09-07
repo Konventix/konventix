@@ -16,6 +16,7 @@ use Konventix\Commerce\Actions\MarkSettlementAccountConnected;
 use Konventix\Commerce\Actions\RefreshSettlementAccountCapabilities;
 use Konventix\Commerce\Actions\UpdateSettlementAccountLabel;
 use Konventix\Commerce\Data\CommerceBrandSettingsData;
+use Konventix\Commerce\Data\StripeSetupData;
 use Konventix\Commerce\Data\UpdateSettlementAccountLabelData;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
@@ -71,6 +72,12 @@ class SettlementAccountAdminController
             ->groupBy('brand_id');
 
         return Inertia::render('admin/settlement-accounts/Index', [
+            // #161: the connect dialog is where an operator finds out the
+            // platform credentials are missing, so it is where the answer
+            // belongs — which env names, which chart secret group, and the
+            // webhook endpoint of *this* instance with the events it has to
+            // listen to on connected accounts (ADR-0039 point 5).
+            'stripeSetup' => StripeSetupData::ofConfig()->toArray(),
             'brands' => Brand::query()->orderBy('name')->get(['id', 'name'])
                 ->map(function (Brand $brand) use ($accounts): array {
                     $brandAccounts = $accounts->get((string) $brand->getKey()) ?? collect();

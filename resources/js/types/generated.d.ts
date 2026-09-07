@@ -244,6 +244,12 @@ declare namespace Konventix {
                 readonly unitAmountNet: string;
                 readonly remaining: number;
             };
+            export type StripeSetupData = {
+                readonly webhookUrl: string;
+                readonly events: string[];
+                readonly platformConfigured: boolean;
+                readonly secretGroupHint: string;
+            };
             export type UnappliedPaymentData = {
                 readonly id: string;
                 readonly provider: string;
