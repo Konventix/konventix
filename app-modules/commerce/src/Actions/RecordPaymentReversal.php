@@ -337,10 +337,16 @@ final class RecordPaymentReversal
             'provider_reference' => $reversal->provider_reference,
         ]);
 
+        // The amount travels: a dashboard refund can be partial, and
+        // `OrderRefunded`'s `whole` is what Registration reads to decide
+        // whether to cancel the registration (ADR-0057 point 5). Passing
+        // it also gives `IssueCreditNote` the partial total, exactly as
+        // `RefundOrder` does for an operator's partial refund.
         $this->recordRefund->handle(
             order: $order,
             reasonCode: $reversal->kind->value,
             reasonNote: $reversal->reason_code,
+            amount: $reversal->amount,
         );
     }
 

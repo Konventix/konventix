@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
@@ -14,6 +15,8 @@ use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Events\PaymentFailed;
 use Konventix\Commerce\Events\PaymentReceived;
 use Konventix\Commerce\Events\PaymentReversed;
+use Konventix\Commerce\Events\PaymentUnapplied;
+use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
@@ -427,4 +430,77 @@ it('converges when Stripe replays the dispute notification', function (): void {
         ->and($order->refresh()->status)->toBe(OrderStatus::PaymentReversed);
 
     Event::assertDispatchedTimes(PaymentReversed::class, 1);
+});
+
+it('reverses an order whose admission was already checked in', function (): void {
+    // #166's second path. ADR-0037's guard belongs to the *voluntary*
+    // refund; a chargeback already happened, and attendance does not undo
+    // it. Attendance only stops the deadline sweep from cancelling the
+    // order later (ADR-0057 point 4).
+    [$order, $payment] = stripeWebhookTestSettled();
+
+    CheckedInAdmission::create([
+        'admission_id' => (string) Str::ulid(),
+        'registration_id' => $order->settles_id,
+        'first_checked_in_at' => now(),
+    ]);
+
+    Event::fake([PaymentReversed::class]);
+
+    stripeWebhookTestPostObject('charge.dispute.created', 'dispute', stripeWebhookTestDispute('lost'))
+        ->assertOk();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::PaymentReversed)
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Reversed);
+
+    Event::assertDispatched(PaymentReversed::class);
+});
+
+it('records a partial dashboard refund as a partial OrderRefunded', function (): void {
+    [$order] = stripeWebhookTestSettled();
+    Invoice::factory()->create(['order_id' => $order->id]);
+
+    Event::fake([OrderRefunded::class]);
+
+    stripeWebhookTestPostObject('charge.refunded', 'charge', [
+        'id' => 'ch_test_1',
+        'payment_intent' => 'pi_test_settled',
+        'amount' => 11900,
+        'amount_refunded' => 2000,
+        'currency' => 'eur',
+        'refunds' => ['object' => 'list', 'data' => [['id' => 're_test_partial']]],
+    ])->assertOk();
+
+    expect((string) PaymentReversal::withoutBrandScope()->sole()->amount)->toBe('20.00');
+
+    // ADR-0057 point 5: Registration cancels only on a whole-order refund,
+    // and the amount alone cannot say which this was.
+    Event::assertDispatched(
+        OrderRefunded::class,
+        fn (OrderRefunded $e): bool => $e->amountRefunded === '20.00' && $e->whole === false,
+    );
+});
+
+it('records money that arrives after the reservation has expired', function (): void {
+    // #6: the checkout-grace sweep cancelled the order, then the payer's
+    // delayed SEPA debit finally cleared. The money moved; a warning in a
+    // log is not a record of it.
+    [$order, $payment] = stripeWebhookTestPending();
+    $order->forceFill(['status' => OrderStatus::Cancelled])->save();
+
+    Event::fake([OrderPaid::class, PaymentUnapplied::class]);
+
+    stripeWebhookTestPost('checkout.session.async_payment_succeeded', [
+        'id' => 'cs_test_abc', 'payment_status' => 'paid', 'payment_intent' => 'pi_test_1',
+    ])->assertOk();
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and(Payment::withoutBrandScope()->unapplied()->pluck('id')->all())->toBe([$payment->id]);
+
+    Event::assertNotDispatched(OrderPaid::class);
+    Event::assertDispatched(
+        PaymentUnapplied::class,
+        fn (PaymentUnapplied $e): bool => $e->orderId === $order->id && $e->amount === '119.00',
+    );
 });
