@@ -1,6 +1,11 @@
 /**
  * The policy version editor's date handling, kept out of the page so it can
- * be tested as what it is: three pure functions.
+ * be tested as what it is: two pure functions.
+ *
+ * Writing an effective date *out* is not one of them: that is the shared
+ * `formatDateTime()` in `@/lib/datetime`, with `withZoneName` — three
+ * implementations of the same formatting is what the branch review found
+ * here, and one of them is enough.
  *
  * A `datetime-local` control speaks wall clock and nothing else — it hands
  * back `YYYY-MM-DDTHH:MM` with no zone attached. The server used to read that
@@ -47,36 +52,6 @@ export function toInstant(value: string): string | null {
     const date = new Date(value);
 
     return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-// Spelled out component by component rather than with `dateStyle`/
-// `timeStyle`: those two are mutually exclusive with `timeZoneName`, and the
-// zone is the whole point of writing the date out here.
-const instantFormat = new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZoneName: 'short',
-});
-
-/**
- * An instant written out for a human, in the reader's zone and saying which
- * zone that is — a list of legal effective dates that does not name its zone
- * reads as one hour to Berlin and another to Lisbon, with nothing on screen
- * to tell them apart.
- */
-export function formatInstant(value: string | null): string {
-    if (value === null || value === '') {
-        return 'no date';
-    }
-
-    const date = new Date(value);
-
-    return Number.isNaN(date.getTime())
-        ? 'no date'
-        : instantFormat.format(date);
 }
 
 /** The subset of a selected version the editor's form is built out of. */

@@ -24,6 +24,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { formatDateTime, withZoneName } from '@/lib/datetime';
 import {
     edit as editPolicy,
     index as policiesIndex,
@@ -34,7 +35,7 @@ import {
     store as storeVersion,
     update as updateVersion,
 } from '@/routes/admin/policy-versions';
-import { formatInstant, toInstant, versionFormValues } from './versionForm';
+import { toInstant, versionFormValues } from './versionForm';
 
 /**
  * One policy: its identity on the left, its versions on the right.
@@ -469,8 +470,13 @@ function openVersion(id: string): void {
                                 </span>
                             </span>
                             <span class="text-xs text-text-muted">
-                                {{ formatInstant(version.effectiveAt) }} ·
-                                {{ version.consents }} agreement{{
+                                {{
+                                    formatDateTime(
+                                        version.effectiveAt,
+                                        withZoneName,
+                                    ) || 'no date'
+                                }}
+                                · {{ version.consents }} agreement{{
                                     version.consents === 1 ? '' : 's'
                                 }}
                             </span>
@@ -609,7 +615,12 @@ function openVersion(id: string): void {
                         >
                             Effective from
                             <span class="font-medium text-text">
-                                {{ formatInstant(props.selected.effectiveAt) }}
+                                {{
+                                    formatDateTime(
+                                        props.selected.effectiveAt,
+                                        withZoneName,
+                                    )
+                                }}
                             </span>
                             — until then the text is not served under its public
                             URL.

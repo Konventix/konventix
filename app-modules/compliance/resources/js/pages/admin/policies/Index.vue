@@ -19,12 +19,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { DataTableFilters } from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
+import { formatDateTime, withZoneName } from '@/lib/datetime';
 import {
     edit as editPolicy,
     index as policiesIndex,
     store as storePolicy,
 } from '@/routes/admin/policies';
-import { formatInstant } from './versionForm';
 
 /**
  * Every brand's legal documents in one list. The column that matters is
@@ -158,7 +158,10 @@ const columns: ColumnDef<PolicyRow>[] = [
                       h(
                           'span',
                           { class: 'text-xs text-text-muted' },
-                          formatInstant(row.original.effectiveAt),
+                          formatDateTime(
+                              row.original.effectiveAt,
+                              withZoneName,
+                          ) || 'no date',
                       ),
                   ]),
     },

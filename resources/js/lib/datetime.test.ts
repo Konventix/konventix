@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDateTime } from './datetime';
+import { formatDateTime, withZoneName } from './datetime';
 
 describe('formatDateTime', () => {
     it('shows a UTC instant in the reader’s own zone', () => {
@@ -39,5 +39,29 @@ describe('formatDateTime', () => {
 
     it('passes an unparseable value through instead of printing "Invalid Date"', () => {
         expect(formatDateTime('not a date')).toBe('not a date');
+    });
+});
+
+describe('withZoneName', () => {
+    it('names the zone the instant is rendered in', () => {
+        // `dateStyle`/`timeStyle` are mutually exclusive with `timeZoneName`,
+        // so the option set spells the components out — a list of legal
+        // effective dates that does not say which zone it is in reads as one
+        // hour in Berlin and another in Lisbon.
+        const rendered = formatDateTime('2026-09-07T20:44:00+00:00', {
+            ...withZoneName,
+            timeZone: 'UTC',
+        });
+
+        expect(rendered).toContain('2026');
+        expect(rendered).toContain('UTC');
+    });
+
+    it('keeps the one empty-value policy: nothing, not a word', () => {
+        // The policy editor used to answer 'no date' here while every other
+        // timestamp on the console answered ''. One helper, one policy — the
+        // page supplies the word where a word belongs.
+        expect(formatDateTime(null, withZoneName)).toBe('');
+        expect(formatDateTime('', withZoneName)).toBe('');
     });
 });

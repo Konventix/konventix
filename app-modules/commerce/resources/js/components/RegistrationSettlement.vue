@@ -2,6 +2,7 @@
 import { Link } from '@inertiajs/vue3';
 import { CreditCard, FileText, ShoppingCart } from '@lucide/vue';
 import { computed } from 'vue';
+import { formatDateTime } from '@/lib/datetime';
 
 /**
  * Commerce's contribution to Registration's account page: what this
@@ -37,12 +38,11 @@ const props = defineProps<{
  * The hold's deadline in the reader's own zone (ADR-0055 point 4: a time
  * limit is visible and explained, and never silently extended).
  */
-const cartExpiresAt = computed<string | null>(() =>
-    props.cart?.expiresAt
-        ? new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(
-              new Date(props.cart.expiresAt),
-          )
-        : null,
+const cartExpiresAt = computed<string>(() =>
+    formatDateTime(props.cart?.expiresAt, {
+        dateStyle: undefined,
+        timeStyle: 'short',
+    }),
 );
 
 const statusTone: Record<string, string> = {

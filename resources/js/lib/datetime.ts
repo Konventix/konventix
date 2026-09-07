@@ -55,3 +55,25 @@ export function formatDateTime(
 
     return formatter({ ...defaults, ...options }).format(instant);
 }
+
+/**
+ * The option set for a timestamp that has to say which zone it is in — a
+ * legal effective date, read by an operator in Berlin and a colleague in
+ * Lisbon, is one instant and two wall clocks, with nothing on screen to
+ * tell them apart.
+ *
+ * Spelled out component by component rather than with `dateStyle`/
+ * `timeStyle`: those two are mutually exclusive with `timeZoneName`, and
+ * the zone is the whole point. The explicit `undefined`s override the
+ * defaults `formatDateTime()` merges in.
+ */
+export const withZoneName: Intl.DateTimeFormatOptions = {
+    dateStyle: undefined,
+    timeStyle: undefined,
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+};

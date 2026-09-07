@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-    formatInstant,
-    toInstant,
-    toLocalInput,
-    versionFormValues,
-} from './versionForm';
+import { toInstant, toLocalInput, versionFormValues } from './versionForm';
 
 /**
  * The `datetime-local` round trip of the policy version editor. Pure
@@ -52,22 +47,6 @@ describe('toLocalInput', () => {
 
     it('leaves the field empty for a version that has no date yet', () => {
         expect(toLocalInput(null)).toBe('');
-    });
-});
-
-describe('formatInstant', () => {
-    it('says a version has no date rather than printing an empty string', () => {
-        expect(formatInstant(null)).toBe('no date');
-    });
-
-    it('renders the instant in the reader’s zone and names it', () => {
-        const rendered = formatInstant('2026-09-07T20:44:00+00:00');
-
-        expect(rendered).toContain('2026');
-        // The zone is written out: two people reading the same list from two
-        // countries otherwise see two different hours and no way to tell.
-        expect(rendered.length).toBeGreaterThan('2026'.length);
-        expect(rendered).not.toBe('2026-09-07T20:44:00+00:00');
     });
 });
 
