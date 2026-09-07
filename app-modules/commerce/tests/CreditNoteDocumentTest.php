@@ -244,6 +244,51 @@ it('mails the Umbuchung wording for a transfer credit note, without the refund-p
     });
 });
 
+/**
+ * ADR-0057 point 4: the deadline sweep issues a cancellation credit note,
+ * not a refund one — the receivable was never returned, the sale was
+ * undone. The mail must say so in both languages rather than defaulting to
+ * "Erstattung"/"Refund", and the refund-specific "original payment method"
+ * sentence must not appear (`reasonLabelDe`/`En` guard it, and cancellation
+ * is neither of the two strings that unlock it).
+ */
+it('mails the Stornierung wording for a cancellation credit note, without the refund-payment-method sentence', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    $note = creditNoteDocNote(
+        creditNoteDocOrder(),
+        billingParty: new BillingPartyData(
+            organizationName: 'Musterfirma GmbH',
+            recipientName: 'Erika Musterfrau',
+            email: 'rechnung@musterfirma.example',
+            addressLine: 'Musterstraße 1',
+            postalCode: '18439',
+            city: 'Stralsund',
+            countryCode: 'DE',
+            vatId: null,
+        ),
+        reasonCode: IssueCreditNote::REASON_CANCELLATION,
+    );
+
+    (new GenerateCreditNoteDocument($note->id, $brand->id))
+        ->handle(app(CreditNoteDocumentRenderer::class), app(SendCreditNoteMail::class));
+
+    Mail::assertSent(TemplatedMail::class, function (TemplatedMail $mail) use ($note): bool {
+        if (! str_contains($mail->envelope()->subject, $note->credit_note_number)) {
+            return false;
+        }
+
+        $mail->assertSeeInHtml('Stornierung');
+        $mail->assertDontSeeInHtml('Erstattung');
+        $mail->assertDontSeeInHtml('Umbuchung');
+        $mail->assertDontSeeInHtml('ursprünglichen Zahlungsweg');
+
+        return true;
+    });
+});
+
 it('skips the credit note mail without failing when the billing party has no email', function (): void {
     $brand = $this->withBrand();
     Storage::fake('invoices');
