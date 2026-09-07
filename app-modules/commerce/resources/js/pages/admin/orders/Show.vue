@@ -10,7 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { document as creditNoteDocument } from '@/routes/admin/credit-notes';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
 import { bookPayment } from '@/routes/admin/orders';
-import type { OrderReversal, UnappliedPayment } from './columns';
+import type { OrderReversal, UnappliedPayment } from './reversals';
+import {
+    orderStatusLabel,
+    repaymentDeadline,
+    reversalKindLabel,
+} from './reversals';
 
 /**
  * One order end to end: lines, invoice with billing party, payment
@@ -97,32 +102,9 @@ function statusVariant(
         : 'secondary';
 }
 
-/**
- * `payment_reversed` is the one status whose raw value misleads: the sale
- * stands and the amount is owed again (ADR-0057 point 3), which is not
- * something "payment_reversed" says on its own.
- */
-const statusLabels: Record<string, string> = {
-    payment_reversed: 'Payment reversed',
-};
-
-const reversalKindLabels: Record<string, string> = {
-    return: 'Return',
-    dispute: 'Dispute',
-    external_refund: 'Dashboard refund',
-};
-
-/**
- * The day the money is owed back by — the newest final reversal's deadline
- * (ADR-0057 point 4). An open dispute has none: the provider still holds
- * the money and nothing is owed yet.
- */
-const repaymentDeadline = computed<string | null>(
-    () =>
-        props.reversals.find(
-            (reversal) =>
-                reversal.status === 'final' && reversal.repayDueOn !== null,
-        )?.repayDueOn ?? null,
+/** The wording and the deadline rule are shared with the index list. */
+const deadline = computed<string | null>(() =>
+    repaymentDeadline(props.reversals),
 );
 
 /**
@@ -156,13 +138,13 @@ function submitBookPayment(): void {
             :description="`${order.brand} — created ${order.createdAt ?? 'unknown'}`"
         >
             <Badge :variant="statusVariant(order.status)">{{
-                statusLabels[order.status] ?? order.status
+                orderStatusLabel(order.status)
             }}</Badge>
             <span
-                v-if="order.status === 'payment_reversed' && repaymentDeadline"
+                v-if="order.status === 'payment_reversed' && deadline"
                 class="text-sm text-text-muted"
             >
-                — owed again until {{ repaymentDeadline }}
+                — owed again until {{ deadline }}
             </span>
             <Button
                 v-if="!order.paidAt && order.status !== 'cancelled'"
@@ -529,10 +511,7 @@ function submitBookPayment(): void {
                                 class="border-b border-border last:border-0"
                             >
                                 <td class="p-3">
-                                    {{
-                                        reversalKindLabels[reversal.kind] ??
-                                        reversal.kind
-                                    }}
+                                    {{ reversalKindLabel(reversal.kind) }}
                                     <span class="text-xs text-text-muted">
                                         · {{ reversal.provider }}
                                     </span>

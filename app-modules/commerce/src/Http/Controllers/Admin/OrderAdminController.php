@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Actions\BookManualPayment;
+use Konventix\Commerce\Data\OrderReversalData;
+use Konventix\Commerce\Data\UnappliedPaymentData;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\CreditNote;
@@ -130,12 +132,12 @@ class OrderAdminController
                     'taxTreatment' => $order->tax_treatment->value,
                     'provider' => $providerByOrder[$order->id] ?? null,
                     'reversals' => $reversalsByOrder->get($order->id, collect())
-                        ->map(fn (PaymentReversal $reversal): array => $this->reversalRow($reversal))
+                        ->map(fn (PaymentReversal $reversal): array => OrderReversalData::ofReversal($reversal)->toArray())
                         ->values()
                         ->all(),
                     'unappliedPayment' => $unapplied === null
                         ? null
-                        : $this->unappliedPaymentRow($unapplied),
+                        : UnappliedPaymentData::ofPayment($unapplied)->toArray(),
                     'paidAt' => $order->paid_at?->format('Y-m-d H:i'),
                     'createdAt' => $order->created_at?->format('Y-m-d H:i'),
                     'invoice' => $invoice === null ? null : [
@@ -249,12 +251,12 @@ class OrderAdminController
                 ->where('order_id', $model->getKey())
                 ->orderByDesc('occurred_at')
                 ->get()
-                ->map(fn (PaymentReversal $reversal): array => $this->reversalRow($reversal))
+                ->map(fn (PaymentReversal $reversal): array => OrderReversalData::ofReversal($reversal)->toArray())
                 ->values()
                 ->all(),
             'unappliedPayment' => $unapplied === null
                 ? null
-                : $this->unappliedPaymentRow($unapplied),
+                : UnappliedPaymentData::ofPayment($unapplied)->toArray(),
             'creditNotes' => CreditNote::withoutBrandScope()
                 ->where('order_id', $model->getKey())
                 ->orderByDesc('created_at')
@@ -289,53 +291,6 @@ class OrderAdminController
     {
         return PaymentReversal::withoutBrandScope()
             ->whereIn('status', [ReversalStatus::Open->value, ReversalStatus::Final->value]);
-    }
-
-    /**
-     * One reversal as both console views show it (ADR-0057 point 1's
-     * fields): what kind it is, where it stands, how much left, the
-     * provider's own reference and reason, and the day the money is owed
-     * back by.
-     *
-     * @return array<string, string|null>
-     */
-    private function reversalRow(PaymentReversal $reversal): array
-    {
-        return [
-            'id' => $reversal->getKey(),
-            'provider' => $reversal->provider,
-            'kind' => $reversal->kind->value,
-            'status' => $reversal->status->value,
-            'amount' => $reversal->amount,
-            'currency' => $reversal->currency,
-            'providerReference' => $reversal->provider_reference,
-            'reasonCode' => $reversal->reason_code,
-            // Only Stripe disputes report one (ADR-0007: the organizer's own
-            // cost either way), so the page must not present it as always
-            // there.
-            'feeAmount' => $reversal->fee_amount,
-            'occurredAt' => $reversal->occurred_at->format('Y-m-d H:i'),
-            'finalizedAt' => $reversal->finalized_at?->format('Y-m-d H:i'),
-            'repayDueOn' => $reversal->repay_due_on?->toDateString(),
-        ];
-    }
-
-    /**
-     * Money that arrived for an order that cannot take it (ADR-0057
-     * point 9, #6) — the provider, the amount and when it landed.
-     *
-     * @return array<string, string|null>
-     */
-    private function unappliedPaymentRow(Payment $payment): array
-    {
-        return [
-            'id' => $payment->getKey(),
-            'provider' => $payment->provider,
-            'amount' => $payment->amount,
-            'currency' => $payment->currency,
-            'externalId' => $payment->external_id,
-            'receivedAt' => $payment->received_at?->format('Y-m-d H:i'),
-        ];
     }
 
     /**

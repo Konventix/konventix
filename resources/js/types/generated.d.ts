@@ -74,6 +74,9 @@ declare namespace Konventix {
                 readonly provider: string;
                 readonly label: string;
             };
+            export type CommerceBrandSettingsData = {
+                readonly reversalRepaymentDays: number;
+            };
             export type CreditNoteMailData = {
                 readonly creditNoteNumber: string;
                 readonly invoiceNumber: string | null;
@@ -135,6 +138,20 @@ declare namespace Konventix {
                 readonly paid: boolean;
                 readonly reservationUntil: string | null;
                 readonly ordersUrl: string;
+            };
+            export type OrderReversalData = {
+                readonly id: string;
+                readonly provider: string;
+                readonly kind: Konventix.Commerce.Enums.ReversalKind;
+                readonly status: Konventix.Commerce.Enums.ReversalStatus;
+                readonly amount: string;
+                readonly currency: string;
+                readonly providerReference: string;
+                readonly reasonCode: string | null;
+                readonly feeAmount: string | null;
+                readonly occurredAt: string;
+                readonly finalizedAt: string | null;
+                readonly repayDueOn: string | null;
             };
             export type PaymentFailedMailData = {
                 readonly orderNumberShort: string;
@@ -217,6 +234,14 @@ declare namespace Konventix {
                 readonly unitAmountNet: string;
                 readonly remaining: number;
             };
+            export type UnappliedPaymentData = {
+                readonly id: string;
+                readonly provider: string;
+                readonly amount: string;
+                readonly currency: string;
+                readonly externalId: string | null;
+                readonly receivedAt: string | null;
+            };
             export type UpdateSettlementAccountLabelData = {
                 readonly checkoutLabel: string | null;
             };
@@ -235,7 +260,7 @@ declare namespace Konventix {
             export type CartLineKind = 'product' | 'registration';
             export type CartStatus = 'open' | 'expired' | 'checked_out';
             export type OperationsNoticeKind =
-                'stock-exhausted' | 'payment-failed';
+                'stock-exhausted' | 'payment-failed' | 'payment-reconciled';
             export type OrderStatus =
                 | 'pending'
                 | 'paid'

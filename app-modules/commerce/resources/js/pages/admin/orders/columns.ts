@@ -3,37 +3,12 @@ import type { ColumnDef } from '@tanstack/vue-table';
 import type { VNode } from 'vue';
 import { h } from 'vue';
 import { show as showOrder } from '@/routes/admin/orders';
-
-/**
- * One `payment_reversals` row as the console shows it (ADR-0057 point 1):
- * what kind it is, where it stands, the provider's own reference and
- * reason, and the day the money is owed back by. `feeAmount` is only ever
- * reported by Stripe disputes, so nothing here may assume it is there.
- */
-export type OrderReversal = {
-    id: string;
-    provider: string;
-    kind: Konventix.Commerce.Enums.ReversalKind;
-    status: Konventix.Commerce.Enums.ReversalStatus;
-    amount: string;
-    currency: string;
-    providerReference: string;
-    reasonCode: string | null;
-    feeAmount: string | null;
-    occurredAt: string;
-    finalizedAt: string | null;
-    repayDueOn: string | null;
-};
-
-/** Money that arrived for an order that cannot take it (ADR-0057 point 9). */
-export type UnappliedPayment = {
-    id: string;
-    provider: string;
-    amount: string;
-    currency: string;
-    externalId: string | null;
-    receivedAt: string | null;
-};
+import type { OrderReversal, UnappliedPayment } from './reversals';
+import {
+    orderStatusLabel,
+    repaymentDeadline,
+    reversalKindLabel,
+} from './reversals';
 
 export type OrderRow = {
     id: string;
@@ -64,40 +39,11 @@ const statusClasses: Record<string, string> = {
     payment_reversed: 'bg-danger/15 text-danger',
 };
 
-/**
- * Only the status whose raw value says the wrong thing gets a label:
- * `payment_reversed` is not a variant of "paid", it is "was paid, and is
- * owed again" (ADR-0057 point 3).
- */
-const statusLabels: Record<string, string> = {
-    payment_reversed: 'Payment reversed',
-};
-
 const reversalStatusClasses: Record<string, string> = {
     open: 'bg-warning/15 text-warning',
     final: 'bg-danger/15 text-danger',
     withdrawn: 'bg-success/15 text-success',
 };
-
-const reversalKindLabels: Record<string, string> = {
-    return: 'Return',
-    dispute: 'Dispute',
-    external_refund: 'Dashboard refund',
-};
-
-/**
- * The day a reversed order's money is owed back by — the deadline of the
- * newest final reversal (ADR-0057 point 4). An open dispute has none: the
- * provider still holds the money and nothing is owed yet.
- */
-export function repaymentDeadline(row: OrderRow): string | null {
-    return (
-        row.reversals.find(
-            (reversal) =>
-                reversal.status === 'final' && reversal.repayDueOn !== null,
-        )?.repayDueOn ?? null
-    );
-}
 
 const treatmentLabels: Record<string, string> = {
     standard: 'USt.',
@@ -149,14 +95,14 @@ export const columns: ColumnDef<OrderRow>[] = [
         enableSorting: true,
         cell: ({ row }) => {
             const status = row.getValue<string>('status');
-            const deadline = repaymentDeadline(row.original);
+            const deadline = repaymentDeadline(row.original.reversals);
 
             const badge = h(
                 'span',
                 {
                     class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses[status] ?? 'bg-subtle text-text-muted'}`,
                 },
-                statusLabels[status] ?? status,
+                orderStatusLabel(status),
             );
 
             if (status !== 'payment_reversed' || deadline === null) {
@@ -251,7 +197,7 @@ export const reversalColumn: ColumnDef<OrderRow> = {
                         {
                             class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${reversalStatusClasses[reversal.status] ?? 'bg-subtle text-text-muted'}`,
                         },
-                        `${reversalKindLabels[reversal.kind] ?? reversal.kind} · ${reversal.status}`,
+                        `${reversalKindLabel(reversal.kind)} · ${reversal.status}`,
                     ),
                     h(
                         'span',

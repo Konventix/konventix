@@ -282,6 +282,24 @@ it('lists orders with an open or final reversal and orders with unapplied money 
 
     $reversedRow = $rows->firstWhere('id', $reversedOrder->id);
 
+    // ADR-0009: `OrderReversalData` is the single source of this shape, and
+    // the generated TypeScript the pages read is built from the same class —
+    // so the key set is worth pinning, not just the values.
+    expect(array_keys($reversedRow['reversals'][0]))->toBe([
+        'id',
+        'provider',
+        'kind',
+        'status',
+        'amount',
+        'currency',
+        'providerReference',
+        'reasonCode',
+        'feeAmount',
+        'occurredAt',
+        'finalizedAt',
+        'repayDueOn',
+    ]);
+
     expect($reversedRow['reversals'])->toHaveCount(1)
         ->and($reversedRow['reversals'][0]['kind'])->toBe('return')
         ->and($reversedRow['reversals'][0]['status'])->toBe('final')
@@ -298,6 +316,15 @@ it('lists orders with an open or final reversal and orders with unapplied money 
         ->and($disputedRow['reversals'][0]['repayDueOn'])->toBeNull();
 
     $unappliedRow = $rows->firstWhere('id', $cancelledOrder->id);
+
+    expect(array_keys($unappliedRow['unappliedPayment']))->toBe([
+        'id',
+        'provider',
+        'amount',
+        'currency',
+        'externalId',
+        'receivedAt',
+    ]);
 
     expect($unappliedRow['reversals'])->toBe([])
         ->and($unappliedRow['unappliedPayment']['provider'])->toBe('mollie')
