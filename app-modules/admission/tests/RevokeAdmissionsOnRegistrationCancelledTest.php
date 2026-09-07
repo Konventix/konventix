@@ -9,6 +9,7 @@ use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Events\AdmissionRevoked;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\CheckIn;
+use Konventix\Admission\Models\EntranceDeltaEntry;
 use Konventix\Registration\Events\RegistrationCancelled;
 
 /**
@@ -161,4 +162,48 @@ it('is idempotent: replaying the cancellation revokes nothing a second time', fu
     event($cancelled);
 
     Event::assertDispatchedTimes(AdmissionRevoked::class, 1);
+});
+
+it('tells the offline doors, one delta entry per admission it actually revoked', function (): void {
+    $this->withBrand();
+
+    $registrationId = (string) Str::ulid();
+
+    $attended = Admission::factory()->forRegistration($registrationId)->create();
+    $revoked = Admission::factory()->forRegistration($registrationId)->create();
+
+    CheckIn::factory()->create([
+        'admission_id' => $attended->id,
+        'registration_id' => $registrationId,
+    ]);
+
+    event(revokeCancelledEvent($registrationId));
+
+    // ADR-0033: the signature can say yes on its own, so a device only ever
+    // learns "no" from the delta feed. Without a row here an offline door
+    // keeps admitting this person until its next full sync.
+    $entries = EntranceDeltaEntry::withoutBrandScope()
+        ->where('kind', EntranceDeltaEntry::KIND_REVOKED)
+        ->get();
+
+    expect($entries)->toHaveCount(1)
+        ->and($entries->first()->admission_id)->toBe($revoked->id)
+        ->and($entries->first()->event_id)->toBe($revoked->event_id)
+        ->and($entries->first()->brand_id)->toBe($revoked->brand_id);
+});
+
+it('writes no revocation delta for an admission it kept', function (): void {
+    $this->withBrand();
+
+    $registrationId = (string) Str::ulid();
+    $attended = Admission::factory()->forRegistration($registrationId)->create();
+
+    CheckIn::factory()->create([
+        'admission_id' => $attended->id,
+        'registration_id' => $registrationId,
+    ]);
+
+    event(revokeCancelledEvent($registrationId));
+
+    expect(EntranceDeltaEntry::withoutBrandScope()->where('admission_id', $attended->id)->exists())->toBeFalse();
 });

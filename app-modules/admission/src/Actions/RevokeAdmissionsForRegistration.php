@@ -10,13 +10,22 @@ use Konventix\Admission\Enums\CheckInResult;
 use Konventix\Admission\Events\AdmissionRevoked;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\CheckIn;
+use Konventix\Admission\Models\EntranceDeltaEntry;
 
 /**
  * The counterpart of `IssueAdmissionsForRegistration` (ADR-0057 point 6):
  * the contractual act ended, so the access rights it produced end with it —
- * `AdmissionState::Revoked` and one `AdmissionRevoked` each, which is the
- * producer `AdmissionState::Revoked` and the SPEC's proposed
- * `AdmissionRevoked` row have been waiting for.
+ * `AdmissionState::Revoked`, one `AdmissionRevoked` each, and a
+ * `KIND_REVOKED` entry in the entrance delta feed — which is the producer
+ * `AdmissionState::Revoked`, the SPEC's proposed `AdmissionRevoked` row and
+ * `EntranceDeltaEntry::KIND_REVOKED` have all been waiting for.
+ *
+ * **The delta entry is not optional.** ADR-0033 buys offline door decisions
+ * with a signed token the device can verify on its own, so a device only ever
+ * learns *no* from the feed it polls; without a row here an offline scanner
+ * keeps admitting a revoked person until its next full sync. The row holds an
+ * opaque admission ID and nothing else, which is what makes a stolen scanner
+ * leak nothing (`EntranceDeltaEntry`'s own docblock).
  *
  * **The one thing this Action never asks is whether anything was paid.** It
  * reacts to `RegistrationCancelled` alone; `PaymentReversed` has no listener
@@ -96,6 +105,20 @@ final class RevokeAdmissionsForRegistration
                     reasonCode: self::REASON_REGISTRATION_CANCELLED,
                     revokedAt: now()->toIso8601String(),
                 ));
+
+                // ADR-0033's negative decision: the signature alone cannot
+                // say "no", so every door has to be told. `RecordScan` writes
+                // the KIND_CHECKED_IN half of this feed.
+                $entry = new EntranceDeltaEntry([
+                    'event_id' => $admission->event_id,
+                    'admission_id' => $admission->id,
+                    'kind' => EntranceDeltaEntry::KIND_REVOKED,
+                ]);
+
+                // brand_id comes off the admission row rather than ambient
+                // context, so a replay outside any brand context still lands
+                // in the right brand's feed. It is deliberately not fillable.
+                $entry->forceFill(['brand_id' => $admission->brand_id])->save();
 
                 $revoked[] = $admission;
             }
