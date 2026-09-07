@@ -8,6 +8,7 @@ use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
@@ -290,4 +291,52 @@ it('sends a guest to sign in rather than taking a declaration it cannot record',
 
     expect(Consent::query()->count())->toBe(0)
         ->and(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+});
+
+/**
+ * ADR-0057 point 3: a reversal revives the receivable — "the money comes
+ * back by the pay link (#5), the door POS or a bank transfer". The payer's
+ * `commerce.payment-reversed` mail sends a registration payer to exactly
+ * this page, so the page and `start()` must take the money a second time.
+ */
+it('takes the money again for a registration order whose payment was reversed', function (): void {
+    [$registrationId, $order, $account] = checkoutPageOrder();
+
+    $order->forceFill(['status' => OrderStatus::PaymentReversed, 'paid_at' => now()->subWeek()])->save();
+
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => $account->id])
+        ->assertRedirect('https://checkout.stripe.test/session');
+
+    expect(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+});
+
+it('shows a reversed order as owed again, with the deadline its reversal carries', function (): void {
+    [$registrationId, $order] = checkoutPageOrder();
+
+    $order->forceFill(['status' => OrderStatus::PaymentReversed, 'paid_at' => now()->subWeek()])->save();
+
+    $payment = Payment::factory()->create(['order_id' => $order->id]);
+
+    // The newest final reversal owns the deadline (ADR-0057 point 4), the
+    // same rule the console's `repaymentDeadline()` reads.
+    PaymentReversal::factory()->create([
+        'order_id' => $order->id,
+        'payment_id' => $payment->id,
+        'provider_reference' => 'chb_pay_old',
+        'occurred_at' => now()->subDays(30),
+        'repay_due_on' => now()->subDays(23)->toDateString(),
+    ]);
+    PaymentReversal::factory()->create([
+        'order_id' => $order->id,
+        'payment_id' => $payment->id,
+        'provider_reference' => 'chb_pay_new',
+        'occurred_at' => now()->subDay(),
+        'repay_due_on' => '2026-09-14',
+    ]);
+
+    $this->get('/pay/registration/'.$registrationId)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('order.status', 'payment_reversed')
+            ->where('repayDueOn', '2026-09-14'));
 });

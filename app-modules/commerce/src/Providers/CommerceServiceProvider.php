@@ -725,6 +725,54 @@ class CommerceServiceProvider extends ModuleServiceProvider
             ],
         ));
 
+        // The same fact for an order that cannot be repaid online: a cart
+        // order, because `CheckoutController` is addressed by registration
+        // ULID and repaying a reversed cart is a follow-up. Its own key
+        // rather than an `@if ($payUrl)` branch — a branch-free template is
+        // what keeps a per-brand `TemplateOverride` branch-free too
+        // (`.ai/rules/app-modules-src.md`), the same split
+        // `commerce.invoice-issued`/`commerce.invoice-paid` draws.
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'commerce.payment-reversed-manual',
+            subjects: [
+                'de' => 'Zahlung zu Bestellung {{ $orderNumberShort }} wurde zurückgebucht',
+                'en' => 'Payment for order {{ $orderNumberShort }} was reversed',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag,</p>
+                    <p>der Betrag von <strong>{{ $amount }} {{ $currency }}</strong> zur
+                    Bestellung <strong>{{ $orderNumberShort }}</strong> wurde zurückgebucht.
+                    {{ $reasonDe }}</p>
+                    <p>Ihre Bestellung bleibt bestehen; der Betrag ist bis zum
+                    <strong>{{ $dueOn }}</strong> erneut offen. Eine Online-Zahlung ist für
+                    diese Bestellung derzeit nicht möglich — der Veranstalter kann eine
+                    Überweisung oder eine Zahlung vor Ort verbuchen.</p>
+                    <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>the amount of <strong>{{ $amount }} {{ $currency }}</strong> for order
+                    <strong>{{ $orderNumberShort }}</strong> was reversed. {{ $reasonEn }}</p>
+                    <p>Your order stands; the amount is owed again by
+                    <strong>{{ $dueOn }}</strong>. Paying online is not available for this
+                    order at the moment — the organizer can book a bank transfer or a
+                    payment at the door.</p>
+                    <p><a href="{{ $ordersUrl }}">My orders</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'orderNumberShort' => 'A1B2C3',
+                'amount' => '119.00',
+                'currency' => 'EUR',
+                'reasonDe' => 'Die Bank meldet, dass das Konto zum Zeitpunkt der Abbuchung nicht ausreichend gedeckt war.',
+                'reasonEn' => 'The bank reports that the account did not have sufficient funds at the time of the debit.',
+                'dueOn' => '14.09.2026',
+                'ordersUrl' => 'https://example.test/my/orders',
+            ],
+        ));
+
         // ADR-0048 point 3: one template for every shop-operator notice on
         // the `commerce.operations` topic — `title`/`detail`/`url` are
         // already composed by the sending listener

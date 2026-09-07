@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { CheckCircle2, Clock3, CreditCard, XCircle } from '@lucide/vue';
+import {
+    CheckCircle2,
+    Clock3,
+    CreditCard,
+    RotateCcw,
+    XCircle,
+} from '@lucide/vue';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -37,6 +43,11 @@ type Props = {
     };
     accounts: Konventix.Commerce.Data.CheckoutAccountData[];
     paymentStatus: string | null;
+    /**
+     * ADR-0057 point 4 — the day a reversed order's money is owed back by,
+     * from the newest final reversal. Null for every other status.
+     */
+    repayDueOn: string | null;
     consentSlots: SlotContribution[];
 };
 
@@ -70,6 +81,13 @@ function pay(accountId: string): void {
 }
 
 const paid = computed(() => props.order.status === 'paid');
+
+/**
+ * ADR-0057 point 3: the sale stands and the amount is owed again. Its own
+ * notice rather than a variant of "unpaid" — the payer already paid once,
+ * and the page must say why it is asking a second time.
+ */
+const reversed = computed(() => props.order.status === 'payment_reversed');
 const awaitingConfirmation = computed(
     () => !paid.value && props.paymentStatus === 'pending',
 );
@@ -116,6 +134,19 @@ const lastAttemptFailed = computed(
                 </p>
             </CardContent>
         </Card>
+
+        <div
+            v-if="reversed"
+            role="status"
+            class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-danger"
+        >
+            <RotateCcw class="size-5" />
+            <span>
+                Payment reversed — owed again<template v-if="props.repayDueOn">
+                    until {{ props.repayDueOn }}</template
+                >.
+            </span>
+        </div>
 
         <div
             v-if="paid"

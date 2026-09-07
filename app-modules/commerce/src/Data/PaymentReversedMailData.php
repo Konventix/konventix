@@ -23,6 +23,12 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * `dueOn` is already formatted (`d.m.Y`), like `placedAt` on the order
  * confirmation — the deadline after which
  * `commerce:cancel-unpaid-reversals` cancels the order.
+ *
+ * `payUrl` is null wherever paying online is not on offer for the reversed
+ * order — a cart order today, because `CheckoutController` is addressed by
+ * registration ULID and repaying a cart is a follow-up. The
+ * `commerce.payment-reversed-manual` template never reads it; the two keys
+ * exist so neither template branches (`.ai/rules/app-modules-src.md`).
  */
 #[TypeScript]
 final class PaymentReversedMailData extends Data
@@ -34,7 +40,7 @@ final class PaymentReversedMailData extends Data
         public readonly string $reasonDe,
         public readonly string $reasonEn,
         public readonly string $dueOn,
-        public readonly string $payUrl,
+        public readonly ?string $payUrl,
         public readonly string $ordersUrl,
     ) {}
 }

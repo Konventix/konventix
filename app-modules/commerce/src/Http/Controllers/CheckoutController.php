@@ -12,10 +12,12 @@ use Inertia\Response;
 use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
@@ -74,6 +76,10 @@ class CheckoutController
                 $this->registry->forProvider($account->provider),
             )->toArray())->values()->all(),
             'paymentStatus' => $latestPayment?->status->value,
+            // ADR-0057 point 4: the day the money is owed back by, so a
+            // reversed order reads as "owed again until …" rather than as an
+            // ordinary unpaid one. Null for every other status.
+            'repayDueOn' => $this->repayDueOn($order),
             // Compliance's consent control (GitLab #2) — see
             // `CartController::consentSlots()` for why it arrives as a slot
             // contribution rather than as props this controller computes.
@@ -94,7 +100,16 @@ class CheckoutController
             ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
             : ['account' => ['required', 'ulid']]);
 
-        abort_unless($order->status === OrderStatus::Pending, 409, 'This order is not payable.');
+        // ADR-0057 point 3: a reversal revives the receivable — the sale
+        // stands and the amount is owed again, and `RecordPaymentSuccess`
+        // settles a `payment_reversed` order exactly as it settles a pending
+        // one. The pay link the payer's reversal mail carries ends here, so
+        // refusing this status would make that link a 409.
+        abort_unless(
+            in_array($order->status, [OrderStatus::Pending, OrderStatus::PaymentReversed], true),
+            409,
+            'This order is not payable.',
+        );
         abort_if(
             Payment::query()->where('order_id', $order->id)->where('status', PaymentStatus::Succeeded)->exists(),
             409,
@@ -146,6 +161,28 @@ class CheckoutController
 
         // A hard redirect out of the SPA to the provider's hosted page.
         return Inertia::location($redirect->url);
+    }
+
+    /**
+     * The day a reversed order's money is owed back by (ADR-0057 point 4):
+     * the newest final reversal's `repay_due_on`, the same rule the operator
+     * console reads through `repaymentDeadline()`. An open dispute carries
+     * none — the provider still holds the money and nothing is owed yet.
+     *
+     * Brand-scoped implicitly, like `orderFor()`: this runs on the brand host.
+     */
+    private function repayDueOn(Order $order): ?string
+    {
+        if ($order->status !== OrderStatus::PaymentReversed) {
+            return null;
+        }
+
+        return PaymentReversal::query()
+            ->where('order_id', $order->id)
+            ->where('status', ReversalStatus::Final)
+            ->whereNotNull('repay_due_on')
+            ->orderByDesc('occurred_at')
+            ->first()?->repay_due_on?->toDateString();
     }
 
     /**

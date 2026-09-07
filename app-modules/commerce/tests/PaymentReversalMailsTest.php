@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\PaymentReversalRecorded;
 use Konventix\Commerce\Events\PaymentReversed;
 use Konventix\Commerce\Events\PaymentUnapplied;
@@ -139,7 +140,7 @@ it('maps a known return code to a plain, non-accusatory sentence in both languag
 
     $job = Queue::pushed(
         SendQueuedMessage::class,
-        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-reversed',
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-reversed-manual',
     )->first();
 
     $payload = $job->message->payload->toArray();
@@ -148,7 +149,7 @@ it('maps a known return code to a plain, non-accusatory sentence in both languag
         ->and($payload['reasonEn'])->toContain('funds')
         // "informs, does not accuse": no second person, no blame.
         ->and($payload['reasonDe'])->not->toContain('Sie haben')
-        ->and($payload['payUrl'])->toEndWith('/my/orders');
+        ->and($payload['payUrl'])->toBeNull();
 });
 
 it('falls back to a neutral sentence for a reason code it does not know', function (): void {
@@ -162,7 +163,7 @@ it('falls back to a neutral sentence for a reason code it does not know', functi
 
     $job = Queue::pushed(
         SendQueuedMessage::class,
-        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-reversed',
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-reversed-manual',
     )->first();
 
     $payload = $job->message->payload->toArray();
@@ -183,7 +184,7 @@ it('renders the reversal mail in the payer\'s own locale', function (): void {
 
     $job = Queue::pushed(
         SendQueuedMessage::class,
-        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-reversed',
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-reversed-manual',
     )->sole();
 
     expect($job->message->recipientLocale)->toBe('en')
@@ -291,4 +292,38 @@ it('tells the operators about money that arrived for a cancelled order', functio
             && $job->message->recipientId === $holder->id
             && $payload['kind'] === 'payment-unapplied';
     });
+});
+
+it('promises a cart order no pay link, and names the ways the organizer can take the money', function (): void {
+    // Controller ruling on C1: repaying a reversed *cart* order online is a
+    // follow-up ("Warenkorb-Bestellung nach Rueckbuchung erneut bezahlbar"),
+    // and `CheckoutController` is addressed by registration ULID only — so
+    // the cart mail must not promise a link that would answer 409. It names
+    // the account page and the manual routes instead, and keeps the
+    // deadline (ADR-0057 point 4).
+    $brand = $this->withBrand();
+    $payer = reversalMailsRecipient($brand->id, 'de');
+    Queue::fake();
+
+    $order = Order::factory()->paid()->create(['settles_type' => 'cart', 'payer_user_id' => $payer->id]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
+    $dueOn = now()->addDays(7);
+
+    event(reversalMailsEvent($order, repayDueOn: $dueOn->toDateString()));
+
+    $job = Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-reversed-manual',
+    )->sole();
+
+    $payload = $job->message->payload->toArray();
+
+    expect($payload['payUrl'])->toBeNull()
+        ->and($payload['dueOn'])->toBe($dueOn->format('d.m.Y'))
+        ->and(str_ends_with($payload['ordersUrl'], '/my/orders'))->toBeTrue();
+
+    $rendered = app(TemplateRenderer::class)->render($job->message);
+
+    expect($rendered->body)->not->toContain('/pay/registration/')
+        ->and($rendered->body)->toContain('Überweisung');
 });

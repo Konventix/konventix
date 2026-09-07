@@ -21,9 +21,12 @@ use RuntimeException;
  * telling the payer that the money left again (ADR-0048 point 3). The sale
  * stands and the order is waiting for the amount a second time, so the mail
  * carries the amount, the reason in plain words, the deadline of ADR-0057
- * point 4, and the link that takes the payer back to paying:
- * `commerce.pay.show` for a registration order, `/my/orders` for a cart
- * order, exactly as `SendPaymentFailedMailOnPaymentFailed` chooses.
+ * point 4, and — for a registration order — the link that takes the payer
+ * back to paying (`commerce.pay.show`). A cart order gets the
+ * `commerce.payment-reversed-manual` wording instead: no pay link, because
+ * `CheckoutController` is addressed by registration ULID and repaying a
+ * reversed cart order is a follow-up, so the mail names `/my/orders` and the
+ * bank transfer or door payment the organizer can book.
  *
  * **The reason map never accuses.** `reasonCode` is the provider's own
  * string — a SEPA return code (`AM04`, `MD01`, …) or a Stripe dispute
@@ -168,13 +171,22 @@ final class SendPaymentReversedMailOnPaymentReversed
     {
         $reason = self::REASONS[$event->reasonCode ?? ''] ?? self::NEUTRAL_REASON;
 
-        $payUrl = $order->settles_type === 'registration'
+        // Only a registration order can be repaid online: `CheckoutController`
+        // is addressed by registration ULID, and repaying a reversed *cart*
+        // order is a follow-up ("Warenkorb-Bestellung nach Rueckbuchung
+        // erneut bezahlbar"). Promising the cart payer a pay link would send
+        // them to a 409, so that mail names the account page and the routes
+        // the organizer can book instead. Two template keys rather than one
+        // branching template, per `.ai/rules/app-modules-src.md`.
+        $payable = $order->settles_type === 'registration';
+
+        $payUrl = $payable
             ? $this->absoluteUrl($event->brandId, 'commerce.pay.show', ['registration' => $order->settles_id])
-            : $this->absoluteUrl($event->brandId, 'commerce.mine.index');
+            : null;
 
         $this->sendMessage->handle(new SendMessageRequest(
             recipientId: $order->payer_user_id,
-            templateKey: 'commerce.payment-reversed',
+            templateKey: $payable ? 'commerce.payment-reversed' : 'commerce.payment-reversed-manual',
             payload: new PaymentReversedMailData(
                 orderNumberShort: strtoupper(substr($order->id, -8)),
                 amount: $event->amount,

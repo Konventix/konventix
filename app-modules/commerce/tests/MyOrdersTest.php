@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
@@ -118,4 +119,19 @@ it('appears in the account menu for a signed-in member', function (): void {
     $this->actingAs(User::factory()->create())
         ->get('/my/orders')
         ->assertInertia(fn (AssertableInertia $page) => expect(collect($page->toArray()['props']['accountNav'])->pluck('label')->all())->toContain('My orders'));
+});
+
+it('keeps the pay link on an order whose payment was reversed', function (): void {
+    // ADR-0057 point 3: the sale stands and the amount is owed again, so
+    // "my orders" must still offer the way to pay it (C1).
+    $this->withBrand();
+    $me = User::factory()->create();
+
+    $order = Order::factory()->forPayer($me->getKey())->paid()->create();
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
+
+    $this->actingAs($me)
+        ->get('/my/orders')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('orders.0.payUrl', '/pay/registration/'.$order->settles_id));
 });
