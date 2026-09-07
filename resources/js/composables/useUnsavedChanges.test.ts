@@ -6,7 +6,9 @@ vi.mock('@inertiajs/vue3', () => ({
 
 const {
     allowNavigation,
+    handlePageShow,
     rearmNavigationGuard,
+    releaseOnUnmount,
     shouldPreventUnload,
     shouldReleaseForLocation,
 } = await import('./useUnsavedChanges');
@@ -60,19 +62,19 @@ describe('useUnsavedChanges — the unload rule', () => {
     it('is armed again when the browser hands the page back from the bfcache', () => {
         // `pageshow` is the only signal there: nothing re-rendered, so
         // Inertia fires no `navigate`, and a release that waits for one
-        // outlives the navigation it was meant for. The composable listens
-        // for `pageshow` and calls this.
+        // outlives the navigation it was meant for. This is the function
+        // the composable registers as the `pageshow` listener.
         allowNavigation();
-        rearmNavigationGuard();
+        handlePageShow();
 
         expect(shouldPreventUnload(dirty)).toBe(true);
     });
 
     it('is armed again when a guard leaves the page it belonged to', () => {
-        // `onBeforeUnmount`: a released document must not be handed to
-        // whatever mounts next.
+        // The function `onBeforeUnmount` calls: a released document must
+        // not be handed to whatever mounts next.
         allowNavigation();
-        rearmNavigationGuard();
+        releaseOnUnmount();
 
         expect(shouldPreventUnload(dirty)).toBe(true);
     });

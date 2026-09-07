@@ -459,7 +459,7 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @else
                     <p>Ihre Anmeldung ({{ $registrationTypeName }}) ist bestätigt.</p>
                     @endif
-                    @if ($cartUrl)
+                    @if ($cartUrl ?? null)
                     <p>Die Zahlung läuft über Ihren <a href="{{ $cartUrl }}">Warenkorb</a>. Ihr Platz ist dort bis {{ $cartHoldExpiresAt }} reserviert — danach wird die Reservierung freigegeben.</p>
                     @endif
                     <p>Alles Weitere (Einlass, Unterlagen) finden Sie auf Ihrer <a href="{{ $registrationUrl }}">Anmeldeseite</a>.</p>
@@ -475,7 +475,7 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @else
                     <p>Your registration ({{ $registrationTypeName }}) is confirmed.</p>
                     @endif
-                    @if ($cartUrl)
+                    @if ($cartUrl ?? null)
                     <p>Payment goes through your <a href="{{ $cartUrl }}">cart</a>. Your place is reserved there until {{ $cartHoldExpiresAt }} — after that the reservation is released.</p>
                     @endif
                     <p>Everything else (admission, documents) is on your <a href="{{ $registrationUrl }}">registration page</a>.</p>

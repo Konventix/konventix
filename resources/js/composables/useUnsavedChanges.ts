@@ -55,6 +55,23 @@ export function rearmNavigationGuard(): void {
 }
 
 /**
+ * The document is here after all — either it never left, or the browser
+ * restored it from the bfcache, which renders no page and therefore fires
+ * no `navigate`. The `pageshow` listener is this function.
+ */
+export function handlePageShow(): void {
+    rearmNavigationGuard();
+}
+
+/**
+ * A guard is leaving the page it belonged to. It must not hand a released
+ * document to whatever mounts next; `onBeforeUnmount` is this function.
+ */
+export function releaseOnUnmount(): void {
+    rearmNavigationGuard();
+}
+
+/**
  * Whether an `inertia:location` event actually means the document is about
  * to leave.
  *
@@ -107,15 +124,6 @@ export function useUnsavedChanges(isDirty: () => boolean): {
         }
     }
 
-    /**
-     * The document is here after all — either it never left, or the browser
-     * restored it from the bfcache, which renders no page and therefore
-     * fires no `navigate`.
-     */
-    function onPageShow(): void {
-        rearmNavigationGuard();
-    }
-
     onMounted(() => {
         removeListeners.push(
             router.on('before', (event) => {
@@ -149,18 +157,16 @@ export function useUnsavedChanges(isDirty: () => boolean): {
         );
 
         window.addEventListener('beforeunload', onBeforeUnload);
-        window.addEventListener('pageshow', onPageShow);
+        window.addEventListener('pageshow', handlePageShow);
     });
 
     onBeforeUnmount(() => {
         removeListeners.forEach((remove) => remove());
         removeListeners.length = 0;
         window.removeEventListener('beforeunload', onBeforeUnload);
-        window.removeEventListener('pageshow', onPageShow);
+        window.removeEventListener('pageshow', handlePageShow);
 
-        // The guard is going away; it must not leave the document released
-        // for whatever mounts next.
-        rearmNavigationGuard();
+        releaseOnUnmount();
     });
 
     return { allowNavigation };

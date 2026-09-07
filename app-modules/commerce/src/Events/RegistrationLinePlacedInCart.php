@@ -31,7 +31,7 @@ final readonly class RegistrationLinePlacedInCart
         public string $cartId,
         public string $brandId,
         public string $registrationId,
-        public ?string $requestKey,
+        public string $requestKey,
         public string $holdExpiresAt,
     ) {}
 }

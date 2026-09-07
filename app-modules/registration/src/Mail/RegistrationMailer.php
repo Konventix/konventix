@@ -10,6 +10,7 @@ use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Models\Brand;
+use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Registration;
 use RuntimeException;
@@ -87,9 +88,15 @@ final class RegistrationMailer
      *
      * Registration does not read `cart_lines` to know this (ADR-0004) —
      * `cart_hold_expires_at` is stamped by `RecordCartHoldOnLinePlaced`
-     * from Commerce's `RegistrationLinePlacedInCart`. A hold already past
-     * says nothing: the sweep has released it, or checkout has moved the
-     * line into an order and the settlement fields carry the story instead.
+     * from Commerce's `RegistrationLinePlacedInCart`.
+     *
+     * Two states say there is nothing left to pay, and the payment is the
+     * decisive one. On an `on_payment` gate the registrant pays the cart
+     * line *within* its hold and the payment is what confirms, so the stamp
+     * is still in the future at the moment this mail is composed — reading
+     * the clock alone told someone who had just paid to go and pay in the
+     * cart. `RecordOrderPaidForRegistration` clears the stamp as well, so
+     * neither half depends on the other being remembered.
      *
      * `Route::has()` for the same reason `RegistrationController::store()`
      * guards: Commerce's routes are behind the shop feature, and a mail
@@ -106,7 +113,12 @@ final class RegistrationMailer
     {
         $holdExpiresAt = $registration->cart_hold_expires_at;
 
-        if ($holdExpiresAt === null || $holdExpiresAt->isPast() || ! Route::has('commerce.cart.show')) {
+        if (
+            $registration->payment_status === PaymentStatus::Paid
+            || $holdExpiresAt === null
+            || $holdExpiresAt->isPast()
+            || ! Route::has('commerce.cart.show')
+        ) {
             return ['cartUrl' => null, 'cartHoldExpiresAt' => null];
         }
 
