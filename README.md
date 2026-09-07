@@ -173,7 +173,11 @@ stripe login                    # once per host
 The script fails early with a clear message if the Stripe CLI is missing or not logged in,
 reads `APP_PORT` from `.env` (falling back to compose's default of 80), and restricts events
 to the ones `StripeWebhookController` handles or is built to handle next: checkout completion
-and its async/expiry siblings, disputes, and refunds. Run `./contrib/stripe-listen.sh --secret`
+and its async/expiry siblings, disputes, and refunds. It forwards those events from the
+platform account *and* from connected accounts (`--forward-to` plus `--forward-connect-to`,
+one signing secret for both): Konventix creates Checkout Sessions on the organizer's own
+connected account (ADR-0039), so without Connect forwarding the tunnel stays silent for
+exactly the events a purchase walkthrough is testing. Run `./contrib/stripe-listen.sh --secret`
 to print only the webhook signing secret — for pasting into `STRIPE_WEBHOOK_SECRET` without
 starting a listener. Sail/Octane reads `.env` live in dev, but a cached config does not follow
 along; run `sail artisan config:clear` if `STRIPE_WEBHOOK_SECRET` was already cached.
