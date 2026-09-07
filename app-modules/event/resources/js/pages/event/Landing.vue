@@ -78,17 +78,22 @@ const props = defineProps<Props>();
 
         <section v-if="props.days.length > 0" class="flex flex-col gap-2">
             <h2 class="text-lg font-medium">Days</h2>
-            <ul class="flex flex-col gap-1">
+            <ul class="flex flex-col gap-3">
                 <li
                     v-for="day in props.days"
                     :key="day.date"
                     class="flex items-baseline gap-3 text-text-muted"
                 >
-                    <span class="font-medium text-text"
+                    <span class="w-16 shrink-0 font-medium text-text"
                         >Day {{ day.sequence }}</span
                     >
-                    <span>{{ day.date }}</span>
-                    <span v-if="day.label">— {{ day.label }}</span>
+                    <span class="w-28 shrink-0 tabular-nums">{{
+                        day.date
+                    }}</span>
+                    <template v-if="day.label">
+                        <span aria-hidden="true">—</span>
+                        <span class="truncate">{{ day.label }}</span>
+                    </template>
                 </li>
             </ul>
         </section>
