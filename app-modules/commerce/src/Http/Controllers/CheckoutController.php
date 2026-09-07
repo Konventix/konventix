@@ -5,15 +5,19 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Http\Controllers;
 
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Data\CheckoutAccountData;
+use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
+use Konventix\Commerce\Models\Cart;
+use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
@@ -47,9 +51,13 @@ class CheckoutController
         private readonly SlotRegistry $slots,
     ) {}
 
-    public function show(string $registration): Response
+    public function show(string $registration): Response|RedirectResponse
     {
         $order = $this->orderFor($registration);
+
+        if ($order === null) {
+            return $this->cartHandoff($registration);
+        }
 
         $latestPayment = Payment::query()
             ->where('order_id', $order->id)
@@ -90,6 +98,11 @@ class CheckoutController
     public function start(Request $request, string $registration): SymfonyResponse
     {
         $order = $this->orderFor($registration);
+
+        if ($order === null) {
+            return $this->cartHandoff($registration);
+        }
+
         $consentSlots = $this->consentSlots();
 
         // The AGB and the Widerrufsbelehrung are confirmed before the order
@@ -224,14 +237,49 @@ class CheckoutController
      * The latest order settling this registration: ADR-0036 makes "one
      * order per registration" false, and the payable one is the newest.
      * Brand-scoped implicitly — this runs on the brand host.
+     *
+     * Null rather than a `firstOrFail()` 404 since #210: with
+     * `commerce:shop` on there may be no order at all and the money may
+     * still be owed, in the cart (ADR-0047 point 3). `cartHandoff()` is
+     * what decides between those two.
      */
-    private function orderFor(string $registration): Order
+    private function orderFor(string $registration): ?Order
     {
         return Order::query()
             ->where('settles_type', 'registration')
             ->where('settles_id', $registration)
             ->latest('created_at')
-            ->firstOrFail();
+            ->first();
+    }
+
+    /**
+     * Where a registration with no order is paid (#210).
+     *
+     * With `commerce:shop` on, an `instant` settlement request became a
+     * cart line rather than an order (ADR-0047 point 3), and this route —
+     * the one the registrant's mail and the settlement slot used to point
+     * at — answered a blank 404 to a person who wanted to pay. It now hands
+     * them to the cart, which holds the totals, the consent block and the
+     * checkout button.
+     *
+     * Only a *live* line redirects: an expired or checked-out cart no
+     * longer has anything payable here, and sending the payer to an empty
+     * cart would be a second dead end. Those, and a genuinely unknown
+     * registration, get a 404 that says what it means instead of nothing.
+     */
+    private function cartHandoff(string $registration): RedirectResponse
+    {
+        $liveLine = CartLine::query()
+            ->where('kind', CartLineKind::Registration)
+            ->where('ref_id', $registration)
+            ->whereIn('cart_id', Cart::query()->open()->where('expires_at', '>', now())->select('id'))
+            ->exists();
+
+        abort_unless($liveLine, 404, __('No payment is open for this registration.'));
+
+        Inertia::flash('toast', ['type' => 'info', 'message' => __('This registration is waiting in your cart — check out there.')]);
+
+        return redirect()->route('commerce.cart.show');
     }
 
     /**
