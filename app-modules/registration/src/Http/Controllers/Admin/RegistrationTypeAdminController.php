@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Scopes\BrandScope;
@@ -44,7 +45,7 @@ class RegistrationTypeAdminController
 {
     use HasDataTableQuery;
 
-    public function index(Request $request): Response
+    public function index(Request $request, BrandUrl $brandUrl): Response
     {
         Gate::authorize(Permission::ManageRegistrationTypes->value);
 
@@ -67,6 +68,20 @@ class RegistrationTypeAdminController
         /** @var array<string, string> $eventNames */
         $eventNames = EventSummary::withoutBrandScope()->pluck('name', 'event_id')->all();
 
+        // Where a type is actually offered (A1): the event's public page on
+        // the brand's own host. The slug is Registration's own projection of
+        // Event's contract event (ADR-0004), and the origin comes from
+        // `BrandUrl` because `route()` on the admin host names the admin host
+        // (ADR-0029). One domain lookup for the page, not one per row.
+        /** @var array<string, string> $eventSlugs */
+        $eventSlugs = EventSummary::withoutBrandScope()->pluck('slug', 'event_id')->all();
+
+        $brandBases = $brandUrl->basesFor(
+            Brand::query()
+                ->whereIn('id', $types->getCollection()->pluck('brand_id')->unique()->all())
+                ->get(['id', 'name'])
+        );
+
         // withCount() re-applies BrandScope on the counted model, which reads
         // zero on this host — escape it per relation (.ai/rules).
         $registrationCounts = Registration::withoutBrandScope()
@@ -80,6 +95,10 @@ class RegistrationTypeAdminController
                 'id' => $type->getKey(),
                 'name' => $type->name,
                 'eventName' => $eventNames[$type->event_id] ?? $type->event_id,
+                'eventPageUrl' => $this->eventPageUrl(
+                    $brandBases[$type->brand_id] ?? null,
+                    $eventSlugs[$type->event_id] ?? null,
+                ),
                 'visibility' => $type->visibility->value,
                 'approval' => $type->approval->value,
                 'settlement' => $type->settlement->value,
@@ -109,7 +128,7 @@ class RegistrationTypeAdminController
         return to_route('admin.registration-types.edit', $type->getKey());
     }
 
-    public function edit(string $registrationType): Response
+    public function edit(string $registrationType, BrandUrl $brandUrl): Response
     {
         Gate::authorize(Permission::ManageRegistrationTypes->value);
 
@@ -119,12 +138,27 @@ class RegistrationTypeAdminController
             ->where('registration_type_id', $type->getKey())
             ->count();
 
+        /** @var Brand|null $brand */
+        $brand = Brand::query()->whereKey($type->brand_id)->first();
+
+        /** @var string|null $eventSlug */
+        $eventSlug = EventSummary::withoutBrandScope()
+            ->where('event_id', $type->event_id)
+            ->value('slug');
+
         return Inertia::render('admin/registration-types/Edit', [
             'type' => [
                 'id' => $type->getKey(),
-                'brandName' => Brand::query()->whereKey($type->brand_id)->value('name') ?? '—',
+                'brandName' => $brand->name ?? '—',
                 ...RegistrationTypeData::fromModel($type)->toArray(),
             ],
+            // The public page this type is offered on, on the brand's own
+            // host — null while the event summary has not arrived or the
+            // brand answers on no domain yet.
+            'eventPageUrl' => $this->eventPageUrl(
+                $brand === null ? null : $brandUrl->baseFor($brand),
+                $eventSlug,
+            ),
             'events' => $this->eventOptions($type->brand_id, include: $type->event_id),
             'quotas' => $this->quotaOptions($type->brand_id),
             'options' => $this->axisOptions(),
@@ -146,6 +180,17 @@ class RegistrationTypeAdminController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Registration type saved.')]);
 
         return to_route('admin.registration-types.edit', $type->getKey());
+    }
+
+    /**
+     * The brand's own origin plus the event's public path — never the admin
+     * host's, which is what `route()` would build here (ADR-0029). Null when
+     * either half is missing, so the console names the page without linking
+     * to one that would 404.
+     */
+    private function eventPageUrl(?string $base, ?string $slug): ?string
+    {
+        return $base === null || $slug === null ? null : $base.'/events/'.$slug;
     }
 
     private function find(string $registrationType): RegistrationType

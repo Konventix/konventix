@@ -36,6 +36,7 @@ type Props = {
     events: { id: string; name: string; brandId: string }[];
     quotas: { id: string; name: string; capacity: number; consumed: number }[];
     options: Record<string, string[]>;
+    eventPageUrl: string | null;
     registrations: number;
     termsFrozen: boolean;
 };
@@ -181,6 +182,20 @@ function submit(): void {
                                     </option>
                                 </select>
                                 <InputError :message="form.errors.visibility" />
+                                <p class="text-sm text-text-muted">
+                                    Public types are offered on the event's own
+                                    public page, never in the shop, and appear
+                                    there as soon as you save.
+                                    <a
+                                        v-if="props.eventPageUrl"
+                                        :href="props.eventPageUrl"
+                                        target="_blank"
+                                        rel="noopener"
+                                        class="text-accent hover:underline"
+                                    >
+                                        Open the event page
+                                    </a>
+                                </p>
                             </div>
 
                             <div class="grid gap-2">
