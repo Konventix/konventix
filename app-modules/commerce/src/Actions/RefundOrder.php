@@ -79,16 +79,25 @@ final class RefundOrder
 
             $order->forceFill(['status' => OrderStatus::Refunded])->save();
 
+            $totalGross = (string) $order->total_gross;
+
             event(new OrderRefunded(
                 orderId: $order->id,
                 brandId: $order->brand_id,
                 settlesType: $order->settles_type,
                 settlesId: $order->settles_id,
-                amountRefunded: $amount ?? (string) $order->total_gross,
+                amountRefunded: $amount ?? $totalGross,
                 currency: $order->currency,
                 creditNoteId: $creditNote?->id,
                 reasonCode: $reasonCode,
                 refundedAt: now()->toIso8601String(),
+                // ADR-0057 point 5: Registration cannot tell a full refund
+                // from a partial one from the amount alone. Both operands
+                // are guarded numeric — bccomp itself requires
+                // numeric-string, not the wider string `total_gross` and
+                // `$amount` carry.
+                whole: $amount === null
+                    || (is_numeric($amount) && is_numeric($totalGross) && bccomp($amount, $totalGross, 2) === 0),
             ));
 
             return $order->refresh();
