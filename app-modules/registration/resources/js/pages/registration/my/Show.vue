@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { ArrowLeft } from '@lucide/vue';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
+import { formatDateTime } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 
 /**
@@ -60,6 +62,18 @@ const paymentTone: Record<string, string> = {
     overdue: 'bg-danger/15 text-danger',
     pending: 'bg-warning/15 text-warning-contrast',
 };
+
+/**
+ * The timeline's two timestamps are instants with an offset (ADR-0027) and
+ * are shown in the reader's own zone — the event's wall-clock times on the
+ * landing page are a different thing and stay printed as promised.
+ */
+const submittedAt = computed(() =>
+    formatDateTime(props.registration.submittedAt),
+);
+const confirmedAt = computed(() =>
+    formatDateTime(props.registration.confirmedAt),
+);
 </script>
 
 <template>
@@ -108,10 +122,18 @@ const paymentTone: Record<string, string> = {
             <h2 id="registration-log" class="text-lg font-medium">Timeline</h2>
             <dl class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[10rem_1fr]">
                 <dt class="text-text-muted">Submitted</dt>
-                <dd>{{ props.registration.submittedAt }}</dd>
+                <dd>
+                    <time :datetime="props.registration.submittedAt">
+                        {{ submittedAt }}
+                    </time>
+                </dd>
                 <template v-if="props.registration.confirmedAt">
                     <dt class="text-text-muted">Confirmed</dt>
-                    <dd>{{ props.registration.confirmedAt }}</dd>
+                    <dd>
+                        <time :datetime="props.registration.confirmedAt">
+                            {{ confirmedAt }}
+                        </time>
+                    </dd>
                 </template>
             </dl>
         </section>
