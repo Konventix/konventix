@@ -71,7 +71,10 @@ class RegistrationAdminController
                     'organization' => $registration->organization_name,
                     'status' => $registration->status->value,
                     'paymentStatus' => $registration->payment_status->value,
-                    'submittedAt' => $registration->submitted_at->format('Y-m-d H:i'),
+                    // ISO 8601 with the offset, the same as this controller's
+                    // own CSV export below: a system instant (ADR-0027) that
+                    // the page shows in the reader's zone.
+                    'submittedAt' => $registration->submitted_at->toIso8601String(),
                     'approvable' => $registration->status === RegistrationStatus::Submitted,
                 ];
             }),
