@@ -137,6 +137,29 @@ still earns its cost for seats and booths, which is where the money is. But
 conflicts between programme and crew are undetected by design. If room contention
 turns out to matter, revisiting D-EVT-11 is cheaper than revisiting D-EVT-02.
 
+## Round 8 — brand presence (2026-09-07, GitLab #66)
+
+Closes the last question ADR-0016 left cascading, and the four go-live
+questions #66 raised about what one operator's brands show and send to a
+person who only ever used one of them.
+
+| ID | Decision | Chosen | Status |
+|---|---|---|---|
+| D-IDP-02 | Consent scope | **Option A — per brand, captured on first use of that brand.** The "three near-identical policies" objection does not arise because a person only meets brand B's policy set when using brand B. Option C (a scope column on `Policy`) stays reopenable. | adr → ADR-0054 |
+| #66-1 | Brand B's events in a brand A account | **No. Presence is the membership**: registrations, admissions, profile pages and consents resolve against the current brand's membership and brand-scoped rows; a cross-brand view is an operator capability (ADR-0015). Already shipped behaviour, now the rule. | adr → ADR-0054 |
+| #66-2 | Third profile visibility level | **Per brand** — chosen once on `User`, enforced per brand host (ADR-0052 §3, `ResolvesProfiles`). | adr → ADR-0054 |
+| #66-3 | Notification consents | **Channel preferences operator-wide, audiences follow the membership.** Announcement fan-out (#25) is the known exception until it lands; marketing opt-ins per brand. | adr → ADR-0054 |
+| #66-4 | Is the shared operator recognisable | **Yes, deliberately.** Imprint, seller line and policies already do it; the auth surfaces name the account and list the sibling brands (#184), and the duplicate-registration mail explains it (#18). | adr → ADR-0054 |
+
+### Consequences already known
+
+- **Rejected on the way:** accounts per brand (ADR-0016's one-way door), one
+  email with a password per brand, and an unbranded operator login page —
+  the last is SSO across brand domains and stays the shape to build if that
+  ever becomes a product goal.
+- **No migration.** The ADR records shipped behaviour and a rule for future
+  surfaces; the code lands in #184 and #18 (Phase 2) and #25 (Phase 5).
+
 ## Round 7 — Phase 2 build-out interview (2026-08-12)
 
 Settles everything the Round 6 gate review left open or deferred "until the

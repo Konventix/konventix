@@ -20,6 +20,14 @@ depends on brand resolution and gating working.
 
 ## Backlog
 
+- [ ] Auth surfaces name the operator and list its brands (GitLab #184,
+      ADR-0054 §5): a shared prop beside the footer data — operator name,
+      `legal_name`, the operator's brands with their primary-domain URL —
+      on brand hosts only, never on the operator host (ADR-0029); one
+      component in the three auth layouts; a one-time first-contact notice
+      when `RecordBrandMembership` writes a new row. No `listed` flag on
+      `brands` until a brand has to stay unannounced before launch.
+
 - [ ] Environment ribbon follow-ups (GitLab #68, ADR-0053): the ticket-PDF
       watermark "TESTSYSTEM" once a ticket renderer exists — ask
       `DeploymentEnvironment`, never `env()`; and the branch name on the

@@ -63,7 +63,10 @@
       currently reach every known account, operator-wide — Messaging's
       recipient read model has no notion of brand membership. Needs an
       Identity contract signal (brand first-seen / membership) before the
-      fan-out can respect the brand boundary of the announcement.
+      fan-out can respect the brand boundary of the announcement. **GitLab
+      #25.** ADR-0054 §3 makes "audiences follow the membership" the rule and
+      this fan-out the known exception: a deployment with more than one
+      brand must not publish to `everyone` or `logged-in` until it closes.
 
 - [ ] Push end-to-end against a real browser: the channel, worker and
       subscription flow are tested on fakes; a manual pass against Chrome and
