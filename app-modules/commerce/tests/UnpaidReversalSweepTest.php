@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Konventix\Commerce\Actions\CancelOrderForUnpaidReversal;
 use Konventix\Commerce\Actions\IssueCreditNote;
@@ -314,4 +315,32 @@ it('leaves a re-reversed order alone until its own new deadline passes', functio
         ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
 
     Event::assertNotDispatched(OrderCancelled::class);
+});
+
+it('says nothing alarming when a payer repays between the sweep\'s read and the lock', function (): void {
+    // The sweep reads the order, then the Action re-reads it under a row
+    // lock and refuses anything that is no longer `payment_reversed`. A
+    // payer paying in that window is the guard doing its job — an
+    // error-level "sweep failed" would page someone about money arriving.
+    $this->withBrand();
+    [$order] = sweepTestReversedOrder();
+
+    // The race, reproduced: the hook fires while the sweep looks up the
+    // order's deadline reversal, which is after it read the order and
+    // before the Action takes its lock.
+    PaymentReversal::retrieved(function () use ($order): void {
+        Order::withoutBrandScope()->whereKey($order->id)->update(['status' => OrderStatus::Paid]);
+    });
+
+    Log::spy();
+
+    $this->artisan('commerce:cancel-unpaid-reversals')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+
+    Log::shouldNotHaveReceived('error');
+    Log::shouldHaveReceived('info')
+        ->withArgs(fn (string $message): bool => str_contains($message, 'left payment_reversed'))
+        ->once();
 });

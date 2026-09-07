@@ -166,7 +166,7 @@ declare namespace Konventix {
                 readonly reasonDe: string;
                 readonly reasonEn: string;
                 readonly dueOn: string;
-                readonly payUrl: string;
+                readonly payUrl: string | null;
                 readonly ordersUrl: string;
             };
             export type ProductData = {

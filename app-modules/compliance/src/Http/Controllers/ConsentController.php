@@ -12,7 +12,9 @@ use Konventix\Compliance\Actions\WithdrawConsent;
 use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\DataSubjectRequest;
+use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
+use Konventix\Platform\Brands\BrandContext;
 
 /**
  * Capturing and withdrawing a subject's agreement, on the brand's own
@@ -23,9 +25,11 @@ use Konventix\Compliance\Models\PolicyVersion;
  * account-less subject identity Consent's column tolerates arrives with
  * guest registration; it will not arrive through this controller.)
  *
- * Only a currently published version may be agreed to. Accepting a draft or
- * a superseded text would produce a consent record pointing at something
- * nobody is bound by — worse than no record, because it looks like one.
+ * Only a currently published version of a policy *this brand reads* may be
+ * agreed to. Accepting a draft or a superseded text would produce a consent
+ * record pointing at something nobody is bound by — worse than no record,
+ * because it looks like one; accepting another brand's own text would do
+ * the same with wording this brand never served.
  */
 final class ConsentController
 {
@@ -43,11 +47,23 @@ final class ConsentController
         // Escapes BrandScope on purpose (ADR-0010): a version of an
         // operator-wide policy carries no `brand_id` (GitLab #76), so the
         // scoped query would silently drop exactly the texts every brand
-        // inherits. `OutstandingConsents` decided which versions may be
-        // offered; this narrows the ids the form posted back to those still
-        // published and effective.
+        // inherits. Narrowed back to this brand's own catalogue by policy —
+        // `Policy::resolvedFor()` is the same resolution `OutstandingConsents`
+        // offers from (the brand's own row per slug, the operator's
+        // everywhere else), so escaping the scope cannot turn into accepting
+        // a neighbouring brand's own published version off the form.
+        //
+        // `BrandContext` is read at call time, never constructor-injected
+        // (.ai/rules/providers.md). No brand resolved means no catalogue and
+        // nothing to record.
+        $brandId = app(BrandContext::class)->id();
+        $policyIds = $brandId === null ? [] : Policy::resolvedFor($brandId)->modelKeys();
+
+        // This narrows the ids the form posted back to those still published
+        // and effective.
         $versions = PolicyVersion::withoutBrandScope()
             ->whereIn('id', $validated['versionIds'])
+            ->whereIn('policy_id', $policyIds)
             ->where('state', PolicyVersionState::Published)
             ->where('effective_at', '<=', now())
             ->get();

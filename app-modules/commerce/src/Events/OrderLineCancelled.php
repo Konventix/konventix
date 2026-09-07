@@ -9,8 +9,8 @@ namespace Konventix\Commerce\Events;
  * of `OrderLineReversed`, emitted per registration-kind line alongside
  * `OrderCancelled`, for a cart order only (ADR-0057 points 4 and 5). The
  * `commerce:cancel-unpaid-reversals` sweep of point 4 emits it from
- * `Konventix\Commerce\Actions\CancelOrder`, with the same `reasonCode`
- * `OrderCancelled` carries.
+ * `Konventix\Commerce\Actions\CancelOrderForUnpaidReversal`, with the same
+ * `reasonCode` `OrderCancelled` carries.
  *
  * A direct registration order has exactly one thing to cancel and
  * `OrderCancelled` already says which, exactly as `OrderLineSettled` and

@@ -33,11 +33,10 @@
       per-line counterpart (`OrderLineReversed` exists for a reversal,
       there is no `OrderLineRefunded` for a refund), so Registration's
       guard cannot act line by line. A real gap in ADR-0037's closure.
-- [ ] `SendCreditNoteMail`'s reason map only knows `transfer` and treats
-      everything else as a refund, so a `cancellation` credit note
-      (ADR-0057 point 4) is mailed labelled "Erstattung" — needs its own
-      arm and its own sentence in the `commerce.credit-note-issued`
-      template, which currently adds refund-only wording on the same test.
+- [x] `SendCreditNoteMail` names a cancellation credit note
+      Stornierung/Cancellation rather than Erstattung/Refund (ADR-0057
+      point 4): its own arm in the reason map and its own sentence in the
+      `commerce.credit-note-issued` template.
 - [ ] `commerce:reconcile-payments` skips *pending* Unzer payments (#71): a
       pending payment's `external_id` is the Paypage id and
       `UnzerApi::fetchPayment()` needs a payment id, which only exists from
@@ -174,7 +173,10 @@
       the payer mail `commerce.payment-reversed` — amount, the provider's
       reason in plain words (a map from SEPA return codes and Stripe
       dispute reasons; unknown codes get a neutral sentence, and none of
-      them accuses), the deadline and the pay link.
+      them accuses), the deadline and the pay link. A cart order, which
+      cannot be repaid online yet, gets `commerce.payment-reversed-manual`
+      instead: the same facts without a link, naming the account page and
+      the transfer or door payment the organizer can book.
       `tests/PaymentReversalMailsTest.php`.
 
       The orders console shows the reversals (ADR-0057 point 8, #166): a
@@ -182,8 +184,9 @@
       final reversal and every order holding a payment its status cannot
       take, and an order detail page that lists the reversal rows, names
       the repayment deadline and calls out an unapplied payment (ADR-0057
-      point 9, #6). Read-only — cancelling a reversed order by hand is
-      still owed.
+      point 9, #6). The operator can act on it too: cancel a reversed order
+      by hand before the sweep would, and book a bank transfer or a door
+      payment on it.
 
 - [x] Non-production invoice/credit-note numbers carry an environment
       marker (#74, ADR-0053): `DrawInvoiceNumber` and `DrawCreditNoteNumber`

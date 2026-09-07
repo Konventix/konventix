@@ -51,7 +51,9 @@ use Throwable;
  *
  * Every read escapes BrandScope explicitly (ADR-0010): a console command
  * resolves no brand from a host. One order's failure never aborts the
- * sweep.
+ * sweep — and an order that left `payment_reversed` between this loop's
+ * read and the Action's lock is a payer paying, logged at info level rather
+ * than reported as a failure.
  */
 final class CancelUnpaidReversals extends Command
 {
@@ -97,6 +99,27 @@ final class CancelUnpaidReversals extends Command
                 $cancel->handle($order);
                 $cancelled++;
             } catch (Throwable $e) {
+                // A payer who put the money back between the read above and
+                // `CancelOrderForUnpaidReversal`'s own locked guard is a
+                // benign race, not a failure: the guard refuses precisely
+                // because the order is no longer `payment_reversed`, which
+                // is the right answer. Re-read under no illusion that the
+                // in-memory row is current, and say so at info level — an
+                // error-level "sweep failed" would page someone about money
+                // arriving.
+                $current = Order::withoutBrandScope()->find($order->id);
+
+                if ($current === null || $current->status !== OrderStatus::PaymentReversed) {
+                    Log::info('Unpaid-reversal sweep skipped an order that left payment_reversed under the lock.', [
+                        'order_id' => $order->id,
+                        'brand_id' => $order->brand_id,
+                        'reversal_id' => $reversal->id,
+                        'status' => $current?->status->value,
+                    ]);
+
+                    continue;
+                }
+
                 Log::error(sprintf(
                     'Unpaid-reversal sweep failed for order [%s]: %s',
                     $order->id,

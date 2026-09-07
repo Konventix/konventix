@@ -19,7 +19,7 @@ namespace Konventix\Commerce\Events;
  * cart order has no document to correct.
  *
  * The data definition of "unapplied" is `Payment.status = succeeded AND
- * order.status != paid`, which `Payment::scopeUnapplied()` queries: this
+ * order.status = cancelled`, which `Payment::scopeUnapplied()` queries: this
  * event announces the moment, the scope finds every case including those
  * that predate it.
  *
