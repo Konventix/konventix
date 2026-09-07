@@ -18,7 +18,15 @@ use Konventix\Commerce\Http\Controllers\Api\UnzerWebhookController;
  * re-applying it here would double it up.
  */
 
+/*
+ * The named limiter is defined in `CommerceServiceProvider::configureRateLimiting()`
+ * (#71): `bootstrap/app.php` applies no `api` throttler at all, and Mollie
+ * and Unzer answer every single request with a call to the provider's own
+ * API (ADR-0039's fetch-back), so an unlimited endpoint is a cost on the
+ * organizer's quota rather than merely noise in the log.
+ */
 Route::prefix('commerce/webhooks')
+    ->middleware('throttle:commerce-webhooks')
     ->name('api.commerce.webhooks.')
     ->group(function (): void {
         Route::post('stripe', StripeWebhookController::class)->name('stripe');

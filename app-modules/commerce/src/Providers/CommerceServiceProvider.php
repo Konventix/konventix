@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Console\ExpireCartsCommand;
@@ -120,6 +123,40 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 Permission::ViewOrders,
             ),
         ];
+    }
+
+    /**
+     * `parent::boot()` first — the route files it loads carry the
+     * `throttle:commerce-webhooks` middleware the limiter below names, and
+     * the limiter itself is resolved per request, not at registration.
+     */
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->configureRateLimiting();
+    }
+
+    /**
+     * The PSP webhook throttle (#71). `bootstrap/app.php` declares no `api`
+     * throttler, so without this the three endpoints of
+     * `routes/api/commerce.php` are unlimited — and Mollie's and Unzer's
+     * handlers answer *every* request with a call to the provider's own API
+     * (ADR-0039's fetch-back model), so a flood spends the organizer's own
+     * API quota, not just log lines. Stripe's is cheaper (a signature check
+     * first), but the limiter is per route group so all three share it.
+     *
+     * 120 per minute per IP is deliberately generous: it is a ceiling on
+     * abuse, never a shaper of real traffic. A provider replaying a backlog
+     * after an outage, or a busy sale settling, arrives in bursts from a
+     * small set of provider IPs, and a webhook the PSP retries for days
+     * because we answered 429 is worse than the flood this guards against.
+     * Keyed by IP rather than by route: one attacker must not be able to
+     * lock out a provider by flooding a different endpoint.
+     */
+    private function configureRateLimiting(): void
+    {
+        RateLimiter::for('commerce-webhooks', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip() ?? 'unknown'));
     }
 
     /**
