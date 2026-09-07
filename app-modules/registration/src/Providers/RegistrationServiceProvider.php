@@ -459,9 +459,9 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @else
                     <p>Ihre Anmeldung ({{ $registrationTypeName }}) ist bestätigt.</p>
                     @endif
-                    @if ($cartUrl ?? null)
+                    @isset($cartUrl)
                     <p>Die Zahlung läuft über Ihren <a href="{{ $cartUrl }}">Warenkorb</a>. Ihr Platz ist dort bis {{ $cartHoldExpiresAt }} reserviert — danach wird die Reservierung freigegeben.</p>
-                    @endif
+                    @endisset
                     <p>Alles Weitere (Einlass, Unterlagen) finden Sie auf Ihrer <a href="{{ $registrationUrl }}">Anmeldeseite</a>.</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -475,9 +475,9 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @else
                     <p>Your registration ({{ $registrationTypeName }}) is confirmed.</p>
                     @endif
-                    @if ($cartUrl ?? null)
+                    @isset($cartUrl)
                     <p>Payment goes through your <a href="{{ $cartUrl }}">cart</a>. Your place is reserved there until {{ $cartHoldExpiresAt }} — after that the reservation is released.</p>
-                    @endif
+                    @endisset
                     <p>Everything else (admission, documents) is on your <a href="{{ $registrationUrl }}">registration page</a>.</p>
                     BLADE,
             ],
