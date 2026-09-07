@@ -33,4 +33,24 @@ final class MinorUnits
 
         return (int) bcmul($amount, '100', 0);
     }
+
+    /**
+     * The inverse, for reading a provider back rather than billing it: a
+     * Stripe dispute's `amount` and a charge's `amount_refunded` are minor
+     * units, and every domain amount downstream is a decimal string
+     * (ADR-0030). Refuses zero-decimal currencies for the same reason
+     * `fromDecimal` does — dividing by 100 there would invent cents.
+     */
+    public static function toDecimal(int $minorUnits, string $currency): string
+    {
+        if (in_array(strtoupper($currency), self::ZERO_DECIMAL_CURRENCIES, true)) {
+            throw new InvalidArgumentException(sprintf(
+                'Currency [%s] has no minor unit; refusing to read [%d] as a two-decimal amount.',
+                $currency,
+                $minorUnits,
+            ));
+        }
+
+        return bcdiv((string) $minorUnits, '100', 2);
+    }
 }

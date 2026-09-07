@@ -79,6 +79,21 @@ class Payment extends Model
             ->first();
     }
 
+    /**
+     * The row a reversal notification refers to (ADR-0057 point 7). Stripe
+     * signs a dispute or a refund against the *payment intent*, not the
+     * checkout session that started it, and `provider_transaction_id` is
+     * where that intent was recorded at settlement. Escapes BrandScope for
+     * the reason `forProviderPayment` does.
+     */
+    public static function forProviderTransaction(string $provider, string $transactionId): ?self
+    {
+        return self::withoutBrandScope()
+            ->where('provider', $provider)
+            ->where('provider_transaction_id', $transactionId)
+            ->first();
+    }
+
     public function isSettled(): bool
     {
         return $this->status === PaymentStatus::Succeeded;

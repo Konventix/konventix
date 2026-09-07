@@ -5,10 +5,15 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\ReversalKind;
+use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\OrderPaid;
+use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Events\PaymentFailed;
+use Konventix\Commerce\Events\PaymentReversed;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
 use Konventix\Commerce\Settlement\Mollie\MolliePaymentSnapshot;
@@ -31,6 +36,16 @@ final class MollieAdapterTestFakeApi implements MollieApi
 
     public string $fetchStatus = 'paid';
 
+    public ?string $fetchAmountChargedBack = null;
+
+    public ?string $fetchAmountRefunded = null;
+
+    /** @var list<array{id: string, amount: string, reason: ?string, createdAt: string}> */
+    public array $fetchChargebacks = [];
+
+    /** @var list<array{id: string, amount: string, reason: ?string, createdAt: string}> */
+    public array $fetchRefunds = [];
+
     public function createPayment(array $params, string $apiKey): MolliePaymentSnapshot
     {
         $this->created[] = ['params' => $params, 'apiKey' => $apiKey];
@@ -48,7 +63,14 @@ final class MollieAdapterTestFakeApi implements MollieApi
     {
         $this->fetches[] = ['paymentId' => $paymentId, 'apiKey' => $apiKey];
 
-        return new MolliePaymentSnapshot(id: $paymentId, status: $this->fetchStatus);
+        return new MolliePaymentSnapshot(
+            id: $paymentId,
+            status: $this->fetchStatus,
+            amountChargedBack: $this->fetchAmountChargedBack,
+            amountRefunded: $this->fetchAmountRefunded,
+            chargebacks: $this->fetchChargebacks,
+            refunds: $this->fetchRefunds,
+        );
     }
 
     public function refundPayment(string $paymentId, array $params, string $apiKey): void
@@ -204,4 +226,80 @@ it('refunds through the brand key against the settled Mollie payment', function 
         ->and($fake->refunds[0]['paymentId'])->toBe('tr_fake_1')
         ->and($fake->refunds[0]['params']['amount'])->toBe(['currency' => 'EUR', 'value' => '119.00'])
         ->and($fake->refunds[0]['apiKey'])->toBe('live_fake_key');
+});
+
+/**
+ * The reversal half of the same fetch-back (ADR-0057 point 7): the
+ * notification for a *paid* Mollie payment no longer returns early — the
+ * chargeback and refund lists are read from the same snapshot.
+ */
+it('records a Mollie chargeback on a settled payment', function (): void {
+    [, $order, $fake] = mollieAdapterTestSetup();
+
+    $redirect = app(MollieSettlementAdapter::class)->startCheckout(
+        SettlementAccount::withoutBrandScope()->firstOrFail(),
+        $order,
+        'https://brand.test/return',
+    );
+
+    test()->post('/api/commerce/webhooks/mollie/'.$redirect->paymentId)->assertOk();
+
+    $fake->fetchChargebacks = [[
+        'id' => 'chb_test_1',
+        'amount' => '119.00',
+        'reason' => 'AC04',
+        'createdAt' => '2026-09-07T09:00:00+00:00',
+    ]];
+    $fake->fetchAmountChargedBack = '119.00';
+
+    Event::fake([PaymentReversed::class]);
+
+    test()->post('/api/commerce/webhooks/mollie/'.$redirect->paymentId)->assertOk();
+
+    $reversal = PaymentReversal::withoutBrandScope()->sole();
+
+    expect($reversal->kind)->toBe(ReversalKind::Return)
+        ->and($reversal->status)->toBe(ReversalStatus::Final)
+        ->and($reversal->provider_reference)->toBe('chb_test_1')
+        ->and($reversal->reason_code)->toBe('AC04')
+        ->and((string) $reversal->amount)->toBe('119.00')
+        ->and($order->refresh()->status)->toBe(OrderStatus::PaymentReversed)
+        ->and(Payment::withoutBrandScope()->findOrFail($redirect->paymentId)->status)
+        ->toBe(PaymentStatus::Reversed);
+
+    Event::assertDispatched(PaymentReversed::class, fn (PaymentReversed $e): bool => $e->kind === 'return');
+
+    // A replayed notification re-reads the same chargeback and converges.
+    test()->post('/api/commerce/webhooks/mollie/'.$redirect->paymentId)->assertOk();
+
+    expect(PaymentReversal::withoutBrandScope()->count())->toBe(1);
+});
+
+it('records a Mollie refund we did not make as an external refund', function (): void {
+    [, $order, $fake] = mollieAdapterTestSetup();
+
+    $redirect = app(MollieSettlementAdapter::class)->startCheckout(
+        SettlementAccount::withoutBrandScope()->firstOrFail(),
+        $order,
+        'https://brand.test/return',
+    );
+
+    test()->post('/api/commerce/webhooks/mollie/'.$redirect->paymentId)->assertOk();
+
+    $fake->fetchRefunds = [[
+        'id' => 're_test_1',
+        'amount' => '119.00',
+        'reason' => 'operator refunded in the dashboard',
+        'createdAt' => '2026-09-07T09:00:00+00:00',
+    ]];
+    $fake->fetchAmountRefunded = '119.00';
+
+    Event::fake([OrderRefunded::class]);
+
+    test()->post('/api/commerce/webhooks/mollie/'.$redirect->paymentId)->assertOk();
+
+    expect(PaymentReversal::withoutBrandScope()->sole()->kind)->toBe(ReversalKind::ExternalRefund)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
+
+    Event::assertDispatched(OrderRefunded::class, fn (OrderRefunded $e): bool => $e->whole === true);
 });
