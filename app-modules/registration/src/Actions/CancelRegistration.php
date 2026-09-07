@@ -32,9 +32,14 @@ final class CancelRegistration
     use ReleasesQuotas;
 
     /**
+     * The states a cancellation may legally start from. Public because a
+     * caller that must not *throw* on an already-cancelled registration —
+     * `CancelRegistrationForUndoneOrder`, replaying a Commerce event — asks
+     * this set rather than restating it and drifting from it.
+     *
      * @var list<RegistrationStatus>
      */
-    private const array LEGAL_FROM_STATES = [
+    public const array LEGAL_FROM_STATES = [
         RegistrationStatus::Submitted,
         RegistrationStatus::Approved,
         RegistrationStatus::Confirmed,

@@ -10,6 +10,7 @@ use Konventix\Commerce\Events\CartLineExpired;
 use Konventix\Commerce\Events\CartLineRemoved;
 use Konventix\Commerce\Events\InvoiceIssued;
 use Konventix\Commerce\Events\OrderCancelled;
+use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderLineReversed;
 use Konventix\Commerce\Events\OrderLineSettled;
 use Konventix\Commerce\Events\OrderPaid;
@@ -40,6 +41,7 @@ use Konventix\Registration\Events\RegistrationRejected;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Gdpr\RegistrationGdprHandler;
 use Konventix\Registration\Listeners\CancelPendingRegistrationOnCartLineGone;
+use Konventix\Registration\Listeners\CancelRegistrationOnOrderLineCancelled;
 use Konventix\Registration\Listeners\CancelRegistrationOnOrderUndone;
 use Konventix\Registration\Listeners\MailOnRegistrationApproved;
 use Konventix\Registration\Listeners\MailOnRegistrationCancelled;
@@ -120,6 +122,11 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // contractual act ends too, releasing the quota to the waitlist.
         Event::listen(OrderCancelled::class, CancelRegistrationOnOrderUndone::class);
         Event::listen(OrderRefunded::class, CancelRegistrationOnOrderUndone::class);
+
+        // The per-line twin, for a cart order the sweep cancelled: the
+        // order-level event cannot say which of its lines to cancel, exactly
+        // as `OrderPaid` cannot say which of them to confirm.
+        Event::listen(OrderLineCancelled::class, CancelRegistrationOnOrderLineCancelled::class);
 
         // D-REG-12: a freed quota unit promotes the oldest queued waitlist
         // entry — including units released by expired offers, which is what

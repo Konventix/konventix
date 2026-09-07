@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Konventix\Commerce\Events\OrderCancelled;
+use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderLineReversed;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderRefunded;
@@ -137,6 +138,24 @@ function reversalOrderCancelledEvent(
         cancelledByUserId: null,
         reasonCode: $reasonCode,
         creditNoteId: null,
+        cancelledAt: now()->toIso8601String(),
+    );
+}
+
+function reversalOrderLineCancelledEvent(
+    Registration $registration,
+    string $kind = 'registration',
+    string $reasonCode = 'reversal_unpaid',
+    ?string $refId = null,
+): OrderLineCancelled {
+    return new OrderLineCancelled(
+        orderId: (string) Str::ulid(),
+        brandId: $registration->brand_id,
+        kind: $kind,
+        refId: $refId ?? $registration->id,
+        orderRequestKey: (string) Str::ulid(),
+        reasonCode: $reasonCode,
+        cancelledByUserId: null,
         cancelledAt: now()->toIso8601String(),
     );
 }
@@ -289,9 +308,90 @@ it('ignores an OrderCancelled that settles something other than a registration',
     $quota = Quota::factory()->withCapacity(5)->create();
     $registration = reversalPaidRegistration($quota);
 
-    event(reversalOrderCancelledEvent($registration, settlesType: 'cart'));
+    event(reversalOrderCancelledEvent($registration, settlesType: 'resource_booking'));
 
     expect($registration->refresh()->status)->toBe(RegistrationStatus::Confirmed);
+});
+
+it('leaves a cart order\'s registrations to the per-line event rather than the order-level one', function (): void {
+    reversalOperator($this->withBrand());
+
+    $quota = Quota::factory()->withCapacity(5)->create();
+    $registration = reversalPaidRegistration($quota);
+
+    // The same partition `OrderPaid`/`OrderLineSettled` already draws: a cart
+    // order's own event cannot say which of its lines to cancel, and its
+    // `settlesId` is the cart's, not this registration's.
+    event(reversalOrderCancelledEvent($registration, settlesType: 'cart'));
+
+    expect($registration->refresh()->status)->toBe(RegistrationStatus::Confirmed)
+        ->and($quota->fresh()->consumed)->toBe(1);
+});
+
+it('cancels a cart line\'s registration when the cart order is cancelled as reversal_unpaid', function (): void {
+    reversalOperator($this->withBrand());
+
+    $quota = Quota::factory()->withCapacity(5)->create();
+    $registration = reversalPaidRegistration($quota);
+
+    Event::fake([RegistrationCancelled::class]);
+
+    event(reversalOrderLineCancelledEvent($registration));
+
+    $registration->refresh();
+
+    expect($registration->status)->toBe(RegistrationStatus::Cancelled)
+        ->and($registration->reason_code)->toBe('payment_reversed')
+        ->and($registration->cancelled_by_user_id)->toBeNull()
+        ->and($quota->fresh()->consumed)->toBe(0);
+
+    Event::assertDispatched(
+        RegistrationCancelled::class,
+        fn (RegistrationCancelled $event): bool => $event->registrationId === $registration->id
+            && $event->reasonCode === 'payment_reversed',
+    );
+});
+
+it('ignores a product-kind OrderLineCancelled', function (): void {
+    reversalOperator($this->withBrand());
+
+    $quota = Quota::factory()->withCapacity(5)->create();
+    $registration = reversalPaidRegistration($quota);
+
+    // The product line's refId deliberately points at this registration, to
+    // prove the guard is on `kind` and not on whether refId resolves.
+    event(reversalOrderLineCancelledEvent($registration, kind: 'product'));
+
+    expect($registration->refresh()->status)->toBe(RegistrationStatus::Confirmed)
+        ->and($quota->fresh()->consumed)->toBe(1);
+});
+
+it('ignores an OrderLineCancelled with any other reason code', function (): void {
+    reversalOperator($this->withBrand());
+
+    $quota = Quota::factory()->withCapacity(5)->create();
+    $registration = reversalPaidRegistration($quota);
+
+    event(reversalOrderLineCancelledEvent($registration, reasonCode: 'operator'));
+
+    expect($registration->refresh()->status)->toBe(RegistrationStatus::Confirmed)
+        ->and($quota->fresh()->consumed)->toBe(1);
+});
+
+it('does not cancel a cart line twice when the same OrderLineCancelled is replayed', function (): void {
+    reversalOperator($this->withBrand());
+
+    $quota = Quota::factory()->withCapacity(5)->create();
+    $registration = reversalPaidRegistration($quota);
+
+    $cancelled = reversalOrderLineCancelledEvent($registration);
+
+    event($cancelled);
+    event($cancelled);
+
+    // A second release would push the quota below zero, or throw.
+    expect($registration->refresh()->status)->toBe(RegistrationStatus::Cancelled)
+        ->and($quota->fresh()->consumed)->toBe(0);
 });
 
 it('cancels the registration on a whole-order refund', function (): void {
