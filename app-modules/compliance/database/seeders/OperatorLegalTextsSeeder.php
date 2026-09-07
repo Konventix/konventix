@@ -101,9 +101,17 @@ final class OperatorLegalTextsSeeder extends Seeder
      */
     private function seed(string $slug, string $name, bool $requiresConsent, string $body): void
     {
+        // Escapes BrandScope on purpose (ADR-0010): the row this looks for
+        // has a null `brand_id`, so it is invisible to the scoped query — and
+        // a seeder may run inside a brand context (the demo seed pins one per
+        // brand), where the scoped query would find nothing and create a
+        // second operator-wide policy on every run.
         $policy = Policy::withoutBrandScope()->whereNull('brand_id')->where('slug', $slug)->first()
             ?? ($this->createPolicy)(null, new PolicyData(name: $name, slug: $slug));
 
+        // Escapes it for the same reason: an operator-wide policy's versions
+        // carry no `brand_id` either, and a scoped count of zero would draft
+        // a duplicate placeholder every time the seed runs.
         $hasVersion = PolicyVersion::withoutBrandScope()
             ->where('policy_id', $policy->getKey())
             ->exists();

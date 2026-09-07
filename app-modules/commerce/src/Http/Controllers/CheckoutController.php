@@ -23,12 +23,16 @@ use Konventix\Platform\Slots\SlotRegistry;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
- * Public checkout for `instant` settlement (ADR-0039), addressed by the
+ * Checkout for `instant` settlement (ADR-0039), addressed by the
  * registration the order settles — the one identifier the payer's flow
  * already carries, and the only coupling Registration needs (a ULID, never
  * a model, ADR-0006). Knowing the unguessable ULID authorizes viewing the
  * order summary, mirroring the waitlist-offer pattern; the page shows
  * lines and totals, never billing data.
+ *
+ * Behind `auth` since #2 — the page takes the payer's declaration on the
+ * AGB and the Widerrufsbelehrung, and a Consent record needs a subject. See
+ * the route file for why that is a change of kind, not just of gate.
  *
  * The page never decides payment truth: it *displays* whatever state the
  * webhook has written, including on return from the PSP — a payer can pay
@@ -110,18 +114,19 @@ class CheckoutController
             ]);
         }
 
-        // This route deliberately carries no `auth` (see the route file), so
-        // a guest may reach it. They are shown the texts and must confirm
-        // them like anyone else, but there is no subject to record the
-        // declaration against until Compliance issues an account-less
-        // subject identity — recording it under a fabricated id would be
-        // worse than not recording it (see Compliance's Consent model).
-        $payerId = $request->user()?->getAuthIdentifier();
-
-        if ($this->consentRequired($consentSlots) && $payerId !== null) {
+        // Recorded before the payer leaves for the provider: the declaration
+        // is what authorizes the payment, and a provider failure a moment
+        // later must not lose the record that it was made. Compliance decides
+        // which documents and which version — Commerce never writes a consent
+        // row (ADR-0004).
+        //
+        // `$request->user()` is never null here: the route carries `auth`
+        // since #2, precisely because a declaration that cannot be recorded
+        // against a subject is not a declaration (see the route file).
+        if ($this->consentRequired($consentSlots)) {
             event(new CheckoutConsentGiven(
                 brandId: $order->brand_id,
-                subjectId: (string) $payerId,
+                subjectId: (string) $request->user()->getAuthIdentifier(),
                 captureContext: 'checkout',
                 acceptedAt: now()->toIso8601String(),
             ));

@@ -3,6 +3,8 @@ import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Checkbox } from '@/components/ui/checkbox';
+import { consentLabelSegments } from './consentLabel';
+import type { ConsentPolicy } from './consentLabel';
 
 /**
  * The consent control every public purchase path renders before its order
@@ -31,7 +33,7 @@ const accepted = defineModel<boolean>({ default: false });
 
 const props = defineProps<{
     required: boolean;
-    policies: { slug: string; name: string; url: string }[];
+    policies: ConsentPolicy[];
     exemptionNotice: string;
     error?: string;
 }>();
@@ -44,6 +46,14 @@ const errorId = 'checkout-consent-error';
 const describedBy = computed(() =>
     props.error ? `${noticeId} ${errorId}` : noticeId,
 );
+
+// The wording lives in a pure function, not in the template: Vue's default
+// `whitespace: 'condense'` drops a whitespace-only text node between two
+// elements, which silently glued "the" onto the first document's name and
+// "and" onto the second (fix round 1). Interpolated strings survive
+// verbatim, and the spacing is testable without rendering anything —
+// `consentLabel.test.ts`.
+const labelSegments = computed(() => consentLabelSegments(props.policies));
 </script>
 
 <template>
@@ -52,6 +62,7 @@ const describedBy = computed(() =>
             <Checkbox
                 :id="checkboxId"
                 :model-value="accepted"
+                aria-required="true"
                 :aria-invalid="props.error ? 'true' : undefined"
                 :aria-describedby="describedBy"
                 class="mt-0.5"
@@ -62,19 +73,19 @@ const describedBy = computed(() =>
                 "
             />
             <label :for="checkboxId" class="text-sm text-text">
-                I have read and accept the<template
-                    v-for="(policy, index) in props.policies"
-                    :key="policy.slug"
-                    ><span v-if="index > 0">{{
-                        index === props.policies.length - 1 ? ' and' : ','
-                    }}</span>
+                <template
+                    v-for="(segment, index) in labelSegments"
+                    :key="index"
+                >
                     <Link
-                        :href="policy.url"
+                        v-if="segment.kind === 'link'"
+                        :href="segment.url"
                         class="underline underline-offset-4"
                         target="_blank"
-                        >{{ policy.name }}</Link
-                    ></template
-                >.
+                        >{{ segment.text }}</Link
+                    >
+                    <template v-else>{{ segment.text }}</template>
+                </template>
             </label>
         </div>
 

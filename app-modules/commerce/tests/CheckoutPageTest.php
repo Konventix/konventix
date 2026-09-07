@@ -52,11 +52,18 @@ final class CheckoutPageTestFakeStripe implements StripeApi
 }
 
 /**
- * @return array{0: string, 1: Order, 2: ?SettlementAccount}
+ * The payer is signed in: both pay routes carry `auth` since fix round 1 of
+ * #2 — a declaration at checkout needs a subject to record it against, and
+ * Phase 1 requires an account anyway (decision-log Round 5 D-REG-08).
+ *
+ * @return array{0: string, 1: Order, 2: ?SettlementAccount, 3: User}
  */
 function checkoutPageOrder(bool $stripeConnected = true): array
 {
     test()->withBrand();
+
+    $payer = User::factory()->create();
+    test()->actingAs($payer);
 
     $registrationId = (string) Str::ulid();
 
@@ -86,7 +93,7 @@ function checkoutPageOrder(bool $stripeConnected = true): array
         app()->instance(StripeApi::class, new CheckoutPageTestFakeStripe);
     }
 
-    return [$registrationId, $order, $account];
+    return [$registrationId, $order, $account, $payer];
 }
 
 it('shows the order summary for a registration ULID', function (): void {
@@ -228,16 +235,13 @@ it('refuses to start a checkout that did not accept the terms, and takes no paym
 });
 
 it('records one consent per purchase text for the signed-in payer starting a checkout', function (): void {
-    [$registrationId, , $account] = checkoutPageOrder();
+    [$registrationId, , $account, $payer] = checkoutPageOrder();
     checkoutPageLegalTexts();
-    $payer = User::factory()->create();
 
-    $this->actingAs($payer)
-        ->post('/pay/registration/'.$registrationId.'/start', [
-            'account' => $account->id,
-            'accept_terms' => true,
-        ])
-        ->assertRedirect('https://checkout.stripe.test/session');
+    $this->post('/pay/registration/'.$registrationId.'/start', [
+        'account' => $account->id,
+        'accept_terms' => true,
+    ])->assertRedirect('https://checkout.stripe.test/session');
 
     $consents = Consent::query()->where('subject_id', $payer->getKey())->get();
 
@@ -246,22 +250,28 @@ it('records one consent per purchase text for the signed-in payer starting a che
 });
 
 /**
- * `/pay/registration/{registration}` deliberately carries no `auth`
- * middleware, so a guest can reach it. The declaration is still required —
- * the payer has to be shown the texts either way — but there is no subject
- * to record it against until Compliance issues an account-less subject
- * identity (see the Consent model's docblock). Recording it under a
- * fabricated id would be worse than not recording it.
+ * Fix round 1 of #2: both pay routes carry `auth` now. A declaration that
+ * cannot be recorded is not a declaration — a guest used to be shown the
+ * texts, forced to tick the box, and have the answer discarded because
+ * `Consent.subject_id` needs a subject and the account-less subject identity
+ * is still one of Compliance's open questions. Registration requires an
+ * account anyway (D-REG-08) and the cart routes were already behind `auth`;
+ * the intended-URL redirect keeps a mailed pay link working, it just asks
+ * the payer to sign in first.
  */
-it('accepts a guest checkout that ticked the box and records no consent for it', function (): void {
+it('sends a guest to sign in rather than taking a declaration it cannot record', function (): void {
     [$registrationId, $order, $account] = checkoutPageOrder();
     checkoutPageLegalTexts();
+
+    auth()->logout();
+
+    $this->get('/pay/registration/'.$registrationId)->assertRedirect('/login');
 
     $this->post('/pay/registration/'.$registrationId.'/start', [
         'account' => $account->id,
         'accept_terms' => true,
-    ])->assertRedirect('https://checkout.stripe.test/session');
+    ])->assertRedirect('/login');
 
     expect(Consent::query()->count())->toBe(0)
-        ->and(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+        ->and(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
 });

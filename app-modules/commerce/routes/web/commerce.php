@@ -66,14 +66,27 @@ Route::middleware(['ensure-feature:commerce:shop', 'ensure-waiting-room', 'auth'
     Route::post('/cart/checkout', [CartController::class, 'checkout'])->name('commerce.cart.checkout');
 });
 
-// Public checkout for `instant` settlement (ADR-0039), addressed by the
-// registration ULID — the only identifier the payer's flow carries.
-Route::get('/pay/registration/{registration}', [CheckoutController::class, 'show'])
-    ->whereUlid('registration')
-    ->name('commerce.pay.show');
-Route::post('/pay/registration/{registration}/start', [CheckoutController::class, 'start'])
-    ->whereUlid('registration')
-    ->name('commerce.pay.start');
+// Checkout for `instant` settlement (ADR-0039), addressed by the registration
+// ULID — the only identifier the payer's flow carries, and still what
+// authorizes seeing this particular order.
+//
+// Behind `auth` since #2: the page asks the payer to accept the AGB and the
+// Widerrufsbelehrung before the order button, and that declaration is
+// recorded as a Consent row against the version in force. A Consent needs a
+// subject, and Compliance has no account-less subject identity yet — so a
+// guest here would be shown the texts, made to tick the box, and have the
+// answer discarded. Phase 1 requires an account anyway (decision-log Round 5
+// D-REG-08) and the cart's own checkout has been `auth` from the start; a
+// mailed pay link still works, it just asks the payer to sign in and lands
+// them back here through the intended-URL redirect.
+Route::middleware(['auth'])->group(function (): void {
+    Route::get('/pay/registration/{registration}', [CheckoutController::class, 'show'])
+        ->whereUlid('registration')
+        ->name('commerce.pay.show');
+    Route::post('/pay/registration/{registration}/start', [CheckoutController::class, 'start'])
+        ->whereUlid('registration')
+        ->name('commerce.pay.start');
+});
 
 // The registrant's own invoice PDF. `signed` is the authorization — see
 // MyInvoiceDocumentController — and `auth` is there because a signed link
