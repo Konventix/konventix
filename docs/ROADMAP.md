@@ -682,7 +682,9 @@ Also deferred here by decision, not by omission:
 
 ## Standing constraints
 
-- BFSG accessibility: token contrast validation from the start (ADR-0008).
+- BFSG accessibility: token contrast validation from the start (ADR-0008);
+  the public flow targets WCAG 2.1 AA whether or not the operator is exempt
+  (ADR-0055).
   Enforced in two places: `UpdateBrandTheme` refuses a brand's save (it does
   not warn), and eslint's `konventix/no-palette-colors` refuses a raw palette
   utility in any Vue file — host or module.
