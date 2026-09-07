@@ -23,6 +23,52 @@ Phase 1 needs only consent capture, so the registration flow is lawful. The
 fan-out machinery is Phase 2, but the handler contract should exist early — every
 module built before it will otherwise be retrofitted.
 
+- [x] Operator-wide legal texts (#76). `policies.brand_id` and
+      `policy_versions.brand_id` are nullable, with the unique index written by
+      hand as `UNIQUE NULLS NOT DISTINCT (brand_id, slug)` — a plain unique
+      index treats every NULL as distinct and would leave the operator-wide
+      rows, the ones every brand falls back to, unconstrained. The operator is
+      one legal entity behind all its brands (ADR-0016), so it writes its AGB
+      and Widerrufsbelehrung once; a brand publishes its own under the same
+      slug only where it genuinely differs, and that row shadows the
+      operator's. `Policy::resolveFor()` is the single place that decides,
+      escaping BrandScope with the reason written down (ADR-0010), and every
+      public read path goes through it: `/policies/{slug}`,
+      `OutstandingConsents`, the consent form, the privacy page.
+      `Models\Concerns\MayBeOperatorWide` overrides BelongsToBrand's creating
+      hook so a row that explicitly asks for a null brand keeps it while one
+      that merely forgot its brand still fails loudly. The operator console
+      creates and lists both scopes and says when a brand has overridden an
+      operator text — an operator text every brand shadows binds nobody.
+      `tests/OperatorPolicyFallbackTest.php`.
+
+- [x] The Widerrufsbelehrung exists (#76). `grep -ri widerruf` used to find
+      nothing. `Support\CheckoutLegalTexts` names the two slugs a public
+      purchase path asks for — `terms`, which the factories and the demo
+      seeder already used, and `withdrawal` beside it — and resolves both
+      through the operator fallback. The § 312g Abs. 2 Nr. 9 BGB exemption
+      (no right of withdrawal for a leisure event on a fixed date) is a
+      constant, not a policy version: an operator must not be able to reword a
+      statute, in either direction. `OperatorLegalTextsSeeder` publishes
+      operator-wide placeholders for both, every word of which says
+      PLACEHOLDER — the real texts are blocked on the imprint release (#91),
+      and a placeholder that reads like a finished document is one nobody
+      replaces. `tests/WithdrawalPolicyTest.php`.
+
+- [x] The consent gate reaches the two public purchase paths (#2). The cart
+      checkout and the registration payment page both require `accept_terms`
+      before the order button and record one Consent per purchase text against
+      the version in force, context `checkout`. Commerce cannot write that row
+      — Compliance's models and Actions are not reachable across the boundary
+      (ADR-0004, `tests/Unit/ArchitectureTest.php`) — so Commerce emits
+      `CheckoutConsentGiven` and `Listeners\RecordCheckoutConsent` resolves the
+      documents and calls `GrantConsent`. The control itself is a
+      `checkout.consent` slot contribution, so the wording lives once in the
+      module that owns the documents rather than twice in two checkouts. An
+      instance with nothing published renders no control, demands nothing and
+      records nothing: a checkout must not claim someone agreed to a text that
+      does not exist, and a fresh instance must still be able to sell.
+
 - [x] Policy and PolicyVersion models per brand with ULID keys (ADR-0014) and
       `BelongsToBrand` (ADR-0010): effective date, published text, required-consent
       flag, publication as an Action.
@@ -81,10 +127,27 @@ module built before it will otherwise be retrofitted.
       (ADR-0050) to route to self-service or operator review. The operator
       console handles it with the same deadline watch, audit trail, and
       refusal machinery. Completed in slice 20.
-- [ ] The consent gate is opt-in per route (`require-consent`) and only
-      Registration's public form carries it. Every other route a person can
-      reach without having agreed is a decision nobody has made yet — walk
-      the route list once the DSR half lands.
+- [ ] The consent gate is opt-in per route (`require-consent`). Registration's
+      public form carries it and the two public checkouts now carry their own
+      declaration (#2). Two purchase-adjacent routes still take neither:
+      `registration.waitlist.claim` (POST /waitlist/{entry}/claim) and
+      `admission.claim` (POST /admissions/claim/{link}) — both `auth` +
+      `signed`, and claiming a waitlist offer produces a registration and an
+      order. Decide those two, then walk the rest of the route list.
+- [ ] Both `/pay/registration/…` routes went behind `auth` with #2, because a
+      declaration that cannot be recorded is not a declaration. That closes
+      the hole and postpones the question: when the account-less subject
+      identity lands, revisit whether a guest may pay without an account at
+      all, and if so, what a Consent row for one looks like.
+- [ ] The real AGB and Widerrufsbelehrung are still placeholders, blocked on
+      the imprint release (#91). A human has to read both against the seeded
+      text before the first real sale, and check the § 312g Abs. 2 Nr. 9 BGB
+      exemption against what the operator actually sells (a fixed-date event
+      is exempt; a shipped item of merchandise is not, and the shop sells
+      both — the notice at checkout currently states the event case only).
+- [ ] `CheckoutConsentGiven` (#2) carries no order reference (`brandId`,
+      `subjectId`, `captureContext`, `acceptedAt` only): the recorded Consent
+      cannot be traced back to the order it was captured for.
 - [ ] The policy editor takes markdown as a textarea with a server-rendered
       preview behind a toggle. Live preview needs a client-side renderer,
       which means a second markdown implementation and a second XSS surface

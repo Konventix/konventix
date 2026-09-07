@@ -27,5 +27,20 @@ Tests run against the `testing` Postgres database in the pgsql container, and Re
 ## `composer verify` is the fast run, and the full suite is owed only when it says so
 `vendor/bin/sail composer verify` runs pint on the changed PHP files, phpstan, and only the test directories the changed paths map to — `contrib/verify-plan.sh` is the mapping and `tests/Unit/VerifyPlanTest.php` pins it. A change inside `app-modules/<m>/` runs `app-modules/<m>/tests`, `app/` runs the root suites, `resources/js` runs vitest; anything that every test reads (config, routes, database, the lockfile, the platform module, `tests/TestCase.php`, `tests/Pest.php`) marks the full suite as owed, and `verify` prints that instead of paying it. When a new top-level directory appears, add its mapping there or its tests never run locally. The full suite (`composer test`) is for that owed case and for the moment before the merge request; the pipeline runs it on every merge request regardless.
 
+## A test that needs a second process must leave RefreshDatabase's transaction
+tests/Pest.php applies RefreshDatabase by path to everything under app-modules/,
+and Pest cannot unbind a trait for one file — adding DatabaseTruncation stacks
+inside the wrapping transaction rather than replacing it (setUpTraits calls
+refreshDatabase() before truncateDatabaseTables()). A test that spawns a real
+process (Symfony Process, `php artisan`) must therefore call `DB::rollBack()`
+in its own beforeEach: everything after that line commits, so the child on its
+own PDO can see it. Cleanup is Laravel's — beginDatabaseTransaction's teardown
+notices the connection is no longer in a transaction and sets
+RefreshDatabaseState::$migrated = false, so the next test re-migrates. The child
+must also be handed the *resolved* DB config as environment variables
+(DB_DATABASE=testing from phpunit.xml, DB_URL blank so an inherited URL cannot
+outrank the parts), or it will silently probe the Sail dev database instead.
+See app-modules/commerce/tests/InvoiceNumberingProbeTest.php.
+
 ## `Artisan::call()` fires no `CommandStarting` under the test runner
 `Illuminate\Foundation\Console\Kernel::__construct` bridges Symfony's console events to `CommandStarting`/`CommandFinished` only when `runningUnitTests()` is false, so a listener on either event is silently never reached by `Artisan::call()` in a Pest test, however correctly it is wired — `CorrelationIdTest` found this when its command probe logged without an ID while the same call in `sail artisan tinker` fired the event fine. To exercise the real path: `app(Kernel::class)->rerouteSymfonyCommandEvents()`, then `setArtisan(null)` so the next `getArtisan()` builds an instance with the dispatcher attached (RefreshDatabase's `migrate:fresh` may already have built one without it), then `registerCommand()`/`call()`. Do not make that bridge permanent in `TestCase`: it would fire for every `artisan('migrate')` too and change what every test's context holds.

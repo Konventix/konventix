@@ -16,9 +16,12 @@ what comes back (ADR-0004).
 
 ## Owns
 
-- **Policies and their versions**, per brand: terms of participation, privacy
-  policy, house rules, photo consent. Each version has an effective date,
-  published text, and a flag for whether agreement is required.
+- **Policies and their versions**, per brand *or per operator*: terms of
+  participation, privacy policy, house rules, photo consent, withdrawal
+  information. A policy with a null `brand_id` belongs to the operator and
+  every brand inherits it unless it publishes its own under the same slug
+  (#76, ADR-0016). Each version has an effective date, published text, and a
+  flag for whether agreement is required.
 - **Consent records**: subject, policy version, timestamp, the context the
   consent was captured in, and withdrawal. A subject is a ULID that may be a
   user or — for people who registered without an account — a subject key issued
@@ -66,7 +69,7 @@ A row becomes binding when its event class lands; the rest stay proposals.
 
 | Event | Emitted when | Payload | Status |
 |---|---|---|---|
-| `PolicyPublished` | A policy version becomes effective | `policy_id`, `version_id`, `brand_id`, `slug`, `effective_at`, `requires_consent` | shipped |
+| `PolicyPublished` | A policy version becomes effective | `policy_id`, `version_id`, `brand_id` (null for an operator-wide text, #76), `slug`, `effective_at`, `requires_consent` | shipped |
 | `PolicyWithdrawn` | A policy version is superseded or withdrawn | `policy_id`, `version_id`, `brand_id` | proposed |
 | `ConsentGranted` | A subject agrees to a policy version | `consent_id`, `subject_id`, `policy_id`, `version_id`, `brand_id`, `granted_at` | shipped |
 | `ConsentWithdrawn` | A subject withdraws agreement | `consent_id`, `subject_id`, `policy_id`, `withdrawn_at` | shipped |
