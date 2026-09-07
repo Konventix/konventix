@@ -11,6 +11,7 @@ use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
+use Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaymentSnapshot;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaypageSnapshot;
@@ -214,6 +215,56 @@ it('still offers the remaining providers once one is connected', function (): vo
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('brands.0.connectableProviders', ['stripe', 'unzer']));
 });
+
+/*
+ * The "Before you connect" block of the Stripe branch (#161, ADR-0039
+ * point 4/5). Everything an operator needs to set the platform credentials
+ * up is a page prop, because they hit the dialog before they hit the docs:
+ * the endpoint URL for *this* instance, the events that endpoint has to
+ * listen to on connected accounts, and whether the two platform secrets
+ * are set at all — never their values.
+ */
+it('tells the operator the webhook endpoint and the events it must listen to', function (): void {
+    [$admin] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', 'sk_test_x');
+    config()->set('services.stripe.webhook_secret', 'whsec_x');
+
+    $this->actingAs($admin)
+        ->get('http://admin.settlement.test/admin/settlement-accounts')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            // The endpoint is host-agnostic (`routes/api/` carries no domain),
+            // so `route()` answers with whichever host the console renders on —
+            // here the operator admin host, which is a host of the instance
+            // exactly like a brand host is.
+            ->where('stripeSetup.webhookUrl', 'http://admin.settlement.test/api/commerce/webhooks/stripe')
+            ->where('stripeSetup.events', StripeWebhookEvents::ALL)
+            ->has('stripeSetup.events', 7)
+            ->where('stripeSetup.platformConfigured', true)
+            ->where('stripeSetup.secretGroupHint', fn (string $hint): bool => str_contains($hint, 'STRIPE_SECRET')
+                && str_contains($hint, 'STRIPE_WEBHOOK_SECRET')
+                && str_contains($hint, 'secrets.payments')));
+});
+
+it('reports the platform credentials as missing when either one is blank', function (string $secret, string $webhookSecret): void {
+    [$admin] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', $secret);
+    config()->set('services.stripe.webhook_secret', $webhookSecret);
+
+    $this->actingAs($admin)
+        ->get('http://admin.settlement.test/admin/settlement-accounts')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('stripeSetup.platformConfigured', false)
+            // Never the values themselves — the prop says configured or not.
+            ->where('stripeSetup.webhookUrl', 'http://admin.settlement.test/api/commerce/webhooks/stripe'));
+})->with([
+    'neither set' => ['', ''],
+    'no platform key' => ['', 'whsec_x'],
+    'no signing secret' => ['sk_test_x', ''],
+]);
 
 it('saves a custom checkout label', function (): void {
     [$admin, $brand] = settlementAdminOperator();

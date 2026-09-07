@@ -23,6 +23,7 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents;
 
 /**
  * The Stripe webhook endpoint (ADR-0039): signature verification is real —
@@ -587,4 +588,14 @@ it('acknowledges a dispute in a currency it cannot read as minor units', functio
     expect(PaymentReversal::withoutBrandScope()->count())->toBe(0)
         ->and($order->refresh()->status)->toBe(OrderStatus::Paid)
         ->and($payment->refresh()->status)->toBe(PaymentStatus::Succeeded);
+});
+
+it('keeps the local tunnel script subscribed to exactly the events this endpoint handles', function (): void {
+    // `contrib/stripe-listen.sh` is bash and cannot read the PHP constant,
+    // so this is what keeps its `--events` list from drifting away from
+    // `StripeWebhookEvents::ALL` — and with it, from the list the operator
+    // console tells an operator to subscribe a deployed endpoint to (#161).
+    $script = (string) file_get_contents(base_path('contrib/stripe-listen.sh'));
+
+    expect($script)->toContain('events="'.implode(',', StripeWebhookEvents::ALL).'"');
 });
