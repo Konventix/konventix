@@ -184,13 +184,15 @@ function submitCancelReversed(): void {
  * removing a case fails `npm run types:check` here rather than reaching an
  * operator as a form error.
  */
-const refundReasonLabels: Record<Konventix.Commerce.Enums.RefundReason, string> =
-    {
-        'customer-request': 'The customer asked for it',
-        'event-cancelled': 'The event was cancelled',
-        'duplicate-payment': 'Paid twice',
-        goodwill: 'Goodwill',
-    };
+const refundReasonLabels: Record<
+    Konventix.Commerce.Enums.RefundReason,
+    string
+> = {
+    'customer-request': 'The customer asked for it',
+    'event-cancelled': 'The event was cancelled',
+    'duplicate-payment': 'Paid twice',
+    goodwill: 'Goodwill',
+};
 
 const refundReasons = Object.entries(refundReasonLabels).map(
     ([value, label]) => ({
