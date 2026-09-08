@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Hash;
 use Konventix\Compliance\Actions\DraftPolicyVersion;
 use Konventix\Compliance\Actions\PublishPolicyVersion;
 use Konventix\Compliance\Data\PolicyVersionData;
@@ -74,6 +75,58 @@ test('install refuses to create the admin without a password in the environment'
 
 test('install refuses to run without the required options', function () {
     $this->artisan('konventix:install')->assertFailed();
+});
+
+test('a re-run leaves an existing admin\'s password alone and names the flag that would change it (#223)', function () {
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'first-run-secret';
+    $this->artisan('konventix:install', installArguments())->assertSuccessful();
+
+    // The deployment's secret was rotated; the chart runs the install again
+    // on the next release. Silently adopting the new value would let anyone
+    // who can edit the secret take over the console (#223), so the default
+    // stays "creates what is missing" (ADR-0045).
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'rotated-secret';
+
+    $this->artisan('konventix:install', installArguments())
+        ->expectsOutputToContain('--reset-admin-password')
+        ->assertSuccessful();
+
+    $admin = User::query()->firstWhere('email', 'root@acme.test');
+    expect(Hash::check('first-run-secret', $admin->password))->toBeTrue()
+        ->and(Hash::check('rotated-secret', $admin->password))->toBeFalse();
+});
+
+test('--reset-admin-password sets the existing admin\'s password and says whose it was (#223)', function () {
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'first-run-secret';
+    $this->artisan('konventix:install', installArguments())->assertSuccessful();
+
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'rotated-secret';
+
+    // The recovery path #223 asks for: an operator locked out of DEV runs the
+    // install once with the flag and the secret becomes true again. The
+    // account it applied to is printed, because --admin-email is the only
+    // thing that decides it and a typo there is otherwise invisible.
+    $this->artisan('konventix:install', [...installArguments(), '--reset-admin-password' => true])
+        ->expectsOutputToContain('root@acme.test')
+        ->assertSuccessful();
+
+    $admin = User::query()->firstWhere('email', 'root@acme.test');
+    expect(Hash::check('rotated-secret', $admin->password))->toBeTrue();
+});
+
+test('--reset-admin-password without a password in the environment changes nothing (#223)', function () {
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'first-run-secret';
+    $this->artisan('konventix:install', installArguments())->assertSuccessful();
+
+    unset($_ENV['KONVENTIX_ADMIN_PASSWORD']);
+
+    // A flag with no secret behind it is a mistake, not an instruction to
+    // blank the password.
+    $this->artisan('konventix:install', [...installArguments(), '--reset-admin-password' => true])
+        ->assertFailed();
+
+    $admin = User::query()->firstWhere('email', 'root@acme.test');
+    expect(Hash::check('first-run-secret', $admin->password))->toBeTrue();
 });
 
 /**

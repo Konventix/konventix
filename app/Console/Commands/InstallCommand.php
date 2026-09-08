@@ -40,6 +40,15 @@ use Spatie\Permission\PermissionRegistrar;
  * --admin-password-env, directly from $_ENV/getenv() rather than env():
  * this runs before anyone could have cached config, and the variable is
  * deployment input, not configuration.
+ *
+ * That variable is a first-run input, not a source of truth the command
+ * keeps enforcing: a re-run finding the admin already there leaves the
+ * password alone, because a chart runs this on every release and adopting
+ * whatever the secret currently holds would hand the console to anyone who
+ * can edit the secret. --reset-admin-password is the deliberate exception
+ * (#223): one run, one explicit flag, and the account it applied to is
+ * printed, since --admin-email is the only thing that decides which one it
+ * is.
  */
 class InstallCommand extends Command
 {
@@ -49,10 +58,27 @@ class InstallCommand extends Command
         {--admin-email= : Email of the first operator-admin user}
         {--admin-name=Operator Admin : Display name of the first admin}
         {--admin-password-env=KONVENTIX_ADMIN_PASSWORD : Environment variable holding the admin password}
+        {--reset-admin-password : Set an already existing admin\'s password from that variable (#223); off by default, so a re-run never adopts a rotated secret on its own}
         {--brand-name= : Optional first brand}
         {--brand-domain= : Primary domain of the first brand}';
 
     protected $description = 'Idempotently bootstrap operator, admin console access and optionally a first brand';
+
+    protected $help = <<<'HELP'
+        Creates what is missing and never restores what was changed (ADR-0045), so a
+        chart can run it as a post-install hook on every release.
+
+        The first operator-admin's password is read once, at creation, from the
+        environment variable named by --admin-password-env (KONVENTIX_ADMIN_PASSWORD by
+        default). A later run finds that admin and leaves the password alone even when
+        the variable holds something else: the secret is deployment input for the first
+        run, not a password the command keeps re-asserting.
+
+        Pass --reset-admin-password to override that for one run. The password from the
+        variable is written to the account named by --admin-email, and the command
+        prints which account it applied to. Use it when a rotated secret no longer opens
+        the console (#223); it changes nothing else.
+        HELP;
 
     public function handle(): int
     {
@@ -114,9 +140,31 @@ class InstallCommand extends Command
         $admin = User::query()->firstWhere('email', $adminEmail);
 
         if ($admin !== null) {
-            if ($this->passwordFromEnvironment() !== null) {
+            if ($this->option('reset-admin-password') === true) {
+                $password = $this->passwordFromEnvironment();
+
+                if ($password === null) {
+                    $registrar->setPermissionsTeamId(null);
+                    $this->error(sprintf(
+                        '--reset-admin-password was given but %s is not set — no password was changed.',
+                        (string) $this->option('admin-password-env'),
+                    ));
+
+                    return self::FAILURE;
+                }
+
+                // forceFill, not fill: the value goes through the model's
+                // `hashed` cast either way, and nothing here is user input.
+                $admin->forceFill(['password' => $password])->save();
                 $this->info(sprintf(
-                    'Admin user %s already exists — %s is ignored; change the password in the console.',
+                    'Admin password reset from %s for %s (user %s).',
+                    (string) $this->option('admin-password-env'),
+                    $adminEmail,
+                    (string) $admin->getKey(),
+                ));
+            } elseif ($this->passwordFromEnvironment() !== null) {
+                $this->info(sprintf(
+                    'Admin user %s already exists — %s is ignored; change the password in the console, or re-run with --reset-admin-password to set it from that variable.',
                     $adminEmail,
                     (string) $this->option('admin-password-env'),
                 ));
