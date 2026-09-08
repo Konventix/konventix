@@ -18,12 +18,20 @@ use Konventix\Platform\Models\BrandDomain;
  * public link has to name the brand's own host, and that mapping lives here
  * rather than being rebuilt by every screen that wants one.
  *
- * Scheme and port ride along from the current request rather than from
- * `APP_URL`: a developer on `http://sxlan.localhost:8000` needs a link that
- * works, and so does production on https.
+ * Scheme and port come from `APP_URL` (`config('app.url')`), not from the
+ * current request. A brand's origin is a property of the deployment — the
+ * proxy in front of it terminates TLS on one scheme and one port for every
+ * host it serves — and it has to be answerable where no request exists at
+ * all. It did ride along from `request()` until #225: a mail rendered inside
+ * a queued job (an expired cart line cancelling its registration, say) got
+ * the synthetic request Laravel hands back outside HTTP, whose scheme is
+ * `http`, and shipped `http://` links for a brand that only answers on
+ * `https://`. Reading configuration makes the queue and the web request agree
+ * by construction.
  *
- * Octane: no request is held. `request()` is resolved per call, the way
- * anything request-derived must be in a long-lived worker.
+ * A developer on a nonstandard port keeps a link that opens by pointing
+ * `APP_URL` at that port (`http://localhost:18080`), which is the same string
+ * every other absolute URL in the application is already built from.
  */
 final class BrandUrl
 {
@@ -73,13 +81,15 @@ final class BrandUrl
      */
     private function origin(string $host): string
     {
-        $request = request();
-        $scheme = $request->getScheme();
-        $port = $request->getPort();
+        $appUrl = (string) config('app.url');
 
-        $isDefaultPort = ($scheme === 'https' && $port === 443)
-            || ($scheme === 'http' && $port === 80);
+        $scheme = parse_url($appUrl, PHP_URL_SCHEME);
+        $scheme = is_string($scheme) && $scheme !== '' ? $scheme : 'http';
 
-        return $scheme.'://'.$host.($isDefaultPort ? '' : ':'.$port);
+        // Absent from `APP_URL` means the scheme's default port, which is
+        // exactly the case the origin leaves unspoken.
+        $port = parse_url($appUrl, PHP_URL_PORT);
+
+        return $scheme.'://'.$host.(is_int($port) ? ':'.$port : '');
     }
 }
