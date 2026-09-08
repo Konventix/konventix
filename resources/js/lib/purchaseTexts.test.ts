@@ -47,3 +47,14 @@ describe('purchase path wording', () => {
         );
     });
 });
+
+describe('taxNote under the small-business scheme', () => {
+    it('states the absence rather than claiming a tax that is not there', () => {
+        // ADR-0030: the §19 election zeroes VAT on every line, so gross
+        // equals net and both ordinary labels would be false (finding 12).
+        expect(taxNote('gross', false)).toBe('no VAT (§ 19 UStG)');
+        expect(taxNote('net', false)).toBe('no VAT (§ 19 UStG)');
+        expect(taxNote('gross')).toBe('incl. VAT');
+        expect(taxNote('net')).toBe('excl. VAT');
+    });
+});

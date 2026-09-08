@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Http\Controllers;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Data\ShopProductData;
+use Konventix\Commerce\Enums\TaxClass;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Platform\Brands\BrandContext;
@@ -43,6 +44,10 @@ final class ShopController
         $smallBusinessScheme = $this->smallBusinessScheme($brandContext);
 
         return Inertia::render('shop/Index', [
+            // ADR-0030 / branch review finding 12: under the §19 election
+            // the calculator puts no VAT on any line, so a card that said
+            // "incl. VAT" would claim a tax the invoice does not carry.
+            'smallBusinessScheme' => $smallBusinessScheme,
             'products' => $products
                 ->map(fn (Product $product): array => ShopProductData::ofModel(
                     $product,
@@ -79,12 +84,15 @@ final class ShopController
 
         abort_if($product === null, 404);
 
+        $smallBusinessScheme = $this->smallBusinessScheme($brandContext);
+
         return Inertia::render('shop/Show', [
+            'smallBusinessScheme' => $smallBusinessScheme,
             'product' => ShopProductData::ofModel(
                 $product,
                 $this->imageUrl($product),
                 $this->taxCalculator,
-                $this->smallBusinessScheme($brandContext),
+                $smallBusinessScheme,
             )->toArray(),
         ]);
     }
@@ -105,7 +113,9 @@ final class ShopController
      *
      * PAngV (#3) is why it has to happen at all: `/shop` is a consumer sales
      * page, so a `gross` price display owes the end price rather than a net
-     * amount with a label.
+     * amount with a label. `includesTax` travels back with the amount for
+     * the same reason: under the §19 election the amount contains no VAT,
+     * and only Commerce knows that.
      *
      * One calculator pass for every offer in the contribution, in order —
      * the same shape `ShopProductData::ofModel()` uses for a product and its
@@ -147,12 +157,23 @@ final class ShopController
                 continue;
             }
 
+            // `tryFrom`, not `from` (branch review finding 11): the
+            // calculator does `TaxClass::from()` and an unknown string
+            // there is an uncaught `ValueError` that 500s the whole shop.
+            // The two modules' enums happen to agree today; this is the
+            // cross-module scalar boundary and the guard is the point.
+            $taxClass = TaxClass::tryFrom($price['taxClass']);
+
+            if ($taxClass === null) {
+                continue;
+            }
+
             $pricedIndexes[] = $index;
             $lines[] = [
                 'label' => is_string($offer['name'] ?? null) ? $offer['name'] : '',
                 'quantity' => 1,
                 'unit_amount_net' => $unitAmountNet,
-                'tax_class' => $price['taxClass'],
+                'tax_class' => $taxClass->value,
             ];
         }
 
@@ -169,6 +190,9 @@ final class ShopController
 
         foreach ($pricedIndexes as $position => $index) {
             $offers[$index]['price']['unitAmountGross'] = $calculation->lines[$position]->lineGross;
+            // What the label may claim (finding 12): under §19 there is no
+            // VAT in this amount and the card has to say so.
+            $offers[$index]['price']['includesTax'] = ! $smallBusinessScheme;
         }
 
         $props['offers'] = $offers;

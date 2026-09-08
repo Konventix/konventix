@@ -80,7 +80,7 @@ class CheckoutController
         // gate there — gating a page we are leaving would only send them to
         // the policy and back to a dead end.
         if ($order === null) {
-            return $this->cartHandoff($registration);
+            return $this->cartHandoff($request, $registration);
         }
 
         // GitLab #185, before anything of this order is read out: the ULID
@@ -156,7 +156,7 @@ class CheckoutController
         // #210, as in `show()`: no order means the money is waiting in the
         // cart, and the checkout that settles it starts there.
         if ($order === null) {
-            return $this->cartHandoff($registration);
+            return $this->cartHandoff($request, $registration);
         }
 
         // GitLab #185, before the consent gate and before validation: a
@@ -648,7 +648,11 @@ class CheckoutController
         return Order::query()
             ->where('settles_type', 'registration')
             ->where('settles_id', $registration)
+            // The id breaks a same-second tie deterministically (nit 41);
+            // `CommerceServiceProvider`'s settlement slot orders identically
+            // so the two can never name different orders.
             ->latest('created_at')
+            ->orderByDesc('id')
             ->first();
     }
 
@@ -676,12 +680,27 @@ class CheckoutController
      * publish; without them the bare 404 is still better than a redirect to
      * nowhere.
      */
-    private function cartHandoff(string $registration): RedirectResponse
+    private function cartHandoff(Request $request, string $registration): RedirectResponse
     {
+        // Scoped to the caller's own cart (branch review finding 9). This
+        // arm runs *before* `abortUnlessPayer()` — there is no order to
+        // authorize against yet — so without the payer filter any signed-in
+        // account on the brand could hand a stranger's registration ULID to
+        // this route and be told "waiting in your cart", which is #185's
+        // rule ("the ULID addresses, it does not authorize") not applied on
+        // this branch. `PlaceRegistrationLineInCart` opens the cart as
+        // `OpenCart::for($brandId, $registrantUserId)`, so the registrant's
+        // own line is the only one this can ever be about.
+        $payerUserId = (string) $request->user()->getAuthIdentifier();
+
         $liveLine = CartLine::query()
             ->where('kind', CartLineKind::Registration)
             ->where('ref_id', $registration)
-            ->whereIn('cart_id', Cart::query()->open()->where('expires_at', '>', now())->select('id'))
+            ->whereIn('cart_id', Cart::query()
+                ->open()
+                ->where('payer_user_id', $payerUserId)
+                ->where('expires_at', '>', now())
+                ->select('id'))
             ->exists();
 
         if (! $liveLine) {

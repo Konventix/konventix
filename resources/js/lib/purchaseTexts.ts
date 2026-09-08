@@ -32,8 +32,22 @@ export const ORDER_WITH_OBLIGATION_TO_PAY = 'Order with obligation to pay';
  * PAngV: a consumer price is the end price, and it has to say so. The
  * `net` case is the B2B display a brand may choose for its own audience,
  * where the net amount is the honest one and the label says which it is.
+ *
+ * `includesTax` is false where the operator elected the §19 UStG
+ * small-business scheme (ADR-0030): the calculator then puts no VAT on any
+ * line, gross equals net, and both "incl. VAT" and "excl. VAT" claim a tax
+ * that does not exist — §19 (1) sentence 4 UStG in fact requires the
+ * absence to be stated. Defaults to true so a surface that has not been
+ * told keeps its current wording (branch review finding 12).
  */
-export function taxNote(priceDisplay: 'gross' | 'net'): string {
+export function taxNote(
+    priceDisplay: 'gross' | 'net',
+    includesTax = true,
+): string {
+    if (!includesTax) {
+        return 'no VAT (§ 19 UStG)';
+    }
+
     return priceDisplay === 'gross' ? 'incl. VAT' : 'excl. VAT';
 }
 

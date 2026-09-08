@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { TriangleAlert } from '@lucide/vue';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 /**
  * The one warning an operator gets when a brand sells without the two texts
@@ -16,9 +15,18 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
  * with the problem happens to open.
  *
  * Not dismissable, on purpose: a notice an operator can close is a notice
- * that comes back as a surprise in a legal letter. `Alert` already carries
- * `role="alert"` (ADR-0055), so a screen reader is told when the page
- * arrives with one.
+ * that comes back as a surprise in a legal letter.
+ *
+ * A landmark, not a live region (branch review finding 20). It used
+ * `ui/alert`, whose wrapper hardcodes `role="alert"` — an *assertive*,
+ * atomic region: every navigation to the policy index re-read a 90-word
+ * § 312j paragraph over whatever was being read, and the `#actions`
+ * buttons sat inside it, which the ARIA APG names as an anti-pattern.
+ * A standing page warning is a `role="region"` labelled by a real heading
+ * instead, so a screen-reader user browsing by heading lands on the one
+ * warning this exists to make loud. The colours are the same `destructive`
+ * tokens `ui/alert` uses, written out rather than imported, because the
+ * role is the only thing that had to change.
  *
  * The wording keeps `AGB` and `Widerrufsbelehrung` in German inside an
  * otherwise English console, the way `CheckoutLegalTextRoleData` and
@@ -52,10 +60,24 @@ function createUrl(gap: Gap, slug: string): string {
 </script>
 
 <template>
-    <Alert v-if="props.gaps.length > 0" variant="destructive">
-        <TriangleAlert class="size-4" />
-        <AlertTitle>Selling without a Widerrufsbelehrung and AGB</AlertTitle>
-        <AlertDescription>
+    <section
+        v-if="props.gaps.length > 0"
+        role="region"
+        aria-labelledby="checkout-legal-text-gap"
+        class="w-full rounded-lg border border-border bg-card px-4 py-3 text-sm text-destructive"
+    >
+        <h2
+            id="checkout-legal-text-gap"
+            class="flex items-start gap-3 font-medium"
+        >
+            <TriangleAlert
+                class="size-4 shrink-0 translate-y-0.5"
+                aria-hidden="true"
+            />
+            Selling without a Widerrufsbelehrung and AGB
+        </h2>
+
+        <div class="mt-1 pl-7 text-destructive/90">
             <p>
                 The checkout resolves no legal text for
                 {{ props.gaps.length }} brand<span
@@ -106,6 +128,6 @@ function createUrl(gap: Gap, slug: string): string {
                     <slot name="actions" :gap="gap" />
                 </li>
             </ul>
-        </AlertDescription>
-    </Alert>
+        </div>
+    </section>
 </template>

@@ -904,7 +904,11 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 $order = Order::query()
                     ->where('settles_type', 'registration')
                     ->where('settles_id', $context['registrationId'])
+                    // Same order as `CheckoutController::orderFor()`, id
+                    // tiebreak included (nit 41): the page and the slot must
+                    // never disagree about which order is the payable one.
                     ->latest('created_at')
+                    ->orderByDesc('id')
                     ->first();
 
                 if ($order === null) {

@@ -44,6 +44,12 @@ import { displayUnitAmount, taxNote } from '@/lib/purchaseTexts';
  */
 type OfferPrice = Konventix.Registration.Data.PriceDeclarationData & {
     unitAmountGross: string;
+    /**
+     * False under the operator's §19 UStG election (ADR-0030), where the
+     * amount contains no VAT at all — only Commerce knows that, so it says
+     * so in the payload (branch review finding 12).
+     */
+    includesTax: boolean;
 };
 
 type Offer = Omit<Konventix.Registration.Data.PublicOfferData, 'price'> & {
@@ -96,12 +102,20 @@ function amount(price: OfferPrice): string {
                         <template v-if="offer.price">
                             {{ amount(offer.price) }} €
                             <span class="font-normal text-text-muted">
-                                {{ taxNote(offer.price.display) }}
+                                {{
+                                    taxNote(
+                                        offer.price.display,
+                                        offer.price.includesTax,
+                                    )
+                                }}
                             </span>
                         </template>
                         <template v-else>Free</template>
                         <span class="flex-1" />
-                        <ArrowRight class="size-4 shrink-0 text-text-muted" />
+                        <ArrowRight
+                            class="size-4 shrink-0 text-text-muted"
+                            aria-hidden="true"
+                        />
                     </span>
                 </Link>
 
@@ -131,7 +145,12 @@ function amount(price: OfferPrice): string {
                         <template v-if="offer.price">
                             {{ amount(offer.price) }} €
                             <span class="font-normal text-text-muted">
-                                {{ taxNote(offer.price.display) }}
+                                {{
+                                    taxNote(
+                                        offer.price.display,
+                                        offer.price.includesTax,
+                                    )
+                                }}
                             </span>
                         </template>
                         <template v-else>Free</template>

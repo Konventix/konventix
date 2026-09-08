@@ -33,6 +33,24 @@ const toggleUrl = computed(() =>
     props.showAll ? '/my/registrations' : '/my/registrations?show=all',
 );
 
+/**
+ * What the link just did, for a reader who cannot see the list change
+ * (branch review finding 21). It navigates and `preserve-scroll` removes
+ * even the visual cue, so without this a screen-reader user hears nothing.
+ * Rendered on every state so the region exists before its text does — a
+ * `role="status"` inserted together with its content announces nothing.
+ */
+const listSummary = computed(() => {
+    const shown = props.registrations.length;
+    const plural = shown === 1 ? '' : 's';
+
+    if (props.showAll) {
+        return `Showing all ${shown} registration${plural}, cancelled ones included.`;
+    }
+
+    return `Showing ${shown} registration${plural}, ${props.cancelledCount} cancelled hidden.`;
+});
+
 const statusTone: Record<string, string> = {
     confirmed: 'bg-success/15 text-success',
     approved: 'bg-success/15 text-success',
@@ -44,7 +62,11 @@ const statusTone: Record<string, string> = {
 const paymentTone: Record<string, string> = {
     paid: 'bg-success/15 text-success',
     overdue: 'bg-danger/15 text-danger',
-    pending: 'bg-warning/15 text-warning-contrast',
+    // `--warning-contrast` is the foreground for a *solid* warning fill,
+    // not for a 15% tint: on it the badge measured ≈1.3:1 in both themes
+    // (branch review finding 23). Its two neighbours already pair the tint
+    // with the tone's own text colour.
+    pending: 'bg-warning/15 text-warning',
 };
 </script>
 
@@ -57,6 +79,10 @@ const paymentTone: Record<string, string> = {
             title="My registrations"
             description="Everything you have signed up for with this brand"
         />
+
+        <p v-if="props.cancelledCount > 0" role="status" class="sr-only">
+            {{ listSummary }}
+        </p>
 
         <p
             v-if="
@@ -76,8 +102,8 @@ const paymentTone: Record<string, string> = {
             v-else-if="props.registrations.length === 0"
             class="text-sm text-text-muted"
         >
-            Everything you registered for was cancelled — the toggle below
-            brings {{ props.cancelledCount === 1 ? 'it' : 'them' }} back.
+            Everything you registered for was cancelled — the link below brings
+            {{ props.cancelledCount === 1 ? 'it' : 'them' }} back.
         </p>
 
         <ul v-else class="flex flex-col gap-3">
@@ -122,7 +148,10 @@ const paymentTone: Record<string, string> = {
                         </span>
                     </span>
 
-                    <ChevronRight class="size-4 shrink-0 text-text-muted" />
+                    <ChevronRight
+                        class="size-4 shrink-0 text-text-muted"
+                        aria-hidden="true"
+                    />
                 </Link>
             </li>
         </ul>

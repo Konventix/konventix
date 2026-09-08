@@ -29,6 +29,12 @@ type Product = Konventix.Commerce.Data.ShopProductData;
 const props = defineProps<{
     products: Product[];
     slots: SlotContribution[];
+    /**
+     * The operator's §19 UStG election (ADR-0030): under it the prices
+     * contain no VAT at all, and the label has to say so rather than claim
+     * one (branch review finding 12).
+     */
+    smallBusinessScheme: boolean;
 }>();
 </script>
 
@@ -88,7 +94,12 @@ const props = defineProps<{
                     <span class="mt-auto text-sm font-medium text-text">
                         {{ displayUnitAmount(product) }} €
                         <span class="font-normal text-text-muted">
-                            {{ taxNote(product.priceDisplay) }}
+                            {{
+                                taxNote(
+                                    product.priceDisplay,
+                                    !props.smallBusinessScheme,
+                                )
+                            }}
                         </span>
                     </span>
                 </Link>

@@ -588,6 +588,24 @@ deliberate for the DACH release, not a translation gap.
 same `Settlement\PaymentWindow` deadline the retry page enforces, already formatted
 `d.m.Y H:i`, nullable for a bank-transfer brand's order (#131).
 
+## UI slots
+
+Slots this module **declares** for others to fill (`Platform\Slots\SlotRegistry`,
+ADR-0003 enforcement point 3):
+
+- `shop.index` — the public shop page's extension point. Registration
+  contributes its public registration types to it (#240, ADR-0047 point 3);
+  `ShopController::withGrossPrices()` fills `unitAmountGross` and
+  `includesTax` into any contribution's `offers[].price` from the declared
+  net amount and tax class, so Registration declares and Commerce calculates
+  (ADR-0017) across a boundary crossed only by scalars.
+- `admin.settlement-accounts` — the settlement console's notice region.
+  Compliance contributes its missing-checkout-text warning to it (#222).
+
+Slots this module **fills**: `registration.mine.show` (what a registration
+cost and whether it is settled) and `event.landing` (`ShopLandingCard`, what
+a visitor can buy for this edition).
+
 ## Activation
 
 **Core tier: always active.** Every brand needs Commerce and no Pennant feature

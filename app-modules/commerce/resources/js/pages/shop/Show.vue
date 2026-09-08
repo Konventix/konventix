@@ -23,6 +23,11 @@ type Product = Konventix.Commerce.Data.ShopProductData;
 
 const props = defineProps<{
     product: Product;
+    /**
+     * The operator's §19 UStG election (ADR-0030): under it the price
+     * contains no VAT and the label must say so (branch review finding 12).
+     */
+    smallBusinessScheme: boolean;
 }>();
 
 const page = usePage();
@@ -104,7 +109,12 @@ function addToCart(): void {
             <p class="text-lg font-medium text-text">
                 {{ displayUnitAmount(props.product) }} €
                 <span class="text-sm font-normal text-text-muted">
-                    {{ taxNote(props.product.priceDisplay) }}
+                    {{
+                        taxNote(
+                            props.product.priceDisplay,
+                            !props.smallBusinessScheme,
+                        )
+                    }}
                 </span>
             </p>
         </div>
@@ -132,7 +142,12 @@ function addToCart(): void {
                         </template>
                         <template v-else>
                             — {{ variantAmount(variant) }} €
-                            {{ taxNote(props.product.priceDisplay) }}
+                            {{
+                                taxNote(
+                                    props.product.priceDisplay,
+                                    !props.smallBusinessScheme,
+                                )
+                            }}
                         </template>
                     </option>
                 </select>
