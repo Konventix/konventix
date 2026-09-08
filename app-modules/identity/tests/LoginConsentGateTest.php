@@ -6,7 +6,10 @@ use Konventix\Compliance\Enums\LawfulBasis;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
+use Konventix\Identity\Database\Factories\UserFactory;
 use Konventix\Identity\Models\User;
+use Laravel\Fortify\Features;
+use PragmaRX\Google2FA\Google2FA;
 
 /**
  * GitLab #205, operator decision of 08.09.2026: a contract text is asked
@@ -80,5 +83,45 @@ it('does not interrupt a login over a consent-based text — that is the route g
     ]);
 
     $this->post(route('login'), ['email' => $user->email, 'password' => 'password'])
+        ->assertRedirect(route('dashboard', absolute: false));
+});
+
+/**
+ * Review 6 nit 10: the two-factor arm. A login that only interrupted the
+ * password path would let every account with 2FA past the contract text,
+ * because the challenge ends in Fortify's own `TwoFactorLoginResponse`.
+ */
+it('sends a two-factor login with an outstanding contract text to the consent screen', function (): void {
+    $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
+
+    $this->withBrand();
+    $user = User::factory()->withTwoFactor()->create();
+    loginConsentContractText();
+
+    $this->post(route('login'), ['email' => $user->email, 'password' => 'password'])
+        ->assertRedirect(route('two-factor.login'));
+
+    $code = app(Google2FA::class)->getCurrentOtp(UserFactory::twoFactorSecret());
+
+    $this->post(route('two-factor.login.store'), ['code' => $code])
+        ->assertRedirect(route('policies.required', absolute: false))
+        ->assertSessionHas('url.intended', route('dashboard', absolute: false));
+
+    $this->assertAuthenticatedAs($user);
+});
+
+it('lets a two-factor login whose contract texts are agreed proceed as before', function (): void {
+    $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
+
+    $this->withBrand();
+    $user = User::factory()->withTwoFactor()->create();
+    $version = loginConsentContractText();
+    Consent::factory()->for($version, 'policyVersion')->create(['subject_id' => $user->getKey()]);
+
+    $this->post(route('login'), ['email' => $user->email, 'password' => 'password']);
+
+    $code = app(Google2FA::class)->getCurrentOtp(UserFactory::twoFactorSecret());
+
+    $this->post(route('two-factor.login.store'), ['code' => $code])
         ->assertRedirect(route('dashboard', absolute: false));
 });
