@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Konventix\Registration\Models;
 
 use Carbon\CarbonInterface;
-use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -121,11 +120,11 @@ class RegistrationType extends Model
      * and `isOnSale()` on the row is what tells the two apart (#218).
      *
      * @param  Builder<RegistrationType>  $query
+     * @return Builder<RegistrationType>
      */
-    #[Scope]
-    protected function saleNotOver(Builder $query): void
+    public function scopeSaleNotOver(Builder $query): Builder
     {
-        $query->where(fn (Builder $inner) => $inner->whereNull('sales_end')->orWhere('sales_end', '>', now()));
+        return $query->where(fn (Builder $inner) => $inner->whereNull('sales_end')->orWhere('sales_end', '>', now()));
     }
 
     /**

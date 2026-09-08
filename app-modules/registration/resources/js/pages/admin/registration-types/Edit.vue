@@ -66,23 +66,55 @@ function toInstant(value: string): string | null {
  * application's zone on each field and echoes the value back in the
  * operator's own zone underneath. Without that, someone in Europe/Berlin
  * types 18:00 and the landing page announces 20:00 to them.
+ *
+ * The arithmetic reads `props.appTimezone` rather than assuming UTC (fix
+ * round 2, review finding N3): `config('app.timezone')` is a config value,
+ * and the hint would otherwise lie the moment it changed. `zonedWallClock()`
+ * reads an instant's wall clock in a named zone as if it were UTC, which
+ * gives the zone's offset at that moment by subtraction — one iteration,
+ * which can be off by an hour for a time inside a DST transition. That is
+ * acceptable in a hint that only ever explains the value beside it.
  */
-const browserTimezone =
-    Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'your browser';
+const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+function zonedWallClock(instant: number, timeZone: string): number {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        hour12: false,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    }).formatToParts(new Date(instant));
+
+    const at = (type: string): string =>
+        parts.find((part) => part.type === type)?.value ?? '00';
+    const hour = at('hour') === '24' ? '00' : at('hour');
+
+    return Date.parse(
+        `${at('year')}-${at('month')}-${at('day')}T${hour}:${at('minute')}:${at('second')}Z`,
+    );
+}
 
 function inBrowserTimezone(value: string): string {
     if (value === '') {
         return '';
     }
 
-    const instant = new Date(`${value.replace(' ', 'T')}:00Z`);
+    const wallClock = Date.parse(`${value.replace(' ', 'T')}:00Z`);
 
-    return Number.isNaN(instant.getTime())
-        ? ''
-        : instant.toLocaleString(undefined, {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-          });
+    if (Number.isNaN(wallClock)) {
+        return '';
+    }
+
+    const offset = wallClock - zonedWallClock(wallClock, props.appTimezone);
+
+    return new Date(wallClock + offset).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    });
 }
 
 const salesStartLocal = computed(() => inBrowserTimezone(form.salesStart));

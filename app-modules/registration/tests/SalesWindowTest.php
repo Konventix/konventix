@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
@@ -302,4 +303,80 @@ it('turns a settlement refusal into a form error rather than a 500 when the wind
     }
 
     expect(Registration::withoutBrandScope()->where('registration_type_id', $type->id)->exists())->toBeFalse();
+});
+
+/**
+ * Fix round 2, finding N1. The conversion above is only sound where the
+ * Action's own window guard ran a moment earlier: a false `isOnSale()` can
+ * then only mean the clock moved. On a waitlist conversion that guard is
+ * skipped by design (D-REG-12), so the window is closed *by construction* and
+ * every failure in the listener chain — a deadlock, a constraint violation, a
+ * misconfigured type — would be reported to the registrant as "no longer on
+ * sale" with the real cause thrown away. The conversion is therefore gated on
+ * the same flag that decides whether a window was sent at all.
+ */
+it('surfaces a listener failure unchanged while the type is still on sale', function (): void {
+    salesWindowShopBrand();
+
+    $type = RegistrationType::factory()
+        ->settlement(RegistrationSettlement::Instant)
+        ->confirmationGate(ConfirmationGate::OnPayment)
+        ->priced()
+        ->salesWindow(start: '2026-09-01 18:00:00', end: '2026-10-01 18:00:00')
+        ->create();
+
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00Z'));
+
+    Event::listen(RegistrationSettlementRequested::class, function (): void {
+        throw new RuntimeException('The settlement account is misconfigured.');
+    });
+
+    expect(fn () => app(SubmitRegistration::class)->handle($type, (string) Str::ulid(), emptySubmission()))
+        ->toThrow(RuntimeException::class, 'The settlement account is misconfigured.');
+});
+
+it('never reports a closed sale when a waitlist conversion fails for another reason', function (): void {
+    salesWindowShopBrand();
+
+    $type = RegistrationType::factory()
+        ->settlement(RegistrationSettlement::Instant)
+        ->confirmationGate(ConfirmationGate::OnPayment)
+        ->priced()
+        ->salesWindow(end: '2026-09-01 18:00:00')
+        ->create();
+
+    $entry = WaitlistEntry::factory()->create([
+        'registration_type_id' => $type->id,
+        'event_id' => $type->event_id,
+    ]);
+
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00Z'));
+
+    // A QueryException is a PDOException is a RuntimeException — a
+    // constraint violation inside the listener chain arrives here. (Not a
+    // deadlock: Laravel's transaction manager re-wraps those as
+    // DeadlockException, which would prove the same point less directly.)
+    Event::listen(RegistrationSettlementRequested::class, function (): void {
+        throw new QueryException(
+            'pgsql',
+            'insert into cart_lines ...',
+            [],
+            new RuntimeException('duplicate key value violates unique constraint'),
+        );
+    });
+
+    try {
+        app(SubmitRegistration::class)->handle(
+            $type,
+            (string) Str::ulid(),
+            emptySubmission(),
+            fromWaitlist: $entry,
+        );
+        $this->fail('The conversion swallowed a database failure.');
+    } catch (ValidationException) {
+        $this->fail('A database failure was reported to the registrant as a closed sale.');
+    } catch (QueryException $exception) {
+        expect($exception->getPrevious()?->getMessage())
+            ->toBe('duplicate key value violates unique constraint');
+    }
 });

@@ -36,7 +36,15 @@ use Konventix\Commerce\Models\CartLine;
  * The refusal sits *after* the idempotency lookup on purpose. A replay of a
  * request whose line already exists returns that line whatever the clock
  * says; the line was placed while the sale was open and refusing it now would
- * contradict the promise below.
+ * contradict the promise below. That ordering also puts the refusal below
+ * `OpenCart::for()`, which may create the cart row a refused request then
+ * never fills (fix round 2, review finding N5): the lookup needs the cart, so
+ * the two cannot both come first. It is harmless as called — the throw
+ * propagates into the emitting Action's own `DB::transaction`, which rolls
+ * the cart back with everything else — and only a caller outside a
+ * transaction could leave an empty cart behind. Reordering would mean
+ * splitting `OpenCart::for()` into a find and a create, which is a larger
+ * change than an unreachable stray row is worth.
  *
  * The window is also snapshotted onto the line, normalized to UTC first
  * (Eloquent's `datetime` cast stores an offset-bearing string by its

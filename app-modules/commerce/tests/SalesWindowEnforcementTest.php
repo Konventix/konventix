@@ -16,15 +16,16 @@ use Konventix\Platform\Models\Operator;
 
 /**
  * #218 (#216 draft i): a registration-kind cart line carries its own sales
- * window, and both Actions that create money out of it refuse a closed one.
+ * window, and `PlaceRegistrationLineInCart` — the one place Commerce enforces
+ * it — refuses a closed one.
  *
  * Commerce never reads Registration's table (ADR-0004): the window arrives as
- * two nullable ISO-8601 scalars on `RegistrationSettlementRequested` and is
- * snapshotted onto the cart line, exactly as `label`, `unit_amount_net` and
- * `tax_class` already are. That snapshot is what makes the checkout-time
- * check possible at all — and it is the gap #216 records for
- * `Product::published_at`, which is read when the line is created and never
- * again.
+ * two nullable ISO-8601 scalars on `RegistrationSettlementRequested`, where
+ * null means "not window-bound", and is snapshotted onto the cart line
+ * exactly as `label`, `unit_amount_net` and `tax_class` already are. That
+ * snapshot is for display and audit: the checkout deliberately does not
+ * re-check it, because a line placed while the sale was open stays payable
+ * within the cart's own hold (`PlaceOrderFromCart`).
  *
  * Helper names prefixed `saleWindow*` — Pest helpers are process-global
  * (.ai/rules/tests.md).

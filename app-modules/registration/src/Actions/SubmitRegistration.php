@@ -125,18 +125,20 @@ final class SubmitRegistration
                 $registrationType->confirmation_gate === ConfirmationGate::OnPayment
                 && $registrationType->settlement->requestsSettlement()
             ) {
+                // #218: a fresh submission is the one settlement request
+                // Commerce may refuse on window grounds. A waitlist
+                // conversion carries no window (see RequestSettlement), and
+                // the same flag decides whether a refusal may be read as one.
+                $windowBound = $fromWaitlist === null;
+
                 try {
                     $this->requestSettlement->handle(
                         $registration,
                         $registrationType,
-                        // #218: a fresh submission is the one settlement
-                        // request Commerce may refuse on window grounds. A
-                        // waitlist conversion carries no window (see
-                        // RequestSettlement).
-                        enforcesSalesWindow: $fromWaitlist === null,
+                        enforcesSalesWindow: $windowBound,
                     );
                 } catch (RuntimeException $exception) {
-                    $this->convertSettlementRefusal($exception, $registrationType);
+                    $this->convertSettlementRefusal($exception, $registrationType, $windowBound);
                 }
             }
 
@@ -166,12 +168,26 @@ final class SubmitRegistration
      * The condition is re-evaluated rather than matched on Commerce's
      * exception class: ADR-0004 forbids importing it (enforced by
      * `tests/Unit/ArchitectureTest.php`), and "the window has closed since"
-     * is the same fact without the dependency. Anything else rethrows
-     * untouched.
+     * is the same fact without the dependency.
+     *
+     * Both conditions are required, and `$windowBound` is the load-bearing
+     * one (fix round 2, review finding N1). `RuntimeException` is a wide net —
+     * `QueryException` is a `PDOException` is a `RuntimeException`, so a
+     * deadlock or a constraint violation anywhere in the listener chain lands
+     * here. Re-reading the window is only evidence of a race where
+     * `guardSalesWindow()` ran microseconds earlier and passed. A waitlist
+     * conversion skips that guard by design and its window is closed *by
+     * construction* (D-REG-12), so on that path a false `isOnSale()` says
+     * nothing at all — converting there would tell the registrant the one
+     * thing that is certainly not the cause and throw the real one away.
+     * Everything else rethrows untouched.
      */
-    private function convertSettlementRefusal(RuntimeException $exception, RegistrationType $registrationType): never
-    {
-        if ($registrationType->isOnSale()) {
+    private function convertSettlementRefusal(
+        RuntimeException $exception,
+        RegistrationType $registrationType,
+        bool $windowBound,
+    ): never {
+        if (! $windowBound || $registrationType->isOnSale()) {
             throw $exception;
         }
 
