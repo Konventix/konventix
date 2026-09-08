@@ -175,7 +175,13 @@ class StripeWebhookController
             return false;
         }
 
+        $refundsRecorded = 0;
+
         foreach ($reversals as $reversal) {
+            if ($reversal['kind'] === ReversalKind::ExternalRefund) {
+                $refundsRecorded++;
+            }
+
             $recordReversal->handle(
                 payment: $payment,
                 kind: $reversal['kind'],
@@ -193,11 +199,13 @@ class StripeWebhookController
             $payment->refresh();
         }
 
-        // Whether the question was *answered*, not whether it found anything:
-        // `chargeRefunded()` needs to know that it may stop, and an empty
-        // answer to a refund event means Stripe does not list that refund
-        // yet — which its own fallback then has to record.
-        return $reversals !== [];
+        // Whether a *refund* was recorded, which is the only question
+        // `chargeRefunded()` is asking (fix round 2, review NEW-4). Counting
+        // the whole list meant a payment carrying an open dispute answered
+        // "yes" while the refund the event was about had not been listed
+        // yet, so the charge-id fallback was never reached and the refund
+        // waited for the daily sweep.
+        return $refundsRecorded > 0;
     }
 
     private function failed(

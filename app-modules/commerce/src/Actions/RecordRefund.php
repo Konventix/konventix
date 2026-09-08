@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
@@ -99,6 +100,24 @@ final class RecordRefund
         ?string $providerReference = null,
     ): Order {
         return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount, $payment, $providerReference): Order {
+            // **The unique key on the reversal row decides who owns this
+            // refund's domain leg** (fix round 2, review NEW-3). The
+            // provider can announce our own refund back to us while this
+            // transaction is open, and that notification path issues a
+            // credit note and `OrderRefunded` of its own: whoever inserts
+            // the row first does that work, and the other side stops here.
+            // Two credit notes for one refund is paperwork nobody can undo
+            // (ADR-0031), and the money moved exactly once.
+            if (! $this->claimTheRefund($order, $payment, $providerReference, $amount)) {
+                Log::warning('The provider announced this refund before it was recorded here; its own notification owns the credit note (#247).', [
+                    'order_id' => $order->id,
+                    'brand_id' => $order->brand_id,
+                    'provider_reference' => $providerReference,
+                ]);
+
+                return $order->refresh();
+            }
+
             // An order paid at checkout was never invoiced, so there is no
             // document to correct (ADR-0031) — the money still goes back, it
             // simply produces no paperwork.
@@ -115,8 +134,6 @@ final class RecordRefund
                     : null;
 
             $order->forceFill(['status' => OrderStatus::Refunded])->save();
-
-            $this->recordProviderReference($order, $payment, $providerReference, $amount);
 
             $totalGross = $order->total_gross;
 
@@ -161,30 +178,37 @@ final class RecordRefund
     }
 
     /**
-     * The provider's own identifier for the refund, on a row of its own
-     * (#247) — written inside this transaction, beside the credit note and
-     * the status, by `RecordOwnRefund`.
+     * Writes the provider's own identifier for this refund on a row of its
+     * own (#247) and answers whether **this** call is the one that did it.
      *
-     * Skipped where there is nothing to record: a `manual` refund the
+     * `false` means the row was already there: the provider's notification
+     * won the race and its `RecordPaymentReversal` is issuing the credit
+     * note, moving the order and announcing it, so this caller must not do
+     * any of that a second time (fix round 2, review NEW-3).
+     *
+     * `true` where there is nothing to claim at all — a `manual` refund the
      * organizer wires back themselves has no reference, and an order booked
-     * by hand has no payment.
+     * by hand has no payment. Those callers own the domain leg as they
+     * always did; there is no second writer to race with.
      */
-    private function recordProviderReference(
+    private function claimTheRefund(
         Order $order,
         ?Payment $payment,
         ?string $providerReference,
         ?string $amount,
-    ): void {
+    ): bool {
         if ($payment === null || $providerReference === null || $providerReference === '') {
-            return;
+            return true;
         }
 
-        $this->recordOwnRefund->handle(
+        return $this->recordOwnRefund->handle(
             order: $order,
             payment: $payment,
+            // A partial refund records the part that went back, exactly as
+            // the credit note below documents the part.
             amount: $amount ?? (string) $order->total_gross,
             providerReference: $providerReference,
-        );
+        )->wasRecentlyCreated;
     }
 
     /**

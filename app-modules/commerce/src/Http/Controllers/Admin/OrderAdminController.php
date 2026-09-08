@@ -530,7 +530,12 @@ class OrderAdminController
         /** @var string|null $reference */
         $reference = PaymentReversal::withoutBrandScope()
             ->where('order_id', $order->getKey())
-            ->where('kind', ReversalKind::Refund->value)
+            // Either kind is this refund's own reference (`re_…`): `refund`
+            // when we recorded it, `external_refund` when the provider's own
+            // notification won the race and recorded it first (review NEW-3).
+            // What the operator needs is the identifier, not which path
+            // wrote it.
+            ->whereIn('kind', [ReversalKind::Refund->value, ReversalKind::ExternalRefund->value])
             // ULIDs are monotone, unlike two `created_at` in the same clock
             // tick — an order can be refunded more than once over its life.
             ->orderByDesc('id')

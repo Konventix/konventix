@@ -564,6 +564,44 @@ it('falls back to the charge id only when Stripe cannot be asked, and the sweep 
     expect(app(StripeReversalCatchUp::class)->reversalsFor($payment->refresh()))->toBe([]);
 });
 
+it('still records an unexpanded refund when Stripe lists a dispute but not the refund (#235)', function (): void {
+    // The seam answers "found something" for the dispute, but the event is
+    // about the refund and Stripe has not listed it yet. Reading that as
+    // "handled" left the refund to the daily sweep (fix round 2, review
+    // NEW-4); the charge-id fallback has to be reached.
+    [$order] = stripeWebhookTestSettled();
+
+    $stripe = new StripeWebhookTestFakeApi;
+    $stripe->reversals = [
+        'disputes' => [[
+            'id' => 'dp_open_1',
+            'status' => 'needs_response',
+            'amount' => 11900,
+            'currency' => 'eur',
+            'reason' => 'fraudulent',
+            'fee' => null,
+            'created' => Carbon::parse('2026-09-07 09:00:00')->getTimestamp(),
+        ]],
+        'refunds' => [],
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    stripeWebhookTestPostObject('charge.refunded', 'charge', [
+        'id' => 'ch_test_1',
+        'payment_intent' => 'pi_test_settled',
+        'amount' => 11900,
+        'amount_refunded' => 11900,
+        'currency' => 'eur',
+    ])->assertOk();
+
+    $references = PaymentReversal::withoutBrandScope()->pluck('provider_reference')->all();
+
+    // The dispute the catch-up found, and the refund the event was about.
+    expect($references)->toContain('dp_open_1')
+        ->and($references)->toContain('ch_test_1')
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
+});
+
 it('ignores a charge refund that our own RefundOrder already explains', function (): void {
     [$order] = stripeWebhookTestSettled();
     $order->forceFill(['status' => OrderStatus::Refunded])->save();
