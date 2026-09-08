@@ -60,7 +60,9 @@ class UserFactory extends Factory
             'social_links' => null,
             'profile_visibility' => ProfileVisibility::Internal,
             'locale' => 'en',
-            'timezone' => 'UTC',
+            // Null, not UTC: a fresh account has chosen no zone and reads
+            // every timestamp on its browser's clock (#243).
+            'timezone' => null,
             'state' => AccountState::Active,
             // Explicit nulls so the in-memory instance carries the attributes:
             // Model::shouldBeStrict() treats access to a never-set attribute

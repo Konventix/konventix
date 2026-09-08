@@ -17,7 +17,10 @@ use Konventix\Platform\Operators\OperatorDateTimeFormat;
  */
 final class SendTestMail
 {
-    public function __construct(private readonly SendMessage $sendMessage) {}
+    public function __construct(
+        private readonly SendMessage $sendMessage,
+        private readonly OperatorDateTimeFormat $dates,
+    ) {}
 
     public function handle(Brand $brand, string $toEmail): void
     {
@@ -26,7 +29,7 @@ final class SendTestMail
             templateKey: 'messaging.test-mail',
             payload: new TestMailData(
                 brandName: $brand->name,
-                date: app(OperatorDateTimeFormat::class)->date(now()),
+                date: $this->dates->date(now()),
             ),
             recipientEmail: $toEmail,
             recipientLocale: 'de',

@@ -3,6 +3,7 @@ import { Form, Head } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/datetime';
 import { edit } from '@/routes/linked-accounts';
 import { destroy } from '@/routes/linked-accounts';
 import { redirect as socialRedirect } from '@/routes/social';
@@ -57,7 +58,7 @@ defineOptions({
                         >
                             {{ account.nickname ?? 'Connected' }}
                             <span v-if="account.linkedAt">
-                                · since {{ account.linkedAt }}
+                                · since {{ formatDateTime(account.linkedAt) }}
                             </span>
                         </p>
                         <p v-else class="text-xs text-text-muted">

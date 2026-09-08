@@ -48,6 +48,13 @@ const props = withDefaults(
 const hintId = computed(() => `${props.id}-hint`);
 const errorId = computed(() => `${props.id}-error`);
 
+// Both, not one or the other: the hint is where the reader's zone and the
+// echo live, and losing it at the moment the field is rejected takes the
+// context away from exactly the person who needs it most (ADR-0055).
+const describedBy = computed(() =>
+    props.error ? `${hintId.value} ${errorId.value}` : hintId.value,
+);
+
 /**
  * The instant the typed wall clock resolves to, named with its zone — the
  * one thing a bare `datetime-local` cannot say for itself. Empty while the
@@ -70,7 +77,7 @@ const echo = computed(() => {
             :required="required"
             :disabled="disabled"
             :aria-invalid="error ? true : undefined"
-            :aria-describedby="error ? errorId : hintId"
+            :aria-describedby="describedBy"
         />
         <p :id="hintId" class="text-xs text-text-muted">
             Times in your timezone ({{ viewerTimezone() }}).

@@ -29,9 +29,8 @@ use Konventix\Platform\Models\Operator;
  */
 final class OperatorDateTimeFormat
 {
-    private ?DateFormat $date = null;
-
-    private ?TimeFormat $time = null;
+    /** @var array{date_format: string|null, time_format: string|null}|null */
+    private ?array $chosen = null;
 
     public function date(CarbonInterface $at): string
     {
@@ -50,13 +49,13 @@ final class OperatorDateTimeFormat
 
     public function dateFormat(): DateFormat
     {
-        return $this->date ??= DateFormat::tryFrom((string) $this->setting('date_format'))
+        return DateFormat::tryFrom((string) $this->settings()['date_format'])
             ?? DateFormat::DayMonthYear;
     }
 
     public function timeFormat(): TimeFormat
     {
-        return $this->time ??= TimeFormat::tryFrom((string) $this->setting('time_format'))
+        return TimeFormat::tryFrom((string) $this->settings()['time_format'])
             ?? TimeFormat::TwentyFourHour;
     }
 
@@ -72,15 +71,32 @@ final class OperatorDateTimeFormat
      * Before install has seeded one, both settings fall back to the German
      * convention the instance already prints on its invoices.
      */
-    private function setting(string $column): ?string
+    /**
+     * @return array{date_format: string|null, time_format: string|null}
+     */
+    private function settings(): array
     {
+        if ($this->chosen !== null) {
+            return $this->chosen;
+        }
+
         $operator = app(OperatorContext::class)->current()
             ?? app(BrandContext::class)->current()?->operator;
 
         if ($operator instanceof Operator) {
-            return $operator->{$column};
+            return $this->chosen = [
+                'date_format' => $operator->date_format,
+                'time_format' => $operator->time_format,
+            ];
         }
 
-        return Operator::query()->orderBy('created_at')->value($column);
+        // Both columns in one row read, not one query per column: a mail that
+        // prints three dates used to cost six (review finding 6).
+        $row = Operator::query()->orderBy('created_at')->first(['date_format', 'time_format']);
+
+        return $this->chosen = [
+            'date_format' => $row?->date_format,
+            'time_format' => $row?->time_format,
+        ];
     }
 }

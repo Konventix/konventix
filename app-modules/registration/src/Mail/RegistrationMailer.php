@@ -34,6 +34,9 @@ final class RegistrationMailer
     public function __construct(
         private readonly SendMessage $sendMessage,
         private readonly BrandUrl $brandUrl,
+        // One instance per class, not one per formatted value: the service
+        // memoises the operator's chosen formats (review finding 6).
+        private readonly OperatorDateTimeFormat $dates,
     ) {}
 
     public function send(Registration $registration, string $templateKey, Data $payload): void
@@ -125,7 +128,7 @@ final class RegistrationMailer
 
         return [
             'cartUrl' => $this->brandAbsolute($registration, route('commerce.cart.show', absolute: false)),
-            'cartHoldExpiresAt' => app(OperatorDateTimeFormat::class)->dateTime($holdExpiresAt).' '.$holdExpiresAt->format('T'),
+            'cartHoldExpiresAt' => $this->dates->dateTime($holdExpiresAt).' '.$holdExpiresAt->format('T'),
         ];
     }
 

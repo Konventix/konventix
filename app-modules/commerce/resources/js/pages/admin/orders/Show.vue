@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
-import { formatDateTime } from '@/lib/datetime';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { document as creditNoteDocument } from '@/routes/admin/credit-notes';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
 import { bookPayment, cancelReversed, refund } from '@/routes/admin/orders';
@@ -473,8 +473,8 @@ function returnFocusAfterRefund(): void {
                     'at an unknown time'
                 }}, and this order is not paid. The money moved; what happens to
                 it is yours to decide — "Refund unapplied payment" sends it back
-                through the account it came from, without a credit note, since
-                a cancelled order has no document to correct.
+                through the account it came from, without a credit note, since a
+                cancelled order has no document to correct.
                 <span
                     v-if="unappliedPayment.externalId"
                     class="font-mono text-xs"
@@ -600,11 +600,11 @@ function returnFocusAfterRefund(): void {
                             <dl class="grid grid-cols-2 gap-1 text-text-muted">
                                 <dt>Issued</dt>
                                 <dd class="text-right text-text">
-                                    {{ invoice.issuedOn }}
+                                    {{ formatCalendarDate(invoice.issuedOn) }}
                                 </dd>
                                 <dt>Due</dt>
                                 <dd class="text-right text-text">
-                                    {{ invoice.dueOn }}
+                                    {{ formatCalendarDate(invoice.dueOn) }}
                                 </dd>
                                 <dt>Amount</dt>
                                 <dd class="text-right text-text">
@@ -659,7 +659,8 @@ function returnFocusAfterRefund(): void {
                             <div>
                                 <p class="font-medium">{{ note.number }}</p>
                                 <p class="text-xs text-text-muted">
-                                    {{ note.reasonCode }} · {{ note.issuedOn }}
+                                    {{ note.reasonCode }} ·
+                                    {{ formatCalendarDate(note.issuedOn) }}
                                 </p>
                             </div>
                             <div class="flex items-center gap-2">
@@ -860,7 +861,11 @@ function returnFocusAfterRefund(): void {
                                     {{ reversal.reasonCode ?? '—' }}
                                 </td>
                                 <td class="p-3 text-text-muted">
-                                    {{ reversal.repayDueOn ?? '—' }}
+                                    {{
+                                        formatCalendarDate(
+                                            reversal.repayDueOn,
+                                        ) || '—'
+                                    }}
                                 </td>
                                 <td class="p-3 text-text-muted">
                                     {{

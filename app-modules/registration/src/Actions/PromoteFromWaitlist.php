@@ -36,6 +36,9 @@ final class PromoteFromWaitlist
 
     public function __construct(
         private readonly SendMessage $sendMessage,
+        // One instance per class, not one per formatted value: the service
+        // memoises the operator's chosen formats (review finding 6).
+        private readonly OperatorDateTimeFormat $dates,
     ) {}
 
     public function handle(string $quotaId, string $brandId): ?WaitlistEntry
@@ -139,7 +142,7 @@ final class PromoteFromWaitlist
                     $entry->offer_expires_at,
                     ['entry' => $entry->id],
                 ),
-                offerExpiresAt: app(OperatorDateTimeFormat::class)->dateTime($entry->offer_expires_at),
+                offerExpiresAt: $this->dates->dateTime($entry->offer_expires_at),
             ),
             brandId: $entry->brand_id,
         ));

@@ -550,7 +550,7 @@ declare namespace Konventix {
                 name: string;
                 email: string;
                 locale: string;
-                timezone: string;
+                timezone: string | null;
             };
             export type CompleteSocialSignupData = {
                 readonly name: string;
@@ -582,7 +582,7 @@ declare namespace Konventix {
                 readonly statusEmoji: string | null;
                 readonly socialLinks: Record<string, string> | null;
                 readonly visibility: string;
-                readonly timezone: string;
+                readonly timezone: string | null;
             };
             export type RegisterData = {
                 readonly name: string;

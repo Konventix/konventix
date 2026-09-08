@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { formatDateTime } from '@/lib/datetime';
+import { formatCalendarDate } from '@/lib/datetime';
 import { store } from '@/routes/data-requests/public';
 
 /**
@@ -25,8 +25,14 @@ type Props = {
 
 const props = defineProps<Props>();
 
+/**
+ * The statutory deadline is a *day* — `deadline_at->toDateString()` — and
+ * `formatCalendarDate()` is what prints one (#186/#197 review finding 4): read
+ * as an instant, `2026-10-08` is UTC midnight and a reader in Honolulu is told
+ * the 7th, a day earlier than the law and the sweep both say.
+ */
 function formatDeadline(value: string): string {
-    return formatDateTime(value, { dateStyle: 'long', timeStyle: undefined });
+    return formatCalendarDate(value);
 }
 </script>
 

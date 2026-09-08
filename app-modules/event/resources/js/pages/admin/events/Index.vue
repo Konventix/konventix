@@ -202,6 +202,13 @@ function submit(): void {
 </script>
 
 <template>
+    <!--
+    datetime-raw: row.original.startsAt
+    datetime-raw: row.original.endsAt
+    An event time is the organizer's wall clock plus a zone label (ADR-0027),
+    not an instant: it is printed exactly as promised and must not be
+    converted to the reader's own zone.
+-->
     <Head title="Events" />
 
     <div class="flex flex-col gap-6">

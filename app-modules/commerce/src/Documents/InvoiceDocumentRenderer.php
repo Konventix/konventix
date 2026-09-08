@@ -31,6 +31,8 @@ use Konventix\Platform\Operators\OperatorDateTimeFormat;
  */
 final class InvoiceDocumentRenderer
 {
+    public function __construct(private readonly OperatorDateTimeFormat $dates) {}
+
     public function render(Invoice $invoice): string
     {
         // Explicitly cross-brand (ADR-0010 escape hatch): rendering runs in
@@ -51,7 +53,7 @@ final class InvoiceDocumentRenderer
             // How this operator writes a date (#242) — the same setting the
             // console and the mails read, so the archived PDF and the page
             // that links to it cannot disagree about a due date.
-            'dates' => app(OperatorDateTimeFormat::class),
+            'dates' => $this->dates,
         ])->output();
 
         $xml = $this->buildFacturX($invoice, $order);
@@ -85,10 +87,7 @@ final class InvoiceDocumentRenderer
         // "Zahlbar bis" once paid, and the XML must not disagree with it.
         if (! $invoice->isPaid()) {
             $document->addDocumentPaymentTerm(
-                // The German convention rather than the operator's setting:
-                // this string is the EN16931 payment-term text, read by the
-                // recipient's bookkeeping software, not by the operator.
-                sprintf('Zahlbar bis %s', $invoice->due_on->format('d.m.Y')),
+                self::paymentTermFor($invoice),
                 $invoice->due_on->toDateTimeImmutable(),
             );
         }
@@ -197,6 +196,22 @@ final class InvoiceDocumentRenderer
             ],
             $byRate,
         ));
+    }
+
+    /**
+     * The payment-term text embedded in the EN16931 XML.
+     *
+     * ISO 8601, deliberately, and deliberately *not* the operator's own format
+     * (review finding 5): this string is read by the recipient's bookkeeping
+     * software, which has no idea what an operator picked on a settings page,
+     * and an unlabelled `09/14/2026` is a different day in half of Europe. The
+     * visual page beside it says the same day in the operator's format
+     * (`invoices/document.blade.php`) — one `due_on`, two readerships, and
+     * `InvoiceDocumentTest` pins that the two agree.
+     */
+    public static function paymentTermFor(Invoice $invoice): string
+    {
+        return sprintf('Zahlbar bis %s', $invoice->due_on->format('Y-m-d'));
     }
 
     private function taxCategoryFor(TaxTreatment $treatment): string

@@ -42,8 +42,13 @@ final class WatchSubjectRequestDeadlinesCommand extends Command
     /** How far ahead of the deadline the first warning goes out. */
     private const int WARNING_DAYS = 7;
 
-    public function handle(SendMessage $sendMessage, OperatorSettings $operatorSettings): int
-    {
+    public function handle(
+        SendMessage $sendMessage,
+        OperatorSettings $operatorSettings,
+        // Resolved once for the whole sweep, not once per warned request: the
+        // service memoises the operator's chosen formats (review finding 6).
+        OperatorDateTimeFormat $dates,
+    ): int {
         $open = DataSubjectRequest::query()
             ->whereIn('state', [DataSubjectRequestState::Received, DataSubjectRequestState::InProgress])
             ->orderBy('deadline_at')
@@ -94,7 +99,7 @@ final class WatchSubjectRequestDeadlinesCommand extends Command
                 payload: DeadlineWarningMailData::ofDeadline(
                     requestId: $request->getKey(),
                     requestType: $request->type->value,
-                    deadline: app(OperatorDateTimeFormat::class)->date($request->deadline_at),
+                    deadline: $dates->date($request->deadline_at),
                     daysLeft: $daysLeft,
                     openModules: $this->openModules($request),
                 ),

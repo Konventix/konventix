@@ -77,3 +77,43 @@ it('shares no zone for a guest, and the browser’s own zone answers instead', f
         ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
             ->where('auth.user', null));
 });
+
+/*
+|--------------------------------------------------------------------------
+| "Never chose one" has to be a state the column can hold
+|--------------------------------------------------------------------------
+|
+| Review finding 1: the column arrived `NOT NULL DEFAULT 'UTC'`, so every
+| account that had never opened the settings page counted as having chosen
+| UTC — and the browser fallback, which is the whole point of the fallback,
+| could only ever fire for a guest. A signed-in operator in Berlin read the
+| console on their own clock before #243 and in UTC after it, two hours out in
+| summer, until they found a select nothing pointed them at.
+|
+| Null is that state now, and it is what a fresh account has.
+|
+*/
+
+it('starts an account with no zone of its own, so the browser answers', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+
+    expect($user->timezone)->toBeNull();
+
+    $this->actingAs($user)
+        ->get('/settings/profile')
+        ->assertInertia(fn (AssertableInertia $page): AssertableInertia => $page
+            ->where('profile.timezone', null)
+            ->where('auth.user.timezone', null));
+});
+
+it('lets the person hand the choice back to their browser', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create(['timezone' => 'America/New_York']);
+
+    $this->actingAs($user)
+        ->patch('/settings/profile', validTimezoneProfilePayload($user, ['timezone' => '']))
+        ->assertRedirect();
+
+    expect($user->refresh()->timezone)->toBeNull();
+});

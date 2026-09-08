@@ -167,7 +167,7 @@ describe('the viewer’s configured timezone', () => {
     });
 
     it('is the browser’s until a profile setting says otherwise', () => {
-        expect(viewerTimezone()).toBe(browserTimezone);
+        expect(viewerTimezone()).toBe(browserTimezone());
     });
 
     it('renders an instant in the profile zone rather than the browser’s', () => {
@@ -296,6 +296,20 @@ describe('the operator’s date and time format', () => {
 
         // 22:30 UTC is half past midnight on the 9th in Berlin.
         expect(formatDate('2026-09-08T22:30:00+00:00')).toBe('09.09.2026');
+    });
+
+    it('prints a calendar date as a date, with no time bolted on', () => {
+        // Review finding 9: the no-option branch used to join `formatDate()`
+        // (which reads a plain date as a calendar day) with `formatTime()`
+        // (which read the same string as UTC midnight and converted it), so a
+        // Honolulu reader was told "14.09.2026 14:00" — the day from one
+        // reading of the string and the time from another.
+        configureDateTime({
+            dateFormat: 'DD.MM.YYYY',
+            timezone: 'Pacific/Honolulu',
+        });
+
+        expect(formatDateTime('2026-09-14')).toBe('14.09.2026');
     });
 
     it('leaves a calendar date on the day it names, in every zone', () => {

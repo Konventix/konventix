@@ -45,6 +45,9 @@ final class SendInvoiceMail
 
     public function __construct(
         private readonly SendMessage $sendMessage,
+        // One instance per class, not one per formatted value: the service
+        // memoises the operator's chosen formats (review finding 6).
+        private readonly OperatorDateTimeFormat $dates,
     ) {}
 
     public function handle(Invoice $invoice): void
@@ -79,11 +82,11 @@ final class SendInvoiceMail
                 sellerName: $invoice->seller->legalName,
                 totalGross: $invoice->total_gross,
                 currency: $invoice->currency,
-                dueOn: app(OperatorDateTimeFormat::class)->date($invoice->due_on),
+                dueOn: $this->dates->date($invoice->due_on),
                 termsDaysHint: (int) $invoice->issued_on->diffInDays($invoice->due_on),
                 paid: $invoice->isPaid(),
                 paidVia: $invoice->paid_via,
-                paidAt: $invoice->paid_at === null ? null : app(OperatorDateTimeFormat::class)->date($invoice->paid_at),
+                paidAt: $invoice->paid_at === null ? null : $this->dates->date($invoice->paid_at),
             ),
             recipientEmail: $party->email,
             recipientLocale: 'de',

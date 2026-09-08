@@ -93,7 +93,7 @@ export function withDateTimeSettings<T>(
  * setting when they have one, their browser's when they do not.
  */
 export function viewerTimezone(): string {
-    return settings.timezone ?? browserTimezone;
+    return settings.timezone ?? browserTimezone();
 }
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
@@ -342,7 +342,12 @@ export function formatDateTime(
     // character. A caller that shapes the output itself — a worded date, a
     // zone name — goes through `Intl` with the operator's locale and clock.
     if (Object.keys(options).length === 0) {
-        return `${formatDate(value)} ${formatTime(value)}`;
+        // A plain `YYYY-MM-DD` is a day and has no time to print: joining the
+        // two branches gave the day from the calendar reading and the time
+        // from an instant reading of the same string (review finding 9).
+        return calendarDayParts(value) === null
+            ? `${formatDate(value)} ${formatTime(value)}`
+            : formatCalendarDate(value);
     }
 
     return formatter(
@@ -504,8 +509,27 @@ export function toInstant(
 
 /**
  * The zone the reader's browser is in, for a hint that has to name it —
- * "Times in your timezone (Europe/Berlin)". Resolved once: it cannot change
- * without a reload.
+ * "Times in your timezone (Europe/Berlin)".
+ *
+ * A function rather than a module constant, and resolved on call rather than
+ * at import: under SSR this module is imported once per process, so a constant
+ * captured at import is a value frozen before any request exists. Memoised
+ * only in the browser, where it cannot change without a reload.
+ *
+ * On the server it is the render host's zone and not the reader's — there is
+ * no way for it to be otherwise, since the request has not reached a browser
+ * yet — so a page that renders it for a reader with no zone of their own gets
+ * corrected on hydration. That is the same behaviour every timestamp on the
+ * site had before #243 and is why a *stated* zone (`users.timezone`) is the
+ * only thing that makes a server-rendered timestamp right.
  */
-export const browserTimezone: string =
-    Intl.DateTimeFormat().resolvedOptions().timeZone;
+let resolvedBrowserTimezone: string | null = null;
+
+export function browserTimezone(): string {
+    if (typeof window === 'undefined') {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+
+    return (resolvedBrowserTimezone ??=
+        Intl.DateTimeFormat().resolvedOptions().timeZone);
+}

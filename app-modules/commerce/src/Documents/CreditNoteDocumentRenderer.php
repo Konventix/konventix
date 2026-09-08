@@ -32,6 +32,8 @@ use Konventix\Platform\Operators\OperatorDateTimeFormat;
  */
 final class CreditNoteDocumentRenderer
 {
+    public function __construct(private readonly OperatorDateTimeFormat $dates) {}
+
     public function render(CreditNote $creditNote): string
     {
         $invoice = $creditNote->invoice_id === null ? null : Invoice::withoutBrandScope()
@@ -41,7 +43,7 @@ final class CreditNoteDocumentRenderer
         $visualPdf = Pdf::loadView('commerce::credit-notes.document', [
             'creditNote' => $creditNote,
             'invoice' => $invoice,
-            'dates' => app(OperatorDateTimeFormat::class),
+            'dates' => $this->dates,
         ])->output();
 
         $xml = $this->buildFacturX($creditNote, $invoice);

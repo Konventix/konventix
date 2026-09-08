@@ -36,6 +36,9 @@ final class SendCreditNoteMail
 
     public function __construct(
         private readonly SendMessage $sendMessage,
+        // One instance per class, not one per formatted value: the service
+        // memoises the operator's chosen formats (review finding 6).
+        private readonly OperatorDateTimeFormat $dates,
     ) {}
 
     public function handle(CreditNote $creditNote): void
@@ -75,7 +78,7 @@ final class SendCreditNoteMail
                 currency: $creditNote->currency,
                 reasonLabelDe: $this->reasonLabelDe($creditNote->reason_code),
                 reasonLabelEn: $this->reasonLabelEn($creditNote->reason_code),
-                issuedOn: app(OperatorDateTimeFormat::class)->date($creditNote->issued_on),
+                issuedOn: $this->dates->date($creditNote->issued_on),
             ),
             recipientEmail: $party->email,
             recipientLocale: 'de',

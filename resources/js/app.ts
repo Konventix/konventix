@@ -140,12 +140,16 @@ function layoutFor(name: string) {
  * their profile zone, and the date and time conventions the operator sells
  * under.
  *
- * Applied here rather than in a layout for the same reason the title suffix
- * is: `resolve()` is the earliest hook that sees a visit's props, it runs on
- * the server for the first response and again on every client visit, and it
- * runs before the page component is awaited — so a page that formats a
- * timestamp during setup already has the right zone. A page that had to ask
- * for the zone itself is a page that could forget to.
+ * Applied in `resolve()`, after the page chunk has been awaited and with
+ * nothing asynchronous between that and handing the component back. The order
+ * matters under SSR: `settings` is module state shared by every request the
+ * render process serves, so assigning it *before* an `await` is an
+ * interleaving point — request A assigns, yields at the import, request B
+ * assigns, and A renders with B's zone. Assigning after the await closes that
+ * window (review finding 8).
+ *
+ * A page that had to ask for the zone itself is a page that could forget to,
+ * which is why this is not a per-page prop.
  */
 function applyDateTimeSettings(props: unknown): void {
     const page = props as
@@ -166,8 +170,6 @@ createInertiaApp({
     title: (title) =>
         title ? `${title} - ${documentTitleSuffix}` : documentTitleSuffix,
     resolve: async (name, visit) => {
-        applyDateTimeSettings(visit?.props);
-
         const brandName = visit?.props?.name;
 
         if (typeof brandName === 'string' && brandName !== '') {
@@ -180,7 +182,12 @@ createInertiaApp({
             throw new Error(`Inertia page not found: ${name}`);
         }
 
-        return loader();
+        const component = await loader();
+
+        // Last, with no await after it: see `applyDateTimeSettings`.
+        applyDateTimeSettings(visit?.props);
+
+        return component;
     },
     layout: (name: string) => layoutFor(name),
     progress: {

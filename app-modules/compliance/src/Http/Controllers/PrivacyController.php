@@ -65,8 +65,12 @@ final class PrivacyController
                 'policyName' => $consent->policyVersion->policy->name,
                 'policySlug' => $consent->policyVersion->policy->slug,
                 'version' => $consent->policyVersion->version,
-                'grantedAt' => $consent->granted_at->toDateTimeString(),
-                'withdrawnAt' => $consent->withdrawn_at?->toDateTimeString(),
+                // ISO 8601 with the offset, not `toDateTimeString()`: an offsetless
+                // string is parsed by the browser as *local* time, and the viewer's
+                // zone is then applied a second time on top of digits that were
+                // already UTC (#243 review finding 3).
+                'grantedAt' => $consent->granted_at->toIso8601String(),
+                'withdrawnAt' => $consent->withdrawn_at?->toIso8601String(),
                 'captureContext' => $consent->capture_context,
                 // Withdrawing a required policy's consent re-raises the gate;
                 // the page says so rather than surprising the person with it.
@@ -98,7 +102,7 @@ final class PrivacyController
                     'id' => $subjectRequest->getKey(),
                     'type' => $subjectRequest->type->value,
                     'state' => $subjectRequest->state->value,
-                    'openedAt' => $subjectRequest->created_at?->toDateTimeString(),
+                    'openedAt' => $subjectRequest->created_at?->toIso8601String(),
                     'deadlineAt' => $subjectRequest->deadline_at->toDateString(),
                     // Whether *this* person can still fetch the archive, not
                     // whether one was ever written: an expired archive is

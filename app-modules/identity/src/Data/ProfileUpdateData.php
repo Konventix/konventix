@@ -41,7 +41,7 @@ final class ProfileUpdateData extends Data
         /** @var array<string, string>|null */
         public readonly ?array $socialLinks,
         public readonly string $visibility,
-        public readonly string $timezone,
+        public readonly ?string $timezone,
     ) {}
 
     /**
@@ -69,12 +69,14 @@ final class ProfileUpdateData extends Data
             'socialLinks' => ['nullable', 'array:'.implode(',', SocialLinks::KEYS)],
             'socialLinks.website' => ['sometimes', 'nullable', 'string', 'url:http,https', 'max:255'],
             'visibility' => ['required', Rule::enum(ProfileVisibility::class)],
-            // The reader's own zone (#243). Same rule as the admin mask's
-            // `AdminUpdateUserData`: `timezone:all` accepts every IANA
-            // identifier PHP knows and nothing else, so a hand-edited
-            // request cannot store a string `Intl.DateTimeFormat` would
-            // throw on for every timestamp the person then looks at.
-            'timezone' => ['required', 'timezone:all'],
+            // The reader's own zone (#243), or nothing — which is not a
+            // missing value but a choice: "show me my browser's clock". Only
+            // a stated zone is validated, with `timezone:all`, the same rule
+            // the admin mask uses: it accepts every IANA identifier PHP knows
+            // and nothing else, so a hand-edited request cannot store a
+            // string `Intl.DateTimeFormat` would throw on for every timestamp
+            // the person then looks at.
+            'timezone' => ['nullable', 'timezone:all'],
         ]);
 
         foreach (SocialLinks::PLATFORMS as $platform => $regex) {

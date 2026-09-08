@@ -313,6 +313,7 @@ function archive(): void {
                                 v-model="publishAt"
                                 label="Publish at (leave empty for now)"
                             />
+                            <!-- datetime-raw: publishAt === '' ? 'Publish' : 'Schedule' — a button label, not a timestamp -->
                             <Button @click="publish">
                                 {{ publishAt === '' ? 'Publish' : 'Schedule' }}
                             </Button>

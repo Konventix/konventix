@@ -35,6 +35,13 @@ const props = withDefaults(
 const hintId = computed(() => `${props.id}-hint`);
 const errorId = computed(() => `${props.id}-error`);
 
+// Both, not one or the other: the hint is where the reader's zone and the
+// echo live, and losing it at the moment the field is rejected takes the
+// context away from exactly the person who needs it most (ADR-0055).
+const describedBy = computed(() =>
+    props.error ? `${hintId.value} ${errorId.value}` : hintId.value,
+);
+
 // `formatTime()` writes a bare `HH:MM` out as typed rather than converting
 // it: a time with no date has no offset to convert against.
 const echo = computed(() => formatTime(model.value));
@@ -49,9 +56,13 @@ const echo = computed(() => formatTime(model.value));
             type="time"
             :required="required"
             :aria-invalid="error ? true : undefined"
-            :aria-describedby="error ? errorId : hintId"
+            :aria-describedby="describedBy"
         />
-        <p :id="hintId" class="text-xs text-text-muted">
+        <p
+            v-if="echo || hint || zoned"
+            :id="hintId"
+            class="text-xs text-text-muted"
+        >
             <template v-if="echo">= {{ echo }}. </template>
             <template v-if="zoned"
                 >Times in your timezone ({{ viewerTimezone() }}).

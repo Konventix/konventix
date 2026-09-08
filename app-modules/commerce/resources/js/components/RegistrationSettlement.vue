@@ -38,7 +38,7 @@ const props = defineProps<{
  * The hold's deadline in the reader's own zone (ADR-0055 point 4: a time
  * limit is visible and explained, and never silently extended).
  */
-const cartExpiresAt = computed<string>(() =>
+const cartExpiresLabel = computed<string>(() =>
     // Date *and* time: a hold that says "until 21:35" and nothing else is
     // ambiguous the moment the page is read the next morning. Same markup
     // as the registration timestamps (#208) — a `<time datetime>` carrying
@@ -91,11 +91,11 @@ const reversed = computed(
                 role="status"
             >
                 Waiting in your cart<template
-                    v-if="props.cart.expiresAt && cartExpiresAt"
+                    v-if="props.cart.expiresAt && cartExpiresLabel"
                 >
                     — reserved until
                     <time :datetime="props.cart.expiresAt">{{
-                        cartExpiresAt
+                        cartExpiresLabel
                     }}</time></template
                 >.
             </p>
@@ -193,9 +193,9 @@ const reversed = computed(
             <dt class="text-text-muted">Invoice</dt>
             <dd>{{ props.settlement.invoiceNumber }}</dd>
             <dt class="text-text-muted">Issued</dt>
-            <dd>{{ props.settlement.issuedOn }}</dd>
+            <dd>{{ formatCalendarDate(props.settlement.issuedOn) }}</dd>
             <dt class="text-text-muted">Due</dt>
-            <dd>{{ props.settlement.dueOn }}</dd>
+            <dd>{{ formatCalendarDate(props.settlement.dueOn) }}</dd>
         </dl>
 
         <!--

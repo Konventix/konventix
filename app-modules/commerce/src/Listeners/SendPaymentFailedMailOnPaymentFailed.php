@@ -44,6 +44,9 @@ final class SendPaymentFailedMailOnPaymentFailed
     public function __construct(
         private readonly SendMessage $sendMessage,
         private readonly BrandUrl $brandUrl,
+        // One instance per class, not one per formatted value: the service
+        // memoises the operator's chosen formats (review finding 6).
+        private readonly OperatorDateTimeFormat $dates,
     ) {}
 
     public function handle(PaymentFailed $event): void
@@ -121,7 +124,7 @@ final class SendPaymentFailedMailOnPaymentFailed
 
         $timezone = app(ResolveBrandTimezone::class)->handle($order->brand_id);
 
-        return app(OperatorDateTimeFormat::class)->dateTime($deadline->setTimezone($timezone));
+        return $this->dates->dateTime($deadline->setTimezone($timezone));
     }
 
     private function reasonSentence(string $reasonCode): string

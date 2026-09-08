@@ -27,7 +27,7 @@ const statusTone: Record<string, string> = {
  * own format (#243, #242) — never a formatter of this page's own, which is
  * how the console's "Placed" column came to disagree with this one.
  */
-function placedOn(value: string): string {
+function formatPlacedOn(value: string): string {
     return formatDateTime(value, { dateStyle: 'medium', timeStyle: undefined });
 }
 </script>
@@ -64,7 +64,7 @@ function placedOn(value: string): string {
                         {{ order.settlesLabel }}
                     </span>
                     <span class="text-sm text-text-muted">
-                        {{ placedOn(order.placedAt) }}
+                        {{ formatPlacedOn(order.placedAt) }}
                         <template v-if="order.invoiceNumber">
                             · Invoice {{ order.invoiceNumber }}
                         </template>

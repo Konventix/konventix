@@ -2,7 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
-import { formatDateTime } from '@/lib/datetime';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { destroy as withdrawConsent } from '@/routes/consents';
 import {
     download as downloadArchive,
@@ -235,15 +235,16 @@ const stateLabels: Record<
                         — {{ stateLabels[dataRequest.state] }}
                     </span>
                     <span class="text-xs text-text-muted">
-                        Opened {{ dataRequest.openedAt }} · answer due by
-                        {{ dataRequest.deadlineAt }}
+                        Opened {{ formatDateTime(dataRequest.openedAt) }} ·
+                        answer due by
+                        {{ formatCalendarDate(dataRequest.deadlineAt) }}
                     </span>
                     <span
                         v-if="dataRequest.archiveExpiresAt"
                         class="text-xs text-text-muted"
                     >
                         Download available until
-                        {{ dataRequest.archiveExpiresAt }}
+                        {{ formatCalendarDate(dataRequest.archiveExpiresAt) }}
                     </span>
                 </div>
 

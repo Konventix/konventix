@@ -42,6 +42,13 @@ const props = withDefaults(
 
 const hintId = computed(() => `${props.id}-hint`);
 const errorId = computed(() => `${props.id}-error`);
+
+// Both, not one or the other: the hint is where the reader's zone and the
+// echo live, and losing it at the moment the field is rejected takes the
+// context away from exactly the person who needs it most (ADR-0055).
+const describedBy = computed(() =>
+    props.error ? `${hintId.value} ${errorId.value}` : hintId.value,
+);
 const echo = computed(() => formatDate(model.value));
 </script>
 
@@ -56,9 +63,9 @@ const echo = computed(() => formatDate(model.value));
             :max="max"
             :required="required"
             :aria-invalid="error ? true : undefined"
-            :aria-describedby="error ? errorId : hintId"
+            :aria-describedby="describedBy"
         />
-        <p :id="hintId" class="text-xs text-text-muted">
+        <p v-if="echo || hint" :id="hintId" class="text-xs text-text-muted">
             <template v-if="echo">= {{ echo }}. </template>
             <template v-if="hint">{{ hint }}</template>
         </p>

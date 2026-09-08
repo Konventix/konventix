@@ -44,6 +44,9 @@ final class SendOrderConfirmationOnOrderPlaced
     public function __construct(
         private readonly SendMessage $sendMessage,
         private readonly BrandUrl $brandUrl,
+        // One instance per class, not one per formatted value: the service
+        // memoises the operator's chosen formats (review finding 6).
+        private readonly OperatorDateTimeFormat $dates,
     ) {}
 
     public function handle(OrderPlaced $event): void
@@ -91,7 +94,7 @@ final class SendOrderConfirmationOnOrderPlaced
             payload: new OrderConfirmationMailData(
                 orderNumberShort: strtoupper(substr($order->id, -8)),
                 recipientName: $order->billing_party?->displayName(),
-                placedAt: app(OperatorDateTimeFormat::class)->dateTime(Carbon::parse($event->placedAt)),
+                placedAt: $this->dates->dateTime(Carbon::parse($event->placedAt)),
                 lines: array_values($order->lines
                     ->map(fn (OrderLine $line): array => [
                         'label' => $line->label,
@@ -102,7 +105,7 @@ final class SendOrderConfirmationOnOrderPlaced
                 totalGross: $order->total_gross,
                 currency: $order->currency,
                 paid: $order->status === OrderStatus::Paid,
-                reservationUntil: $payableUntil === null ? null : app(OperatorDateTimeFormat::class)->dateTime($payableUntil),
+                reservationUntil: $payableUntil === null ? null : $this->dates->dateTime($payableUntil),
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
                 // GitLab #5: an unpaid order's confirmation says where to pay
                 // it. `PayLink` owns the rule so this mail and the

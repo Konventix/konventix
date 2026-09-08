@@ -58,7 +58,12 @@ final class NotifySubjectOfRequestOutcome
      */
     public const string REQUEST_ACKNOWLEDGED = 'compliance.request-acknowledged';
 
-    public function __construct(private readonly SendMessage $sendMessage) {}
+    public function __construct(
+        private readonly SendMessage $sendMessage,
+        // One instance per listener, not one per formatted value: the service
+        // memoises the operator's chosen formats (review finding 6).
+        private readonly OperatorDateTimeFormat $dates,
+    ) {}
 
     public function handleExportCompleted(DataExportCompleted $event): void
     {
@@ -83,8 +88,8 @@ final class NotifySubjectOfRequestOutcome
 
         $this->send($subject, $request->filed_on_brand_id, self::EXPORT_READY, new SubjectRequestMailData(
             requestType: $request->type->value,
-            deadline: app(OperatorDateTimeFormat::class)->date($request->deadline_at),
-            availableUntil: $request->archive_expires_at === null ? null : app(OperatorDateTimeFormat::class)->date($request->archive_expires_at),
+            deadline: $this->dates->date($request->deadline_at),
+            availableUntil: $request->archive_expires_at === null ? null : $this->dates->date($request->archive_expires_at),
             downloadUrl: $downloadUrl,
         ));
     }
@@ -99,7 +104,7 @@ final class NotifySubjectOfRequestOutcome
 
         $this->send($request->subject(), $request->filed_on_brand_id, self::DELETION_ACKNOWLEDGED, new SubjectRequestMailData(
             requestType: $request->type->value,
-            deadline: app(OperatorDateTimeFormat::class)->date($request->deadline_at),
+            deadline: $this->dates->date($request->deadline_at),
         ));
     }
 
@@ -113,7 +118,7 @@ final class NotifySubjectOfRequestOutcome
 
         $this->send($request->subject(), $request->filed_on_brand_id, self::REQUEST_ACKNOWLEDGED, new SubjectRequestMailData(
             requestType: $request->type->value,
-            deadline: app(OperatorDateTimeFormat::class)->date($request->deadline_at),
+            deadline: $this->dates->date($request->deadline_at),
         ));
     }
 
@@ -127,7 +132,7 @@ final class NotifySubjectOfRequestOutcome
 
         $this->send($request->subject(), $request->filed_on_brand_id, self::REQUEST_REFUSED, new SubjectRequestMailData(
             requestType: $request->type->value,
-            deadline: app(OperatorDateTimeFormat::class)->date($request->deadline_at),
+            deadline: $this->dates->date($request->deadline_at),
             reasonCode: $event->reasonCode,
         ));
     }

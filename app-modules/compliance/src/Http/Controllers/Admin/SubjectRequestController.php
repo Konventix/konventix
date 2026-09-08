@@ -146,17 +146,20 @@ class SubjectRequestController
                 'type' => $model->type->value,
                 'state' => $model->state->value,
                 'mode' => $model->mode?->value,
-                'deadlineAt' => $model->deadline_at->toDateTimeString(),
-                'openedAt' => $model->created_at?->toDateTimeString(),
-                'closedAt' => $model->closed_at?->toDateTimeString(),
+                // Instants as ISO 8601 with the offset (#243): the page renders them
+                // in the reader's own zone, and an offsetless string would be read
+                // as their local clock and then shifted again.
+                'deadlineAt' => $model->deadline_at->toIso8601String(),
+                'openedAt' => $model->created_at?->toIso8601String(),
+                'closedAt' => $model->closed_at?->toIso8601String(),
                 'reasonCode' => $model->reason_code,
-                'archiveExpiresAt' => $model->archive_expires_at?->toDateTimeString(),
+                'archiveExpiresAt' => $model->archive_expires_at?->toIso8601String(),
                 'archiveAvailable' => $model->hasDownloadableArchive(),
             ],
             'responses' => $responses->map(fn (DataSubjectRequestResponse $response): array => [
                 'module' => $response->module,
                 'state' => $response->state->value,
-                'respondedAt' => $response->responded_at?->toDateTimeString(),
+                'respondedAt' => $response->responded_at?->toIso8601String(),
             ])->all(),
             'missingModules' => $missing,
             'canHandle' => Gate::allows(Permission::HandleSubjectRequests->value),

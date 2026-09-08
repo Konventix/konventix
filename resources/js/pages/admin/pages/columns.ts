@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
+import { formatDateTime } from '@/lib/datetime';
 import { edit as editPage } from '@/routes/admin/pages';
 
 export type PageRow = Konventix.Platform.Data.StaticPageRowData;
@@ -69,7 +70,7 @@ export const columns: ColumnDef<PageRow>[] = [
             h(
                 'span',
                 { class: 'text-text-muted' },
-                row.original.updatedAt ?? '—',
+                formatDateTime(row.original.updatedAt) || '—',
             ),
     },
 ];

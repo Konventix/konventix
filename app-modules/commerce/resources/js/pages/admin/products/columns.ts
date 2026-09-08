@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
+import { formatDateTime } from '@/lib/datetime';
 import { edit as editProduct } from '@/routes/admin/products';
 
 export type ProductRow = Konventix.Commerce.Data.ProductRowData;
@@ -82,7 +83,7 @@ export const columns: ColumnDef<ProductRow>[] = [
             h(
                 'span',
                 { class: 'text-text-muted' },
-                row.original.updatedAt ?? '—',
+                formatDateTime(row.original.updatedAt) || '—',
             ),
     },
 ];
