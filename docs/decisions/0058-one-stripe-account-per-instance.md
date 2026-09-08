@@ -150,6 +150,31 @@ and adopts only the account model.
    picks, the `Payment` row names the account — except that the Stripe row
    no longer carries an account of its own to pick between.
 
+   *Amended 2026-09-08, while #215 was being implemented (decision by the
+   operator):* "a Stripe secret key configured" above is tightened to **the
+   pair** — the secret key and the webhook signing secret. The original
+   wording is left standing because it is what was decided; this is why it
+   was not enough. ADR-0039 point 2 makes the signed webhook the only source
+   of settlement truth, so a Checkout Session started against a key whose
+   signing secret is missing takes the payer's money and leaves the order
+   pending forever, with nothing on any page saying so. A button that is
+   absent is a smaller failure than one that charges and never settles, so
+   `isOffered()` for Stripe asks for both, `StripeSetupData` reports the two
+   halves separately, and the console names the missing one. The `StripeApi`
+   binding is deliberately *not* tightened the same way: refunds and the
+   reconciliation sweep need only the key, and blocking them would turn a
+   missing webhook secret into an outage rather than a closed door on new
+   checkouts.
+
+   The same amendment settles the key *shape*: a restricted key (`rk_test_`
+   / `rk_live_`) is accepted beside `sk_`, because that is what `stripe
+   login` mints and it charges the same account the same way. Which calls a
+   restricted key may make is scoped at Stripe and deliberately not mirrored
+   in this application — a call outside its scope fails with Stripe's own
+   message, which explains the problem better than any guess made at save
+   time. The mode and last-four display read `rk_` exactly like `sk_`, so
+   ADR-0053's live-key warning fires for both.
+
 4. **One account, many brands: the split is metadata, not accounts.**
    Every Checkout Session already carries `konventix_payment_id` and
    `konventix_order_id` in `metadata`; it gains `konventix_brand_id`,

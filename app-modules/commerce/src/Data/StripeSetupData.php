@@ -15,6 +15,11 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * came from, which mode it is in, and the endpoint and events an operator
  * has to create in the Stripe dashboard before any of it settles.
  *
+ * "Can charge at all" is `configured` and means **both** keys, because a
+ * checkout with no verifiable webhook would take money and never settle
+ * (ADR-0039 point 2); `secretKeySet` and `webhookSecretSet` say which half is
+ * missing when it is false.
+ *
  * Whether, never what: no key value leaves the server for a page prop, not
  * even truncated — `mode` and `lastFour` are derived, and the last four
  * characters of a Stripe key identify it without revealing it.
@@ -29,6 +34,7 @@ final class StripeSetupData extends Data
         public readonly string $webhookUrl,
         public readonly array $events,
         public readonly bool $configured,
+        public readonly bool $secretKeySet,
         public readonly bool $webhookSecretSet,
         public readonly string $source,
         public readonly ?string $mode,
@@ -48,7 +54,12 @@ final class StripeSetupData extends Data
             // the one they can paste without a second thought.
             webhookUrl: route('api.commerce.webhooks.stripe'),
             events: StripeWebhookEvents::ALL,
+            // `configured` is the pair — whether this instance may start a
+            // checkout at all (ADR-0039 point 2). The two halves travel beside
+            // it so the card can name the one that is missing instead of
+            // reporting "no key" when the key is there.
             configured: $credentials->configured(),
+            secretKeySet: $credentials->secretKeyConfigured(),
             webhookSecretSet: $credentials->webhookSecretConfigured(),
             source: $credentials->source(),
             mode: $credentials->mode(),

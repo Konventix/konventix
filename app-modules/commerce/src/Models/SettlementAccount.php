@@ -137,9 +137,11 @@ class SettlementAccount extends Model
      *
      * A Stripe row is the brand's enablement flag since ADR-0058 point 3:
      * there is no connected account and no capability to wait for, so the
-     * only extra question is whether this instance holds a Stripe secret
-     * key. Without one, offering the button would fail at Stripe rather
-     * than on our page. Resolved from the container at call time rather
+     * only extra question is whether this instance can charge — which takes
+     * the secret key *and* the webhook signing secret. Without the key the
+     * button would fail at Stripe rather than on our page; without the
+     * signing secret it would succeed at Stripe and never settle, because the
+     * webhook is the only source of settlement truth (ADR-0039 point 2). Resolved from the container at call time rather
      * than injected: this is a model, and the answer changes the moment an
      * operator saves a key.
      */

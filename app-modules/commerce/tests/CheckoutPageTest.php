@@ -86,9 +86,11 @@ function checkoutPageOrder(bool $stripeConnected = true): array
     $account = null;
 
     if ($stripeConnected) {
-        // Offered because this instance holds a Stripe key at all
-        // (ADR-0058 point 3); the row is the brand's enablement flag.
+        // Offered because this instance holds a chargeable Stripe account —
+        // key and signing secret both (ADR-0058 point 3, ADR-0039 point 2);
+        // the row is only the brand's enablement flag.
         config()->set('services.stripe.secret', 'sk_test_page');
+        config()->set('services.stripe.webhook_secret', 'whsec_page');
 
         $account = SettlementAccount::factory()->create([
             'provider' => SettlementAccount::PROVIDER_STRIPE,

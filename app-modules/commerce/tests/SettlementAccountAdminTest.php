@@ -204,7 +204,7 @@ it('tells the operator the webhook endpoint and the events it must listen to', f
                 && str_contains($hint, 'secrets.payments')));
 });
 
-it('reports the credentials as missing when either one is blank', function (string $secret, string $webhookSecret, bool $configured, bool $webhookSet): void {
+it('reports the credentials as missing when either one is blank', function (string $secret, string $webhookSecret, bool $configured, bool $secretSet, bool $webhookSet): void {
     [$admin] = settlementAdminOperator();
 
     config()->set('services.stripe.secret', $secret);
@@ -214,14 +214,18 @@ it('reports the credentials as missing when either one is blank', function (stri
         ->get('http://admin.settlement.test/admin/settlement-accounts')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
+            // `configured` is the pair — half of it cannot charge anything
+            // (ADR-0039 point 2) — while the two halves report themselves.
             ->where('stripeSetup.configured', $configured)
+            ->where('stripeSetup.secretKeySet', $secretSet)
             ->where('stripeSetup.webhookSecretSet', $webhookSet)
             // Never the values themselves — the prop says whether, not what.
             ->where('stripeSetup.webhookUrl', 'http://admin.settlement.test/api/commerce/webhooks/stripe'));
 })->with([
-    'neither set' => ['', '', false, false],
-    'no secret key' => ['', 'whsec_x', false, true],
-    'no signing secret' => ['sk_test_x', '', true, false],
+    'neither set' => ['', '', false, false, false],
+    'no secret key' => ['', 'whsec_x', false, false, true],
+    'no signing secret' => ['sk_test_x', '', false, true, false],
+    'both set' => ['sk_test_x', 'whsec_x', true, true, true],
 ]);
 
 it('saves this instance\'s Stripe keys from the console, encrypted, and prefers them over the environment', function (): void {
@@ -628,11 +632,13 @@ it('accepts a suffix that fits beside the longest prefix Stripe allows', functio
 
 it('enables Stripe with no key configured, but does not offer it at checkout', function (): void {
     // ADR-0058 point 3: `isOffered()` for Stripe is "live, and this instance
-    // has a Stripe secret key" — the enablement flag says nothing about
-    // whether the instance can charge.
+    // can charge" — the enablement flag says nothing about whether it can.
+    // Charging takes the pair: a key with no signing secret would take money
+    // through a webhook nothing can verify (ADR-0039 point 2).
     [$admin, $brand] = settlementAdminOperator();
 
     config()->set('services.stripe.secret', '');
+    config()->set('services.stripe.webhook_secret', '');
 
     $this->actingAs($admin)
         ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', ['brand_id' => $brand->id])
@@ -642,10 +648,53 @@ it('enables Stripe with no key configured, but does not offer it at checkout', f
 
     expect($account->isOffered())->toBeFalse();
 
+    // The key alone is still not enough.
     config()->set('services.stripe.secret', 'sk_test_configured');
+
+    expect($account->refresh()->isOffered())->toBeFalse();
+
+    config()->set('services.stripe.webhook_secret', 'whsec_configured');
 
     expect($account->refresh()->isOffered())->toBeTrue();
 });
+
+it('tells the console which half of the pair is missing', function (): void {
+    [$admin] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', 'sk_test_abcd');
+    config()->set('services.stripe.webhook_secret', '');
+
+    $this->actingAs($admin)
+        ->get('http://admin.settlement.test/admin/settlement-accounts')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            // `configured` is the pair; the two halves are reported apart so
+            // the card can name the one that is missing rather than claim the
+            // key is absent when it is not.
+            ->where('stripeSetup.configured', false)
+            ->where('stripeSetup.secretKeySet', true)
+            ->where('stripeSetup.webhookSecretSet', false)
+            ->where('stripeSetup.lastFour', 'abcd'));
+});
+
+it('accepts a restricted key from the console', function (string $secret, string $mode): void {
+    // The Stripe CLI's login mints restricted keys, and an operator should be
+    // able to paste one rather than go find a full secret key.
+    [$admin] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => $secret,
+            'webhookSecret' => 'whsec_console',
+            'publishableKey' => null,
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(StripeSettings::query()->sole()->secret_key)->toBe($secret)
+        ->and(app(StripeCredentials::class)->mode())->toBe($mode);
+})->with([
+    'a restricted sandbox key' => ['rk_test_restricted_1234', 'test'],
+    'a restricted live key' => ['rk_live_restricted_wxyz', 'live'],
+]);
 
 it('returns a validation error when connecting a second live account of the same provider over HTTP', function (): void {
     [$admin, $brand] = settlementAdminOperator();

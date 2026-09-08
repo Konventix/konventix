@@ -92,12 +92,31 @@ final class StripeCredentials
     }
 
     /**
-     * Whether Stripe can be charged at all. This is what
-     * `SettlementAccount::isOffered()` asks for a Stripe row: with no key,
-     * offering the brand's Stripe button would fail at Stripe rather than
-     * on our page.
+     * Whether Stripe can be charged at all — **the pair**, not the key.
+     *
+     * This is what `SettlementAccount::isOffered()` asks for a Stripe row.
+     * The key alone is not enough: ADR-0039 point 2 makes the signed webhook
+     * the only source of settlement truth, so a Checkout Session created with
+     * no verifiable signing secret would take the payer's money and leave the
+     * order pending forever — a worse failure than the button being absent,
+     * because it is invisible until someone complains.
+     *
+     * Deliberately *not* the same question as the `StripeApi` binding's throw
+     * (`CommerceServiceProvider`), which asks only for the secret key: a
+     * refund, a reconciliation sweep and a dashboard read all work without a
+     * signing secret, and blocking them would turn a missing webhook secret
+     * into an outage instead of a closed door on new checkouts.
      */
     public function configured(): bool
+    {
+        return $this->secretKeyConfigured() && $this->webhookSecretConfigured();
+    }
+
+    /**
+     * The two halves apart, so the console can name the one that is missing
+     * rather than report "no key" when the key is there.
+     */
+    public function secretKeyConfigured(): bool
     {
         return $this->secret() !== null;
     }
@@ -125,11 +144,6 @@ final class StripeCredentials
     /**
      * `live`, `test`, or null — read from Stripe's own key shape, which is
      * the only thing that decides whether real money moves.
-     *
-     * Matched on the `_live_` / `_test_` segment rather than on `sk_`: a
-     * restricted key (`rk_live_…`) charges real money exactly like a secret
-     * one, and a mode of null would silence the ADR-0053 warning for the one
-     * key that most needs it.
      */
     public function mode(): ?string
     {
@@ -139,15 +153,26 @@ final class StripeCredentials
     /**
      * The same reading for a key that has not been stored yet — what the audit
      * trail records about a rotation without recording the key.
+     *
+     * Both key shapes Stripe issues that can charge: `sk_` (a standard secret
+     * key) and `rk_` (a restricted one, which is what `stripe login` mints).
+     * A restricted key moves the same real money, so a mode of null for it
+     * would silence the ADR-0053 live-key warning for the very key an operator
+     * is most likely to paste. What a restricted key is *allowed* to do is
+     * scoped at Stripe and none of this application's business: a call outside
+     * its scope fails at Stripe with Stripe's own message.
+     *
+     * The prefix is matched, not just the `_live_` segment — a publishable key
+     * carries that segment too, and reading `pk_live_…` as "live mode" would
+     * name a mode for a key that cannot charge at all.
      */
     public static function modeOf(?string $secret): ?string
     {
-        return match (true) {
-            $secret === null => null,
-            str_contains($secret, '_live_') => 'live',
-            str_contains($secret, '_test_') => 'test',
-            default => null,
-        };
+        if ($secret === null || preg_match('/^(sk|rk)_(live|test)_/', $secret, $matches) !== 1) {
+            return null;
+        }
+
+        return $matches[2];
     }
 
     /**

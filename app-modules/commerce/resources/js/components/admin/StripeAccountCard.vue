@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { router, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,6 +55,20 @@ async function copyToClipboard(what: string, value: string): Promise<void> {
     }
 }
 
+/**
+ * Which half of the pair is missing, in the operator's words. Never reached
+ * while `configured` is true.
+ */
+const missingHalf = computed(() => {
+    if (!props.setup.secretKeySet && !props.setup.webhookSecretSet) {
+        return 'neither the Secret Key nor the Webhook Signing Secret is set';
+    }
+
+    return props.setup.secretKeySet
+        ? 'the Webhook Signing Secret is missing'
+        : 'the Secret Key is missing';
+});
+
 const sourceLabels: Record<string, string> = {
     database: 'entered in this console',
     environment: 'from the environment',
@@ -103,11 +117,11 @@ function clear(): void {
             <div class="flex flex-wrap items-center gap-3">
                 <Badge
                     :variant="
-                        props.setup.configured ? 'default' : 'destructive'
+                        props.setup.secretKeySet ? 'default' : 'destructive'
                     "
                 >
                     {{
-                        props.setup.configured
+                        props.setup.secretKeySet
                             ? 'Secret key set'
                             : 'No secret key'
                     }}
@@ -142,6 +156,25 @@ function clear(): void {
                     publishable key set (unused by hosted Checkout)
                 </span>
             </div>
+
+            <!--
+                ADR-0039 point 2: the signed webhook is the only source of
+                settlement truth, so half a pair is not a working Stripe
+                account — it is one that takes money and never settles it.
+                The card says which half is missing rather than leaving the
+                operator to compare two badges.
+            -->
+            <p
+                v-if="!props.setup.configured"
+                role="status"
+                class="rounded-md border border-border p-3 text-sm text-text-muted"
+            >
+                Stripe is not offered at checkout yet:
+                <strong>{{ missingHalf }}</strong
+                >. Both are needed — a checkout started without a signing secret
+                would take the payer's money and never settle the order, because
+                the webhook could not be verified.
+            </p>
 
             <!--
                 ADR-0053: a live key on anything but production is one

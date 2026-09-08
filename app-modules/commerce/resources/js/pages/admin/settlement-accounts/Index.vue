@@ -154,6 +154,7 @@ function submitConnect(): void {
                     v-for="account in brand.accounts"
                     :key="account.id"
                     :account="account"
+                    :stripe-setup="props.stripeSetup"
                 />
 
                 <template v-if="brand.connectableProviders.length > 0">

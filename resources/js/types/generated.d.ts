@@ -253,6 +253,7 @@ declare namespace Konventix {
                 readonly webhookUrl: string;
                 readonly events: string[];
                 readonly configured: boolean;
+                readonly secretKeySet: boolean;
                 readonly webhookSecretSet: boolean;
                 readonly source: string;
                 readonly mode: string | null;

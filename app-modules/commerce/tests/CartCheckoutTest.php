@@ -100,9 +100,11 @@ function cartCheckoutVariant(int $capacity = 10): ProductVariant
 
 function cartCheckoutAccount(): SettlementAccount
 {
-    // A Stripe row is the brand's enablement flag; what makes it offered
-    // is this instance holding a key at all (ADR-0058 point 3).
+    // A Stripe row is the brand's enablement flag; what makes it offered is
+    // this instance holding a chargeable Stripe account — the secret key and
+    // the signing secret both (ADR-0058 point 3, ADR-0039 point 2).
     config()->set('services.stripe.secret', 'sk_test_cart');
+    config()->set('services.stripe.webhook_secret', 'whsec_cart');
 
     $account = SettlementAccount::factory()->create([
         'provider' => SettlementAccount::PROVIDER_STRIPE,

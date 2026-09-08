@@ -420,6 +420,14 @@ Both stay supported permanently: the environment is what a fresh deployment
 sets before anyone has logged in, the row is what an operator rotates
 without a redeploy.
 
+**Both values are required before Stripe is offered to a payer at all.** A
+secret key with no signing secret would take money through a webhook nothing
+can verify (ADR-0039 point 2), so a brand's Stripe button stays away until the
+pair is complete, and the console names whichever half is missing. Refunds and
+the reconciliation sweep need only the secret key and keep working meanwhile.
+A restricted key (`rk_test_` / `rk_live_`) is accepted for `STRIPE_SECRET`
+beside a standard `sk_` one.
+
 - **`STRIPE_SECRET`** is the operator Stripe account's standard secret key,
   from the dashboard under **Developers → API keys**. One account, two
   keys: use the sandbox key for development and staging and the live key

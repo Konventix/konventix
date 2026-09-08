@@ -30,7 +30,15 @@ export type SettlementAccount = {
     offered: boolean;
 };
 
-const props = defineProps<{ account: SettlementAccount }>();
+const props = defineProps<{
+    account: SettlementAccount;
+    /**
+     * This instance's Stripe account, so a Stripe row that is enabled but not
+     * offered can say *why* — which of the two keys is missing — instead of
+     * always blaming the secret key.
+     */
+    stripeSetup: Konventix.Commerce.Data.StripeSetupData;
+}>();
 
 const providerNames: Record<string, string> = {
     stripe: 'Stripe',
@@ -74,8 +82,10 @@ type OfferedStatus = {
 /**
  * A Stripe row is an enablement flag on the account this instance holds
  * (ADR-0058 point 3), so "enabled but not offered" means one thing only:
- * no Stripe key is configured yet — which the Stripe card above says how
- * to fix. Mollie and Unzer answer for themselves as before.
+ * this instance cannot charge yet — which takes the secret key *and* the
+ * webhook signing secret (ADR-0039 point 2), and which the Stripe card above
+ * says how to fix. Naming the missing half here saves the operator the trip.
+ * Mollie and Unzer answer for themselves as before.
  */
 function offeredStatus(account: SettlementAccount): OfferedStatus {
     if (account.offered) {
@@ -84,7 +94,9 @@ function offeredStatus(account: SettlementAccount): OfferedStatus {
 
     if (account.provider === 'stripe') {
         return {
-            text: 'Enabled — no Stripe key on this instance yet',
+            text: props.stripeSetup.secretKeySet
+                ? 'Enabled — no Stripe signing secret on this instance yet'
+                : 'Enabled — no Stripe key on this instance yet',
             variant: 'destructive',
         };
     }

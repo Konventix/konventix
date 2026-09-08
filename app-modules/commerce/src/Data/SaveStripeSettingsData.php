@@ -23,12 +23,19 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * at the first real payment rather than at the form. The publishable key is
  * optional and unused — hosted Checkout renders no card field on any
  * Konventix page (ADR-0039 point 1) — and is kept only for completeness.
+ *
+ * Both `sk_` and `rk_` are accepted for the secret key: a restricted key is
+ * what `stripe login` mints, and it charges the same account the same way.
+ * Which calls it may make is scoped at Stripe and deliberately not mirrored
+ * here — a key missing a scope fails at that call with Stripe's own message,
+ * which is a better explanation than any guess this form could make at save
+ * time, and one this application already surfaces where it happens.
  */
 #[TypeScript]
 final class SaveStripeSettingsData extends Data
 {
     public function __construct(
-        #[Required, StringType, Max(255), Regex('/^sk_(test|live)_.+$/')]
+        #[Required, StringType, Max(255), Regex('/^(sk|rk)_(test|live)_.+$/')]
         public readonly string $secretKey,
 
         #[Required, StringType, Max(255), StartsWith('whsec_')]

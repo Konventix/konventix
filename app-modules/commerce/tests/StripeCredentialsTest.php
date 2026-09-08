@@ -115,6 +115,65 @@ it('decides per value, so a row with only a secret key still uses the environmen
         ->and($credentials->webhookSecretConfigured())->toBeTrue();
 });
 
+it('is not chargeable while the signing secret is missing, whichever place holds the key', function (): void {
+    // ADR-0039 point 2: a webhook is the only source of settlement truth, so a
+    // Checkout Session created against a key with no verifiable signing secret
+    // would take the payer's money and never settle the order. "Configured"
+    // therefore means the pair, not the key.
+    config()->set('services.stripe.secret', 'sk_test_environment_abcd');
+    config()->set('services.stripe.webhook_secret', '');
+
+    $credentials = app(StripeCredentials::class);
+
+    expect($credentials->secret())->toBe('sk_test_environment_abcd')
+        ->and($credentials->secretKeyConfigured())->toBeTrue()
+        ->and($credentials->webhookSecretConfigured())->toBeFalse()
+        ->and($credentials->configured())->toBeFalse();
+
+    config()->set('services.stripe.webhook_secret', 'whsec_environment');
+
+    expect(app(StripeCredentials::class)->configured())->toBeTrue();
+});
+
+it('is not chargeable while the secret key is missing either', function (): void {
+    config()->set('services.stripe.secret', '');
+    config()->set('services.stripe.webhook_secret', 'whsec_environment');
+
+    $credentials = app(StripeCredentials::class);
+
+    expect($credentials->secretKeyConfigured())->toBeFalse()
+        ->and($credentials->webhookSecretConfigured())->toBeTrue()
+        ->and($credentials->configured())->toBeFalse();
+});
+
+it('reads a restricted key as the key it is', function (string $secret, string $mode): void {
+    // `stripe login` mints restricted keys, and an operator pasting one gets
+    // exactly the same account: what a restricted key may do is scoped at
+    // Stripe, and a missing scope fails at the call with Stripe's own message.
+    config()->set('services.stripe.secret', $secret);
+    config()->set('services.stripe.webhook_secret', 'whsec_environment');
+
+    $credentials = app(StripeCredentials::class);
+
+    expect($credentials->mode())->toBe($mode)
+        ->and($credentials->configured())->toBeTrue()
+        ->and($credentials->lastFour())->toBe(substr($secret, -4));
+})->with([
+    'a restricted sandbox key' => ['rk_test_restricted_1234', 'test'],
+    'a restricted live key' => ['rk_live_restricted_wxyz', 'live'],
+    'a standard sandbox key' => ['sk_test_standard_1234', 'test'],
+    'a standard live key' => ['sk_live_standard_wxyz', 'live'],
+]);
+
+it('reads no mode at all from something that is not a secret key', function (): void {
+    // A publishable key carries `_live_` too; only the `sk_`/`rk_` prefixes
+    // name a key that can charge, so a `pk_` in the environment is no mode
+    // rather than a false "live".
+    config()->set('services.stripe.secret', 'pk_live_publishable_1234');
+
+    expect(app(StripeCredentials::class)->mode())->toBeNull();
+});
+
 it('reports nothing configured when neither place carries a key', function (): void {
     config()->set('services.stripe.secret', '');
     config()->set('services.stripe.webhook_secret', '');

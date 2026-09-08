@@ -109,11 +109,12 @@ it('refuses a second live account of the same provider', function (): void {
         ->toThrow(QueryException::class);
 });
 
-it('offers a Stripe row only while this instance has a key, and a key-based one once connected', function (): void {
+it('offers a Stripe row only while this instance can charge, and a key-based one once connected', function (): void {
     // ADR-0058 point 3: a Stripe row means "this brand sells through Stripe"
-    // — there is no capability to wait for, only this instance's own key.
+    // — there is no capability to wait for, only this instance's own pair.
     $this->withBrand();
     config()->set('services.stripe.secret', '');
+    config()->set('services.stripe.webhook_secret', '');
 
     $stripe = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create();
     $disconnected = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->disconnected()->create();
@@ -124,7 +125,14 @@ it('offers a Stripe row only while this instance has a key, and a key-based one 
         ->and($mollie->isOffered())->toBeTrue()
         ->and($onboarding->isOffered())->toBeFalse();
 
+    // The key alone still cannot settle anything: without a signing secret the
+    // webhook that is the only source of settlement truth cannot be verified
+    // (ADR-0039 point 2), so the button stays away.
     config()->set('services.stripe.secret', 'sk_test_configured');
+
+    expect($stripe->isOffered())->toBeFalse();
+
+    config()->set('services.stripe.webhook_secret', 'whsec_configured');
 
     expect($stripe->isOffered())->toBeTrue()
         ->and($disconnected->isOffered())->toBeFalse();
@@ -209,6 +217,7 @@ it('lists every offered hosted account on the checkout page with its label', fun
     ]);
 
     config()->set('services.stripe.secret', 'sk_test_configured');
+    config()->set('services.stripe.webhook_secret', 'whsec_configured');
     app()->instance(StripeApi::class, new MultiProviderSettlementTestFakeStripe);
 
     // Ordered before Mollie so it lands first on the page (liveAccountsFor
@@ -275,6 +284,7 @@ it('refuses an account that is not offered, not this brand\'s, or missing', func
     // A Stripe row on an instance that holds no Stripe key: enabled for the
     // brand, but nothing can be charged, so it is not offered (ADR-0058).
     config()->set('services.stripe.secret', '');
+    config()->set('services.stripe.webhook_secret', '');
     $notOffered = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)
         ->create();
 
@@ -315,6 +325,7 @@ it('refuses a second account once a payment succeeded', function (): void {
     ]);
 
     config()->set('services.stripe.secret', 'sk_test_configured');
+    config()->set('services.stripe.webhook_secret', 'whsec_configured');
     $stripe = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create();
     $mollie = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
 
