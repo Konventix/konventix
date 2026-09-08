@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
+    browserTimezone,
+    configureDateTime,
     formatDateTime,
     toInstant,
     toLocalDateTimeInput,
+    viewerTimezone,
     withZoneName,
 } from './datetime';
 
@@ -146,5 +149,76 @@ describe('toLocalDateTimeInput', () => {
         expect(toLocalDateTimeInput(undefined)).toBe('');
         expect(toLocalDateTimeInput('')).toBe('');
         expect(toLocalDateTimeInput('not a date')).toBe('');
+    });
+});
+
+/**
+ * The reader's own zone comes from their profile, not from their laptop
+ * (#243). `configureDateTime()` is called once per Inertia visit from
+ * `app.ts` with the shared `auth.user.timezone` prop; every helper in this
+ * file then answers in that zone without a single page passing it along.
+ */
+describe('the viewer’s configured timezone', () => {
+    afterEach(() => {
+        configureDateTime({ timezone: null });
+    });
+
+    it('is the browser’s until a profile setting says otherwise', () => {
+        expect(viewerTimezone()).toBe(browserTimezone);
+    });
+
+    it('renders an instant in the profile zone rather than the browser’s', () => {
+        configureDateTime({ timezone: 'America/New_York' });
+
+        // 2026-09-08T12:00Z is 08:00 in New York, whatever the test host's
+        // own zone happens to be.
+        expect(
+            formatDateTime('2026-09-08T12:00:00+00:00', {
+                dateStyle: undefined,
+                timeStyle: undefined,
+                hour: '2-digit',
+                minute: '2-digit',
+                hourCycle: 'h23',
+            }),
+        ).toBe('08:00');
+    });
+
+    it('lets a caller that names a zone keep it', () => {
+        configureDateTime({ timezone: 'America/New_York' });
+
+        expect(
+            formatDateTime('2026-09-08T12:00:00+00:00', {
+                dateStyle: undefined,
+                timeStyle: undefined,
+                hour: '2-digit',
+                minute: '2-digit',
+                hourCycle: 'h23',
+                timeZone: 'UTC',
+            }),
+        ).toBe('12:00');
+    });
+
+    it('fills a datetime-local field with the profile zone’s wall clock', () => {
+        configureDateTime({ timezone: 'America/New_York' });
+
+        expect(toLocalDateTimeInput('2026-09-08T12:00:00+00:00')).toBe(
+            '2026-09-08T08:00',
+        );
+    });
+
+    it('reads a typed wall clock back as an instant in the profile zone', () => {
+        configureDateTime({ timezone: 'America/New_York' });
+
+        expect(toInstant('2026-09-08T08:00')).toBe('2026-09-08T12:00:00.000Z');
+    });
+
+    it('crosses a DST boundary without drifting an hour', () => {
+        // New York falls back on 2026-11-01. The morning after it is on
+        // EST (-05:00), and an offset looked up against the typed digits
+        // read as UTC — a full day and five hours away — would still be on
+        // EDT and put the instant an hour out.
+        configureDateTime({ timezone: 'America/New_York' });
+
+        expect(toInstant('2026-11-02T01:30')).toBe('2026-11-02T06:30:00.000Z');
     });
 });

@@ -69,13 +69,18 @@ class HandleInertiaRequests extends Middleware
             // null, and the shell falls back to the bundled mark.
             'brand' => $identity,
             'auth' => [
-                // The four-field shape Identity's SPEC promises (ADR-0051 §5):
-                // ULID, display name, avatar URL, locale — never the whole model.
+                // The five-field shape Identity's SPEC promises (ADR-0051 §5):
+                // ULID, display name, avatar URL, locale, timezone — never
+                // the whole model. The zone is here rather than on each page
+                // because it is what every page's timestamps are rendered in
+                // (#243), and a page that had to ask for it would be a page
+                // that could forget to.
                 'user' => $request->user() === null ? null : [
                     'id' => (string) $request->user()->getAuthIdentifier(),
                     'name' => $request->user()->name,
                     'avatarUrl' => app(AvatarUrlResolver::class)->forUser((string) $request->user()->getAuthIdentifier()),
                     'locale' => $request->user()->locale,
+                    'timezone' => $request->user()->timezone,
                 ],
             ],
             // The current brand's Reverb app key (ADR-0025). Echo is

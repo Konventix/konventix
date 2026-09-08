@@ -302,6 +302,8 @@ declare namespace Konventix {
         namespace Enums {
             export type CartLineKind = 'product' | 'registration';
             export type CartStatus = 'open' | 'expired' | 'checked_out';
+            export type HostedPaymentState =
+                'paid' | 'not_paid' | 'undecided' | 'unanswerable';
             export type OperationsNoticeKind =
                 | 'stock-exhausted'
                 | 'payment-failed'
@@ -338,10 +340,7 @@ declare namespace Konventix {
                 | 'duplicate-payment'
                 | 'goodwill';
             export type ReversalKind =
-                | 'return'
-                | 'dispute'
-                | 'external_refund'
-                | 'refund';
+                'return' | 'dispute' | 'external_refund' | 'refund';
             export type ReversalStatus = 'open' | 'final' | 'withdrawn';
             export type TaxClass = 'standard' | 'reduced';
             export type TaxTreatment =
@@ -577,6 +576,7 @@ declare namespace Konventix {
                 readonly statusEmoji: string | null;
                 readonly socialLinks: Record<string, string> | null;
                 readonly visibility: string;
+                readonly timezone: string;
             };
             export type RegisterData = {
                 readonly name: string;

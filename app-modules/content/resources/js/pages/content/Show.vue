@@ -3,6 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Flag, Heart } from '@lucide/vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/datetime';
 import { index as newsIndex } from '@/routes/content';
 import {
     react,
@@ -31,13 +32,8 @@ const props = defineProps<Props>();
 
 const form = useForm({ body: '' });
 
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'long',
-    timeStyle: 'short',
-});
-
 function formatDate(value: string | null): string {
-    return value ? dateFormat.format(new Date(value)) : '';
+    return formatDateTime(value, { dateStyle: 'long', timeStyle: 'short' });
 }
 
 function submit(): void {

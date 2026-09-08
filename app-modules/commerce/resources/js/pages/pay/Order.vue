@@ -5,14 +5,14 @@ import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCalendarDate } from '@/lib/datetime';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { start as startOrderCheckout } from '@/routes/commerce/pay/order';
 import {
     ORDER_WITH_OBLIGATION_TO_PAY,
     fulfilmentNote,
     taxNote,
-} from '../../lib/purchaseTexts';
+} from '@/lib/purchaseTexts';
 
 /**
  * The way back to an order whose payment failed (GitLab #5) — a cart order
@@ -104,9 +104,7 @@ const reversed = computed(() => props.order.status === 'payment_reversed');
  * page states the deadline once and says what happens at it.
  */
 const holdUntilLabel = computed(() =>
-    props.holdUntil === null
-        ? null
-        : new Date(props.holdUntil).toLocaleString(),
+    props.holdUntil === null ? null : formatDateTime(props.holdUntil),
 );
 </script>
 

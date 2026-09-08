@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { formatDateTime } from '@/lib/datetime';
 import { store } from '@/routes/data-requests/public';
 
 /**
@@ -24,10 +25,8 @@ type Props = {
 
 const props = defineProps<Props>();
 
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'long' });
-
 function formatDeadline(value: string): string {
-    return dateFormat.format(new Date(value));
+    return formatDateTime(value, { dateStyle: 'long', timeStyle: undefined });
 }
 </script>
 

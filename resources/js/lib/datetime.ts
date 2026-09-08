@@ -18,6 +18,46 @@ const defaults: Intl.DateTimeFormatOptions = {
     timeStyle: 'short',
 };
 
+/**
+ * What the viewing person's own settings say about time.
+ *
+ * `timezone` is `users.timezone` off the shared `auth.user` prop (#243) —
+ * null for a guest and for an account that never set one, and the browser's
+ * zone answers then. It is module state rather than a parameter on every
+ * call because the alternative is threading the same value through some
+ * forty call sites, where the one that forgets is a wrong hour on a page
+ * nobody re-reads.
+ */
+type DateTimeSettings = {
+    timezone: string | null;
+};
+
+const settings: DateTimeSettings = {
+    timezone: null,
+};
+
+/**
+ * Applied once per Inertia visit from `app.ts`, out of the page props.
+ *
+ * Under SSR this module is shared by every request the render process
+ * serves, the same way `app.ts`'s document-title suffix is: the settings are
+ * assigned before the page component is awaited and read synchronously while
+ * it renders, so the window is empty in practice.
+ */
+export function configureDateTime(next: Partial<DateTimeSettings>): void {
+    if (next.timezone !== undefined) {
+        settings.timezone = next.timezone;
+    }
+}
+
+/**
+ * The zone every timestamp on screen is rendered in: the person's own
+ * setting when they have one, their browser's when they do not.
+ */
+export function viewerTimezone(): string {
+    return settings.timezone ?? browserTimezone;
+}
+
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
 function formatter(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
@@ -32,6 +72,74 @@ function formatter(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
     }
 
     return cached;
+}
+
+/**
+ * The viewer's zone folded into an option set, unless the caller named one
+ * itself — a page that deliberately renders a fixed zone (a test, a legal
+ * text that has to say UTC) keeps it.
+ */
+function inViewerZone(
+    options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormatOptions {
+    return options.timeZone === undefined
+        ? { ...options, timeZone: viewerTimezone() }
+        : options;
+}
+
+/**
+ * The wall clock a zone reads for one instant, as the six numbers that make
+ * it up. `Intl` is the only zone database the browser exposes, so the
+ * conversion goes through a formatter rather than arithmetic on offsets we
+ * would have to keep a table of.
+ */
+function wallClockParts(
+    instant: Date,
+    zone: string,
+): { year: number; month: number; day: number; hour: number; minute: number } {
+    const parts = formatter({
+        timeZone: zone,
+        hourCycle: 'h23',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    }).formatToParts(instant);
+
+    const value = (type: Intl.DateTimeFormatPartTypes): number =>
+        Number(parts.find((part) => part.type === type)?.value ?? '0');
+
+    return {
+        year: value('year'),
+        month: value('month'),
+        day: value('day'),
+        hour: value('hour'),
+        minute: value('minute'),
+    };
+}
+
+/**
+ * How far a zone is from UTC at one instant, in milliseconds — read off the
+ * wall clock rather than assumed, so a summer instant and a winter one in
+ * the same zone get different answers.
+ */
+function zoneOffset(instant: Date, zone: string): number {
+    const clock = wallClockParts(instant, zone);
+
+    return (
+        Date.UTC(
+            clock.year,
+            clock.month - 1,
+            clock.day,
+            clock.hour,
+            clock.minute,
+        ) -
+        // The seconds and milliseconds `wallClockParts` drops are the same on
+        // both sides of the subtraction for every zone in the database, so
+        // rounding the instant down keeps the difference exact.
+        Math.floor(instant.getTime() / 60_000) * 60_000
+    );
 }
 
 /**
@@ -53,7 +161,7 @@ export function formatDateTime(
         return value;
     }
 
-    return formatter({ ...defaults, ...options }).format(instant);
+    return formatter(inViewerZone({ ...defaults, ...options })).format(instant);
 }
 
 /**
@@ -92,6 +200,9 @@ export function formatCalendarDate(
         Number(parts[3]),
     );
 
+    // Deliberately *not* `inViewerZone()`: the parts above were read into a
+    // local `Date`, and rendering that in another zone would undo exactly
+    // the day-shift this function exists to prevent.
     return formatter({ ...options, timeStyle: undefined }).format(date);
 }
 
@@ -139,7 +250,10 @@ export const withZoneName: Intl.DateTimeFormatOptions = {
  * `datetime-local` accepts. An unparsable or absent value leaves the field
  * empty rather than showing `Invalid Date`.
  */
-export function toLocalDateTimeInput(value: string | null | undefined): string {
+export function toLocalDateTimeInput(
+    value: string | null | undefined,
+    zone: string = viewerTimezone(),
+): string {
     if (value === null || value === undefined || value === '') {
         return '';
     }
@@ -151,10 +265,11 @@ export function toLocalDateTimeInput(value: string | null | undefined): string {
     }
 
     const pad = (part: number): string => String(part).padStart(2, '0');
+    const clock = wallClockParts(date, zone);
 
     return (
-        `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-        `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+        `${clock.year}-${pad(clock.month)}-${pad(clock.day)}` +
+        `T${pad(clock.hour)}:${pad(clock.minute)}`
     );
 }
 
@@ -162,14 +277,39 @@ export function toLocalDateTimeInput(value: string | null | undefined): string {
  * The typed wall clock as an absolute instant, which is the only form the
  * server can store without guessing whose clock it was.
  */
-export function toInstant(value: string): string | null {
-    if (value === '') {
+export function toInstant(
+    value: string,
+    zone: string = viewerTimezone(),
+): string | null {
+    const typed = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(
+        value,
+    );
+
+    if (typed === null) {
         return null;
     }
 
-    const date = new Date(value);
+    // The digits read as if they were UTC. They are not: they are a wall
+    // clock in `zone`, and the instant behind them is that many milliseconds
+    // the other way.
+    const asUtc = Date.UTC(
+        Number(typed[1]),
+        Number(typed[2]) - 1,
+        Number(typed[3]),
+        Number(typed[4]),
+        Number(typed[5]),
+        Number(typed[6] ?? '0'),
+    );
 
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    // Twice, because the offset depends on the instant we are still looking
+    // for: the first pass lands within an hour of it, which is close enough
+    // for the second to read the offset that actually applies — the reason a
+    // date the morning after a DST change comes out right.
+    const approximate = asUtc - zoneOffset(new Date(asUtc), zone);
+
+    return new Date(
+        asUtc - zoneOffset(new Date(approximate), zone),
+    ).toISOString();
 }
 
 /**

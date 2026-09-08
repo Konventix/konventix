@@ -11,8 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import {
-    browserTimezone,
     formatDateTime,
+    viewerTimezone,
     toInstant,
     toLocalDateTimeInput,
 } from '@/lib/datetime';
@@ -507,7 +507,7 @@ function submit(): void {
                                 id="type-sales-start-hint"
                                 class="text-xs text-text-muted"
                             >
-                                Times in your timezone ({{ browserTimezone }}).
+                                Times in your timezone ({{ viewerTimezone() }}).
                                 <template v-if="salesStartEcho">
                                     = {{ salesStartEcho }} — a time that does
                                     not exist on that date moves to the next
@@ -531,7 +531,7 @@ function submit(): void {
                                 id="type-sales-end-hint"
                                 class="text-xs text-text-muted"
                             >
-                                Times in your timezone ({{ browserTimezone }}).
+                                Times in your timezone ({{ viewerTimezone() }}).
                                 <template v-if="salesEndEcho">
                                     = {{ salesEndEcho }} — a time that does not
                                     exist on that date moves to the next one.

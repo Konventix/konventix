@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/datetime';
 import { destroy as withdrawConsent } from '@/routes/consents';
 import {
     download as downloadArchive,
@@ -71,13 +72,8 @@ defineOptions({
     },
 });
 
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-});
-
 function formatDate(value: string): string {
-    return dateFormat.format(new Date(value));
+    return formatDateTime(value, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function withdraw(consent: ConsentRow): void {

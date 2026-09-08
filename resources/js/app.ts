@@ -6,6 +6,7 @@ import AdminLayout from '@/layouts/AdminLayout.vue';
 import AppTopbarLayout from '@/layouts/AppTopbarLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
+import { configureDateTime } from '@/lib/datetime';
 import { initializeFlashToast } from '@/lib/flashToast';
 import { resolveReverbEndpoint } from '@/lib/reverbEndpoint';
 
@@ -133,10 +134,32 @@ function layoutFor(name: string) {
     }
 }
 
+/**
+ * The viewing person's own time settings, out of the page props (#243).
+ *
+ * Applied here rather than in a layout for the same reason the title suffix
+ * is: `resolve()` is the earliest hook that sees a visit's props, it runs on
+ * the server for the first response and again on every client visit, and it
+ * runs before the page component is awaited — so a page that formats a
+ * timestamp during setup already has the right zone. A page that had to ask
+ * for the zone itself is a page that could forget to.
+ */
+function applyDateTimeSettings(props: unknown): void {
+    const auth = (
+        props as
+            | { auth?: { user?: { timezone?: string | null } | null } }
+            | undefined
+    )?.auth;
+
+    configureDateTime({ timezone: auth?.user?.timezone ?? null });
+}
+
 createInertiaApp({
     title: (title) =>
         title ? `${title} - ${documentTitleSuffix}` : documentTitleSuffix,
     resolve: async (name, visit) => {
+        applyDateTimeSettings(visit?.props);
+
         const brandName = visit?.props?.name;
 
         if (typeof brandName === 'string' && brandName !== '') {

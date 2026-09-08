@@ -11,14 +11,14 @@ import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatCalendarDate } from '@/lib/datetime';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { start as startCheckout } from '@/routes/commerce/pay';
 import {
     ORDER_WITH_OBLIGATION_TO_PAY,
     fulfilmentNote,
     taxNote,
-} from '../../lib/purchaseTexts';
+} from '@/lib/purchaseTexts';
 
 /**
  * Public checkout for an `instant`-settled registration (ADR-0039). This
@@ -90,9 +90,7 @@ const canPay = computed(
  * page states the deadline once and says what happens at it.
  */
 const holdUntilLabel = computed(() =>
-    props.holdUntil === null
-        ? null
-        : new Date(props.holdUntil).toLocaleString(),
+    props.holdUntil === null ? null : formatDateTime(props.holdUntil),
 );
 
 // The id of the account currently starting a checkout — only that

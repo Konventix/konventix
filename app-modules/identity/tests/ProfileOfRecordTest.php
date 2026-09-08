@@ -22,6 +22,7 @@ function validProfilePayload(User $user, array $overrides = []): array
         'statusEmoji' => '🚀',
         'socialLinks' => ['x' => 'ada', 'website' => 'https://example.test'],
         'visibility' => 'internal',
+        'timezone' => 'Europe/Berlin',
     ], $overrides);
 }
 
@@ -35,6 +36,7 @@ it('updates the profile-of-record', function (): void {
         'statusEmoji' => '🚀',
         'socialLinks' => ['x' => 'ada', 'website' => 'https://example.test'],
         'visibility' => 'internal',
+        'timezone' => 'Europe/Berlin',
     ])->assertRedirect();
 
     $user->refresh();
@@ -126,6 +128,7 @@ it('normalizes empty tagline and status emoji to null and empty social links to 
         'username' => 'ada-lovelace', 'tagline' => '', 'statusEmoji' => '',
         'socialLinks' => ['steam' => '', 'x' => ''],
         'visibility' => 'internal',
+        'timezone' => 'Europe/Berlin',
     ])->assertRedirect();
 
     $user->refresh();

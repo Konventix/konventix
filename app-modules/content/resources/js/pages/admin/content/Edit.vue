@@ -10,7 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
-import { browserTimezone, formatDateTime, withZoneName } from '@/lib/datetime';
+import { formatDateTime, viewerTimezone, withZoneName } from '@/lib/datetime';
 import {
     archive as archiveEntry,
     index as contentIndex,
@@ -329,7 +329,7 @@ function archive(): void {
                                 id="entry-publish-at-hint"
                                 class="text-xs text-text-muted"
                             >
-                                Times in your timezone ({{ browserTimezone }}).
+                                Times in your timezone ({{ viewerTimezone() }}).
                                 <template v-if="publishAtEcho">
                                     = {{ publishAtEcho }} — a time that does not
                                     exist on that date moves to the next one.
