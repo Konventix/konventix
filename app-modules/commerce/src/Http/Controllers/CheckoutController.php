@@ -92,6 +92,21 @@ class CheckoutController
         $order = $this->orderFor($registration);
         $consentSlots = $this->consentSlots();
 
+        // GitLab #205: a republished contract text is settled before the pay
+        // button, not silently behind it. Checked before validation, and the
+        // remembered intent is this order's own pay page rather than the
+        // POST — see `CartController::checkout()` for the same two reasons.
+        $outstandingUrl = $this->outstandingConsentUrl($consentSlots);
+
+        if ($outstandingUrl !== null) {
+            $request->session()->put(
+                'url.intended',
+                route('commerce.pay.show', ['registration' => $registration], absolute: false),
+            );
+
+            return redirect()->to($outstandingUrl);
+        }
+
         // The AGB and the Widerrufsbelehrung are confirmed before the order
         // button, not after it (GitLab #2). `accepted` puts the error on
         // `accept_terms`, which is the field the control raised it from
@@ -201,6 +216,26 @@ class CheckoutController
                 'props' => $entry['props'],
             ])
             ->all());
+    }
+
+    /**
+     * Where a contribution says this payer must settle an outstanding
+     * agreement before the order may be paid, or null when none says so
+     * (GitLab #205). Same as `CartController::outstandingConsentUrl()`.
+     *
+     * @param  list<array{module: string, component: string, props: array<string, mixed>}>  $consentSlots
+     */
+    private function outstandingConsentUrl(array $consentSlots): ?string
+    {
+        foreach ($consentSlots as $slot) {
+            $url = $slot['props']['outstandingUrl'] ?? null;
+
+            if (is_string($url) && $url !== '') {
+                return $url;
+            }
+        }
+
+        return null;
     }
 
     /**

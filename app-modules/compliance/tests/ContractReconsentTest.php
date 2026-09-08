@@ -9,6 +9,7 @@ use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Compliance\Support\OutstandingConsents;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Slots\SlotRegistry;
 
 /**
  * The narrower question the login and checkout gates ask (GitLab #205):
@@ -115,4 +116,28 @@ it('raises a withdrawn agreement to a contract text again', function (): void {
     ]);
 
     expect(app(OutstandingConsents::class)->subjectHasOutstandingContract($user->getKey()))->toBeTrue();
+});
+
+/**
+ * How Commerce learns about it without ever reading a policy row (ADR-0004):
+ * the existing `checkout.consent` contribution answers with a URL, the same
+ * way it already answers whether a declaration is required at all.
+ */
+it('puts the consent screen on the checkout slot when a contract text is outstanding, and nothing there otherwise', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $version = PolicyVersion::factory()->for(Policy::factory()->terms())->published()->create([
+        'requires_consent' => true,
+        'lawful_basis' => LawfulBasis::Contract,
+    ]);
+
+    $props = fn (): array => app(SlotRegistry::class)->for('checkout.consent')->first()['props'];
+
+    expect($props()['outstandingUrl'])->toBe(route('policies.required', absolute: false));
+
+    Consent::factory()->for($version, 'policyVersion')->create(['subject_id' => $user->getKey()]);
+
+    expect($props()['outstandingUrl'])->toBeNull();
 });

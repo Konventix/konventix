@@ -178,6 +178,21 @@ final class CartController
     {
         $consentSlots = $this->consentSlots();
 
+        // GitLab #205: a text the sale itself rests on, republished since
+        // this payer last agreed, is settled before the order button — not
+        // recorded silently behind it. Checked before validation so the
+        // payer is not first told to tick a box on a page they are about to
+        // be sent away from. The intent is the cart page, deliberately, not
+        // this POST: agreeing has to land them back where they were, and a
+        // consent screen may not replay a purchase.
+        $outstandingUrl = $this->outstandingConsentUrl($consentSlots);
+
+        if ($outstandingUrl !== null) {
+            $request->session()->put('url.intended', route('commerce.cart.show', absolute: false));
+
+            return redirect()->to($outstandingUrl);
+        }
+
         // "Zahlungspflichtig bestellen" concludes the contract, so the
         // declaration is a field of this request, not a courtesy on the page
         // (GitLab #2). `accepted` is what puts the error on `accept_terms`
@@ -296,6 +311,29 @@ final class CartController
                 'props' => $entry['props'],
             ])
             ->all());
+    }
+
+    /**
+     * Where a contribution says this payer must settle an outstanding
+     * agreement before the order may be placed, or null when none says so
+     * (GitLab #205). A URL and nothing else: Commerce refuses the checkout
+     * without learning that a policy exists, the same way `required` tells
+     * it a declaration is owed without naming a document. Same as
+     * `CheckoutController::outstandingConsentUrl()`.
+     *
+     * @param  list<array{module: string, component: string, props: array<string, mixed>}>  $consentSlots
+     */
+    private function outstandingConsentUrl(array $consentSlots): ?string
+    {
+        foreach ($consentSlots as $slot) {
+            $url = $slot['props']['outstandingUrl'] ?? null;
+
+            if (is_string($url) && $url !== '') {
+                return $url;
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -27,6 +27,7 @@ use Konventix\Compliance\Listeners\RecordAuditableEvents;
 use Konventix\Compliance\Listeners\RecordCheckoutConsent;
 use Konventix\Compliance\Listeners\StartRetentionClock;
 use Konventix\Compliance\Support\CheckoutLegalTexts;
+use Konventix\Compliance\Support\OutstandingConsents;
 use Konventix\Compliance\Support\PolicyMarkdown;
 use Konventix\Event\Events\EventConcluded;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -335,6 +336,17 @@ class ComplianceServiceProvider extends ModuleServiceProvider
      * when the payer must confirm it before the order is placed — that is
      * all the rendering page needs to know about it.
      *
+     * Since GitLab #205 the contribution carries a second fact:
+     * `outstandingUrl`, the page the payer has to settle an outstanding
+     * *contract* agreement on before this purchase may proceed — null when
+     * there is none, which is the normal case. It is a URL rather than a
+     * policy for the same reason `required` is a boolean: Commerce refuses
+     * the checkout without ever learning that a policy exists. Only
+     * `LawfulBasis::Contract` raises it (`OutstandingConsents::
+     * subjectHasOutstandingContract()`); a consent-based text is what the
+     * `require-consent` route gate is for and must not stand between a payer
+     * and an order they already owe.
+     *
      * The closure is `static` deliberately — `SlotRegistry` is a singleton
      * that outlives the request under Octane, and a closure capturing `$this`
      * would pin this provider in memory with it.
@@ -349,7 +361,12 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 $brandId = app(BrandContext::class)->id();
                 $texts = $brandId === null ? [] : app(CheckoutLegalTexts::class)->forBrand($brandId);
 
+                $subjectId = auth()->id();
+                $outstanding = $subjectId !== null
+                    && app(OutstandingConsents::class)->subjectHasOutstandingContract((string) $subjectId);
+
                 return [
+                    'outstandingUrl' => $outstanding ? route('policies.required', absolute: false) : null,
                     // False on an instance that has published neither text:
                     // the control renders nothing rather than asking someone
                     // to agree to documents that do not exist, and the
