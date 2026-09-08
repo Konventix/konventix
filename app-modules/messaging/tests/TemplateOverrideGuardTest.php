@@ -6,6 +6,7 @@ use Konventix\Identity\Models\User;
 use Konventix\Messaging\Exceptions\UnsafeTemplateException;
 use Konventix\Messaging\Models\TemplateOverride;
 use Konventix\Messaging\Templates\TemplateOverrideGuard;
+use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
@@ -95,6 +96,26 @@ dataset('overrideGuardSafeIntegrationFragments', [
     'foreach with array access' => ['commerce.order-confirmation', "@foreach (\$lines as \$line)\n{{ \$line['label'] }}\n@endforeach"],
     'an email address in the text' => ['commerce.invoice-issued', '<p>Fragen? info@example.com</p>'],
 ]);
+
+it('accepts the shipped compliance.deadline-warning bodies, the last default the guard refused (#9)', function (): void {
+    $template = app(TemplateRegistry::class)->get('compliance.deadline-warning');
+    $guard = app(TemplateOverrideGuard::class);
+
+    expect($template)->not->toBeNull();
+
+    // Both locales, because the editor seeds the override textarea with
+    // whichever one the operator is editing.
+    foreach (array_keys($template->bodies) as $locale) {
+        expect(fn () => $guard->assertSafe($template->bodyFor($locale)))
+            ->not->toThrow(UnsafeTemplateException::class);
+    }
+
+    // The whole point: the branch is an `@if` over a payload field, not a
+    // ternary with `abs()` in it.
+    expect($template->bodyFor('de'))->toContain('@if ($daysLeft < 0)')
+        ->and($template->bodyFor('de'))->toContain('{{ $daysOverdue }}')
+        ->and($template->bodyFor('de'))->not->toContain('abs(');
+});
 
 it('refuses an unsafe fragment', function (string $fragment): void {
     expect(fn () => app(TemplateOverrideGuard::class)->assertSafe($fragment))

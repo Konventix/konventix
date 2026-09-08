@@ -192,23 +192,21 @@ it('renders every registered template\'s sample without error, in every locale i
  * exists to reject. This loop proves every registered default round-trips
  * through the same guard `SaveTemplateOverride` applies, so a future
  * template that ships with a richer expression fails the suite instead of
- * failing silently in the editor. `compliance.deadline-warning` is the one
- * known, deliberate exception (see its own TODO and messaging/TODO.md).
+ * failing silently in the editor.
+ *
+ * There are no exceptions any more: `compliance.deadline-warning` was the
+ * last one, and GitLab #9 closed it — its ternary moved into an `@if` block
+ * over a payload field the class now computes. A template that needs an
+ * exception here needs a payload field instead.
  */
 it('keeps every registered template\'s subjects and bodies guard-legal, so the editor can round-trip its own defaults', function (): void {
     $registry = app(TemplateRegistry::class);
     $guard = app(TemplateOverrideGuard::class);
     $templates = $registry->all();
 
-    $allowedExceptions = ['compliance.deadline-warning'];
-
     expect($templates)->not->toBeEmpty();
 
     foreach ($templates as $template) {
-        if (in_array($template->key, $allowedExceptions, true)) {
-            continue;
-        }
-
         foreach (array_keys($template->subjects) as $locale) {
             try {
                 $guard->assertSafe($template->subjectFor($locale));

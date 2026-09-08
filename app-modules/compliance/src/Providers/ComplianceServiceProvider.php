@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Compliance\Providers;
 
+use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
@@ -21,6 +22,7 @@ use Konventix\Compliance\Gdpr\ComplianceGdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Compliance\Http\Middleware\EnsurePoliciesAccepted;
 use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
+use Konventix\Compliance\Listeners\FlagOutstandingContractConsent;
 use Konventix\Compliance\Listeners\NotifySubjectOfRequestOutcome;
 use Konventix\Compliance\Listeners\PruneAuditTrail;
 use Konventix\Compliance\Listeners\RecordAuditableEvents;
@@ -116,6 +118,13 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // module uses.
         Event::listen(EventConcluded::class, StartRetentionClock::class);
         Event::listen(RetentionPeriodElapsed::class, PruneAuditTrail::class);
+
+        // GitLab #205: the login gate's question is Compliance's, and the
+        // answer crosses to Identity as one session key and nothing else
+        // (ADR-0004) — see the listener. Laravel's own `Login` event is the
+        // one moment the password, two-factor and social ways in all pass
+        // through.
+        Event::listen(Login::class, FlagOutstandingContractConsent::class);
 
         // A payer's declaration at a public checkout becomes Consent rows
         // here (GitLab #2). Commerce emits the event and never touches this
@@ -279,15 +288,30 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 'de' => 'Frist für einen Betroffenenantrag',
                 'en' => 'Data subject request deadline',
             ],
+            // An `@if` over `daysOverdue`, not a ternary with `abs()` in it
+            // (GitLab #9): every shipped default has to survive
+            // `TemplateOverrideGuard`, because the editor seeds the override
+            // textarea with exactly this text and an operator who adds a
+            // signature must be able to save it. Whitespace around every
+            // directive on purpose — a directive glued to a word is left as
+            // literal text by Blade (.ai/rules/app-modules-src.md).
             bodies: [
                 'de' => <<<'BLADE'
                     <p>Antrag {{ $requestId }} ({{ $requestType }}) — Frist {{ $deadline }}.</p>
-                    <p>{{ $daysLeft < 0 ? 'Überfällig seit '.abs($daysLeft).' Tag(en).' : 'Noch '.$daysLeft.' Tag(e).' }}</p>
+                    @if ($daysLeft < 0)
+                        <p>Überfällig seit {{ $daysOverdue }} Tag(en).</p>
+                    @else
+                        <p>Noch {{ $daysLeft }} Tag(e).</p>
+                    @endif
                     <p>{{ $openModules }} Modul(e) haben noch nicht geantwortet.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>Request {{ $requestId }} ({{ $requestType }}) — deadline {{ $deadline }}.</p>
-                    <p>{{ $daysLeft < 0 ? 'Overdue by '.abs($daysLeft).' day(s).' : $daysLeft.' day(s) left.' }}</p>
+                    @if ($daysLeft < 0)
+                        <p>Overdue by {{ $daysOverdue }} day(s).</p>
+                    @else
+                        <p>{{ $daysLeft }} day(s) left.</p>
+                    @endif
                     <p>{{ $openModules }} module(s) have not answered yet.</p>
                     BLADE,
             ],
@@ -297,6 +321,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 'requestType' => 'export',
                 'deadline' => '28.08.2026',
                 'daysLeft' => 5,
+                'daysOverdue' => 0,
                 'openModules' => 2,
             ],
         ));
