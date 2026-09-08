@@ -16,13 +16,13 @@ use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
-use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\CheckoutConsentSlots;
+use Konventix\Commerce\Settlement\PaymentWindow;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -57,6 +57,7 @@ class CheckoutController
     public function __construct(
         private readonly SettlementAdapterRegistry $registry,
         private readonly CheckoutConsentSlots $consentSlots,
+        private readonly PaymentWindow $paymentWindow,
     ) {}
 
     public function show(Request $request, string $registration): Response|RedirectResponse
@@ -79,6 +80,9 @@ class CheckoutController
             ->latest('created_at')
             ->first();
 
+        $hold = $this->holdFor($order);
+        $refusal = $this->refusalReason($order, $hold);
+
         return Inertia::render('pay/Show', [
             'registrationId' => $registration,
             'order' => [
@@ -99,6 +103,15 @@ class CheckoutController
                 $this->registry->forProvider($account->provider),
             )->toArray())->values()->all(),
             'paymentStatus' => $latestPayment?->status->value,
+            // #131, whole-branch review finding 2: the payment window this
+            // order really has — sixty minutes from placement on a brand
+            // that offers a hosted checkout, null on one that settles by
+            // bank transfer. Said out loud here because
+            // `ExpireRegistrationOrders` acts on it; a page that invited a
+            // payment it was about to orphan was the defect.
+            'holdUntil' => $hold?->toIso8601String(),
+            'payable' => $refusal === null,
+            'refusalReason' => $refusal,
             // ADR-0057 point 4: the day the money is owed back by, so a
             // reversed order reads as "owed again until …" rather than as an
             // ordinary unpaid one. Null for every other status.
@@ -130,13 +143,11 @@ class CheckoutController
             return $redirect;
         }
 
-        // The AGB and the Widerrufsbelehrung are confirmed before the order
-        // button, not after it (GitLab #2). `accepted` puts the error on
-        // `accept_terms`, which is the field the control raised it from
-        // (ADR-0055). Only demanded where something is published to accept.
-        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
-            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
-            : ['account' => ['required', 'ulid']]);
+        // Every refusal is settled before validation (review 6 parked nit
+        // B): a POST against an order whose window has lapsed has to answer
+        // with that fact, not with an `accept_terms` error about a form the
+        // page no longer shows.
+        $refusal = $this->refusalReason($order, $this->holdFor($order));
 
         // ADR-0057 point 3: a reversal revives the receivable — the sale
         // stands and the amount is owed again, and `RecordPaymentSuccess`
@@ -160,6 +171,23 @@ class CheckoutController
             409,
             'This order is already settled.',
         );
+
+        // Only the window refusal can still be standing here, and it is a
+        // sentence on the form rather than a 409 for the same reason
+        // `startOrder()` gives: this order is linked from a mail, and a
+        // payer who arrives a minute after the deadline deserves to read
+        // why instead of meeting an error page (#131, finding 2).
+        if ($refusal !== null) {
+            throw ValidationException::withMessages(['account' => $refusal]);
+        }
+
+        // The AGB and the Widerrufsbelehrung are confirmed before the order
+        // button, not after it (GitLab #2). `accepted` puts the error on
+        // `accept_terms`, which is the field the control raised it from
+        // (ADR-0055). Only demanded where something is published to accept.
+        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
+            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
+            : ['account' => ['required', 'ulid']]);
 
         $account = $this->offeredAccounts($order)->firstWhere('id', $validated['account']);
 
@@ -221,6 +249,12 @@ class CheckoutController
     {
         $model = $this->payableOrderFor($request, $order);
 
+        $ownPage = $this->registrationPageFor($model);
+
+        if ($ownPage !== null) {
+            return $ownPage;
+        }
+
         $consentSlots = $this->consentSlots->contributions();
         $redirect = $this->consentRedirect(
             $request,
@@ -234,6 +268,10 @@ class CheckoutController
 
         $latestPayment = $this->latestPaymentFor($model);
         $hold = $this->holdFor($model);
+        // Once per render (review 6 parked nit C): the answer carries a
+        // `Payment::exists()` query, and asking it twice cost one for
+        // nothing.
+        $refusal = $this->refusalReason($model, $hold);
 
         return Inertia::render('pay/Order', [
             'order' => [
@@ -259,8 +297,8 @@ class CheckoutController
             // page then says the reservation is gone rather than offering a
             // button that cannot help.
             'holdUntil' => $hold?->toIso8601String(),
-            'payable' => $this->refusalReason($model, $hold) === null,
-            'refusalReason' => $this->refusalReason($model, $hold),
+            'payable' => $refusal === null,
+            'refusalReason' => $refusal,
             'consentSlots' => $consentSlots,
         ]);
     }
@@ -281,6 +319,13 @@ class CheckoutController
     public function startOrder(Request $request, string $order): SymfonyResponse
     {
         $model = $this->payableOrderFor($request, $order);
+
+        $ownPage = $this->registrationPageFor($model);
+
+        if ($ownPage !== null) {
+            return $ownPage;
+        }
+
         $consentSlots = $this->consentSlots->contributions();
 
         $redirect = $this->consentRedirect(
@@ -293,15 +338,18 @@ class CheckoutController
             return $redirect;
         }
 
-        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
-            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
-            : ['account' => ['required', 'ulid']]);
-
+        // Before validation (review 6 parked nit B): a POST against an order
+        // whose reservation has lapsed answered with an `accept_terms` error
+        // about a form this page hides, instead of with the refusal itself.
         $refusal = $this->refusalReason($model, $this->holdFor($model));
 
         if ($refusal !== null) {
             throw ValidationException::withMessages(['account' => $refusal]);
         }
+
+        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
+            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
+            : ['account' => ['required', 'ulid']]);
 
         $account = $this->offeredAccounts($model)->firstWhere('id', $validated['account']);
 
@@ -335,8 +383,7 @@ class CheckoutController
 
     /**
      * The order this request may pay, or 404. The buyer check is the
-     * authorization (see `showOrder()`); a registration order is sent to
-     * its own page instead of being served here twice.
+     * authorization (see `showOrder()`).
      */
     private function payableOrderFor(Request $request, string $order): Order
     {
@@ -347,6 +394,29 @@ class CheckoutController
         abort_unless($model->payer_user_id === (string) $request->user()->getAuthIdentifier(), 404);
 
         return $model;
+    }
+
+    /**
+     * A registration order's own public checkout page, or null when this is
+     * not a registration order (whole-branch review finding 7, review 6
+     * parked nit A).
+     *
+     * A direct registration order carries a payer
+     * (`CreateOrderOnSettlementRequested` passes the registrant), so the
+     * buyer check above passes and this page used to render one order at
+     * two payable URLs that refused it differently — `abort(409)` on one,
+     * a form error on the other, and only one of them showing the deadline.
+     * The order-addressed pair exists for a cart order (ADR-0047), which
+     * has no registration ULID to be addressed by; a registration order has
+     * one, and `ADR-0039`'s page is where it is paid.
+     */
+    private function registrationPageFor(Order $order): ?RedirectResponse
+    {
+        if ($order->settles_type !== 'registration') {
+            return null;
+        }
+
+        return redirect()->route('commerce.pay.show', ['registration' => $order->settles_id]);
     }
 
     /**
@@ -369,32 +439,39 @@ class CheckoutController
         // A cart order's hold is what reserves its stock and its
         // registration lines (ADR-0047 point 4). Past it, `ExpireCarts` is
         // about to cancel the order, and taking money for it would sell
-        // what has just been given back. A registration order has no cart
-        // and therefore no hold at all — `holdFor()` returns null and this
-        // clause never fires for one.
+        // what has just been given back. A cart order with no cart left has
+        // nothing to reserve either, so a missing hold refuses too.
         if ($order->settles_type === 'cart' && ($hold === null || $hold->isPast())) {
             return __('The reservation for this order has run out.');
+        }
+
+        // #131, whole-branch review finding 2: a *direct* registration
+        // order has no cart, and until this branch nothing on the payer's
+        // side knew it had a deadline at all —
+        // `ExpireRegistrationOrders` cancelled it sixty minutes after
+        // placement while this page still offered a pay button. A missing
+        // window is not a refusal here, unlike the cart arm: a
+        // bank-transfer brand's order genuinely has none and stays payable
+        // for as long as the transfer takes.
+        if ($order->settles_type === 'registration' && $this->paymentWindow->hasClosed($hold)) {
+            return __('The payment window for this order has run out.');
         }
 
         return null;
     }
 
     /**
-     * The deadline the checked-out cart behind this order carries, or null
-     * — for a registration order, or a cart order whose cart is gone.
+     * The deadline this order carries, or null when it has none.
      *
-     * Read, never written: the hold is fixed by the first placement and a
-     * retry does not renew it (review 6 finding 3).
+     * Read, never written: a cart order's hold is fixed by the first
+     * placement and a retry does not renew it (review 6 finding 3), and a
+     * registration order's window runs from the moment the order was placed.
+     * `Settlement\PaymentWindow` owns the rule for both, so no page can
+     * promise a deadline `ExpireRegistrationOrders` does not keep.
      */
     private function holdFor(Order $order): ?CarbonInterface
     {
-        if ($order->settles_type !== 'cart') {
-            return null;
-        }
-
-        return Cart::query()
-            ->where('checked_out_order_id', $order->getKey())
-            ->first()?->expires_at;
+        return $this->paymentWindow->endsFor($order);
     }
 
     private function latestPaymentFor(Order $order): ?Payment

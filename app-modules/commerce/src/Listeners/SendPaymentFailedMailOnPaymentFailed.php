@@ -9,6 +9,7 @@ use Konventix\Commerce\Data\PaymentFailedMailData;
 use Konventix\Commerce\Events\PaymentFailed;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Settlement\PayLink;
+use Konventix\Commerce\Settlement\PaymentWindow;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
@@ -90,6 +91,13 @@ final class SendPaymentFailedMailOnPaymentFailed
                 reason: $this->reasonSentence($event->reasonCode),
                 retryUrl: $retryUrl,
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
+                // #131, whole-branch review finding 2: the retry link is
+                // worth nothing if the payer does not know it has a
+                // deadline. `Settlement\PaymentWindow` is the same answer
+                // `ExpireRegistrationOrders` acts on, so this mail cannot
+                // invite a payment the sweep is about to orphan without
+                // saying when it stops.
+                payBy: app(PaymentWindow::class)->endsFor($order)?->format('d.m.Y H:i'),
             ),
             brandId: $event->brandId,
         ));

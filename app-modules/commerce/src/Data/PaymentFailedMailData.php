@@ -24,5 +24,13 @@ final class PaymentFailedMailData extends Data
         public readonly string $reason,
         public readonly string $retryUrl,
         public readonly string $ordersUrl,
+        /**
+         * The deadline the retry has, already formatted, or null when this
+         * order has none — a bank-transfer brand's registration order, or a
+         * cart order whose cart is gone (#131, whole-branch review finding
+         * 2). Null rather than an empty string so the template's `@if` is
+         * about a fact and not about a formatting accident.
+         */
+        public readonly ?string $payBy = null,
     ) {}
 }

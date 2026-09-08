@@ -197,6 +197,11 @@ const holdUntilLabel = computed(() =>
 
             <div
                 v-if="props.accounts.length > 0"
+                role="group"
+                aria-label="Payment options"
+                :aria-describedby="
+                    accountError ? 'pay-order-account-error' : undefined
+                "
                 class="flex flex-col items-start gap-2"
             >
                 <Button
@@ -218,7 +223,15 @@ const holdUntilLabel = computed(() =>
                     Confirm the documents above to pay.
                 </p>
 
-                <InputError :message="accountError" />
+                <!--
+                    The refusal is linked to the control it is about
+                    (.ai/rules/js.md): `InputError` carries no `id` prop of
+                    its own yet, so the id sits on the wrapper the button
+                    group points at (review 6 parked nit D).
+                -->
+                <div id="pay-order-account-error">
+                    <InputError :message="accountError" />
+                </div>
             </div>
 
             <p v-else class="text-sm text-text-muted">

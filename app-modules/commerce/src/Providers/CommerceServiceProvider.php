@@ -706,6 +706,10 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Guten Tag,</p>
                     <p>Ihre Zahlung zur Bestellung <strong>{{ $orderNumberShort }}</strong>
                     ist fehlgeschlagen. {{ $reason }}</p>
+                    @if ($payBy)
+                    <p>Bitte schließen Sie die Zahlung bis {{ $payBy }} ab — danach wird die
+                    Bestellung storniert und das Reservierte wieder freigegeben.</p>
+                    @endif
                     <p><a href="{{ $retryUrl }}">Zahlung erneut versuchen</a></p>
                     <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
                     BLADE,
@@ -713,6 +717,10 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Hello,</p>
                     <p>your payment for order <strong>{{ $orderNumberShort }}</strong>
                     failed. {{ $reason }}</p>
+                    @if ($payBy)
+                    <p>Please complete the payment by {{ $payBy }} — after that the order is
+                    cancelled and what it held goes back on sale.</p>
+                    @endif
                     <p><a href="{{ $retryUrl }}">Try payment again</a></p>
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
@@ -723,6 +731,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 'reason' => 'Die Karte wurde abgelehnt.',
                 'retryUrl' => 'https://example.test/pay/A1B2C3',
                 'ordersUrl' => 'https://example.test/my/orders',
+                'payBy' => '08.09.2026 18:00',
             ],
         ));
 

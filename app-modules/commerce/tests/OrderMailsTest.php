@@ -15,6 +15,7 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
+use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Data\SendMessageData;
@@ -298,6 +299,56 @@ it('picks the registration checkout as the retry link for a registration-settled
             && $payload['reason'] === 'Die Zahlung wurde abgebrochen.'
             && str_contains($payload['retryUrl'], '/pay/registration/'.$order->settles_id);
     });
+});
+
+/**
+ * #131, whole-branch review finding 2: the retry link invited a payment
+ * `ExpireRegistrationOrders` was about to orphan, and the mail said nothing
+ * about the deadline. `Settlement\PaymentWindow` is the sweep's own answer,
+ * so the mail and the sweep cannot disagree.
+ */
+it('names the payment deadline in the payment-failed mail for a registration order (#131)', function (): void {
+    $this->freezeTime();
+    $brand = $this->withBrand();
+    $payer = orderMailsRecipient($brand->id);
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
+    Queue::fake();
+
+    $order = Order::factory()->create(['settles_type' => 'registration', 'payer_user_id' => $payer->id]);
+
+    event(new PaymentFailed(
+        paymentId: (string) Str::ulid(),
+        orderId: $order->id,
+        brandId: $brand->id,
+        settlementMethod: 'mollie',
+        reasonCode: 'canceled',
+        failedAt: now()->toIso8601String(),
+    ));
+
+    $expected = $order->created_at->copy()->addMinutes(Cart::CHECKOUT_GRACE_MINUTES)->format('d.m.Y H:i');
+
+    Queue::assertPushedOn('messaging', SendQueuedMessage::class, fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-failed'
+        && $job->message->payload->toArray()['payBy'] === $expected);
+});
+
+it('names no deadline for a bank-transfer brand, which has none (#131)', function (): void {
+    $brand = $this->withBrand();
+    $payer = orderMailsRecipient($brand->id);
+    Queue::fake();
+
+    $order = Order::factory()->create(['settles_type' => 'registration', 'payer_user_id' => $payer->id]);
+
+    event(new PaymentFailed(
+        paymentId: (string) Str::ulid(),
+        orderId: $order->id,
+        brandId: $brand->id,
+        settlementMethod: 'manual',
+        reasonCode: 'canceled',
+        failedAt: now()->toIso8601String(),
+    ));
+
+    Queue::assertPushedOn('messaging', SendQueuedMessage::class, fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-failed'
+        && $job->message->payload->toArray()['payBy'] === null);
 });
 
 it('logs a warning and sends nothing when a failed payment has no payer', function (): void {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
@@ -327,4 +328,85 @@ it('shows a reversed order as owed again, with the deadline its reversal carries
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('order.status', 'payment_reversed')
             ->where('repayDueOn', '2026-09-14'));
+});
+
+/**
+ * Whole-branch review finding 2. #131 gave a direct registration order the
+ * carts' own sixty-minute payment window and a sweep that cancels it; #5
+ * put pay links to that order in the confirmation and payment-failed mails
+ * and on `/my/orders`. Nothing on the payer's side said the deadline
+ * existed, and `start()` took money for an order the sweep was about to
+ * cancel — money `RecordPaymentSuccess` then records as `PaymentUnapplied`
+ * and an operator has to notice.
+ */
+it('states the payment window on the registration pay page (#131)', function (): void {
+    $this->freezeTime();
+    [$registrationId, $order] = checkoutPageOrder();
+
+    $this->get('/pay/registration/'.$registrationId)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payable', true)
+            ->where('refusalReason', null)
+            ->where('holdUntil', $order->created_at->copy()->addMinutes(Cart::CHECKOUT_GRACE_MINUTES)->toIso8601String()));
+});
+
+it('refuses a registration order past its payment window, on the page and at the POST (#131)', function (): void {
+    $this->freezeTime();
+    [$registrationId, $order, $account] = checkoutPageOrder();
+
+    $order->forceFill(['created_at' => now()->subMinutes(Cart::CHECKOUT_GRACE_MINUTES + 1)])->save();
+
+    $this->get('/pay/registration/'.$registrationId)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payable', false)
+            ->where('refusalReason', 'The payment window for this order has run out.'));
+
+    // A sentence on the form, not an error page: this order is linked from
+    // a mail, and a payer who arrives a minute late deserves to read why.
+    $this->post('/pay/registration/'.$registrationId.'/start', ['account' => $account->id])
+        ->assertRedirect()
+        ->assertSessionHasErrors(['account' => 'The payment window for this order has run out.']);
+
+    expect(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+});
+
+it('leaves a bank-transfer brand\'s registration order payable however old it is (#131)', function (): void {
+    $this->freezeTime();
+    // No hosted account at all — the sweep never touches such an order
+    // (`ExpireRegistrationOrders`, fix round 1), so the page must not claim
+    // a deadline the brand never set.
+    [$registrationId, $order] = checkoutPageOrder(stripeConnected: false);
+
+    $order->forceFill(['created_at' => now()->subWeek()])->save();
+
+    $this->get('/pay/registration/'.$registrationId)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payable', true)
+            ->where('holdUntil', null));
+});
+
+/**
+ * Whole-branch review finding 7, review 6 parked nit A: `payableOrderFor()`
+ * promised that "a registration order is sent to its own page instead of
+ * being served here twice", and nothing did it — one order had two payable
+ * URLs that refused it differently.
+ */
+it('sends a registration order addressed by order id to its own pay page (#5)', function (): void {
+    [$registrationId, $order, $account, $payer] = checkoutPageOrder();
+
+    // A direct registration order does carry a payer
+    // (`CreateOrderOnSettlementRequested` passes the registrant), so the
+    // buyer check passes and the page used to render.
+    $order->forceFill(['payer_user_id' => $payer->getKey()])->save();
+
+    $this->get('/pay/order/'.$order->getKey())
+        ->assertRedirect(route('commerce.pay.show', ['registration' => $registrationId], absolute: false));
+
+    $this->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->id])
+        ->assertRedirect(route('commerce.pay.show', ['registration' => $registrationId], absolute: false));
+
+    expect(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
 });
