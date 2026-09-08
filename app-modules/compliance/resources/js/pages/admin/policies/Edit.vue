@@ -35,6 +35,7 @@ import {
     store as storeVersion,
     update as updateVersion,
 } from '@/routes/admin/policy-versions';
+import CheckoutLegalTextGapNotice from '../../../components/CheckoutLegalTextGapNotice.vue';
 import { toInstant, versionFormValues } from './versionForm';
 
 /**
@@ -71,6 +72,11 @@ type Props = {
      */
     checkoutRole: Konventix.Compliance.Data.CheckoutLegalTextRoleData | null;
     checkoutRoles: Konventix.Compliance.Data.CheckoutLegalTextRoleData[];
+    /**
+     * Brands whose checkout resolves neither text (#222) — this policy's
+     * own brand, or every brand for an operator-wide text.
+     */
+    checkoutGaps: Konventix.Compliance.Data.CheckoutLegalTextGapData[];
     versions: VersionRow[];
     selected:
         | (Konventix.Compliance.Data.PolicyVersionData & {
@@ -214,6 +220,18 @@ function openVersion(id: string): void {
                 </Link>
             </Button>
         </AdminPageHeader>
+
+        <!--
+            #222: the warning follows the operator onto the page they fix it
+            on. `policiesUrl` is null here — the create dialog lives on the
+            list, and this page's own editor is the other way to close the
+            gap.
+        -->
+        <CheckoutLegalTextGapNotice
+            :gaps="props.checkoutGaps"
+            :roles="props.checkoutRoles"
+            :policies-url="policiesIndex().url"
+        />
 
         <div class="grid gap-6 lg:grid-cols-3">
             <div class="flex flex-col gap-6 lg:col-span-2">

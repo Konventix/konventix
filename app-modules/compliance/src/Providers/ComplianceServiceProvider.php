@@ -12,6 +12,8 @@ use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Compliance\Console\ApplyRetentionRulesCommand;
 use Konventix\Compliance\Console\SweepUnverifiedRequestsCommand;
 use Konventix\Compliance\Console\WatchSubjectRequestDeadlinesCommand;
+use Konventix\Compliance\Data\CheckoutLegalTextGapData;
+use Konventix\Compliance\Data\CheckoutLegalTextRoleData;
 use Konventix\Compliance\Enums\Permission;
 use Konventix\Compliance\Events\DataExportCompleted;
 use Konventix\Compliance\Events\DataExportRequested;
@@ -417,6 +419,38 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 ];
             },
             order: 10,
+        );
+
+        // #222: the operator decided "warn only, but with a bigger hint in
+        // the UI" — no hard refusal at checkout, so the console has to be
+        // loud instead, and loud means on every page an operator manages
+        // selling for a brand from. Commerce's settlement console is one of
+        // those, and Commerce may not ask Compliance anything directly
+        // (ADR-0004, `tests/Unit/ArchitectureTest.php`) — so it declares the
+        // slot and this fills it, the way every other cross-module panel on
+        // this codebase works.
+        //
+        // `static` for the reason above: `SlotRegistry` is a singleton that
+        // outlives the request under Octane.
+        $this->app->make(SlotRegistry::class)->add(
+            slot: 'admin.settlement-accounts',
+            module: 'compliance',
+            component: 'compliance/CheckoutLegalTextGapNotice',
+            props: static fn (): array => [
+                'gaps' => array_map(
+                    static fn (CheckoutLegalTextGapData $gap): array => $gap->toArray(),
+                    CheckoutLegalTextGapData::gapsForAllBrands(app(CheckoutLegalTexts::class)),
+                ),
+                'roles' => array_map(
+                    static fn (CheckoutLegalTextRoleData $role): array => $role->toArray(),
+                    CheckoutLegalTextRoleData::roles(),
+                ),
+                // The console's own policy list, where the missing text is
+                // created — a route name, resolved here, because Commerce's
+                // page may not name a Compliance route either.
+                'policiesUrl' => route('admin.policies.index', absolute: false),
+            ],
+            order: 1,
         );
     }
 
