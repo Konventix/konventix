@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Actions\CancelOrderForUnpaidReversal;
+use Konventix\Commerce\Actions\IssueCreditNote;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
@@ -20,6 +21,7 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
+use Konventix\Compliance\Models\AuditLogEntry;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -632,13 +634,38 @@ it('refunds a whole paid order from the console, crediting its invoice', functio
     // `withoutBrandScope()`: the request ran on the admin host, which
     // leaves no resolved brand and hardens BrandScope to zero rows
     // (ADR-0029, `.ai/rules/tests.md`).
+    /** @var CreditNote $creditNote */
+    $creditNote = CreditNote::withoutBrandScope()->where('order_id', $order->id)->sole();
+
     expect($order->refresh()->status)->toBe(OrderStatus::Refunded)
-        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+        // The operator's own words survive the round trip — the only thing
+        // this dialog durably persists. `reason_code` is the document's
+        // vocabulary, not the console's: `RecordRefund` always writes
+        // `refund`, which is why the dialog does not promise otherwise.
+        ->and($creditNote->reason_note)->toBe('Cancelled by phone.')
+        ->and($creditNote->reason_code)->toBe(IssueCreditNote::REASON_REFUND);
 
     Event::assertDispatched(OrderRefunded::class, fn (OrderRefunded $event): bool => $event->orderId === $order->id
         && $event->reasonCode === 'customer-request'
         && $event->creditNoteId !== null
         && $event->whole === true);
+    // Exactly once: a second dispatch would have Registration cancel twice
+    // (ADR-0057 point 5) and any refund counter double-count.
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
+
+    // Who sent the money back, and why — the console's own audit entry, the
+    // shape `SettlementAccountAdminController` writes for a saved Stripe key.
+    $audit = AuditLogEntry::query()->where('action', 'commerce.order.refunded')->sole();
+
+    expect($audit->actor_user_id)->toBe((string) $admin->id)
+        ->and($audit->subject_id)->toBe($order->id)
+        ->and($audit->brand_id)->toBe($order->brand_id)
+        ->and($audit->context)->toBe([
+            'reason_code' => 'customer-request',
+            'reason_note' => 'Cancelled by phone.',
+            'amount' => '119.00',
+            'currency' => $order->currency,
+        ]);
 });
 
 it('422s a refund the check-in guard blocks, naming the reason and leaving the order paid', function (): void {
@@ -686,11 +713,19 @@ it('422s a refund of an order that was never paid', function (): void {
     expect($order->refresh()->status)->toBe(OrderStatus::Pending);
 });
 
-it('422s a refund whose reason is not one the console offers', function (): void {
+it('422s a refund with no reason, or one the console does not offer', function (): void {
+    // The dialog pre-picks nothing, so "no reason" is a submission the
+    // server actually sees: an irreversible money movement is never
+    // justified by a default nobody chose.
     [, $admin] = commerceOperator(orderAdminRefundPermissions());
 
     $this->withBrand();
     $order = Order::factory()->paid()->create();
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [])
+        ->assertStatus(422)
+        ->assertInvalid(['reasonCode']);
 
     $this->actingAs($admin)
         ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
@@ -699,7 +734,8 @@ it('422s a refund whose reason is not one the console offers', function (): void
         ->assertStatus(422)
         ->assertInvalid(['reasonCode']);
 
-    expect($order->refresh()->status)->toBe(OrderStatus::Paid);
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and(AuditLogEntry::query()->where('action', 'commerce.order.refunded')->count())->toBe(0);
 });
 
 it('403s a refund without the issue-refunds capability', function (): void {

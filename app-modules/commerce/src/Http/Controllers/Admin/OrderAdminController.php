@@ -25,6 +25,7 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
+use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\ConsoleSelection;
@@ -374,8 +375,12 @@ class OrderAdminController
      * it (check the admission out, book the payment first), which is the
      * whole point of ADR-0037 refusing "explicitly and with a reason".
      */
-    public function refund(string $order, RefundOrderData $data, RefundOrder $refundOrder): RedirectResponse
-    {
+    public function refund(
+        string $order,
+        RefundOrderData $data,
+        RefundOrder $refundOrder,
+        AuditRecorder $auditRecorder,
+    ): RedirectResponse {
         Gate::authorize(Permission::IssueRefunds->value);
 
         /** @var Order $model */
@@ -390,6 +395,30 @@ class OrderAdminController
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['order' => $e->getMessage()]);
         }
+
+        // The explicit half of the audit trail (Round 6, D-BATCH), the same
+        // call `SettlementAccountAdminController::saveStripeSettings()`
+        // makes: `OrderRefunded` is no `AuditableEvent`, so nothing else
+        // would record *who* sent the full gross of an order back. #73's
+        // "jeder Vorgang erzeugt einen Audit-Eintrag" wants this for the
+        // whole flow; this is the refund's share of it.
+        //
+        // After the Action, never inside it: an audit write is not a
+        // business transaction and must not take part in a rollback
+        // (`AuditRecorder`'s own docblock). The reason and the note are
+        // recorded here in full — this row, not the credit note's document,
+        // is where an operator later reads why the money went back.
+        $auditRecorder->record(
+            action: 'commerce.order.refunded',
+            subjectId: $model->getKey(),
+            brandId: $model->brand_id,
+            context: [
+                'reason_code' => $data->reasonCode->value,
+                'reason_note' => $data->reasonNote,
+                'amount' => (string) $model->total_gross,
+                'currency' => $model->currency,
+            ],
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Order refunded.')]);
 

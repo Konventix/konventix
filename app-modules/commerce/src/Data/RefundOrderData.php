@@ -33,9 +33,12 @@ final class RefundOrderData extends Data
         public readonly RefundReason $reasonCode,
 
         /**
-         * Ends up verbatim on the credit note (`IssueCreditNote`'s
-         * `reason_note`), which is an immutable document (ADR-0031) — hence
-         * a length the column and a printed page can both carry.
+         * Stored verbatim in two places: `credit_notes.reason_note`
+         * (`IssueCreditNote`), where it is kept but never rendered — the
+         * document prints only "Grund: Erstattung" — and the audit entry
+         * the controller writes, which is where an operator reads it back.
+         * Bounded so it stays a sentence about one refund rather than a
+         * case file on a row that is never edited again (ADR-0031).
          */
         #[Nullable, StringType, Max(500)]
         public readonly ?string $reasonNote = null,

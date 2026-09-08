@@ -147,18 +147,39 @@ function submitBookPayment(): void {
  * plain-`confirm()` pattern the products page uses for its own destructive
  * action (`products/Edit.vue`).
  */
+function submitCancelReversed(): void {
+    if (
+        confirm(
+            'Cancel this order? Where an invoice exists it will be credited, and the reversed payment will no longer be chased.',
+        )
+    ) {
+        router.post(
+            cancelReversed(props.order.id).url,
+            {},
+            { preserveScroll: true },
+        );
+    }
+}
+
 /**
  * #73: the whole-order refund, the first console surface `RefundOrder` has
- * ever had (ADR-0037). A dialog rather than the plain `confirm()` the
- * cancel button uses, because this one collects something — the reason goes
- * onto the credit note, an immutable document (ADR-0031), so it is asked
- * for once and asked for properly.
+ * ever had (ADR-0037). A dialog rather than the plain `confirm()` the cancel
+ * button uses, because this one collects something.
+ *
+ * Where what it collects ends up, precisely: the note is stored on the
+ * credit-note record (`credit_notes.reason_note`) and the code travels on
+ * `OrderRefunded` — and both are written in full to the console's audit
+ * entry, which is where an operator reads back who refunded and why. Neither
+ * is printed on the Gutschrift itself: that document says "Grund: Erstattung"
+ * for every refund (`credit-notes/document.blade.php` renders `reason_code`,
+ * which `RecordRefund` always sets to `refund`). Printing the operator's
+ * reason on the document is a follow-up, not something this dialog may
+ * promise.
  *
  * The vocabulary is `Konventix\Commerce\Enums\RefundReason` restated: that
  * enum carries no `#[TypeScript]` because the Data class validating it is
- * inbound-only and generates no type. The server rejects anything not in
- * the set, so a drift here shows up as a form error rather than a bad
- * document.
+ * inbound-only and generates no type. The server rejects anything not in the
+ * set, so a drift here shows up as a form error rather than a wrong value.
  */
 const refundReasons = [
     { value: 'customer-request', label: 'The customer asked for it' },
@@ -169,11 +190,19 @@ const refundReasons = [
 
 const refundOpen = ref(false);
 
+/**
+ * Deliberately no pre-picked reason. `#[Required]` on
+ * `RefundOrderData::$reasonCode` refuses an empty submission and the 422
+ * lands on the field's own `InputError` (ADR-0055): defaulting to the most
+ * common answer would let an irreversible money movement be justified by an
+ * opinion nobody formed. It also keeps `isDirty` honest, so ADR-0038's
+ * "Unsaved changes" note appears exactly when something has been entered.
+ */
 const refundForm = useForm<{
-    reasonCode: (typeof refundReasons)[number]['value'];
+    reasonCode: (typeof refundReasons)[number]['value'] | null;
     reasonNote: string | null;
 }>({
-    reasonCode: 'customer-request',
+    reasonCode: null,
     reasonNote: null,
 });
 
@@ -192,27 +221,20 @@ const refundRefusal = computed(
 );
 
 function submitRefund(): void {
-    refundForm.post(refund(props.order.id).url, {
-        preserveScroll: true,
-        onSuccess: () => {
-            refundForm.reset();
-            refundOpen.value = false;
-        },
-    });
-}
-
-function submitCancelReversed(): void {
-    if (
-        confirm(
-            'Cancel this order? Where an invoice exists it will be credited, and the reversed payment will no longer be chased.',
-        )
-    ) {
-        router.post(
-            cancelReversed(props.order.id).url,
-            {},
-            { preserveScroll: true },
-        );
-    }
+    refundForm
+        // A textarea that was typed into and then emptied posts `''`; the
+        // note the credit note keeps is either words or nothing.
+        .transform((data) => ({
+            ...data,
+            reasonNote: data.reasonNote || null,
+        }))
+        .post(refund(props.order.id).url, {
+            preserveScroll: true,
+            onSuccess: () => {
+                refundForm.reset();
+                refundOpen.value = false;
+            },
+        });
 }
 </script>
 
@@ -279,9 +301,11 @@ function submitCancelReversed(): void {
                     <DialogDescription>
                         Return the full {{ order.totalGross }}
                         {{ order.currency }} through the account that took it.
-                        Where an invoice exists it is credited, and the reason
-                        below is printed on that credit note. This cannot be
-                        undone here.
+                        Where an invoice exists it is credited. The reason and
+                        the note below are recorded against this order for you
+                        and the next operator — they are not printed on the
+                        credit note the payer receives. This cannot be undone
+                        here.
                     </DialogDescription>
                 </DialogHeader>
                 <form
@@ -304,6 +328,12 @@ function submitCancelReversed(): void {
                                     : undefined
                             "
                         >
+                            <!-- Disabled, so it can be read but not chosen:
+                                 the operator picks a reason or the server
+                                 refuses the refund. -->
+                            <option :value="null" disabled>
+                                Choose a reason
+                            </option>
                             <option
                                 v-for="reason in refundReasons"
                                 :key="reason.value"
@@ -347,7 +377,11 @@ function submitCancelReversed(): void {
                         >
                             Cancel
                         </Button>
-                        <Button type="submit" :disabled="refundForm.processing">
+                        <Button
+                            type="submit"
+                            variant="destructive"
+                            :disabled="refundForm.processing"
+                        >
                             Refund {{ order.totalGross }} {{ order.currency }}
                         </Button>
                         <span
