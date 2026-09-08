@@ -42,7 +42,7 @@ it('names a two-factor limiter fortify can actually find', function (): void {
  * would land in its own bucket here while a real browser's would not.
  */
 it('throttles the two-factor challenge without ever needing a valid code', function (): void {
-    $user = User::factory()->create();
+    $user = User::factory()->withTwoFactor()->create();
 
     for ($attempt = 1; $attempt <= 5; $attempt++) {
         expect($this->withSession(['login.id' => $user->getKey()])
@@ -102,3 +102,60 @@ it('throttles a reset flood aimed at one address from many addresses of origin',
         ->post('/forgot-password', ['email' => 'victim@konventix.test'])
         ->assertStatus(429);
 });
+
+/**
+ * Review finding 7. The per-address limit alone gives a pool of a thousand
+ * source addresses five thousand guesses a minute against one account — a
+ * six-digit space in hours, a recovery-code list in far less. `login.id` is
+ * the account, so the ceiling can be stated per account as well.
+ */
+it('caps two-factor attempts per account however many addresses of origin ask', function (): void {
+    $user = User::factory()->withTwoFactor()->create();
+
+    // One attempt each from twenty distinct addresses: every one of them is
+    // well inside the per-address budget, and together they are the account's
+    // whole minute.
+    for ($attempt = 1; $attempt <= 20; $attempt++) {
+        expect($this->withServerVariables(['REMOTE_ADDR' => '198.51.100.'.$attempt])
+            ->withSession(['login.id' => $user->getKey()])
+            ->post('/two-factor-challenge', ['code' => '000000'])
+            ->getStatusCode())->not->toBe(429);
+    }
+
+    $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.200'])
+        ->withSession(['login.id' => $user->getKey()])
+        ->post('/two-factor-challenge', ['code' => '000000'])
+        ->assertStatus(429);
+});
+
+/**
+ * Review finding 5. `POST user/confirm-password` is a password oracle behind
+ * nothing but a session, and it is the gate in front of enabling and disabling
+ * two-factor authentication and reading the recovery codes. Whoever holds a
+ * stolen session cookie could try passwords there without limit.
+ */
+it('throttles the password confirmation prompt', function (): void {
+    $user = User::factory()->create();
+
+    for ($attempt = 1; $attempt <= 5; $attempt++) {
+        expect($this->actingAs($user)
+            ->post('/user/confirm-password', ['password' => 'not-the-password'])
+            ->getStatusCode())->not->toBe(429);
+    }
+
+    $this->actingAs($user)
+        ->post('/user/confirm-password', ['password' => 'not-the-password'])
+        ->assertStatus(429);
+});
+
+/**
+ * Review finding 6. The limiter closures read `email` out of the request to
+ * build their per-account key. Cast straight to string, an `email[]=a&email[]=b`
+ * submission raises "Array to string conversion", which `HandleExceptions`
+ * turns into an `ErrorException` — a 500 on three unauthenticated routes,
+ * reachable with nothing but a CSRF token.
+ */
+it('survives an email submitted as an array on every throttled auth route', function (string $uri): void {
+    $this->post($uri, ['email' => ['first@konventix.test', 'second@konventix.test']])
+        ->assertStatus(302);
+})->with(['/register', '/forgot-password', '/reset-password', '/login']);

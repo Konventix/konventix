@@ -25,6 +25,7 @@ use Konventix\Identity\Console\ReplayProfilesCommand;
 use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Gdpr\IdentitySubjectResolver;
+use Konventix\Identity\Http\Middleware\EnsureCredentialsAreStrings;
 use Konventix\Identity\Http\Responses\ConsentAwareLoginResponse;
 use Konventix\Identity\Http\Responses\ConsentAwareTwoFactorLoginResponse;
 use Konventix\Identity\Listeners\RecordBrandMembership;
@@ -256,8 +257,8 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
     private function configureRateLimiting(): void
     {
-        RateLimiter::for('login', function (Request $request) {
-            $throttleKey = Str::transliterate(Str::lower((string) $request->input(Fortify::username())).'|'.$request->ip());
+        RateLimiter::for('login', function (Request $request): Limit {
+            $throttleKey = self::submittedAddress($request, Fortify::username()).'|'.$request->ip();
 
             return Limit::perMinute(5)->by($throttleKey);
         });
@@ -277,12 +278,36 @@ class IdentityServiceProvider extends ModuleServiceProvider
         // Five a minute is the same generosity login gets: enough for someone
         // retyping a code off a phone, nowhere near enough to walk a
         // six-digit space or a recovery-code list.
-        RateLimiter::for('two-factor', function (Request $request): Limit {
-            $attempt = $request->hasSession()
-                ? (string) ($request->session()->get('login.id') ?? $request->session()->getId())
-                : 'no-session';
+        // The second limit is the one a pool of addresses cannot spend around
+        // (review finding 7): with the IP in the key, a thousand sources buy a
+        // thousand budgets against the same account, which is a six-digit
+        // space in hours and a recovery-code list in far less. `login.id` is
+        // the account, so the ceiling can be stated per account too — twenty a
+        // minute, well above any human retyping a code and far below a sweep.
+        RateLimiter::for('two-factor', function (Request $request): array {
+            $attempt = self::challengedAccount($request);
 
-            return Limit::perMinute(5)->by('two-factor|'.$attempt.'|'.($request->ip() ?? 'unknown'));
+            return [
+                Limit::perMinute(5)->by('two-factor|'.$attempt.'|'.($request->ip() ?? 'unknown')),
+                Limit::perMinute(20)->by('two-factor|account|'.$attempt),
+            ];
+        });
+
+        // `POST user/confirm-password` (review finding 5) is the same shape of
+        // endpoint one step further in: a password oracle behind nothing but a
+        // session, and the gate in front of enabling and disabling two-factor
+        // authentication and reading the recovery codes (Fortify's
+        // `password.confirm` middleware). Whoever holds a stolen session cookie
+        // could try passwords there without limit. Keyed on the authenticated
+        // user rather than on anything submitted, with the same per-address
+        // budget and account ceiling as the challenge above.
+        RateLimiter::for('password-confirmation', function (Request $request): array {
+            $account = (string) ($request->user()?->getAuthIdentifier() ?? 'guest');
+
+            return [
+                Limit::perMinute(5)->by('password-confirmation|'.$account.'|'.($request->ip() ?? 'unknown')),
+                Limit::perMinute(20)->by('password-confirmation|account|'.$account),
+            ];
         });
 
         // Registration, forgot-password and reset-password: two limits each,
@@ -295,7 +320,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
         // the same shape of endpoint: `PUT /settings/password`, the public
         // GDPR endpoints, and Fortify's own e-mail verification.
         $perIpAndAddress = fn (string $name): Closure => function (Request $request) use ($name): array {
-            $address = Str::transliterate(Str::lower((string) $request->input('email')));
+            $address = self::submittedAddress($request, 'email');
 
             return [
                 Limit::perMinute(6)->by($name.'|ip|'.($request->ip() ?? 'unknown')),
@@ -305,6 +330,46 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
         RateLimiter::for('registration', $perIpAndAddress('registration'));
         RateLimiter::for('password-reset', $perIpAndAddress('password-reset'));
+    }
+
+    /**
+     * The address a limiter keys its per-account budget on, as a string that
+     * exists whatever arrived.
+     *
+     * The `is_string` guard is the point (review finding 6): these closures run
+     * before validation, on unauthenticated routes, so `email[]=a&email[]=b`
+     * reaches them as an array. Cast straight to string that raises "Array to
+     * string conversion", and `HandleExceptions` turns the warning into an
+     * `ErrorException` — a 500 on `/login`, `/register`, `/forgot-password` and
+     * `/reset-password`, reachable with nothing but a CSRF token. Anything that
+     * is not a string shares one bucket, which is the right answer for input
+     * that cannot be an address.
+     */
+    private static function submittedAddress(Request $request, string $key): string
+    {
+        $raw = $request->input($key);
+
+        return is_string($raw)
+            ? Str::transliterate(Str::lower($raw))
+            : 'non-string';
+    }
+
+    /**
+     * The account a two-factor challenge belongs to: `login.id` is what
+     * Fortify's `RedirectIfTwoFactorAuthenticatable` writes into the session
+     * after the password step. The session id stands in for a request that
+     * carries no challenge at all, so a caller cannot buy an unlimited budget
+     * by not having one.
+     */
+    private static function challengedAccount(Request $request): string
+    {
+        if (! $request->hasSession()) {
+            return 'no-session';
+        }
+
+        $account = $request->session()->get('login.id');
+
+        return is_scalar($account) ? (string) $account : $request->session()->getId();
     }
 
     /**
@@ -320,24 +385,34 @@ class IdentityServiceProvider extends ModuleServiceProvider
      * ours to depend on. `route:cache` boots the application before it
      * serialises the collection, so the added middleware is cached too.
      *
-     * The named limiters are defined in `configureRateLimiting()` above; both
-     * cap per IP and per submitted address.
+     * The named limiters are defined in `configureRateLimiting()` above; each
+     * caps per address of origin and per account. `EnsureCredentialsAreStrings`
+     * rides along on the routes whose vendor controller reads the submitted
+     * address before validating it (review finding 6).
      */
     private function throttleUnhookedFortifyRoutes(): void
     {
-        $limiters = [
-            'register.store' => 'throttle:registration',
-            'password.email' => 'throttle:password-reset',
-            'password.update' => 'throttle:password-reset',
+        $credentials = EnsureCredentialsAreStrings::class;
+
+        $additions = [
+            'register.store' => ['throttle:registration', $credentials],
+            'password.email' => ['throttle:password-reset', $credentials],
+            'password.update' => ['throttle:password-reset', $credentials],
+            // Review finding 5: Fortify offers no limiter hook for this one
+            // either, and it is a password oracle behind a session.
+            'password.confirm.store' => ['throttle:password-confirmation'],
+            // Already throttled through `fortify.limiters.login`; it joins the
+            // list for the credential guard alone (review finding 6).
+            'login.store' => [$credentials],
         ];
 
-        $this->app->booted(function () use ($limiters): void {
+        $this->app->booted(function () use ($additions): void {
             // By name, but walked rather than looked up: RouteServiceProvider
             // refreshes the collection's name lookup in a `booted` callback of
             // its own, and ours is registered first — `getByName()` here still
             // answers null for a route that is very much registered.
             foreach (Route::getRoutes()->getRoutes() as $route) {
-                $middleware = $limiters[$route->getName()] ?? null;
+                $middleware = $additions[$route->getName()] ?? null;
 
                 if ($middleware !== null) {
                     $route->middleware($middleware);
