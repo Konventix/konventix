@@ -52,6 +52,51 @@ final class SdkStripeApi implements StripeApi
     }
 
     /**
+     * Two list calls, both filtered by the intent — the cheapest way to ask
+     * "did anything take this money back?" (#235). Neither list is paged:
+     * one payment intent carries at most a handful of disputes and refunds,
+     * and a page of a hundred is far more than any real payment has.
+     *
+     * @return array{
+     *     disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>,
+     *     refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>,
+     * }
+     */
+    public function fetchPaymentIntentReversals(string $paymentIntentId): array
+    {
+        $disputes = [];
+
+        foreach ($this->client->disputes->all(['payment_intent' => $paymentIntentId, 'limit' => 100])->data as $dispute) {
+            $fee = $dispute->balance_transactions[0]->fee ?? null;
+
+            $disputes[] = [
+                'id' => $dispute->id,
+                'status' => $dispute->status,
+                'amount' => (int) $dispute->amount,
+                'currency' => (string) $dispute->currency,
+                // Typed non-null by the SDK, unlike a refund's reason.
+                'reason' => $dispute->reason,
+                'fee' => is_int($fee) ? $fee : null,
+                'created' => $dispute->created,
+            ];
+        }
+
+        $refunds = [];
+
+        foreach ($this->client->refunds->all(['payment_intent' => $paymentIntentId, 'limit' => 100])->data as $refund) {
+            $refunds[] = [
+                'id' => $refund->id,
+                'amount' => (int) $refund->amount,
+                'currency' => (string) $refund->currency,
+                'reason' => is_string($refund->reason) ? $refund->reason : null,
+                'created' => $refund->created,
+            ];
+        }
+
+        return ['disputes' => $disputes, 'refunds' => $refunds];
+    }
+
+    /**
      * The intent is expanded rather than left as an id: a delayed
      * notification method (SEPA, bank transfer) completes the session while
      * it is still `unpaid`, and only the intent's own status distinguishes

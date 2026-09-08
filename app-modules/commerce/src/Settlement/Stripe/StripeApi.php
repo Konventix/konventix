@@ -29,6 +29,29 @@ interface StripeApi
     public function createRefund(array $params): void;
 
     /**
+     * Every dispute and every refund Stripe holds against one payment
+     * intent, asked once (#235). Stripe does not guarantee the order of its
+     * events: on the dispute test card `charge.dispute.created` arrives a
+     * second *before* `checkout.session.completed`, when the payment has no
+     * `provider_transaction_id` yet and nothing can correlate it — the
+     * endpoint acknowledges that event with 200 and Stripe never repeats
+     * it. Asking here at settlement, and again in the daily reconciliation
+     * of #71, is what stops a reversal being lost that way.
+     *
+     * Amounts are minor units, as everywhere in Stripe's API; `created` is
+     * the provider's own moment, which the reversal's deadline counts from
+     * (ADR-0057 point 4). `fee` is the chargeback fee the dispute's balance
+     * transaction reports — the organizer's own cost (ADR-0007), absent for
+     * a refund.
+     *
+     * @return array{
+     *     disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>,
+     *     refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>,
+     * }
+     */
+    public function fetchPaymentIntentReversals(string $paymentIntentId): array;
+
+    /**
      * The current state of a Checkout Session, read back from Stripe —
      * the fetch-back half Stripe otherwise does not need, because its
      * webhook is signed and complete (ADR-0039). The scheduled

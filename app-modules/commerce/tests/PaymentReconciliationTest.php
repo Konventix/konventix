@@ -67,6 +67,28 @@ final class ReconciliationTestStripeApi implements StripeApi
         return new StripeCheckoutSession(id: 'cs_unused', url: 'https://checkout.stripe.test/unused');
     }
 
+    /**
+     * What Stripe holds against the payment intent (#235). Empty unless a
+     * test says otherwise, and every question is recorded so a test can
+     * prove the sweep asks once per payment.
+     *
+     * @var array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     */
+    public array $reversals = ['disputes' => [], 'refunds' => []];
+
+    /** @var list<string> */
+    public array $reversalFetches = [];
+
+    /**
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     */
+    public function fetchPaymentIntentReversals(string $paymentIntentId): array
+    {
+        $this->reversalFetches[] = $paymentIntentId;
+
+        return $this->reversals;
+    }
+
     public function createRefund(array $params): void {}
 
     /**
@@ -216,6 +238,41 @@ function reconciliationTestMollieSettled(): array
         'amount' => '119.00',
         'currency' => 'EUR',
         'received_at' => now()->subDays(3),
+    ]);
+
+    return [$order, $payment];
+}
+
+/**
+ * A settled Stripe payment, the population #235 added to the settled pass:
+ * the payment intent is what a dispute or a refund names.
+ *
+ * @return array{0: Order, 1: Payment}
+ */
+function reconciliationTestStripeSettled(): array
+{
+    test()->withBrand();
+
+    $account = SettlementAccount::factory()->create([
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+    ]);
+
+    $order = Order::factory()->create([
+        'status' => OrderStatus::Paid,
+        'total_gross' => '119.00',
+        'currency' => 'EUR',
+        'paid_at' => now()->subDay(),
+    ]);
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'settlement_account_id' => $account->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'external_id' => 'cs_recon_settled',
+        'provider_transaction_id' => 'pi_recon_settled',
+        'amount' => '119.00',
+        'currency' => 'EUR',
+        'received_at' => now()->subDay(),
     ]);
 
     return [$order, $payment];
@@ -608,4 +665,108 @@ it('runs the pending pass hourly and the settled pass daily', function (): void 
     expect($entries)->toHaveCount(2)
         ->and($entries->get('0 * * * *'))->toContain('--pending')
         ->and($entries->get('40 6 * * *'))->toContain('--settled');
+});
+
+it('finds a Stripe dispute whose notification was lost in the race with the settlement', function (): void {
+    // #235: Stripe sent `charge.dispute.created` one second before
+    // `checkout.session.completed`, when the payment carried no payment
+    // intent yet — the endpoint acknowledged it with 200 and Stripe never
+    // repeated it. The settled pass asks the API instead of waiting.
+    [$order, $payment] = reconciliationTestStripeSettled();
+
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->reversals = [
+        'disputes' => [[
+            'id' => 'dp_recon_1',
+            'status' => 'lost',
+            'amount' => 11900,
+            'currency' => 'eur',
+            'reason' => 'fraudulent',
+            'fee' => 1500,
+            'created' => now()->subDay()->getTimestamp(),
+        ]],
+        'refunds' => [],
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    Event::fake([PaymentReversed::class]);
+
+    $this->artisan('commerce:reconcile-payments --settled')
+        ->expectsOutputToContain('1 reversal(s) found')
+        ->assertSuccessful();
+
+    $reversal = PaymentReversal::withoutBrandScope()->sole();
+
+    expect($stripe->reversalFetches)->toBe(['pi_recon_settled'])
+        ->and($reversal->kind)->toBe(ReversalKind::Dispute)
+        ->and($reversal->status)->toBe(ReversalStatus::Final)
+        ->and($reversal->provider_reference)->toBe('dp_recon_1')
+        ->and((string) $reversal->amount)->toBe('119.00')
+        ->and((string) $reversal->fee_amount)->toBe('15.00')
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Reversed)
+        ->and($order->refresh()->status)->toBe(OrderStatus::PaymentReversed);
+
+    Event::assertDispatched(PaymentReversed::class);
+});
+
+it('records the same Stripe dispute once however often the sweep runs', function (): void {
+    // The unique `(provider, provider_reference)` key of ADR-0057 point 1:
+    // a daily sweep re-reads the same dispute for as long as the payment
+    // stays in the window, and must report it as news exactly once.
+    [$order] = reconciliationTestStripeSettled();
+
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->reversals = [
+        'disputes' => [[
+            'id' => 'dp_recon_twice',
+            'status' => 'lost',
+            'amount' => 11900,
+            'currency' => 'eur',
+            'reason' => null,
+            'fee' => null,
+            'created' => now()->subDay()->getTimestamp(),
+        ]],
+        'refunds' => [],
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    Event::fake([PaymentReversed::class]);
+
+    $this->artisan('commerce:reconcile-payments --settled')->assertSuccessful();
+    $this->artisan('commerce:reconcile-payments --settled')->assertSuccessful();
+
+    expect(PaymentReversal::withoutBrandScope()->count())->toBe(1)
+        ->and($stripe->reversalFetches)->toBe(['pi_recon_settled', 'pi_recon_settled'])
+        ->and($order->refresh()->status)->toBe(OrderStatus::PaymentReversed);
+
+    // The reversal is news exactly once: the second run converges on the
+    // row the first one wrote and announces nothing.
+    Event::assertDispatchedTimes(PaymentReversed::class, 1);
+});
+
+it('leaves a Stripe dispute the provider has not decided open', function (): void {
+    // An open dispute is money withheld, not money gone (ADR-0057 point 1):
+    // the row and the operator notice exist, the receivable does not revive.
+    [$order, $payment] = reconciliationTestStripeSettled();
+
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->reversals = [
+        'disputes' => [[
+            'id' => 'dp_recon_open',
+            'status' => 'needs_response',
+            'amount' => 11900,
+            'currency' => 'eur',
+            'reason' => 'fraudulent',
+            'fee' => null,
+            'created' => now()->subDay()->getTimestamp(),
+        ]],
+        'refunds' => [],
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    $this->artisan('commerce:reconcile-payments --settled')->assertSuccessful();
+
+    expect(PaymentReversal::withoutBrandScope()->sole()->status)->toBe(ReversalStatus::Open)
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
 });

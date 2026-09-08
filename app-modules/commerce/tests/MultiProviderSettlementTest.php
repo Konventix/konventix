@@ -41,6 +41,17 @@ final class MultiProviderSettlementTestFakeStripe implements StripeApi
         return new StripeCheckoutSession(id: 'cs_unused', url: 'https://stripe.test/unused');
     }
 
+    /**
+     * Nothing took this payment's money back (#235). Every fake here answers
+     * the empty pair unless its own test says otherwise.
+     *
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     */
+    public function fetchPaymentIntentReversals(string $paymentIntentId): array
+    {
+        return ['disputes' => [], 'refunds' => []];
+    }
+
     public function createRefund(array $params): void {}
 
     /**

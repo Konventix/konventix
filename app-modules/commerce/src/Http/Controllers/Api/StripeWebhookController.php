@@ -20,10 +20,12 @@ use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\MinorUnits;
 use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
+use Konventix\Commerce\Settlement\Stripe\StripeReversalCatchUp;
 use Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents;
 use Stripe\Event as StripeEvent;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\Webhook;
+use Throwable;
 use UnexpectedValueException;
 
 /**
@@ -52,6 +54,12 @@ use UnexpectedValueException;
  * `charge.dispute.funds_withdrawn` and `funds_reinstated` are
  * informational and deliberately ignored: the dispute's own lifecycle
  * already says what happened to the money.
+ *
+ * Stripe does not order those events against the settlement, though, and a
+ * reversal that arrives before it can be correlated would be acknowledged
+ * and lost (#235) — so `settled()` asks Stripe once, the moment the intent
+ * is known, whether it already holds a dispute or a refund against it. See
+ * `catchUpOnReversals()`.
  *
  * Unknown sessions and event types return 200 on purpose: a non-2xx makes
  * Stripe retry for days, and "not ours" (another environment against the
@@ -85,7 +93,7 @@ class StripeWebhookController
         // event cannot be handled here without becoming visible there.
         return match ($event->type) {
             StripeWebhookEvents::CheckoutSessionCompleted,
-            StripeWebhookEvents::CheckoutSessionAsyncPaymentSucceeded => $this->settled($event, $recordSuccess),
+            StripeWebhookEvents::CheckoutSessionAsyncPaymentSucceeded => $this->settled($event, $recordSuccess, $recordReversal),
             StripeWebhookEvents::CheckoutSessionAsyncPaymentFailed => $this->failed($event, $recordFailure, 'async_payment_failed'),
             StripeWebhookEvents::CheckoutSessionExpired => $this->failed($event, $recordFailure, 'checkout_expired', expired: true),
             StripeWebhookEvents::ChargeDisputeCreated => $this->disputeCreated($event, $recordReversal),
@@ -95,8 +103,11 @@ class StripeWebhookController
         };
     }
 
-    private function settled(StripeEvent $event, RecordPaymentSuccess $recordSuccess): JsonResponse
-    {
+    private function settled(
+        StripeEvent $event,
+        RecordPaymentSuccess $recordSuccess,
+        RecordPaymentReversal $recordReversal,
+    ): JsonResponse {
         $session = $event->data->object;
         $payment = $this->paymentFor($session);
 
@@ -112,9 +123,67 @@ class StripeWebhookController
 
         if (($session->payment_status ?? 'unpaid') !== 'unpaid') {
             $recordSuccess->handle($payment);
+
+            // Only now — with the intent stored and the payment settled —
+            // can a reversal that arrived first be correlated at all (#235).
+            $this->catchUpOnReversals($payment, $recordReversal);
         }
 
         return response()->json(['received' => true]);
+    }
+
+    /**
+     * Asks Stripe once, at settlement, whether it already holds a dispute or
+     * a refund against this payment intent (#235).
+     *
+     * The race this closes is real and reproducible: with the dispute test
+     * card Stripe sends `charge.dispute.created` a second *before*
+     * `checkout.session.completed`, when the payment carries no
+     * `provider_transaction_id` and nothing can correlate the dispute. That
+     * event is acknowledged with 200 — the only safe answer — and never
+     * repeated, so without this question the reversal is lost and the
+     * receivable never revives, while Stripe has withdrawn the money
+     * (walkthrough #69 run C, 2026-09-08).
+     *
+     * **A failed question never costs a settlement.** The money arrived and
+     * the order is paid before this runs; a Stripe outage, a revoked key or
+     * a deployment with no credentials at all must leave that standing, not
+     * turn into a 500 that makes Stripe retry a settlement it already
+     * delivered. The daily reconciliation of #71 asks the same question
+     * again, which is what makes swallowing this one safe.
+     */
+    private function catchUpOnReversals(Payment $payment, RecordPaymentReversal $recordReversal): void
+    {
+        try {
+            $reversals = app(StripeReversalCatchUp::class)->reversalsFor($payment);
+        } catch (Throwable $e) {
+            Log::warning('Stripe could not be asked about reversals at settlement; the reconciliation sweep asks again (#235).', [
+                'payment_id' => $payment->id,
+                'order_id' => $payment->order_id,
+                'provider_transaction_id' => $payment->provider_transaction_id,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
+        foreach ($reversals as $reversal) {
+            $recordReversal->handle(
+                payment: $payment,
+                kind: $reversal['kind'],
+                status: $reversal['status'],
+                amount: $reversal['amount'],
+                currency: $reversal['currency'],
+                providerReference: $reversal['providerReference'],
+                reasonCode: $reversal['reasonCode'],
+                feeAmount: $reversal['feeAmount'],
+                occurredAt: $reversal['occurredAt'],
+            );
+
+            // The next reversal decides against the row this one just wrote:
+            // a refund after a dispute reads the payment's new status.
+            $payment->refresh();
+        }
     }
 
     private function failed(
