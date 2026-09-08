@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Identity\Providers;
 
+use Closure;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Events\Verified;
@@ -11,6 +12,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
@@ -77,6 +79,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
         $this->configureFortifyResponses();
         $this->configureFortifyViews();
         $this->configureRateLimiting();
+        $this->throttleUnhookedFortifyRoutes();
 
         $this->commands([ReplayProfilesCommand::class]);
     }
@@ -257,6 +260,89 @@ class IdentityServiceProvider extends ModuleServiceProvider
             $throttleKey = Str::transliterate(Str::lower((string) $request->input(Fortify::username())).'|'.$request->ip());
 
             return Limit::perMinute(5)->by($throttleKey);
+        });
+
+        // #253: named in `config/fortify.php` under `limiters.two-factor`.
+        // Keyed on the login in progress, not on the e-mail — by the challenge
+        // step the address is no longer in the request; what identifies the
+        // attempt is `login.id` in the session (Fortify's
+        // RedirectIfTwoFactorAuthenticatable puts it there). Falling back to
+        // the session id covers a request that has no challenge at all, so a
+        // caller cannot get an unlimited budget by not having one. The IP
+        // joins the key so one attacker cannot spend another visitor's.
+        //
+        // Rotating the session to dodge this costs a fresh login, which the
+        // `login` limiter above already caps at five a minute.
+        //
+        // Five a minute is the same generosity login gets: enough for someone
+        // retyping a code off a phone, nowhere near enough to walk a
+        // six-digit space or a recovery-code list.
+        RateLimiter::for('two-factor', function (Request $request): Limit {
+            $attempt = $request->hasSession()
+                ? (string) ($request->session()->get('login.id') ?? $request->session()->getId())
+                : 'no-session';
+
+            return Limit::perMinute(5)->by('two-factor|'.$attempt.'|'.($request->ip() ?? 'unknown'));
+        });
+
+        // Registration, forgot-password and reset-password: two limits each,
+        // because the two abuses are different shapes. Per IP stops bulk
+        // account creation and enumeration sweeps; per submitted address
+        // stops one victim's inbox being flooded with reset mails from a
+        // rotating set of addresses, which per-IP alone does not.
+        //
+        // Six a minute is what the rest of this application already uses for
+        // the same shape of endpoint: `PUT /settings/password`, the public
+        // GDPR endpoints, and Fortify's own e-mail verification.
+        $perIpAndAddress = fn (string $name): Closure => function (Request $request) use ($name): array {
+            $address = Str::transliterate(Str::lower((string) $request->input('email')));
+
+            return [
+                Limit::perMinute(6)->by($name.'|ip|'.($request->ip() ?? 'unknown')),
+                Limit::perMinute(6)->by($name.'|address|'.$address),
+            ];
+        };
+
+        RateLimiter::for('registration', $perIpAndAddress('registration'));
+        RateLimiter::for('password-reset', $perIpAndAddress('password-reset'));
+    }
+
+    /**
+     * Registration, forgot-password and reset-password arrive from Fortify
+     * with nothing but `guest:` on them (#253) — user enumeration,
+     * reset-mail flooding and bulk account creation, all free. Fortify
+     * exposes no configuration hook for these three the way it does for
+     * login, verification and the two-factor challenge, so the routes it
+     * registered are wrapped after the fact.
+     *
+     * Done in an `booted()` callback because Fortify's own service provider
+     * registers the routes in its `boot()`, and provider boot order is not
+     * ours to depend on. `route:cache` boots the application before it
+     * serialises the collection, so the added middleware is cached too.
+     *
+     * The named limiters are defined in `configureRateLimiting()` above; both
+     * cap per IP and per submitted address.
+     */
+    private function throttleUnhookedFortifyRoutes(): void
+    {
+        $limiters = [
+            'register.store' => 'throttle:registration',
+            'password.email' => 'throttle:password-reset',
+            'password.update' => 'throttle:password-reset',
+        ];
+
+        $this->app->booted(function () use ($limiters): void {
+            // By name, but walked rather than looked up: RouteServiceProvider
+            // refreshes the collection's name lookup in a `booted` callback of
+            // its own, and ours is registered first — `getByName()` here still
+            // answers null for a route that is very much registered.
+            foreach (Route::getRoutes()->getRoutes() as $route) {
+                $middleware = $limiters[$route->getName()] ?? null;
+
+                if ($middleware !== null) {
+                    $route->middleware($middleware);
+                }
+            }
         });
     }
 
