@@ -20,6 +20,7 @@ use Konventix\Commerce\Data\UnappliedPaymentData;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
+use Konventix\Commerce\Exceptions\RefundEventRelayFailedException;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
@@ -392,6 +393,15 @@ class OrderAdminController
      * provider's own words and asks for a reconciliation rather than a retry.
      * A rejected key reads as a settings problem instead (review nit 7).
      *
+     * A failed *announcement* is the third case and the opposite of a
+     * refusal (fix round 1, review NEW-1): `RelayRefundEvents` runs inline
+     * under a `sync` queue, so its `RefundEventRelayFailedException` — also a
+     * `RuntimeException` — used to land in the arm above and tell the
+     * operator 422 about a refund that is recorded and whose money is gone,
+     * skipping the audit row with it. The money has moved; the only honest
+     * answer is that the refund stands and the follow-up needs looking at.
+     * So: audit row written, warning toast, redirect as success.
+     *
      * Recording the provider's existing refund automatically is deliberately
      * not attempted: no adapter's seam exposes a way to read a refund back,
      * and inventing a domain refund from an error string would be a document
@@ -407,6 +417,8 @@ class OrderAdminController
 
         /** @var Order $model */
         $model = Order::withoutBrandScope()->findOrFail($order);
+
+        $announcementFailed = false;
 
         try {
             $refundOrder->handle(
@@ -426,6 +438,17 @@ class OrderAdminController
                         ['message' => $e->getMessage()],
                     ),
             ]);
+        } catch (RefundEventRelayFailedException $e) {
+            // Caught before the arm below because it is a `RuntimeException`
+            // too, and means the opposite of one: the refund is recorded and
+            // the money is back with the payer, only the fan-out inside
+            // Konventix failed. Reported here as well as inside the relay, so
+            // the request that saw it leaves a trace of its own; then the
+            // method carries on to the audit row exactly as a clean refund
+            // does.
+            report($e);
+
+            $announcementFailed = true;
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['order' => $e->getMessage()]);
         }
@@ -451,10 +474,20 @@ class OrderAdminController
                 'reason_note' => $data->reasonNote,
                 'amount' => (string) $model->total_gross,
                 'currency' => $model->currency,
+                // Whether the seat, the quota and the admission were released
+                // with the money. An operator reconstructing "why is this
+                // registration still confirmed" reads it here rather than
+                // correlating a queue failure by timestamp.
+                'announcement_failed' => $announcementFailed,
             ],
         );
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Order refunded.')]);
+        Inertia::flash('toast', $announcementFailed
+            // Deliberately says nothing of the underlying error: the operator
+            // can act on "it is recorded, the release did not run", not on a
+            // consumer's exception message.
+            ? ['type' => 'warning', 'message' => __('The refund is recorded and the money is on its way back, but announcing it inside Konventix failed. The release of the seat is being retried — check the failed jobs before assuming it happened.')]
+            : ['type' => 'success', 'message' => __('Order refunded.')]);
 
         return back();
     }

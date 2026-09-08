@@ -25,17 +25,24 @@ use Throwable;
 final class RefundEventRelayFailedException extends RuntimeException
 {
     /**
+     * The single caller only builds this when it has something to report, but
+     * the guard is here rather than there (review NEW-5): a future second
+     * caller must not turn a relay failure into an undefined-offset fatal in
+     * the middle of a refund that has already moved money.
+     *
      * @param  list<Throwable>  $failures
      */
     public function __construct(
         public readonly string $orderId,
         public readonly array $failures,
     ) {
+        $first = $failures === [] ? null : $failures[0];
+
         parent::__construct(sprintf(
             'Relaying the refund events for order [%s] failed for %d of them; the refund itself is recorded. First failure: %s',
             $orderId,
             count($failures),
-            $failures[0]->getMessage(),
-        ), previous: $failures[0]);
+            $first === null ? 'none reported' : $first->getMessage(),
+        ), previous: $first);
     }
 }

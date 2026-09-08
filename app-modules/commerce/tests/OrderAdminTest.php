@@ -12,6 +12,7 @@ use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\OrderCancelled;
+use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
@@ -732,6 +733,9 @@ it('refunds a whole paid order from the console, crediting its invoice', functio
             'reason_note' => 'Cancelled by phone.',
             'amount' => '119.00',
             'currency' => $order->currency,
+            // The clean path (fix round 1, NEW-1): the seat went with the
+            // money. Its counterpart is asserted true below.
+            'announcement_failed' => false,
         ]);
 });
 
@@ -970,6 +974,68 @@ it('reads a rejected provider key as a settings problem, not as a refusal (#236)
         ->assertInvalid(['order' => 'credentials']);
 
     expect($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+/**
+ * #236 fix round 1, review NEW-1: `RefundEventRelayFailedException` is a
+ * `RuntimeException`, and under a `sync` queue the relay runs inside the
+ * after-commit callback — so it landed in the arm meant for "nothing moved"
+ * and the operator was told 422 about a refund that had gone through, with
+ * no audit row and no toast. The money is back with the payer at that point;
+ * the only honest answer is that the refund stands and the follow-up needs
+ * looking at.
+ */
+it('reports a refund whose announcement failed as recorded, not as refused (#236)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+
+    // A cart order, so the refund emits `OrderLineCancelled` per line — the
+    // event whose consumer actually blew up on dev.
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'cart',
+        'settles_id' => (string) Str::ulid(),
+        'total_gross' => '11.90',
+    ]);
+    Invoice::factory()->create(['order_id' => $order->id]);
+    OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'position' => 1,
+        'settles_kind' => 'registration',
+        'settles_ref' => (string) Str::ulid(),
+    ]);
+
+    Event::listen(OrderLineCancelled::class, function (): void {
+        throw new RuntimeException('the consumer blew up');
+    });
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+            'reasonNote' => 'Cancelled by phone.',
+        ])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    // Recorded, and said to be recorded.
+    expect($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+
+    $toast = session('inertia.flash_data')['toast'];
+
+    expect($toast['type'])->toBe('warning')
+        ->and($toast['message'])->toContain('refund is recorded')
+        // The follow-up failure is named, but nothing of the provider's
+        // payload leaks into a message an operator reads.
+        ->and($toast['message'])->not->toContain('the consumer blew up');
+
+    // The audit row is the point: who sent the money back is not conditional
+    // on whether a downstream listener behaved.
+    $audit = AuditLogEntry::query()->where('action', 'commerce.order.refunded')->sole();
+
+    expect($audit->actor_user_id)->toBe((string) $admin->id)
+        ->and($audit->subject_id)->toBe($order->id)
+        ->and($audit->context['announcement_failed'])->toBeTrue();
 });
 
 it('403s a refund without the issue-refunds capability', function (): void {

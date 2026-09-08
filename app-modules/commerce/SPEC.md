@@ -389,7 +389,13 @@ BaFin/ZAG licensing.
 
   *The residual window.* The relay being a queued job puts Horizon's retries
   behind it, and a fan-out that keeps failing lands in `failed_jobs` where an
-  operator can see and replay it. What is still unowned is the moment between
+  operator can see and replay it. A replay is *safe* rather than *complete*:
+  it re-dispatches the whole list, and the consumers' own idempotence guards
+  (`CancelRegistrationForUndoneOrder` leaves an already-cancelled registration
+  alone) make the parts that took effect no-ops — which also means work
+  downstream of one of them, a waitlist promotion that failed after the quota
+  had been released, is not recovered by the replay. Treat `failed_jobs` as
+  the place the failure is visible, not as the remedy. What is still unowned is the moment between
   the commit and the push: an OOM or a worker recycle in that window leaves
   an order `refunded` with its registration confirmed and its quota consumed,
   and nothing to retry it. This is accepted rather than solved — an outbox
