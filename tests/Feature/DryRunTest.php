@@ -78,9 +78,6 @@ function dryRunSkippedRoutes(): array
         'entrance.delta' => 'device-token API',
         'entrance.signing-keys' => 'device-token API',
 
-        // Comes back from Stripe's hosted onboarding and calls Stripe.
-        'admin.settlement-accounts.stripe-return' => 'round trip through Stripe',
-
         // Monitoring, not a screen: outside the `web` group so it answers on
         // any host, and gated on a shared secret rather than a session.
         'health.json' => 'monitoring endpoint behind a shared secret',

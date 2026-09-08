@@ -54,29 +54,14 @@ final class CartCheckoutTestFakeStripe implements StripeApi
     /** @var list<array<string, mixed>> */
     public array $sessions = [];
 
-    public function createCheckoutSession(array $params, string $stripeAccountId): StripeCheckoutSession
+    public function createCheckoutSession(array $params): StripeCheckoutSession
     {
         $this->sessions[] = $params;
 
         return new StripeCheckoutSession(id: 'cs_cart_'.count($this->sessions), url: 'https://checkout.stripe.test/cart-session');
     }
 
-    public function createRefund(array $params, string $stripeAccountId): void {}
-
-    public function createConnectedAccount(string $displayName, string $contactEmail, string $country): string
-    {
-        return 'acct_x';
-    }
-
-    public function createOnboardingLink(string $stripeAccountId, string $returnUrl, string $refreshUrl): string
-    {
-        return 'https://stripe.test/link';
-    }
-
-    public function fetchAccount(string $stripeAccountId): array
-    {
-        return ['card_payments' => 'unknown'];
-    }
+    public function createRefund(array $params): void {}
 
     /**
      * Unused here: only `commerce:reconcile-payments` (#71) reads a session
@@ -84,7 +69,7 @@ final class CartCheckoutTestFakeStripe implements StripeApi
      *
      * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
      */
-    public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array
+    public function fetchCheckoutSession(string $sessionId): array
     {
         return [
             'status' => 'open',
@@ -115,10 +100,12 @@ function cartCheckoutVariant(int $capacity = 10): ProductVariant
 
 function cartCheckoutAccount(): SettlementAccount
 {
+    // A Stripe row is the brand's enablement flag; what makes it offered
+    // is this instance holding a key at all (ADR-0058 point 3).
+    config()->set('services.stripe.secret', 'sk_test_cart');
+
     $account = SettlementAccount::factory()->create([
         'provider' => SettlementAccount::PROVIDER_STRIPE,
-        'provider_account_id' => 'acct_cart_1',
-        'capabilities' => ['card_payments' => 'active'],
     ]);
 
     app()->instance(StripeApi::class, new CartCheckoutTestFakeStripe);

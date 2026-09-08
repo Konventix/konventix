@@ -35,8 +35,9 @@ use Throwable;
 /**
  * The scheduled provider reconciliation #71 asks for: "Ein regelmaessiger
  * Abgleich gegen den Provider meldet fehlende Vorgaenge."
- * `RefreshSettlementCapabilities` refreshes Stripe capabilities and nothing
- * else, so until this command a notification lost between the PSP and this
+ * Nothing else asks the providers anything on a schedule — the Stripe
+ * capability sweep this used to sit beside went with Connect (ADR-0058) —
+ * so until this command a notification lost between the PSP and this
  * deployment was found by the payer, not by us.
  *
  * Two questions, both asked of the provider:
@@ -73,9 +74,8 @@ use Throwable;
  * Everything here escapes BrandScope explicitly (ADR-0010): a console
  * command resolves no brand from a host.
  *
- * One payment's failure never aborts the sweep — a revoked API key or a
- * provider outage must not stall every other brand's reconciliation, the
- * same reasoning `RefreshSettlementCapabilities` states.
+ * One payment's failure never aborts the sweep: a revoked API key or a
+ * provider outage must not stall every other brand's reconciliation.
  */
 final class ReconcilePayments extends Command
 {
@@ -288,14 +288,13 @@ final class ReconcilePayments extends Command
         RecordPaymentSuccess $recordSuccess,
         RecordPaymentFailure $recordFailure,
     ): void {
-        $account = $this->accountFor($payment);
-        $stripeAccountId = $account?->provider_account_id;
-
-        if ($payment->external_id === null || ! is_string($stripeAccountId) || $stripeAccountId === '') {
+        if ($payment->external_id === null) {
             return;
         }
 
-        $session = app(StripeApi::class)->fetchCheckoutSession($payment->external_id, $stripeAccountId);
+        // Read back on this instance's own Stripe account (ADR-0058): the
+        // session id is the whole address, no account id travels with it.
+        $session = app(StripeApi::class)->fetchCheckoutSession($payment->external_id);
 
         if ($session['payment_intent'] !== null) {
             $payment->forceFill(['provider_transaction_id' => $session['payment_intent']])->save();

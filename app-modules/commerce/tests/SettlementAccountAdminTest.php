@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\ViewErrorBag;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Actions\ConnectSettlementAccount;
 use Konventix\Commerce\Events\SettlementAccountConnected;
@@ -23,69 +22,38 @@ use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
-use Stripe\Exception\ApiErrorException;
-use Stripe\Exception\InvalidRequestException;
 
 /**
  * ADR-0029/ADR-0039: the settlement-account console — connecting where a
- * brand's money goes. Stripe and Unzer SDK calls are faked at their seams.
+ * brand's money goes. The Unzer SDK call is faked at its seam; Stripe is
+ * faked only to prove it is never called at all, because enabling Stripe
+ * for a brand is a local flag since ADR-0058 — no account is created, no
+ * onboarding is started, nothing leaves the process.
  */
 final class SettlementAdminTestFakeStripe implements StripeApi
 {
-    /** @var list<array{displayName: string, contactEmail: string, country: string}> */
-    public array $accounts = [];
+    /** @var list<string> */
+    public array $calls = [];
 
-    /** @var list<array{accountId: string, returnUrl: string, refreshUrl: string}> */
-    public array $links = [];
-
-    /**
-     * What Stripe refuses this call with, when the test wants the SDK's own
-     * error rather than a happy path (#194).
-     */
-    public ?ApiErrorException $refuseWith = null;
-
-    public function createCheckoutSession(array $params, string $stripeAccountId): StripeCheckoutSession
+    public function createCheckoutSession(array $params): StripeCheckoutSession
     {
+        $this->calls[] = 'createCheckoutSession';
+
         return new StripeCheckoutSession(id: 'cs_x', url: 'https://stripe.test/x');
     }
 
-    public function createRefund(array $params, string $stripeAccountId): void {}
-
-    public function createConnectedAccount(string $displayName, string $contactEmail, string $country): string
+    public function createRefund(array $params): void
     {
-        if ($this->refuseWith !== null) {
-            throw $this->refuseWith;
-        }
-
-        $this->accounts[] = ['displayName' => $displayName, 'contactEmail' => $contactEmail, 'country' => $country];
-
-        return 'acct_new_1';
-    }
-
-    public function createOnboardingLink(string $stripeAccountId, string $returnUrl, string $refreshUrl): string
-    {
-        $this->links[] = ['accountId' => $stripeAccountId, 'returnUrl' => $returnUrl, 'refreshUrl' => $refreshUrl];
-
-        return 'https://connect.stripe.test/onboarding/'.$stripeAccountId;
-    }
-
-    public function fetchAccount(string $stripeAccountId): array
-    {
-        if ($this->refuseWith !== null) {
-            throw $this->refuseWith;
-        }
-
-        return ['card_payments' => 'unknown'];
+        $this->calls[] = 'createRefund';
     }
 
     /**
-     * Unused here: only `commerce:reconcile-payments` (#71) reads a session
-     * back, and this fake never drives it.
-     *
      * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
      */
-    public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array
+    public function fetchCheckoutSession(string $sessionId): array
     {
+        $this->calls[] = 'fetchCheckoutSession';
+
         return [
             'status' => 'open',
             'payment_status' => 'unpaid',
@@ -150,22 +118,6 @@ function settlementAdminOperator(array $permissions = ['platform.access-admin', 
     return [$admin, $brand];
 }
 
-/**
- * The `provider` error the settlement console renders, read back from the
- * session. Laravel keeps the flashed `ViewErrorBag` as its array form once
- * the session has been serialised, so both shapes are accepted here.
- */
-function settlementAdminProviderError(): string
-{
-    $errors = session('errors');
-
-    if ($errors instanceof ViewErrorBag) {
-        return $errors->first('provider');
-    }
-
-    return (string) (data_get($errors, 'default.messages.provider.0') ?? '');
-}
-
 it('403s an admin without the manage capability', function (): void {
     [$admin] = settlementAdminOperator(['platform.access-admin']);
 
@@ -196,7 +148,6 @@ it('lists a brand\'s live accounts with offered flags and remaining connectable 
             ->has('brands', 1)
             ->has('brands.0.accounts', 2)
             ->where('brands.0.accounts.0.provider', 'mollie')
-            ->where('brands.0.accounts.0.pendingOnboarding', false)
             ->where('brands.0.accounts.0.offered', true)
             ->where('brands.0.accounts.1.provider', 'unzer')
             ->where('brands.0.connectableProviders', ['stripe']));
@@ -431,7 +382,11 @@ it('connects Unzer and registers this deployment as the account webhook', functi
         ->and($unzer->webhooks[0]['privateKey'])->toBe('s-priv-1234567890');
 });
 
-it('starts Stripe onboarding with an unconnected row and redirects to Stripe', function (): void {
+it('enables Stripe for a brand without calling Stripe at all', function (): void {
+    // ADR-0058 point 3: a Stripe row means "this brand sells through this
+    // instance's Stripe account", nothing more — an ordinary POST with a
+    // redirect back, no account creation, no hosted onboarding, no
+    // external redirect.
     [$admin, $brand] = settlementAdminOperator();
 
     $stripe = new SettlementAdminTestFakeStripe;
@@ -439,55 +394,69 @@ it('starts Stripe onboarding with an unconnected row and redirects to Stripe', f
 
     Event::fake([SettlementAccountConnected::class]);
 
-    $response = $this->actingAs($admin)
+    $this->actingAs($admin)
         ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
             'brand_id' => $brand->id,
-            'contact_email' => 'orga@example.test',
-        ]);
-
-    // Inertia::location: a plain request gets a real redirect to Stripe's
-    // hosted onboarding (SPA requests would get 409 + X-Inertia-Location).
-    $response->assertRedirect('https://connect.stripe.test/onboarding/acct_new_1');
+            'checkout_label' => 'Karte, Apple Pay',
+            'statement_descriptor_suffix' => 'SXLAN',
+        ])
+        ->assertRedirect('http://admin.settlement.test/admin/settlement-accounts');
 
     $account = SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->sole();
 
-    expect($account->provider)->toBe('stripe')
-        ->and($account->provider_account_id)->toBe('acct_new_1')
-        ->and($account->connected_at)->toBeNull();
+    expect($stripe->calls)->toBe([])
+        ->and($account->provider)->toBe('stripe')
+        ->and($account->provider_account_id)->toBeNull()
+        ->and($account->capabilities)->toBeNull()
+        ->and($account->checkout_label)->toBe('Karte, Apple Pay')
+        ->and($account->statement_descriptor_suffix)->toBe('SXLAN')
+        ->and($account->connected_at)->not->toBeNull();
 
-    // Not connected until the organizer returns from onboarding.
-    Event::assertNotDispatched(SettlementAccountConnected::class);
-
-    expect($stripe->links[0]['returnUrl'])->toContain('/admin/settlement-accounts/stripe/return/'.$account->id);
+    Event::assertDispatched(
+        SettlementAccountConnected::class,
+        fn (SettlementAccountConnected $e): bool => $e->brandId === $brand->id && $e->provider === 'stripe',
+    );
 });
 
-it('marks the Stripe account connected on return, once', function (): void {
+it('refuses a statement descriptor suffix Stripe would reject', function (string $suffix): void {
+    // Stripe caps the whole statement descriptor at 22 characters, account
+    // prefix included, and refuses the characters below — checked at save
+    // time rather than discovered as a rejected Checkout Session.
     [$admin, $brand] = settlementAdminOperator();
 
-    $account = SettlementAccount::factory()->create([
-        'brand_id' => $brand->id,
-        'provider' => SettlementAccount::PROVIDER_STRIPE,
-        'provider_account_id' => 'acct_new_1',
-        'connected_at' => null,
-    ]);
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
+            'brand_id' => $brand->id,
+            'statement_descriptor_suffix' => $suffix,
+        ])
+        ->assertSessionHasErrors('statement_descriptor_suffix');
 
-    // The return also refreshes capabilities (a best-effort first read).
-    app()->instance(StripeApi::class, new SettlementAdminTestFakeStripe);
+    expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->count())->toBe(0);
+})->with([
+    'longer than 22 characters' => ['SXLAN LAN PARTY EVENTS!'],
+    'characters Stripe forbids' => ['SX<LAN>'],
+    'no latin character at all' => ['1234'],
+]);
 
-    Event::fake([SettlementAccountConnected::class]);
+it('enables Stripe with no key configured, but does not offer it at checkout', function (): void {
+    // ADR-0058 point 3: `isOffered()` for Stripe is "live, and this instance
+    // has a Stripe secret key" — the enablement flag says nothing about
+    // whether the instance can charge.
+    [$admin, $brand] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', '');
 
     $this->actingAs($admin)
-        ->get('http://admin.settlement.test/admin/settlement-accounts/stripe/return/'.$account->id)
-        ->assertRedirect();
-    $this->actingAs($admin)
-        ->get('http://admin.settlement.test/admin/settlement-accounts/stripe/return/'.$account->id)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', ['brand_id' => $brand->id])
         ->assertRedirect();
 
-    expect($account->refresh()->connected_at)->not->toBeNull()
-        ->and($account->capabilities)->toBe(['card_payments' => 'unknown'])
-        ->and($account->capabilities_checked_at)->not->toBeNull();
+    $account = SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->sole();
 
-    Event::assertDispatchedTimes(SettlementAccountConnected::class, 1);
+    expect($account->isOffered())->toBeFalse();
+
+    config()->set('services.stripe.secret', 'sk_test_configured');
+
+    expect($account->refresh()->isOffered())->toBeTrue();
 });
 
 it('returns a validation error when connecting a second live account of the same provider over HTTP', function (): void {
@@ -538,7 +507,6 @@ it('refuses a second live account of the same provider', function (): void {
     $this->actingAs($admin)
         ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
             'brand_id' => $brand->id,
-            'contact_email' => 'orga@example.test',
         ])
         ->assertRedirect();
 
@@ -560,131 +528,4 @@ it('disconnects the live account and falls back to manual booking', function ():
 
     expect($account->refresh()->disconnected_at)->not->toBeNull()
         ->and(SettlementAccount::liveAccountsFor($brand->id))->toBeEmpty();
-});
-
-/**
- * #194: a deployment without the Stripe platform key answered the connect
- * form with a bare 500, because `StripeApi`'s binding threw before the
- * controller body ran. The operator now reads what is missing and where it
- * is configured, on the page they submitted from.
- */
-it('names the missing Stripe platform key instead of answering 500', function (): void {
-    [$admin, $brand] = settlementAdminOperator();
-
-    // phpunit.xml leaves STRIPE_SECRET empty on purpose; not binding a fake
-    // here is exactly the dev instance's situation.
-    expect(config('services.stripe.secret'))->toBeEmpty();
-
-    $response = $this->actingAs($admin)
-        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
-            'brand_id' => $brand->id,
-            'contact_email' => 'orga@example.test',
-        ]);
-
-    $response->assertRedirect('http://admin.settlement.test/admin/settlement-accounts');
-
-    $error = settlementAdminProviderError();
-
-    expect($error)->toContain('STRIPE_SECRET')
-        ->and($error)->toContain('STRIPE_WEBHOOK_SECRET')
-        ->and($error)->toContain('services.stripe.secret')
-        ->and($error)->toContain('secrets.payments')
-        // Both places a key may live are named (ADR-0058 point 2).
-        ->and($error)->toContain('operator console')
-        ->and($error)->toContain('ADR-0058');
-
-    // Nothing was created: the brand still has no Stripe row to clean up.
-    expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->count())->toBe(0);
-});
-
-it('repeats Stripe\'s own refusal, with its code and doc URL', function (): void {
-    [$admin, $brand] = settlementAdminOperator();
-
-    $stripe = new SettlementAdminTestFakeStripe;
-    $stripe->refuseWith = InvalidRequestException::factory(
-        'Accounts v2 is not enabled for your sandbox merchant acct_1234.',
-        400,
-        null,
-        ['error' => [
-            'message' => 'Accounts v2 is not enabled for your sandbox merchant acct_1234.',
-            'code' => 'accounts_v2_not_enabled',
-            'doc_url' => 'https://docs.stripe.com/error-codes#accounts-v2-not-enabled',
-        ]],
-        null,
-        'accounts_v2_not_enabled',
-    );
-    app()->instance(StripeApi::class, $stripe);
-
-    $response = $this->actingAs($admin)
-        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
-            'brand_id' => $brand->id,
-            'contact_email' => 'orga@example.test',
-        ]);
-
-    $response->assertRedirect('http://admin.settlement.test/admin/settlement-accounts');
-
-    $error = settlementAdminProviderError();
-
-    expect($error)->toContain('Stripe refused the connection:')
-        ->and($error)->toContain('Accounts v2 is not enabled for your sandbox merchant acct_1234.')
-        ->and($error)->toContain('accounts_v2_not_enabled')
-        ->and($error)->toContain('https://docs.stripe.com/error-codes#accounts-v2-not-enabled');
-
-    expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->count())->toBe(0);
-});
-
-it('still connects the account on return when the capability read is refused', function (): void {
-    [$admin, $brand] = settlementAdminOperator();
-
-    $account = SettlementAccount::factory()->create([
-        'brand_id' => $brand->id,
-        'provider' => SettlementAccount::PROVIDER_STRIPE,
-        'provider_account_id' => 'acct_new_1',
-        'connected_at' => null,
-    ]);
-
-    $stripe = new SettlementAdminTestFakeStripe;
-    $stripe->refuseWith = InvalidRequestException::factory(
-        'No such account: acct_new_1',
-        404,
-        null,
-        ['error' => ['message' => 'No such account: acct_new_1', 'code' => 'resource_missing']],
-        null,
-        'resource_missing',
-    );
-    app()->instance(StripeApi::class, $stripe);
-
-    $response = $this->actingAs($admin)
-        ->get('http://admin.settlement.test/admin/settlement-accounts/stripe/return/'.$account->id);
-
-    $response->assertRedirect('http://admin.settlement.test/admin/settlement-accounts');
-
-    $error = settlementAdminProviderError();
-
-    expect($error)->toContain('Stripe refused the connection:')
-        ->and($error)->toContain('No such account: acct_new_1');
-
-    // Onboarding did complete — the row stays connected; only the
-    // best-effort capability read failed, and the daily sweep retries it.
-    expect($account->refresh()->connected_at)->not->toBeNull()
-        ->and($account->capabilities_checked_at)->toBeNull();
-});
-
-it('names the missing Stripe platform key on the onboarding return too', function (): void {
-    [$admin, $brand] = settlementAdminOperator();
-
-    $account = SettlementAccount::factory()->create([
-        'brand_id' => $brand->id,
-        'provider' => SettlementAccount::PROVIDER_STRIPE,
-        'provider_account_id' => 'acct_new_1',
-        'connected_at' => null,
-    ]);
-
-    $response = $this->actingAs($admin)
-        ->get('http://admin.settlement.test/admin/settlement-accounts/stripe/return/'.$account->id);
-
-    $response->assertRedirect('http://admin.settlement.test/admin/settlement-accounts');
-
-    expect(settlementAdminProviderError())->toContain('STRIPE_SECRET');
-    expect($account->refresh()->connected_at)->not->toBeNull();
 });

@@ -9,13 +9,11 @@
 # makes webhooks the only source of settlement truth, so this is what end-to-end manual
 # testing of the Stripe purchase path needs.
 #
-# Both `--forward-to` (platform account) and `--forward-connect-to` (connected accounts) are
-# passed, with the same URL and the same event list: Konventix creates Checkout Sessions *on*
-# the connected account (ADR-0039 point 5, the `Stripe-Account` header), so every event this
-# deployment actually cares about — `checkout.session.*`, `charge.dispute.*`,
-# `charge.refunded` — fires on the connected account and reaches a platform listener only
-# through Connect forwarding. Without the second flag the tunnel is silent for exactly the
-# events a purchase walkthrough is testing (#69). One `--secret` covers both.
+# A plain `--forward-to` is enough since ADR-0058: Konventix settles into this instance's own
+# Stripe account and uses no connected accounts, so every event this deployment cares about —
+# `checkout.session.*`, `charge.dispute.*`, `charge.refunded` — fires on the account the CLI
+# is logged into. The `--forward-connect-to` this script used to pass alongside it forwarded
+# connected-account events that no longer exist.
 #
 # Usage:
 #   contrib/stripe-listen.sh            forward Stripe events to the local web container
@@ -58,7 +56,7 @@ if [ "${1:-}" = "--secret" ]; then
 fi
 
 cat <<MSG
-stripe-listen: forwarding to ${forward_to} (platform and connected accounts)
+stripe-listen: forwarding to ${forward_to}
 stripe-listen: events: ${events}
 
 Before starting, .env needs:
@@ -70,4 +68,4 @@ STRIPE_WEBHOOK_SECRET was already cached, run 'sail artisan config:clear' after 
 
 MSG
 
-exec stripe listen --forward-to "$forward_to" --forward-connect-to "$forward_to" --events "$events"
+exec stripe listen --forward-to "$forward_to" --events "$events"

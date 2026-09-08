@@ -36,8 +36,9 @@ Route::get('/invoices/{invoice}/document', [InvoiceDocumentController::class, 'd
 Route::get('/credit-notes/{creditNote}/document', [CreditNoteDocumentController::class, 'download'])->name('admin.credit-notes.document');
 
 Route::get('/settlement-accounts', [SettlementAccountAdminController::class, 'index'])->name('admin.settlement-accounts.index');
+// Enabling Stripe for a brand: an ordinary POST with a redirect back — no
+// Stripe call and no external redirect since ADR-0058.
 Route::post('/settlement-accounts/stripe', [SettlementAccountAdminController::class, 'connectStripe'])->name('admin.settlement-accounts.stripe');
-Route::get('/settlement-accounts/stripe/return/{account}', [SettlementAccountAdminController::class, 'stripeReturn'])->name('admin.settlement-accounts.stripe-return');
 // This instance's own Stripe account (ADR-0058 point 2): one encrypted
 // operator row, entered here, winning over STRIPE_SECRET /
 // STRIPE_WEBHOOK_SECRET from the environment. Not per brand — a brand's

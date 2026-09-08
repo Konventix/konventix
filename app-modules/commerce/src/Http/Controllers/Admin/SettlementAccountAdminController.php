@@ -7,13 +7,10 @@ namespace Konventix\Commerce\Http\Controllers\Admin;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Actions\ConnectSettlementAccount;
 use Konventix\Commerce\Actions\DisconnectSettlementAccount;
-use Konventix\Commerce\Actions\MarkSettlementAccountConnected;
-use Konventix\Commerce\Actions\RefreshSettlementAccountCapabilities;
 use Konventix\Commerce\Actions\UpdateSettlementAccountLabel;
 use Konventix\Commerce\Data\CommerceBrandSettingsData;
 use Konventix\Commerce\Data\SaveStripeSettingsData;
@@ -24,14 +21,10 @@ use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
 use Konventix\Commerce\Models\CommerceBrandSettings;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Models\StripeSettings;
-use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
-use Konventix\Commerce\Settlement\Stripe\StripeNotConfiguredException;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\OperatorContext;
-use Stripe\Exception\ApiErrorException;
-use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Operator console: where each brand's money goes (ADR-0007/ADR-0039).
@@ -40,11 +33,13 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
  * `commerce.manage-settlement-account` — changing a brand's settlement
  * route is deliberately not day-to-day treasury work.
  *
- * Three connect shapes: Stripe creates the connected account and walks the
- * organizer through Stripe-hosted onboarding (the row exists unconnected
- * until they return); Mollie and Unzer take the brand's own key in one
- * step; Unzer additionally registers this deployment's webhook endpoint on
- * the account, because Unzer notifies per account, not per payment.
+ * Two connect shapes: Stripe is a local enablement flag on the one account
+ * this instance holds (ADR-0058 point 3) — no Stripe call, no onboarding,
+ * no external redirect — while Mollie and Unzer take the brand's own key in
+ * one step, and Unzer additionally registers this deployment's webhook
+ * endpoint on the account, because Unzer notifies per account, not per
+ * payment. The instance's own Stripe keys are set once, in this console's
+ * Stripe card, not per brand (`saveStripeSettings()`).
  */
 class SettlementAccountAdminController
 {
@@ -112,100 +107,56 @@ class SettlementAccountAdminController
         ]);
     }
 
-    public function connectStripe(Request $request, ConnectSettlementAccount $connect): SymfonyResponse
+    /**
+     * Enables Stripe for a brand (ADR-0058 point 3). A Stripe row means
+     * "this brand sells through the Stripe account this instance holds",
+     * so this creates the row and nothing else: no account is created at
+     * Stripe, no onboarding is started, and the operator is redirected
+     * back to the page they came from rather than out of the SPA.
+     *
+     * Whether the brand is actually *offered* Stripe at checkout is a
+     * separate question this deliberately does not gate on — a brand may
+     * be enabled before the operator has entered the key, and
+     * `SettlementAccount::isOffered()` answers it live.
+     */
+    public function connectStripe(Request $request, ConnectSettlementAccount $connect): RedirectResponse
     {
         Gate::authorize(Permission::ManageSettlementAccount->value);
 
         $data = $request->validate([
             'brand_id' => ['required', 'ulid', 'exists:brands,id'],
-            'contact_email' => ['required', 'email'],
+            'checkout_label' => ['nullable', 'string', 'max:80'],
+            // Stripe caps the full statement descriptor at 22 characters,
+            // its own account prefix included, and truncates past that —
+            // so 22 is the ceiling here and the operator is told about the
+            // prefix in the console. It refuses `<`, `>`, `\`, `"` and `'`
+            // outright, and wants at least one latin letter.
+            'statement_descriptor_suffix' => [
+                'nullable',
+                'string',
+                'max:22',
+                'regex:/^[^<>\\\\"\']*[A-Za-z][^<>\\\\"\']*$/',
+            ],
         ]);
 
         /** @var Brand $brand */
         $brand = Brand::query()->findOrFail($data['brand_id']);
-        $brandId = (string) $brand->getKey();
-
-        // `StripeApi` is resolved here rather than method-injected: its
-        // binding throws when the platform key is missing, and a throw
-        // during dependency resolution happens before this method body and
-        // can only reach the operator as a 500 (#194). Resolved inside the
-        // try, the same message reaches them on the page they submitted.
-        try {
-            $stripe = app(StripeApi::class);
-
-            $stripeAccountId = $stripe->createConnectedAccount(
-                displayName: $brand->name,
-                contactEmail: $data['contact_email'],
-                country: 'DE',
-            );
-        } catch (StripeNotConfiguredException $e) {
-            // Repeated verbatim: the exception already names the variables,
-            // the config key and the chart's secret group (#194).
-            return $this->settlementConsoleError($e->getMessage());
-        } catch (ApiErrorException $e) {
-            return $this->stripeRefused($e, $brandId);
-        }
 
         try {
-            $account = $connect->handle(
-                brandId: $brandId,
+            $connect->handle(
+                brandId: (string) $brand->getKey(),
                 provider: SettlementAccount::PROVIDER_STRIPE,
-                label: 'Stripe — '.$brand->name,
-                providerAccountId: $stripeAccountId,
-                // Connected only when the organizer returns from onboarding.
-                connected: false,
+                label: 'Stripe',
+                checkoutLabel: $data['checkout_label'] ?? null,
+                statementDescriptorSuffix: $data['statement_descriptor_suffix'] ?? null,
             );
         } catch (BrandAlreadyHasLiveProviderException) {
             return back()->withErrors(['provider' => __('This brand already has a live :provider account.', ['provider' => 'Stripe'])]);
         }
 
-        try {
-            $onboardingUrl = $stripe->createOnboardingLink(
-                $stripeAccountId,
-                returnUrl: route('admin.settlement-accounts.stripe-return', ['account' => $account->id]),
-                refreshUrl: route('admin.settlement-accounts.index'),
-            );
-        } catch (ApiErrorException $e) {
-            // The row survives as a pending-onboarding account; the
-            // operator disconnects it or retries once Stripe is happy.
-            return $this->stripeRefused($e, $brandId);
-        }
-
-        // A hard redirect out of the SPA to Stripe's hosted onboarding.
-        return Inertia::location($onboardingUrl);
-    }
-
-    public function stripeReturn(string $account, MarkSettlementAccountConnected $markConnected): RedirectResponse
-    {
-        Gate::authorize(Permission::ManageSettlementAccount->value);
-
-        $row = SettlementAccount::withoutBrandScope()
-            ->whereKey($account)
-            ->where('provider', SettlementAccount::PROVIDER_STRIPE)
-            ->firstOrFail();
-
-        // Marking connected is a local fact about a completed onboarding
-        // and needs no Stripe call — it happens before anything that can
-        // fail, so a Stripe outage cannot lose the organizer's onboarding.
-        $markConnected->handle($row);
-
-        try {
-            // Card payments are rarely active the instant onboarding
-            // returns — this is a best-effort first read, the daily sweep
-            // is the one that actually catches up once Stripe activates the
-            // account. `RefreshSettlementAccountCapabilities` constructor-
-            // injects `StripeApi`, so it is resolved here and not in the
-            // signature, for the same reason `connectStripe` does (#194).
-            app(RefreshSettlementAccountCapabilities::class)->handle($row);
-        } catch (StripeNotConfiguredException $e) {
-            return $this->settlementConsoleError($e->getMessage());
-        } catch (ApiErrorException $e) {
-            return $this->stripeRefused($e, $row->brand_id);
-        }
-
         return redirect()
             ->route('admin.settlement-accounts.index')
-            ->with('success', 'Stripe account connected. Checkout goes live once Stripe activates card payments for it.');
+            ->with('success', 'Stripe enabled for this brand.');
     }
 
     /**
@@ -332,56 +283,6 @@ class SettlementAccountAdminController
     }
 
     /**
-     * Stripe answered, and said no. Its own wording is what an operator can
-     * act on ("Accounts v2 is not enabled for your sandbox merchant
-     * acct_…"), so it is repeated with the error code and the doc URL
-     * Stripe attaches to it.
-     */
-    private function stripeRefused(ApiErrorException $e, string $brandId): RedirectResponse
-    {
-        $code = $e->getStripeCode();
-        $docUrl = $e->getError()?->doc_url;
-
-        // Warning, not error: the deployment is healthy, one call was
-        // refused. Never the request payload — no key travels in a log line.
-        Log::warning('Stripe refused a settlement-account call.', [
-            'brand_id' => $brandId,
-            'stripe_code' => $code,
-            'stripe_status' => $e->getHttpStatus(),
-            'stripe_request_id' => $e->getRequestId(),
-            'stripe_message' => $e->getMessage(),
-        ]);
-
-        $message = __('Stripe refused the connection: :message', ['message' => $e->getMessage()]);
-
-        if (is_string($code) && $code !== '') {
-            $message .= ' ['.$code.']';
-        }
-
-        if (is_string($docUrl) && $docUrl !== '') {
-            $message .= ' '.$docUrl;
-        }
-
-        return $this->settlementConsoleError($message);
-    }
-
-    /**
-     * Both channels the settlement console already renders: the `provider`
-     * error bag the other connect actions use — which the connect form
-     * shows inline, because Inertia's form helper preserves the open form
-     * on an errored visit — and a toast, because the onboarding return is
-     * a plain navigation with no form open to carry an error bag.
-     */
-    private function settlementConsoleError(string $message): RedirectResponse
-    {
-        Inertia::flash('toast', ['type' => 'error', 'message' => $message]);
-
-        return redirect()
-            ->route('admin.settlement-accounts.index')
-            ->withErrors(['provider' => $message]);
-    }
-
-    /**
      * @return array<string, mixed>
      */
     private function accountProps(SettlementAccount $account): array
@@ -391,11 +292,10 @@ class SettlementAccountAdminController
             'provider' => $account->provider,
             'label' => $account->label,
             'checkoutLabel' => $account->checkout_label,
+            'statementDescriptorSuffix' => $account->statement_descriptor_suffix,
             'providerAccountId' => $account->provider_account_id,
             'connectedAt' => $account->connected_at?->toDateString(),
-            'pendingOnboarding' => $account->connected_at === null,
             'offered' => $account->isOffered(),
-            'capabilitiesCheckedAt' => $account->capabilities_checked_at?->toDateString(),
         ];
     }
 }

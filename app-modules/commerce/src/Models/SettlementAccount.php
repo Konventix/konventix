@@ -12,11 +12,16 @@ use Illuminate\Support\Carbon;
 use Konventix\Commerce\Database\Factories\SettlementAccountFactory;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapter;
+use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
  * A brand's connected settlement account (ADR-0007): whose PSP account money
- * for this brand's orders flows into.
+ * for this brand's orders flows into. For Mollie and Unzer that is the
+ * brand's own key on this row; for Stripe the row is only the flag that
+ * says this brand sells through the one Stripe account the instance holds
+ * (ADR-0058 point 3), plus the words the payer sees — `checkout_label` on
+ * the button and `statement_descriptor_suffix` on their card statement.
  *
  * The platform never holds funds, so this is not a wallet — it is the
  * identity an adapter acts on behalf of. `SettlementAdapter::markOrderPaid()`
@@ -32,6 +37,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $provider
  * @property string|null $label
  * @property string|null $checkout_label
+ * @property string|null $statement_descriptor_suffix
  * @property string|null $provider_account_id
  * @property array<string, string>|null $credentials
  * @property array<string, mixed>|null $capabilities
@@ -57,7 +63,7 @@ class SettlementAccount extends Model
     /** A brand that deliberately settles nothing through the platform. */
     public const string PROVIDER_NULL = 'null';
 
-    /** Stripe, direct charges on the organizer's connected account (ADR-0039). */
+    /** Stripe, on this instance's own account (ADR-0058). */
     public const string PROVIDER_STRIPE = 'stripe';
 
     /** Mollie, against the organizer's own API key (ADR-0039). */
@@ -70,6 +76,7 @@ class SettlementAccount extends Model
         'provider',
         'label',
         'checkout_label',
+        'statement_descriptor_suffix',
         'provider_account_id',
         'credentials',
         'capabilities',
@@ -106,9 +113,15 @@ class SettlementAccount extends Model
     }
 
     /**
-     * Live, connected, and — for Stripe — allowed to take cards: a freshly
-     * onboarded Stripe account is connected but not yet active, and
-     * offering it would fail at Stripe rather than on our page.
+     * Live, connected, and — for Stripe — chargeable at all.
+     *
+     * A Stripe row is the brand's enablement flag since ADR-0058 point 3:
+     * there is no connected account and no capability to wait for, so the
+     * only extra question is whether this instance holds a Stripe secret
+     * key. Without one, offering the button would fail at Stripe rather
+     * than on our page. Resolved from the container at call time rather
+     * than injected: this is a model, and the answer changes the moment an
+     * operator saves a key.
      */
     public function isOffered(): bool
     {
@@ -117,7 +130,7 @@ class SettlementAccount extends Model
         }
 
         if ($this->provider === self::PROVIDER_STRIPE) {
-            return ($this->capabilities['card_payments'] ?? null) === 'active';
+            return app(StripeCredentials::class)->configured();
         }
 
         return true;
@@ -139,8 +152,9 @@ class SettlementAccount extends Model
     {
         return [
             // Structured per provider (ADR-0039): {'api_key': …} for Mollie,
-            // {'private_key': …} for Unzer; Stripe stores no secret at all —
-            // the connected account id plus the platform key is sufficient.
+            // {'private_key': …} for Unzer; Stripe stores no secret here at
+            // all — the instance's own key is operator-level, in
+            // `StripeSettings` or the environment (ADR-0058 point 2).
             'credentials' => 'encrypted:array',
             'capabilities' => 'array',
             'capabilities_checked_at' => 'datetime',

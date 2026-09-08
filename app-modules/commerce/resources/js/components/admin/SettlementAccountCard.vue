@@ -14,20 +14,20 @@ import {
 
 /**
  * One of a brand's live settlement accounts (ADR-0046): its checkout
- * label, its offered state, and disconnect. The settlement-accounts
- * console repeats this once per brand per live account, instead of the
- * single "the account" the page used to show.
+ * label, its statement descriptor suffix, its offered state, and
+ * disconnect. The settlement-accounts console repeats this once per brand
+ * per live account, instead of the single "the account" the page used to
+ * show.
  */
 export type SettlementAccount = {
     id: string;
     provider: string;
     label: string | null;
     checkoutLabel: string | null;
+    statementDescriptorSuffix: string | null;
     providerAccountId: string | null;
     connectedAt: string | null;
-    pendingOnboarding: boolean;
     offered: boolean;
-    capabilitiesCheckedAt: string | null;
 };
 
 const props = defineProps<{ account: SettlementAccount }>();
@@ -67,13 +67,22 @@ type OfferedStatus = {
     variant: 'default' | 'secondary' | 'destructive';
 };
 
+/**
+ * A Stripe row is an enablement flag on the account this instance holds
+ * (ADR-0058 point 3), so "enabled but not offered" means one thing only:
+ * no Stripe key is configured yet — which the Stripe card above says how
+ * to fix. Mollie and Unzer answer for themselves as before.
+ */
 function offeredStatus(account: SettlementAccount): OfferedStatus {
-    if (account.pendingOnboarding) {
-        return { text: 'Onboarding pending', variant: 'destructive' };
-    }
-
     if (account.offered) {
         return { text: 'Offered at checkout', variant: 'default' };
+    }
+
+    if (account.provider === 'stripe') {
+        return {
+            text: 'Enabled — no Stripe key on this instance yet',
+            variant: 'destructive',
+        };
     }
 
     return {
@@ -100,6 +109,12 @@ function offeredStatus(account: SettlementAccount): OfferedStatus {
             </span>
             <span v-if="account.connectedAt" class="text-xs text-text-muted">
                 connected {{ account.connectedAt }}
+            </span>
+            <span
+                v-if="account.statementDescriptorSuffix"
+                class="font-mono text-xs text-text-muted"
+            >
+                statement: {{ account.statementDescriptorSuffix }}
             </span>
         </div>
 

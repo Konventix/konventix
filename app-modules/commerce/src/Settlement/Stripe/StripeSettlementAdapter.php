@@ -13,20 +13,31 @@ use Konventix\Commerce\Settlement\CheckoutRedirect;
 use Konventix\Commerce\Settlement\MinorUnits;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapter;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Scopes\BrandScope;
 use LogicException;
 use RuntimeException;
 
 /**
- * Stripe, as ADR-0039 pins it: direct charges on the organizer's own
- * connected account (they are merchant of record, keep the full dashboard,
- * and pay Stripe's fees), hosted Checkout Sessions only, settlement truth
- * exclusively from the signed webhook. No `application_fee_amount`, ever —
- * ADR-0007 forbids deducting platform monetization from ticket revenue.
+ * Stripe, as ADR-0058 rewrites ADR-0039 point 5: every charge is made on
+ * **this instance's own** Stripe account — the operator running it is the
+ * merchant of record, keeps the full dashboard and pays Stripe's fees —
+ * with hosted Checkout Sessions only and settlement truth exclusively from
+ * the signed webhook. No connected account, no `Stripe-Account` header, and
+ * no `application_fee_amount`, ever: ADR-0007 forbids deducting platform
+ * monetization from ticket revenue.
+ *
+ * One account, many brands: the split is metadata (ADR-0058 point 4).
+ * `konventix_brand_id`, `konventix_brand_name` and `konventix_operator_id`
+ * ride on the session *and* on the PaymentIntent, so they survive onto the
+ * charge, the balance transaction and every Stripe export; `description`
+ * names the brand in plain words for the rows that show no metadata, and
+ * the brand's `statement_descriptor_suffix` names it on the payer's card
+ * statement.
  *
  * `payment_method_types` is deliberately absent from the session params:
  * omitting it enables Stripe's dynamic payment methods, configured from the
- * organizer's own dashboard.
+ * operator's own dashboard.
  */
 final class StripeSettlementAdapter implements ProvidesHostedCheckout, SettlementAdapter
 {
@@ -46,11 +57,9 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         Order $order,
         string $returnUrl,
     ): CheckoutRedirect {
-        $stripeAccountId = $account->provider_account_id;
-
-        if ($account->provider !== SettlementAccount::PROVIDER_STRIPE || $stripeAccountId === null) {
+        if ($account->provider !== SettlementAccount::PROVIDER_STRIPE) {
             throw new RuntimeException(sprintf(
-                'Settlement account [%s] is not a connected Stripe account.',
+                'Settlement account [%s] is not a Stripe account.',
                 $account->id,
             ));
         }
@@ -67,18 +76,52 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         // may start from a queue or the public brand host alike.
         $payment->forceFill(['brand_id' => $order->brand_id])->save();
 
+        // Read through Platform's own Brand model — the cross-module
+        // allow-list covers it (ADR-0004) — and not brand-scoped itself, so
+        // this answers on the queue and the public host alike. `orders.brand_id`
+        // is a constrained foreign key, so the row is there or the order
+        // is not.
+        /** @var Brand $brand */
+        $brand = Brand::query()->findOrFail($order->brand_id);
+        $brandName = $brand->name;
+
+        // Stripe stores metadata as strings; a null would travel as an
+        // empty value rather than as "unknown", so it is spelled out.
+        $metadata = [
+            'konventix_payment_id' => $payment->id,
+            'konventix_order_id' => $order->id,
+            'konventix_brand_id' => $order->brand_id,
+            'konventix_brand_name' => $brandName,
+            'konventix_operator_id' => (string) ($brand->operator_id ?? ''),
+        ];
+
+        $intentData = [
+            'metadata' => $metadata,
+            // What a Stripe row without metadata shows — a dashboard
+            // search, a dispute mail, a CSV export.
+            'description' => sprintf('%s — order %s', $brandName, $order->id),
+        ];
+
+        $suffix = $account->statement_descriptor_suffix;
+
+        if (is_string($suffix) && trim($suffix) !== '') {
+            // Appended to the account's own prefix by Stripe, which caps
+            // the whole descriptor at 22 characters and truncates beyond
+            // it; the console validates the suffix's length at save time
+            // (ADR-0058 point 3).
+            $intentData['statement_descriptor_suffix'] = trim($suffix);
+        }
+
         $session = $this->stripe->createCheckoutSession([
             'mode' => 'payment',
             'client_reference_id' => $payment->id,
             'line_items' => $this->lineItems($order),
             'success_url' => $returnUrl,
             'cancel_url' => $returnUrl,
-            'metadata' => [
-                'konventix_payment_id' => $payment->id,
-                'konventix_order_id' => $order->id,
-            ],
+            'metadata' => $metadata,
+            'payment_intent_data' => $intentData,
             'integration_identifier' => self::INTEGRATION_IDENTIFIER,
-        ], $stripeAccountId);
+        ]);
 
         $payment->forceFill(['external_id' => $session->id])->save();
 
@@ -98,9 +141,7 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
             ->latest('received_at')
             ->first();
 
-        $account = SettlementAccount::withoutBrandScope()->find($accountId);
-
-        if ($payment?->provider_transaction_id === null || $account?->provider_account_id === null) {
+        if ($payment?->provider_transaction_id === null) {
             throw new RuntimeException(sprintf(
                 'Order [%s] has no refundable Stripe payment on account [%s].',
                 $order->id,
@@ -108,17 +149,19 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
             ));
         }
 
+        // Direct on this instance's own account (ADR-0058): the intent
+        // recorded at settlement is the whole address of the money.
         $this->stripe->createRefund([
             'payment_intent' => $payment->provider_transaction_id,
             'amount' => MinorUnits::fromDecimal($amount, $currency),
-        ], $account->provider_account_id);
+        ]);
     }
 
     /**
      * Never called for Stripe: settlement truth comes exclusively from the
      * signed webhook (ADR-0039), which runs `RecordPaymentSuccess` — not
      * through this contract method. Manual booking against a
-     * Stripe-connected brand goes through `ManualSettlementAdapter`
+     * Stripe-enabled brand goes through `ManualSettlementAdapter`
      * explicitly.
      */
     public function markOrderPaid(
