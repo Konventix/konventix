@@ -81,6 +81,10 @@ final class RequestSettlement
             termsDays: $registrationType->terms_days,
             requestedAt: now()->toIso8601String(),
             requestKey: $requestKey ?? $registration->id,
+            // #218: Commerce enforces the same window and may not read this
+            // module's table to learn it (ADR-0004).
+            saleStartsAt: $registrationType->sales_start?->toIso8601String(),
+            saleEndsAt: $registrationType->sales_end?->toIso8601String(),
         ));
     }
 }

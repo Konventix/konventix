@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -29,7 +30,11 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  *
  * `label`, `unit_amount_net` and `tax_class` are a snapshot taken the
  * moment the line is created — the same discipline `OrderLine` already
- * applies to a settled order, taken one step earlier here.
+ * applies to a settled order, taken one step earlier here. `sale_starts_at`
+ * and `sale_ends_at` join that snapshot for a registration line (#218):
+ * Commerce never reads Registration's table (ADR-0004), so the window the
+ * settlement request declared is kept here or it cannot be checked again at
+ * checkout.
  *
  * @property string $id
  * @property string $brand_id
@@ -42,6 +47,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property numeric-string $unit_amount_net
  * @property TaxClass $tax_class
  * @property int $position
+ * @property Carbon|null $sale_starts_at
+ * @property Carbon|null $sale_ends_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -62,7 +69,29 @@ class CartLine extends Model
         'unit_amount_net',
         'tax_class',
         'position',
+        'sale_starts_at',
+        'sale_ends_at',
     ];
+
+    /**
+     * Whether this line may still be turned into money at `$now` (#218).
+     *
+     * Both bounds are nullable and null means "no bound", so every product
+     * line — which carries neither — is always on sale, and a registration
+     * line from a type with no window behaves exactly as it did before the
+     * window existed. Start inclusive, end exclusive, matching
+     * `RegistrationType::isOnSale()` on the other side of the boundary.
+     */
+    public function isOnSale(?CarbonInterface $now = null): bool
+    {
+        $now ??= now();
+
+        if ($this->sale_starts_at !== null && $now->lessThan($this->sale_starts_at)) {
+            return false;
+        }
+
+        return $this->sale_ends_at === null || $now->lessThan($this->sale_ends_at);
+    }
 
     /**
      * Within-module foreign key — a real FK and relation are fine
@@ -86,6 +115,8 @@ class CartLine extends Model
             'unit_amount_net' => 'decimal:2',
             'tax_class' => TaxClass::class,
             'position' => 'integer',
+            'sale_starts_at' => 'datetime',
+            'sale_ends_at' => 'datetime',
         ];
     }
 

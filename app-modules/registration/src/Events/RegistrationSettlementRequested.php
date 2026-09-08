@@ -26,6 +26,17 @@ namespace Konventix\Registration\Events;
  * (ADR-0044): Commerce stores the ULID on the order and never reads this
  * module's tables to find it.
  *
+ * `saleStartsAt`/`saleEndsAt` are the type's sales window (#218, #216 draft
+ * i) as nullable ISO-8601 instants — null on either side meaning no bound.
+ * They are here because Commerce enforces the same window and may not read
+ * this module's tables to learn it (ADR-0004): it snapshots them onto the
+ * cart line and checks them again at checkout. Instants rather than
+ * wall-clock times plus a zone, because Commerce could not resolve a zone it
+ * never sees (the registration-side migration says why a sales window is not
+ * an ADR-0027 event time). They are appended last with null defaults, so
+ * every existing named-argument emission keeps working and an old queued
+ * payload replays as "no window" rather than as a refusal.
+ *
  * `requestKey` is what makes Commerce idempotent, and it is deliberately not
  * the registration ULID: ADR-0036 lets one registration map to N orders over
  * its lifetime (the initial settlement plus one per priced amendment), so
@@ -62,5 +73,7 @@ final readonly class RegistrationSettlementRequested
         public int $termsDays,
         public string $requestedAt,
         public string $requestKey,
+        public ?string $saleStartsAt = null,
+        public ?string $saleEndsAt = null,
     ) {}
 }
