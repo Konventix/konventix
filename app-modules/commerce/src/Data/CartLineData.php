@@ -18,9 +18,14 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  *
  * `unitAmountGross` is the per-unit end price PAngV asks for (#3),
  * derived from `lineGross` rather than calculated a second time: the line
- * total is the authoritative figure (it is what the order snapshots), and
- * dividing it is the only way the "each" figure the page prints can be
- * guaranteed to add up to the total printed beside it.
+ * total is the authoritative figure — it is what the order snapshots — so
+ * the "each" figure is read off it rather than computed beside it, where a
+ * second rounding could disagree with the total in the same row.
+ *
+ * It is the closest per-unit figure to that total, not a factor of it: at
+ * 10.01 net and quantity 3 the line is 35.74 gross and this reads 11.91,
+ * which multiplies back to 35.73. One cent, on a figure nobody is asked to
+ * multiply, and the authoritative number is the one printed beside it.
  *
  * `canChangeQuantity` is `false` for a registration line
  * (`ChangeCartLineQuantity` refuses those) so the page never renders

@@ -279,11 +279,6 @@ const expiresInMinutes = computed<number | null>(() => {
 
                 <InputError :message="accountError" />
             </div>
-
-            <p v-else class="text-sm text-text-muted">
-                This organizer settles by bank transfer — payment details arrive
-                with your confirmation.
-            </p>
         </template>
     </div>
 </template>
