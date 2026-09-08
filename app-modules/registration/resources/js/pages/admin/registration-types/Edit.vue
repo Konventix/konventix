@@ -11,6 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import {
+    browserTimezone,
+    formatDateTime,
+    toInstant,
+    toLocalDateTimeInput,
+} from '@/lib/datetime';
+import {
     index as typesIndex,
     update as updateType,
 } from '@/routes/admin/registration-types';
@@ -39,87 +45,28 @@ type Props = {
     eventPageUrl: string | null;
     registrations: number;
     termsFrozen: boolean;
-    appTimezone: string;
 };
 
 const props = defineProps<Props>();
 
 /**
- * `datetime-local` wants `YYYY-MM-DDTHH:MM`; the backend sends and accepts a
- * plain `Y-m-d H:i:s` datetime string (#202's round trip, the same pair the
- * policy-version form uses). Converting in both directions here keeps the
- * Data object free of a browser input's formatting quirk, and keeps the
- * string an instant rather than shifting it through a Date object.
- */
-function toLocalInput(value: string | null): string {
-    return value === null ? '' : value.replace(' ', 'T').slice(0, 16);
-}
-
-function toInstant(value: string): string | null {
-    return value === '' ? null : `${value.replace('T', ' ')}:00`;
-}
-
-/**
- * The window is stored as an instant in the application's timezone, and the
- * value typed here is sent verbatim — so the operator is typing that clock,
- * not their own. Every browser labels a `datetime-local` control as local
- * time and says nothing about which zone that is, so the form names the
- * application's zone on each field and echoes the value back in the
- * operator's own zone underneath. Without that, someone in Europe/Berlin
- * types 18:00 and the landing page announces 20:00 to them.
+ * The sales window is an instant, and a `datetime-local` control is a wall
+ * clock — so the conversion between them belongs in the browser, which is
+ * the only party that knows the zone (#237, the rule #202 settled for the
+ * policy editor and `@/lib/datetime` now owns for both).
  *
- * The arithmetic reads `props.appTimezone` rather than assuming UTC (fix
- * round 2, review finding N3): `config('app.timezone')` is a config value,
- * and the hint would otherwise lie the moment it changed. `zonedWallClock()`
- * reads an instant's wall clock in a named zone as if it were UTC, which
- * gives the zone's offset at that moment by subtraction — one iteration,
- * which can be off by an hour for a time inside a DST transition. That is
- * acceptable in a hint that only ever explains the value beside it.
+ * What it replaced: the page sent the typed digits through as
+ * `Y-m-d H:i:s` and the backend read them in `config('app.timezone')`. An
+ * operator in Europe/Berlin who typed 10:17 got a window that opened at
+ * 12:17 on their own clock, and the landing page said so. The hint below
+ * used to name the *application's* zone and echo the value converted out of
+ * it, which confirmed the wrong number rather than catching it; it now names
+ * the operator's own zone, because that is the clock the field speaks.
  */
-const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-function zonedWallClock(instant: number, timeZone: string): number {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone,
-        hour12: false,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    }).formatToParts(new Date(instant));
-
-    const at = (type: string): string =>
-        parts.find((part) => part.type === type)?.value ?? '00';
-    const hour = at('hour') === '24' ? '00' : at('hour');
-
-    return Date.parse(
-        `${at('year')}-${at('month')}-${at('day')}T${hour}:${at('minute')}:${at('second')}Z`,
-    );
-}
-
-function inBrowserTimezone(value: string): string {
-    if (value === '') {
-        return '';
-    }
-
-    const wallClock = Date.parse(`${value.replace(' ', 'T')}:00Z`);
-
-    if (Number.isNaN(wallClock)) {
-        return '';
-    }
-
-    const offset = wallClock - zonedWallClock(wallClock, props.appTimezone);
-
-    return new Date(wallClock + offset).toLocaleString(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-    });
-}
-
-const salesStartLocal = computed(() => inBrowserTimezone(form.salesStart));
-const salesEndLocal = computed(() => inBrowserTimezone(form.salesEnd));
+const salesStartEcho = computed(() =>
+    formatDateTime(toInstant(form.salesStart)),
+);
+const salesEndEcho = computed(() => formatDateTime(toInstant(form.salesEnd)));
 
 const form = useForm({
     eventId: props.type.eventId,
@@ -134,8 +81,8 @@ const form = useForm({
         ? { ...props.type.priceDeclaration }
         : null,
     quotaIds: [...props.type.quotaIds],
-    salesStart: toLocalInput(props.type.salesStart),
-    salesEnd: toLocalInput(props.type.salesEnd),
+    salesStart: toLocalDateTimeInput(props.type.salesStart),
+    salesEnd: toLocalDateTimeInput(props.type.salesEnd),
 });
 
 useUnsavedChanges(() => form.isDirty);
@@ -555,10 +502,9 @@ function submit(): void {
                                 id="type-sales-start-hint"
                                 class="text-xs text-text-muted"
                             >
-                                Entered in {{ props.appTimezone }}.
-                                <template v-if="salesStartLocal">
-                                    = {{ salesStartLocal }} in
-                                    {{ browserTimezone }}.
+                                Times in your timezone ({{ browserTimezone }}).
+                                <template v-if="salesStartEcho">
+                                    = {{ salesStartEcho }}.
                                 </template>
                                 Before this, the landing page announces the type
                                 instead of linking to it.
@@ -578,10 +524,9 @@ function submit(): void {
                                 id="type-sales-end-hint"
                                 class="text-xs text-text-muted"
                             >
-                                Entered in {{ props.appTimezone }}.
-                                <template v-if="salesEndLocal">
-                                    = {{ salesEndLocal }} in
-                                    {{ browserTimezone }}.
+                                Times in your timezone ({{ browserTimezone }}).
+                                <template v-if="salesEndEcho">
+                                    = {{ salesEndEcho }}.
                                 </template>
                                 Must be after the start. After it, the type
                                 disappears from the landing page and a new

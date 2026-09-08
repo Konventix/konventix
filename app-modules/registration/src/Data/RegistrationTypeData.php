@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Data;
 
+use Carbon\CarbonImmutable;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\RegistrationApproval;
 use Konventix\Registration\Enums\RegistrationSettlement;
@@ -75,14 +76,17 @@ final class RegistrationTypeData extends Data
         public readonly array $quotaIds = [],
 
         /**
-         * The sales window (#218, #216 draft i). Plain `Y-m-d H:i:s` strings
-         * rather than Carbon instances, exactly as `EventData` carries its
-         * own datetimes: the form's `datetime-local` control round-trips a
-         * string, and the model's `datetime` cast does the parsing.
+         * The sales window (#218, #216 draft i). ISO-8601 instants with an
+         * offset, in and out — not wall-clock digits (#237, the shape #202
+         * settled for a policy version's effective date).
          *
-         * These are instants in the application timezone (UTC), not
-         * wall-clock times — the migration's docblock says why a sales window
-         * is not an ADR-0027 event time.
+         * A sales window is an instant, not an ADR-0027 event time: the
+         * migration's docblock says why. The browser is the only party that
+         * knows which clock the operator typed on, so it resolves its
+         * `datetime-local` value against its own zone before sending, and
+         * `salesStartInstant()` below normalises whatever offset arrives to
+         * UTC. Sending the string through unchanged is what made "Last
+         * Minute Ticket" open two hours late on dev.
          */
         #[Nullable, Date]
         public readonly ?string $salesStart = null,
@@ -90,6 +94,34 @@ final class RegistrationTypeData extends Data
         #[Nullable, Date]
         public readonly ?string $salesEnd = null,
     ) {}
+
+    /**
+     * The submitted window bounds as absolute moments in UTC.
+     *
+     * `registration_types.sales_start`/`sales_end` are zone-less columns and
+     * Eloquent formats a Carbon in whatever zone that instance carries, so a
+     * value parsed as `+02:00` would be written down as its local digits and
+     * read back two hours wrong — #237, and the same normalisation
+     * `PolicyVersionData::effectiveAtInstant()` makes for the same reason.
+     */
+    public function salesStartInstant(): ?CarbonImmutable
+    {
+        return self::asInstant($this->salesStart);
+    }
+
+    public function salesEndInstant(): ?CarbonImmutable
+    {
+        return self::asInstant($this->salesEnd);
+    }
+
+    private static function asInstant(?string $value): ?CarbonImmutable
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return CarbonImmutable::parse($value)->utc();
+    }
 
     /**
      * Every entry here is written out in full, on purpose.
@@ -138,8 +170,8 @@ final class RegistrationTypeData extends Data
             grants: array_values($type->grants->all()),
             priceDeclaration: $type->price_declaration,
             quotaIds: array_values($type->quotas->pluck('id')->all()),
-            salesStart: $type->sales_start?->format('Y-m-d H:i:s'),
-            salesEnd: $type->sales_end?->format('Y-m-d H:i:s'),
+            salesStart: $type->sales_start?->toIso8601String(),
+            salesEnd: $type->sales_end?->toIso8601String(),
         );
     }
 }
