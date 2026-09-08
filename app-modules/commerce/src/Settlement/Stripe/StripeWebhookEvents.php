@@ -15,10 +15,11 @@ namespace Konventix\Commerce\Settlement\Stripe;
  * A constant class rather than an enum: these are Stripe's strings, not a
  * domain vocabulary of ours, and the controller matches on them.
  *
- * Checkout Sessions are created on the connected account (ADR-0039 point 5,
- * the `Stripe-Account` header), so every one of these fires on the
- * connected account — a platform endpoint only receives them when it was
- * created with "Listen to events on connected accounts".
+ * Checkout Sessions are created on this instance's own Stripe account
+ * (ADR-0058), so every one of these fires on that account and reaches an
+ * ordinary endpoint — the endpoint is deliberately created *without*
+ * "Listen to events on connected accounts", which would subscribe it to
+ * events that never fire here.
  */
 final class StripeWebhookEvents
 {

@@ -47,14 +47,14 @@ class SettlementAccountFactory extends Factory
     }
 
     /**
-     * A live account the checkout page is willing to show (ADR-0046): for
-     * Stripe this is the `card_payments` capability the PSP itself reports
-     * active, not something we assert about ourselves.
+     * A live account the checkout page is willing to show (ADR-0046).
+     * There is nothing provider-specific left to fake: a Stripe row is
+     * offered once the instance holds a key at all (ADR-0058 point 3),
+     * which is a config fact, not a row's.
      */
     public function offered(): static
     {
         return $this->state(fn (array $attributes): array => [
-            'capabilities' => ['card_payments' => 'active'],
             'connected_at' => now(),
         ]);
     }

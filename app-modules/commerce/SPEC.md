@@ -16,9 +16,10 @@ requirements point at the same answer, which is that the domain model leads and
 the provider follows.
 
 The platform **never holds funds** (ADR-0007). Money flows directly from the
-participant to the organizer through the organizer's own connected PSP account.
-Anything else would make Konventix a payment service and trigger BaFin/ZAG
-licensing.
+participant to the operator running this instance, through that operator's own
+PSP account — Stripe's since ADR-0058, Mollie's and Unzer's through the brand's
+own key. Anything else would make Konventix a payment service and trigger
+BaFin/ZAG licensing.
 
 ## Owns
 
@@ -375,18 +376,24 @@ licensing.
   repayment deadline, and the unapplied-payment callout of ADR-0057
   point 9. A withdrawn dispute is deliberately absent from the list: it
   moved no money and is no operator task.
-- **Settlement adapters** behind a single contract, **account-scoped from day
-  one** (ADR-0007): each brand or operator connects its own Stripe, Mollie or
-  Unzer account, and every adapter call carries that account. ADR-0039 pins
-  the mechanics: hosted checkout only, settlement truth exclusively from
-  verified webhooks, per-brand credentials encrypted on the account row.
+- **Settlement adapters** behind a single contract, **account-scoped from
+  day one** (ADR-0007): each brand or operator connects its own Mollie or
+  Unzer account, and every adapter call carries that account. Stripe is the
+  exception since ADR-0058: the instance settles into **one** Stripe
+  account — the operator's own — and a brand's Stripe row is the flag that
+  says it sells through it. ADR-0039 pins the mechanics: hosted checkout
+  only, settlement truth exclusively from verified webhooks, per-brand
+  credentials encrypted on the account row, Stripe's own key operator-level
+  (`stripe_settings`) or from the environment.
 - **`SettlementAccount`** — one live account per provider per brand
-  (ADR-0046): a brand may connect Stripe for cards and Mollie for PayPal and
-  iDEAL at once, and the checkout page offers every account that is live,
-  connected, and — for Stripe — has an active `card_payments` capability.
-  The payer chooses which account settles their order; `settlement_method`
-  on the settlement events is always the provider, and the events also carry
-  the account id.
+  (ADR-0046): a brand may connect Stripe for cards and Mollie for PayPal
+  and iDEAL at once, and the checkout page offers every account that is
+  live, connected, and — for Stripe — backed by a Stripe secret key on this
+  instance (ADR-0058). A Stripe row additionally carries an optional
+  `statement_descriptor_suffix`, which names the brand on the payer's card
+  statement. The payer chooses which account settles their order;
+  `settlement_method` on the settlement events is always the provider, and
+  the events also carry the account id.
 - **Vouchers and discount codes**, their rules and their redemption records.
 - **Bookkeeping exports** for the tax advisor (ADR-0040): a DATEV
   Buchungsstapel plus a readable journal, one export per operator and month,
@@ -431,7 +438,7 @@ implemented and their payloads are the contract.
 | `OrderPartiallyPaid` (proposed) | A payment lands that does not cover the balance | `order_id`, `amount_paid`, `balance_due`, `currency`, `received_at` |
 | `PaymentReceived` | Any payment is recorded — a webhook-confirmed PSP payment or a manually booked bank transfer. Distinct from `OrderPaid`: this is about the money that arrived, that one about what it means for the order | `payment_id`, `order_id`, `brand_id`, `amount`, `currency`, `settlement_method`, `external_reference` (nullable — manual bookings have none), `received_at`, `settlement_account_id` (nullable — manual bookings have none) |
 | `PaymentFailed` | An adapter reports a failed or expired attempt (ADR-0039). The order stays pending — a new checkout may follow | `payment_id`, `order_id`, `brand_id`, `settlement_method`, `reason_code`, `failed_at`, `settlement_account_id` (nullable — manual bookings have none) |
-| `SettlementAccountConnected` | A brand finishes connecting its own PSP account (ADR-0007) — from this moment its orders settle through that provider | `settlement_account_id`, `brand_id`, `provider`, `connected_at` |
+| `SettlementAccountConnected` | A brand starts settling through a provider (ADR-0007) — for Mollie and Unzer that is the brand's own key arriving, for Stripe the flag that says this brand sells through the instance's own account (ADR-0058 point 3) | `settlement_account_id`, `brand_id`, `provider`, `connected_at` |
 | `OrderCancelled` (ADR-0057 point 4) | An order is cancelled before or after settlement. First producer: `CancelOrderForUnpaidReversal`, reached either from the daily `commerce:cancel-unpaid-reversals` sweep once `repay_due_on` has passed, or from an operator cancelling by hand before it. **Registration consumes this** — on `reason_code: 'reversal_unpaid'` it cancels the registration through `CancelRegistration`, releasing the quota (ADR-0057 point 5) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `cancelled_by_user_id` (nullable — the sweep has none), `reason_code`, `credit_note_id` (nullable — an uninvoiced order has no document), `cancelled_at` |
 | `OrderLineCancelled` (ADR-0057 points 4 and 5) | One order line's sale was undone by the order's cancellation — the mirror of `OrderLineReversed`, emitted per `registration`-kind line alongside `OrderCancelled`, **only for an order whose `settles_type` is `cart`**. Without it a cancelled cart order would leave its registration lines confirmed and their quota held: `OrderCancelled` alone cannot say which lines it undid, and Registration may not read the lines (ADR-0004). **Registration consumes this** (`CancelRegistrationOnOrderLineCancelled`) | `order_id`, `brand_id`, `kind`, `ref_id`, `order_request_key`, `reason_code`, `cancelled_by_user_id` (nullable), `cancelled_at` |
 | `OrderRefunded` | Money went back to the payer. Distinct from `CreditNoteIssued`: that is the document, this is the money. An ADR-0036 transfer issues the first without the second, so a consumer counting refunds must listen here | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_refunded`, `currency`, `credit_note_id` (nullable — an uninvoiced order has no document), `reason_code`, `refunded_at`, `whole` (ADR-0057 point 5: the amount alone cannot say whether the whole order was refunded, and Registration cancels the registration only when it was) |

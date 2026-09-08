@@ -139,6 +139,24 @@
 
 ## Done
 
+- [x] Slice 24 (ADR-0058, #215) — Stripe Connect removed: one Stripe account
+      per instance, its secret and webhook signing secret resolved
+      row-before-environment by `Settlement\Stripe\StripeCredentials`
+      (encrypted `stripe_settings` row per operator, set in the console's
+      "Stripe account" card, or `STRIPE_SECRET`/`STRIPE_WEBHOOK_SECRET` from
+      the environment). No connected accounts, no `Stripe-Account` header,
+      no onboarding, no capability sweep. A brand's Stripe row is the
+      enablement flag and carries `checkout_label` and the new
+      `statement_descriptor_suffix` (≤10 characters: Stripe caps the account
+      prefix and the suffix together at 22 and refuses the charge if they
+      overflow, and the prefix cannot be read back since Connect went, so the
+      rule keeps what survives the longest legal prefix — and the adapter
+      retries once without the suffix if Stripe refuses it anyway, rather than
+      500ing a payer); every Checkout Session and PaymentIntent carries
+      `konventix_brand_id`, `konventix_brand_name` and
+      `konventix_operator_id`. #161 closed as superseded, #198 and #199
+      obsolete.
+
 - [x] ADR-0057, the reversal deadline sweep and the operator/payer surface.
       The PSP webhook routes carry a rate limiter (#71): the named limiter
       `commerce-webhooks` in `CommerceServiceProvider`, 120/min per IP,
@@ -615,10 +633,11 @@
       settles their order. `SettlementAccount::liveAccountsFor()`,
       `isOffered()` and `checkoutLabel()` are the seam the checkout page
       offers accounts through; an account is offered only once it's live,
-      connected, and — for Stripe — its `card_payments` capability reads
-      `active`, closing the go-live readiness gap this TODO used to carry
-      as an open item. `RefreshSettlementAccountCapabilities` keeps that
-      capability current on return from onboarding and on a daily sweep.
+      connected, and — for Stripe — backed by a Stripe secret key on this
+      instance. (ADR-0058 has since removed Stripe Connect: the capability
+      check, `RefreshSettlementAccountCapabilities` and the daily sweep are
+      gone with it, and a Stripe row is an enablement flag on the one
+      account the instance holds.)
       The settlement-account console is a list per brand now, not "the
       account": every live account with its offered state, an inline form
       to give it its own `checkout_label`, and the connect form limited to

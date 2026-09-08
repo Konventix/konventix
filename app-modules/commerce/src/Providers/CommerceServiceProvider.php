@@ -15,7 +15,6 @@ use Konventix\Commerce\Console\CancelUnpaidReversals;
 use Konventix\Commerce\Console\ExpireCartsCommand;
 use Konventix\Commerce\Console\ProbeInvoiceNumbering;
 use Konventix\Commerce\Console\ReconcilePayments;
-use Konventix\Commerce\Console\RefreshSettlementCapabilities;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
 use Konventix\Commerce\Console\WaitingRoomTick;
@@ -60,6 +59,7 @@ use Konventix\Commerce\Settlement\NullSettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Settlement\Stripe\SdkStripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
+use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
 use Konventix\Commerce\Settlement\Stripe\StripeNotConfiguredException;
 use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
 use Konventix\Commerce\Settlement\Unzer\SdkUnzerApi;
@@ -315,15 +315,40 @@ class CommerceServiceProvider extends ModuleServiceProvider
         $this->app->bind(MollieApi::class, SdkMollieApi::class);
         $this->app->bind(UnzerApi::class, SdkUnzerApi::class);
 
-        // Bound lazily: the platform key is only required the moment a
-        // Stripe-connected brand actually settles something (ADR-0039).
-        // The throw is a typed one so a caller that can say something
-        // useful — the settlement console — catches exactly this and shows
-        // the operator what to configure, rather than a bare 500 (#194).
-        $this->app->bind(StripeApi::class, function (): StripeApi {
-            $secret = config('services.stripe.secret');
+        // Scoped, not bound fresh per resolution: the console asks the same
+        // question eight times to render one card and once more per
+        // Stripe-enabled brand (`SettlementAccount::isOffered()`), and the
+        // settings row cannot change inside a request. `scoped()` rather than
+        // `singleton()` because Octane clears scoped instances between
+        // requests, so a key rotated in the console is live for the next one —
+        // see the class's own doc.
+        $this->app->scoped(StripeCredentials::class);
 
-            if (! is_string($secret) || $secret === '') {
+        // The one place the Stripe key is resolved (ADR-0058 point 2):
+        // `StripeCredentials` answers row-before-environment, and every
+        // call is made on this instance's own account — no Connect, no
+        // `Stripe-Account` header. Bound lazily: the key is only required
+        // the moment something actually calls Stripe.
+        //
+        // It throws on the **secret key alone**, deliberately narrower than
+        // `StripeCredentials::configured()`, which also wants the webhook
+        // signing secret: a refund and the reconciliation sweep need only the
+        // key, and refusing to build a client without a signing secret would
+        // turn a half-configured instance into an outage instead of a closed
+        // door on new checkouts.
+        //
+        // Nothing catches the exception. It does not need catching on the
+        // paths that matter: a payer never reaches here, because
+        // `SettlementAccount::isOffered()` requires the pair before Stripe is
+        // offered at all and `CheckoutController` re-checks it on submit, and
+        // the console never provokes a client — it reads `StripeSetupData` and
+        // names the missing half itself. What is left is the message, for
+        // whoever meets this in a log, a failed job or a console command; the
+        // typed class keeps that message findable (#194).
+        $this->app->bind(StripeApi::class, function (): StripeApi {
+            $secret = $this->app->make(StripeCredentials::class)->secret();
+
+            if ($secret === null) {
                 throw StripeNotConfiguredException::missingPlatformKey();
             }
 
@@ -377,7 +402,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // sweep that silently fails to register would look like "no invoices
         // are overdue" rather than like a bug.
         if ($this->app->runningInConsole()) {
-            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, RefreshSettlementCapabilities::class, ExpireCartsCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class, ReconcilePayments::class, CancelUnpaidReversals::class]);
+            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, ExpireCartsCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class, ReconcilePayments::class, CancelUnpaidReversals::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
@@ -387,10 +412,6 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // under Octane "boot" is every worker start, which would make it
             // noise instead of a control.
             $schedule->command(ReportInvoiceRetention::class)->dailyAt('07:15');
-
-            // A Stripe account can activate — or be restricted — on
-            // Stripe's own timeline, well after onboarding's return trip.
-            $schedule->command(RefreshSettlementCapabilities::class)->dailyAt('06:30');
 
             // The provider reconciliation #71 asks for, split by the two
             // questions it asks. Hourly for the pending one: a lost

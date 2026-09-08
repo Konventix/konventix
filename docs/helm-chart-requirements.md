@@ -318,8 +318,8 @@ All roles: `terminationGracePeriodSeconds` ≥ the longest queue timeout
 Octane handle SIGTERM. Scheduled work (every minute: `commerce:waiting-room-tick`,
 `messaging:flush-held`, `health:schedule-check-heartbeat`; every 5/15 minutes:
 `horizon:snapshot`, `health:check`, `commerce:expire-carts`,
-`registration:expire-waitlist-offers`; daily: dunning, retention, backups,
-settlement refresh) runs only in `scheduler`.
+`registration:expire-waitlist-offers`; daily: dunning, retention, backups)
+runs only in `scheduler`.
 
 ### Network
 
@@ -388,7 +388,7 @@ complete without that list.
 | `redis` | `REDIS_PASSWORD` (`REDIS_USERNAME` for ACL users) | |
 | `storage` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (+ per-purpose `AWS_MEDIA_*`, `AWS_INVOICES_*`, `AWS_EXPORTS_*` overrides) | |
 | `mail` | `MAIL_USERNAME`, `MAIL_PASSWORD` | operator fallback transport only; brand transports are DB rows |
-| `payments` | `STRIPE_SECRET`, `STRIPE_WEBHOOK_SECRET` | Mollie/Unzer keys are brand data |
+| `payments` | `STRIPE_SECRET`, `STRIPE_WEBHOOK_SECRET` | this instance's own Stripe account (ADR-0058); overridable in the console; Mollie/Unzer keys are brand data |
 | `push` | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | generated once with `messaging:vapid-keys`; rotation invalidates subscriptions |
 | `social` | `STEAM_API_KEY` | optional |
 | `sentry` | `SENTRY_LARAVEL_DSN` | optional |
@@ -401,24 +401,45 @@ group from `externalSecrets.storeRef` and `secrets.<group>.baoPath`
 
 #### Stripe credentials per environment
 
-The `payments` group is the *platform's* Stripe pair, not a brand's
-(ADR-0039 point 4): the organizer's money moves through their own connected
-account, which Connect onboarding creates — these two values only let this
-deployment drive that onboarding and read the events back.
+The `payments` group is **this instance's own Stripe account** (ADR-0058):
+Konventix is not a marketplace, it settles into one Stripe account per
+instance — the operator's — and every Checkout Session, refund and
+reconciliation call is made on it. There is no Connect platform account, no
+connected account and no `Stripe-Account` header; several sellers means
+several Konventix instances (ADR-0001).
 
-- **`STRIPE_SECRET`** is the platform Stripe account's standard secret key,
+Both values may also be entered in the operator console, under **Settlement
+accounts → Stripe account**, where they are stored `APP_KEY`-encrypted in an
+operator-level row. **The decision is made per value, not once for the pair:
+each of the two — the secret key and the signing secret — is taken from the
+row if the row carries it, and from the environment otherwise.** A row holding
+only a secret key therefore still takes its signing secret from
+`STRIPE_WEBHOOK_SECRET`. The resolution lives in exactly one place
+(`Konventix\Commerce\Settlement\Stripe\StripeCredentials`).
+Both stay supported permanently: the environment is what a fresh deployment
+sets before anyone has logged in, the row is what an operator rotates
+without a redeploy.
+
+**Both values are required before Stripe is offered to a payer at all.** A
+secret key with no signing secret would take money through a webhook nothing
+can verify (ADR-0039 point 2), so a brand's Stripe button stays away until the
+pair is complete, and the console names whichever half is missing. Refunds and
+the reconciliation sweep need only the secret key and keep working meanwhile.
+A restricted key (`rk_test_` / `rk_live_`) is accepted for `STRIPE_SECRET`
+beside a standard `sk_` one.
+
+- **`STRIPE_SECRET`** is the operator Stripe account's standard secret key,
   from the dashboard under **Developers → API keys**. One account, two
   keys: use the sandbox key for development and staging and the live key
   for production (#146) — an environment holding the wrong one settles real
-  money against test data, or the reverse.
+  money against test data, or the reverse. A `sk_live_` key on a
+  non-production instance is called out in the console (ADR-0053).
 - **`STRIPE_WEBHOOK_SECRET`** is not found next to it. It belongs to one
   webhook endpoint, created under **Developers → Webhooks** with the
-  endpoint URL `https://<any host of the instance>/api/commerce/webhooks/stripe`
-  and **"Listen to events on connected accounts"** enabled. Konventix
-  creates every Checkout Session *on* the connected account (ADR-0039
-  point 5, the `Stripe-Account` header), so without that flag the endpoint
-  is subscribed to events that never fire and no payment ever becomes
-  settlement truth. Subscribe it to exactly seven events:
+  endpoint URL `https://<any host of the instance>/api/commerce/webhooks/stripe`.
+  It is an ordinary endpoint on the account: **do not** enable "Listen to
+  events on connected accounts" — nothing this instance does happens on a
+  connected account. Subscribe it to exactly seven events:
   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
   `checkout.session.async_payment_failed`, `checkout.session.expired`,
   `charge.dispute.created`, `charge.dispute.closed`, `charge.refunded`
@@ -429,12 +450,20 @@ deployment drive that onboarding and read the events back.
 
 The signing secret is per endpoint, so **every environment needs its own
 endpoint and carries its own secret**; pointing two environments at one
-endpoint sends each one the other's events. The settlement console's
-connect dialog shows the endpoint URL and the event list for the instance
-you are looking at, and says whether both values are set — it never shows
-them. Local development creates no endpoint at all: `stripe listen` tunnels
-the same events outbound and prints its own signing secret, see
+endpoint sends each one the other's events. The settlement console's Stripe
+card shows the endpoint URL and the event list for the instance you are
+looking at, and says whether each value is set, which mode the key is in
+(`sk_live_`/`sk_test_`) and its last four characters — never the values
+themselves. Local development creates no endpoint at all: `stripe listen`
+tunnels the same events outbound and prints its own signing secret, see
 [Stripe webhooks in local development](../README.md#stripe-webhooks-in-local-development).
+
+Brands do not hold Stripe keys. A brand's Stripe `SettlementAccount` row is
+the flag that says the brand sells through this account; every payment
+carries `konventix_brand_id`, `konventix_brand_name` and
+`konventix_operator_id` as metadata on the Checkout Session and the
+PaymentIntent, so the dashboard and the Stripe exports can be split per
+brand without a second account.
 
 ## 3. External services and what the chart assumes of them
 

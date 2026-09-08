@@ -140,7 +140,8 @@ interleave.
    ADR-0037 prerequisite), event-day validity, claim links (ADR-0032),
    `BadgeTemplate` + PDF rendering (D-ADM-05).
 6. Offline entrance client (ADR-0002 carve-out) — new work, not a port.
-7. Commerce completion: Stripe Connect Standard + Mollie adapters,
+7. Commerce completion: Stripe (this instance's own account, ADR-0058) +
+   Mollie adapters,
    `SettlementAccount`, public checkout for `instant`, dunning, refunds +
    credit notes (blocked-by-check-in per ADR-0037; credit notes also serve
    ADR-0036 transfer), bookkeeping export.
@@ -498,6 +499,9 @@ in the owning module's `TODO.md` when it lands.
     into a list, and the Stripe `card_payments.status` check Commerce's
     `TODO.md` owes becomes the rule for whether a method is *offered*, not
     only whether it is connected.
+    (Superseded for Stripe by ADR-0058/#215: with Connect removed there is
+    no `card_payments` capability to read — a Stripe row is offered when the
+    instance holds a Stripe secret key.)
     **Done** (ADR-0046).
 
 24. **The shop: products, a cart, and a door for the rush.** Commerce

@@ -30,11 +30,14 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
-    // Platform-level Stripe credentials (ADR-0039): the platform key acts on
-    // behalf of connected accounts via the Stripe-Account header, and the
-    // signing secret verifies webhooks. Per-brand providers (Mollie, Unzer)
-    // keep their credentials on SettlementAccount instead — encrypted, never
-    // in env.
+    // This instance's own Stripe account (ADR-0058): Konventix settles into
+    // one Stripe account per instance — the operator's — so this key charges
+    // and refunds on that account directly, and the signing secret verifies
+    // its webhooks. The fallback half of the pair: an operator who enters
+    // the keys in the console stores them encrypted on `stripe_settings`,
+    // and `Settlement\Stripe\StripeCredentials` prefers that row over these
+    // values. Per-brand providers (Mollie, Unzer) keep their credentials on
+    // SettlementAccount instead — encrypted, never in env.
     'stripe' => [
         'secret' => env('STRIPE_SECRET'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),

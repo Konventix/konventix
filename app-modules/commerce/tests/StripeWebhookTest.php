@@ -23,7 +23,9 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Models\StripeSettings;
 use Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents;
+use Konventix\Platform\Models\Operator;
 
 /**
  * The Stripe webhook endpoint (ADR-0039): signature verification is real —
@@ -98,6 +100,36 @@ it('settles the order on a completed session that is paid', function (): void {
         ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
 
     Event::assertDispatched(OrderPaid::class, fn (OrderPaid $e): bool => $e->settlementMethod === 'stripe');
+});
+
+it('verifies against the console-entered signing secret when one is set', function (): void {
+    // ADR-0058 point 2: the operator's row wins over the environment for
+    // the signing secret too, so a rotation in the console cannot leave the
+    // endpoint verifying yesterday's events.
+    [$order, $payment] = stripeWebhookTestPending();
+
+    $operator = Operator::factory()->create();
+    StripeSettings::forOperator((string) $operator->getKey())
+        ->fill(['secret_key' => 'sk_test_console_1234', 'webhook_secret' => 'whsec_console_secret'])
+        ->save();
+
+    // The environment secret still verifies nothing now.
+    stripeWebhookTestPost('checkout.session.completed', [
+        'id' => 'cs_test_abc',
+        'payment_status' => 'paid',
+        'payment_intent' => 'pi_test_1',
+    ], secret: STRIPE_WEBHOOK_TEST_SECRET)->assertStatus(400);
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Pending);
+
+    stripeWebhookTestPost('checkout.session.completed', [
+        'id' => 'cs_test_abc',
+        'payment_status' => 'paid',
+        'payment_intent' => 'pi_test_1',
+    ], secret: 'whsec_console_secret')->assertOk();
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
 });
 
 it('does not settle on a completed session that is still unpaid', function (): void {

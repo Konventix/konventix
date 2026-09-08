@@ -20,6 +20,7 @@ use Laravel\Pulse\Livewire\SlowOutgoingRequests;
 use Laravel\Pulse\Livewire\SlowQueries;
 use Laravel\Pulse\Livewire\SlowRequests;
 use Laravel\Pulse\Livewire\Usage;
+use Laravel\Telescope\Telescope;
 use Livewire\Livewire;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -238,4 +239,20 @@ it('renders every pulse card from a cache hit', function (): void {
     }
 
     Livewire::test(Servers::class, ['lazy' => false])->assertSee('observability-test-box');
+});
+
+it('scrubs every credential field this application accepts from Telescope request bodies', function (): void {
+    // Telescope's watcher records request bodies verbatim, and the scrubbing
+    // here is unconditional because a local database is seeded with real-shaped
+    // data (ADR-0053). The settlement console posts PSP secrets through
+    // ordinary form fields, so each field name has to be on this list by name —
+    // the four credentials plus Laravel's own password trio.
+    expect(Telescope::$hiddenRequestParameters)->toContain(
+        'password',
+        'secretKey',
+        'webhookSecret',
+        'publishableKey',
+        'api_key',
+        'private_key',
+    );
 });

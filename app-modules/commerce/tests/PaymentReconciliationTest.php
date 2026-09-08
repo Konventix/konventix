@@ -62,34 +62,19 @@ final class ReconciliationTestStripeApi implements StripeApi
      */
     public $beforeAnswering = null;
 
-    public function createCheckoutSession(array $params, string $stripeAccountId): StripeCheckoutSession
+    public function createCheckoutSession(array $params): StripeCheckoutSession
     {
         return new StripeCheckoutSession(id: 'cs_unused', url: 'https://checkout.stripe.test/unused');
     }
 
-    public function createRefund(array $params, string $stripeAccountId): void {}
-
-    public function createConnectedAccount(string $displayName, string $contactEmail, string $country): string
-    {
-        return 'acct_unused';
-    }
-
-    public function createOnboardingLink(string $stripeAccountId, string $returnUrl, string $refreshUrl): string
-    {
-        return 'https://stripe.test/unused';
-    }
-
-    public function fetchAccount(string $stripeAccountId): array
-    {
-        return ['card_payments' => 'unknown'];
-    }
+    public function createRefund(array $params): void {}
 
     /**
      * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
      */
-    public function fetchCheckoutSession(string $sessionId, string $stripeAccountId): array
+    public function fetchCheckoutSession(string $sessionId): array
     {
-        $this->sessionFetches[] = ['sessionId' => $sessionId, 'account' => $stripeAccountId];
+        $this->sessionFetches[] = $sessionId;
 
         if ($this->beforeAnswering !== null) {
             ($this->beforeAnswering)();
@@ -173,7 +158,6 @@ function reconciliationTestStripePending(int $ageMinutes = 60): array
 
     $account = SettlementAccount::factory()->create([
         'provider' => SettlementAccount::PROVIDER_STRIPE,
-        'provider_account_id' => 'acct_recon_1',
     ]);
 
     $order = Order::factory()->create([
@@ -277,7 +261,8 @@ it('settles a pending Stripe payment the webhook never reported', function (): v
 
     $this->artisan('commerce:reconcile-payments')->assertSuccessful();
 
-    expect($stripe->sessionFetches)->toBe([['sessionId' => 'cs_recon_1', 'account' => 'acct_recon_1']])
+    // Read back on this instance's own account (ADR-0058): no account id.
+    expect($stripe->sessionFetches)->toBe(['cs_recon_1'])
         ->and($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
         ->and($payment->provider_transaction_id)->toBe('pi_recon_1')
         ->and($order->refresh()->status)->toBe(OrderStatus::Paid);

@@ -235,6 +235,11 @@ declare namespace Konventix {
                 readonly stockCapacity: number | null;
                 readonly variants: Konventix.Commerce.Data.ProductVariantData[];
             };
+            export type SaveStripeSettingsData = {
+                readonly secretKey: string;
+                readonly webhookSecret: string;
+                readonly publishableKey: string | null;
+            };
             export type ShopProductData = {
                 readonly id: string;
                 readonly name: string;
@@ -255,7 +260,14 @@ declare namespace Konventix {
             export type StripeSetupData = {
                 readonly webhookUrl: string;
                 readonly events: string[];
-                readonly platformConfigured: boolean;
+                readonly configured: boolean;
+                readonly secretKeySet: boolean;
+                readonly webhookSecretSet: boolean;
+                readonly source: string;
+                readonly mode: string | null;
+                readonly lastFour: string | null;
+                readonly publishableKeySet: boolean;
+                readonly liveKeyOffProduction: boolean;
                 readonly secretGroupHint: string;
             };
             export type UnappliedPaymentData = {
@@ -268,6 +280,7 @@ declare namespace Konventix {
             };
             export type UpdateSettlementAccountLabelData = {
                 readonly checkoutLabel: string | null;
+                readonly statementDescriptorSuffix: undefined | string | null;
             };
             export type WaitingRoomSettingsData = {
                 readonly admitPerInterval: number;
