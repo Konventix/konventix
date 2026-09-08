@@ -62,6 +62,7 @@ declare namespace Konventix {
                 readonly label: string;
                 readonly quantity: number;
                 readonly unitAmountNet: string;
+                readonly unitAmountGross: string;
                 readonly lineGross: string;
                 readonly canChangeQuantity: boolean;
                 readonly maxQuantity: number | null;
@@ -138,6 +139,7 @@ declare namespace Konventix {
                 readonly paid: boolean;
                 readonly reservationUntil: string | null;
                 readonly ordersUrl: string;
+                readonly payUrl: string | null;
             };
             export type OrderReversalData = {
                 readonly id: string;
@@ -239,6 +241,7 @@ declare namespace Konventix {
                 readonly description: string | null;
                 readonly imageUrl: string | null;
                 readonly unitAmountNet: string;
+                readonly unitAmountGross: string;
                 readonly priceDisplay: Konventix.Commerce.Enums.PriceDisplay;
                 readonly soldOut: boolean;
                 readonly variants: Konventix.Commerce.Data.ShopVariantData[];
@@ -247,6 +250,7 @@ declare namespace Konventix {
                 readonly id: string;
                 readonly label: string | null;
                 readonly unitAmountNet: string;
+                readonly unitAmountGross: string;
                 readonly remaining: number;
             };
             export type StripeSetupData = {
@@ -318,6 +322,11 @@ declare namespace Konventix {
                 | 'commerce.view-products'
                 | 'commerce.manage-products';
             export type PriceDisplay = 'net' | 'gross';
+            export type RefundReason =
+                | 'customer-request'
+                | 'event-cancelled'
+                | 'duplicate-payment'
+                | 'goodwill';
             export type ReversalKind = 'return' | 'dispute' | 'external_refund';
             export type ReversalStatus = 'open' | 'final' | 'withdrawn';
             export type TaxClass = 'standard' | 'reduced';
@@ -344,6 +353,17 @@ declare namespace Konventix {
     }
     namespace Compliance {
         namespace Data {
+            export type CheckoutLegalTextGapData = {
+                readonly brandId: string;
+                readonly brandName: string;
+                readonly missingSlugs: string[];
+            };
+            export type CheckoutLegalTextRoleData = {
+                readonly slug: string;
+                readonly name: string;
+                readonly description: string;
+                readonly requiresConsent: boolean;
+            };
             export type PolicyData = {
                 readonly name: string;
                 readonly slug: string;
@@ -821,6 +841,18 @@ declare namespace Konventix {
                 variantsPending: boolean;
                 uploadedAt: string | null;
             };
+            export type OperatorBrandLinkData = {
+                readonly id: string;
+                readonly name: string;
+                readonly url: string | null;
+                readonly current: boolean;
+            };
+            export type OperatorPresenceData = {
+                readonly name: string;
+                readonly legalName: string;
+                readonly brands: Konventix.Platform.Data.OperatorBrandLinkData[];
+                readonly privacyPolicyUrl: string | null;
+            };
             export type OperatorSettingsData = {
                 readonly name: string;
                 readonly legalName: string;
@@ -987,6 +1019,8 @@ declare namespace Konventix {
                 readonly url: string;
                 readonly price: Konventix.Registration.Data.PriceDeclarationData | null;
                 readonly requiresApproval: boolean;
+                readonly onSale: boolean;
+                readonly salesStart: string | null;
             };
             export type QuotaData = {
                 readonly name: string;
@@ -1022,6 +1056,8 @@ declare namespace Konventix {
                 readonly grants: Konventix.Registration.Data.GrantData[];
                 readonly priceDeclaration: Konventix.Registration.Data.PriceDeclarationData | null;
                 readonly quotaIds: string[];
+                readonly salesStart: string | null;
+                readonly salesEnd: string | null;
             };
             export type SubmitRegistrationData = {
                 readonly organizationName: string | null;
