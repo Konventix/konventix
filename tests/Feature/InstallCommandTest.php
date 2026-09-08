@@ -10,6 +10,7 @@ use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Compliance\Support\CheckoutLegalTexts;
+use Konventix\Identity\Models\Session;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -112,6 +113,47 @@ test('--reset-admin-password sets the existing admin\'s password and says whose 
 
     $admin = User::query()->firstWhere('email', 'root@acme.test');
     expect(Hash::check('rotated-secret', $admin->password))->toBeTrue();
+});
+
+test('--reset-admin-password rotates the remember token and ends every live session (#223)', function () {
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'first-run-secret';
+    $this->artisan('konventix:install', installArguments())->assertSuccessful();
+
+    $admin = User::query()->firstWhere('email', 'root@acme.test');
+    $admin->forceFill(['remember_token' => 'a-stolen-cookie'])->save();
+
+    Session::query()->create([
+        'id' => 'a-live-session',
+        'user_id' => $admin->getKey(),
+        'ip_address' => '203.0.113.7',
+        'user_agent' => 'probe',
+        'payload' => '',
+        'last_activity' => now()->getTimestamp(),
+    ]);
+
+    // Somebody else's session, to prove the reset is aimed rather than broad.
+    $bystander = User::factory()->create();
+    Session::query()->create([
+        'id' => 'a-bystanders-session',
+        'user_id' => $bystander->getKey(),
+        'ip_address' => '203.0.113.8',
+        'user_agent' => 'probe',
+        'payload' => '',
+        'last_activity' => now()->getTimestamp(),
+    ]);
+
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'rotated-secret';
+
+    // The flag exists for the case where the secret no longer opens the
+    // console, which usually means it was rotated *because* it leaked. A new
+    // hash alone leaves a stolen remember-me cookie and any live session
+    // working, so the reset takes those away too.
+    $this->artisan('konventix:install', [...installArguments(), '--reset-admin-password' => true])
+        ->assertSuccessful();
+
+    expect($admin->refresh()->remember_token)->not->toBe('a-stolen-cookie')
+        ->and(Session::query()->whereKey('a-live-session')->exists())->toBeFalse()
+        ->and(Session::query()->whereKey('a-bystanders-session')->exists())->toBeTrue();
 });
 
 test('--reset-admin-password without a password in the environment changes nothing (#223)', function () {

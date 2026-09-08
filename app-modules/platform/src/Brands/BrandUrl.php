@@ -86,10 +86,15 @@ final class BrandUrl
         $scheme = parse_url($appUrl, PHP_URL_SCHEME);
         $scheme = is_string($scheme) && $scheme !== '' ? $scheme : 'http';
 
-        // Absent from `APP_URL` means the scheme's default port, which is
-        // exactly the case the origin leaves unspoken.
+        // Absent from `APP_URL`, or spelled out as the scheme's own default:
+        // either way the origin leaves it unspoken, so a deployment that
+        // writes `https://…:443` (or `http://…:80`, which is what mirroring
+        // compose's `APP_PORT` default produces) reads as a plain hostname.
         $port = parse_url($appUrl, PHP_URL_PORT);
 
-        return $scheme.'://'.$host.(is_int($port) ? ':'.$port : '');
+        $isDefaultPort = ($scheme === 'https' && $port === 443)
+            || ($scheme === 'http' && $port === 80);
+
+        return $scheme.'://'.$host.(is_int($port) && ! $isDefaultPort ? ':'.$port : '');
     }
 }

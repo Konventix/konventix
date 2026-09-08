@@ -63,6 +63,22 @@ it('omits the port when it is the scheme default', function (): void {
     expect(app(BrandUrl::class)->baseFor($brand))->toBe('https://sxlan.example');
 });
 
+it('omits a port APP_URL spells out when it is the scheme default', function (): void {
+    // `https://…:443` and `http://…:80` are the same origins as without the
+    // port, and a developer who mirrors compose's `APP_PORT` default writes
+    // the second one. A link that says `:443` out loud is not wrong, it is
+    // just not what anybody wrote down (#225 review finding 1).
+    platformAppUrl('https://admin.example:443');
+
+    $brand = Brand::factory()->withDomain('sxlan.example')->create();
+
+    expect(app(BrandUrl::class)->baseFor($brand))->toBe('https://sxlan.example');
+
+    platformAppUrl('http://admin.example:80');
+
+    expect(app(BrandUrl::class)->baseFor($brand))->toBe('http://sxlan.example');
+});
+
 it('builds an https link from a queue job, where no request is bound', function (): void {
     // #225: a mail rendered inside a queued job used to come out on http://
     // because `request()` hands back a synthetic request with no HTTPS

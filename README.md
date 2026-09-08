@@ -112,6 +112,15 @@ composer install                          # host-side, only to get vendor/bin/sa
 > Note `composer setup` is what *creates* `.env`, so running it first does not help — on
 > Docker it also needs the containers to already be up.
 
+> **`APP_URL` carries the port, not just the host.** `APP_PORT` in `.env` only remaps the
+> port compose publishes on the host side; `APP_URL` is what the application builds absolute
+> URLs from when there is no request to read one off — every link in a mail a queue worker
+> renders, and every brand's public origin through `Konventix\Platform\Brands\BrandUrl`
+> (#225). The two have to agree: this tree runs `APP_PORT=18080`, so it needs
+> `APP_URL=http://localhost:18080`, or the console's "view on the site" links and every
+> queued mail point at port 80 and open nothing. On a deployment behind a TLS-terminating
+> proxy the same variable is what makes those links `https://`.
+
 Without PHP on the host, bootstrap `vendor/` in a container instead of `composer install`:
 
 ```bash
