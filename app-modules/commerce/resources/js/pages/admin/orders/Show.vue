@@ -281,8 +281,12 @@ function submitRefund(): void {
             </Button>
         </AdminPageHeader>
 
-        <!-- #73: the money goes back for the whole order. Partial refunds,
-             transfers and seat release are the issue's other open items. -->
+        <!-- #73: the money goes back for the whole order, and the places it
+             paid for are released with it — a direct registration order
+             through `OrderRefunded`, a cart order's registration lines
+             through `OrderLineCancelled` (whole-branch review finding 3).
+             Partial refunds and transfers are the issue's other open
+             items. -->
         <Dialog
             :open="refundOpen"
             @update:open="

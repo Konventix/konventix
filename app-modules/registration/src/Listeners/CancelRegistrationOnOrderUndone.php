@@ -27,20 +27,24 @@ use Konventix\Registration\Actions\CancelRegistrationForUndoneOrder;
  *   registration on a brand with no shop feature held its quota for good.
  *   The two reasons stay distinct all the way down to the audit column:
  *   `CancelRegistrationForUndoneOrder` maps each to its own reason code.
- *
- * Any other reason code is an order-level fact this module has not been told
- * to act on, and is ignored.
  * - `OrderRefunded` with `whole: true`: the whole-order refund of ADR-0037,
  *   whose downstream half was left open there. `amountRefunded` alone cannot
  *   say whether a refund was whole, which is why the event carries the flag;
  *   a partial refund leaves the contractual act standing.
  *
+ * Any other reason code is an order-level fact this module has not been told
+ * to act on, and is ignored.
+ *
  * Only a *direct* registration order reaches here. A cart order's own
- * `OrderCancelled` cannot say which of its lines to cancel — its `settlesId`
- * is the cart's — so its registration lines arrive as `OrderLineCancelled`
- * and `CancelRegistrationOnOrderLineCancelled` handles them, exactly the
- * partition `OrderPaid`/`OrderLineSettled` already draws. The guard on
- * `settlesType` therefore needs no dedicated cart branch.
+ * `OrderCancelled` and `OrderRefunded` cannot say which of its lines to
+ * cancel — its `settlesId` is the cart's — so its registration lines arrive
+ * as `OrderLineCancelled` and `CancelRegistrationOnOrderLineCancelled`
+ * handles them, exactly the partition `OrderPaid`/`OrderLineSettled` already
+ * draws. That is true of the refund path only since whole-branch review
+ * finding 3: `RecordRefund` used to emit `OrderRefunded` alone, so a cart
+ * order's refund sent the money back and released nothing while the same
+ * button on a direct order released the seat. The guard on `settlesType`
+ * therefore needs no dedicated cart branch.
  *
  * The reversal itself never reaches here — `PaymentReversed` only revives the
  * receivable (`RecordReversalOnPaymentReversed`); the seat is kept until the
