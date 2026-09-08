@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\Carbon;
 use Illuminate\Console\Scheduling\Event as ScheduledEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
@@ -31,6 +32,18 @@ use Konventix\Platform\Models\Brand;
  * Helper names prefixed: Pest helpers are process-global
  * (`.ai/rules/tests.md`).
  */
+/**
+ * A payment window is this file's whole subject, and every arrangement
+ * back-dates `created_at` relative to `now()` while the sweep evaluates
+ * `now()` again at run time — a sixty-second margin in both directions, and
+ * the "inside the window" case flipped to a failure if a test body ever took
+ * a minute (whole-branch review finding 14). A whole second, so no `timestamp(0)`
+ * column can round a boundary case across the line.
+ */
+beforeEach(function (): void {
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00'));
+});
+
 /**
  * A live, offered Mollie account — the brand can put a payer in front of a
  * hosted checkout, which is the population this sweep is about.
@@ -84,8 +97,31 @@ it('cancels a pending direct registration order past the payment window', functi
     );
 });
 
-it('expires a direct registration order on the same window as a cart', function (): void {
-    expect(ExpireRegistrationOrders::WINDOW_MINUTES)->toBe(Cart::CHECKOUT_GRACE_MINUTES);
+/**
+ * Whole-branch review finding 14. What stood here was
+ * `expect(WINDOW_MINUTES)->toBe(Cart::CHECKOUT_GRACE_MINUTES)` against a
+ * constant declared as `= Cart::CHECKOUT_GRACE_MINUTES` — `X === X`, which
+ * could only fail if someone re-typed the constant as a literal, and which
+ * said nothing about the sweep using that window. This pins both the window
+ * and the `<=` at its boundary: an order placed exactly a window ago is
+ * cancelled, one placed a second later is not.
+ */
+it('cancels at the window boundary and leaves the second inside it alone (#131)', function (): void {
+    $this->withBrand();
+    expiryTestHostedAccount();
+
+    $due = expiryTestDirectOrder();
+    $due->forceFill(['created_at' => now()->subMinutes(ExpireRegistrationOrders::WINDOW_MINUTES)])->save();
+
+    $inside = expiryTestDirectOrder();
+    $inside->forceFill([
+        'created_at' => now()->subMinutes(ExpireRegistrationOrders::WINDOW_MINUTES)->addSecond(),
+    ])->save();
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($due->refresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($inside->refresh()->status)->toBe(OrderStatus::Pending);
 });
 
 it('leaves a pending direct registration order inside the window alone', function (): void {
