@@ -214,3 +214,47 @@ it('marks a non-raster upload processed rather than perpetually pending', functi
     expect($item->refresh()->variants)->toBe([])
         ->and($item->variants_generated_at)->not->toBeNull();
 });
+
+/**
+ * #252: SVG is no longer accepted (MediaLibraryTest), but a library that
+ * already holds one from before that rule must not serve it as a document
+ * the browser will execute. It leaves as an opaque download instead.
+ */
+it('serves a stored svg as an attachment rather than inline', function (): void {
+    $this->withBrand();
+    Storage::fake('media');
+
+    Storage::disk('media')->put('brand/logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+
+    $item = MediaItem::factory()->create([
+        'disk' => 'media',
+        'path' => 'brand/logo.svg',
+        'original_filename' => 'logo.svg',
+        'mime_type' => 'image/svg+xml',
+    ]);
+
+    $this->get(route('platform.media.show', ['media' => $item->getKey()]))
+        ->assertOk()
+        ->assertHeader('Content-Type', 'application/octet-stream')
+        ->assertHeader('X-Content-Type-Options', 'nosniff')
+        ->assertDownload('logo.svg');
+});
+
+it('still serves a raster image inline', function (): void {
+    $this->withBrand();
+    Storage::fake('media');
+
+    Storage::disk('media')->put('brand/item.png', 'original-bytes');
+
+    $item = MediaItem::factory()->create([
+        'disk' => 'media',
+        'path' => 'brand/item.png',
+        'mime_type' => 'image/png',
+    ]);
+
+    $response = $this->get(route('platform.media.show', ['media' => $item->getKey()]))
+        ->assertOk()
+        ->assertHeader('Content-Type', 'image/png');
+
+    expect($response->headers->get('Content-Disposition'))->toStartWith('inline');
+});

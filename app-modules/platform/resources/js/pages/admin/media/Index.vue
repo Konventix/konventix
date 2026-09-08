@@ -257,10 +257,12 @@ const columns: ColumnDef<MediaRow>[] = [
                             </div>
                             <div class="grid gap-2">
                                 <Label for="media-file">File</Label>
+                                <!-- No SVG (#252): the server refuses it, and
+                                     a bare image/* would still offer it here. -->
                                 <input
                                     id="media-file"
                                     type="file"
-                                    accept="image/*,.svg,.pdf"
+                                    accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
                                     class="text-sm"
                                     @change="
                                         form.file =

@@ -25,6 +25,15 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class MediaFileController
 {
+    /**
+     * Every spelling of SVG that has ever been written into `mime_type`:
+     * `image/svg+xml` is what browsers and PHP's finfo agree on, `image/svg`
+     * is what some older uploaders sent.
+     *
+     * @var list<string>
+     */
+    private const SVG_MIME_TYPES = ['image/svg+xml', 'image/svg'];
+
     public function __invoke(DiskResolver $disks, string $media, ?string $variant = null): StreamedResponse
     {
         // Cross-brand by ULID like the rest of the library: the ULID implies
@@ -44,6 +53,22 @@ class MediaFileController
         $disk = $disks->filesystem($item->disk);
 
         abort_unless($disk->exists($path), 404);
+
+        // An SVG is an executable document, and this route answers from the
+        // brand's own origin without authentication — inline delivery would
+        // be stored XSS (#252). New SVG uploads are refused outright
+        // (MediaAdminController), so this only ever fires for a library that
+        // already held one: it leaves as an opaque download instead of
+        // anything a browser will parse. `nosniff` is restated here rather
+        // than left to the global SecurityHeaders middleware (#251), because
+        // this is the one response where sniffing is the whole attack.
+        if (in_array(strtolower((string) $item->mime_type), self::SVG_MIME_TYPES, true)) {
+            return $disk->response($path, $item->original_filename, [
+                'Content-Type' => 'application/octet-stream',
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'public, max-age=31536000, immutable',
+            ], 'attachment');
+        }
 
         // Stored keys are never overwritten (ADR-0043), so a year is safe and
         // a re-upload arrives under a new ULID rather than a stale cache.

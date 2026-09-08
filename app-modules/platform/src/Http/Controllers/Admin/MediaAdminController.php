@@ -73,7 +73,14 @@ class MediaAdminController
 
         $validated = $request->validate([
             'brand_id' => ['required', 'ulid', 'exists:brands,id'],
-            'file' => ['required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,gif,webp,svg,pdf'],
+            // No `svg` (#252). The delivery route is unauthenticated and
+            // answers from the brand's own origin, so an SVG accepted here is
+            // stored XSS against every brand host and the console — and
+            // nothing in this application needs one: brand logos, favicons
+            // and page images are all raster. `mimes` judges the file's
+            // actual type, not the name it arrived under, so renaming an SVG
+            // to .png does not get past this line.
+            'file' => ['required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,gif,webp,pdf'],
             'alt_text' => ['nullable', 'string', 'max:255'],
         ]);
 
