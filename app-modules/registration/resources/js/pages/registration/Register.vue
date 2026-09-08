@@ -67,7 +67,7 @@ const needsBillingAddress = props.settlement === 'invoice';
                     <div
                         v-if="errors.registrationType"
                         role="alert"
-                        class="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-text"
+                        class="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-text"
                     >
                         {{ errors.registrationType }}
                     </div>
