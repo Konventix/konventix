@@ -111,3 +111,59 @@ it('names the oldest brand the account knows, not the most recent one', function
     expect(firstContactFlash()['message'])->toContain('Oldest Con')
         ->and(firstContactFlash()['message'])->not->toContain('Middle Con');
 });
+
+/**
+ * Whole-branch review finding 13. `users` has no `operator_id` — accounts
+ * are global to the instance — so a membership query with no operator
+ * filter would tell a person on operator B's login page that they "first
+ * used" the account at operator A's brand. That is one operator's brand
+ * name inside another operator's auth page, and the opposite of what #184
+ * and ADR-0054 set out to say ("which operator holds it").
+ */
+it('says nothing about another operator\'s brand (#184, ADR-0054)', function (): void {
+    $theirs = Operator::factory()->create(['name' => 'Their Events']);
+    $ours = Operator::factory()->create(['name' => 'Our Events']);
+
+    $foreign = Brand::factory()->withDomain('theirs.test')->create([
+        'name' => 'Their Con',
+        'operator_id' => $theirs->getKey(),
+    ]);
+    Brand::factory()->withDomain('ours.test')->create([
+        'name' => 'Our Con',
+        'operator_id' => $ours->getKey(),
+    ]);
+
+    $user = User::factory()->create(['password' => 'secret-password-1']);
+    firstContactMembership($user, $foreign, yearsAgo: 1);
+
+    firstContactSignIn($user, 'ours.test');
+
+    expect(firstContactFlash())->toBeNull();
+});
+
+it('names the oldest brand of this operator, skipping an older one of another (#184)', function (): void {
+    $theirs = Operator::factory()->create();
+    $ours = Operator::factory()->create();
+
+    $foreign = Brand::factory()->withDomain('theirs.test')->create([
+        'name' => 'Their Con',
+        'operator_id' => $theirs->getKey(),
+    ]);
+    $sibling = Brand::factory()->withDomain('sibling.test')->create([
+        'name' => 'Sibling Con',
+        'operator_id' => $ours->getKey(),
+    ]);
+    Brand::factory()->withDomain('ours.test')->create([
+        'name' => 'Our Con',
+        'operator_id' => $ours->getKey(),
+    ]);
+
+    $user = User::factory()->create(['password' => 'secret-password-1']);
+    firstContactMembership($user, $foreign, yearsAgo: 5);
+    firstContactMembership($user, $sibling, yearsAgo: 1);
+
+    firstContactSignIn($user, 'ours.test');
+
+    expect(firstContactFlash()['message'])->toContain('Sibling Con')
+        ->and(firstContactFlash()['message'])->not->toContain('Their Con');
+});

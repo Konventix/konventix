@@ -87,12 +87,32 @@ class RecordBrandMembership
      * `withoutBrandScope()` deliberately (ADR-0010): the whole question is
      * what this account has done on the operator's *other* brands, which
      * the scoped query can never see.
+     *
+     * Scoped to *this brand's operator* (whole-branch review finding 13).
+     * `users` has no `operator_id` — an account is global to the instance,
+     * by design — so without the join a person who used their account on
+     * operator A's brand and then first meets operator B's would be told, on
+     * B's own login page, that they first used it at A's brand. ADR-0054
+     * frames the whole feature as "which operator holds it"; naming another
+     * operator's brand is the opposite of that, and it becomes a tenancy
+     * leak the moment a second operator exists. A brand with no operator
+     * cannot answer the question at all and says nothing.
      */
     private function announceFirstContact(BrandMembership $membership): void
     {
+        $operatorId = Brand::query()->whereKey($membership->brand_id)->value('operator_id');
+
+        if ($operatorId === null) {
+            return;
+        }
+
         $earliest = BrandMembership::withoutBrandScope()
             ->where('user_id', $membership->user_id)
             ->where('brand_id', '!=', $membership->brand_id)
+            ->whereIn(
+                'brand_id',
+                Brand::query()->where('operator_id', $operatorId)->select('id'),
+            )
             ->orderBy('first_seen_at')
             ->first();
 
