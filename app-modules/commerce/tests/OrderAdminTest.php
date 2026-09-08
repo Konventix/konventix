@@ -1045,6 +1045,56 @@ it('keeps a refund the console itself made out of the reversals work list (#247)
         ->assertInertia(fn (AssertableInertia $page) => $page->has('orders.data', 0));
 });
 
+it('refunds unapplied money on a cancelled order from the console (#6)', function (): void {
+    // ADR-0057 point 9's second half. Until now the console showed the money
+    // and told the operator to refund it in the provider's dashboard — the
+    // same manual step as before the case was recorded at all.
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = Order::factory()->create(['status' => OrderStatus::Cancelled, 'total_gross' => '11.90']);
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'settlement_account_id' => (string) Str::ulid(),
+        'amount' => '11.90',
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', OrderAdminTestRefundingAdapter::class);
+
+    // The page offers it: the alert's payment is the button's condition.
+    $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders/{$order->id}")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('unappliedPayment.id', $payment->id)
+            ->where('order.status', 'cancelled'));
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertRedirect();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Reversed)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0)
+        ->and(PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->sole()->provider_reference)
+        ->toBe('re_console_1');
+
+    // And the callout is gone: the decision has been carried out.
+    $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders/{$order->id}")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('unappliedPayment', null));
+
+    $audit = AuditLogEntry::query()->where('action', 'commerce.order.refunded')->sole();
+
+    expect($audit->context['provider_reference'])->toBe('re_console_1');
+});
+
 it('422s a provider refusal from any adapter, not only Stripe (#236)', function (): void {
     [, $admin] = commerceOperator(orderAdminRefundPermissions());
 

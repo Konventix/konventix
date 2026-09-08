@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Actions;
 
+use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Actions\Concerns\GuardsCheckedInAdmissions;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
@@ -26,6 +27,17 @@ use RuntimeException;
  * to make deliberately.
  *
  * Cancellation is deliberately not blocked here — only the money flow.
+ *
+ * **Two orders can be refunded** (#6, ADR-0057 point 9). A paid one, which
+ * is the whole story above. And a *cancelled* one holding a succeeded
+ * payment nobody could apply — the PSP success that landed after a sweep
+ * had already called the order off. That refund is the provider leg without
+ * a credit note: there is no document to correct and no sale to undo, so
+ * the order stays `cancelled`, nothing is announced, and the only records
+ * are the money's own — the reversal row with the provider's reference and
+ * the payment leaving the unapplied list. Before this the console could
+ * show that money and nothing else; the operator had to refund it by hand
+ * in the provider's dashboard.
  *
  * The guards and the provider call are what this Action *is*; the credit
  * note, the status and `OrderRefunded` live in `RecordRefund`, which the
@@ -54,6 +66,7 @@ final class RefundOrder
 
     public function __construct(
         private readonly RecordRefund $recordRefund,
+        private readonly RecordOwnRefund $recordOwnRefund,
         private readonly SettlementAdapterRegistry $registry,
     ) {}
 
@@ -63,14 +76,33 @@ final class RefundOrder
         ?string $reasonNote = null,
         ?string $amount = null,
     ): Order {
-        $this->guardPaid($order);
-        $this->guardNotCheckedIn($order);
+        $unapplied = $this->unappliedPayment($order);
+
+        $this->guardRefundable($order, $unapplied);
+
+        // ADR-0037's guard protects a *sale*. Unapplied money paid for
+        // nothing — the order was already cancelled when it arrived, the
+        // seat was released and no admission came from it — so there is no
+        // attendance the money could be weighed against.
+        if ($unapplied === null) {
+            $this->guardNotCheckedIn($order);
+        }
 
         // The PSP side effect (ADR-0039) first, and before any domain write:
         // if the provider refuses the refund, no domain record or credit note
         // may exist claiming the money moved. Nothing has been written yet at
         // this point, so a refusal leaves the order exactly as it was.
         [$payment, $providerReference] = $this->refundThroughProvider($order, $amount);
+
+        // Money that was never applied has no sale to undo (ADR-0057
+        // point 9): no credit note, because a cancelled order has no
+        // document to correct, no `OrderRefunded`, because nothing was
+        // refunded *of* the order, and the order stays `cancelled`. Only
+        // the money moves — and the payment leaves the unapplied list, so
+        // the console stops asking the operator to decide about it.
+        if ($unapplied !== null) {
+            return $this->recordUnappliedRefund($order, $unapplied, $providerReference, $amount);
+        }
 
         // Everything after the money is the refund's domain leg, shared with
         // the reversal path (ADR-0057 point 1): a refund the operator made in
@@ -129,14 +161,97 @@ final class RefundOrder
         return [$payment, $reference];
     }
 
-    private function guardPaid(Order $order): void
+    /**
+     * Two orders can be refunded: a paid one, and a cancelled one holding
+     * money nobody could apply (ADR-0057 point 9, #6).
+     *
+     * The second case is the late PSP success: `ExpireCarts` or
+     * `ExpireRegistrationOrders` called the order off, the payment landed
+     * afterwards, `RecordPaymentSuccess` recorded it as unapplied and told
+     * the operator. Until now the console could only *show* it and send the
+     * operator to the provider's dashboard, which is the manual step the
+     * whole issue was filed against.
+     *
+     * Pressing the button twice is refused by construction: the first
+     * refund moves the payment to `reversed`, so `unappliedPayment()` finds
+     * nothing the second time and this guard throws.
+     */
+    private function guardRefundable(Order $order, ?Payment $unapplied): void
     {
-        if ($order->status !== OrderStatus::Paid) {
-            throw new RuntimeException(sprintf(
-                'Order [%s] is %s; only a paid order can be refunded.',
-                $order->id,
-                $order->status->value,
-            ));
+        if ($order->status === OrderStatus::Paid || $unapplied !== null) {
+            return;
         }
+
+        throw new RuntimeException(sprintf(
+            'Order [%s] is %s and holds no unapplied payment; only a paid order, or one with money that was never applied, can be refunded.',
+            $order->id,
+            $order->status->value,
+        ));
+    }
+
+    /**
+     * The succeeded payment of a cancelled order — `Payment::unapplied()`'s
+     * definition, narrowed to this order. Null for every order that is not
+     * in that state, which is what makes it the discriminator between the
+     * two refunds this Action performs.
+     */
+    private function unappliedPayment(Order $order): ?Payment
+    {
+        return Payment::withoutBrandScope()
+            ->unapplied()
+            ->where('order_id', $order->id)
+            ->orderByDesc('received_at')
+            ->first();
+    }
+
+    /**
+     * The domain leg of an unapplied refund: the reversal row that names the
+     * provider's reference (#247), and the payment leaving `succeeded`.
+     *
+     * `PaymentStatus::Reversed` is what takes the row out of
+     * `Payment::unapplied()`, so the orders index stops listing the order
+     * under "reversals & unapplied money" and the alert on the order page
+     * goes away — the operator's decision has been carried out. Written only
+     * for the payment's whole amount, exactly as `RecordPaymentReversal`
+     * writes it: a partial refund leaves money still lying there, and the
+     * console must keep saying so.
+     *
+     * No credit note, deliberately (ADR-0057 point 9): the cancelled order
+     * has no document to correct. The sweeps never cancel an invoiced order
+     * — `ExpireRegistrationOrders` excludes them explicitly and a cart order
+     * is invoiced only once it is paid — so there is no case here where a
+     * document exists and is left uncorrected.
+     */
+    private function recordUnappliedRefund(
+        Order $order,
+        Payment $payment,
+        ?string $providerReference,
+        ?string $amount,
+    ): Order {
+        $refunded = $amount ?? (string) $order->total_gross;
+
+        if ($providerReference !== null && $providerReference !== '') {
+            $this->recordOwnRefund->handle(
+                order: $order,
+                payment: $payment,
+                amount: $refunded,
+                providerReference: $providerReference,
+            );
+        }
+
+        $paid = (string) $payment->amount;
+
+        if (is_numeric($refunded) && is_numeric($paid) && bccomp($refunded, $paid, 2) === 0) {
+            $payment->forceFill(['status' => PaymentStatus::Reversed])->save();
+        } else {
+            Log::warning('Partial refund of unapplied money; the payment stays unapplied for the rest (#6).', [
+                'order_id' => $order->id,
+                'payment_id' => $payment->id,
+                'refunded' => $refunded,
+                'payment_amount' => $paid,
+            ]);
+        }
+
+        return $order->refresh();
     }
 }
