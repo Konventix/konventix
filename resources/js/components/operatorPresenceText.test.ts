@@ -3,7 +3,7 @@ import {
     accountIntro,
     brandListIntro,
     controllerSentence,
-    sharedAccountNotice,
+    sharedAccountNoticeFor,
 } from './operatorPresenceText';
 
 /**
@@ -51,28 +51,75 @@ describe('brandListIntro', () => {
     });
 });
 
-describe('sharedAccountNotice', () => {
-    it('explains the shared account on the sign-up page itself', () => {
-        expect(sharedAccountNotice('Acme Events', 2)).toContain(
+describe('sharedAccountNoticeFor', () => {
+    it('explains the shared account on the registration page itself', () => {
+        const notice = sharedAccountNoticeFor(
+            'auth/Register',
+            'Acme Events',
+            2,
+        );
+
+        expect(notice).toContain(
             'Already have an account from another Acme Events site?',
         );
-        expect(sharedAccountNotice('Acme Events', 2)).toContain(
+        expect(notice).toContain(
             'the same email address and password work here',
         );
     });
 
-    it('depends on nothing but the operator, so it is no enumeration oracle', () => {
-        // ADR-0016: the sign-up surface must never answer "does this address
-        // have an account". The notice takes no address and no account state
-        // at all — the same text is shown to everyone who reaches the form.
-        expect(sharedAccountNotice('Acme Events', 2)).toBe(
-            sharedAccountNotice('Acme Events', 2),
+    it('never offers a password on the social-signup page, where the account has none', () => {
+        // `CompleteSocialSignup` creates an account with `password => null` —
+        // that is the point of the nullable column. Telling that visitor their
+        // password works here sends them to a form they cannot complete
+        // (#241 review finding 7). And the address they type is refused if it
+        // is already taken, deliberately unlinked (`SocialAuthController`), so
+        // the advice is to sign in with the account they already have and
+        // connect this provider afterwards.
+        const notice = sharedAccountNoticeFor(
+            'auth/CompleteSocialSignup',
+            'Acme Events',
+            2,
         );
-        expect(sharedAccountNotice.length).toBe(2);
+
+        expect(notice).not.toContain('password');
+        expect(notice).toContain(
+            'Already have an account from another Acme Events site?',
+        );
+        expect(notice).toContain('connect this sign-in method');
+    });
+
+    it('says nothing on a surface where no account is being created', () => {
+        expect(
+            sharedAccountNoticeFor('auth/Login', 'Acme Events', 2),
+        ).toBeNull();
+        expect(
+            sharedAccountNoticeFor('auth/ForgotPassword', 'Acme Events', 2),
+        ).toBeNull();
+    });
+
+    it('depends on nothing but the page and the operator, so it is no enumeration oracle', () => {
+        // ADR-0016: the sign-up surface must never answer "does this address
+        // have an account". The notice takes the page component, the operator
+        // name and how many brands the operator has — no address and no
+        // account state at all — so the same text is shown to everyone who
+        // reaches the form.
+        expect(sharedAccountNoticeFor('auth/Register', 'Acme Events', 2)).toBe(
+            sharedAccountNoticeFor('auth/Register', 'Acme Events', 2),
+        );
+        expect(sharedAccountNoticeFor.length).toBe(3);
     });
 
     it('says nothing for a single-brand operator, which has no other site', () => {
-        expect(sharedAccountNotice('Acme Events', 1)).toBeNull();
+        expect(
+            sharedAccountNoticeFor('auth/Register', 'Acme Events', 1),
+        ).toBeNull();
+        expect(
+            sharedAccountNoticeFor(
+                'auth/CompleteSocialSignup',
+                'Acme Events',
+                1,
+            ),
+        ).toBeNull();
     });
 });
 

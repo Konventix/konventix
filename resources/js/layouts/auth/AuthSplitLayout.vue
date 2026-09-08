@@ -1,14 +1,11 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import OperatorPresenceNotice from '@/components/OperatorPresenceNotice.vue';
 import { home } from '@/routes';
 
 const page = usePage();
-// The brand this host serves, not the application's own name: an auth page
-// says whose site it is (#241, ADR-0054 point 5).
-const name = computed(() => page.props.brand.name);
+const name = page.props.name;
 
 defineProps<{
     title?: string;

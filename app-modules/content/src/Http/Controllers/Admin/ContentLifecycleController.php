@@ -44,12 +44,11 @@ class ContentLifecycleController
         $validated = $request->validate(['publishedAt' => ['nullable', 'date']]);
         $submitted = $validated['publishedAt'] ?? null;
 
-        // `content_entries.published_at` is a zone-less column and Eloquent
-        // formats a Carbon in whatever zone the instance carries, so an
-        // instant parsed as `+02:00` would be written down as its own digits
-        // and read back two hours wrong — normalise to UTC first (#246).
+        // Parsed here, normalised to UTC by `PublishEntry`: the Action owns
+        // the transition and therefore the invariant that the zone-less
+        // column holds UTC (#246).
         $at = is_string($submitted) && $submitted !== ''
-            ? CarbonImmutable::parse($submitted)->utc()
+            ? CarbonImmutable::parse($submitted)
             : null;
 
         $model = $publishEntry->handle($this->find($entry), $at);

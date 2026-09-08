@@ -58,26 +58,59 @@ export function brandListIntro(
 }
 
 /**
+ * The surfaces on which an account comes into existence, and the two ways
+ * into an account that already exists. `auth/Register` writes a password;
+ * `auth/CompleteSocialSignup` writes none at all — that is the point of the
+ * nullable column (`Konventix\Identity\Actions\CompleteSocialSignup`).
+ */
+type SignUpSurface = 'auth/Register' | 'auth/CompleteSocialSignup';
+
+/**
  * ADR-0054 point 6, on the page rather than only in the mail (#241).
  *
- * Deliberately unconditional: it is shown to everyone who reaches the
- * sign-up form, whether or not the address they are about to type already
- * has an account. A notice that appeared only for an existing address —
- * or only after a submit that found one — would answer "does this person
- * have an account here" for any passer-by, which is exactly the
- * enumeration oracle ADR-0016 forbids. Saying it to everyone costs nothing
- * and tells the one person who needs to hear it why their password from
- * the operator's other site already works.
+ * Deliberately unconditional: it is shown to everyone who reaches a sign-up
+ * form, whether or not the address they are about to type already has an
+ * account. A notice that appeared only for an existing address — or only
+ * after a submit that found one — would answer "does this person have an
+ * account here" for any passer-by, which is exactly the enumeration oracle
+ * ADR-0016 forbids. This function takes the page, the operator's name and how
+ * many brands the operator has: no address, no account state. Saying it to
+ * everyone costs nothing and tells the one person who needs to hear it why
+ * their account from the operator's other site already works.
  *
- * Null for a single-brand operator: there is no other site the account
- * could have come from, and the sentence would only puzzle.
+ * Two wordings, because the two surfaces offer different ways back in
+ * (#241 review finding 7):
+ *
+ * - on `auth/Register` the account being described has a password, so the
+ *   advice is to sign in with it;
+ * - on `auth/CompleteSocialSignup` the *new* account would have none, and an
+ *   address that already belongs to somebody is refused rather than linked
+ *   (`SocialAuthController::store` — linking on a match would be account
+ *   takeover by typing). Telling that visitor "the same password works here"
+ *   points them at a form they cannot complete, so the advice is to sign in
+ *   with the account they already have and connect this provider afterwards
+ *   from their security settings, which is the path that controller names.
+ *
+ * Null on every other surface, and null for a single-brand operator: there is
+ * no other site the account could have come from, and the sentence would only
+ * puzzle.
  */
-export function sharedAccountNotice(
+export function sharedAccountNoticeFor(
+    pageComponent: string,
     operatorName: string,
     brandCount: number,
 ): string | null {
-    if (brandCount < 2) {
+    const surfaces: SignUpSurface[] = [
+        'auth/Register',
+        'auth/CompleteSocialSignup',
+    ];
+
+    if (brandCount < 2 || !surfaces.includes(pageComponent as SignUpSurface)) {
         return null;
+    }
+
+    if (pageComponent === 'auth/CompleteSocialSignup') {
+        return `Already have an account from another ${operatorName} site? Sign in with that account rather than creating a second one — it already works here — and connect this sign-in method afterwards from your security settings.`;
     }
 
     return `Already have an account from another ${operatorName} site? Sign in instead — the same email address and password work here, and you keep everything you already have there.`;

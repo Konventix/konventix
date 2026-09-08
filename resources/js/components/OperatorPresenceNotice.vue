@@ -5,7 +5,7 @@ import {
     accountIntro,
     brandListIntro,
     controllerSentence,
-    sharedAccountNotice,
+    sharedAccountNoticeFor,
 } from '@/components/operatorPresenceText';
 import TextLink from '@/components/TextLink.vue';
 import { login } from '@/routes';
@@ -28,8 +28,9 @@ import { login } from '@/routes';
  * told, before they type anything, that signing in works. It is shown to
  * everyone, unconditionally — a notice that appeared only for an address
  * that already has an account would be the enumeration oracle ADR-0016
- * forbids. The wording lives in `operatorPresenceText.ts`, where it can be
- * tested.
+ * forbids. The two sign-up surfaces get different wording, because the
+ * account a social signup creates has no password at all. Both sentences
+ * live in `operatorPresenceText.ts`, where they can be tested.
  *
  * Rendered by the three auth layouts rather than by each page, so login,
  * registration, password reset and the social-signup completion all show it
@@ -98,13 +99,31 @@ const listIntro = computed(() =>
           ),
 );
 
-/** ADR-0054 point 6, on the sign-up surfaces only. */
+/**
+ * ADR-0054 point 6, on the sign-up surfaces only — and worded per surface,
+ * because a social signup creates an account with no password (#241 review
+ * finding 7). The page component is the only input besides the operator: see
+ * `operatorPresenceText.ts` on why it can never become an enumeration oracle.
+ */
 const sharedAccount = computed(() =>
-    presence.value === null ||
-    presence.value === undefined ||
-    !creatingAccount.value
+    presence.value === null || presence.value === undefined
         ? null
-        : sharedAccountNotice(presence.value.name, allBrands.value.length),
+        : sharedAccountNoticeFor(
+              page.component,
+              presence.value.name,
+              allBrands.value.length,
+          ),
+);
+
+/**
+ * The link under it. A social signup's sibling account is reached through
+ * whatever it was created with, and the login page is where all of those
+ * live; a registration's is reached with its password, on the same page.
+ */
+const sharedAccountLinkLabel = computed(() =>
+    page.component === 'auth/CompleteSocialSignup'
+        ? 'Go to sign-in'
+        : 'Sign in',
 );
 
 const controller = computed(() =>
@@ -144,7 +163,7 @@ const controller = computed(() =>
 
         <p v-if="sharedAccount" class="mt-1">
             {{ sharedAccount }}
-            <TextLink :href="login()">Sign in</TextLink>
+            <TextLink :href="login()">{{ sharedAccountLinkLabel }}</TextLink>
         </p>
 
         <p v-if="creatingAccount" class="mt-1">
