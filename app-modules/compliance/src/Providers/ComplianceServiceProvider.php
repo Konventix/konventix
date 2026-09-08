@@ -436,7 +436,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
             slot: 'admin.settlement-accounts',
             module: 'compliance',
             component: 'compliance/CheckoutLegalTextGapNotice',
-            props: static fn (): array => [
+            props: static fn (array $context): array => [
                 'gaps' => array_map(
                     static fn (CheckoutLegalTextGapData $gap): array => $gap->toArray(),
                     CheckoutLegalTextGapData::gapsForAllBrands(app(CheckoutLegalTexts::class)),

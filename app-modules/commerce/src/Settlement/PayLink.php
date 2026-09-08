@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Settlement;
 
+use Konventix\Commerce\Actions\Concerns\GuardsCheckedInAdmissions;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\PaymentReversal;
@@ -48,6 +50,8 @@ use Konventix\Commerce\Models\PaymentReversal;
  */
 final class PayLink
 {
+    use GuardsCheckedInAdmissions;
+
     /**
      * @return array{route: string, parameters: array<string, string>}|null
      */
@@ -66,15 +70,30 @@ final class PayLink
 
     /**
      * The day a reversed order's money is owed back by (ADR-0057 point 4):
-     * the newest final reversal's `repay_due_on`, the same rule the
-     * `commerce:cancel-unpaid-reversals` sweep acts on. An open dispute
-     * carries none — the provider still holds the money and nothing is
-     * owed yet — and so does every order in any other status.
+     * the newest final reversal's `repay_due_on`, or null.
      *
-     * Brand-scoped, like the pages that ask: all three callers render on
-     * the brand host (ADR-0010).
+     * Brand-scoped, like the pages that ask: every caller renders on the
+     * brand host (ADR-0010).
      */
     public function repayDueOnFor(Order $order): ?string
+    {
+        return $this->deadlineReversalFor($order)?->repay_due_on?->toDateString();
+    }
+
+    /**
+     * The reversal whose deadline decides, exactly as
+     * `Console\CancelUnpaidReversals::deadlineReversal()` picks it: the
+     * newest **final** `return` or `dispute` carrying a `repay_due_on`.
+     *
+     * The kind filter is load-bearing and used to be missing here (re-review
+     * N9). An `external_refund` is not a receivable at all — the operator
+     * refunded in the provider's dashboard and the order is already
+     * `refunded` — and a withdrawn dispute means the money stayed. While
+     * this value only decorated a banner the divergence was harmless; since
+     * it decides whether a payment is accepted, the two queries have to be
+     * the same query.
+     */
+    public function deadlineReversalFor(Order $order): ?PaymentReversal
     {
         if ($order->status !== OrderStatus::PaymentReversed) {
             return null;
@@ -83,8 +102,48 @@ final class PayLink
         return PaymentReversal::query()
             ->where('order_id', $order->getKey())
             ->where('status', ReversalStatus::Final)
+            ->whereIn('kind', [ReversalKind::Return->value, ReversalKind::Dispute->value])
             ->whereNotNull('repay_due_on')
             ->orderByDesc('occurred_at')
-            ->first()?->repay_due_on?->toDateString();
+            ->first();
+    }
+
+    /**
+     * Whether `commerce:cancel-unpaid-reversals` would cancel this order
+     * today — the one question a pay page has to ask before it refuses a
+     * reversed order (re-review N2).
+     *
+     * The sweep's own two-part decision, restated in one place so a page
+     * cannot refuse more than the sweep takes:
+     *
+     * - the deadline has passed, compared in **whole days** because the
+     *   sweep compares whole days (`repay_due_on->startOfDay()` before
+     *   today's); no final return or dispute with a deadline yet — an open
+     *   dispute has none — means nothing is owed back today at all;
+     * - **and nobody attended on this order.** A reversed order whose
+     *   admission was already used is never cancelled: the sweep hands it to
+     *   the dunning ladder as an open receivable instead, because someone
+     *   was there and the money is genuinely owed. Its `repay_due_on` is
+     *   then permanently in the past, so a page that refused on the date
+     *   alone would dead-end the "Pay now" link the brand is actively
+     *   dunning for.
+     *
+     * `GuardsCheckedInAdmissions` is the sweep's own check-in test, shared
+     * rather than restated (ADR-0037, D-COM-15 — Commerce reads its own
+     * `CheckedInAdmission` projection, never Admission's tables).
+     */
+    public function repaymentLapsed(Order $order, ?PaymentReversal $reversal = null): bool
+    {
+        $reversal ??= $this->deadlineReversalFor($order);
+
+        if ($reversal?->repay_due_on === null) {
+            return false;
+        }
+
+        if (! $reversal->repay_due_on->startOfDay()->isBefore(now()->startOfDay())) {
+            return false;
+        }
+
+        return $this->checkedInRegistrationId($order) === null;
     }
 }

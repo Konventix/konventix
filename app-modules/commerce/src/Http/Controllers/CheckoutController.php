@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Http\Controllers;
 
-use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
@@ -23,6 +22,7 @@ use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\CheckoutConsentSlots;
 use Konventix\Commerce\Settlement\PayLink;
@@ -104,7 +104,10 @@ class CheckoutController
             ->first();
 
         $hold = $this->holdFor($order);
-        $refusal = $this->refusalReason($order, $hold);
+        // Resolved once and used twice — by the refusal and by the prop
+        // below (re-review N5).
+        $deadlineReversal = $this->payLink->deadlineReversalFor($order);
+        $refusal = $this->refusalReason($order, $hold, deadlineReversal: $deadlineReversal);
 
         return Inertia::render('pay/Show', [
             'registrationId' => $registration,
@@ -138,7 +141,7 @@ class CheckoutController
             // ADR-0057 point 4: the day the money is owed back by, so a
             // reversed order reads as "owed again until …" rather than as an
             // ordinary unpaid one. Null for every other status.
-            'repayDueOn' => $this->payLink->repayDueOnFor($order),
+            'repayDueOn' => $deadlineReversal?->repay_due_on?->toDateString(),
             // Compliance's consent control (GitLab #2) — see
             // `Settlement\CheckoutConsentSlots` for why it arrives as a slot
             // contribution rather than as props this controller computes.
@@ -308,7 +311,8 @@ class CheckoutController
         // Once per render (review 6 parked nit C): the answer carries a
         // `Payment::exists()` query, and asking it twice cost one for
         // nothing.
-        $refusal = $this->refusalReason($model, $hold);
+        $deadlineReversal = $this->payLink->deadlineReversalFor($model);
+        $refusal = $this->refusalReason($model, $hold, deadlineReversal: $deadlineReversal);
 
         return Inertia::render('pay/Order', [
             'order' => [
@@ -338,7 +342,7 @@ class CheckoutController
             // payable past its hold, so the deadline that matters to the
             // payer is no longer the reservation but the day the money is
             // owed back by.
-            'repayDueOn' => $this->payLink->repayDueOnFor($model),
+            'repayDueOn' => $deadlineReversal?->repay_due_on?->toDateString(),
             'payable' => $refusal === null,
             'refusalReason' => $refusal,
             'consentSlots' => $consentSlots,
@@ -508,9 +512,15 @@ class CheckoutController
      * `$paymentSucceeded`, when the caller already knows the answer (`start()`
      * asks the same question again for its own hard 409), skips the repeat
      * `Payment::…->exists()` query rather than running it twice per request.
+     * `$deadlineReversal` does the same for the reversal row a rendering
+     * caller also needs for its `repayDueOn` prop (re-review N5).
      */
-    private function refusalReason(Order $order, ?CarbonInterface $hold, ?bool $paymentSucceeded = null): ?string
-    {
+    private function refusalReason(
+        Order $order,
+        ?CarbonInterface $hold,
+        ?bool $paymentSucceeded = null,
+        ?PaymentReversal $deadlineReversal = null,
+    ): ?string {
         // ADR-0057 point 3: a reversed order is owed again and stays payable.
         if (! in_array($order->status, [OrderStatus::Pending, OrderStatus::PaymentReversed], true)) {
             return __('This order is no longer awaiting payment.');
@@ -541,15 +551,22 @@ class CheckoutController
 
         // ADR-0057 point 4: a reversed order is owed back by a day, and
         // `commerce:cancel-unpaid-reversals` cancels it once that day has
-        // gone. The page refuses from the same moment the sweep would act —
-        // the sweep compares whole days — rather than offering a button for
-        // money the brand has already stopped asking for, for however long
-        // it is until the daily run.
+        // gone. The page refuses from the same moment the sweep would act,
+        // rather than offering a button for money the brand has already
+        // stopped asking for until the next daily run.
+        //
+        // `repaymentLapsed()` is the sweep's whole decision, not just its
+        // date (re-review N2): an order whose admission was already used is
+        // never cancelled — it becomes an open receivable the dunning ladder
+        // chases — and refusing that one on the date alone would dead-end
+        // the very "Pay now" link the brand is dunning for.
         if ($order->status === OrderStatus::PaymentReversed) {
-            $repayDueOn = $this->payLink->repayDueOnFor($order);
+            $reversal = $deadlineReversal ?? $this->payLink->deadlineReversalFor($order);
 
-            if ($repayDueOn !== null && CarbonImmutable::parse($repayDueOn)->startOfDay()->isBefore(now()->startOfDay())) {
-                return __('The deadline to put this payment back was :date.', ['date' => $repayDueOn]);
+            if ($this->payLink->repaymentLapsed($order, $reversal)) {
+                return __('The deadline to put this payment back was :date.', [
+                    'date' => $reversal?->repay_due_on?->toDateString() ?? '',
+                ]);
             }
         }
 

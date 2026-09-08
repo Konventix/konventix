@@ -223,9 +223,9 @@ function openVersion(id: string): void {
 
         <!--
             #222: the warning follows the operator onto the page they fix it
-            on. `policiesUrl` is null here — the create dialog lives on the
-            list, and this page's own editor is the other way to close the
-            gap.
+            on. It links back to the list's create dialog, because the text
+            this editor is open on is rarely the missing one — a brand
+            editing its AGB is usually the brand with no Widerrufsbelehrung.
         -->
         <CheckoutLegalTextGapNotice
             :gaps="props.checkoutGaps"

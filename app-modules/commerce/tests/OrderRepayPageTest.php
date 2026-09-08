@@ -7,9 +7,11 @@ use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
+use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
@@ -57,7 +59,7 @@ final class OrderRepayTestFakeStripe implements StripeApi
      * Nothing took this payment's money back (#235). Every fake here answers
      * the empty pair unless its own test says otherwise.
      *
-     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
      */
     public function fetchPaymentIntentReversals(string $paymentIntentId): array
     {
@@ -388,4 +390,95 @@ it('stops taking a reversed order the day after the money was owed back', functi
         ->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->getKey()])
         ->assertRedirect()
         ->assertSessionHasErrors('account');
+});
+
+/**
+ * Re-review N2: `commerce:cancel-unpaid-reversals` deliberately does *not*
+ * cancel a reversed order whose admission was already used — somebody
+ * attended, so what they owe is a receivable, and the sweep hands it to the
+ * dunning ladder with `overdue_at` set to the deadline it missed. That
+ * order's `repay_due_on` is then permanently in the past, and a page that
+ * refused on the date alone would dead-end the very "Pay now" link the brand
+ * is dunning for.
+ */
+it('keeps taking a lapsed reversal the sweep leaves as a receivable after check-in', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    $registrationId = (string) Str::ulid();
+
+    $order = Order::factory()->create([
+        'settles_type' => 'cart',
+        'payer_user_id' => $payer->getKey(),
+        'status' => OrderStatus::PaymentReversed,
+        'total_gross' => '35.70',
+        'currency' => 'EUR',
+    ]);
+    OrderLine::factory()->forOrder($order)->create([
+        'label' => 'Weekend Ticket',
+        'settles_kind' => 'registration',
+        'settles_ref' => $registrationId,
+    ]);
+    $account = orderRepayAccount();
+
+    $payment = Payment::factory()->create(['order_id' => $order->getKey(), 'status' => PaymentStatus::Reversed]);
+    PaymentReversal::factory()->create([
+        'payment_id' => $payment->getKey(),
+        'order_id' => $order->getKey(),
+        'status' => ReversalStatus::Final,
+        'kind' => ReversalKind::Return,
+        'occurred_at' => now()->subDays(20),
+        'repay_due_on' => now()->subDays(13)->toDateString(),
+    ]);
+
+    // Nobody attended yet: the sweep would cancel, so the page refuses.
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('payable', false));
+
+    CheckedInAdmission::query()->create([
+        'admission_id' => (string) Str::ulid(),
+        'registration_id' => $registrationId,
+        'first_checked_in_at' => now()->subDays(15),
+    ]);
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payable', true)
+            ->where('refusalReason', null));
+
+    test()->actingAs($payer)
+        ->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->getKey()])
+        ->assertRedirect('https://checkout.stripe.test/repay-1');
+});
+
+/**
+ * N9: the deadline reversal is picked the way the sweep picks it — the
+ * newest final `return` or `dispute`. An `external_refund` is not a
+ * receivable and must not close the page.
+ */
+it('ignores an external refund when deciding the repayment deadline', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order] = orderRepayFailedCartOrder($payer, held: false);
+    orderRepayAccount();
+
+    $payment = Payment::factory()->create(['order_id' => $order->getKey(), 'status' => PaymentStatus::Reversed]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
+    PaymentReversal::factory()->create([
+        'payment_id' => $payment->getKey(),
+        'order_id' => $order->getKey(),
+        'status' => ReversalStatus::Final,
+        'kind' => ReversalKind::ExternalRefund,
+        'occurred_at' => now()->subDays(20),
+        'repay_due_on' => now()->subDays(13)->toDateString(),
+    ]);
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payable', true)
+            ->where('repayDueOn', null));
 });
