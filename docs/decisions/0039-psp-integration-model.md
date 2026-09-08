@@ -102,7 +102,11 @@ times.
 - Refunds gain their PSP side: `SettlementAdapter::refund()` is part of the
   contract, a no-op for `manual` (the organizer wires the money back) and a
   real API call for PSP adapters, executed inside `RefundOrder` after the
-  ADR-0037 check-in guard passes.
+  ADR-0037 check-in guard passes. It **returns the provider's own reference
+  for the refund** (`re_…` at Stripe and Mollie, the cancellation id at
+  Unzer; null where there is no provider to give one), which `RefundOrder`
+  stores on a `payment_reversals` row of kind `refund` — without it no path
+  led from the order to the money's identifier at the provider (#247).
 - A fourth provider is: one adapter class, one `register()` line, one
   webhook route, and rows in no new tables.
 - ADR-0057 extends the webhook's authority to the involuntary reversal — a

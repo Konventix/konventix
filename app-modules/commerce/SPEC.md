@@ -373,6 +373,31 @@ BaFin/ZAG licensing.
   check-in guard, consistent with how a direct order's whole refund has
   always been able to reach an already checked-in registration.
 
+  **The provider's reference for the refund is kept** (#247). Every adapter's
+  `refund()` returns the identifier the provider assigns — `re_…` at Stripe
+  and Mollie, the cancellation id at Unzer, null for `manual` — and
+  `RecordRefund` writes it on a `payment_reversals` row of kind `refund`
+  inside the refund's own transaction. It shows on the order page's reversals
+  card and in the `commerce.order.refunded` audit entry, and it is what makes
+  the provider's own notification of that same refund converge on one row
+  instead of undoing the sale twice. The row is kept out of the console's
+  "reversals & unapplied money" work list: a refund an operator made is not
+  an open task.
+
+  **The order row is the claim.** The domain leg — credit note, `refunded`,
+  `OrderRefunded` — is decided under `lockForUpdate()` on the order, because
+  a credit note is immutable (ADR-0031/0048) and the bookkeeping export books
+  it (ADR-0040). Two console POSTs, and a console refund racing the
+  provider's own `charge.refunded` for it, both collapse onto that lock: the
+  second one in finds the order already `refunded` and writes nothing.
+
+  **Unapplied money is refunded from the console too** (#6, ADR-0057 point
+  9): a `cancelled` order holding a succeeded payment nobody could apply gets
+  `RefundOrder`'s provider leg without a document — no credit note, no
+  `OrderRefunded`, the order stays `cancelled`. The payment is locked for the
+  provider call and leaves `succeeded` in the same transaction, which takes
+  it off the unapplied list and refuses a second press.
+
   **The record commits before the announcement, and the announcement is a
   queued job** (#236). The provider is called first, then the credit note,
   the `refunded` status and the events are written in one transaction, and
@@ -439,6 +464,12 @@ BaFin/ZAG licensing.
   reason `cancellation` where an invoice exists. An order with a
   checked-in admission is never cancelled: its invoice's `overdue_at` is
   set to the missed deadline and the dunning ladder takes it from there.
+  That hand-off **writes over** an `overdue_at` the invoice already had and
+  **resets `dunning_level` to 0** (#196): the column has two authors, the
+  repayment deadline is the later fact about the same debt, and a payer
+  holding a mail that promises a fresh window gets that window's first
+  reminder rather than the step an earlier, unrelated overdue period had
+  reached.
   The deadline itself is a per-brand setting,
   `commerce_brand_settings.reversal_repayment_days` (1..60, default 7, set
   beside the brand's settlement accounts). The orders console carries the
