@@ -10,6 +10,9 @@ use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
+use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 
 /**
  * The sweep #131 asks for: a *direct* registration order — the one a brand
@@ -33,6 +36,27 @@ use Konventix\Commerce\Models\Order;
  * `invoices` row rather than on a settlement column, because the order
  * carries no settlement kind — the invoice *is* the record that terms were
  * given.
+ *
+ * **And only orders that had a hosted payment window to miss** (fix round
+ * 1). A sixty-minute deadline is the length of a PSP session, and it is
+ * only defensible where there was one. A brand that has connected no
+ * settlement account settles through the `manual` provider — `SettlementAccount`
+ * calls that the default and "a legitimate permanent choice for organizers
+ * who invoice" — so `pay/Show.vue` renders no pay button and tells the payer
+ * their details arrive with the confirmation and the ticket follows once the
+ * transfer has been received. A transfer takes days. Cancelling that order
+ * after an hour would call off a sale against this application's own copy.
+ *
+ * The discriminator is therefore the brand's settlement accounts, and it is
+ * exactly `CheckoutController::offeredAccounts()`'s predicate: at least one
+ * live, connected account whose adapter implements `ProvidesHostedCheckout`.
+ * That is precisely the population ADR-0047 point 4 reasons about — a cart
+ * cannot reach `checked_out` without such an account, which is why
+ * `ExpireCarts` never had to ask. Deliberately *not* "the order has a
+ * `payments` row": a payer who reached the hosted page and closed the tab
+ * before the provider created a session still holds a seat nobody can buy,
+ * and that is the case #131 was filed about. Resolved once per brand, not
+ * once per order.
  *
  * Cancelling emits `OrderCancelled` with reason
  * `payment_window_expired`, the event Registration already consumes
@@ -70,6 +94,8 @@ final class ExpireRegistrationOrders
 
     private const string SETTLES_REGISTRATION = 'registration';
 
+    public function __construct(private readonly SettlementAdapterRegistry $registry) {}
+
     /**
      * @return int the number of orders cancelled
      */
@@ -82,9 +108,14 @@ final class ExpireRegistrationOrders
             ->where('status', OrderStatus::Pending)
             ->where('created_at', '<=', now()->subMinutes(self::WINDOW_MINUTES))
             ->whereNotExists(function ($sub): void {
+                // Both table names resolved through their models, so a
+                // rename cannot leave half of this subquery behind.
+                $invoices = (new Invoice)->getTable();
+                $orders = (new Order)->getTable();
+
                 $sub->select(DB::raw('1'))
-                    ->from((new Invoice)->getTable())
-                    ->whereColumn('invoices.order_id', 'orders.id');
+                    ->from($invoices)
+                    ->whereColumn($invoices.'.order_id', $orders.'.id');
             })
             ->orderBy('id');
 
@@ -92,7 +123,16 @@ final class ExpireRegistrationOrders
             $query->where('brand_id', $brandId);
         }
 
+        /** @var array<string, bool> $hostedByBrand */
+        $hostedByBrand = [];
+
         foreach ($query->cursor() as $order) {
+            $hostedByBrand[$order->brand_id] ??= $this->brandOffersHostedCheckout($order->brand_id);
+
+            if (! $hostedByBrand[$order->brand_id]) {
+                continue;
+            }
+
             $handled = DB::transaction(function () use ($order): bool {
                 $locked = Order::withoutBrandScope()
                     ->whereKey($order->id)
@@ -129,5 +169,18 @@ final class ExpireRegistrationOrders
         }
 
         return $cancelled;
+    }
+
+    /**
+     * Whether this brand could have put a payer in front of a hosted
+     * checkout at all — the same question `CheckoutController::offeredAccounts()`
+     * asks before it renders a pay button, asked here so the sweep never
+     * cancels an order the payer was told to settle by bank transfer.
+     */
+    private function brandOffersHostedCheckout(string $brandId): bool
+    {
+        return SettlementAccount::liveAccountsFor($brandId)
+            ->contains(fn (SettlementAccount $account): bool => $account->isOffered()
+                && $this->registry->forProvider($account->provider) instanceof ProvidesHostedCheckout);
     }
 }

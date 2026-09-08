@@ -17,6 +17,8 @@ use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Platform\Models\Brand;
 
 /**
  * `commerce:expire-registration-orders` (#131): a direct `instant`
@@ -29,6 +31,15 @@ use Konventix\Commerce\Models\Payment;
  * Helper names prefixed: Pest helpers are process-global
  * (`.ai/rules/tests.md`).
  */
+/**
+ * A live, offered Mollie account — the brand can put a payer in front of a
+ * hosted checkout, which is the population this sweep is about.
+ */
+function expiryTestHostedAccount(): SettlementAccount
+{
+    return SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
+}
+
 function expiryTestDirectOrder(
     int $minutesOld = Cart::CHECKOUT_GRACE_MINUTES + 1,
     OrderStatus $status = OrderStatus::Pending,
@@ -52,6 +63,7 @@ function expiryTestDirectOrder(
 
 it('cancels a pending direct registration order past the payment window', function (): void {
     $this->withBrand();
+    expiryTestHostedAccount();
     $order = expiryTestDirectOrder();
 
     Event::fake([OrderCancelled::class]);
@@ -131,6 +143,7 @@ it('never touches an order that is no longer pending', function (): void {
 
 it('records a late payment on an expired order as unapplied, exactly as for a cart (#6)', function (): void {
     $this->withBrand();
+    expiryTestHostedAccount();
     $order = expiryTestDirectOrder();
 
     $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
@@ -161,4 +174,66 @@ it('is registered in the scheduler on the cart sweep\'s cadence', function (): v
 
     expect($entries)->toHaveCount(1)
         ->and($entries->first()->expression)->toBe('*/15 * * * *');
+});
+
+it('leaves a bank-transfer brand\'s registration order alone, however old it is', function (): void {
+    $this->withBrand();
+
+    // No settlement account at all: `SettlementAccount`'s own docblock calls
+    // this the default, and `pay/Show.vue` tells the payer the details arrive
+    // with the confirmation and the transfer takes as long as it takes.
+    $order = expiryTestDirectOrder(minutesOld: Cart::CHECKOUT_GRACE_MINUTES * 24 * 7);
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+    Event::assertNotDispatched(OrderCancelled::class);
+});
+
+it('leaves an order alone when the brand\'s only account cannot host a checkout', function (): void {
+    $this->withBrand();
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MANUAL)->create();
+
+    $order = expiryTestDirectOrder();
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+    Event::assertNotDispatched(OrderCancelled::class);
+});
+
+it('leaves an order alone once the brand\'s hosted account is disconnected', function (): void {
+    $this->withBrand();
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->disconnected()->create();
+
+    $order = expiryTestDirectOrder();
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+    Event::assertNotDispatched(OrderCancelled::class);
+});
+
+it('sweeps one brand at a time when asked to', function (): void {
+    $swept = $this->withBrand();
+    expiryTestHostedAccount();
+    $sweptOrder = expiryTestDirectOrder();
+
+    $other = $this->withBrand(Brand::factory()->create());
+    expiryTestHostedAccount();
+    $otherOrder = expiryTestDirectOrder();
+    $this->withBrand($swept);
+
+    $this->artisan('commerce:expire-registration-orders', ['--brand' => $swept->getKey()])
+        ->assertSuccessful();
+
+    expect($sweptOrder->refresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($otherOrder->refresh()->status)->toBe(OrderStatus::Pending)
+        ->and($other->getKey())->not->toBe($swept->getKey());
 });
