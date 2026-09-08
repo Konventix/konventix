@@ -309,6 +309,15 @@ class CommerceServiceProvider extends ModuleServiceProvider
         $this->app->bind(MollieApi::class, SdkMollieApi::class);
         $this->app->bind(UnzerApi::class, SdkUnzerApi::class);
 
+        // Scoped, not bound fresh per resolution: the console asks the same
+        // question eight times to render one card and once more per
+        // Stripe-enabled brand (`SettlementAccount::isOffered()`), and the
+        // settings row cannot change inside a request. `scoped()` rather than
+        // `singleton()` because Octane clears scoped instances between
+        // requests, so a key rotated in the console is live for the next one —
+        // see the class's own doc.
+        $this->app->scoped(StripeCredentials::class);
+
         // The one place the Stripe key is resolved (ADR-0058 point 2):
         // `StripeCredentials` answers row-before-environment, and every
         // call is made on this instance's own account — no Connect, no

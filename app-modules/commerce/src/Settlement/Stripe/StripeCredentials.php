@@ -26,9 +26,15 @@ use Konventix\Platform\Environment\DeploymentEnvironment;
  * `lastFour()`, `publishableKeySet()` — the "whether, never what" rule
  * `StripeSetupData` carries onto the page.
  *
- * Not memoised: the row is a single-row lookup on a unique key, and a
- * cached answer would outlive a rotation inside the same request (and,
- * under Octane, inside the same worker).
+ * Memoised for the length of one request, and no longer: bound with
+ * `scoped()`, so the console page and every `SettlementAccount::isOffered()`
+ * on it share one instance, and the row is read once instead of once per
+ * accessor and once per Stripe-enabled brand. Octane calls
+ * `forgetScopedInstances()` between requests, so a key rotated in the console
+ * is live for the very next request — which is what the original "not
+ * memoised" note was actually protecting. The *environment* half is
+ * deliberately not memoised: `config()` is cheap and a test that flips it
+ * mid-request should see the change.
  */
 final class StripeCredentials
 {
@@ -38,10 +44,27 @@ final class StripeCredentials
 
     public const string SOURCE_NONE = 'none';
 
+    private ?StripeSettings $settings = null;
+
+    private bool $settingsLoaded = false;
+
     public function __construct(
         private readonly ConfigRepository $config,
         private readonly DeploymentEnvironment $environment,
     ) {}
+
+    /**
+     * The instance's settings row, read at most once per request.
+     */
+    private function settings(): ?StripeSettings
+    {
+        if (! $this->settingsLoaded) {
+            $this->settings = StripeSettings::forInstance();
+            $this->settingsLoaded = true;
+        }
+
+        return $this->settings;
+    }
 
     /**
      * The secret key every Stripe call is made with, or null when this
@@ -50,7 +73,7 @@ final class StripeCredentials
     public function secret(): ?string
     {
         return $this->resolve(
-            StripeSettings::forInstance()?->secret_key,
+            $this->settings()?->secret_key,
             'services.stripe.secret',
         );
     }
@@ -63,7 +86,7 @@ final class StripeCredentials
     public function webhookSecret(): ?string
     {
         return $this->resolve(
-            StripeSettings::forInstance()?->webhook_secret,
+            $this->settings()?->webhook_secret,
             'services.stripe.webhook_secret',
         );
     }
@@ -90,7 +113,7 @@ final class StripeCredentials
      */
     public function source(): string
     {
-        if (self::filled(StripeSettings::forInstance()?->secret_key)) {
+        if (self::filled($this->settings()?->secret_key)) {
             return self::SOURCE_DATABASE;
         }
 
@@ -100,8 +123,13 @@ final class StripeCredentials
     }
 
     /**
-     * `live`, `test`, or null — read from Stripe's own key prefix, which is
+     * `live`, `test`, or null — read from Stripe's own key shape, which is
      * the only thing that decides whether real money moves.
+     *
+     * Matched on the `_live_` / `_test_` segment rather than on `sk_`: a
+     * restricted key (`rk_live_…`) charges real money exactly like a secret
+     * one, and a mode of null would silence the ADR-0053 warning for the one
+     * key that most needs it.
      */
     public function mode(): ?string
     {
@@ -109,8 +137,8 @@ final class StripeCredentials
 
         return match (true) {
             $secret === null => null,
-            str_starts_with($secret, 'sk_live_') => 'live',
-            str_starts_with($secret, 'sk_test_') => 'test',
+            str_contains($secret, '_live_') => 'live',
+            str_contains($secret, '_test_') => 'test',
             default => null,
         };
     }
@@ -129,7 +157,7 @@ final class StripeCredentials
 
     public function publishableKeySet(): bool
     {
-        return self::filled(StripeSettings::forInstance()?->publishable_key);
+        return self::filled($this->settings()?->publishable_key);
     }
 
     /**

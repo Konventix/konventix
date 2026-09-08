@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Data\StripeSetupData;
 use Konventix\Commerce\Models\StripeSettings;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
@@ -153,16 +155,92 @@ it('warns about a live key on a non-production instance', function (): void {
     expect(app(StripeCredentials::class)->liveKeyOffProduction())->toBeFalse();
 });
 
-it('builds the Stripe client from the resolved key and names both places when there is none', function (): void {
+it('reads the settings row once however many questions it is asked', function (): void {
+    // Every accessor used to re-query, and `StripeSetupData::ofCredentials()`
+    // asks seven of them in one expression while `isOffered()` asks once per
+    // Stripe-enabled brand — eight queries plus one per brand for a value that
+    // cannot change inside a request. The memo is request-scoped, so a rotation
+    // is still picked up by the next request (and, under Octane, after
+    // `forgetScopedInstances()`).
+    stripeCredentialsRow(['secret_key' => 'sk_test_console_1234', 'webhook_secret' => 'whsec_console']);
+
+    $queries = 0;
+    DB::listen(function ($query) use (&$queries): void {
+        if (str_contains($query->sql, 'stripe_settings')) {
+            $queries++;
+        }
+    });
+
+    $credentials = app(StripeCredentials::class);
+
+    $credentials->secret();
+    $credentials->webhookSecret();
+    $credentials->configured();
+    $credentials->webhookSecretConfigured();
+    $credentials->source();
+    $credentials->mode();
+    $credentials->lastFour();
+    $credentials->publishableKeySet();
+    $credentials->liveKeyOffProduction();
+
+    // Scoped, so the console page and every `isOffered()` on it share one
+    // instance rather than resolving a fresh resolver per account row.
+    expect(app(StripeCredentials::class))->toBe($credentials)
+        ->and($queries)->toBe(1);
+});
+
+it('resolves deterministically and says so when a second settings row exists', function (): void {
+    // ADR-0001 gives an instance one operator and the column is unique per
+    // operator, so this cannot happen — but nothing in the schema enforces it,
+    // and the two console writers key on the resolved operator while this reads
+    // instance-wide. If they ever disagree, the log says so instead of the
+    // webhook quietly verifying against a key nobody can see.
+    config()->set('services.stripe.secret', '');
+
+    $this->travelTo(Carbon::parse('2026-09-08 10:00:00', 'UTC'));
+    stripeCredentialsRow(['secret_key' => 'sk_test_oldest_1111']);
+
+    $this->travelTo(Carbon::parse('2026-09-08 11:00:00', 'UTC'));
+    stripeCredentialsRow(['secret_key' => 'sk_test_newer_2222']);
+
+    Log::spy();
+
+    expect(app(StripeCredentials::class)->secret())->toBe('sk_test_oldest_1111');
+
+    Log::shouldHaveReceived('warning')->once();
+});
+
+it('sees a live restricted key for what it is', function (): void {
+    // A restricted key (`rk_live_…`) charges real money exactly like a secret
+    // one, so the ADR-0053 warning has to fire for it — the mode is the
+    // `_live_` segment, not the `sk_` prefix.
+    config()->set('services.stripe.secret', 'rk_live_restricted_abcd');
+    config()->set('app.env', 'staging');
+
+    $credentials = app(StripeCredentials::class);
+
+    expect($credentials->mode())->toBe('live')
+        ->and($credentials->liveKeyOffProduction())->toBeTrue()
+        ->and($credentials->lastFour())->toBe('abcd');
+});
+
+it('names both places when this instance has no Stripe key at all', function (): void {
     config()->set('services.stripe.secret', '');
 
     expect(fn () => app(StripeApi::class))->toThrow(
         StripeNotConfiguredException::class,
         'STRIPE_SECRET',
     );
+});
+
+it('builds the Stripe client from the operator settings row alone', function (): void {
+    // The environment stays empty: the row is the whole answer. Its own test
+    // rather than a second half of the one above, because the resolver is
+    // memoised per request — a key entered in the console is live for the next
+    // request, which is what a fresh test container stands for.
+    config()->set('services.stripe.secret', '');
 
     stripeCredentialsRow(['secret_key' => 'sk_test_console_1234', 'webhook_secret' => 'whsec_console']);
 
-    // The row alone is enough — the environment stays empty.
     expect(app(StripeApi::class))->toBeInstanceOf(StripeApi::class);
 });

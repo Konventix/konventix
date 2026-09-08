@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Database\Factories\StripeSettingsFactory;
 
 /**
@@ -73,16 +74,36 @@ class StripeSettings extends Model
      * stateless `api` surface (the webhook) and from queue workers and
      * console commands, where no operator is resolved from a host
      * (ADR-0029), and an instance has exactly one operator by construction
-     * (ADR-0001, ADR-0058). Ordered so two rows — which the unique
-     * `operator_id` and a single operator both rule out — would still
-     * resolve deterministically rather than by insertion luck.
+     * (ADR-0001, ADR-0058). Ordered so two rows resolve deterministically
+     * rather than by insertion luck.
+     *
+     * Two rows are ruled out by an instance having one operator and by
+     * `operator_id` being unique per operator — but nothing in the schema
+     * makes that invariant real, while the console's writers key on the
+     * *resolved* operator and this reads instance-wide. If they ever
+     * disagree, "Save" would write a row the webhook never reads and
+     * "Clear keys" would report success with the old key still live. So the
+     * second row is looked for rather than assumed away, and says so in the
+     * log instead of failing silently. Two rows fetched, one used: the guard
+     * costs no extra query.
      */
     public static function forInstance(): ?self
     {
-        return self::query()
+        $rows = self::query()
             ->orderBy('created_at')
             ->orderBy('id')
-            ->first();
+            ->limit(2)
+            ->get();
+
+        $row = $rows->first();
+
+        if ($rows->count() > 1) {
+            Log::warning('More than one stripe_settings row exists; an instance has exactly one operator (ADR-0001), so this is a data fault. Reading the oldest row — the console may be writing a different one.', [
+                'reading' => $row?->getKey(),
+            ]);
+        }
+
+        return $row;
     }
 
     /**
