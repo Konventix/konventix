@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Registration\Models;
 
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -106,6 +108,24 @@ class RegistrationType extends Model
         }
 
         return $this->sales_end === null || $now->lessThan($this->sales_end);
+    }
+
+    /**
+     * The SQL half of the same window rule, kept beside `isOnSale()` so the
+     * two cannot drift (fix round 1, review finding 4): this module has one
+     * window predicate, in two forms, and the landing slot uses this one
+     * because it filters in the database.
+     *
+     * Only the end is filtered. A sale that is over disappears from the
+     * landing page; a sale still ahead stays, announced rather than linked,
+     * and `isOnSale()` on the row is what tells the two apart (#218).
+     *
+     * @param  Builder<RegistrationType>  $query
+     */
+    #[Scope]
+    protected function saleNotOver(Builder $query): void
+    {
+        $query->where(fn (Builder $inner) => $inner->whereNull('sales_end')->orWhere('sales_end', '>', now()));
     }
 
     /**

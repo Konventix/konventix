@@ -62,6 +62,41 @@ it('is not on sale once its end has passed', function (): void {
         ->and($type->isOnSale(Carbon::parse('2026-10-08 18:00:00Z')))->toBeFalse();
 });
 
+/**
+ * Fix round 1, review finding 4: the boundary rule, stated once per module.
+ * Its twin is `SalesWindowEnforcementTest`'s "reads the window boundaries as
+ * start-inclusive and end-exclusive" in Commerce — the two must agree to the
+ * second, because the same window is checked on both sides of the boundary.
+ */
+it('reads the window boundaries as start-inclusive and end-exclusive', function (): void {
+    $this->withBrand();
+
+    $type = RegistrationType::factory()
+        ->salesWindow(start: '2026-10-01 18:00:00', end: '2026-10-08 18:00:00')
+        ->create();
+
+    expect($type->isOnSale(Carbon::parse('2026-10-01 17:59:59Z')))->toBeFalse()
+        ->and($type->isOnSale(Carbon::parse('2026-10-01 18:00:00Z')))->toBeTrue()
+        ->and($type->isOnSale(Carbon::parse('2026-10-08 17:59:59Z')))->toBeTrue()
+        ->and($type->isOnSale(Carbon::parse('2026-10-08 18:00:00Z')))->toBeFalse();
+});
+
+it('drops exactly the same rows from the saleNotOver scope as isOnSale calls over', function (): void {
+    // The scope is the SQL half of the one predicate; a boundary second on
+    // which the two disagreed would show a type the form then refuses.
+    $this->withBrand();
+
+    $ended = RegistrationType::factory()->salesWindow(end: '2026-10-08 18:00:00')->create();
+    $ahead = RegistrationType::factory()->salesWindow(start: '2026-10-09 18:00:00')->create();
+    $open = RegistrationType::factory()->create();
+
+    $this->travelTo(Carbon::parse('2026-10-08 18:00:00Z'));
+
+    expect(RegistrationType::query()->saleNotOver()->pluck('id')->sort()->values()->all())
+        ->toBe(collect([$ahead, $open])->pluck('id')->sort()->values()->all())
+        ->and($ended->isOnSale())->toBeFalse();
+});
+
 it('defaults to the current time when no clock is passed', function (): void {
     $this->withBrand();
 

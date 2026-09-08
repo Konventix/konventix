@@ -431,7 +431,10 @@ it('saves a sales window and hands it back to the form as a datetime string', fu
         ->get("http://admin.regtypes.test/admin/registration-types/{$type->id}/edit")
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('type.salesStart', '2026-10-01 18:00:00')
-            ->where('type.salesEnd', '2026-10-08 18:00:00'));
+            ->where('type.salesEnd', '2026-10-08 18:00:00')
+            // The clock the operator is typing in, named rather than assumed
+            // (fix round 1, review finding 7).
+            ->where('appTimezone', config('app.timezone')));
 });
 
 it('refuses a sales window that ends before it starts', function (): void {

@@ -33,8 +33,14 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * applies to a settled order, taken one step earlier here. `sale_starts_at`
  * and `sale_ends_at` join that snapshot for a registration line (#218):
  * Commerce never reads Registration's table (ADR-0004), so the window the
- * settlement request declared is kept here or it cannot be checked again at
- * checkout.
+ * settlement request declared is kept here for display and audit.
+ *
+ * Like every other column on this line, the window is frozen at creation and
+ * nothing refreshes it — an operator extending or shortening a sale
+ * afterwards does not reach a line already in a cart. `isOnSale()` therefore
+ * answers "was this line's sale open at `$now`, as of what we were told",
+ * never "is the type on sale now". Only `PlaceRegistrationLineInCart` acts on
+ * it; the checkout deliberately does not (see `PlaceOrderFromCart`).
  *
  * @property string $id
  * @property string $brand_id

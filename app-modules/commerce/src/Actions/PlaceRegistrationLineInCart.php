@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Actions;
 
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Enums\CartLineKind;
@@ -23,14 +24,24 @@ use Konventix\Commerce\Models\CartLine;
  * "your registration", not an itemised breakdown Registration never asked
  * for.
  *
- * #218 (#216 draft i): the request also carries the type's sales window as
- * two nullable ISO-8601 instants. A window that is not open right now is
- * refused outright — `SubmitRegistration` already refuses such a submission,
- * so reaching here means a replay of a stale request, and creating a line
- * the checkout would refuse anyway helps nobody. An open window is
- * snapshotted onto the line: Commerce may not read Registration's table
- * (ADR-0004), so this is its only chance to keep what it must re-check when
- * the payer finally clicks through.
+ * #218 (#216 draft i, fix round 1): the request may carry the type's sales
+ * window as two nullable ISO-8601 instants, and **this is the only place
+ * Commerce enforces it**. Null means "not window-bound", which is what
+ * Registration sends for a waitlist conversion, a confirmation after
+ * approval and a priced amendment — it is the authority on who may register,
+ * and this Action never second-guesses it. A window that is present and not
+ * open is a fresh sale arriving too early or too late, and it is refused:
+ * the registrant is at the form right now and gets told.
+ *
+ * The refusal sits *after* the idempotency lookup on purpose. A replay of a
+ * request whose line already exists returns that line whatever the clock
+ * says; the line was placed while the sale was open and refusing it now would
+ * contradict the promise below.
+ *
+ * The window is also snapshotted onto the line, normalized to UTC first
+ * (Eloquent's `datetime` cast stores an offset-bearing string by its
+ * wall-clock digits). It is kept for display and audit only — the checkout
+ * does not re-check it; see `PlaceOrderFromCart`.
  *
  * Idempotent on `(cart, registration, request_key)`: the partial unique
  * index `cart_lines_request_key_unique` is `(cart_id, kind, request_key)`,
@@ -52,8 +63,6 @@ final class PlaceRegistrationLineInCart
         ?string $saleStartsAt = null,
         ?string $saleEndsAt = null,
     ): CartLine {
-        $this->guardSaleWindow($registrationId, $saleStartsAt, $saleEndsAt);
-
         $cart = OpenCart::for($brandId, $registrantUserId);
 
         $existing = CartLine::query()
@@ -65,6 +74,11 @@ final class PlaceRegistrationLineInCart
         if ($existing !== null) {
             return $existing;
         }
+
+        $saleStartsAt = $saleStartsAt === null ? null : Carbon::parse($saleStartsAt)->utc();
+        $saleEndsAt = $saleEndsAt === null ? null : Carbon::parse($saleEndsAt)->utc();
+
+        $this->guardSaleWindow($registrationId, $saleStartsAt, $saleEndsAt);
 
         return DB::transaction(function () use ($cart, $registrationId, $requestKey, $lines, $saleStartsAt, $saleEndsAt): CartLine {
             $first = $lines[0];
@@ -97,19 +111,23 @@ final class PlaceRegistrationLineInCart
     }
 
     /**
-     * Start inclusive, end exclusive, null on either side meaning no bound —
-     * the same reading `RegistrationType::isOnSale()` and `CartLine::isOnSale()`
-     * apply, so the three never disagree about a boundary second.
+     * The boundary rule is asked of an unsaved `CartLine` rather than written
+     * out a second time (fix round 1, review finding 4): Commerce owns exactly
+     * one window predicate, `CartLine::isOnSale()`, and it agrees with
+     * `RegistrationType::isOnSale()` across the module boundary — start
+     * inclusive, end exclusive, null = open. Three hand-written copies of a
+     * boundary rule in a money path drift; one does not.
      */
-    private function guardSaleWindow(string $registrationId, ?string $saleStartsAt, ?string $saleEndsAt): void
+    private function guardSaleWindow(string $registrationId, ?CarbonInterface $saleStartsAt, ?CarbonInterface $saleEndsAt): void
     {
-        $now = now();
+        $probe = new CartLine(['sale_starts_at' => $saleStartsAt, 'sale_ends_at' => $saleEndsAt]);
 
-        $open = ($saleStartsAt === null || ! $now->lessThan(Carbon::parse($saleStartsAt)))
-            && ($saleEndsAt === null || $now->lessThan(Carbon::parse($saleEndsAt)));
-
-        if (! $open) {
-            throw SaleWindowClosedException::forRegistration($registrationId, $saleStartsAt, $saleEndsAt);
+        if (! $probe->isOnSale()) {
+            throw SaleWindowClosedException::forRegistration(
+                $registrationId,
+                $saleStartsAt?->toIso8601String(),
+                $saleEndsAt?->toIso8601String(),
+            );
         }
     }
 }

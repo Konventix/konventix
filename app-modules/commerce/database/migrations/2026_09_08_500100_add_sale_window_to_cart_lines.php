@@ -13,12 +13,19 @@ return new class extends Migration
      * window its settlement request declared, the same way it already
      * snapshots `label`, `unit_amount_net` and `tax_class`.
      *
-     * The snapshot is not a convenience — it is the only way the window can
-     * be checked again at checkout. Commerce never reads Registration's
-     * table (ADR-0004), so the window arrives once, as two nullable ISO-8601
-     * scalars on `RegistrationSettlementRequested`, and has to be kept.
-     * Without it a cart line would outlive the sale exactly as a product
-     * line outlives `Product::published_at` today (#216).
+     * Commerce never reads Registration's table (ADR-0004), so the window
+     * arrives once, as two nullable ISO-8601 scalars on
+     * `RegistrationSettlementRequested`, and is kept here for display and
+     * audit: what window was this line placed under.
+     *
+     * **It is a snapshot, and nothing refreshes it** (fix round 1). An
+     * operator who extends `sales_end` for stragglers does not reach a line
+     * already in a cart, and one who closes a sale early does not either.
+     * That is why the checkout deliberately does not enforce it
+     * (`PlaceOrderFromCart`): a line placed while the sale was open stays
+     * payable within the cart's own hold, and the alternative would refuse
+     * the helpful case with a 409 nobody could explain. Propagating a window
+     * change as an event is the follow-up if that is ever wanted.
      *
      * Instants, not wall-clock times: see the registration-side migration for
      * why a sales window is not an ADR-0027 event time. Null on either bound

@@ -599,8 +599,9 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     // linking to a form `SubmitRegistration` now refuses is
                     // worse than saying nothing. A sale that has not started
                     // stays, announced rather than linked, so the page can
-                    // carry the "sale starts" date a visitor came for.
-                    ->where(fn ($query) => $query->whereNull('sales_end')->orWhere('sales_end', '>', now()))
+                    // carry the "sale starts" date a visitor came for. The
+                    // rule itself lives on the model, next to `isOnSale()`.
+                    ->saleNotOver()
                     ->orderBy('name')
                     ->get()
                     ->map(fn (RegistrationType $type): array => PublicOfferData::ofType($type)->toArray())

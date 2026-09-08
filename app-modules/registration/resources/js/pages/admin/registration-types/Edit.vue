@@ -38,6 +38,7 @@ type Props = {
     options: Record<string, string[]>;
     registrations: number;
     termsFrozen: boolean;
+    appTimezone: string;
 };
 
 const props = defineProps<Props>();
@@ -57,6 +58,36 @@ function toInstant(value: string): string | null {
     return value === '' ? null : `${value.replace('T', ' ')}:00`;
 }
 
+/**
+ * The window is stored as an instant in the application's timezone, and the
+ * value typed here is sent verbatim — so the operator is typing that clock,
+ * not their own. Every browser labels a `datetime-local` control as local
+ * time and says nothing about which zone that is, so the form names the
+ * application's zone on each field and echoes the value back in the
+ * operator's own zone underneath. Without that, someone in Europe/Berlin
+ * types 18:00 and the landing page announces 20:00 to them.
+ */
+const browserTimezone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'your browser';
+
+function inBrowserTimezone(value: string): string {
+    if (value === '') {
+        return '';
+    }
+
+    const instant = new Date(`${value.replace(' ', 'T')}:00Z`);
+
+    return Number.isNaN(instant.getTime())
+        ? ''
+        : instant.toLocaleString(undefined, {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+          });
+}
+
+const salesStartLocal = computed(() => inBrowserTimezone(form.salesStart));
+const salesEndLocal = computed(() => inBrowserTimezone(form.salesEnd));
+
 const form = useForm({
     eventId: props.type.eventId,
     name: props.type.name,
@@ -70,8 +101,8 @@ const form = useForm({
         ? { ...props.type.priceDeclaration }
         : null,
     quotaIds: [...props.type.quotaIds],
-    salesStart: toLocalInput(props.type.salesStart ?? null),
-    salesEnd: toLocalInput(props.type.salesEnd ?? null),
+    salesStart: toLocalInput(props.type.salesStart),
+    salesEnd: toLocalInput(props.type.salesEnd),
 });
 
 useUnsavedChanges(() => form.isDirty);
@@ -441,8 +472,7 @@ function submit(): void {
                         <p class="text-sm text-text-muted">
                             When this type may be bought. Leave a field empty
                             for no bound — the start is inclusive, the end is
-                            not. Times are in UTC, the application's own
-                            timezone.
+                            not.
                         </p>
 
                         <div class="grid gap-2">
@@ -457,6 +487,11 @@ function submit(): void {
                                 id="type-sales-start-hint"
                                 class="text-xs text-text-muted"
                             >
+                                Entered in {{ props.appTimezone }}.
+                                <template v-if="salesStartLocal">
+                                    = {{ salesStartLocal }} in
+                                    {{ browserTimezone }}.
+                                </template>
                                 Before this, the landing page announces the type
                                 instead of linking to it.
                             </p>
@@ -475,9 +510,15 @@ function submit(): void {
                                 id="type-sales-end-hint"
                                 class="text-xs text-text-muted"
                             >
+                                Entered in {{ props.appTimezone }}.
+                                <template v-if="salesEndLocal">
+                                    = {{ salesEndLocal }} in
+                                    {{ browserTimezone }}.
+                                </template>
                                 Must be after the start. After it, the type
-                                disappears from the landing page and neither a
-                                submission nor a checkout is accepted.
+                                disappears from the landing page and a new
+                                submission is refused; a cart line already
+                                placed stays payable.
                             </p>
                             <InputError :message="form.errors.salesEnd" />
                         </div>
