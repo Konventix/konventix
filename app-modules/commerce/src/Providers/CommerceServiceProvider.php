@@ -24,7 +24,6 @@ use Konventix\Commerce\Data\RegistrationSettlementData;
 use Konventix\Commerce\Data\ShopProductData;
 use Konventix\Commerce\Data\WaitingRoomSettingsData;
 use Konventix\Commerce\Enums\CartLineKind;
-use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderPlaced;
@@ -930,12 +929,13 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     // payable thing, and any cart line it came from has
                     // already been checked out.
                     'cart' => null,
+                    // The pay link is `Settlement\PayLink`'s to decide, not
+                    // this slot's (GitLab #197): an inline `Pending` check
+                    // here hid it on a `payment_reversed` order the ADR-0057
+                    // point 3 rule makes payable again everywhere else.
                     'settlement' => RegistrationSettlementData::ofOrder(
                         $order,
                         $invoice,
-                        payUrl: $order->status === OrderStatus::Pending
-                            ? route('commerce.pay.show', ['registration' => $context['registrationId']], absolute: false)
-                            : null,
                         documentUrl: $invoice?->document_path === null ? null : URL::temporarySignedRoute(
                             'commerce.my.invoice.document',
                             now()->addMinutes(30),

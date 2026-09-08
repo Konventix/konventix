@@ -5,10 +5,15 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Identity\Models\User;
 use Konventix\Registration\Models\Registration;
 
@@ -265,4 +270,58 @@ it('reports no cart settlement when a direct order settles the registration', fu
     $this->actingAs($user)
         ->get('/my/registrations/'.$registration->getKey())
         ->assertInertia(fn (AssertableInertia $page) => expect(cartSettlementProps($page))->toBeNull());
+});
+
+/**
+ * ADR-0057 point 3, GitLab #197: a reversal revives the receivable, so the
+ * registrant's own page owes the same pay link `/my/orders` and the mails
+ * already carry — through `Settlement\PayLink`, so the four surfaces cannot
+ * name different places — and the deadline the money is owed back by
+ * (point 4), which the slot had no field for at all.
+ */
+it('shows the pay link and the repayment deadline once a payment was reversed', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    $registration = Registration::factory()->create(['registrant_user_id' => $user->getKey()]);
+
+    $order = Order::factory()->settles('registration', $registration->getKey())->paid()->create();
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
+
+    $payment = Payment::factory()->create(['order_id' => $order->getKey(), 'status' => PaymentStatus::Reversed]);
+    PaymentReversal::factory()->create([
+        'payment_id' => $payment->getKey(),
+        'order_id' => $order->getKey(),
+        'status' => ReversalStatus::Final,
+        'occurred_at' => now()->subDay(),
+        'repay_due_on' => now()->addDays(6)->toDateString(),
+    ]);
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page) use ($registration): void {
+            $settlement = settlementProps($page);
+
+            expect($settlement['status'])->toBe('payment_reversed')
+                ->and($settlement['payUrl'])->toBe('/pay/registration/'.$registration->getKey())
+                ->and($settlement['repayDueOn'])->toBe(now()->addDays(6)->toDateString());
+        });
+});
+
+/**
+ * The deadline is the reversal's, not a field every order carries: a
+ * pending order owes nothing back and a date beside it would invent one.
+ */
+it('names no repayment deadline on an order that was never reversed', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    $registration = Registration::factory()->create(['registrant_user_id' => $user->getKey()]);
+
+    Order::factory()->settles('registration', $registration->getKey())->create();
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertInertia(fn (AssertableInertia $page) => expect(settlementProps($page)['repayDueOn'])->toBeNull());
 });

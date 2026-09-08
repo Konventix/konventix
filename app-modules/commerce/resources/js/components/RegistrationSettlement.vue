@@ -53,8 +53,19 @@ const statusTone: Record<string, string> = {
     paid: 'bg-success/15 text-success',
     cancelled: 'bg-danger/15 text-danger',
     refunded: 'bg-danger/15 text-danger',
+    payment_reversed: 'bg-danger/15 text-danger',
     pending: 'bg-warning/15 text-warning-contrast',
 };
+
+/**
+ * ADR-0057 point 3 (#197): the money left again after it had settled, so
+ * the amount is owed once more and the pay button below is live. The status
+ * word alone would read as `Payment_reversed`, which says nothing about
+ * what the reader is supposed to do next.
+ */
+const reversed = computed(
+    () => props.settlement?.status === 'payment_reversed',
+);
 </script>
 
 <template>
@@ -143,8 +154,16 @@ const statusTone: Record<string, string> = {
                     statusTone[props.settlement.status] ?? 'bg-subtle text-text'
                 "
             >
-                {{ props.settlement.status }}
+                {{ props.settlement.status.replace('_', ' ') }}
             </span>
+
+            <p v-if="reversed" role="status" class="text-sm text-danger">
+                Payment reversed — this amount is owed again<template
+                    v-if="props.settlement.repayDueOn"
+                >
+                    until {{ props.settlement.repayDueOn }}</template
+                >.
+            </p>
 
             <span class="flex-1" />
 
