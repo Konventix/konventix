@@ -183,7 +183,7 @@ test('publishing the operator\'s real terms raises the login gate once (#200, #2
         requiresConsent: true,
         lawfulBasis: 'contract',
     ));
-    app(PublishPolicyVersion::class)($real);
+    app(PublishPolicyVersion::class)($real, now());
 
     $this->post(route('login'), ['email' => $member->email, 'password' => 'password'])
         ->assertRedirect(route('policies.required', absolute: false));
