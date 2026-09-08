@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CartExpired;
 use Konventix\Commerce\Events\CartLineExpired;
@@ -14,6 +16,7 @@ use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\ProductVariant;
+use Konventix\Commerce\Settlement\HostedPaymentProbe;
 
 /**
  * Two sweeps over `expires_at`, both scheduled `commerce:expire-carts`
@@ -39,14 +42,31 @@ use Konventix\Commerce\Models\ProductVariant;
  * Cancelling here sets `Order.status` directly (`OrderStatus::Cancelled`
  * already exists on the enum; there is no `CancelOrder` Action and no
  * `cancelled_at` column to fill — `OrderCancelled` itself is still
- * "proposed" per SPEC.md, so this sweep does not emit it either). A PSP
- * success that lands *after* this sweep has already cancelled the order
- * is refused by `RecordPaymentSuccess::settleOrder()`'s existing
- * not-pending guard — logged, not silently dropped — and is a known gap
- * tracked in `TODO.md`.
+ * "proposed" per SPEC.md, so this sweep does not emit it either).
+ *
+ * **The provider is asked first (#231).** Before an order with an open
+ * hosted payment is called off, `HostedPaymentProbe` asks the PSP what
+ * became of the session: money at the provider is booked through the
+ * ordinary `RecordPaymentSuccess` instead of being cancelled, and a
+ * provider that cannot answer this run keeps its order until the next one.
+ * On DEV a paid Stripe session whose webhook never arrived was cancelled by
+ * this sweep four seconds after the hourly reconciliation had missed it,
+ * and the buyer was mailed about it while the money sat at Stripe. One
+ * question per candidate order, outside the row lock — a network call must
+ * never be made while holding one.
+ *
+ * A PSP success that lands *after* this sweep has cancelled anyway is still
+ * refused by `RecordPaymentSuccess::settleOrder()`'s not-pending guard and
+ * recorded as unapplied money (ADR-0057 point 9, #6), which the operator
+ * can now refund from the console.
  */
 final class ExpireCarts
 {
+    public function __construct(
+        private readonly HostedPaymentProbe $probe,
+        private readonly RecordPaymentSuccess $recordSuccess,
+    ) {}
+
     public function handle(): int
     {
         return $this->expireOpenCarts() + $this->expireCheckedOutCarts();
@@ -111,6 +131,13 @@ final class ExpireCarts
             ->all();
 
         foreach ($carts as $cart) {
+            // Asked before the transaction, never inside it: this is a
+            // network call, and holding a row lock across one would let a
+            // provider's latency block whatever else touches the order.
+            if (! $this->providerSaysThisOrderMayBeCancelled($cart)) {
+                continue;
+            }
+
             $handled = DB::transaction(function () use ($cart): bool {
                 if ($cart->checked_out_order_id === null) {
                     return false;
@@ -154,6 +181,69 @@ final class ExpireCarts
         }
 
         return $expired;
+    }
+
+    /**
+     * The #231 question, asked once per cart this pass is about to cancel.
+     *
+     * `false` means "leave this cart alone this run", for one of two very
+     * different reasons — the money is at the provider and has just been
+     * booked, or the provider could not say. Both are recorded at warning
+     * level: an operator has to be able to see that the notification path
+     * is lossy, which is the only thing a sweep can say about it.
+     *
+     * Booking here is the ordinary settlement path, not a shortcut:
+     * `RecordPaymentSuccess` writes the payment, the order and `OrderPaid`
+     * exactly as the lost webhook would have, so the buyer gets the
+     * confirmation instead of a cancellation mail. The cart stays
+     * `checked_out` — a paid cart is never swept, and releasing its lines
+     * would hand away the seats that were just paid for.
+     */
+    private function providerSaysThisOrderMayBeCancelled(Cart $cart): bool
+    {
+        if ($cart->checked_out_order_id === null) {
+            return true;
+        }
+
+        $order = Order::withoutBrandScope()->find($cart->checked_out_order_id);
+
+        if ($order === null) {
+            return true;
+        }
+
+        [$state, $payment] = $this->probe->ask($order);
+
+        if ($payment === null) {
+            return true;
+        }
+
+        if ($state === HostedPaymentState::Paid) {
+            Log::warning('Cart sweep found a hosted payment the provider calls paid; booking it instead of cancelling (#231).', [
+                'order_id' => $order->id,
+                'brand_id' => $order->brand_id,
+                'payment_id' => $payment->id,
+                'provider' => $payment->provider,
+                'external_id' => $payment->external_id,
+            ]);
+
+            $this->recordSuccess->handle($payment);
+
+            return false;
+        }
+
+        if ($state === HostedPaymentState::Undecided) {
+            Log::warning('Cart sweep left an order standing: the provider could not say whether its hosted payment was paid (#231).', [
+                'order_id' => $order->id,
+                'brand_id' => $order->brand_id,
+                'payment_id' => $payment->id,
+                'provider' => $payment->provider,
+                'external_id' => $payment->external_id,
+            ]);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**

@@ -11,17 +11,26 @@ use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\RemoveCartLine;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Events\CartExpired;
 use Konventix\Commerce\Events\CartLineExpired;
 use Konventix\Commerce\Events\CartLineRemoved;
+use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
+use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\CheckoutRedirect;
+use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
+use Konventix\Commerce\Settlement\SettlementAdapter;
+use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 
 /**
  * The cart and its reservation (ADR-0047, Task 9): a person-owned root that
@@ -304,6 +313,128 @@ it('leaves a checked-out cart still inside its grace window untouched', function
         ->and($variant->refresh()->stock_consumed)->toBe(4)
         ->and($cart->refresh()->status)->toBe(CartStatus::CheckedOut)
         ->and($order->fresh()->status)->toBe(OrderStatus::Pending);
+});
+
+/**
+ * A settlement adapter whose PSP answer the test sets (#231). The registry
+ * resolves a fresh instance per call, so the answer and the call count are
+ * static.
+ */
+final class CartSweepTestAdapter implements ProvidesHostedCheckout, SettlementAdapter
+{
+    public static HostedPaymentState $state = HostedPaymentState::NotPaid;
+
+    public static int $asked = 0;
+
+    public function markOrderPaid(string $accountId, Order $order, string $amountPaid, string $currency, string $settlementMethod): Order
+    {
+        return $order;
+    }
+
+    public function refund(string $accountId, Order $order, string $amount, string $currency): void {}
+
+    public function startCheckout(SettlementAccount $account, Order $order, string $returnUrl): CheckoutRedirect
+    {
+        return new CheckoutRedirect(paymentId: 'unused', url: 'https://checkout.test/unused');
+    }
+
+    public function hostedPaymentState(Payment $payment): HostedPaymentState
+    {
+        self::$asked++;
+
+        return self::$state;
+    }
+
+    public function defaultCheckoutLabel(): string
+    {
+        return 'Test checkout';
+    }
+}
+
+/**
+ * A checked-out cart past its grace whose order still has an open hosted
+ * payment — the population #231 is about.
+ *
+ * @return array{0: Cart, 1: Order, 2: Payment}
+ */
+function cartSweepTestOpenHostedCheckout(HostedPaymentState $state): array
+{
+    test()->withBrand();
+
+    CartSweepTestAdapter::$state = $state;
+    CartSweepTestAdapter::$asked = 0;
+    app(SettlementAdapterRegistry::class)->register(SettlementAccount::PROVIDER_STRIPE, CartSweepTestAdapter::class);
+
+    $cart = Cart::factory()->create();
+
+    $order = Order::factory()->create([
+        'settles_type' => 'cart',
+        'settles_id' => $cart->id,
+        'request_key' => $cart->id,
+        'status' => OrderStatus::Pending,
+        'total_gross' => '119.00',
+        'currency' => 'EUR',
+    ]);
+
+    $payment = Payment::factory()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'external_id' => 'cs_sweep_1',
+        'amount' => '119.00',
+        'currency' => 'EUR',
+    ]);
+
+    $cart->forceFill([
+        'status' => CartStatus::CheckedOut,
+        'checked_out_order_id' => $order->id,
+        'expires_at' => now()->subMinute(),
+    ])->save();
+
+    return [$cart, $order, $payment];
+}
+
+it('books a checked-out cart\'s order instead of cancelling it when the PSP says the session was paid', function (): void {
+    // The DEV incident of 2026-09-08: a Stripe session paid at 01:57 whose
+    // webhook never arrived, cancelled by this sweep at 03:00:05 with the
+    // money still at Stripe (#231).
+    [$cart, $order, $payment] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Paid);
+
+    Event::fake([OrderPaid::class]);
+
+    $expiredCount = app(ExpireCarts::class)->handle();
+
+    expect($expiredCount)->toBe(0)
+        ->and(CartSweepTestAdapter::$asked)->toBe(1)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Paid)
+        ->and($payment->fresh()->status)->toBe(PaymentStatus::Succeeded)
+        // The cart is not expired either: its lines paid for something.
+        ->and($cart->fresh()->status)->toBe(CartStatus::CheckedOut);
+
+    Event::assertDispatched(OrderPaid::class, fn (OrderPaid $event): bool => $event->orderId === $order->id);
+});
+
+it('leaves the order standing when the PSP cannot say whether the session was paid', function (): void {
+    // Not knowing must never cancel an order somebody may have paid for;
+    // the next run asks again.
+    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Undecided);
+
+    $expiredCount = app(ExpireCarts::class)->handle();
+
+    expect($expiredCount)->toBe(0)
+        ->and(CartSweepTestAdapter::$asked)->toBe(1)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Pending)
+        ->and($cart->fresh()->status)->toBe(CartStatus::CheckedOut);
+});
+
+it('cancels the order once the PSP says nothing was paid', function (): void {
+    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::NotPaid);
+
+    $expiredCount = app(ExpireCarts::class)->handle();
+
+    expect($expiredCount)->toBe(1)
+        ->and(CartSweepTestAdapter::$asked)->toBe(1)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($cart->fresh()->status)->toBe(CartStatus::Expired);
 });
 
 it('runs the sweep through artisan commerce:expire-carts', function (): void {

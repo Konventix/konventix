@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Settlement\Stripe;
 
 use Illuminate\Support\Facades\Log;
+use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\Order;
@@ -22,6 +23,7 @@ use RuntimeException;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\AuthenticationException;
 use Stripe\Exception\InvalidRequestException;
+use Throwable;
 
 /**
  * Stripe, as ADR-0058 rewrites ADR-0039 point 5: every charge is made on
@@ -188,6 +190,41 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         return str_contains((string) $exception->getStripeParam(), 'statement_descriptor')
             || str_contains($exception->getMessage(), 'statement descriptor')
             || str_contains($exception->getMessage(), 'statement_descriptor');
+    }
+
+    /**
+     * #231: the sweep asks before it cancels. `payment_status` is the same
+     * field `StripeWebhookController::settled()` gates on — with a
+     * delayed-notification method a session reaches `complete` while still
+     * `unpaid`, so the session's own `status` cannot answer this.
+     *
+     * Any failure at all is `Undecided`, never `NotPaid`: an outage, a
+     * rejected key or a session id Stripe does not recognise all mean "we
+     * do not know", and not knowing must not cancel an order somebody paid
+     * for.
+     */
+    public function hostedPaymentState(Payment $payment): HostedPaymentState
+    {
+        if ($payment->external_id === null || $payment->external_id === '') {
+            return HostedPaymentState::Unanswerable;
+        }
+
+        try {
+            $session = $this->stripe->fetchCheckoutSession($payment->external_id);
+        } catch (Throwable $e) {
+            Log::warning('Stripe could not be asked whether a pending checkout session was paid (#231).', [
+                'payment_id' => $payment->id,
+                'order_id' => $payment->order_id,
+                'external_id' => $payment->external_id,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return HostedPaymentState::Undecided;
+        }
+
+        return $session['payment_status'] === 'unpaid'
+            ? HostedPaymentState::NotPaid
+            : HostedPaymentState::Paid;
     }
 
     public function refund(

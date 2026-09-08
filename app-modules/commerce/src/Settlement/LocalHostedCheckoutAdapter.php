@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Settlement;
 
+use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
@@ -68,6 +69,16 @@ final class LocalHostedCheckoutAdapter implements ProvidesHostedCheckout, Settle
         $payment->forceFill(['brand_id' => $order->brand_id])->save();
 
         return new CheckoutRedirect(paymentId: $payment->id, url: route('commerce.mine.index', absolute: false));
+    }
+
+    /**
+     * There is no PSP behind this adapter, so nothing to ask (#231): a
+     * `local`/`testing` checkout that was never paid is exactly what the
+     * sweep should cancel.
+     */
+    public function hostedPaymentState(Payment $payment): HostedPaymentState
+    {
+        return HostedPaymentState::Unanswerable;
     }
 
     public function defaultCheckoutLabel(): string

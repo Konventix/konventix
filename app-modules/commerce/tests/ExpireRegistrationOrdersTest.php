@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Konventix\Commerce\Actions\ExpireRegistrationOrders;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
+use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Events\OrderCancelled;
@@ -19,6 +20,10 @@ use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\CheckoutRedirect;
+use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
+use Konventix\Commerce\Settlement\SettlementAdapter;
+use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Platform\Models\Brand;
 
 /**
@@ -73,6 +78,96 @@ function expiryTestDirectOrder(
 
     return $order;
 }
+
+/**
+ * A settlement adapter whose PSP answer the test sets (#231); the registry
+ * resolves a fresh instance per call, so the answer is static.
+ */
+final class RegistrationSweepTestAdapter implements ProvidesHostedCheckout, SettlementAdapter
+{
+    public static HostedPaymentState $state = HostedPaymentState::NotPaid;
+
+    public static int $asked = 0;
+
+    public function markOrderPaid(string $accountId, Order $order, string $amountPaid, string $currency, string $settlementMethod): Order
+    {
+        return $order;
+    }
+
+    public function refund(string $accountId, Order $order, string $amount, string $currency): void {}
+
+    public function startCheckout(SettlementAccount $account, Order $order, string $returnUrl): CheckoutRedirect
+    {
+        return new CheckoutRedirect(paymentId: 'unused', url: 'https://checkout.test/unused');
+    }
+
+    public function hostedPaymentState(Payment $payment): HostedPaymentState
+    {
+        self::$asked++;
+
+        return self::$state;
+    }
+
+    public function defaultCheckoutLabel(): string
+    {
+        return 'Test checkout';
+    }
+}
+
+/**
+ * An order past the window whose hosted payment is still open — the case
+ * #231 is about, on this sweep rather than the cart one.
+ */
+function expiryTestOrderWithOpenHostedPayment(HostedPaymentState $state): Order
+{
+    RegistrationSweepTestAdapter::$state = $state;
+    RegistrationSweepTestAdapter::$asked = 0;
+    app(SettlementAdapterRegistry::class)->register(SettlementAccount::PROVIDER_MOLLIE, RegistrationSweepTestAdapter::class);
+
+    $order = expiryTestDirectOrder();
+
+    Payment::factory()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_MOLLIE,
+        'external_id' => 'tr_sweep_1',
+        'amount' => (string) $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    return $order;
+}
+
+it('books a registration order the PSP calls paid instead of cancelling it (#231)', function (): void {
+    $this->withBrand();
+    expiryTestHostedAccount();
+
+    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::Paid);
+
+    Event::fake([OrderCancelled::class, OrderPaid::class]);
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and(RegistrationSweepTestAdapter::$asked)->toBe(1);
+
+    Event::assertNotDispatched(OrderCancelled::class);
+    Event::assertDispatched(OrderPaid::class);
+});
+
+it('leaves a registration order standing while the PSP cannot say (#231)', function (): void {
+    $this->withBrand();
+    expiryTestHostedAccount();
+
+    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::Undecided);
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+
+    Event::assertNotDispatched(OrderCancelled::class);
+});
 
 it('cancels a pending direct registration order past the payment window', function (): void {
     $this->withBrand();
