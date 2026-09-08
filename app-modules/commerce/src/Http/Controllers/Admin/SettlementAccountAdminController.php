@@ -126,15 +126,26 @@ class SettlementAccountAdminController
         $data = $request->validate([
             'brand_id' => ['required', 'ulid', 'exists:brands,id'],
             'checkout_label' => ['nullable', 'string', 'max:80'],
-            // Stripe caps the full statement descriptor at 22 characters,
-            // its own account prefix included, and truncates past that —
-            // so 22 is the ceiling here and the operator is told about the
-            // prefix in the console. It refuses `<`, `>`, `\`, `"` and `'`
+            // Stripe caps the *combined* descriptor — its account's own
+            // prefix, a separator, then this suffix — at 22 characters, and
+            // an overflow is refused rather than reliably truncated. The
+            // prefix cannot be read from here: `fetchAccount()` went with
+            // Connect (ADR-0058), and there is no other API that hands it
+            // over. So the budget is the worst legal case rather than a
+            // lookup — Stripe allows a prefix of 2 to 10 characters, which
+            // with its separator leaves 11, and this keeps 10. A brand that
+            // wants more than ten characters on the payer's statement should
+            // shorten the account's prefix in the Stripe dashboard.
+            // `StripeSettlementAdapter::startCheckout()` retries without the
+            // suffix if Stripe refuses it anyway, so a wrong guess here can
+            // never cost a payment.
+            //
+            // Stripe additionally refuses `<`, `>`, `\`, `"` and `'`
             // outright, and wants at least one latin letter.
             'statement_descriptor_suffix' => [
                 'nullable',
                 'string',
-                'max:22',
+                'max:10',
                 'regex:/^[^<>\\\\"\']*[A-Za-z][^<>\\\\"\']*$/',
             ],
         ]);

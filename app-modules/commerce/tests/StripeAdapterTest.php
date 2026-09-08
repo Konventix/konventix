@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Models\Order;
@@ -12,6 +13,7 @@ use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
 use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
 use Konventix\Platform\Models\Brand;
+use Stripe\Exception\InvalidRequestException;
 
 /**
  * The adapter's decisions against a fake of the `StripeApi` seam
@@ -43,6 +45,50 @@ final class StripeAdapterTestFakeApi implements StripeApi
      * Unused here: only `commerce:reconcile-payments` (#71) reads a session
      * back, and this fake never drives it.
      *
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId): array
+    {
+        return [
+            'status' => 'open',
+            'payment_status' => 'unpaid',
+            'payment_intent' => null,
+            'payment_intent_status' => null,
+        ];
+    }
+}
+
+/**
+ * Refuses the first session the way Stripe refuses an over-long combined
+ * statement descriptor, and accepts whatever comes next.
+ */
+final class StripeAdapterTestRefusesDescriptorApi implements StripeApi
+{
+    /** @var list<array<string, mixed>> */
+    public array $sessions = [];
+
+    public string $stripeParam = 'payment_intent_data[statement_descriptor_suffix]';
+
+    public string $message = 'The combined length of your statement descriptor and suffix must be at most 22 characters.';
+
+    public function createCheckoutSession(array $params): StripeCheckoutSession
+    {
+        $this->sessions[] = $params;
+
+        if (count($this->sessions) === 1) {
+            throw InvalidRequestException::factory(
+                message: $this->message,
+                httpStatus: 400,
+                stripeParam: $this->stripeParam,
+            );
+        }
+
+        return new StripeCheckoutSession(id: 'cs_test_fake', url: 'https://checkout.stripe.test/pay/cs_test_fake');
+    }
+
+    public function createRefund(array $params): void {}
+
+    /**
      * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
      */
     public function fetchCheckoutSession(string $sessionId): array
@@ -161,6 +207,50 @@ it('sends no statement descriptor suffix when the brand set none', function (): 
     app(StripeSettlementAdapter::class)->startCheckout($account, $order, 'https://brand.test/return');
 
     expect($fake->sessions[0]['payment_intent_data'])->not->toHaveKey('statement_descriptor_suffix');
+});
+
+it('starts the checkout anyway when Stripe refuses the statement descriptor', function (): void {
+    // The suffix is cosmetic; the payment is not. If Stripe refuses the
+    // combined descriptor — its account prefix is unreadable from here since
+    // ADR-0058 removed `fetchAccount()`, so the save-time rule can only be
+    // conservative — the payer must still reach a payment page rather than a
+    // 500, with the descriptor falling back to the account's own default.
+    $brand = $this->withBrand();
+    [$account, $order] = stripeAdapterTestSetup($brand);
+
+    $fake = new StripeAdapterTestRefusesDescriptorApi;
+    app()->instance(StripeApi::class, $fake);
+
+    Log::spy();
+
+    $redirect = app(StripeSettlementAdapter::class)->startCheckout($account, $order, 'https://brand.test/return');
+
+    expect($redirect->url)->toBe('https://checkout.stripe.test/pay/cs_test_fake')
+        ->and($fake->sessions)->toHaveCount(2)
+        ->and($fake->sessions[0]['payment_intent_data'])->toHaveKey('statement_descriptor_suffix')
+        ->and($fake->sessions[1]['payment_intent_data'])->not->toHaveKey('statement_descriptor_suffix')
+        // Everything else about the retry is the first attempt unchanged.
+        ->and($fake->sessions[1]['metadata'])->toBe($fake->sessions[0]['metadata'])
+        ->and($fake->sessions[1]['client_reference_id'])->toBe($fake->sessions[0]['client_reference_id']);
+
+    Log::shouldHaveReceived('warning')->once();
+
+    expect(Payment::withoutBrandScope()->findOrFail($redirect->paymentId)->external_id)->toBe('cs_test_fake');
+});
+
+it('lets any other Stripe rejection surface instead of retrying blindly', function (): void {
+    $brand = $this->withBrand();
+    [$account, $order] = stripeAdapterTestSetup($brand);
+
+    $fake = new StripeAdapterTestRefusesDescriptorApi;
+    $fake->stripeParam = 'line_items';
+    $fake->message = 'No such price.';
+    app()->instance(StripeApi::class, $fake);
+
+    expect(fn () => app(StripeSettlementAdapter::class)->startCheckout($account, $order, 'https://brand.test/return'))
+        ->toThrow(InvalidRequestException::class);
+
+    expect($fake->sessions)->toHaveCount(1);
 });
 
 it('refuses to start a checkout on a non-Stripe account', function (): void {

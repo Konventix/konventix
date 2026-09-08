@@ -464,7 +464,10 @@ it('enables Stripe for a brand without calling Stripe at all', function (): void
 it('refuses a statement descriptor suffix Stripe would reject', function (string $suffix): void {
     // Stripe caps the whole statement descriptor at 22 characters, account
     // prefix included, and refuses the characters below — checked at save
-    // time rather than discovered as a rejected Checkout Session.
+    // time rather than discovered as a rejected Checkout Session. The prefix
+    // is unreadable from here (ADR-0058 removed `fetchAccount()` with
+    // Connect), so the budget is the worst legal case: a 10-character prefix
+    // plus its separator leaves 11, and the rule keeps 10.
     [$admin, $brand] = settlementAdminOperator();
 
     $this->actingAs($admin)
@@ -477,9 +480,28 @@ it('refuses a statement descriptor suffix Stripe would reject', function (string
     expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->count())->toBe(0);
 })->with([
     'longer than 22 characters' => ['SXLAN LAN PARTY EVENTS!'],
+    'longer than the account prefix leaves room for' => ['SXLAN EVENT'],
     'characters Stripe forbids' => ['SX<LAN>'],
     'no latin character at all' => ['1234'],
 ]);
+
+it('accepts a suffix that fits beside the longest prefix Stripe allows', function (): void {
+    // Ten characters is the budget, not an arbitrary shortening: it is what
+    // survives a 10-character account prefix and its separator inside
+    // Stripe's 22-character cap (ADR-0058 point 3).
+    [$admin, $brand] = settlementAdminOperator();
+    app()->instance(StripeApi::class, new SettlementAdminTestFakeStripe);
+
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
+            'brand_id' => $brand->id,
+            'statement_descriptor_suffix' => 'SXLAN EVNT',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->sole()->statement_descriptor_suffix)
+        ->toBe('SXLAN EVNT');
+});
 
 it('enables Stripe with no key configured, but does not offer it at checkout', function (): void {
     // ADR-0058 point 3: `isOffered()` for Stripe is "live, and this instance

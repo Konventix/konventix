@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Settlement\Stripe;
 
+use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
@@ -17,6 +18,7 @@ use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Scopes\BrandScope;
 use LogicException;
 use RuntimeException;
+use Stripe\Exception\InvalidRequestException;
 
 /**
  * Stripe, as ADR-0058 rewrites ADR-0039 point 5: every charge is made on
@@ -106,13 +108,14 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
 
         if (is_string($suffix) && trim($suffix) !== '') {
             // Appended to the account's own prefix by Stripe, which caps
-            // the whole descriptor at 22 characters and truncates beyond
-            // it; the console validates the suffix's length at save time
-            // (ADR-0058 point 3).
+            // the two together at 22 characters and refuses the charge if
+            // they overflow. The console validates the suffix against the
+            // worst legal prefix at save time (ADR-0058 point 3), and the
+            // retry below covers the case where that guess was still wrong.
             $intentData['statement_descriptor_suffix'] = trim($suffix);
         }
 
-        $session = $this->stripe->createCheckoutSession([
+        $params = [
             'mode' => 'payment',
             'client_reference_id' => $payment->id,
             'line_items' => $this->lineItems($order),
@@ -121,11 +124,63 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
             'metadata' => $metadata,
             'payment_intent_data' => $intentData,
             'integration_identifier' => self::INTEGRATION_IDENTIFIER,
-        ]);
+        ];
+
+        $session = $this->createSessionWithoutLettingTheDescriptorCostThePayment($params, $order);
 
         $payment->forceFill(['external_id' => $session->id])->save();
 
         return new CheckoutRedirect(paymentId: $payment->id, url: $session->url);
+    }
+
+    /**
+     * The suffix is cosmetic; the payment is not.
+     *
+     * Stripe caps the combined statement descriptor — the account's own
+     * prefix plus this suffix — at 22 characters, and the console can only
+     * guess at the prefix's length: `fetchAccount()` went with Connect
+     * (ADR-0058), so nothing here can read it. The save-time rule is
+     * therefore conservative rather than exact, and this is what happens when
+     * it guesses wrong anyway: the descriptor is dropped and the session
+     * retried once, so the payer reaches a payment page and the charge shows
+     * the account's default descriptor instead of the brand's. A misconfigured
+     * cosmetic field must not be able to break a brand's whole money path.
+     *
+     * Anything else Stripe refuses is a real fault and travels on unchanged.
+     *
+     * @param  array<string, mixed>  $params
+     */
+    private function createSessionWithoutLettingTheDescriptorCostThePayment(array $params, Order $order): StripeCheckoutSession
+    {
+        try {
+            return $this->stripe->createCheckoutSession($params);
+        } catch (InvalidRequestException $exception) {
+            $intentData = $params['payment_intent_data'] ?? [];
+
+            if (! is_array($intentData) || ! array_key_exists('statement_descriptor_suffix', $intentData)
+                || ! self::isStatementDescriptorRejection($exception)) {
+                throw $exception;
+            }
+
+            Log::warning('Stripe refused the statement descriptor suffix; retrying the checkout session without it.', [
+                'order_id' => $order->id,
+                'brand_id' => $order->brand_id,
+                'statement_descriptor_suffix' => $intentData['statement_descriptor_suffix'],
+                'stripe_message' => $exception->getMessage(),
+            ]);
+
+            unset($intentData['statement_descriptor_suffix']);
+            $params['payment_intent_data'] = $intentData;
+
+            return $this->stripe->createCheckoutSession($params);
+        }
+    }
+
+    private static function isStatementDescriptorRejection(InvalidRequestException $exception): bool
+    {
+        return str_contains((string) $exception->getStripeParam(), 'statement_descriptor')
+            || str_contains($exception->getMessage(), 'statement descriptor')
+            || str_contains($exception->getMessage(), 'statement_descriptor');
     }
 
     public function refund(

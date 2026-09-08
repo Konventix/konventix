@@ -220,7 +220,7 @@ function submitConnect(): void {
                                             form.statement_descriptor_suffix
                                         "
                                         type="text"
-                                        maxlength="22"
+                                        maxlength="10"
                                         autocomplete="off"
                                         placeholder="SXLAN"
                                         :aria-invalid="
@@ -247,9 +247,13 @@ function submitConnect(): void {
                                         What the payer reads on their card
                                         statement, so it names this brand rather
                                         than the operator. Stripe prepends the
-                                        account's own prefix and caps the whole
-                                        descriptor at 22 characters, truncating
-                                        anything past it.
+                                        account's own prefix and caps the two
+                                        together at 22 characters, refusing the
+                                        payment if they overflow — so ten
+                                        characters is what fits beside the
+                                        longest prefix Stripe allows. Shorten
+                                        the prefix in the Stripe dashboard if
+                                        you need more room here.
                                     </p>
                                 </div>
                             </template>
