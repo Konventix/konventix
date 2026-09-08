@@ -18,6 +18,7 @@ use Konventix\Commerce\Data\OrderReversalData;
 use Konventix\Commerce\Data\RefundOrderData;
 use Konventix\Commerce\Data\UnappliedPaymentData;
 use Konventix\Commerce\Enums\Permission;
+use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Exceptions\RefundEventRelayFailedException;
@@ -301,7 +302,12 @@ class OrderAdminController
     private function reversalQuery(): Builder
     {
         return PaymentReversal::withoutBrandScope()
-            ->whereIn('status', [ReversalStatus::Open->value, ReversalStatus::Final->value]);
+            ->whereIn('status', [ReversalStatus::Open->value, ReversalStatus::Final->value])
+            // A refund the console itself made (#247) is a decision an
+            // operator took, not money to act on: it carries the provider's
+            // reference for reconciliation and belongs on the order page,
+            // never in the "reversals & unapplied money" work list.
+            ->where('kind', '!=', ReversalKind::Refund->value);
     }
 
     /**
@@ -474,6 +480,12 @@ class OrderAdminController
                 'reason_note' => $data->reasonNote,
                 'amount' => (string) $model->total_gross,
                 'currency' => $model->currency,
+                // The provider's own identifier for the money going back
+                // (#247), read off the row `RecordRefund` just wrote. Null
+                // for a `manual` refund, which has no provider to give one —
+                // and for a refund that reached the announcement failure
+                // above, since the row is written before the announcement.
+                'provider_reference' => $this->providerRefundReference($model),
                 // Whether the seat, the quota and the admission were released
                 // with the money. An operator reconstructing "why is this
                 // registration still confirmed" reads it here rather than
@@ -490,5 +502,22 @@ class OrderAdminController
             : ['type' => 'success', 'message' => __('Order refunded.')]);
 
         return back();
+    }
+
+    /**
+     * The reference the provider gave the refund this request just made
+     * (#247). Newest first, because an order can be refunded more than once
+     * over its life — a partial refund followed by the rest.
+     */
+    private function providerRefundReference(Order $order): ?string
+    {
+        /** @var string|null $reference */
+        $reference = PaymentReversal::withoutBrandScope()
+            ->where('order_id', $order->getKey())
+            ->where('kind', ReversalKind::Refund->value)
+            ->orderByDesc('created_at')
+            ->value('provider_reference');
+
+        return $reference;
     }
 }

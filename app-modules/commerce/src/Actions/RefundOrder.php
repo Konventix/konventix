@@ -35,6 +35,11 @@ use RuntimeException;
  * the provider, then the record — each step only ever runs once the one
  * before it succeeded, and none of them can undo the one before it.
  *
+ * What the provider answers travels with the record (#247): the reference it
+ * assigns the refund (`re_…`) is stored on a `payment_reversals` row of kind
+ * `refund`, so an operator reconciling a statement, the audit entry and the
+ * order page all name the same identifier the provider's dashboard does.
+ *
  * ADR-0037 accepts a known gap: an offline device reconciles late (ADR-0033),
  * so a refund executed inside that sync window can slip past a check-in that
  * has happened but not yet arrived. That is a risk the ADR takes knowingly
@@ -65,7 +70,7 @@ final class RefundOrder
         // if the provider refuses the refund, no domain record or credit note
         // may exist claiming the money moved. Nothing has been written yet at
         // this point, so a refusal leaves the order exactly as it was.
-        $this->refundThroughProvider($order, $amount);
+        [$payment, $providerReference] = $this->refundThroughProvider($order, $amount);
 
         // Everything after the money is the refund's domain leg, shared with
         // the reversal path (ADR-0057 point 1): a refund the operator made in
@@ -85,6 +90,8 @@ final class RefundOrder
             reasonCode: $reasonCode,
             reasonNote: $reasonNote,
             amount: $amount,
+            payment: $payment,
+            providerReference: $providerReference,
         );
     }
 
@@ -94,8 +101,15 @@ final class RefundOrder
      * account, which may have changed since. An order with no payment row
      * predates ADR-0039 and was necessarily booked by hand; `manual`'s
      * refund is a no-op either way.
+     *
+     * Returns the payment the money went back through and the provider's own
+     * reference for the refund (#247), both of which `RecordRefund` needs to
+     * write the reversal row. Either can be null: an order booked by hand has
+     * no payment, and `manual`/`null` give no reference.
+     *
+     * @return array{0: ?Payment, 1: ?string}
      */
-    private function refundThroughProvider(Order $order, ?string $amount): void
+    private function refundThroughProvider(Order $order, ?string $amount): array
     {
         $payment = Payment::withoutBrandScope()
             ->where('order_id', $order->id)
@@ -103,7 +117,7 @@ final class RefundOrder
             ->latest('received_at')
             ->first();
 
-        $this->registry
+        $reference = $this->registry
             ->forProvider($payment->provider ?? SettlementAccount::PROVIDER_MANUAL)
             ->refund(
                 accountId: $payment->settlement_account_id ?? SettlementAccount::PROVIDER_MANUAL,
@@ -111,6 +125,8 @@ final class RefundOrder
                 amount: $amount ?? (string) $order->total_gross,
                 currency: $order->currency,
             );
+
+        return [$payment, $reference];
     }
 
     private function guardPaid(Order $order): void

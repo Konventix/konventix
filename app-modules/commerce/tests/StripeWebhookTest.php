@@ -55,7 +55,10 @@ final class StripeWebhookTestFakeApi implements StripeApi
         return new StripeCheckoutSession(id: 'cs_unused', url: 'https://checkout.stripe.test/unused');
     }
 
-    public function createRefund(array $params): void {}
+    public function createRefund(array $params): string
+    {
+        return 're_test_fake';
+    }
 
     /**
      * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}

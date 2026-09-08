@@ -52,7 +52,10 @@ final class MultiProviderSettlementTestFakeStripe implements StripeApi
         return ['disputes' => [], 'refunds' => []];
     }
 
-    public function createRefund(array $params): void {}
+    public function createRefund(array $params): string
+    {
+        return 're_test_fake';
+    }
 
     /**
      * Unused here: only `commerce:reconcile-payments` (#71) reads a session
@@ -96,7 +99,10 @@ final class MultiProviderSettlementTestFakeMollieApi implements MollieApi
         return new MolliePaymentSnapshot(id: $paymentId, status: 'open');
     }
 
-    public function refundPayment(string $paymentId, array $params, string $apiKey): void {}
+    public function refundPayment(string $paymentId, array $params, string $apiKey): string
+    {
+        return 're_test_fake';
+    }
 }
 
 it('lets a brand keep one live account per provider', function (): void {

@@ -733,6 +733,10 @@ it('refunds a whole paid order from the console, crediting its invoice', functio
             'reason_note' => 'Cancelled by phone.',
             'amount' => '119.00',
             'currency' => $order->currency,
+            // No provider took this money, so none can name the refund
+            // (#247): a bank transfer's reference is on the organizer's own
+            // statement.
+            'provider_reference' => null,
             // The clean path (fix round 1, NEW-1): the seat went with the
             // money. Its counterpart is asserted true below.
             'announcement_failed' => false,
@@ -834,7 +838,7 @@ final class OrderAdminTestRefusingStripeApi implements StripeApi
         return ['disputes' => [], 'refunds' => []];
     }
 
-    public function createRefund(array $params): void
+    public function createRefund(array $params): string
     {
         throw InvalidRequestException::factory(
             message: 'Charge ch_3UDIXCDvM5KSDNOI2 has already been refunded.',
@@ -925,7 +929,7 @@ final class OrderAdminTestRefusingAdapter implements SettlementAdapter
         return $order;
     }
 
-    public function refund(string $accountId, Order $order, string $amount, string $currency): void
+    public function refund(string $accountId, Order $order, string $amount, string $currency): ?string
     {
         throw $this->misconfigured
             ? ProviderRefusedRefundException::misconfigured('spy', 'Invalid API Key provided.')
@@ -952,6 +956,94 @@ function orderAdminSpyRefundOrder(bool $misconfigured = false): Order
 
     return $order;
 }
+
+/**
+ * #247: the same shape as the refusing adapter above, but it succeeds and
+ * answers with the reference the provider assigned the refund.
+ */
+final class OrderAdminTestRefundingAdapter implements SettlementAdapter
+{
+    public function markOrderPaid(
+        string $accountId,
+        Order $order,
+        string $amountPaid,
+        string $currency,
+        string $settlementMethod,
+    ): Order {
+        return $order;
+    }
+
+    public function refund(string $accountId, Order $order, string $amount, string $currency): ?string
+    {
+        return 're_console_1';
+    }
+}
+
+it('stores the provider\'s refund reference, shows it on the order page and writes it to the audit entry (#247)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = Order::factory()->paid()->create(['total_gross' => '11.90']);
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'settlement_account_id' => (string) Str::ulid(),
+        'amount' => '11.90',
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', OrderAdminTestRefundingAdapter::class);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertRedirect();
+
+    $audit = AuditLogEntry::query()->where('action', 'commerce.order.refunded')->sole();
+
+    expect($audit->context['provider_reference'])->toBe('re_console_1');
+
+    // And the operator reads it back where the money is discussed: the
+    // order page's reversals card, which already prints the reference.
+    $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders/{$order->id}")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('reversals', 1)
+            ->where('reversals.0.kind', 'refund')
+            ->where('reversals.0.providerReference', 're_console_1')
+            ->where('reversals.0.amount', '11.90'));
+});
+
+it('keeps a refund the console itself made out of the reversals work list (#247)', function (): void {
+    // The index filter is "money the order and the bank disagree about"
+    // (ADR-0057 point 8). A refund an operator made deliberately is not a
+    // task; its row exists for the provider reference.
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = Order::factory()->paid()->create(['total_gross' => '11.90']);
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => '11.90',
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', OrderAdminTestRefundingAdapter::class);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/refund", ['reasonCode' => 'customer-request'])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->get('http://admin.commerce.test/admin/orders?view=reversals')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->has('orders.data', 0));
+});
 
 it('422s a provider refusal from any adapter, not only Stripe (#236)', function (): void {
     [, $admin] = commerceOperator(orderAdminRefundPermissions());

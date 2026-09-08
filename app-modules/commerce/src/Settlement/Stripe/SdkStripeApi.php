@@ -46,9 +46,9 @@ final class SdkStripeApi implements StripeApi
     /**
      * @param  array<string, mixed>  $params
      */
-    public function createRefund(array $params): void
+    public function createRefund(array $params): string
     {
-        $this->client->refunds->create($params);
+        return $this->client->refunds->create($params)->id;
     }
 
     /**

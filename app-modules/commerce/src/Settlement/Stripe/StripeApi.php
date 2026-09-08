@@ -24,9 +24,12 @@ interface StripeApi
     public function createCheckoutSession(array $params): StripeCheckoutSession;
 
     /**
+     * Returns Stripe's own identifier for the refund (`re_…`), which the
+     * reversal row records (#247).
+     *
      * @param  array<string, mixed>  $params
      */
-    public function createRefund(array $params): void;
+    public function createRefund(array $params): string;
 
     /**
      * Every dispute and every refund Stripe holds against one payment

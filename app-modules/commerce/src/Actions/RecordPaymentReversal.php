@@ -180,6 +180,16 @@ final class RecordPaymentReversal
             return;
         }
 
+        if ($reversal->kind === ReversalKind::Refund) {
+            // Our own console refund (#247). `RecordRefund` writes that row
+            // directly and has already issued the credit note, moved the
+            // order to `refunded` and announced it; a reaction here would do
+            // the refund's work a second time. Never reached today — no
+            // caller passes this kind — and stated so that adding one cannot
+            // silently revive a receivable that was refunded on purpose.
+            return;
+        }
+
         $this->reviveReceivable($reversal, $payment);
     }
 

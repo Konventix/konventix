@@ -47,8 +47,9 @@ final class LocalHostedCheckoutAdapter implements ProvidesHostedCheckout, Settle
         Order $order,
         string $amount,
         string $currency,
-    ): void {
-        // Deliberate no-op — see class docblock.
+    ): ?string {
+        // Deliberate no-op — see class docblock. No PSP, no reference (#247).
+        return null;
     }
 
     public function startCheckout(

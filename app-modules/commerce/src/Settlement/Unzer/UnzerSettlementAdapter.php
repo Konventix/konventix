@@ -87,7 +87,7 @@ final class UnzerSettlementAdapter implements ProvidesHostedCheckout, Settlement
         Order $order,
         string $amount,
         string $currency,
-    ): void {
+    ): string {
         $payment = Payment::withoutBrandScope()
             ->where('order_id', $order->id)
             ->where('provider', SettlementAccount::PROVIDER_UNZER)
@@ -110,7 +110,8 @@ final class UnzerSettlementAdapter implements ProvidesHostedCheckout, Settlement
         // the console as a 500. `getMerchantMessage()` is the sentence
         // written for an operator; the customer-facing one is not.
         try {
-            $this->unzer->refundPayment(
+            // Unzer's cancellation id, carried back for the reversal row (#247).
+            return $this->unzer->refundPayment(
                 $payment->provider_transaction_id,
                 round((float) $amount, 2),
                 $this->privateKeyOf($account),

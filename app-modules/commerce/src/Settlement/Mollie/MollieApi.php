@@ -26,7 +26,10 @@ interface MollieApi
     public function fetchPayment(string $paymentId, string $apiKey): MolliePaymentSnapshot;
 
     /**
+     * Returns Mollie's own identifier for the refund (`re_…`), which the
+     * reversal row records (#247).
+     *
      * @param  array<string, mixed>  $params
      */
-    public function refundPayment(string $paymentId, array $params, string $apiKey): void;
+    public function refundPayment(string $paymentId, array $params, string $apiKey): string;
 }

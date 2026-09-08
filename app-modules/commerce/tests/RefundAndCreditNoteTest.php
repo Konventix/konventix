@@ -14,6 +14,8 @@ use Konventix\Commerce\Actions\RecordRefund;
 use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\ReversalKind;
+use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\CreditNoteIssued;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
@@ -26,6 +28,7 @@ use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Settlement\SettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Identity\Models\User;
@@ -44,6 +47,9 @@ final class RefundTestSpyAdapter implements SettlementAdapter
 
     public bool $refuse = false;
 
+    /** What the provider answers with (#247); null is `manual`'s answer. */
+    public ?string $reference = 're_spy_1';
+
     public function markOrderPaid(
         string $accountId,
         Order $order,
@@ -54,13 +60,16 @@ final class RefundTestSpyAdapter implements SettlementAdapter
         return $order;
     }
 
-    public function refund(string $accountId, Order $order, string $amount, string $currency): void
+    public function refund(string $accountId, Order $order, string $amount, string $currency): ?string
     {
         if ($this->refuse) {
             throw new RuntimeException('provider refused the refund');
         }
 
         $this->refunds[] = ['accountId' => $accountId, 'amount' => $amount, 'currency' => $currency];
+
+        // The provider's own identifier for the refund (#247).
+        return $this->reference;
     }
 }
 
@@ -396,6 +405,76 @@ it('sends the PSP refund through the provider that took the payment', function (
     expect($spy->refunds)->toHaveCount(1)
         ->and($spy->refunds[0]['accountId'])->toBe($accountId)
         ->and($spy->refunds[0]['amount'])->toBe((string) $order->total_gross);
+});
+
+it('records the provider\'s own reference for the refund on a reversal row (#247)', function (): void {
+    // Before this the `re_…` never left the adapter: after a refund no path
+    // led from the order to the money's identifier at the provider, and the
+    // "already refunded" branch of #236 could only tell the operator to go
+    // and look in the dashboard.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+    $accountId = (string) Str::ulid();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'settlement_account_id' => $accountId,
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    $reversal = PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->sole();
+
+    expect($reversal->kind)->toBe(ReversalKind::Refund)
+        ->and($reversal->status)->toBe(ReversalStatus::Final)
+        ->and($reversal->provider_reference)->toBe('re_spy_1')
+        ->and($reversal->payment_id)->toBe($payment->id)
+        ->and($reversal->settlement_account_id)->toBe($accountId)
+        ->and($reversal->brand_id)->toBe($order->brand_id)
+        ->and((string) $reversal->amount)->toBe((string) $order->total_gross)
+        // The refund's own consequences stay exactly where they were: the
+        // row carries the reference, it does not re-run the refund.
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
+});
+
+it('records no reversal row for a refund no provider gave a reference to (#247)', function (): void {
+    // `manual` wires the money back outside the platform: there is no
+    // reference, and a row whose `provider_reference` is invented would
+    // collide with the unique key the reversal table is built on.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    $spy = app(RefundTestSpyAdapter::class);
+    $spy->reference = null;
+    app()->instance(RefundTestSpyAdapter::class, $spy);
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect(PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
 });
 
 it('aborts the refund entirely when the provider refuses it', function (): void {

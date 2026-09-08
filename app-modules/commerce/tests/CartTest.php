@@ -331,7 +331,10 @@ final class CartSweepTestAdapter implements ProvidesHostedCheckout, SettlementAd
         return $order;
     }
 
-    public function refund(string $accountId, Order $order, string $amount, string $currency): void {}
+    public function refund(string $accountId, Order $order, string $amount, string $currency): ?string
+    {
+        return null;
+    }
 
     public function startCheckout(SettlementAccount $account, Order $order, string $returnUrl): CheckoutRedirect
     {

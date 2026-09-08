@@ -232,7 +232,7 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         Order $order,
         string $amount,
         string $currency,
-    ): void {
+    ): string {
         $payment = Payment::withoutBrandScope()
             ->where('order_id', $order->id)
             ->where('provider', SettlementAccount::PROVIDER_STRIPE)
@@ -258,7 +258,10 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         // sentence about this request; `getMessage()` prefixes it with the
         // HTTP status, which is noise in a form error.
         try {
-            $this->stripe->createRefund([
+            // The `re_…` Stripe assigns, carried back so the reversal row can
+            // record it (#247): without it no path led from the order to the
+            // money's own identifier at the provider.
+            return $this->stripe->createRefund([
                 'payment_intent' => $payment->provider_transaction_id,
                 'amount' => MinorUnits::fromDecimal($amount, $currency),
             ]);

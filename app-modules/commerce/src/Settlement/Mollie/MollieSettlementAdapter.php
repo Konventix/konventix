@@ -129,7 +129,7 @@ final class MollieSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         Order $order,
         string $amount,
         string $currency,
-    ): void {
+    ): string {
         $payment = Payment::withoutBrandScope()
             ->where('order_id', $order->id)
             ->where('provider', SettlementAccount::PROVIDER_MOLLIE)
@@ -151,7 +151,8 @@ final class MollieSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         // `Exception`, so an unrefundable payment used to reach the console
         // as a 500 rather than as Mollie's own sentence in the form.
         try {
-            $this->mollie->refundPayment($payment->external_id, [
+            // Mollie's own `re_…`, carried back for the reversal row (#247).
+            return $this->mollie->refundPayment($payment->external_id, [
                 'amount' => [
                     'currency' => $currency,
                     'value' => $amount,

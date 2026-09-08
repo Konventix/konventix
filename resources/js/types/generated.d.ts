@@ -337,7 +337,11 @@ declare namespace Konventix {
                 | 'event-cancelled'
                 | 'duplicate-payment'
                 | 'goodwill';
-            export type ReversalKind = 'return' | 'dispute' | 'external_refund';
+            export type ReversalKind =
+                | 'return'
+                | 'dispute'
+                | 'external_refund'
+                | 'refund';
             export type ReversalStatus = 'open' | 'final' | 'withdrawn';
             export type TaxClass = 'standard' | 'reduced';
             export type TaxTreatment =

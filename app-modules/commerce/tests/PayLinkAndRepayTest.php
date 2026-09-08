@@ -65,7 +65,10 @@ final class PayLinkTestFakeStripe implements StripeApi
         return ['disputes' => [], 'refunds' => []];
     }
 
-    public function createRefund(array $params): void {}
+    public function createRefund(array $params): string
+    {
+        return 're_test_fake';
+    }
 
     /**
      * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}

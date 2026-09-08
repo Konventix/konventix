@@ -46,7 +46,10 @@ final class CheckoutPageTestFakeStripe implements StripeApi
         return ['disputes' => [], 'refunds' => []];
     }
 
-    public function createRefund(array $params): void {}
+    public function createRefund(array $params): string
+    {
+        return 're_test_fake';
+    }
 
     /**
      * Unused here: only `commerce:reconcile-payments` (#71) reads a session

@@ -89,7 +89,10 @@ final class ReconciliationTestStripeApi implements StripeApi
         return $this->reversals;
     }
 
-    public function createRefund(array $params): void {}
+    public function createRefund(array $params): string
+    {
+        return 're_test_fake';
+    }
 
     /**
      * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
@@ -136,7 +139,10 @@ final class ReconciliationTestMollieApi implements MollieApi
         );
     }
 
-    public function refundPayment(string $paymentId, array $params, string $apiKey): void {}
+    public function refundPayment(string $paymentId, array $params, string $apiKey): string
+    {
+        return 're_test_fake';
+    }
 }
 
 final class ReconciliationTestUnzerApi implements UnzerApi
@@ -166,7 +172,10 @@ final class ReconciliationTestUnzerApi implements UnzerApi
         );
     }
 
-    public function refundPayment(string $paymentId, float $amount, string $privateKey): void {}
+    public function refundPayment(string $paymentId, float $amount, string $privateKey): string
+    {
+        return 'chg_test_fake';
+    }
 
     public function registerWebhook(string $url, string $privateKey): void {}
 }

@@ -6,12 +6,16 @@ namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\ReversalKind;
+use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Jobs\RelayRefundEvents;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
+use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 
 /**
  * The **domain leg** of a refund (ADR-0037): the credit note where an
@@ -81,13 +85,22 @@ final class RecordRefund
         private readonly IssueCreditNote $issueCreditNote,
     ) {}
 
+    /**
+     * `$payment` and `$providerReference` come from `RefundOrder` alone
+     * (#247): the payment the money went back through and the identifier the
+     * provider gave the refund. The reversal path passes neither — its
+     * `payment_reversals` row already exists, written by
+     * `RecordPaymentReversal` from the provider's own notification.
+     */
     public function handle(
         Order $order,
         string $reasonCode,
         ?string $reasonNote = null,
         ?string $amount = null,
+        ?Payment $payment = null,
+        ?string $providerReference = null,
     ): Order {
-        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount): Order {
+        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount, $payment, $providerReference): Order {
             // An order paid at checkout was never invoiced, so there is no
             // document to correct (ADR-0031) — the money still goes back, it
             // simply produces no paperwork.
@@ -104,6 +117,8 @@ final class RecordRefund
                     : null;
 
             $order->forceFill(['status' => OrderStatus::Refunded])->save();
+
+            $this->recordProviderReference($order, $payment, $providerReference, $amount);
 
             $totalGross = $order->total_gross;
 
@@ -145,6 +160,58 @@ final class RecordRefund
 
             return $order->refresh();
         });
+    }
+
+    /**
+     * The provider's own identifier for the refund, on a row of its own
+     * (#247).
+     *
+     * Written **here**, inside the same transaction as the credit note and
+     * the status, and written **directly** rather than through
+     * `RecordPaymentReversal`: that Action's job is to react to money leaving
+     * — revive the receivable, or undo the sale — and everything it would do
+     * has already been done by the lines above. Running it would refund the
+     * refund.
+     *
+     * Its second job is convergence. Stripe sends `charge.refunded` for our
+     * own refund too, and the reconciliation sweep of #235 lists it; both
+     * name this `re_…`, and the unique `(provider, provider_reference)` key
+     * makes them find this row instead of recording an `external_refund`
+     * against an order we already refunded.
+     *
+     * Skipped where there is nothing to record: a `manual` refund the
+     * organizer wires back themselves has no reference, and an order booked
+     * by hand has no payment.
+     */
+    private function recordProviderReference(
+        Order $order,
+        ?Payment $payment,
+        ?string $providerReference,
+        ?string $amount,
+    ): void {
+        if ($payment === null || $providerReference === null || $providerReference === '') {
+            return;
+        }
+
+        $reversal = new PaymentReversal([
+            'payment_id' => $payment->id,
+            'order_id' => $order->id,
+            'settlement_account_id' => $payment->settlement_account_id,
+            'provider' => $payment->provider,
+            'kind' => ReversalKind::Refund,
+            'status' => ReversalStatus::Final,
+            'amount' => $amount ?? (string) $order->total_gross,
+            'currency' => $order->currency,
+            'provider_reference' => $providerReference,
+            'reason_code' => null,
+            'fee_amount' => null,
+            'occurred_at' => now(),
+            'finalized_at' => now(),
+        ]);
+
+        // brand_id from the order, not ambient context (ADR-0010): the
+        // reversal caller runs on the stateless api surface.
+        $reversal->forceFill(['brand_id' => $order->brand_id])->save();
     }
 
     /**

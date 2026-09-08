@@ -39,11 +39,18 @@ interface SettlementAdapter
      * API call for PSP adapters. Called by `RefundOrder` after the ADR-0037
      * check-in guard passes; the domain record and the credit note are that
      * Action's job, only the provider side effect belongs here.
+     *
+     * Returns **the provider's own identifier for the refund** — Stripe's
+     * `re_…`, Mollie's `re_…`, Unzer's cancellation id — which `RefundOrder`
+     * stores on the reversal row it records (#247). Null where there is no
+     * provider to give one: `manual`, `null`, and the local stand-in. Before
+     * this the reference never left the adapter, and after a refund no path
+     * led from the order to the money's identifier at the provider.
      */
     public function refund(
         string $accountId,
         Order $order,
         string $amount,
         string $currency,
-    ): void;
+    ): ?string;
 }
