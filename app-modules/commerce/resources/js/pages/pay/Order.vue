@@ -5,13 +5,14 @@ import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
-import { start as startOrderCheckout } from '@/routes/commerce/pay/order';
 import {
     ORDER_WITH_OBLIGATION_TO_PAY,
     fulfilmentNote,
     taxNote,
-} from '../../lib/purchaseTexts';
+} from '@/lib/purchaseTexts';
+import { start as startOrderCheckout } from '@/routes/commerce/pay/order';
 
 /**
  * The way back to an order whose payment failed (GitLab #5) — a cart order
@@ -53,6 +54,11 @@ type Props = {
     paymentStatus: string | null;
     /** The first placement's deadline, ISO-8601, or null when there is none. */
     holdUntil: string | null;
+    /**
+     * ADR-0057 point 4 — the day a reversed order's money is owed back by,
+     * from the newest final reversal. Null for every other status.
+     */
+    repayDueOn: string | null;
     payable: boolean;
     /** Why not, in the payer's own words — null while `payable` is true. */
     refusalReason: string | null;
@@ -98,9 +104,7 @@ const reversed = computed(() => props.order.status === 'payment_reversed');
  * page states the deadline once and says what happens at it.
  */
 const holdUntilLabel = computed(() =>
-    props.holdUntil === null
-        ? null
-        : new Date(props.holdUntil).toLocaleString(),
+    props.holdUntil === null ? null : formatDateTime(props.holdUntil),
 );
 </script>
 
@@ -147,7 +151,16 @@ const holdUntilLabel = computed(() =>
             class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-danger"
         >
             <RotateCcw class="size-5" />
-            <span>Payment reversed — this amount is owed again.</span>
+            <span>
+                Payment reversed — this amount is owed again<template
+                    v-if="props.repayDueOn"
+                >
+                    until
+                    <time :datetime="props.repayDueOn">{{
+                        formatCalendarDate(props.repayDueOn)
+                    }}</time></template
+                >.
+            </span>
         </div>
 
         <div
@@ -159,8 +172,13 @@ const holdUntilLabel = computed(() =>
             <span>The last payment attempt did not go through.</span>
         </div>
 
+        <!--
+            #186: a reversed order is payable long past the reservation the
+            first payment used, so the hold is no longer the deadline that
+            binds it — the banner above names the one that does.
+        -->
         <p
-            v-if="props.payable && holdUntilLabel"
+            v-if="props.payable && holdUntilLabel && !reversed"
             role="status"
             class="text-sm text-text-muted"
         >

@@ -54,7 +54,12 @@ final class OpenSubjectRequest
                 'type' => $type,
                 'state' => DataSubjectRequestState::Received,
                 'mode' => $mode,
-                'deadline_at' => now()->addDays(30),
+                // Art. 12(3) gives a month, and a month is a *day*, not an
+                // instant: end of the thirtieth day, so the console, the
+                // public page and the escalation mail all name the same
+                // date instead of one of them naming the day before for a
+                // request opened after 22:00 UTC (branch review finding 16).
+                'deadline_at' => now()->addDays(30)->endOfDay(),
             ]);
 
             if ($type !== DataSubjectRequestType::ConsentWithdrawal) {

@@ -6,6 +6,7 @@ import InputError from '@/components/InputError.vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { useInitials } from '@/composables/useInitials';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import {
     destroy as destroyComment,
     react,
@@ -61,13 +62,8 @@ const { getInitials } = useInitials();
 
 const commentForm = useForm({ body: '' });
 
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'long',
-    timeStyle: 'short',
-});
-
 function formatCommentDate(value: string): string {
-    return dateFormat.format(new Date(value));
+    return formatDateTime(value, { dateStyle: 'long', timeStyle: 'short' });
 }
 
 function submitComment(): void {
@@ -124,10 +120,10 @@ const socialEntries = computed(() =>
         })),
 );
 
+// A calendar date (`member_since->toDateString()`), not an instant: read as
+// one it would be the day before for every reader west of Greenwich.
 const memberSinceLabel = computed(() =>
-    new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
-        new Date(props.profile.memberSince),
-    ),
+    formatCalendarDate(props.profile.memberSince),
 );
 </script>
 

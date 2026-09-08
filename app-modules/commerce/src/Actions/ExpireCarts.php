@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Commerce\Actions\Concerns\AsksThePspBeforeCancelling;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
@@ -14,6 +15,7 @@ use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\ProductVariant;
+use Konventix\Commerce\Settlement\HostedPaymentProbe;
 
 /**
  * Two sweeps over `expires_at`, both scheduled `commerce:expire-carts`
@@ -39,16 +41,40 @@ use Konventix\Commerce\Models\ProductVariant;
  * Cancelling here sets `Order.status` directly (`OrderStatus::Cancelled`
  * already exists on the enum; there is no `CancelOrder` Action and no
  * `cancelled_at` column to fill — `OrderCancelled` itself is still
- * "proposed" per SPEC.md, so this sweep does not emit it either). A PSP
- * success that lands *after* this sweep has already cancelled the order
- * is refused by `RecordPaymentSuccess::settleOrder()`'s existing
- * not-pending guard — logged, not silently dropped — and is a known gap
- * tracked in `TODO.md`.
+ * "proposed" per SPEC.md, so this sweep does not emit it either).
+ *
+ * **The provider is asked first (#231).** Before an order with an open
+ * hosted payment is called off, `HostedPaymentProbe` asks the PSP what
+ * became of the session: money at the provider is booked through the
+ * ordinary `RecordPaymentSuccess` instead of being cancelled, and a
+ * provider that cannot answer this run keeps its order until the next one.
+ * On DEV a paid Stripe session whose webhook never arrived was cancelled by
+ * this sweep four seconds after the hourly reconciliation had missed it,
+ * and the buyer was mailed about it while the money sat at Stripe. One
+ * question per candidate order, outside the row lock — a network call must
+ * never be made while holding one.
+ *
+ * A PSP success that lands *after* this sweep has cancelled anyway is still
+ * refused by `RecordPaymentSuccess::settleOrder()`'s not-pending guard and
+ * recorded as unapplied money (ADR-0057 point 9, #6), which the operator
+ * can now refund from the console.
  */
 final class ExpireCarts
 {
+    use AsksThePspBeforeCancelling;
+
+    public function __construct(
+        private readonly HostedPaymentProbe $probe,
+        private readonly RecordPaymentSuccess $recordSuccess,
+    ) {}
+
     public function handle(): int
     {
+        // Opens the run's provider-call budget (#231, fix round 1): a slow
+        // PSP must not turn one scheduled command into hundreds of
+        // sequential HTTP calls.
+        $this->startSweepRun();
+
         return $this->expireOpenCarts() + $this->expireCheckedOutCarts();
     }
 
@@ -67,20 +93,35 @@ final class ExpireCarts
             ->all();
 
         foreach ($carts as $cart) {
-            DB::transaction(function () use ($cart): void {
-                $this->releaseCartLines($cart);
+            $handled = DB::transaction(function () use ($cart): bool {
+                // Re-read under the lock (finding 3): between the query and
+                // here the shopper may have added a line, and every cart
+                // write pushes `expires_at` forward. Releasing the hold then
+                // would take the stock out from under someone who is still
+                // shopping.
+                $locked = Cart::withoutBrandScope()->whereKey($cart->getKey())->lockForUpdate()->first();
 
-                $cart->forceFill(['status' => CartStatus::Expired])->save();
+                if ($locked === null || $locked->status !== CartStatus::Open || $locked->expires_at->isFuture()) {
+                    return false;
+                }
+
+                $this->releaseCartLines($locked);
+
+                $locked->forceFill(['status' => CartStatus::Expired])->save();
 
                 event(new CartExpired(
-                    cartId: $cart->getKey(),
-                    brandId: $cart->brand_id,
-                    payerUserId: $cart->payer_user_id,
+                    cartId: $locked->getKey(),
+                    brandId: $locked->brand_id,
+                    payerUserId: $locked->payer_user_id,
                     expiredAt: now()->toIso8601String(),
                 ));
+
+                return true;
             });
 
-            $expired++;
+            if ($handled) {
+                $expired++;
+            }
         }
 
         return $expired;
@@ -107,17 +148,53 @@ final class ExpireCarts
             ->whereIn('checked_out_order_id', function ($query): void {
                 $query->select('id')->from('orders')->where('status', OrderStatus::Pending->value);
             })
+            // Oldest first, like the registration sweep (fix round 3, review
+            // F-5). Unordered, Postgres tends to return the same rows in the
+            // same order every run, so during an outage a backlog larger than
+            // the probe budget would starve the same tail run after run —
+            // holding its stock and its registration lines long past their
+            // own grace without ever being asked about.
+            ->orderBy('id')
             ->get()
             ->all();
 
         foreach ($carts as $cart) {
+            $order = $cart->checked_out_order_id === null
+                ? null
+                : Order::withoutBrandScope()->find($cart->checked_out_order_id);
+
+            // Asked before the transaction, never inside it: this is a
+            // network call, and holding a row lock across one would let a
+            // provider's latency block whatever else touches the order. A
+            // cart without an order has nothing to ask about and is swept as
+            // it always was.
+            if ($order !== null && ! $this->providerSaysThisOrderMayBeCancelled($order, 'Cart sweep')) {
+                continue;
+            }
+
             $handled = DB::transaction(function () use ($cart): bool {
                 if ($cart->checked_out_order_id === null) {
                     return false;
                 }
 
+                // The cart under its own lock first (finding 3).
+                // `PlaceOrderFromCart` reuses a checked-out cart's still
+                // pending order and pushes `expires_at` a fresh grace
+                // forward on every new attempt, so a payer who pressed "pay
+                // again" between the query above and this transaction — the
+                // moment a hold expires is exactly when they come back — was
+                // cancelled mid-attempt, and this branch now makes a
+                // synchronous provider call inside that window. The probe
+                // does not save them: the session they are looking at
+                // answers `open`/`unpaid`, which is `NotPaid`.
+                $locked = Cart::withoutBrandScope()->whereKey($cart->getKey())->lockForUpdate()->first();
+
+                if ($locked === null || $locked->status !== CartStatus::CheckedOut || $locked->expires_at->isFuture()) {
+                    return false;
+                }
+
                 $order = Order::withoutBrandScope()
-                    ->whereKey($cart->checked_out_order_id)
+                    ->whereKey($locked->checked_out_order_id)
                     ->lockForUpdate()
                     ->first();
 
@@ -134,14 +211,14 @@ final class ExpireCarts
                 // directly, the same way the sweep's other transitions do.
                 $order->forceFill(['status' => OrderStatus::Cancelled])->save();
 
-                $this->releaseCartLines($cart);
+                $this->releaseCartLines($locked);
 
-                $cart->forceFill(['status' => CartStatus::Expired])->save();
+                $locked->forceFill(['status' => CartStatus::Expired])->save();
 
                 event(new CartExpired(
-                    cartId: $cart->getKey(),
-                    brandId: $cart->brand_id,
-                    payerUserId: $cart->payer_user_id,
+                    cartId: $locked->getKey(),
+                    brandId: $locked->brand_id,
+                    payerUserId: $locked->payer_user_id,
                     expiredAt: now()->toIso8601String(),
                 ));
 
@@ -150,6 +227,15 @@ final class ExpireCarts
 
             if ($handled) {
                 $expired++;
+
+                // The valve's operator notice, once the cancellation is
+                // committed and not before (fix round 3, review F-4): the
+                // transaction above gives up if a late webhook settled the
+                // order under the lock, and nobody may be told about a
+                // cancellation that then did not happen.
+                if ($order !== null) {
+                    $this->reportCancellation($order, 'Cart sweep');
+                }
             }
         }
 

@@ -18,12 +18,22 @@ use Konventix\Platform\Models\Brand;
  */
 function platformRequestFrom(string $url): void
 {
-    // `request()` is what BrandUrl reads scheme and port from; swapping the
-    // bound instance is how a test says "this call is happening on that host".
+    // A bound request must NOT change the answer any more (#225); these tests
+    // keep binding one so the request and the queue context can be compared.
     app()->instance('request', Request::create($url));
 }
 
+/**
+ * The origin every brand link is built on comes from `APP_URL` (#225), so a
+ * test says "this deployment answers there" by setting that.
+ */
+function platformAppUrl(string $url): void
+{
+    config()->set('app.url', $url);
+}
+
 it('links to the primary host when a brand answers on several', function (): void {
+    platformAppUrl('http://admin.example');
     platformRequestFrom('http://admin.example/admin/content');
 
     $brand = Brand::factory()->create();
@@ -34,8 +44,9 @@ it('links to the primary host when a brand answers on several', function (): voi
     expect(app(BrandUrl::class)->baseFor($brand))->toBe('http://sxlan.example');
 });
 
-it('carries the scheme and a non-default port from the current request', function (): void {
+it('carries the scheme and a non-default port from the configured app URL', function (): void {
     // A developer on a nonstandard port needs a link that actually opens.
+    platformAppUrl('https://admin.example:8443');
     platformRequestFrom('https://admin.example:8443/admin/content');
 
     $brand = Brand::factory()->withDomain('sxlan.example')->create();
@@ -44,6 +55,7 @@ it('carries the scheme and a non-default port from the current request', functio
 });
 
 it('omits the port when it is the scheme default', function (): void {
+    platformAppUrl('https://admin.example');
     platformRequestFrom('https://admin.example/admin/content');
 
     $brand = Brand::factory()->withDomain('sxlan.example')->create();
@@ -51,7 +63,56 @@ it('omits the port when it is the scheme default', function (): void {
     expect(app(BrandUrl::class)->baseFor($brand))->toBe('https://sxlan.example');
 });
 
+it('omits a port APP_URL spells out when it is the scheme default', function (): void {
+    // `https://…:443` and `http://…:80` are the same origins as without the
+    // port, and a developer who mirrors compose's `APP_PORT` default writes
+    // the second one. A link that says `:443` out loud is not wrong, it is
+    // just not what anybody wrote down (#225 review finding 1).
+    platformAppUrl('https://admin.example:443');
+
+    $brand = Brand::factory()->withDomain('sxlan.example')->create();
+
+    expect(app(BrandUrl::class)->baseFor($brand))->toBe('https://sxlan.example');
+
+    platformAppUrl('http://admin.example:80');
+
+    expect(app(BrandUrl::class)->baseFor($brand))->toBe('http://sxlan.example');
+});
+
+it('builds an https link from a queue job, where no request is bound', function (): void {
+    // #225: a mail rendered inside a queued job used to come out on http://
+    // because `request()` hands back a synthetic request with no HTTPS
+    // indicator. The origin is a property of the deployment, not of whatever
+    // request happens to be in flight, so it comes from APP_URL.
+    platformAppUrl('https://admin.dev.konventix.de');
+
+    $brand = Brand::factory()->withDomain('sxlan.dev.konventix.de')->create();
+
+    // Exactly the state a queue worker is in: nothing bound under `request`.
+    app()->forgetInstance('request');
+
+    expect(app(BrandUrl::class)->baseFor($brand))->toBe('https://sxlan.dev.konventix.de');
+});
+
+it('answers the same in a request as in a queue job', function (): void {
+    platformAppUrl('https://admin.dev.konventix.de');
+
+    $brand = Brand::factory()->withDomain('sxlan.dev.konventix.de')->create();
+
+    // The proxy terminates TLS, so the request the worker sees is plain http;
+    // the link it prints must not inherit that (#225).
+    platformRequestFrom('http://admin.dev.konventix.de/admin/content');
+    $inRequest = app(BrandUrl::class)->baseFor($brand);
+
+    app()->forgetInstance('request');
+    $inJob = app(BrandUrl::class)->baseFor($brand);
+
+    expect($inRequest)->toBe('https://sxlan.dev.konventix.de')
+        ->and($inJob)->toBe($inRequest);
+});
+
 it('has no link for a brand nobody has pointed a domain at', function (): void {
+    platformAppUrl('http://admin.example');
     platformRequestFrom('http://admin.example/admin/content');
 
     // A legal state: the brand exists, its DNS does not yet.
@@ -61,6 +122,7 @@ it('has no link for a brand nobody has pointed a domain at', function (): void {
 });
 
 it('resolves a whole page of brands in one query', function (): void {
+    platformAppUrl('http://admin.example');
     platformRequestFrom('http://admin.example/admin/content');
 
     $first = Brand::factory()->withDomain('one.example')->create();

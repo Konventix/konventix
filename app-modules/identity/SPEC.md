@@ -52,10 +52,13 @@ keeps as its own read model.
 - **Account lifecycle**: locking, unlocking, and the anonymization of the
   account's own data when Compliance requests it.
 - **The minimal shared Inertia props for the authenticated user**: ULID, display
-  name, avatar URL, locale. LanCore serialized `$user->toArray()` — address,
-  phone, Steam data — plus every computed permission on every request
-  (lessons-from-lancore #5). Anything beyond the four fields is a deferred or
-  optional prop supplied by the module that needs it.
+  name, avatar URL, locale, timezone. LanCore serialized `$user->toArray()` —
+  address, phone, Steam data — plus every computed permission on every request
+  (lessons-from-lancore #5). Anything beyond these five fields is a deferred or
+  optional prop supplied by the module that needs it. `timezone` earned its
+  place in #243 because every page renders timestamps and none of them should
+  have to ask for the zone; `null` means the person reads on their own device's
+  clock.
 
 ### What explicitly does not go on User
 

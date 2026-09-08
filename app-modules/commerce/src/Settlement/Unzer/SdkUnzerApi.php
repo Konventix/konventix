@@ -96,10 +96,18 @@ final class SdkUnzerApi implements UnzerApi
         return $chargebacks;
     }
 
-    public function refundPayment(string $paymentId, float $amount, string $privateKey): void
+    public function refundPayment(string $paymentId, float $amount, string $privateKey): string
     {
         $client = new Unzer($privateKey);
-        $client->cancelPayment($client->fetchPayment($paymentId), $amount);
+
+        // One cancellation per charge the refund had to touch — a payment
+        // charged in parts cancels in parts. The first is the one an
+        // operator finds the money under, and the id is nullable on a
+        // resource the SDK never sent; an empty string says "no reference"
+        // rather than inventing one (#247).
+        $cancellations = $client->cancelPayment($client->fetchPayment($paymentId), $amount);
+
+        return ($cancellations[0] ?? null)?->getId() ?? '';
     }
 
     public function registerWebhook(string $url, string $privateKey): void

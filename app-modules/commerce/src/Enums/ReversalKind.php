@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Enums;
 
 /**
- * What kind of reversal took the money back (ADR-0057 point 1). Three
- * kinds, two moments: `Return` and `ExternalRefund` are final the moment
+ * What kind of reversal took the money back (ADR-0057 point 1). Four kinds,
+ * two moments: `Return`, `ExternalRefund` and `Refund` are final the moment
  * they arrive, `Dispute` opens and is decided later.
  */
 enum ReversalKind: string
@@ -38,4 +38,24 @@ enum ReversalKind: string
      * warning saying so.
      */
     case ExternalRefund = 'external_refund';
+
+    /**
+     * A refund `RefundOrder` made through the provider — the console's own
+     * button, not the dashboard's (#247). The row exists for the provider's
+     * reference (`re_…` at Stripe): the credit note documents the sale being
+     * undone, but nothing in Konventix used to name the money's own
+     * identifier, so an operator reconciling a statement had to search the
+     * dashboard by amount and date.
+     *
+     * It is written directly by `RecordRefund`, never through
+     * `RecordPaymentReversal`: the refund's consequences — the credit note,
+     * `OrderStatus::Refunded`, `OrderRefunded` — have already happened in
+     * the same transaction, and running the reversal reactions on top would
+     * undo the sale twice. Its second job is convergence: the provider's own
+     * `charge.refunded` notification and the reconciliation sweep of #235
+     * both name this reference, and the unique `(provider,
+     * provider_reference)` key makes them find this row instead of recording
+     * an `external_refund` for money we sent back ourselves.
+     */
+    case Refund = 'refund';
 }

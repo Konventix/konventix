@@ -9,6 +9,7 @@ use Konventix\Event\Enums\EventVisibility;
 use Konventix\Event\Enums\ReentryPolicy;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
+use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
 
@@ -189,4 +190,71 @@ it('hands the registrant their timestamps as instants with a zone offset', funct
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('registration.submittedAt', '2026-09-07T21:55:02+00:00')
             ->where('registration.confirmedAt', '2026-09-07T22:10:00+00:00'));
+});
+
+/**
+ * GitLab #239: a cancelled registration is history, not a thing the
+ * registrant is going to do anything with, and an account that registered
+ * three times and cancelled twice opened this page on two dead rows. Hidden
+ * by default, counted so the page can say what it is hiding, and brought
+ * back by a query parameter so a reload keeps the choice — the same reason
+ * the console's filters live in the URL rather than in component state.
+ */
+it('hides cancelled registrations until the reader asks for them', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    $live = Registration::factory()->create([
+        'registrant_user_id' => $user->getKey(),
+        'status' => RegistrationStatus::Confirmed,
+    ]);
+    $cancelled = Registration::factory()->create([
+        'registrant_user_id' => $user->getKey(),
+        'status' => RegistrationStatus::Cancelled,
+    ]);
+
+    $this->actingAs($user)
+        ->get('/my/registrations')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('registrations', 1)
+            ->where('registrations.0.id', $live->getKey())
+            ->where('showAll', false)
+            ->where('cancelledCount', 1));
+
+    $this->actingAs($user)
+        ->get('/my/registrations?show=all')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('registrations', 2)
+            ->where('showAll', true)
+            ->where('cancelledCount', 1));
+
+    expect($cancelled->fresh()->status)->toBe(RegistrationStatus::Cancelled);
+});
+
+/**
+ * The two empty lists are not the same sentence (#239): "you have not
+ * registered for anything" is wrong for an account whose only registration
+ * was cancelled, and the page can only tell them apart from the count.
+ */
+it('separates an empty list from one that is only hiding cancellations', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    Registration::factory()->create([
+        'registrant_user_id' => $user->getKey(),
+        'status' => RegistrationStatus::Cancelled,
+    ]);
+
+    $this->actingAs($user)
+        ->get('/my/registrations')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('registrations', [])
+            ->where('cancelledCount', 1));
+
+    $this->actingAs($user)
+        ->get('/my/registrations?show=all')
+        ->assertInertia(fn (AssertableInertia $page) => $page->has('registrations', 1));
 });

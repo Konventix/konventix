@@ -122,6 +122,48 @@ it('costs a brand page that never shows the notice nothing at all', function ():
     expect($operatorQueries)->toBe([]);
 });
 
+it('names the brand the visitor is standing on, beside the operator, on every auth surface (#241)', function (): void {
+    presenceOperatorWithBrands(['Beta Con', 'Alpha Con']);
+
+    // #184 named the operator only, so a visitor had to work out which of the
+    // listed sites they were on. ADR-0054 point 5 wants both.
+    foreach (['/login', '/register', '/forgot-password'] as $path) {
+        $this->get('http://alpha-con.test'.$path)
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('operatorPresence.brandName', 'Alpha Con')
+                ->where('operatorPresence.name', 'Acme Events'));
+    }
+
+    // The same prop on the sibling host names the sibling.
+    $this->get('http://beta-con.test/register')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('operatorPresence.brandName', 'Beta Con'));
+});
+
+it('tells the sign-up page nothing about whether the address already has an account (#241)', function (): void {
+    [, $brands] = presenceOperatorWithBrands(['Beta Con', 'Alpha Con']);
+
+    $before = $this->get('http://alpha-con.test/register')
+        ->assertOk()
+        ->viewData('page')['props']['operatorPresence'];
+
+    // A person who has used the operator's other brand. ADR-0054 point 6 says
+    // the sign-up surface explains that their account works here — and
+    // ADR-0016 says it must do so without answering "does this address have an
+    // account", to anyone, ever. The explanation is therefore part of the page
+    // for everybody, and this prop must not move because a user exists.
+    $this->withBrand($brands['Beta Con']);
+    User::factory()->create(['email' => 'ada@example.test']);
+
+    $after = $this->get('http://alpha-con.test/register')
+        ->assertOk()
+        ->viewData('page')['props']['operatorPresence'];
+
+    expect($after)->toBe($before);
+});
+
 it('links the Art. 13 sentence only where a privacy policy resolves', function (): void {
     presenceOperatorWithBrands(['Alpha Con']);
 

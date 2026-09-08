@@ -1,13 +1,36 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import {
+    accountIntro,
+    brandListIntro,
+    controllerSentence,
+    sharedAccountNoticeFor,
+} from '@/components/operatorPresenceText';
 import TextLink from '@/components/TextLink.vue';
+import { login } from '@/routes';
 
 /**
- * Whose account this is (#184, ADR-0054). One account belongs to the whole
- * operator (ADR-0016), and until this notice existed nothing on a branded
- * login or registration page said so: two brands of the same house looked
- * like two unrelated sites that happened to accept the same password.
+ * Whose account this is, and where (#184, #241, ADR-0054). One account
+ * belongs to the whole operator (ADR-0016), and until this notice existed
+ * nothing on a branded login or registration page said so: two brands of the
+ * same house looked like two unrelated sites that happened to accept the same
+ * password.
+ *
+ * #184 named the operator only, which left the visitor to work out which of
+ * the listed sites they were standing on; #241 names the brand first,
+ * because that is the name they arrived knowing. The brand's *mark* is not
+ * repeated here — the auth layouts render it from the shell's `brand` prop,
+ * above this notice.
+ *
+ * The sign-up surfaces also carry ADR-0054 point 6 on the page rather than
+ * only in the mail: whoever already has an account from a sibling brand is
+ * told, before they type anything, that signing in works. It is shown to
+ * everyone, unconditionally — a notice that appeared only for an address
+ * that already has an account would be the enumeration oracle ADR-0016
+ * forbids. The two sign-up surfaces get different wording, because the
+ * account a social signup creates has no password at all. Both sentences
+ * live in `operatorPresenceText.ts`, where they can be tested.
  *
  * Rendered by the three auth layouts rather than by each page, so login,
  * registration, password reset and the social-signup completion all show it
@@ -55,6 +78,59 @@ const listed = computed(() =>
     creatingAccount.value ? allBrands.value : otherBrands.value,
 );
 const showList = computed(() => allBrands.value.length > 1);
+
+const intro = computed(() =>
+    presence.value === null || presence.value === undefined
+        ? ''
+        : accountIntro(
+              presence.value.name,
+              presence.value.brandName,
+              creatingAccount.value,
+          ),
+);
+
+const listIntro = computed(() =>
+    presence.value === null || presence.value === undefined
+        ? null
+        : brandListIntro(
+              presence.value.name,
+              creatingAccount.value,
+              allBrands.value.length,
+          ),
+);
+
+/**
+ * ADR-0054 point 6, on the sign-up surfaces only — and worded per surface,
+ * because a social signup creates an account with no password (#241 review
+ * finding 7). The page component is the only input besides the operator: see
+ * `operatorPresenceText.ts` on why it can never become an enumeration oracle.
+ */
+const sharedAccount = computed(() =>
+    presence.value === null || presence.value === undefined
+        ? null
+        : sharedAccountNoticeFor(
+              page.component,
+              presence.value.name,
+              allBrands.value.length,
+          ),
+);
+
+/**
+ * The link under it. A social signup's sibling account is reached through
+ * whatever it was created with, and the login page is where all of those
+ * live; a registration's is reached with its password, on the same page.
+ */
+const sharedAccountLinkLabel = computed(() =>
+    page.component === 'auth/CompleteSocialSignup'
+        ? 'Go to sign-in'
+        : 'Sign in',
+);
+
+const controller = computed(() =>
+    presence.value === null || presence.value === undefined
+        ? ''
+        : controllerSentence(presence.value.legalName),
+);
 </script>
 
 <template>
@@ -64,15 +140,9 @@ const showList = computed(() => allBrands.value.length > 1);
         aria-label="About this account"
     >
         <p>
-            <template v-if="creatingAccount">
-                You are creating an account with {{ presence.name }}.
-                <template v-if="showList">
-                    It applies on every site of {{ presence.name }}:
-                </template>
-            </template>
-            <template v-else>
-                Sign in with your {{ presence.name }} account.
-                <template v-if="showList"> It also applies on: </template>
+            {{ intro }}
+            <template v-if="showList && listIntro">
+                {{ listIntro }}
             </template>
 
             <template v-if="showList">
@@ -91,9 +161,14 @@ const showList = computed(() => allBrands.value.length > 1);
             </template>
         </p>
 
+        <p v-if="sharedAccount" class="mt-1">
+            {{ sharedAccount }}
+            <TextLink :href="login()">{{ sharedAccountLinkLabel }}</TextLink>
+        </p>
+
         <p v-if="creatingAccount" class="mt-1">
-            {{ presence.legalName }} is responsible for processing your
-            data<template v-if="presence.privacyPolicyUrl">
+            {{ controller
+            }}<template v-if="presence.privacyPolicyUrl">
                 — see the
                 <TextLink :href="presence.privacyPolicyUrl">
                     privacy policy

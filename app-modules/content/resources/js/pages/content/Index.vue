@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/datetime';
 import { show as showEntry } from '@/routes/content';
 
 /**
@@ -21,12 +22,8 @@ const props = defineProps<{
     entries: PaginatedEntries;
 }>();
 
-const dateFormat = new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'long',
-});
-
 function formatDate(value: string | null): string {
-    return value ? dateFormat.format(new Date(value)) : '';
+    return formatDateTime(value, { dateStyle: 'long', timeStyle: undefined });
 }
 
 function goToPage(page: number): void {

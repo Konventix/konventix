@@ -93,8 +93,10 @@ final class ManualSettlementAdapter implements SettlementAdapter
         Order $order,
         string $amount,
         string $currency,
-    ): void {
+    ): ?string {
         // No provider to instruct: the organizer transfers the money back
-        // outside the platform (ADR-0039).
+        // outside the platform (ADR-0039) — and therefore no reference to
+        // return (#247). The bank's own is on the organizer's statement.
+        return null;
     }
 }

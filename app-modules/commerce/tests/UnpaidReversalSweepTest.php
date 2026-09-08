@@ -11,6 +11,7 @@ use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\CreditNoteIssued;
+use Konventix\Commerce\Events\DunningLevelRaised;
 use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Models\CheckedInAdmission;
@@ -168,6 +169,62 @@ it('keeps an order whose admission was already used, and hands its invoice to du
         ->and($invoice->overdue_at->toDateString())->toBe($reversal->repay_due_on->toDateString());
 
     Event::assertNotDispatched(OrderCancelled::class);
+});
+
+it('counts the ladder from the repayment deadline, not from an overdue date the invoice already had (#196)', function (): void {
+    // The case the column's two authors produce: an invoice-settled order
+    // that went overdue once, was then paid online, and was charged back.
+    // `overdue_at` still holds the first date, weeks old — and arm 2 of
+    // `RaiseDunningLevel` counts the ladder from it, so the morning after
+    // the reversal the payer gets a high Mahnstufe while the reversal mail
+    // promises a fresh seven days.
+    $this->withBrand();
+    [$order, $reversal] = sweepTestReversedOrder();
+
+    $invoice = Invoice::withoutBrandScope()->where('order_id', $order->id)->sole();
+    $invoice->forceFill([
+        'due_on' => now()->subDays(60)->toDateString(),
+        'overdue_at' => now()->subDays(60),
+        'dunning_level' => 1,
+    ])->save();
+
+    sweepTestCheckIn($order, $order->settles_id);
+
+    $this->artisan('commerce:cancel-unpaid-reversals')->assertSuccessful();
+
+    // The hand-off overwrites: the repayment deadline is the later fact
+    // about the same debt.
+    expect($invoice->refresh()->overdue_at?->toDateString())
+        ->toBe($reversal->repay_due_on->toDateString());
+
+    // And the ladder goes back with it (review nit 9): the payer holds a mail
+    // promising a fresh window, so the first reminder of that window is due
+    // before its second.
+    expect($invoice->dunning_level)->toBe(0);
+
+    Event::fake([DunningLevelRaised::class]);
+
+    // The next morning: the deadline passed yesterday, which is no level at
+    // all. Counted from the old date it would be 60 days and level 3.
+    $this->artisan('commerce:dunning')->assertSuccessful();
+
+    expect($invoice->refresh()->dunning_level)->toBe(0);
+
+    Event::assertNotDispatched(DunningLevelRaised::class);
+
+    // A week after the deadline, level 1 — counted from the deadline, which
+    // is what the issue asks for ("nach Ablauf der Nachzahlungsfrist Stufe 1
+    // ab der Frist").
+    $this->travelTo(now()->addDays(7));
+
+    $this->artisan('commerce:dunning')->assertSuccessful();
+
+    expect($invoice->refresh()->dunning_level)->toBe(1);
+
+    Event::assertDispatched(
+        DunningLevelRaised::class,
+        fn (DunningLevelRaised $e): bool => $e->invoiceId === $invoice->id && $e->level === 1 && $e->daysOverdue === 8,
+    );
 });
 
 it('cancels a cart order line by line so registration knows which seats to release', function (): void {

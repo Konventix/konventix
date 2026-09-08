@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Settlement\Unzer;
 
+use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\Order;
@@ -63,12 +64,32 @@ final class UnzerSettlementAdapter implements ProvidesHostedCheckout, Settlement
         return new CheckoutRedirect(paymentId: $payment->id, url: $paypage->redirectUrl);
     }
 
+    /**
+     * Unzer cannot answer this one (#231). A pending payment's
+     * `external_id` is the *Paypage* id, and `UnzerApi::fetchPayment()`
+     * takes a payment id that only exists once the payment was charged and
+     * is stamped onto `provider_transaction_id` at settlement — the same
+     * reason `ReconcilePayments` leaves Unzer out of its pending pass.
+     * Correlating one before that needs Unzer's own order-id lookup, which
+     * this seam does not carry.
+     *
+     * `Unanswerable`, deliberately, and not one of the states that hold the
+     * order: `Unreachable` and `InFlight` both say "ask again", and there is
+     * nothing to ask again — a sweep that waited would hold an abandoned
+     * Paypage's seat for ever. `Unprobed` would be a lie of a different
+     * kind: this question was reached, it simply has no answer.
+     */
+    public function hostedPaymentState(Payment $payment): HostedPaymentState
+    {
+        return HostedPaymentState::Unanswerable;
+    }
+
     public function refund(
         string $accountId,
         Order $order,
         string $amount,
         string $currency,
-    ): void {
+    ): string {
         $payment = Payment::withoutBrandScope()
             ->where('order_id', $order->id)
             ->where('provider', SettlementAccount::PROVIDER_UNZER)
@@ -91,7 +112,8 @@ final class UnzerSettlementAdapter implements ProvidesHostedCheckout, Settlement
         // the console as a 500. `getMerchantMessage()` is the sentence
         // written for an operator; the customer-facing one is not.
         try {
-            $this->unzer->refundPayment(
+            // Unzer's cancellation id, carried back for the reversal row (#247).
+            return $this->unzer->refundPayment(
                 $payment->provider_transaction_id,
                 round((float) $amount, 2),
                 $this->privateKeyOf($account),

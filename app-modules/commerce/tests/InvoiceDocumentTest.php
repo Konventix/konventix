@@ -17,6 +17,8 @@ use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
+use Konventix\Platform\Operators\OperatorContext;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Spatie\Permission\PermissionRegistrar;
 
 function issuedInvoice(TaxTreatment $treatment = TaxTreatment::Standard): Invoice
@@ -258,4 +260,39 @@ it('reports archived invoices past their retention window without touching them'
     // …and is still exactly where it was.
     Storage::disk('invoices')->assertExists($invoice->refresh()->document_path);
     expect($invoice->document_path)->not->toBeNull();
+});
+
+it('says the same due date in the human page and the machine XML, in each one’s own dialect', function (): void {
+    // Review finding 5: the visual page moved to the operator's own format
+    // (#242) while the EN16931 payment term embedded in the same file stayed
+    // on `d.m.Y`, so an operator on MM/DD/YYYY shipped a PDF whose page read
+    // "Zahlbar bis zum 09/14/2026" and whose XML read "Zahlbar bis 14.09.2026".
+    // One `due_on`, two readerships: the page is read by the operator's
+    // customer, the term by their bookkeeping software, which knows nothing
+    // about a settings page and for which an unlabelled 09/14 is a different
+    // day in half of Europe.
+    $this->withBrand();
+
+    $operator = Operator::factory()->create([
+        'date_format' => 'MM/DD/YYYY',
+        'time_format' => '12h',
+    ]);
+    app(OperatorContext::class)->set($operator);
+
+    $invoice = issuedInvoice();
+    $invoice->forceFill(['due_on' => '2026-09-14'])->save();
+
+    $page = view('commerce::invoices.document', [
+        'invoice' => $invoice,
+        'order' => Order::withoutBrandScope()->whereKey($invoice->order_id)->firstOrFail(),
+        'dates' => app(OperatorDateTimeFormat::class),
+    ])->render();
+
+    expect($page)->toContain('09/14/2026')
+        ->and($page)->not->toContain('14.09.2026')
+        ->and(InvoiceDocumentRenderer::paymentTermFor($invoice))->toBe('Zahlbar bis 2026-09-14');
+
+    // The one thing that must hold whatever either side prints: both are that
+    // invoice's own due date.
+    expect($invoice->due_on->toDateString())->toBe('2026-09-14');
 });

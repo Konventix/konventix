@@ -17,6 +17,13 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * names it at the moment the data is collected, which is why it is carried
  * beside the trading name rather than instead of it.
  *
+ * `brandName` is the brand whose host is answering, named beside the
+ * operator rather than instead of it (#241): #184 shipped the operator half
+ * of ADR-0054 point 5 and left the visitor to work out which of the listed
+ * sites they are actually standing on. The brand's *mark* is not repeated
+ * here — the shell already shares it as `brand` (`BrandIdentityData`) on
+ * every request, and the auth layouts render it from there.
+ *
  * `brands` is every brand of the operator, alphabetical so the list reads
  * the same on each of them, with the answering one flagged. Shared only on
  * a brand host: the operator console resolves no brand (ADR-0029) and has
@@ -37,6 +44,7 @@ final class OperatorPresenceData extends Data
     public function __construct(
         public readonly string $name,
         public readonly string $legalName,
+        public readonly string $brandName,
         public readonly array $brands,
         public readonly ?string $privacyPolicyUrl,
     ) {}

@@ -43,9 +43,22 @@ final class SettlementAdminTestFakeStripe implements StripeApi
         return new StripeCheckoutSession(id: 'cs_x', url: 'https://stripe.test/x');
     }
 
-    public function createRefund(array $params): void
+    /**
+     * Nothing took this payment's money back (#235). Every fake here answers
+     * the empty pair unless its own test says otherwise.
+     *
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
+     */
+    public function fetchPaymentIntentReversals(string $paymentIntentId): array
+    {
+        return ['disputes' => [], 'refunds' => []];
+    }
+
+    public function createRefund(array $params): string
     {
         $this->calls[] = 'createRefund';
+
+        return 're_test_fake';
     }
 
     /**
@@ -79,7 +92,10 @@ final class SettlementAdminTestFakeUnzer implements UnzerApi
         return new UnzerPaymentSnapshot(id: $paymentId, state: 'pending', orderId: null);
     }
 
-    public function refundPayment(string $paymentId, float $amount, string $privateKey): void {}
+    public function refundPayment(string $paymentId, float $amount, string $privateKey): string
+    {
+        return 'chg_test_fake';
+    }
 
     public function registerWebhook(string $url, string $privateKey): void
     {
@@ -789,4 +805,29 @@ it('disconnects the live account and falls back to manual booking', function ():
 
     expect($account->refresh()->disconnected_at)->not->toBeNull()
         ->and(SettlementAccount::liveAccountsFor($brand->id))->toBeEmpty();
+});
+
+/**
+ * #222: this page is where selling is switched on for a brand, and a brand
+ * whose checkout resolves neither the AGB nor the Widerrufsbelehrung sells
+ * anyway — the operator's ruling is "warn only, but loudly". Compliance
+ * owns that fact and Commerce may not ask it directly (ADR-0004), so the
+ * page declares `admin.settlement-accounts` and renders what comes back.
+ */
+it('carries Compliance\'s missing-legal-text warning for a brand that sells without one', function (): void {
+    [$admin, $brand] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->get('http://admin.settlement.test/admin/settlement-accounts')
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page) use ($brand): void {
+            $notice = collect($page->toArray()['props']['slots'])
+                ->firstWhere('component', 'compliance/CheckoutLegalTextGapNotice');
+
+            expect($notice)->not->toBeNull()
+                ->and($notice['props']['policiesUrl'])->toBe('/admin/policies')
+                ->and(collect($notice['props']['roles'])->pluck('slug')->all())->toBe(['terms', 'withdrawal'])
+                ->and(collect($notice['props']['gaps'])->firstWhere('brandId', (string) $brand->getKey()))
+                ->toMatchArray(['missingSlugs' => ['terms', 'withdrawal']]);
+        });
 });

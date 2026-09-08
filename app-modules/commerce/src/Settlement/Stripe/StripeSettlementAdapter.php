@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Settlement\Stripe;
 
 use Illuminate\Support\Facades\Log;
+use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\Order;
@@ -22,6 +23,7 @@ use RuntimeException;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\AuthenticationException;
 use Stripe\Exception\InvalidRequestException;
+use Throwable;
 
 /**
  * Stripe, as ADR-0058 rewrites ADR-0039 point 5: every charge is made on
@@ -190,12 +192,85 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
             || str_contains($exception->getMessage(), 'statement_descriptor');
     }
 
+    /**
+     * Stripe PaymentIntent statuses that mean the attempt will not settle:
+     * `requires_payment_method` is where a refused asynchronous payment
+     * lands (the intent asks for another method), `canceled` is the
+     * terminal give-up. `processing` and `requires_action` are deliberately
+     * absent — money still in flight must never be called off.
+     *
+     * Shared with `ReconcilePayments`, which asks the same question of the
+     * same seam on a schedule: the two must not be able to drift.
+     *
+     * @var list<string>
+     */
+    public const array REFUSED_INTENT_STATUSES = ['requires_payment_method', 'canceled'];
+
+    /**
+     * #231: the sweep asks before it cancels. `payment_status` is the same
+     * field `StripeWebhookController::settled()` gates on — with a
+     * delayed-notification method (SEPA debit, bank transfer) a session
+     * reaches `complete` while still `unpaid`, so the session's own `status`
+     * cannot answer this on its own.
+     *
+     * **`unpaid` is therefore not "not paid"** (fix round 1, review finding
+     * 1). A completed session whose intent is still `processing` is money on
+     * its way: calling that `NotPaid` would have the sweep cancel the order
+     * and mail the buyer mid-transfer, which is the very class of failure
+     * #231 was filed for. Only an intent that has actually given up —
+     * `REFUSED_INTENT_STATUSES`, the same list `ReconcilePayments` fails a
+     * pending payment on — makes it `NotPaid`, and so does a session that
+     * was never completed at all. Mollie's sibling draws the same line for
+     * `pending`/`authorized`.
+     *
+     * Any failure at all is `Unreachable`, never `NotPaid`: an outage, a
+     * rejected key or a session id Stripe does not recognise all mean "we
+     * do not know", and not knowing must not cancel an order somebody paid
+     * for. Money the intent says is still travelling is `InFlight`, which
+     * the sweep holds far longer than a provider that simply went quiet
+     * (fix round 2, review NEW-2).
+     */
+    public function hostedPaymentState(Payment $payment): HostedPaymentState
+    {
+        if ($payment->external_id === null || $payment->external_id === '') {
+            return HostedPaymentState::Unanswerable;
+        }
+
+        try {
+            $session = $this->stripe->fetchCheckoutSession($payment->external_id);
+        } catch (Throwable $e) {
+            Log::warning('Stripe could not be asked whether a pending checkout session was paid (#231).', [
+                'payment_id' => $payment->id,
+                'order_id' => $payment->order_id,
+                'external_id' => $payment->external_id,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return HostedPaymentState::Unreachable;
+        }
+
+        if ($session['payment_status'] !== 'unpaid') {
+            return HostedPaymentState::Paid;
+        }
+
+        // Completed and unpaid: a delayed-notification method. The intent is
+        // the only thing that can say whether it is still coming. A session
+        // Stripe declined to expand an intent for says nothing either, which
+        // is also "we do not know".
+        if ($session['status'] === 'complete'
+            && ! in_array($session['payment_intent_status'], self::REFUSED_INTENT_STATUSES, true)) {
+            return HostedPaymentState::InFlight;
+        }
+
+        return HostedPaymentState::NotPaid;
+    }
+
     public function refund(
         string $accountId,
         Order $order,
         string $amount,
         string $currency,
-    ): void {
+    ): string {
         $payment = Payment::withoutBrandScope()
             ->where('order_id', $order->id)
             ->where('provider', SettlementAccount::PROVIDER_STRIPE)
@@ -221,7 +296,10 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         // sentence about this request; `getMessage()` prefixes it with the
         // HTTP status, which is noise in a form error.
         try {
-            $this->stripe->createRefund([
+            // The `re_…` Stripe assigns, carried back so the reversal row can
+            // record it (#247): without it no path led from the order to the
+            // money's own identifier at the provider.
+            return $this->stripe->createRefund([
                 'payment_intent' => $payment->provider_transaction_id,
                 'amount' => MinorUnits::fromDecimal($amount, $currency),
             ]);

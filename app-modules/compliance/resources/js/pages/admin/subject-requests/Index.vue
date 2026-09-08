@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import type { DataTableFilters } from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
+import { formatCalendarDate } from '@/lib/datetime';
 import {
     index as requestsIndex,
     show as showRequest,
@@ -136,7 +137,7 @@ const columns: ColumnDef<RequestRow>[] = [
         enableSorting: true,
         cell: ({ row }) =>
             h('div', { class: 'flex flex-col' }, [
-                h('span', {}, row.original.deadlineAt),
+                h('span', {}, formatCalendarDate(row.original.deadlineAt)),
                 h(
                     'span',
                     {

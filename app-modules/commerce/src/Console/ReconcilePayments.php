@@ -24,6 +24,8 @@ use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
+use Konventix\Commerce\Settlement\Stripe\StripeReversalCatchUp;
+use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
@@ -48,12 +50,17 @@ use Throwable;
  *    old has been abandoned and its order cancelled by `ExpireCarts`; the
  *    money is not coming, and re-asking every hour forever would be a
  *    standing cost at the provider for no answer.
- * 2. **Did a settled Mollie/Unzer payment get charged back without us
- *    hearing?** Ninety days back, ADR-0057 point 7's last sentence: "a lost
- *    dispute notification is found by the sweep, not by the payer". Stripe
- *    is absent here on purpose — its disputes arrive as signed events on
- *    the webhook, and the `StripeApi` seam has no dispute listing behind
- *    it (ADR-0039 keeps the seam to what the adapter needs).
+ * 2. **Did a settled payment get charged back without us hearing?** Ninety
+ *    days back for Mollie and Unzer, ADR-0057 point 7's last sentence: "a
+ *    lost dispute notification is found by the sweep, not by the payer".
+ *    Stripe joined this pass with #235: its events are signed and complete
+ *    but not *ordered*, and a dispute that arrives before the session
+ *    completes names a payment intent no row carries yet, is acknowledged
+ *    with 200 and never repeated. `StripeWebhookController::settled()` asks
+ *    about that at settlement; this pass asks again for the last seven
+ *    days, which is the window in which a notification lost that way is
+ *    still news — a Stripe dispute weeks later arrives as its own signed
+ *    event against a payment whose intent is long recorded.
  *
  * The two questions run on their own cadences, which is what `--pending`
  * and `--settled` are for. A lost settlement notification leaves a payer
@@ -91,11 +98,22 @@ final class ReconcilePayments extends Command
     public const int PENDING_MAX_AGE_DAYS = 7;
 
     /**
-     * How far back a settled payment is re-read for chargebacks. Longer
-     * than any provider's own chargeback deadline we know of, so a late
-     * dispute is still found.
+     * How far back a settled **Mollie or Unzer** payment is re-read for
+     * chargebacks. Longer than any provider's own chargeback deadline we
+     * know of, so a late dispute is still found. Stripe has its own, much
+     * shorter window below, for the reason given there (review nit 27).
      */
     public const int SETTLED_LOOKBACK_DAYS = 90;
+
+    /**
+     * Stripe's own window, deliberately shorter (#235). What this pass adds
+     * for Stripe is the *ordering* race — a reversal that arrived before the
+     * payment could carry its intent — and that race is decided within
+     * seconds of the settlement. Everything later reaches the webhook
+     * correlated, so re-listing every Stripe payment of the last quarter,
+     * twice per payment and once a day, would buy nothing.
+     */
+    public const int STRIPE_SETTLED_LOOKBACK_DAYS = 7;
 
     /**
      * `Mollie\Api\Types\RefundStatus::REFUNDED`, the same constant
@@ -105,15 +123,14 @@ final class ReconcilePayments extends Command
     private const string MOLLIE_REFUND_TRANSFERRED = 'refunded';
 
     /**
-     * Stripe PaymentIntent statuses that mean the attempt will not settle:
-     * `requires_payment_method` is where a refused asynchronous payment
-     * lands (the intent asks for another method), `canceled` is the
-     * terminal give-up. `processing` and `requires_action` are deliberately
-     * absent — money still in flight must never be failed by a sweep.
+     * Which PaymentIntent statuses mean the attempt has given up — owned by
+     * `StripeSettlementAdapter`, because the expiry sweeps ask the same
+     * question of the same seam (#231, fix round 1) and the two answers must
+     * not be able to drift apart.
      *
      * @var list<string>
      */
-    private const array REFUSED_INTENT_STATUSES = ['requires_payment_method', 'canceled'];
+    private const array REFUSED_INTENT_STATUSES = StripeSettlementAdapter::REFUSED_INTENT_STATUSES;
 
     protected $signature = 'commerce:reconcile-payments
         {--brand= : Restrict the sweep to one brand}
@@ -246,8 +263,16 @@ final class ReconcilePayments extends Command
     {
         $query = Payment::withoutBrandScope()
             ->whereIn('status', [PaymentStatus::Succeeded, PaymentStatus::Reversed])
-            ->whereIn('provider', [SettlementAccount::PROVIDER_MOLLIE, SettlementAccount::PROVIDER_UNZER])
-            ->where('received_at', '>=', now()->subDays(self::SETTLED_LOOKBACK_DAYS));
+            // Two providers with one window and Stripe with its own, in one
+            // query rather than two passes: the cursor below is what bounds
+            // the work, and a second pass would have to repeat every guard.
+            ->where(fn (Builder $outer): Builder => $outer
+                ->where(fn (Builder $slow): Builder => $slow
+                    ->whereIn('provider', [SettlementAccount::PROVIDER_MOLLIE, SettlementAccount::PROVIDER_UNZER])
+                    ->where('received_at', '>=', now()->subDays(self::SETTLED_LOOKBACK_DAYS)))
+                ->orWhere(fn (Builder $stripe): Builder => $stripe
+                    ->where('provider', SettlementAccount::PROVIDER_STRIPE)
+                    ->where('received_at', '>=', now()->subDays(self::STRIPE_SETTLED_LOOKBACK_DAYS))));
 
         return $this->restrictToBrand($query);
     }
@@ -416,10 +441,51 @@ final class ReconcilePayments extends Command
     private function reconcileSettled(Payment $payment, RecordPaymentReversal $recordReversal): void
     {
         match ($payment->provider) {
+            SettlementAccount::PROVIDER_STRIPE => $this->reconcileStripeSettled($payment, $recordReversal),
             SettlementAccount::PROVIDER_MOLLIE => $this->reconcileMollieSettled($payment, $recordReversal),
             SettlementAccount::PROVIDER_UNZER => $this->reconcileUnzerSettled($payment, $recordReversal),
             default => null,
         };
+    }
+
+    /**
+     * The other half of #235's fix: the same question
+     * `StripeWebhookController::settled()` asks at settlement, asked again a
+     * day later for the payments whose answer may have changed — or whose
+     * settlement never got to ask, because the deployment was down or the
+     * key was rejected at that moment.
+     *
+     * `StripeReversalCatchUp` maps; `recordReversal()` below records, counts
+     * and tells an operator. `RecordPaymentReversal` is idempotent under the
+     * unique `(provider, provider_reference)` key, so a dispute this sweep
+     * already recorded — or one the webhook recorded, or one *we* caused by
+     * refunding from the console (#247) — converges on the existing row and
+     * is not reported twice.
+     */
+    private function reconcileStripeSettled(Payment $payment, RecordPaymentReversal $recordReversal): void
+    {
+        // No `orderStillPaid()` pre-check, unlike the Mollie pass (review
+        // nit 27), and deliberately: this list carries disputes as well as
+        // refunds, and a dispute against a refunded order is still a
+        // reversal that must be recorded. Only the *refund* half needs the
+        // order to be paid, and `RecordPaymentReversal::recordExternalRefund()`
+        // re-checks exactly that under the order's own lock.
+        foreach (app(StripeReversalCatchUp::class)->reversalsFor($payment) as $reversal) {
+            $this->recordReversal(
+                $payment,
+                $recordReversal,
+                $reversal['kind'],
+                $reversal['status'],
+                $reversal['amount'],
+                $reversal['currency'],
+                $reversal['providerReference'],
+                $reversal['reasonCode'],
+                $reversal['feeAmount'],
+                $reversal['occurredAt'],
+            );
+
+            $payment->refresh();
+        }
     }
 
     /**
@@ -447,10 +513,12 @@ final class ReconcilePayments extends Command
                 $payment,
                 $recordReversal,
                 ReversalKind::Return,
+                ReversalStatus::Final,
                 $chargeback['amount'],
                 $payment->currency,
                 $chargeback['id'],
                 $chargeback['reason'],
+                null,
                 $this->occurredAt($chargeback['createdAt']),
             );
 
@@ -479,10 +547,12 @@ final class ReconcilePayments extends Command
                 $payment,
                 $recordReversal,
                 ReversalKind::ExternalRefund,
+                ReversalStatus::Final,
                 $refund['amount'],
                 $payment->currency,
                 $refund['id'],
                 $refund['reason'],
+                null,
                 $this->occurredAt($refund['createdAt']),
             );
 
@@ -516,11 +586,13 @@ final class ReconcilePayments extends Command
                 $payment,
                 $recordReversal,
                 ReversalKind::Return,
+                ReversalStatus::Final,
                 $chargeback['amount'],
                 $chargeback['currency'] !== '' ? $chargeback['currency'] : $payment->currency,
                 $chargeback['id'],
                 // Unzer reports no bank reason code on the chargeback
                 // transaction, exactly as in the webhook path.
+                null,
                 null,
                 $this->occurredAt($chargeback['date']),
             );
@@ -529,25 +601,32 @@ final class ReconcilePayments extends Command
         }
     }
 
+    /**
+     * `$status` is `Final` for every fetched chargeback and refund — the
+     * money has moved — and only Stripe's dispute listing can report an
+     * *open* one, a dispute the provider has not decided yet (#235).
+     */
     private function recordReversal(
         Payment $payment,
         RecordPaymentReversal $recordReversal,
         ReversalKind $kind,
+        ReversalStatus $status,
         string $amount,
         string $currency,
         string $providerReference,
         ?string $reasonCode,
+        ?string $feeAmount,
         Carbon $occurredAt,
     ): void {
         $reversal = $recordReversal->handle(
             payment: $payment,
             kind: $kind,
-            status: ReversalStatus::Final,
+            status: $status,
             amount: $amount,
             currency: $currency,
             providerReference: $providerReference,
             reasonCode: $reasonCode,
-            feeAmount: null,
+            feeAmount: $feeAmount,
             occurredAt: $occurredAt,
         );
 

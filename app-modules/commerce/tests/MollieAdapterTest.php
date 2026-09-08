@@ -84,13 +84,15 @@ final class MollieAdapterTestFakeApi implements MollieApi
 
     public bool $refuseRefund = false;
 
-    public function refundPayment(string $paymentId, array $params, string $apiKey): void
+    public function refundPayment(string $paymentId, array $params, string $apiKey): string
     {
         if ($this->refuseRefund) {
             throw new MollieAdapterTestRefusal('The payment is already fully refunded.');
         }
 
         $this->refunds[] = ['paymentId' => $paymentId, 'params' => $params, 'apiKey' => $apiKey];
+
+        return 're_mollie_fake';
     }
 }
 

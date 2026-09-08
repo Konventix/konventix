@@ -125,41 +125,41 @@ class PolicyAdminController
             ),
             'checkoutGaps' => array_map(
                 fn (CheckoutLegalTextGapData $gap): array => $gap->toArray(),
-                $this->checkoutGaps($brands, $checkoutLegalTexts),
+                CheckoutLegalTextGapData::gapsFor($checkoutLegalTexts, $brands),
             ),
+            // What the #222 warning's own "create this text" link asks for:
+            // the slug the checkout wants and the brand that is missing it,
+            // so the create dialog opens filled in. A link that only landed
+            // on this page would leave the operator to retype the very slug
+            // getting it wrong caused the problem (#200).
+            'createIntent' => $this->createIntent($request),
             'filters' => $this->currentFilters($request, $sort, $perPage),
         ]);
     }
 
     /**
-     * Every brand the checkout resolves no text for, asked through
-     * `CheckoutLegalTexts` itself rather than through a query written a
-     * second time here: the console must report what the checkout actually
-     * sees, including the shadowing rule that makes an unpublished brand
-     * policy hide a published operator one.
+     * The `?create=<slug>&brand=<ulid>` the #222 warning links with, or null.
      *
-     * Two queries for every brand rather than four per brand (fix round 1) —
-     * this page pages, sorts and searches, and the gap list is recomputed on
-     * each of those.
+     * Validated against the checkout convention rather than trusted: the
+     * dialog it opens writes a policy, and an arbitrary slug arriving from a
+     * URL is how a fourth, unfindable text gets created.
      *
-     * @param  Collection<int, Brand>  $brands
-     * @return list<CheckoutLegalTextGapData>
+     * @return array{slug: string, brandId: string|null}|null
      */
-    private function checkoutGaps(Collection $brands, CheckoutLegalTexts $checkoutLegalTexts): array
+    private function createIntent(Request $request): ?array
     {
-        /** @var list<string> $brandIds */
-        $brandIds = array_values($brands->map(fn (Brand $brand): string => (string) $brand->getKey())->all());
+        $slug = $request->string('create')->toString();
 
-        $missing = $checkoutLegalTexts->missingSlugsForBrands($brandIds);
+        if (CheckoutLegalTextRoleData::forSlug($slug) === null) {
+            return null;
+        }
 
-        return array_values($brands
-            ->filter(fn (Brand $brand): bool => isset($missing[$brand->getKey()]))
-            ->map(fn (Brand $brand): CheckoutLegalTextGapData => new CheckoutLegalTextGapData(
-                brandId: (string) $brand->getKey(),
-                brandName: $brand->name,
-                missingSlugs: $missing[$brand->getKey()],
-            ))
-            ->all());
+        $brandId = $request->string('brand')->toString();
+
+        return [
+            'slug' => $slug,
+            'brandId' => $brandId === '' ? null : $brandId,
+        ];
     }
 
     public function store(Request $request, CreatePolicy $createPolicy): RedirectResponse
@@ -178,7 +178,7 @@ class PolicyAdminController
         return to_route('admin.policies.edit', $policy->getKey());
     }
 
-    public function edit(Request $request, string $policy, PolicyMarkdown $markdown): Response
+    public function edit(Request $request, string $policy, PolicyMarkdown $markdown, CheckoutLegalTexts $checkoutLegalTexts): Response
     {
         Gate::authorize(Permission::ViewPolicies->value);
 
@@ -220,6 +220,20 @@ class PolicyAdminController
             'checkoutRoles' => array_map(
                 fn (CheckoutLegalTextRoleData $role): array => $role->toArray(),
                 CheckoutLegalTextRoleData::roles(),
+            ),
+            // #222: the warning belongs on the page an operator is on while
+            // they fix it, not only on the list they arrived from. A brand
+            // policy reports its own brand; an operator-wide text reports
+            // every brand it fails to cover, because that is what editing it
+            // affects.
+            'checkoutGaps' => array_map(
+                fn (CheckoutLegalTextGapData $gap): array => $gap->toArray(),
+                $model->isOperatorWide()
+                    ? CheckoutLegalTextGapData::gapsForAllBrands($checkoutLegalTexts)
+                    : CheckoutLegalTextGapData::gapsFor(
+                        $checkoutLegalTexts,
+                        Brand::query()->whereKey($model->brand_id)->get(['id', 'name']),
+                    ),
             ),
             'versions' => $versions->map(fn (PolicyVersion $version): array => [
                 'id' => $version->getKey(),

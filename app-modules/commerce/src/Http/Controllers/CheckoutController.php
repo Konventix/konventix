@@ -16,7 +16,6 @@ use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
-use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
@@ -26,6 +25,7 @@ use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\CheckoutConsentSlots;
+use Konventix\Commerce\Settlement\PayLink;
 use Konventix\Commerce\Settlement\PaymentWindow;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
@@ -66,6 +66,7 @@ class CheckoutController
         private readonly SettlementAdapterRegistry $registry,
         private readonly CheckoutConsentSlots $consentSlots,
         private readonly PaymentWindow $paymentWindow,
+        private readonly PayLink $payLink,
     ) {}
 
     public function show(Request $request, string $registration): Response|RedirectResponse
@@ -79,7 +80,7 @@ class CheckoutController
         // gate there — gating a page we are leaving would only send them to
         // the policy and back to a dead end.
         if ($order === null) {
-            return $this->cartHandoff($registration);
+            return $this->cartHandoff($request, $registration);
         }
 
         // GitLab #185, before anything of this order is read out: the ULID
@@ -103,7 +104,10 @@ class CheckoutController
             ->first();
 
         $hold = $this->holdFor($order);
-        $refusal = $this->refusalReason($order, $hold);
+        // Resolved once and used twice — by the refusal and by the prop
+        // below (re-review N5).
+        $deadlineReversal = $this->payLink->deadlineReversalFor($order);
+        $refusal = $this->refusalReason($order, $hold, deadlineReversal: $deadlineReversal);
 
         return Inertia::render('pay/Show', [
             'registrationId' => $registration,
@@ -137,7 +141,7 @@ class CheckoutController
             // ADR-0057 point 4: the day the money is owed back by, so a
             // reversed order reads as "owed again until …" rather than as an
             // ordinary unpaid one. Null for every other status.
-            'repayDueOn' => $this->repayDueOn($order),
+            'repayDueOn' => $deadlineReversal?->repay_due_on?->toDateString(),
             // Compliance's consent control (GitLab #2) — see
             // `Settlement\CheckoutConsentSlots` for why it arrives as a slot
             // contribution rather than as props this controller computes.
@@ -152,7 +156,7 @@ class CheckoutController
         // #210, as in `show()`: no order means the money is waiting in the
         // cart, and the checkout that settles it starts there.
         if ($order === null) {
-            return $this->cartHandoff($registration);
+            return $this->cartHandoff($request, $registration);
         }
 
         // GitLab #185, before the consent gate and before validation: a
@@ -307,7 +311,8 @@ class CheckoutController
         // Once per render (review 6 parked nit C): the answer carries a
         // `Payment::exists()` query, and asking it twice cost one for
         // nothing.
-        $refusal = $this->refusalReason($model, $hold);
+        $deadlineReversal = $this->payLink->deadlineReversalFor($model);
+        $refusal = $this->refusalReason($model, $hold, deadlineReversal: $deadlineReversal);
 
         return Inertia::render('pay/Order', [
             'order' => [
@@ -333,6 +338,11 @@ class CheckoutController
             // page then says the reservation is gone rather than offering a
             // button that cannot help.
             'holdUntil' => $hold?->toIso8601String(),
+            // ADR-0057 point 4, GitLab #186: a reversed cart order is
+            // payable past its hold, so the deadline that matters to the
+            // payer is no longer the reservation but the day the money is
+            // owed back by.
+            'repayDueOn' => $deadlineReversal?->repay_due_on?->toDateString(),
             'payable' => $refusal === null,
             'refusalReason' => $refusal,
             'consentSlots' => $consentSlots,
@@ -493,16 +503,24 @@ class CheckoutController
 
     /**
      * Why this order cannot be paid right now, in the payer's own words, or
-     * null when it can. Three refusals and no others: the order is no
-     * longer owed, a payment already succeeded, or the reservation the
-     * first placement fixed has run out.
+     * null when it can. Four refusals and no others: the order is no longer
+     * owed, a payment already succeeded, the reservation the first placement
+     * fixed has run out, or a deadline has — the cart hold for a pending
+     * cart order, the repayment day for a reversed one (ADR-0057 point 4),
+     * the payment window for a direct registration order.
      *
      * `$paymentSucceeded`, when the caller already knows the answer (`start()`
      * asks the same question again for its own hard 409), skips the repeat
      * `Payment::…->exists()` query rather than running it twice per request.
+     * `$deadlineReversal` does the same for the reversal row a rendering
+     * caller also needs for its `repayDueOn` prop (re-review N5).
      */
-    private function refusalReason(Order $order, ?CarbonInterface $hold, ?bool $paymentSucceeded = null): ?string
-    {
+    private function refusalReason(
+        Order $order,
+        ?CarbonInterface $hold,
+        ?bool $paymentSucceeded = null,
+        ?PaymentReversal $deadlineReversal = null,
+    ): ?string {
         // ADR-0057 point 3: a reversed order is owed again and stays payable.
         if (! in_array($order->status, [OrderStatus::Pending, OrderStatus::PaymentReversed], true)) {
             return __('This order is no longer awaiting payment.');
@@ -512,13 +530,44 @@ class CheckoutController
             return __('This order is already settled.');
         }
 
-        // A cart order's hold is what reserves its stock and its
+        // A *pending* cart order's hold is what reserves its stock and its
         // registration lines (ADR-0047 point 4). Past it, `ExpireCarts` is
         // about to cancel the order, and taking money for it would sell
         // what has just been given back. A cart order with no cart left has
         // nothing to reserve either, so a missing hold refuses too.
-        if ($order->settles_type === 'cart' && ($hold === null || $hold->isPast())) {
+        //
+        // A *reversed* one is exempt (ADR-0057 point 3, GitLab #186): the
+        // chargeback lands days after `Cart::CHECKOUT_GRACE_MINUTES` has
+        // run out, so this refusal closed the only self-service way back to
+        // the money for every reversed cart order there is. Nothing is
+        // held that could be sold twice — `ExpireCarts` sweeps a
+        // `pending` order only, so a reversed one is never cancelled, and
+        // what its lines claim was handed over when it was first paid.
+        if ($order->status === OrderStatus::Pending
+            && $order->settles_type === 'cart'
+            && ($hold === null || $hold->isPast())) {
             return __('The reservation for this order has run out.');
+        }
+
+        // ADR-0057 point 4: a reversed order is owed back by a day, and
+        // `commerce:cancel-unpaid-reversals` cancels it once that day has
+        // gone. The page refuses from the same moment the sweep would act,
+        // rather than offering a button for money the brand has already
+        // stopped asking for until the next daily run.
+        //
+        // `repaymentLapsed()` is the sweep's whole decision, not just its
+        // date (re-review N2): an order whose admission was already used is
+        // never cancelled — it becomes an open receivable the dunning ladder
+        // chases — and refusing that one on the date alone would dead-end
+        // the very "Pay now" link the brand is dunning for.
+        if ($order->status === OrderStatus::PaymentReversed) {
+            $reversal = $deadlineReversal ?? $this->payLink->deadlineReversalFor($order);
+
+            if ($this->payLink->repaymentLapsed($order, $reversal)) {
+                return __('The deadline to put this payment back was :date.', [
+                    'date' => $reversal?->repay_due_on?->toDateString() ?? '',
+                ]);
+            }
         }
 
         // #131, whole-branch review finding 2: a *direct* registration
@@ -585,28 +634,6 @@ class CheckoutController
     }
 
     /**
-     * The day a reversed order's money is owed back by (ADR-0057 point 4):
-     * the newest final reversal's `repay_due_on`, the same rule the operator
-     * console reads through `repaymentDeadline()`. An open dispute carries
-     * none — the provider still holds the money and nothing is owed yet.
-     *
-     * Brand-scoped implicitly, like `orderFor()`: this runs on the brand host.
-     */
-    private function repayDueOn(Order $order): ?string
-    {
-        if ($order->status !== OrderStatus::PaymentReversed) {
-            return null;
-        }
-
-        return PaymentReversal::query()
-            ->where('order_id', $order->id)
-            ->where('status', ReversalStatus::Final)
-            ->whereNotNull('repay_due_on')
-            ->orderByDesc('occurred_at')
-            ->first()?->repay_due_on?->toDateString();
-    }
-
-    /**
      * The latest order settling this registration: ADR-0036 makes "one
      * order per registration" false, and the payable one is the newest.
      * Brand-scoped implicitly — this runs on the brand host.
@@ -621,7 +648,11 @@ class CheckoutController
         return Order::query()
             ->where('settles_type', 'registration')
             ->where('settles_id', $registration)
+            // The id breaks a same-second tie deterministically (nit 41);
+            // `CommerceServiceProvider`'s settlement slot orders identically
+            // so the two can never name different orders.
             ->latest('created_at')
+            ->orderByDesc('id')
             ->first();
     }
 
@@ -649,12 +680,27 @@ class CheckoutController
      * publish; without them the bare 404 is still better than a redirect to
      * nowhere.
      */
-    private function cartHandoff(string $registration): RedirectResponse
+    private function cartHandoff(Request $request, string $registration): RedirectResponse
     {
+        // Scoped to the caller's own cart (branch review finding 9). This
+        // arm runs *before* `abortUnlessPayer()` — there is no order to
+        // authorize against yet — so without the payer filter any signed-in
+        // account on the brand could hand a stranger's registration ULID to
+        // this route and be told "waiting in your cart", which is #185's
+        // rule ("the ULID addresses, it does not authorize") not applied on
+        // this branch. `PlaceRegistrationLineInCart` opens the cart as
+        // `OpenCart::for($brandId, $registrantUserId)`, so the registrant's
+        // own line is the only one this can ever be about.
+        $payerUserId = (string) $request->user()->getAuthIdentifier();
+
         $liveLine = CartLine::query()
             ->where('kind', CartLineKind::Registration)
             ->where('ref_id', $registration)
-            ->whereIn('cart_id', Cart::query()->open()->where('expires_at', '>', now())->select('id'))
+            ->whereIn('cart_id', Cart::query()
+                ->open()
+                ->where('payer_user_id', $payerUserId)
+                ->where('expires_at', '>', now())
+                ->select('id'))
             ->exists();
 
         if (! $liveLine) {

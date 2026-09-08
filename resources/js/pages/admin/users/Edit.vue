@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { formatCalendarDate } from '@/lib/datetime';
 import {
     lock as lockUser,
     unlock as unlockUser,
@@ -26,7 +27,7 @@ type Props = {
         name: string;
         email: string;
         locale: string;
-        timezone: string;
+        timezone: string | null;
         state: string;
         verified: boolean;
         twoFactor: boolean;
@@ -42,7 +43,7 @@ const form = useForm({
     name: props.user.name,
     email: props.user.email,
     locale: props.user.locale,
-    timezone: props.user.timezone,
+    timezone: props.user.timezone ?? '',
 });
 
 const lockForm = useForm({ reason: '' });
@@ -123,8 +124,19 @@ function submitUnlock(): void {
                                     id="user-timezone"
                                     v-model="form.timezone"
                                     placeholder="Europe/Berlin"
+                                    aria-describedby="user-timezone-hint user-timezone-error"
                                 />
-                                <InputError :message="form.errors.timezone" />
+                                <p
+                                    id="user-timezone-hint"
+                                    class="text-xs text-text-muted"
+                                >
+                                    Leave empty to show this account every
+                                    timestamp on its own browser's clock.
+                                </p>
+                                <InputError
+                                    id="user-timezone-error"
+                                    :message="form.errors.timezone"
+                                />
                             </div>
                         </div>
                         <div class="flex items-center gap-3">
@@ -220,7 +232,12 @@ function submitUnlock(): void {
                                 >
                                     <span>{{ membership.brand }}</span>
                                     <span class="text-text-muted">
-                                        since {{ membership.firstSeenAt }}
+                                        since
+                                        {{
+                                            formatCalendarDate(
+                                                membership.firstSeenAt,
+                                            )
+                                        }}
                                     </span>
                                 </li>
                             </ul>

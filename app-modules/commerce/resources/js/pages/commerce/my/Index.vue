@@ -3,6 +3,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { FileText } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/datetime';
 import { show as showRegistration } from '@/routes/registration/mine';
 
 /**
@@ -21,7 +22,14 @@ const statusTone: Record<string, string> = {
     refunded: 'bg-subtle text-text',
 };
 
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+/**
+ * The day an order was placed, in the reader's own zone and the operator's
+ * own format (#243, #242) — never a formatter of this page's own, which is
+ * how the console's "Placed" column came to disagree with this one.
+ */
+function formatPlacedOn(value: string): string {
+    return formatDateTime(value, { dateStyle: 'medium', timeStyle: undefined });
+}
 </script>
 
 <template>
@@ -56,7 +64,7 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
                         {{ order.settlesLabel }}
                     </span>
                     <span class="text-sm text-text-muted">
-                        {{ dateFormat.format(new Date(order.placedAt)) }}
+                        {{ formatPlacedOn(order.placedAt) }}
                         <template v-if="order.invoiceNumber">
                             · Invoice {{ order.invoiceNumber }}
                         </template>

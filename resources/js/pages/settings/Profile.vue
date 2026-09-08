@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Form, Head, router, useForm, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 import MembershipImageController from '@/actions/Konventix/Identity/Http/Controllers/MembershipImageController';
 import ProfileController from '@/actions/Konventix/Identity/Http/Controllers/ProfileController';
 import DeleteUser from '@/components/DeleteUser.vue';
@@ -8,6 +9,7 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { browserTimezone } from '@/lib/datetime';
 import { edit } from '@/routes/profile';
 
 defineOptions({
@@ -30,6 +32,7 @@ const { profile, membershipImages, steamAvatarUrl } = defineProps<{
         statusEmoji: string | null;
         socialLinks: Record<string, string>;
         visibility: 'public' | 'internal' | 'event';
+        timezone: string | null;
     };
     membershipImages: {
         avatarUrl: string | null;
@@ -37,6 +40,47 @@ const { profile, membershipImages, steamAvatarUrl } = defineProps<{
     };
     steamAvatarUrl: string | null;
 }>();
+
+/**
+ * Every IANA zone the browser's own database knows (#243). Read from `Intl`
+ * rather than shipped as a list: a hard-coded one goes stale the next time a
+ * country moves its clocks, and the server validates against PHP's database
+ * anyway. Older engines without `supportedValuesOf` still get their own zone
+ * and UTC, which is enough to keep the form submittable.
+ *
+ * Server-side there is no list at all, only the stored value: node's ICU and
+ * the browser's do not ship the same zone table, and rendering one on the
+ * server and the other on hydration is a guaranteed mismatch on this page.
+ */
+const timezones = computed<string[]>(() => {
+    if (typeof window === 'undefined') {
+        return profile.timezone === null ? [] : [profile.timezone];
+    }
+
+    const supported =
+        typeof Intl.supportedValuesOf === 'function'
+            ? Intl.supportedValuesOf('timeZone')
+            : ['UTC'];
+
+    // The stored value and the browser's own are always offerable, even when
+    // the browser has never heard of one of them.
+    return [
+        ...new Set(
+            [...supported, browserTimezone(), profile.timezone].filter(
+                (zone): zone is string => zone !== null,
+            ),
+        ),
+    ].sort();
+});
+
+// The empty string is the "no zone of my own" choice, which the server stores
+// as null (#243). It is the default an account starts with, not a missing
+// value: every timestamp is then read on this device's clock.
+const timezone = ref(profile.timezone ?? '');
+
+// Named separately so the template reads it once rather than calling into
+// `Intl` on every re-render.
+const browserZone = computed(() => browserTimezone());
 
 const avatarForm = useForm<{ file: File | null }>({ file: null });
 const bannerForm = useForm<{ file: File | null }>({ file: null });
@@ -228,6 +272,34 @@ function submitBanner(event: Event): void {
                 </label>
                 <InputError class="mt-2" :message="errors.visibility" />
             </fieldset>
+
+            <div class="grid gap-2">
+                <Label for="timezone">Timezone</Label>
+                <select
+                    id="timezone"
+                    v-model="timezone"
+                    name="timezone"
+                    class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                    :aria-invalid="errors.timezone ? true : undefined"
+                    aria-describedby="timezone-hint timezone-error"
+                >
+                    <option value="">Browser ({{ browserZone }})</option>
+                    <option v-for="zone in timezones" :key="zone" :value="zone">
+                        {{ zone }}
+                    </option>
+                </select>
+                <p id="timezone-hint" class="text-sm text-text-muted">
+                    Every date and time on this site is shown in this zone.
+                    Leave it on
+                    <span class="font-medium">Browser</span> to follow whichever
+                    device you are reading on.
+                </p>
+                <InputError
+                    id="timezone-error"
+                    class="mt-2"
+                    :message="errors.timezone"
+                />
+            </div>
 
             <div class="grid gap-4">
                 <p class="text-sm leading-none font-medium">Social links</p>

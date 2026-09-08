@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Settlement;
 
+use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 
 /**
@@ -32,6 +34,28 @@ interface ProvidesHostedCheckout
         Order $order,
         string $returnUrl,
     ): CheckoutRedirect;
+
+    /**
+     * What the provider says about the hosted session behind `$payment`
+     * (#231): the question the expiry sweeps ask before they cancel an
+     * order whose payment is still `pending`.
+     *
+     * Settlement truth still comes from the webhook (ADR-0039) — this
+     * answer never *settles* anything by itself; the sweep runs the
+     * ordinary `RecordPaymentSuccess` on a `Paid` answer, exactly as the
+     * notification would have. It exists because the notification can be
+     * lost: on 2026-09-08 a paid Stripe session whose webhook never arrived
+     * was cancelled by the cart sweep four minutes later, while the money
+     * sat at the provider.
+     *
+     * Never throws. Every failure is `HostedPaymentState::Unreachable`,
+     * because not knowing must never be able to cancel an order somebody has
+     * paid for — and money the provider says is still travelling is
+     * `InFlight`, which the sweeps hold far longer than a provider that has
+     * merely gone quiet. `NotPaid` is reserved for an answer: nothing was
+     * paid and nothing is coming.
+     */
+    public function hostedPaymentState(Payment $payment): HostedPaymentState;
 
     /**
      * What the checkout button says when the operator wrote nothing — the

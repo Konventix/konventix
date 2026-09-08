@@ -3,6 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, ExternalLink } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import DateTimeField from '@/components/datetime/DateTimeField.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { formatDateTime, withZoneName } from '@/lib/datetime';
 import {
     archive as archiveEntry,
     index as contentIndex,
@@ -18,6 +20,7 @@ import {
     update as updateEntry,
 } from '@/routes/admin/content';
 import { index as commentsIndex } from '@/routes/admin/content/comments';
+import { publishedAtInstant } from './publishForm';
 
 /**
  * One entry: its content on the left, its lifecycle on the right.
@@ -88,7 +91,9 @@ function submit(): void {
 function publish(): void {
     router.post(
         publishEntry(props.entry.id).url,
-        { publishedAt: publishAt.value === '' ? null : publishAt.value },
+        // An instant with an offset, never the wall-clock digits: the server
+        // cannot know whose clock they were typed on (#246).
+        { publishedAt: publishedAtInstant(publishAt.value) },
         { preserveScroll: true },
     );
 }
@@ -288,7 +293,13 @@ function archive(): void {
                     <CardContent class="flex flex-col gap-4">
                         <p class="text-sm text-text-muted">
                             <template v-if="props.entry.publishedAt">
-                                Live from {{ props.entry.publishedAt }}.
+                                Live from
+                                {{
+                                    formatDateTime(
+                                        props.entry.publishedAt,
+                                        withZoneName,
+                                    )
+                                }}.
                             </template>
                             <template v-else> Never published. </template>
                         </p>
@@ -297,14 +308,12 @@ function archive(): void {
                             v-if="props.transitions.includes('publish')"
                             class="grid gap-2"
                         >
-                            <Label for="entry-publish-at">
-                                Publish at (leave empty for now)
-                            </Label>
-                            <Input
+                            <DateTimeField
                                 id="entry-publish-at"
                                 v-model="publishAt"
-                                type="datetime-local"
+                                label="Publish at (leave empty for now)"
                             />
+                            <!-- datetime-raw: publishAt === '' ? 'Publish' : 'Schedule' — a button label, not a timestamp -->
                             <Button @click="publish">
                                 {{ publishAt === '' ? 'Publish' : 'Schedule' }}
                             </Button>

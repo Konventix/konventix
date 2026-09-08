@@ -63,6 +63,7 @@ it('emits UserProfileUpdated with the current values on a profile update', funct
             'email' => 'countess@example.test',
             'username' => $user->username,
             'visibility' => 'internal',
+            'timezone' => 'Europe/Berlin',
         ])
         ->assertRedirect();
 

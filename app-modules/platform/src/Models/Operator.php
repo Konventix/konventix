@@ -22,6 +22,10 @@ use Konventix\Platform\Database\Factories\OperatorFactory;
  * Commerce's settlement account model (ADR-0007), not here — this row only
  * says who an invoice is issued by, never where funds land.
  *
+ * Since #242 it also carries how this instance writes a date and a time —
+ * one legal sender, one convention, read by the console, the mails and the
+ * PDF documents alike (`Operators\OperatorDateTimeFormat`).
+ *
  * @property string $id
  * @property string $name
  * @property string $legal_name
@@ -34,6 +38,8 @@ use Konventix\Platform\Database\Factories\OperatorFactory;
  * @property string|null $vat_id
  * @property string|null $tax_number
  * @property bool $small_business_scheme
+ * @property string $date_format
+ * @property string $time_format
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -53,6 +59,8 @@ class Operator extends Model
         'vat_id',
         'tax_number',
         'small_business_scheme',
+        'date_format',
+        'time_format',
     ];
 
     /**

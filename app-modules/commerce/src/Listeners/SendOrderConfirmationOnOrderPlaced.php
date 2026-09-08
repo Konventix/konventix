@@ -13,10 +13,12 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Settlement\PayLink;
 use Konventix\Commerce\Settlement\PaymentWindow;
+use Konventix\Messaging\Actions\ResolveBrandTimezone;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use RuntimeException;
 
 /**
@@ -43,6 +45,10 @@ final class SendOrderConfirmationOnOrderPlaced
     public function __construct(
         private readonly SendMessage $sendMessage,
         private readonly BrandUrl $brandUrl,
+        // One instance per class, not one per formatted value: the service
+        // memoises the operator's chosen formats (review finding 6).
+        private readonly OperatorDateTimeFormat $dates,
+        private readonly ResolveBrandTimezone $brandTimezone,
     ) {}
 
     public function handle(OrderPlaced $event): void
@@ -83,6 +89,7 @@ final class SendOrderConfirmationOnOrderPlaced
         // and the sweep that acts on it — a cart order's checked-out cart
         // expiry here, a direct registration order's sixty minutes there.
         $payableUntil = app(PaymentWindow::class)->endsFor($order);
+        $zone = $this->brandTimezone->handle($event->brandId);
 
         $this->sendMessage->handle(new SendMessageRequest(
             recipientId: $order->payer_user_id,
@@ -90,7 +97,10 @@ final class SendOrderConfirmationOnOrderPlaced
             payload: new OrderConfirmationMailData(
                 orderNumberShort: strtoupper(substr($order->id, -8)),
                 recipientName: $order->billing_party?->displayName(),
-                placedAt: Carbon::parse($event->placedAt)->format('d.m.Y H:i'),
+                // On the brand's clock, not the deployment's (#131/#5): a mail
+                // that names an hour the payer never saw is a mail about a
+                // different order.
+                placedAt: $this->dates->dateTime(Carbon::parse($event->placedAt), $zone),
                 lines: array_values($order->lines
                     ->map(fn (OrderLine $line): array => [
                         'label' => $line->label,
@@ -101,7 +111,7 @@ final class SendOrderConfirmationOnOrderPlaced
                 totalGross: $order->total_gross,
                 currency: $order->currency,
                 paid: $order->status === OrderStatus::Paid,
-                reservationUntil: $payableUntil?->format('d.m.Y H:i'),
+                reservationUntil: $payableUntil === null ? null : $this->dates->dateTime($payableUntil, $zone),
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
                 // GitLab #5: an unpaid order's confirmation says where to pay
                 // it. `PayLink` owns the rule so this mail and the

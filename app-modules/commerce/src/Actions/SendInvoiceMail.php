@@ -7,9 +7,11 @@ namespace Konventix\Commerce\Actions;
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Data\InvoiceMailData;
 use Konventix\Commerce\Models\Invoice;
+use Konventix\Messaging\Actions\ResolveBrandTimezone;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\AttachmentData;
 use Konventix\Messaging\Data\SendMessageRequest;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Spatie\LaravelData\DataCollection;
 
 /**
@@ -44,6 +46,10 @@ final class SendInvoiceMail
 
     public function __construct(
         private readonly SendMessage $sendMessage,
+        // One instance per class, not one per formatted value: the service
+        // memoises the operator's chosen formats (review finding 6).
+        private readonly OperatorDateTimeFormat $dates,
+        private readonly ResolveBrandTimezone $brandTimezone,
     ) {}
 
     public function handle(Invoice $invoice): void
@@ -78,11 +84,18 @@ final class SendInvoiceMail
                 sellerName: $invoice->seller->legalName,
                 totalGross: $invoice->total_gross,
                 currency: $invoice->currency,
-                dueOn: $invoice->due_on->format('d.m.Y'),
+                dueOn: $this->dates->date($invoice->due_on),
                 termsDaysHint: (int) $invoice->issued_on->diffInDays($invoice->due_on),
                 paid: $invoice->isPaid(),
                 paidVia: $invoice->paid_via,
-                paidAt: $invoice->paid_at?->format('d.m.Y'),
+                // The day the payment landed, on the brand's clock (#131/#5): a
+                // payment at 23:30 UTC is the next day in Berlin, and the mail
+                // and the payer's bank statement should agree about which.
+                // `due_on` above is a `date` column — a day, with no clock to
+                // convert.
+                paidAt: $invoice->paid_at === null
+                    ? null
+                    : $this->dates->date($invoice->paid_at, $this->brandTimezone->handle($invoice->brand_id)),
             ),
             recipientEmail: $party->email,
             recipientLocale: 'de',

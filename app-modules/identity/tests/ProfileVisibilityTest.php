@@ -33,6 +33,7 @@ it('persists a chosen visibility on the settings form and carries it on the wide
             'name' => $user->name, 'email' => $user->email,
             'username' => $user->username,
             'visibility' => 'public',
+            'timezone' => 'Europe/Berlin',
         ])
         ->assertRedirect();
 

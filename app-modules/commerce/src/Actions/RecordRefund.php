@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Konventix\Commerce\Actions\Concerns\LocksMoneyRowsInOneOrder;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
@@ -12,6 +14,7 @@ use Konventix\Commerce\Jobs\RelayRefundEvents;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
+use Konventix\Commerce\Models\Payment;
 
 /**
  * The **domain leg** of a refund (ADR-0037): the credit note where an
@@ -64,6 +67,8 @@ use Konventix\Commerce\Models\OrderLine;
  */
 final class RecordRefund
 {
+    use LocksMoneyRowsInOneOrder;
+
     /**
      * The order-level reason the per-line cancellation carries — the refund's
      * counterpart of `CancelOrderForUnpaidReversal::REASON_REVERSAL_UNPAID`,
@@ -79,15 +84,76 @@ final class RecordRefund
 
     public function __construct(
         private readonly IssueCreditNote $issueCreditNote,
+        private readonly RecordOwnRefund $recordOwnRefund,
     ) {}
 
+    /**
+     * `$payment` and `$providerReference` come from `RefundOrder` alone
+     * (#247): the payment the money went back through and the identifier the
+     * provider gave the refund. The reversal path passes neither — its
+     * `payment_reversals` row already exists, written by
+     * `RecordPaymentReversal` from the provider's own notification.
+     *
+     * Returns the order as it stands afterwards. A caller that finds the
+     * domain leg already done gets the order back untouched rather than an
+     * exception: the money moved exactly once either way, and there is
+     * nothing for the operator to act on.
+     */
     public function handle(
         Order $order,
         string $reasonCode,
         ?string $reasonNote = null,
         ?string $amount = null,
+        ?Payment $payment = null,
+        ?string $providerReference = null,
     ): Order {
-        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount): Order {
+        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount, $payment, $providerReference): Order {
+            // **The order row is the claim** (blocker 1), and it is the
+            // first lock every money path takes (`LocksMoneyRowsInOneOrder`). Everything below
+            // writes paperwork that cannot be taken back — a credit note is
+            // immutable (ADR-0031/0048) and the bookkeeping export books it
+            // (ADR-0040) — so the decision to write it has to serialize
+            // somewhere, and the only thing every caller of this Action
+            // shares is the order. Two console POSTs, a console refund
+            // racing the provider's own `charge.refunded`, and the two
+            // keying the same money differently (`re_…` here, `ch_…` in the
+            // webhook's last-resort fallback) all collapse onto this lock:
+            // the second one in finds the order already `refunded` and does
+            // nothing further.
+            //
+            // Re-read rather than trusted: the instance came from a
+            // controller that fetched it outside any transaction, and the
+            // provider call happened before this (#236 keeps the money leg
+            // first on purpose).
+            $locked = $this->lockOrder((string) $order->getKey());
+
+            if ($locked === null || $locked->status !== OrderStatus::Paid) {
+                Log::warning('The refund\'s domain leg was already recorded by whoever got the order first; nothing further written (blocker 1).', [
+                    'order_id' => $order->id,
+                    'brand_id' => $order->brand_id,
+                    'order_status' => $locked?->status->value,
+                    'provider_reference' => $providerReference,
+                ]);
+
+                return $locked ?? $order->refresh();
+            }
+
+            $order = $locked;
+
+            // The reversal row for the provider's own reference (#247), and
+            // a second, narrower claim: where both sides key the refund on
+            // the same `re_…` the loser stops here rather than at the order
+            // lock, so nothing is written at all.
+            if (! $this->claimTheRefund($order, $payment, $providerReference, $amount)) {
+                Log::warning('The provider announced this refund before it was recorded here; its own notification owns the credit note (#247).', [
+                    'order_id' => $order->id,
+                    'brand_id' => $order->brand_id,
+                    'provider_reference' => $providerReference,
+                ]);
+
+                return $order->refresh();
+            }
+
             // An order paid at checkout was never invoiced, so there is no
             // document to correct (ADR-0031) — the money still goes back, it
             // simply produces no paperwork.
@@ -145,6 +211,42 @@ final class RecordRefund
 
             return $order->refresh();
         });
+    }
+
+    /**
+     * Writes the provider's own identifier for this refund on a row of its
+     * own (#247) and answers whether **this** call is the one that did it.
+     *
+     * `false` means the row was already there: the provider's notification
+     * won the race and its `RecordPaymentReversal` is issuing the credit
+     * note, moving the order and announcing it, so this caller must not do
+     * any of that a second time (fix round 2, review NEW-3).
+     *
+     * `true` where there is nothing to claim *here* — a `manual` refund the
+     * organizer wires back themselves has no reference, and an order booked
+     * by hand has no payment. Those paths are claimed by the order lock
+     * above instead (blocker 1), which is the claim that holds for every
+     * caller; this one only adds the narrower "same `re_…`, so write
+     * nothing" case.
+     */
+    private function claimTheRefund(
+        Order $order,
+        ?Payment $payment,
+        ?string $providerReference,
+        ?string $amount,
+    ): bool {
+        if ($payment === null || $providerReference === null || $providerReference === '') {
+            return true;
+        }
+
+        return $this->recordOwnRefund->handle(
+            order: $order,
+            payment: $payment,
+            // A partial refund records the part that went back, exactly as
+            // the credit note below documents the part.
+            amount: $amount ?? (string) $order->total_gross,
+            providerReference: $providerReference,
+        )->wasRecentlyCreated;
     }
 
     /**

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { formatCalendarDate } from '@/lib/datetime';
 import {
     disconnect as disconnectAccount,
     label as updateLabel,
@@ -124,7 +125,7 @@ function offeredStatus(account: SettlementAccount): OfferedStatus {
                 {{ account.providerAccountId }}
             </span>
             <span v-if="account.connectedAt" class="text-xs text-text-muted">
-                connected {{ account.connectedAt }}
+                connected {{ formatCalendarDate(account.connectedAt) }}
             </span>
             <span
                 v-if="account.statementDescriptorSuffix"

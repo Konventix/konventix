@@ -220,6 +220,7 @@ declare namespace Konventix {
                 readonly currency: string;
                 readonly totalGross: string;
                 readonly payUrl: string | null;
+                readonly repayDueOn: string | null;
                 readonly invoiceNumber: string | null;
                 readonly issuedOn: string | null;
                 readonly dueOn: string | null;
@@ -301,13 +302,21 @@ declare namespace Konventix {
         namespace Enums {
             export type CartLineKind = 'product' | 'registration';
             export type CartStatus = 'open' | 'expired' | 'checked_out';
+            export type HostedPaymentState =
+                | 'paid'
+                | 'not_paid'
+                | 'in_flight'
+                | 'unreachable'
+                | 'unprobed'
+                | 'unanswerable';
             export type OperationsNoticeKind =
                 | 'stock-exhausted'
                 | 'payment-failed'
                 | 'payment-reconciled'
                 | 'payment-reversed'
                 | 'dispute-opened'
-                | 'payment-unapplied';
+                | 'payment-unapplied'
+                | 'sweep-cancelled-unsettled';
             export type OrderStatus =
                 | 'pending'
                 | 'paid'
@@ -336,7 +345,8 @@ declare namespace Konventix {
                 | 'event-cancelled'
                 | 'duplicate-payment'
                 | 'goodwill';
-            export type ReversalKind = 'return' | 'dispute' | 'external_refund';
+            export type ReversalKind =
+                'return' | 'dispute' | 'external_refund' | 'refund';
             export type ReversalStatus = 'open' | 'final' | 'withdrawn';
             export type TaxClass = 'standard' | 'reduced';
             export type TaxTreatment =
@@ -540,7 +550,7 @@ declare namespace Konventix {
                 name: string;
                 email: string;
                 locale: string;
-                timezone: string;
+                timezone: string | null;
             };
             export type CompleteSocialSignupData = {
                 readonly name: string;
@@ -572,6 +582,7 @@ declare namespace Konventix {
                 readonly statusEmoji: string | null;
                 readonly socialLinks: Record<string, string> | null;
                 readonly visibility: string;
+                readonly timezone: string | null;
             };
             export type RegisterData = {
                 readonly name: string;
@@ -859,6 +870,7 @@ declare namespace Konventix {
             export type OperatorPresenceData = {
                 readonly name: string;
                 readonly legalName: string;
+                readonly brandName: string;
                 readonly brands: Konventix.Platform.Data.OperatorBrandLinkData[];
                 readonly privacyPolicyUrl: string | null;
             };
@@ -873,6 +885,8 @@ declare namespace Konventix {
                 readonly vatId: string | null;
                 readonly taxNumber: string | null;
                 readonly smallBusinessScheme: boolean;
+                readonly dateFormat: Konventix.Platform.Enums.DateFormat;
+                readonly timeFormat: Konventix.Platform.Enums.TimeFormat;
             };
             export type StaticPageData = {
                 readonly id: string;
@@ -977,6 +991,7 @@ declare namespace Konventix {
         }
         namespace Enums {
             export type CookieCategory = 'necessary' | 'functional';
+            export type DateFormat = 'DD.MM.YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
             export type FooterLinkKind = 'url' | 'dialog';
             export type Permission =
                 | 'platform.access-admin'
@@ -996,6 +1011,7 @@ declare namespace Konventix {
                 | 'platform.manage-footer-links'
                 | 'platform.view-diagnostics'
                 | 'platform.view-request-log';
+            export type TimeFormat = '24h' | '12h';
         }
     }
     namespace Registration {
@@ -1030,6 +1046,7 @@ declare namespace Konventix {
                 readonly requiresApproval: boolean;
                 readonly onSale: boolean;
                 readonly salesStart: string | null;
+                readonly eventName: string | null;
             };
             export type QuotaData = {
                 readonly name: string;

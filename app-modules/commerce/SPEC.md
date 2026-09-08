@@ -373,6 +373,45 @@ BaFin/ZAG licensing.
   check-in guard, consistent with how a direct order's whole refund has
   always been able to reach an already checked-in registration.
 
+  **The provider's reference for the refund is kept** (#247). Every adapter's
+  `refund()` returns the identifier the provider assigns — `re_…` at Stripe
+  and Mollie, the cancellation id at Unzer, null for `manual` — and
+  `RecordRefund` writes it on a `payment_reversals` row of kind `refund`
+  inside the refund's own transaction. It shows on the order page's reversals
+  card and in the `commerce.order.refunded` audit entry, and it is what makes
+  the provider's own notification of that same refund converge on one row
+  instead of undoing the sale twice. The row is kept out of the console's
+  "reversals & unapplied money" work list: a refund an operator made is not
+  an open task.
+
+  **The order row is the claim.** The domain leg — credit note, `refunded`,
+  `OrderRefunded` — is decided under `lockForUpdate()` on the order, because
+  a credit note is immutable (ADR-0031/0048) and the bookkeeping export books
+  it (ADR-0040). Two console POSTs, and a console refund racing the
+  provider's own `charge.refunded` for it, both collapse onto that lock: the
+  second one in finds the order already `refunded` and writes nothing.
+
+  **Unapplied money is refunded from the console too** (#6, ADR-0057 point
+  9): a `cancelled` order holding a succeeded payment nobody could apply gets
+  `RefundOrder`'s provider leg without a document — no credit note, no
+  `OrderRefunded`, the order stays `cancelled`. The payment is locked for the
+  provider call and leaves `succeeded` in the same transaction, which takes
+  it off the unapplied list and refuses a second press. A reversal row is
+  written **where the provider gave a reference**; `manual` gives none and
+  writes none, and the `commerce.order.refunded` audit entry
+  (`unapplied: true`, `provider_reference: null`) is the record there.
+  `provider_reference` stays NOT NULL on purpose: the unique
+  `(provider, provider_reference)` key is what makes two writers of one
+  refund converge, and NULLs are distinct in Postgres, so a nullable column
+  would drop the guarantee for exactly the rows that cannot key.
+
+  **One lock order for every money path**: the order row, then the payment,
+  then the reversal row (`Actions\Concerns\LocksMoneyRowsInOneOrder`). The
+  console's refund and the provider's own notification reach the same three
+  rows from opposite sides, and taking them in opposite orders is a deadlock
+  Postgres resolves by killing one — with SQLSTATE 40P01, which is not a
+  unique violation and which the convergence catch therefore never sees.
+
   **The record commits before the announcement, and the announcement is a
   queued job** (#236). The provider is called first, then the credit note,
   the `refunded` status and the events are written in one transaction, and
@@ -439,6 +478,12 @@ BaFin/ZAG licensing.
   reason `cancellation` where an invoice exists. An order with a
   checked-in admission is never cancelled: its invoice's `overdue_at` is
   set to the missed deadline and the dunning ladder takes it from there.
+  That hand-off **writes over** an `overdue_at` the invoice already had and
+  **resets `dunning_level` to 0** (#196): the column has two authors, the
+  repayment deadline is the later fact about the same debt, and a payer
+  holding a mail that promises a fresh window gets that window's first
+  reminder rather than the step an earlier, unrelated overdue period had
+  reached.
   The deadline itself is a per-brand setting,
   `commerce_brand_settings.reversal_repayment_days` (1..60, default 7, set
   beside the brand's settlement accounts). The orders console carries the
@@ -587,6 +632,24 @@ deliberate for the DACH release, not a translation gap.
 `commerce.payment-failed`'s payload (`Data\PaymentFailedMailData`) carries `payBy` — the
 same `Settlement\PaymentWindow` deadline the retry page enforces, already formatted
 `d.m.Y H:i`, nullable for a bank-transfer brand's order (#131).
+
+## UI slots
+
+Slots this module **declares** for others to fill (`Platform\Slots\SlotRegistry`,
+ADR-0003 enforcement point 3):
+
+- `shop.index` — the public shop page's extension point. Registration
+  contributes its public registration types to it (#240, ADR-0047 point 3);
+  `ShopController::withGrossPrices()` fills `unitAmountGross` and
+  `includesTax` into any contribution's `offers[].price` from the declared
+  net amount and tax class, so Registration declares and Commerce calculates
+  (ADR-0017) across a boundary crossed only by scalars.
+- `admin.settlement-accounts` — the settlement console's notice region.
+  Compliance contributes its missing-checkout-text warning to it (#222).
+
+Slots this module **fills**: `registration.mine.show` (what a registration
+cost and whether it is settled) and `event.landing` (`ShopLandingCard`, what
+a visitor can buy for this edition).
 
 ## Activation
 

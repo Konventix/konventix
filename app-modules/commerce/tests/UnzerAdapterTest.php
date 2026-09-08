@@ -74,7 +74,7 @@ final class UnzerAdapterTestFakeApi implements UnzerApi
 
     public bool $refuseRefund = false;
 
-    public function refundPayment(string $paymentId, float $amount, string $privateKey): void
+    public function refundPayment(string $paymentId, float $amount, string $privateKey): string
     {
         if ($this->refuseRefund) {
             throw new UnzerApiException(
@@ -84,6 +84,8 @@ final class UnzerAdapterTestFakeApi implements UnzerApi
         }
 
         $this->refunds[] = ['paymentId' => $paymentId, 'amount' => $amount, 'privateKey' => $privateKey];
+
+        return 'chg_unzer_fake';
     }
 
     public function registerWebhook(string $url, string $privateKey): void {}

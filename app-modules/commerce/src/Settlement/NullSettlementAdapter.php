@@ -31,7 +31,9 @@ final class NullSettlementAdapter implements SettlementAdapter
         Order $order,
         string $amount,
         string $currency,
-    ): void {
-        // Deliberate no-op, like everything else on this adapter.
+    ): ?string {
+        // Deliberate no-op, like everything else on this adapter — and no
+        // provider reference to give (#247).
+        return null;
     }
 }

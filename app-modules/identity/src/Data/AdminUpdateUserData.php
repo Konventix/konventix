@@ -20,7 +20,7 @@ class AdminUpdateUserData extends Data
         public string $name,
         public string $email,
         public string $locale,
-        public string $timezone,
+        public ?string $timezone,
     ) {}
 
     /**
@@ -35,7 +35,7 @@ class AdminUpdateUserData extends Data
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email,'.$userId],
             'locale' => ['required', 'string', 'max:12'],
-            'timezone' => ['required', 'timezone:all'],
+            'timezone' => ['nullable', 'timezone:all'],
         ];
     }
 }

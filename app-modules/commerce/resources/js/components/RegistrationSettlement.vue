@@ -2,7 +2,7 @@
 import { Link } from '@inertiajs/vue3';
 import { CreditCard, FileText, ShoppingCart } from '@lucide/vue';
 import { computed } from 'vue';
-import { formatDateTime } from '@/lib/datetime';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 
 /**
  * Commerce's contribution to Registration's account page: what this
@@ -38,7 +38,7 @@ const props = defineProps<{
  * The hold's deadline in the reader's own zone (ADR-0055 point 4: a time
  * limit is visible and explained, and never silently extended).
  */
-const cartExpiresAt = computed<string>(() =>
+const cartExpiresLabel = computed<string>(() =>
     // Date *and* time: a hold that says "until 21:35" and nothing else is
     // ambiguous the moment the page is read the next morning. Same markup
     // as the registration timestamps (#208) — a `<time datetime>` carrying
@@ -53,8 +53,19 @@ const statusTone: Record<string, string> = {
     paid: 'bg-success/15 text-success',
     cancelled: 'bg-danger/15 text-danger',
     refunded: 'bg-danger/15 text-danger',
+    payment_reversed: 'bg-danger/15 text-danger',
     pending: 'bg-warning/15 text-warning-contrast',
 };
+
+/**
+ * ADR-0057 point 3 (#197): the money left again after it had settled, so
+ * the amount is owed once more and the pay button below is live. The status
+ * word alone would read as `Payment_reversed`, which says nothing about
+ * what the reader is supposed to do next.
+ */
+const reversed = computed(
+    () => props.settlement?.status === 'payment_reversed',
+);
 </script>
 
 <template>
@@ -80,11 +91,11 @@ const statusTone: Record<string, string> = {
                 role="status"
             >
                 Waiting in your cart<template
-                    v-if="props.cart.expiresAt && cartExpiresAt"
+                    v-if="props.cart.expiresAt && cartExpiresLabel"
                 >
                     — reserved until
                     <time :datetime="props.cart.expiresAt">{{
-                        cartExpiresAt
+                        cartExpiresLabel
                     }}</time></template
                 >.
             </p>
@@ -130,6 +141,23 @@ const statusTone: Record<string, string> = {
             Payment
         </h2>
 
+        <!--
+            Above the amount row rather than inside it (#197 review finding
+            7): the row is a wrapping flex line, and a sentence dropped into
+            it shares a line with the status badge and pushes "Pay now" off
+            the end.
+        -->
+        <p v-if="reversed" role="status" class="text-sm text-danger">
+            Payment reversed — this amount is owed again<template
+                v-if="props.settlement.repayDueOn"
+            >
+                until
+                <time :datetime="props.settlement.repayDueOn">{{
+                    formatCalendarDate(props.settlement.repayDueOn)
+                }}</time></template
+            >.
+        </p>
+
         <div
             class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-surface-raised p-4"
         >
@@ -143,7 +171,7 @@ const statusTone: Record<string, string> = {
                     statusTone[props.settlement.status] ?? 'bg-subtle text-text'
                 "
             >
-                {{ props.settlement.status }}
+                {{ props.settlement.status.replace('_', ' ') }}
             </span>
 
             <span class="flex-1" />
@@ -165,9 +193,9 @@ const statusTone: Record<string, string> = {
             <dt class="text-text-muted">Invoice</dt>
             <dd>{{ props.settlement.invoiceNumber }}</dd>
             <dt class="text-text-muted">Issued</dt>
-            <dd>{{ props.settlement.issuedOn }}</dd>
+            <dd>{{ formatCalendarDate(props.settlement.issuedOn) }}</dd>
             <dt class="text-text-muted">Due</dt>
-            <dd>{{ props.settlement.dueOn }}</dd>
+            <dd>{{ formatCalendarDate(props.settlement.dueOn) }}</dd>
         </dl>
 
         <!--

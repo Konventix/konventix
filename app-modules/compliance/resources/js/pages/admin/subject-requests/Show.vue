@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import {
     acceptConsentWithdrawal as acceptConsentWithdrawalRequest,
     download as downloadArchive,
@@ -116,7 +117,10 @@ function acceptConsentWithdrawal(): void {
                         <span class="font-medium">{{ response.module }}</span>
                         <span class="flex items-center gap-3">
                             <span class="text-xs text-text-muted">
-                                {{ response.respondedAt ?? 'no answer yet' }}
+                                {{
+                                    formatDateTime(response.respondedAt) ||
+                                    'no answer yet'
+                                }}
                             </span>
                             <span
                                 class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
@@ -163,15 +167,15 @@ function acceptConsentWithdrawal(): void {
                         </p>
                         <p>
                             <span class="text-text-muted">Opened:</span>
-                            {{ props.request.openedAt }}
+                            {{ formatDateTime(props.request.openedAt) }}
                         </p>
                         <p>
                             <span class="text-text-muted">Deadline:</span>
-                            {{ props.request.deadlineAt }}
+                            {{ formatCalendarDate(props.request.deadlineAt) }}
                         </p>
                         <p v-if="props.request.closedAt">
                             <span class="text-text-muted">Closed:</span>
-                            {{ props.request.closedAt }}
+                            {{ formatDateTime(props.request.closedAt) }}
                         </p>
                         <p v-if="props.request.reasonCode">
                             <span class="text-text-muted">Refused:</span>
@@ -189,9 +193,10 @@ function acceptConsentWithdrawal(): void {
                     <CardContent class="flex flex-col gap-3">
                         <p class="text-sm text-text-muted">
                             Available until
-                            {{ props.request.archiveExpiresAt }}. This file is
-                            every module's answer about one person — treat the
-                            download as the disclosure it is.
+                            {{
+                                formatDateTime(props.request.archiveExpiresAt)
+                            }}. This file is every module's answer about one
+                            person — treat the download as the disclosure it is.
                         </p>
                         <Button variant="outline" as-child>
                             <a :href="downloadArchive(props.request.id).url">

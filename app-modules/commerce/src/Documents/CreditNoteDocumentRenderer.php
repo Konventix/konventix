@@ -15,6 +15,7 @@ use horstoeko\zugferd\ZugferdProfiles;
 use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 
 /**
  * Renders the hybrid ZUGFeRD credit note document (ADR-0031, ADR-0048 point
@@ -31,6 +32,8 @@ use Konventix\Commerce\Models\Invoice;
  */
 final class CreditNoteDocumentRenderer
 {
+    public function __construct(private readonly OperatorDateTimeFormat $dates) {}
+
     public function render(CreditNote $creditNote): string
     {
         $invoice = $creditNote->invoice_id === null ? null : Invoice::withoutBrandScope()
@@ -40,6 +43,7 @@ final class CreditNoteDocumentRenderer
         $visualPdf = Pdf::loadView('commerce::credit-notes.document', [
             'creditNote' => $creditNote,
             'invoice' => $invoice,
+            'dates' => $this->dates,
         ])->output();
 
         $xml = $this->buildFacturX($creditNote, $invoice);

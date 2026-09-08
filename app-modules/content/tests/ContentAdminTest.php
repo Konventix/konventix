@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Event;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Content\Enums\CommentState;
@@ -227,6 +228,71 @@ it('schedules instead of publishing when the moment is in the future', function 
 
     // Nothing is announced until it is actually live.
     Event::assertNotDispatched(ContentEntryPublished::class);
+});
+
+it('stores a publish moment sent as an ISO instant with an offset in UTC (#246)', function (): void {
+    [, $admin] = contentOperator();
+
+    $this->withBrand();
+    $entry = ContentEntry::factory()->create();
+
+    // What the editor's browser sends after #246: the wall clock they typed,
+    // resolved against their own zone. 22:00 in Berlin is 20:00 UTC, and the
+    // zone-less column has to hold the latter — Eloquent formats a Carbon in
+    // whatever zone the instance carries, so a value parsed as `+02:00` would
+    // otherwise be written down as its own digits and read back two hours
+    // wrong (the shape #237 settled).
+    $this->actingAs($admin)
+        ->post("http://admin.content.test/admin/content/{$entry->id}/publish", [
+            'publishedAt' => '2099-06-08T22:00:00+02:00',
+        ])
+        ->assertRedirect();
+
+    expect($entry->refresh()->published_at->utc()->toDateTimeString())->toBe('2099-06-08 20:00:00');
+});
+
+it('schedules an entry planned for the next minute in the editor\'s own zone (#246)', function (): void {
+    [, $admin] = contentOperator();
+
+    $this->withBrand();
+    $entry = ContentEntry::factory()->create();
+
+    // A minute away is the sharpest version of the bug: read in the wrong
+    // zone, "in a minute" becomes hours in the past and the entry goes live
+    // immediately instead of being scheduled.
+    $moment = CarbonImmutable::now()->addMinute()->setTimezone('Europe/Berlin');
+
+    $this->actingAs($admin)
+        ->post("http://admin.content.test/admin/content/{$entry->id}/publish", [
+            'publishedAt' => $moment->toIso8601String(),
+        ])
+        ->assertRedirect();
+
+    expect($entry->refresh()->state)->toBe(PublicationState::Scheduled)
+        ->and($entry->published_at->utc()->toDateTimeString())
+        ->toBe($moment->utc()->toDateTimeString());
+});
+
+it('hands the console publish and update timestamps as instants, not naked UTC digits (#246)', function (): void {
+    [, $admin] = contentOperator();
+
+    $this->withBrand();
+    $entry = ContentEntry::factory()->published()->create();
+
+    // `formatDateTime()` reads an offset; a bare "2026-09-08 20:00:00" is
+    // parsed as the reader's own wall clock and the console confirms the very
+    // value that is wrong (#208, #246).
+    $expected = $entry->published_at->toIso8601String();
+
+    $this->actingAs($admin)
+        ->get('http://admin.content.test/admin/content')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('entries.data.0.publishedAt', $expected));
+
+    $this->actingAs($admin)
+        ->get("http://admin.content.test/admin/content/{$entry->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('entry.publishedAt', $expected));
 });
 
 it('unpublishes and archives from the console', function (): void {

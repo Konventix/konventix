@@ -30,6 +30,9 @@ const reversalKindLabels: Record<
     return: 'Return',
     dispute: 'Dispute',
     external_refund: 'Dashboard refund',
+    // A refund made here, in the console (#247); the row exists to carry the
+    // provider's own reference for it.
+    refund: 'Refund',
 };
 
 export function reversalKindLabel(

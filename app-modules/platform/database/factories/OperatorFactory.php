@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Platform\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Konventix\Platform\Enums\DateFormat;
+use Konventix\Platform\Enums\TimeFormat;
 use Konventix\Platform\Models\Operator;
 
 /**
@@ -33,6 +35,8 @@ class OperatorFactory extends Factory
             'vat_id' => null,
             'tax_number' => null,
             'small_business_scheme' => false,
+            'date_format' => DateFormat::DayMonthYear->value,
+            'time_format' => TimeFormat::TwentyFourHour->value,
         ];
     }
 

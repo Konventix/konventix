@@ -2,7 +2,7 @@ import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { VNode } from 'vue';
 import { h } from 'vue';
-import { formatDateTime } from '@/lib/datetime';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { show as showOrder } from '@/routes/admin/orders';
 import type { OrderReversal, UnappliedPayment } from './reversals';
 import {
@@ -162,7 +162,7 @@ export const columns: ColumnDef<OrderRow>[] = [
                 { class: 'text-text-muted' },
                 row.original.paidAt !== null
                     ? `paid ${formatDateTime(row.original.paidAt)}`
-                    : (row.original.invoice?.dueOn ?? '—'),
+                    : formatCalendarDate(row.original.invoice?.dueOn) || '—',
             ),
     },
     {

@@ -51,7 +51,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property array<string, string>|null $social_links
  * @property ProfileVisibility $profile_visibility
  * @property string $locale
- * @property string $timezone
+ * @property string|null $timezone
  * @property AccountState $state
  * @property AccountPreferencesData $preferences
  * @property string|null $two_factor_secret

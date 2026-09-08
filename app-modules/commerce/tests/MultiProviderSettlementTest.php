@@ -41,7 +41,21 @@ final class MultiProviderSettlementTestFakeStripe implements StripeApi
         return new StripeCheckoutSession(id: 'cs_unused', url: 'https://stripe.test/unused');
     }
 
-    public function createRefund(array $params): void {}
+    /**
+     * Nothing took this payment's money back (#235). Every fake here answers
+     * the empty pair unless its own test says otherwise.
+     *
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
+     */
+    public function fetchPaymentIntentReversals(string $paymentIntentId): array
+    {
+        return ['disputes' => [], 'refunds' => []];
+    }
+
+    public function createRefund(array $params): string
+    {
+        return 're_test_fake';
+    }
 
     /**
      * Unused here: only `commerce:reconcile-payments` (#71) reads a session
@@ -85,7 +99,10 @@ final class MultiProviderSettlementTestFakeMollieApi implements MollieApi
         return new MolliePaymentSnapshot(id: $paymentId, status: 'open');
     }
 
-    public function refundPayment(string $paymentId, array $params, string $apiKey): void {}
+    public function refundPayment(string $paymentId, array $params, string $apiKey): string
+    {
+        return 're_test_fake';
+    }
 }
 
 it('lets a brand keep one live account per provider', function (): void {

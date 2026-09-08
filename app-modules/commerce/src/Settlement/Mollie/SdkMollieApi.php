@@ -57,9 +57,9 @@ final class SdkMollieApi implements MollieApi
     /**
      * @param  array<string, mixed>  $params
      */
-    public function refundPayment(string $paymentId, array $params, string $apiKey): void
+    public function refundPayment(string $paymentId, array $params, string $apiKey): string
     {
-        $this->client($apiKey)->paymentRefunds->createForId($paymentId, $params);
+        return $this->client($apiKey)->paymentRefunds->createForId($paymentId, $params)->id;
     }
 
     /**

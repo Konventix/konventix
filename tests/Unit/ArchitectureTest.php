@@ -215,16 +215,120 @@ it('never lists a module provider in the central bootstrap file', function (): v
 |--------------------------------------------------------------------------
 | Language-level conventions
 |--------------------------------------------------------------------------
+|
+| These three were `arch()` chains until the branch review, and all three
+| evaluated nothing. Modules are path repositories, so `autoload_psr4.php`
+| carries `Konventix\Platform\`, `Konventix\Commerce\` and seventeen more
+| but no bare `Konventix\`; pest-arch resolves a layer by asking whether the
+| *prefix* starts with the expectation, gets an empty directory list, and
+| iterates it. `toUseStrictTypes()` then made 0 assertions, and the two
+| `->not->` chains had their empty-count failure swallowed by the lazy
+| expectation they never verified. The proof was `expect('App')->not->
+| toUse('Konventix')` sitting green while `HandleInertiaRequests` imported
+| twenty Konventix classes.
+|
+| So they iterate real files now, through the same `Finder` the two guards
+| above use, and the third one says what is actually true rather than what
+| read well.
+|
 */
 
-arch('every module file declares strict types')
-    ->expect('Konventix')
-    ->toUseStrictTypes();
+/**
+ * Every hand-written PHP file the modules and the host ship.
+ *
+ * Blade templates are excluded: they are markup, and `declare(strict_types=1)`
+ * in one would be a syntax error in the middle of a document.
+ *
+ * @return array<string, string> relative path => contents
+ */
+function phpSources(string ...$roots): array
+{
+    $finder = Finder::create()
+        ->files()
+        ->in(array_map(projectPath(...), $roots))
+        ->name('*.php')
+        ->notName('*.blade.php');
 
-arch('the domain never depends on the host application layer')
-    ->expect('App')
-    ->not->toBeUsedIn('Konventix');
+    $sources = [];
 
-arch('models are never touched from the host application layer')
-    ->expect('App')
-    ->not->toUse('Konventix');
+    foreach ($finder as $file) {
+        $sources[str_replace(projectPath().'/', '', $file->getRealPath())] = $file->getContents();
+    }
+
+    return $sources;
+}
+
+it('declares strict types in every module and host file', function (): void {
+    $offenders = [];
+
+    foreach (phpSources('app-modules', 'app') as $path => $contents) {
+        if (! str_contains($contents, 'declare(strict_types=1);')) {
+            $offenders[] = $path;
+        }
+    }
+
+    expect($offenders)->toBe([])
+        // A guard that silently iterates nothing passes forever — which is
+        // exactly what the `arch()` chain this replaced did.
+        ->and(count(phpSources('app-modules', 'app')))->toBeGreaterThan(900);
+});
+
+it('never lets a module depend on the host application layer', function (): void {
+    // The direction is one-way by construction (ADR-0003): the host wires
+    // modules, modules know nothing about the host. An `App\` import inside
+    // `app-modules/` would make a module unusable in any other application,
+    // which is the whole point of them being packages.
+    $offenders = [];
+
+    foreach (phpSources('app-modules') as $path => $contents) {
+        preg_match_all('/^use\s+(App\\\\[^;\s]+)/m', $contents, $uses);
+
+        foreach ($uses[1] as $import) {
+            $offenders[] = $path.' → '.$import;
+        }
+    }
+
+    expect($offenders)->toBe([]);
+});
+
+it('keeps a domain module’s models out of the host’s request path', function (): void {
+    // The honest form of "models are never touched from the host application
+    // layer", which was never true: `HandleInertiaRequests` reads `Brand`,
+    // `FooterLink` and `AdminFavorite`, and the install and demo-seed commands
+    // create half the schema.
+    //
+    // What holds is narrower and worth keeping: Platform is the kernel every
+    // module is built on and the host may reach its models directly; a
+    // *domain* module's models belong to that module, and the host reaches
+    // them only from a provisioning command — where the alternative is a
+    // module-owned installer the modules do not have.
+    $allowed = [
+        // A gate closure has to name the type it is handed, and the
+        // authenticated user is Identity's model whatever the gate is for.
+        'app/Providers/ObservabilityServiceProvider.php → Konventix\Identity\Models\User',
+    ];
+
+    $offenders = [];
+
+    foreach (phpSources('app') as $path => $contents) {
+        if (str_starts_with($path, 'app/Console/Commands/')) {
+            continue;
+        }
+
+        preg_match_all('/^use\s+(Konventix\\\\([^\\\\]+)\\\\Models\\\\[^;\s]+)/m', $contents, $uses, PREG_SET_ORDER);
+
+        foreach ($uses as $use) {
+            if ($use[2] === 'Platform') {
+                continue;
+            }
+
+            $entry = $path.' → '.$use[1];
+
+            if (! in_array($entry, $allowed, true)) {
+                $offenders[] = $entry;
+            }
+        }
+    }
+
+    expect($offenders)->toBe([]);
+});

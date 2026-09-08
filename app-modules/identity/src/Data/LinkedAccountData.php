@@ -49,7 +49,10 @@ final class LinkedAccountData extends Data
             linked: $identity !== null,
             nickname: $identity?->nickname,
             avatarUrl: $identity?->avatar_url,
-            linkedAt: $identity?->linked_at->toDateTimeString(),
+            // ISO 8601 with the offset (#243): the page renders it in the
+            // reader's own zone, and an offsetless string would be read as
+            // their local clock and shifted a second time.
+            linkedAt: $identity?->linked_at->toIso8601String(),
             canUnlink: $identity !== null && $canUnlink,
         );
     }

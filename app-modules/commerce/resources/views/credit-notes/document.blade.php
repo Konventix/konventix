@@ -69,9 +69,9 @@
 
     <h1>Gutschrift {{ $creditNote->credit_note_number }}</h1>
     <div class="meta">
-        Gutschriftsdatum: {{ $creditNote->issued_on->format('d.m.Y') }} ·
+        Gutschriftsdatum: {{ $dates->date($creditNote->issued_on) }} ·
         Grund: {{ $reasonLabel }}
-        @if ($invoice)<br>zu Rechnung Nr. {{ $invoice->invoice_number }} vom {{ $invoice->issued_on->format('d.m.Y') }}@endif
+        @if ($invoice)<br>zu Rechnung Nr. {{ $invoice->invoice_number }} vom {{ $dates->date($invoice->issued_on) }}@endif
         @if ($party->vatId)<br>USt-IdNr. des Empfängers: {{ $party->vatId }}@endif
     </div>
 

@@ -136,7 +136,12 @@ to be named at the moment of collection.
   behaviour or a rule for surfaces that do not exist yet.
 - Two Phase 2 issues carry the code: #184 (auth surfaces name the operator
   and list the brands, first-contact notice) and #18 (enumeration-safe
-  registration, reset and Steam signup, with the explanatory mail). #25
+  registration, reset and Steam signup, with the explanatory mail). #241
+  shipped point 5's brand-naming half and point 6's page half —
+  `OperatorPresenceNotice`'s `accountIntro()` names the brand even for a
+  single-brand operator, where this decision says "the operator's name and
+  no list"; worth a look when #184's brand-listing half lands, since the
+  two texts should not disagree. #25
   (announcement audience by membership) keeps its Phase 5 slot; until it
   lands, decision 3 is the rule and the fan-out is the known exception, and
   a deployment with more than one brand must not publish announcements to
