@@ -7,6 +7,20 @@
 
 ARG PHP_IMAGE=dunglas/frankenphp:1-php8.5-bookworm
 
+# Node for the Vite build, taken from the official image and pinned to a
+# digest (#255). It used to be `curl -fsSL https://deb.nodesource.com/... |
+# bash -`: an unpinned, unverified remote script running as root at build
+# time, in the `toolchain` stage — which .gitlab-ci.yml publishes as
+# `ci-toolchain` and runs every verify, analyse and test job inside. A bad day
+# at nodesource would have been a compromise of the CI execution environment,
+# not merely of one build. Nothing is fetched over the network here now, and
+# the bytes are the ones this digest names.
+#
+# Note for the next bump: change the tag and the digest together, and check
+# that the Debian release still matches the PHP base image's (bookworm) — the
+# node binary is copied into it and links against its glibc.
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+
 ########## base: PHP + extensions shared by build and runtime ##########
 FROM ${PHP_IMAGE} AS base
 
@@ -14,6 +28,9 @@ RUN install-php-extensions \
     pdo_pgsql pgsql redis intl bcmath gmp gd zip pcntl sockets opcache
 
 WORKDIR /var/www/html
+
+########## node: the Vite build's interpreter, copied not installed ##########
+FROM ${NODE_IMAGE} AS node
 
 ########## toolchain: composer + Node on top of base ##########
 # Also the CI image: .gitlab-ci.yml builds this stage and publishes it, so the
@@ -25,14 +42,21 @@ FROM base AS toolchain
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Node 22 for the Vite build only — the runtime stage never sees it. git and
-# unzip are composer's: the image build never needs them (--prefer-dist over
-# the zip extension), the pipeline's dev-dependency install does.
+# git and unzip are composer's: the image build never needs them (--prefer-dist
+# over the zip extension), the pipeline's dev-dependency install does.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg git unzip \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get install -y --no-install-recommends ca-certificates curl git unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Node 22 for the Vite build only — the runtime stage never sees it, because it
+# starts again from `base`. The interpreter plus npm's own module tree is the
+# whole of what a build needs; the npm and npx entry points are symlinks in the
+# source image and are recreated rather than copied.
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node --version && npm --version
 
 ########## build: composer, wayfinder, vite ##########
 FROM toolchain AS build
@@ -106,6 +130,13 @@ RUN apt-get update \
     && setcap -r /usr/local/bin/frankenphp \
     && apt-get purge -y libcap2-bin && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
+
+# The base image activates no php.ini at all (#254), so without this the
+# runtime runs on PHP's compiled-in defaults: errors into the response body,
+# nothing logged, the version in every header, 128M per worker and opcache
+# revalidating immutable code. Runtime stage only — `toolchain` is the
+# published CI image and keeps taking .gitlab-ci.yml's own 99-ci.ini.
+COPY docker/php.ini /usr/local/etc/php/conf.d/99-production.ini
 
 RUN useradd --create-home --uid 1000 konventix
 

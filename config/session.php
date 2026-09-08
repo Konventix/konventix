@@ -171,7 +171,22 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    /*
+     * Left at null this is not "off" — Symfony returns
+     * `$this->secure ?? $this->secureDefault` (Cookie.php), and Laravel sets
+     * the default from `$request->isSecure()`. The flag was therefore derived
+     * from `X-Forwarded-Proto`, i.e. from whichever caller the trusted proxy
+     * list happens to believe; on a Kubernetes cluster whose pod CIDR falls
+     * inside 10.0.0.0/8 that is every pod in the namespace (#258). One
+     * missing header, one changed ingress or one direct request to the pod
+     * and `Secure` disappeared silently.
+     *
+     * So it is a deployment's decision now, not a request's: on by default
+     * everywhere except local development and the test suite, which serve
+     * plain HTTP and would hand out a cookie the browser never sends back.
+     * `SESSION_SECURE_COOKIE` overrides either way.
+     */
+    'secure' => env('SESSION_SECURE_COOKIE', ! in_array(env('APP_ENV', 'production'), ['local', 'testing'], true)),
 
     /*
     |--------------------------------------------------------------------------

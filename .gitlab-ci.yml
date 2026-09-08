@@ -29,9 +29,12 @@
 # a path. The guard is what makes the declaration safe: a non-documentation
 # file on a docs/ branch fails the pipeline instead of merging unverified.
 #
-# One thing from .github/workflows is deliberately not ported: image.yml has no
-# `needs` on tests.yml, so an image there can be published from a commit whose
-# tests are red. Here `build:image` needs the analysis, test and scan jobs, and
+# The GitHub workflow that published a second, unverified image to
+# ghcr.io/konventix/konventix is gone (#255): it had no `needs` on tests.yml,
+# no SAST, no secret detection, no dependency or container scanning, and it
+# fired on exactly the refs this pipeline guards — so every bar `scan:gate`
+# holds up was one push to the archived GitHub remote away from being walked
+# around. Here `build:image` needs the analysis, test and scan jobs, and
 # nothing reaches the registry without them.
 #
 # Ordering is a DAG, not a ladder: `needs:` is what decides what waits for what,
@@ -739,6 +742,19 @@ build:image:
         docker exec smoke curl -sf http://localhost:8000/up && ok=1 && break
         sleep 3
       done
+    # #254: the runtime image loads docker/php.ini as 99-production.ini. The
+    # container build is the only place that can prove the COPY landed and the
+    # directives took effect — a unit test can pin the file's contents, not
+    # what PHP does with them. `php -i` prints "local => master"; both halves
+    # have to read the same, or something later in the image overrode it.
+    - |
+      docker exec smoke php -i > php-i.txt
+      grep -qE '^display_errors => Off => Off$' php-i.txt || { echo "display_errors is not Off in the runtime image" >&2; docker stop smoke; exit 1; }
+      grep -qE '^log_errors => On => On$' php-i.txt || { echo "log_errors is not On in the runtime image" >&2; docker stop smoke; exit 1; }
+      grep -qE '^expose_php => Off => Off$' php-i.txt || { echo "expose_php is not Off in the runtime image" >&2; docker stop smoke; exit 1; }
+      grep -qE '^memory_limit => 512M => 512M$' php-i.txt || { echo "memory_limit is not 512M in the runtime image" >&2; docker stop smoke; exit 1; }
+      grep -qE '^opcache.validate_timestamps => Off => Off$' php-i.txt || { echo "opcache.validate_timestamps is not off in the runtime image" >&2; docker stop smoke; exit 1; }
+      grep -qE '^opcache.enable_cli => Off => Off$' php-i.txt || { echo "opcache.enable_cli is on, which makes validate_timestamps=0 unsafe for the entrypoint's cache calls" >&2; docker stop smoke; exit 1; }
     # ADR-0049 §5: the bundle must carry no baked websocket endpoint, or every
     # deployment talks to the developer's laptop. `resolveReverbEndpoint` is
     # called with `{host: …, port: …, scheme: …}` filled from VITE_REVERB_*;

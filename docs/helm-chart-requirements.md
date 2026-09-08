@@ -78,9 +78,10 @@ konventix repository, next to `compose.yaml`, built by its CI.
 `develop` and `main` and on every tag, published to
 `registry.sxcs.de/konventix/konventix` (#59, #121). A tag additionally names
 the same digest after the chart's `appVersion` form — `0.4.2`, not `v0.4.2`.
-`.github/workflows/image.yml` still exists and still pushes to
-`ghcr.io/konventix/konventix`, but only fires on a push to the archived
-GitHub remote.
+`.github/workflows/image.yml` was deleted in 0.5.3 (#255): it published a
+second, unscanned image to `ghcr.io/konventix/konventix` from the same refs
+`.gitlab-ci.yml` guards, with no `needs` on the tests. GitLab is now the only
+path to a published image.
 
 ### B2 — Runtime-configurable browser endpoint for Reverb (blocker)
 
