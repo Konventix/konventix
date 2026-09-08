@@ -17,6 +17,7 @@ use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use RuntimeException;
 
 /**
@@ -90,7 +91,7 @@ final class SendOrderConfirmationOnOrderPlaced
             payload: new OrderConfirmationMailData(
                 orderNumberShort: strtoupper(substr($order->id, -8)),
                 recipientName: $order->billing_party?->displayName(),
-                placedAt: Carbon::parse($event->placedAt)->format('d.m.Y H:i'),
+                placedAt: app(OperatorDateTimeFormat::class)->dateTime(Carbon::parse($event->placedAt)),
                 lines: array_values($order->lines
                     ->map(fn (OrderLine $line): array => [
                         'label' => $line->label,
@@ -101,7 +102,7 @@ final class SendOrderConfirmationOnOrderPlaced
                 totalGross: $order->total_gross,
                 currency: $order->currency,
                 paid: $order->status === OrderStatus::Paid,
-                reservationUntil: $payableUntil?->format('d.m.Y H:i'),
+                reservationUntil: $payableUntil === null ? null : app(OperatorDateTimeFormat::class)->dateTime($payableUntil),
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
                 // GitLab #5: an unpaid order's confirmation says where to pay
                 // it. `PayLink` owns the rule so this mail and the

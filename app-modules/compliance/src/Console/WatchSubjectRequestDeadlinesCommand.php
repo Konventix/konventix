@@ -13,6 +13,7 @@ use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\DataSubjectRequestResponse;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Konventix\Platform\Operators\OperatorSettings;
 
 /**
@@ -93,7 +94,7 @@ final class WatchSubjectRequestDeadlinesCommand extends Command
                 payload: DeadlineWarningMailData::ofDeadline(
                     requestId: $request->getKey(),
                     requestType: $request->type->value,
-                    deadline: $request->deadline_at->format('d.m.Y'),
+                    deadline: app(OperatorDateTimeFormat::class)->date($request->deadline_at),
                     daysLeft: $daysLeft,
                     openModules: $this->openModules($request),
                 ),

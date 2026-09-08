@@ -28,12 +28,20 @@ const defaults: Intl.DateTimeFormatOptions = {
  * forty call sites, where the one that forgets is a wrong hour on a page
  * nobody re-reads.
  */
+export type DateFormat = 'DD.MM.YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
+
+export type TimeFormat = '24h' | '12h';
+
 type DateTimeSettings = {
     timezone: string | null;
+    dateFormat: DateFormat;
+    timeFormat: TimeFormat;
 };
 
 const settings: DateTimeSettings = {
     timezone: null,
+    dateFormat: 'DD.MM.YYYY',
+    timeFormat: '24h',
 };
 
 /**
@@ -48,6 +56,36 @@ export function configureDateTime(next: Partial<DateTimeSettings>): void {
     if (next.timezone !== undefined) {
         settings.timezone = next.timezone;
     }
+
+    if (next.dateFormat !== undefined) {
+        settings.dateFormat = next.dateFormat;
+    }
+
+    if (next.timeFormat !== undefined) {
+        settings.timeFormat = next.timeFormat;
+    }
+}
+
+/**
+ * Renders something under settings other than the ones in force, and puts
+ * them back afterwards — the operator settings page previewing a format it
+ * has not saved yet, and nothing else. Synchronous by construction: the
+ * settings are module state, so a preview that awaited anything would leak
+ * its own choice into whatever rendered next.
+ */
+export function withDateTimeSettings<T>(
+    overrides: Partial<DateTimeSettings>,
+    render: () => T,
+): T {
+    const previous = { ...settings };
+
+    configureDateTime(overrides);
+
+    try {
+        return render();
+    } finally {
+        configureDateTime(previous);
+    }
 }
 
 /**
@@ -60,14 +98,33 @@ export function viewerTimezone(): string {
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 
-function formatter(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
-    const key = JSON.stringify(options);
+/**
+ * The locale whose numbering the operator's chosen pattern belongs to, for
+ * the option sets that still go through `Intl` — a `dateStyle: 'long'` or a
+ * `timeZoneName`, which cannot be assembled from parts. The three patterns
+ * are exactly these three locales' numeric defaults, so a page asking for a
+ * worded date still words it the operator's way rather than the browser's.
+ */
+function locale(): string {
+    switch (settings.dateFormat) {
+        case 'MM/DD/YYYY':
+            return 'en-US';
+        case 'YYYY-MM-DD':
+            return 'en-CA';
+        default:
+            return 'de-DE';
+    }
+}
+
+function formatter(
+    options: Intl.DateTimeFormatOptions,
+    forLocale: string | undefined = undefined,
+): Intl.DateTimeFormat {
+    const key = `${forLocale ?? ''}|${JSON.stringify(options)}`;
     let cached = formatters.get(key);
 
     if (cached === undefined) {
-        // `undefined` as the locale: the reader's, not the brand's — the same
-        // choice Commerce's order list already made.
-        cached = new Intl.DateTimeFormat(undefined, options);
+        cached = new Intl.DateTimeFormat(forLocale, options);
         formatters.set(key, cached);
     }
 
@@ -82,9 +139,127 @@ function formatter(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
 function inViewerZone(
     options: Intl.DateTimeFormatOptions,
 ): Intl.DateTimeFormatOptions {
-    return options.timeZone === undefined
-        ? { ...options, timeZone: viewerTimezone() }
-        : options;
+    const zoned =
+        options.timeZone === undefined
+            ? { ...options, timeZone: viewerTimezone() }
+            : options;
+
+    // The operator's clock, unless the caller pinned one itself. `hour12`
+    // and `hourCycle` are the same knob to `Intl`, so setting ours over a
+    // caller's `hourCycle` would silently override it.
+    return zoned.hour12 === undefined && zoned.hourCycle === undefined
+        ? { ...zoned, hourCycle: settings.timeFormat === '12h' ? 'h12' : 'h23' }
+        : zoned;
+}
+
+const pad = (part: number): string => String(part).padStart(2, '0');
+
+/**
+ * A date written the operator's way. Assembled from the parts rather than
+ * left to a locale, so this and `Operators\OperatorDateTimeFormat` on the
+ * server produce the identical string for the identical setting — which is
+ * the whole point of the setting being operator-wide.
+ */
+function writeDate(year: number, month: number, day: number): string {
+    switch (settings.dateFormat) {
+        case 'MM/DD/YYYY':
+            return `${pad(month)}/${pad(day)}/${year}`;
+        case 'YYYY-MM-DD':
+            return `${year}-${pad(month)}-${pad(day)}`;
+        default:
+            return `${pad(day)}.${pad(month)}.${year}`;
+    }
+}
+
+/**
+ * A time on the operator's clock. `2:05 PM` rather than `02:05 PM`: a
+ * leading zero on an am/pm hour is not how anybody writes one, and PHP's
+ * `g:i A` on the server does not write one either.
+ */
+function writeTime(hour: number, minute: number): string {
+    if (settings.timeFormat === '12h') {
+        const period = hour < 12 ? 'AM' : 'PM';
+
+        return `${hour % 12 === 0 ? 12 : hour % 12}:${pad(minute)} ${period}`;
+    }
+
+    return `${pad(hour)}:${pad(minute)}`;
+}
+
+/**
+ * A plain `YYYY-MM-DD` read as the day it names rather than as an instant.
+ * `null` for anything else, which is the caller's signal to treat the value
+ * as a timestamp instead.
+ */
+function calendarDayParts(
+    value: string,
+): { year: number; month: number; day: number } | null {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+    return parts === null
+        ? null
+        : {
+              year: Number(parts[1]),
+              month: Number(parts[2]),
+              day: Number(parts[3]),
+          };
+}
+
+/**
+ * The date part of a timestamp, in the operator's format and the reader's
+ * zone. A calendar date — a repayment deadline, an invoice's due date — is
+ * printed as the day it names in every zone there is (#186/#197): read as an
+ * instant it would be the day before for a reader west of Greenwich, a day
+ * earlier than the sweep that enforces it.
+ */
+export function formatDate(value: string | null | undefined): string {
+    if (value === null || value === undefined || value === '') {
+        return '';
+    }
+
+    const day = calendarDayParts(value);
+
+    if (day !== null) {
+        return writeDate(day.year, day.month, day.day);
+    }
+
+    const instant = new Date(value);
+
+    if (Number.isNaN(instant.getTime())) {
+        return value;
+    }
+
+    const clock = wallClockParts(instant, viewerTimezone());
+
+    return writeDate(clock.year, clock.month, clock.day);
+}
+
+/**
+ * The time part of a timestamp, in the operator's format and the reader's
+ * zone. A bare `HH:MM` — what `<input type="time">` speaks — is a wall clock
+ * with no date to hang an offset on, and is written out as typed: the
+ * operator's 12/24-hour choice is the only thing that changes it.
+ */
+export function formatTime(value: string | null | undefined): string {
+    if (value === null || value === undefined || value === '') {
+        return '';
+    }
+
+    const wallClock = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(value);
+
+    if (wallClock !== null) {
+        return writeTime(Number(wallClock[1]), Number(wallClock[2]));
+    }
+
+    const instant = new Date(value);
+
+    if (Number.isNaN(instant.getTime())) {
+        return value;
+    }
+
+    const clock = wallClockParts(instant, viewerTimezone());
+
+    return writeTime(clock.hour, clock.minute);
 }
 
 /**
@@ -100,6 +275,7 @@ function wallClockParts(
     const parts = formatter({
         timeZone: zone,
         hourCycle: 'h23',
+        numberingSystem: 'latn',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -161,7 +337,18 @@ export function formatDateTime(
         return value;
     }
 
-    return formatter(inViewerZone({ ...defaults, ...options })).format(instant);
+    // No option set means the operator's own convention, assembled part by
+    // part so the console, the form echo and the invoice agree to the
+    // character. A caller that shapes the output itself — a worded date, a
+    // zone name — goes through `Intl` with the operator's locale and clock.
+    if (Object.keys(options).length === 0) {
+        return `${formatDate(value)} ${formatTime(value)}`;
+    }
+
+    return formatter(
+        inViewerZone({ ...defaults, ...options }),
+        locale(),
+    ).format(instant);
 }
 
 /**
@@ -182,28 +369,32 @@ export function formatDateTime(
  */
 export function formatCalendarDate(
     value: string | null | undefined,
-    options: Intl.DateTimeFormatOptions = { dateStyle: 'long' },
+    options?: Intl.DateTimeFormatOptions,
 ): string {
     if (value === null || value === undefined || value === '') {
         return '';
     }
 
-    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    const day = calendarDayParts(value);
 
-    if (parts === null) {
-        return formatDateTime(value, options);
+    if (day === null) {
+        return formatDateTime(value, options ?? {});
     }
 
-    const date = new Date(
-        Number(parts[1]),
-        Number(parts[2]) - 1,
-        Number(parts[3]),
-    );
+    // Without an option set this is `formatDate()`'s calendar branch, which
+    // is the operator's own pattern (#242) and needs no `Intl` at all.
+    if (options === undefined) {
+        return writeDate(day.year, day.month, day.day);
+    }
+
+    const date = new Date(day.year, day.month - 1, day.day);
 
     // Deliberately *not* `inViewerZone()`: the parts above were read into a
     // local `Date`, and rendering that in another zone would undo exactly
     // the day-shift this function exists to prevent.
-    return formatter({ ...options, timeStyle: undefined }).format(date);
+    return formatter({ ...options, timeStyle: undefined }, locale()).format(
+        date,
+    );
 }
 
 /**
@@ -264,7 +455,6 @@ export function toLocalDateTimeInput(
         return '';
     }
 
-    const pad = (part: number): string => String(part).padStart(2, '0');
     const clock = wallClockParts(date, zone);
 
     return (

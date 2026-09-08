@@ -7,6 +7,7 @@ import AppTopbarLayout from '@/layouts/AppTopbarLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { configureDateTime } from '@/lib/datetime';
+import type { DateFormat, TimeFormat } from '@/lib/datetime';
 import { initializeFlashToast } from '@/lib/flashToast';
 import { resolveReverbEndpoint } from '@/lib/reverbEndpoint';
 
@@ -135,7 +136,9 @@ function layoutFor(name: string) {
 }
 
 /**
- * The viewing person's own time settings, out of the page props (#243).
+ * The viewing person's own time settings, out of the page props (#243, #242):
+ * their profile zone, and the date and time conventions the operator sells
+ * under.
  *
  * Applied here rather than in a layout for the same reason the title suffix
  * is: `resolve()` is the earliest hook that sees a visit's props, it runs on
@@ -145,13 +148,18 @@ function layoutFor(name: string) {
  * for the zone itself is a page that could forget to.
  */
 function applyDateTimeSettings(props: unknown): void {
-    const auth = (
-        props as
-            | { auth?: { user?: { timezone?: string | null } | null } }
-            | undefined
-    )?.auth;
+    const page = props as
+        | {
+              auth?: { user?: { timezone?: string | null } | null };
+              dateTimeFormat?: { date?: DateFormat; time?: TimeFormat };
+          }
+        | undefined;
 
-    configureDateTime({ timezone: auth?.user?.timezone ?? null });
+    configureDateTime({
+        timezone: page?.auth?.user?.timezone ?? null,
+        dateFormat: page?.dateTimeFormat?.date ?? 'DD.MM.YYYY',
+        timeFormat: page?.dateTimeFormat?.time ?? '24h',
+    });
 }
 
 createInertiaApp({

@@ -7,6 +7,7 @@ namespace Konventix\Messaging\Actions;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Messaging\Data\TestMailData;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 
 /**
  * "Send test mail to me" (Task 8, ADR-0048 decisions 4/6): an operator
@@ -25,7 +26,7 @@ final class SendTestMail
             templateKey: 'messaging.test-mail',
             payload: new TestMailData(
                 brandName: $brand->name,
-                date: now()->format('d.m.Y'),
+                date: app(OperatorDateTimeFormat::class)->date(now()),
             ),
             recipientEmail: $toEmail,
             recipientLocale: 'de',

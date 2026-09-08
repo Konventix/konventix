@@ -10,6 +10,7 @@ use Konventix\Commerce\Models\Invoice;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\AttachmentData;
 use Konventix\Messaging\Data\SendMessageRequest;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Spatie\LaravelData\DataCollection;
 
 /**
@@ -78,11 +79,11 @@ final class SendInvoiceMail
                 sellerName: $invoice->seller->legalName,
                 totalGross: $invoice->total_gross,
                 currency: $invoice->currency,
-                dueOn: $invoice->due_on->format('d.m.Y'),
+                dueOn: app(OperatorDateTimeFormat::class)->date($invoice->due_on),
                 termsDaysHint: (int) $invoice->issued_on->diffInDays($invoice->due_on),
                 paid: $invoice->isPaid(),
                 paidVia: $invoice->paid_via,
-                paidAt: $invoice->paid_at?->format('d.m.Y'),
+                paidAt: $invoice->paid_at === null ? null : app(OperatorDateTimeFormat::class)->date($invoice->paid_at),
             ),
             recipientEmail: $party->email,
             recipientLocale: 'de',

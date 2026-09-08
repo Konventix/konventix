@@ -37,6 +37,8 @@ final class UpdateOperatorSettings
                 'vat_id' => $this->orNull($data->vatId),
                 'tax_number' => $this->orNull($data->taxNumber),
                 'small_business_scheme' => $data->smallBusinessScheme,
+                'date_format' => $data->dateFormat->value,
+                'time_format' => $data->timeFormat->value,
             ]);
 
             return $operator->refresh();

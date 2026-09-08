@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Data;
 
+use Illuminate\Validation\Rule;
+use Konventix\Platform\Enums\DateFormat;
+use Konventix\Platform\Enums\TimeFormat;
 use Konventix\Platform\Models\Operator;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -35,6 +38,8 @@ final class OperatorSettingsData extends Data
         public readonly ?string $vatId,
         public readonly ?string $taxNumber,
         public readonly bool $smallBusinessScheme,
+        public readonly DateFormat $dateFormat,
+        public readonly TimeFormat $timeFormat,
     ) {}
 
     public static function ofModel(Operator $operator): self
@@ -50,6 +55,8 @@ final class OperatorSettingsData extends Data
             vatId: $operator->vat_id,
             taxNumber: $operator->tax_number,
             smallBusinessScheme: $operator->small_business_scheme,
+            dateFormat: DateFormat::tryFrom($operator->date_format) ?? DateFormat::DayMonthYear,
+            timeFormat: TimeFormat::tryFrom($operator->time_format) ?? TimeFormat::TwentyFourHour,
         );
     }
 
@@ -75,6 +82,11 @@ final class OperatorSettingsData extends Data
             'vatId' => ['nullable', 'string', 'max:32'],
             'taxNumber' => ['nullable', 'string', 'max:32'],
             'smallBusinessScheme' => ['boolean'],
+            // How this instance writes a date and a time (#242), operator
+            // level because the invoice, the mail and the console table
+            // behind one legal sender may not disagree about it.
+            'dateFormat' => ['required', Rule::enum(DateFormat::class)],
+            'timeFormat' => ['required', Rule::enum(TimeFormat::class)],
         ];
     }
 }

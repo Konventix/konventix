@@ -10,6 +10,7 @@ use Konventix\Commerce\Models\CreditNote;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\AttachmentData;
 use Konventix\Messaging\Data\SendMessageRequest;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Spatie\LaravelData\DataCollection;
 
 /**
@@ -74,7 +75,7 @@ final class SendCreditNoteMail
                 currency: $creditNote->currency,
                 reasonLabelDe: $this->reasonLabelDe($creditNote->reason_code),
                 reasonLabelEn: $this->reasonLabelEn($creditNote->reason_code),
-                issuedOn: $creditNote->issued_on->format('d.m.Y'),
+                issuedOn: app(OperatorDateTimeFormat::class)->date($creditNote->issued_on),
             ),
             recipientEmail: $party->email,
             recipientLocale: 'de',

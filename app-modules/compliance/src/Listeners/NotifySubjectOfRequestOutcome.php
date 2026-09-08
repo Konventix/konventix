@@ -14,6 +14,7 @@ use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Throwable;
 
 /**
@@ -82,8 +83,8 @@ final class NotifySubjectOfRequestOutcome
 
         $this->send($subject, $request->filed_on_brand_id, self::EXPORT_READY, new SubjectRequestMailData(
             requestType: $request->type->value,
-            deadline: $request->deadline_at->format('d.m.Y'),
-            availableUntil: $request->archive_expires_at?->format('d.m.Y'),
+            deadline: app(OperatorDateTimeFormat::class)->date($request->deadline_at),
+            availableUntil: $request->archive_expires_at === null ? null : app(OperatorDateTimeFormat::class)->date($request->archive_expires_at),
             downloadUrl: $downloadUrl,
         ));
     }
@@ -98,7 +99,7 @@ final class NotifySubjectOfRequestOutcome
 
         $this->send($request->subject(), $request->filed_on_brand_id, self::DELETION_ACKNOWLEDGED, new SubjectRequestMailData(
             requestType: $request->type->value,
-            deadline: $request->deadline_at->format('d.m.Y'),
+            deadline: app(OperatorDateTimeFormat::class)->date($request->deadline_at),
         ));
     }
 
@@ -112,7 +113,7 @@ final class NotifySubjectOfRequestOutcome
 
         $this->send($request->subject(), $request->filed_on_brand_id, self::REQUEST_ACKNOWLEDGED, new SubjectRequestMailData(
             requestType: $request->type->value,
-            deadline: $request->deadline_at->format('d.m.Y'),
+            deadline: app(OperatorDateTimeFormat::class)->date($request->deadline_at),
         ));
     }
 
@@ -126,7 +127,7 @@ final class NotifySubjectOfRequestOutcome
 
         $this->send($request->subject(), $request->filed_on_brand_id, self::REQUEST_REFUSED, new SubjectRequestMailData(
             requestType: $request->type->value,
-            deadline: $request->deadline_at->format('d.m.Y'),
+            deadline: app(OperatorDateTimeFormat::class)->date($request->deadline_at),
             reasonCode: $event->reasonCode,
         ));
     }

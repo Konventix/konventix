@@ -15,6 +15,7 @@ use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use RuntimeException;
 
 /**
@@ -120,7 +121,7 @@ final class SendPaymentFailedMailOnPaymentFailed
 
         $timezone = app(ResolveBrandTimezone::class)->handle($order->brand_id);
 
-        return $deadline->setTimezone($timezone)->format('d.m.Y H:i');
+        return app(OperatorDateTimeFormat::class)->dateTime($deadline->setTimezone($timezone));
     }
 
     private function reasonSentence(string $reasonCode): string

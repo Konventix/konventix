@@ -15,6 +15,7 @@ use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use RuntimeException;
 
 /**
@@ -232,7 +233,7 @@ final class SendPaymentReversedMailOnPaymentReversed
             ? CarbonImmutable::parse($event->repayDueOn)
             : $this->window->dueOnFrom(CarbonImmutable::parse($event->reversedAt), $event->brandId);
 
-        return $dueOn->format('d.m.Y');
+        return app(OperatorDateTimeFormat::class)->date($dueOn);
     }
 
     /**

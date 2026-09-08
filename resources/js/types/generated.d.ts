@@ -879,6 +879,8 @@ declare namespace Konventix {
                 readonly vatId: string | null;
                 readonly taxNumber: string | null;
                 readonly smallBusinessScheme: boolean;
+                readonly dateFormat: Konventix.Platform.Enums.DateFormat;
+                readonly timeFormat: Konventix.Platform.Enums.TimeFormat;
             };
             export type StaticPageData = {
                 readonly id: string;
@@ -983,6 +985,7 @@ declare namespace Konventix {
         }
         namespace Enums {
             export type CookieCategory = 'necessary' | 'functional';
+            export type DateFormat = 'DD.MM.YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
             export type FooterLinkKind = 'url' | 'dialog';
             export type Permission =
                 | 'platform.access-admin'
@@ -1002,6 +1005,7 @@ declare namespace Konventix {
                 | 'platform.manage-footer-links'
                 | 'platform.view-diagnostics'
                 | 'platform.view-request-log';
+            export type TimeFormat = '24h' | '12h';
         }
     }
     namespace Registration {

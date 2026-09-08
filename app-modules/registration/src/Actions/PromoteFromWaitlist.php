@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\URL;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Models\Scopes\BrandScope;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Konventix\Registration\Data\WaitlistOfferMailData;
 use Konventix\Registration\Enums\WaitlistState;
 use Konventix\Registration\Events\WaitlistOfferMade;
@@ -138,7 +139,7 @@ final class PromoteFromWaitlist
                     $entry->offer_expires_at,
                     ['entry' => $entry->id],
                 ),
-                offerExpiresAt: $entry->offer_expires_at->format('d.m.Y H:i'),
+                offerExpiresAt: app(OperatorDateTimeFormat::class)->dateTime($entry->offer_expires_at),
             ),
             brandId: $entry->brand_id,
         ));

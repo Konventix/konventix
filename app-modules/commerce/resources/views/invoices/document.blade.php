@@ -70,12 +70,12 @@
 
     <h1>Rechnung {{ $invoice->invoice_number }}</h1>
     <div class="meta">
-        Rechnungsdatum: {{ $invoice->issued_on->format('d.m.Y') }} ·
+        Rechnungsdatum: {{ $dates->date($invoice->issued_on) }} ·
         Leistungsdatum entspricht Rechnungsdatum ·
         @if ($invoice->isPaid())
-            Bezahlt am: {{ $invoice->paid_at->format('d.m.Y') }}
+            Bezahlt am: {{ $dates->date($invoice->paid_at) }}
         @else
-            Fällig am: {{ $invoice->due_on->format('d.m.Y') }}
+            Fällig am: {{ $dates->date($invoice->due_on) }}
         @endif
         @if ($party->vatId)<br>USt-IdNr. des Leistungsempfängers: {{ $party->vatId }}@endif
     </div>
@@ -123,7 +123,7 @@
     </table>
 
     @if ($invoice->isPaid())
-        <p class="tax-note">Bezahlt am {{ $invoice->paid_at->format('d.m.Y') }} via {{ $invoice->paid_via }}.</p>
+        <p class="tax-note">Bezahlt am {{ $dates->date($invoice->paid_at) }} via {{ $invoice->paid_via }}.</p>
     @endif
 
     @if ($invoice->tax_treatment === Konventix\Commerce\Enums\TaxTreatment::SmallBusiness)
@@ -137,7 +137,7 @@
 
     @unless ($invoice->isPaid())
         <p class="terms">
-            Zahlbar bis zum {{ $invoice->due_on->format('d.m.Y') }} unter Angabe der Rechnungsnummer.
+            Zahlbar bis zum {{ $dates->date($invoice->due_on) }} unter Angabe der Rechnungsnummer.
         </p>
     @endunless
 

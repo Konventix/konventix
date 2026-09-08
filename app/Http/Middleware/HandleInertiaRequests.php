@@ -26,6 +26,7 @@ use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\ConsoleEventSources;
 use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Platform\Operators\OperatorContext;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -150,6 +151,11 @@ class HandleInertiaRequests extends Middleware
             // Shared rather than rendered into the root template, because
             // an Inertia visit replaces the props and not the document.
             'correlationId' => CorrelationId::current(),
+            // How this operator writes a date and a time (#242). Shared
+            // rather than per page for the same reason the reader's zone is:
+            // `resources/js/lib/datetime.ts` is the only consumer, and a page
+            // that had to pass the setting along is a page that could forget.
+            'dateTimeFormat' => $this->dateTimeFormat(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             // The topbar's cart badge (ADR-0047, Task 11). The query itself
             // lives behind Commerce's own `CartSummary` service — the host
@@ -168,6 +174,26 @@ class HandleInertiaRequests extends Middleware
                 'functional' => CookiePreferences::fromRequest($request),
                 'declared' => app(CookieRegistry::class)->grouped(),
             ],
+        ];
+    }
+
+    /**
+     * The operator-wide date and time conventions (#242).
+     *
+     * Resolved through Platform's own service, which finds the operator this
+     * request runs as and falls back to the only row there is — so a brand
+     * host, where no operator is in context, still renders the conventions of
+     * the operator behind it.
+     *
+     * @return array{date: string, time: string}
+     */
+    private function dateTimeFormat(): array
+    {
+        $format = app(OperatorDateTimeFormat::class);
+
+        return [
+            'date' => $format->dateFormat()->value,
+            'time' => $format->timeFormat()->value,
         ];
     }
 

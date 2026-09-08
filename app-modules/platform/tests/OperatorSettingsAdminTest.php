@@ -50,6 +50,62 @@ function operatorWithSettingsAdmin(array $capabilities = ['platform.access-admin
     return [$operator, $admin];
 }
 
+it('carries the operator-wide date and time format the console sells under', function (): void {
+    // Operator level, not brand level (#242): one instance sells under one
+    // set of conventions, and an invoice, a mail and a console table that
+    // disagreed about which one would each be defensible on their own.
+    [$operator, $admin] = operatorWithSettingsAdmin();
+    $operator->forceFill(['date_format' => 'MM/DD/YYYY', 'time_format' => '12h'])->save();
+
+    $this->actingAs($admin)
+        ->get('http://admin.operatorsettings.test/admin/settings/operator')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('operator.dateFormat', 'MM/DD/YYYY')
+            ->where('operator.timeFormat', '12h'));
+});
+
+it('saves a changed date and time format', function (): void {
+    [$operator, $admin] = operatorWithSettingsAdmin();
+
+    $this->actingAs($admin)
+        ->put('http://admin.operatorsettings.test/admin/settings/operator', [
+            'name' => 'Konventix',
+            'legalName' => 'Sund-Xplosion e.V.',
+            'contactEmail' => null,
+            'addressLine' => null,
+            'postalCode' => null,
+            'city' => null,
+            'countryCode' => 'DE',
+            'vatId' => null,
+            'taxNumber' => null,
+            'smallBusinessScheme' => false,
+            'dateFormat' => 'YYYY-MM-DD',
+            'timeFormat' => '12h',
+        ])
+        ->assertRedirect();
+
+    $operator->refresh();
+
+    expect($operator->date_format)->toBe('YYYY-MM-DD')
+        ->and($operator->time_format)->toBe('12h');
+});
+
+it('refuses a date format nobody ships a formatter for', function (): void {
+    [, $admin] = operatorWithSettingsAdmin();
+
+    $this->actingAs($admin)
+        ->put('http://admin.operatorsettings.test/admin/settings/operator', [
+            'name' => 'Konventix',
+            'legalName' => 'Sund-Xplosion e.V.',
+            'countryCode' => 'DE',
+            'smallBusinessScheme' => false,
+            'dateFormat' => 'the fourteenth',
+            'timeFormat' => 'sundial',
+        ])
+        ->assertInvalid(['dateFormat', 'timeFormat']);
+});
+
 it('shows the operator resolved from the admin host', function (): void {
     [$operator, $admin] = operatorWithSettingsAdmin();
     $operator->forceFill(['legal_name' => 'Sund-Xplosion e.V.', 'city' => 'Flensburg'])->save();
@@ -78,6 +134,8 @@ it('saves the legal seller identity', function (): void {
             'vatId' => 'DE123456789',
             'taxNumber' => '15/123/45678',
             'smallBusinessScheme' => false,
+            'dateFormat' => 'DD.MM.YYYY',
+            'timeFormat' => '24h',
         ])
         ->assertRedirect();
 
@@ -102,6 +160,8 @@ it('records the small-business election', function (): void {
             'legalName' => 'Sund-Xplosion e.V.',
             'countryCode' => 'DE',
             'smallBusinessScheme' => true,
+            'dateFormat' => 'DD.MM.YYYY',
+            'timeFormat' => '24h',
         ])
         ->assertRedirect();
 
@@ -119,6 +179,8 @@ it('requires a legal name, because an invoice cannot be issued without one', fun
             'legalName' => '',
             'countryCode' => 'DE',
             'smallBusinessScheme' => false,
+            'dateFormat' => 'DD.MM.YYYY',
+            'timeFormat' => '24h',
         ])
         ->assertSessionHasErrors('legalName');
 
@@ -135,6 +197,8 @@ it('rejects a country code that is not two letters', function (): void {
             'legalName' => 'Sund-Xplosion e.V.',
             'countryCode' => 'Germany',
             'smallBusinessScheme' => false,
+            'dateFormat' => 'DD.MM.YYYY',
+            'timeFormat' => '24h',
         ])
         ->assertSessionHasErrors('countryCode');
 });
@@ -152,6 +216,8 @@ it('refuses an admin holding console access but not the operator capability', fu
             'legalName' => 'Hijacked e.V.',
             'countryCode' => 'DE',
             'smallBusinessScheme' => false,
+            'dateFormat' => 'DD.MM.YYYY',
+            'timeFormat' => '24h',
         ])
         ->assertForbidden();
 });
@@ -173,6 +239,8 @@ it('changes what Commerce reads as the invoice seller', function (): void {
             'legalName' => 'Renamed e.V.',
             'countryCode' => 'DE',
             'smallBusinessScheme' => true,
+            'dateFormat' => 'DD.MM.YYYY',
+            'timeFormat' => '24h',
         ]);
 
     $seller = app(OperatorSettings::class)

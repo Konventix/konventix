@@ -10,6 +10,7 @@ use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Registration;
@@ -124,7 +125,7 @@ final class RegistrationMailer
 
         return [
             'cartUrl' => $this->brandAbsolute($registration, route('commerce.cart.show', absolute: false)),
-            'cartHoldExpiresAt' => $holdExpiresAt->format('d.m.Y H:i T'),
+            'cartHoldExpiresAt' => app(OperatorDateTimeFormat::class)->dateTime($holdExpiresAt).' '.$holdExpiresAt->format('T'),
         ];
     }
 

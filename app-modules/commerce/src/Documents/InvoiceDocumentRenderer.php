@@ -17,6 +17,7 @@ use Konventix\Commerce\Enums\TaxTreatment;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 
 /**
  * Renders the hybrid ZUGFeRD invoice document (ADR-0031): the Blade
@@ -47,6 +48,10 @@ final class InvoiceDocumentRenderer
         $visualPdf = Pdf::loadView('commerce::invoices.document', [
             'invoice' => $invoice,
             'order' => $order,
+            // How this operator writes a date (#242) — the same setting the
+            // console and the mails read, so the archived PDF and the page
+            // that links to it cannot disagree about a due date.
+            'dates' => app(OperatorDateTimeFormat::class),
         ])->output();
 
         $xml = $this->buildFacturX($invoice, $order);
@@ -80,6 +85,9 @@ final class InvoiceDocumentRenderer
         // "Zahlbar bis" once paid, and the XML must not disagree with it.
         if (! $invoice->isPaid()) {
             $document->addDocumentPaymentTerm(
+                // The German convention rather than the operator's setting:
+                // this string is the EN16931 payment-term text, read by the
+                // recipient's bookkeeping software, not by the operator.
                 sprintf('Zahlbar bis %s', $invoice->due_on->format('d.m.Y')),
                 $invoice->due_on->toDateTimeImmutable(),
             );

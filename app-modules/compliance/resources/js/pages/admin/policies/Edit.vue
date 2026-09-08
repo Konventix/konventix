@@ -3,6 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Plus } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import DateTimeField from '@/components/datetime/DateTimeField.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -281,22 +282,14 @@ function openVersion(id: string): void {
                                         :message="versionForm.errors.version"
                                     />
                                 </div>
-                                <div class="grid gap-2">
-                                    <Label for="version-effective">
-                                        Effective from
-                                    </Label>
-                                    <Input
-                                        id="version-effective"
-                                        v-model="versionForm.effectiveAt"
-                                        type="datetime-local"
-                                        :disabled="!props.selected.editable"
-                                    />
-                                    <InputError
-                                        :message="
-                                            versionForm.errors.effectiveAt
-                                        "
-                                    />
-                                </div>
+                                <DateTimeField
+                                    id="version-effective"
+                                    v-model="versionForm.effectiveAt"
+                                    label="Effective from"
+                                    hint="Before this moment the public page answers 404."
+                                    :disabled="!props.selected.editable"
+                                    :error="versionForm.errors.effectiveAt"
+                                />
                             </div>
 
                             <div class="flex items-center gap-2">

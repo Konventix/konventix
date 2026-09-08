@@ -3,6 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Plus, Trash2 } from '@lucide/vue';
 import { computed, watch } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import DateTimeField from '@/components/datetime/DateTimeField.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,12 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
-import {
-    formatDateTime,
-    viewerTimezone,
-    toInstant,
-    toLocalDateTimeInput,
-} from '@/lib/datetime';
+import { toInstant, toLocalDateTimeInput } from '@/lib/datetime';
 import {
     index as typesIndex,
     update as updateType,
@@ -67,12 +63,10 @@ const props = defineProps<Props>();
  * shifted to the hour that does exist, so the echo differs from what was
  * typed. There is no other honest answer for a sales window, and the hint
  * says so rather than letting the field look like it lost the value.
+ *
+ * The hint, the echo and the zone-naming are `DateTimeField`'s since #242 —
+ * three pages had grown three versions of the same field.
  */
-const salesStartEcho = computed(() =>
-    formatDateTime(toInstant(form.salesStart)),
-);
-const salesEndEcho = computed(() => formatDateTime(toInstant(form.salesEnd)));
-
 const form = useForm({
     eventId: props.type.eventId,
     name: props.type.name,
@@ -495,54 +489,21 @@ function submit(): void {
                             not.
                         </p>
 
-                        <div class="grid gap-2">
-                            <Label for="type-sales-start">Sale starts</Label>
-                            <Input
-                                id="type-sales-start"
-                                v-model="form.salesStart"
-                                type="datetime-local"
-                                aria-describedby="type-sales-start-hint"
-                            />
-                            <p
-                                id="type-sales-start-hint"
-                                class="text-xs text-text-muted"
-                            >
-                                Times in your timezone ({{ viewerTimezone() }}).
-                                <template v-if="salesStartEcho">
-                                    = {{ salesStartEcho }} — a time that does
-                                    not exist on that date moves to the next
-                                    one.
-                                </template>
-                                Before this, the landing page announces the type
-                                instead of linking to it.
-                            </p>
-                            <InputError :message="form.errors.salesStart" />
-                        </div>
+                        <DateTimeField
+                            id="type-sales-start"
+                            v-model="form.salesStart"
+                            label="Sale starts"
+                            hint="Before this, the landing page announces the type instead of linking to it."
+                            :error="form.errors.salesStart"
+                        />
 
-                        <div class="grid gap-2">
-                            <Label for="type-sales-end">Sale ends</Label>
-                            <Input
-                                id="type-sales-end"
-                                v-model="form.salesEnd"
-                                type="datetime-local"
-                                aria-describedby="type-sales-end-hint"
-                            />
-                            <p
-                                id="type-sales-end-hint"
-                                class="text-xs text-text-muted"
-                            >
-                                Times in your timezone ({{ viewerTimezone() }}).
-                                <template v-if="salesEndEcho">
-                                    = {{ salesEndEcho }} — a time that does not
-                                    exist on that date moves to the next one.
-                                </template>
-                                Must be after the start. After it, the type
-                                disappears from the landing page and a new
-                                submission is refused; a cart line already
-                                placed stays payable.
-                            </p>
-                            <InputError :message="form.errors.salesEnd" />
-                        </div>
+                        <DateTimeField
+                            id="type-sales-end"
+                            v-model="form.salesEnd"
+                            label="Sale ends"
+                            hint="Must be after the start. After it, the type disappears from the landing page and a new submission is refused; a cart line already placed stays payable."
+                            :error="form.errors.salesEnd"
+                        />
                     </CardContent>
                 </Card>
 

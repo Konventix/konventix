@@ -3,6 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, ExternalLink } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import DateTimeField from '@/components/datetime/DateTimeField.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
-import { formatDateTime, viewerTimezone, withZoneName } from '@/lib/datetime';
+import { formatDateTime, withZoneName } from '@/lib/datetime';
 import {
     archive as archiveEntry,
     index as contentIndex,
@@ -79,15 +80,6 @@ const stateClasses: Record<Konventix.Content.Enums.PublicationState, string> = {
 
 /** Empty means "now"; a future moment schedules instead of publishing. */
 const publishAt = ref('');
-
-/**
- * The instant the typed wall clock stands for, echoed under the field so the
- * editor can see which moment they actually picked before they commit to it
- * (#246, the same reassurance the sales window grew in #237).
- */
-const publishAtEcho = computed(() =>
-    formatDateTime(publishedAtInstant(publishAt.value), withZoneName),
-);
 
 function submit(): void {
     form.transform((data) => ({
@@ -316,25 +308,11 @@ function archive(): void {
                             v-if="props.transitions.includes('publish')"
                             class="grid gap-2"
                         >
-                            <Label for="entry-publish-at">
-                                Publish at (leave empty for now)
-                            </Label>
-                            <Input
+                            <DateTimeField
                                 id="entry-publish-at"
                                 v-model="publishAt"
-                                type="datetime-local"
-                                aria-describedby="entry-publish-at-hint"
+                                label="Publish at (leave empty for now)"
                             />
-                            <p
-                                id="entry-publish-at-hint"
-                                class="text-xs text-text-muted"
-                            >
-                                Times in your timezone ({{ viewerTimezone() }}).
-                                <template v-if="publishAtEcho">
-                                    = {{ publishAtEcho }} — a time that does not
-                                    exist on that date moves to the next one.
-                                </template>
-                            </p>
                             <Button @click="publish">
                                 {{ publishAt === '' ? 'Publish' : 'Schedule' }}
                             </Button>
