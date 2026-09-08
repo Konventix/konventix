@@ -20,6 +20,13 @@ type Product = Konventix.Commerce.Data.ShopProductData;
 
 const props = defineProps<{
     products: Product[];
+    /**
+     * The operator's §19 UStG election (ADR-0030): under it these amounts
+     * carry no VAT, and "incl. VAT" on a public consumer page would claim
+     * one (branch review NEW-4). Optional so the component still renders if
+     * an older payload reaches it; the slot always sends it.
+     */
+    smallBusinessScheme?: boolean;
 }>();
 </script>
 
@@ -53,10 +60,18 @@ const props = defineProps<{
                         class="shrink-0 text-sm whitespace-nowrap text-text-muted"
                     >
                         {{ displayUnitAmount(product) }} €
-                        {{ taxNote(product.priceDisplay) }}
+                        {{
+                            taxNote(
+                                product.priceDisplay,
+                                !props.smallBusinessScheme,
+                            )
+                        }}
                     </span>
 
-                    <ArrowRight class="size-4 shrink-0 text-text-muted" />
+                    <ArrowRight
+                        class="size-4 shrink-0 text-text-muted"
+                        aria-hidden="true"
+                    />
                 </Link>
             </li>
         </ul>

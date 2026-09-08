@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
@@ -15,7 +16,11 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Identity\Models\User;
+use Konventix\Registration\Actions\ApproveRegistration;
+use Konventix\Registration\Actions\SubmitRegistration;
+use Konventix\Registration\Data\SubmitRegistrationData;
 use Konventix\Registration\Models\Registration;
+use Konventix\Registration\Models\RegistrationType;
 
 /**
  * What a registration cost, shown on the page its registrant already owns.
@@ -324,4 +329,49 @@ it('names no repayment deadline on an order that was never reversed', function (
     $this->actingAs($user)
         ->get('/my/registrations/'.$registration->getKey())
         ->assertInertia(fn (AssertableInertia $page) => expect(settlementProps($page)['repayDueOn'])->toBeNull());
+});
+
+/**
+ * Branch review finding 10, filed as the invariant it rests on.
+ *
+ * This slot is authorized by Registration on `registrations.registrant_user_id`
+ * and then mints a signed invoice link and a pay link, while the pay pages
+ * authorize on `orders.payer_user_id`. The two identities coincide because
+ * `CreateOrderOnSettlementRequested` writes the settlement request's
+ * `registrantUserId` onto the order (ADR-0044) and
+ * `PlaceRegistrationLineInCart` opens the cart as
+ * `OpenCart::for($brandId, $registrantUserId)` — an invariant that lived in
+ * two other files and nothing asserted. Adding a payer check to the slot
+ * instead would hide the block on every order with a null payer (booked by
+ * hand, or placed before ADR-0044), so the invariant is what is pinned.
+ */
+it('settles a registration onto an order whose payer is the registrant, which is what lets this slot skip a payer check', function (): void {
+    $this->withBrand();
+
+    $registrant = User::factory()->create();
+    $type = RegistrationType::factory()->invoiceSettled()->create();
+
+    $registration = app(SubmitRegistration::class)->handle($type, $registrant->getKey(), new SubmitRegistrationData(
+        organizationName: null,
+        billingRecipientName: 'Erika Musterfrau',
+        billingEmail: 'rechnung@musterfirma.example',
+        billingAddressLine: 'Musterstraße 1',
+        billingPostalCode: '18439',
+        billingCity: 'Stralsund',
+        billingCountryCode: 'DE',
+        billingVatId: null,
+    ));
+    app(ApproveRegistration::class)->handle($registration, (string) Str::ulid());
+
+    $order = Order::query()->where('settles_id', $registration->getKey())->sole();
+
+    expect($order->payer_user_id)
+        ->toBe($registration->registrant_user_id)
+        ->and($order->payer_user_id)->toBe($registrant->getKey());
+
+    // …and the page the slot renders on is the same person's.
+    $this->actingAs($registrant)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => expect(settlementProps($page)['orderId'])->toBe($order->getKey()));
 });

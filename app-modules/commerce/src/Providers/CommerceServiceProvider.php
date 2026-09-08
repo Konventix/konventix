@@ -985,6 +985,12 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     : app(OperatorSettings::class)->sellerForBrand($first->brand_id)->smallBusinessScheme;
 
                 return [
+                    // Whether the amounts below carry any VAT at all
+                    // (branch review NEW-4): under the §19 election they do
+                    // not, and a card labelled "incl. VAT" on a public
+                    // consumer page is the PAngV problem #3 exists for. The
+                    // flag is already in hand here, so the card is told.
+                    'smallBusinessScheme' => $smallBusinessScheme,
                     'products' => $products
                         ->map(fn (Product $product): array => ShopProductData::ofModel(
                             $product,

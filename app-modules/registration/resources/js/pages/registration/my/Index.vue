@@ -3,6 +3,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import { ChevronRight } from '@lucide/vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
+import { registrationListSummary } from './listSummary';
 
 /**
  * "What did I sign up for" — the registrant's own list, reached from the
@@ -38,18 +39,19 @@ const toggleUrl = computed(() =>
  * (branch review finding 21). It navigates and `preserve-scroll` removes
  * even the visual cue, so without this a screen-reader user hears nothing.
  * Rendered on every state so the region exists before its text does — a
- * `role="status"` inserted together with its content announces nothing.
+ * `role="status"` inserted together with its content announces nothing —
+ * and the page is kept mounted across the toggle (NEW-3) so this is an
+ * update to that region rather than a fresh one. The sentence itself lives
+ * in `listSummary.ts`, where a unit test can pin that the two states
+ * genuinely differ.
  */
-const listSummary = computed(() => {
-    const shown = props.registrations.length;
-    const plural = shown === 1 ? '' : 's';
-
-    if (props.showAll) {
-        return `Showing all ${shown} registration${plural}, cancelled ones included.`;
-    }
-
-    return `Showing ${shown} registration${plural}, ${props.cancelledCount} cancelled hidden.`;
-});
+const listSummary = computed(() =>
+    registrationListSummary(
+        props.registrations.length,
+        props.cancelledCount,
+        props.showAll,
+    ),
+);
 
 const statusTone: Record<string, string> = {
     confirmed: 'bg-success/15 text-success',
@@ -157,9 +159,20 @@ const paymentTone: Record<string, string> = {
         </ul>
 
         <p v-if="props.cancelledCount > 0" class="pt-4 text-sm">
+            <!--
+                `preserve-state` is what makes the live region above work
+                (branch review NEW-3): without it Inertia's `swapComponent`
+                gives the page a new key, remounts it, and the
+                `role="status"` region is destroyed and re-created together
+                with its text — which announces nothing, the very shape
+                finding 21 was raised about. With the state preserved the
+                page stays mounted and the region's text merely changes,
+                which is what a live region reports.
+            -->
             <Link
                 :href="toggleUrl"
                 preserve-scroll
+                preserve-state
                 class="text-text-muted underline underline-offset-4 hover:text-text"
             >
                 <template v-if="props.showAll">
