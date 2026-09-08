@@ -151,9 +151,14 @@
       `\Mollie\Api\Exceptions\ApiException`) still reaches the operator as a
       500. Wrap SDK failures in a Commerce exception inside `Settlement/**`
       and the console gets a sentence instead of an error page.
-- [ ] #231 — the cart sweep can cancel an order whose hosted-checkout
-      session may already be paid at the PSP, without asking first — a
-      money-risk gap distinct from #131's payment-window sweep.
+- [x] #231 — the expiry sweeps ask the PSP before cancelling an order with
+      an open hosted payment (`Settlement\HostedPaymentProbe`,
+      `Actions\Concerns\AsksThePspBeforeCancelling`): paid is booked through
+      the ordinary success path, money the provider says is travelling is
+      held for a fortnight, a silent provider for a day, and the operators
+      are told when either horizon releases an order. Unzer still cannot be
+      asked about a pending Paypage — its `external_id` is a Paypage id and
+      the API takes a payment id — so those orders are cancelled as before.
 - [ ] #233 — `cart_lines` deadlock risk: an FK `KEY SHARE` → `NO KEY UPDATE`
       lock escalation on `carts` at four sites, plus two unordered
       multi-row lock sites. Filed, code untouched.
@@ -162,6 +167,10 @@
       contract (ADR-0004 forbids importing `Commerce\Tax\*`). Filed, needs
       a design decision, not a fix.
 - [ ] PlaceRegistrationLineInCart's read-then-insert can lose a race to cart_lines_request_key_unique and throw a QueryException out of a listener, the same shape PlaceOrderFromSettlementRequest carries. The 2026-08-27 rush never surfaced it (0 × 5xx across 754 arrivals), so this stays a converge-on-conflict cleanup — catch the violation and re-read the line the winner created, as OpenCart::for() already does.
+- [ ] The reversal mail still sends a cart order the neutral interim text
+      rather than a pay link, though the link works since #186 — see
+      `SendPaymentReversedMailOnPaymentReversed::send()` (#186 criterion 3,
+      needs an owner).
 
 ## Done
 

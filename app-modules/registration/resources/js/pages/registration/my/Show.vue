@@ -68,10 +68,10 @@ const paymentTone: Record<string, string> = {
  * are shown in the reader's own zone — the event's wall-clock times on the
  * landing page are a different thing and stay printed as promised.
  */
-const submittedAt = computed(() =>
+const submittedLabel = computed(() =>
     formatDateTime(props.registration.submittedAt),
 );
-const confirmedAt = computed(() =>
+const confirmedLabel = computed(() =>
     formatDateTime(props.registration.confirmedAt),
 );
 </script>
@@ -124,14 +124,14 @@ const confirmedAt = computed(() =>
                 <dt class="text-text-muted">Submitted</dt>
                 <dd>
                     <time :datetime="props.registration.submittedAt">
-                        {{ submittedAt }}
+                        {{ submittedLabel }}
                     </time>
                 </dd>
                 <template v-if="props.registration.confirmedAt">
                     <dt class="text-text-muted">Confirmed</dt>
                     <dd>
                         <time :datetime="props.registration.confirmedAt">
-                            {{ confirmedAt }}
+                            {{ confirmedLabel }}
                         </time>
                     </dd>
                 </template>

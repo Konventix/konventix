@@ -42,6 +42,15 @@ const props = defineProps<Props>();
 </script>
 
 <template>
+    <!--
+    datetime-raw: event.startsAt
+    datetime-raw: event.endsAt
+    datetime-raw: props.event.startsAt
+    datetime-raw: props.event.endsAt
+    An event time is the organizer's wall clock plus a zone label (ADR-0027),
+    not an instant: it is printed exactly as promised, in the zone the label
+    names, and must not be converted to the reader's own.
+-->
     <Head :title="props.event.name" />
 
     <div

@@ -1,3 +1,4 @@
+import type { InertiaConfig } from '@inertiajs/core';
 import { createInertiaApp } from '@inertiajs/vue3';
 import { configureEcho } from '@laravel/echo-vue';
 import type { DefineComponent } from 'vue';
@@ -6,6 +7,7 @@ import AdminLayout from '@/layouts/AdminLayout.vue';
 import AppTopbarLayout from '@/layouts/AppTopbarLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
+import { configureDateTime } from '@/lib/datetime';
 import { initializeFlashToast } from '@/lib/flashToast';
 import { resolveReverbEndpoint } from '@/lib/reverbEndpoint';
 
@@ -133,6 +135,32 @@ function layoutFor(name: string) {
     }
 }
 
+/**
+ * The viewing person's own time settings, out of the page props (#243, #242):
+ * their profile zone, and the date and time conventions the operator sells
+ * under.
+ *
+ * Applied in `resolve()`, after the page chunk has been awaited and with
+ * nothing asynchronous between that and handing the component back. The order
+ * matters under SSR: `settings` is module state shared by every request the
+ * render process serves, so assigning it *before* an `await` is an
+ * interleaving point — request A assigns, yields at the import, request B
+ * assigns, and A renders with B's zone. Assigning after the await closes that
+ * window (review finding 8).
+ *
+ * A page that had to ask for the zone itself is a page that could forget to,
+ * which is why this is not a per-page prop.
+ */
+type SharedProps = InertiaConfig['sharedPageProps'];
+
+function applyDateTimeSettings(props?: Partial<SharedProps>): void {
+    configureDateTime({
+        timezone: props?.auth?.user?.timezone ?? null,
+        dateFormat: props?.dateTimeFormat?.date ?? 'DD.MM.YYYY',
+        timeFormat: props?.dateTimeFormat?.time ?? '24h',
+    });
+}
+
 createInertiaApp({
     title: (title) =>
         title ? `${title} - ${documentTitleSuffix}` : documentTitleSuffix,
@@ -149,7 +177,12 @@ createInertiaApp({
             throw new Error(`Inertia page not found: ${name}`);
         }
 
-        return loader();
+        const component = await loader();
+
+        // Last, with no await after it: see `applyDateTimeSettings`.
+        applyDateTimeSettings(visit?.props);
+
+        return component;
     },
     layout: (name: string) => layoutFor(name),
     progress: {

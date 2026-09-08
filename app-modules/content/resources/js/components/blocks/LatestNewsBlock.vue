@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
+import { formatDateTime } from '@/lib/datetime';
 import { index as newsIndex, show as showEntry } from '@/routes/content';
 
 /**
@@ -26,10 +27,8 @@ defineProps<{
     entries: Entry[];
 }>();
 
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'long' });
-
 function formatDate(value: string | null): string {
-    return value ? dateFormat.format(new Date(value)) : '';
+    return formatDateTime(value, { dateStyle: 'long', timeStyle: undefined });
 }
 </script>
 

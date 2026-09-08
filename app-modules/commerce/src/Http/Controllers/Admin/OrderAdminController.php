@@ -17,7 +17,9 @@ use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Data\OrderReversalData;
 use Konventix\Commerce\Data\RefundOrderData;
 use Konventix\Commerce\Data\UnappliedPaymentData;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\Permission;
+use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Exceptions\RefundEventRelayFailedException;
@@ -301,7 +303,12 @@ class OrderAdminController
     private function reversalQuery(): Builder
     {
         return PaymentReversal::withoutBrandScope()
-            ->whereIn('status', [ReversalStatus::Open->value, ReversalStatus::Final->value]);
+            ->whereIn('status', [ReversalStatus::Open->value, ReversalStatus::Final->value])
+            // A refund the console itself made (#247) is a decision an
+            // operator took, not money to act on: it carries the provider's
+            // reference for reconciliation and belongs on the order page,
+            // never in the "reversals & unapplied money" work list.
+            ->where('kind', '!=', ReversalKind::Refund->value);
     }
 
     /**
@@ -420,6 +427,12 @@ class OrderAdminController
 
         $announcementFailed = false;
 
+        // Read before the Action moves anything: only a cancelled order takes
+        // `RefundOrder`'s unapplied path (ADR-0057 point 9, #6), and the trail
+        // has to be able to tell that apart from a real order refund — the
+        // order was not refunded, money that was never applied to it was.
+        $unapplied = $model->status === OrderStatus::Cancelled;
+
         try {
             $refundOrder->handle(
                 order: $model,
@@ -474,6 +487,16 @@ class OrderAdminController
                 'reason_note' => $data->reasonNote,
                 'amount' => (string) $model->total_gross,
                 'currency' => $model->currency,
+                // The provider's own identifier for the money going back
+                // (#247), read off the row `RecordRefund` just wrote. Null
+                // for a `manual` refund, which has no provider to give one —
+                // and for a refund that reached the announcement failure
+                // above, since the row is written before the announcement.
+                'provider_reference' => $this->providerRefundReference($model),
+                // Nothing of the order was refunded on this path: it stays
+                // cancelled, no credit note is written, and only the money
+                // that could never be applied went back (#6).
+                'unapplied' => $unapplied,
                 // Whether the seat, the quota and the admission were released
                 // with the money. An operator reconstructing "why is this
                 // registration still confirmed" reads it here rather than
@@ -482,13 +505,42 @@ class OrderAdminController
             ],
         );
 
-        Inertia::flash('toast', $announcementFailed
+        Inertia::flash('toast', match (true) {
             // Deliberately says nothing of the underlying error: the operator
             // can act on "it is recorded, the release did not run", not on a
             // consumer's exception message.
-            ? ['type' => 'warning', 'message' => __('The refund is recorded and the money is on its way back, but announcing it inside Konventix failed. The release of the seat is being retried — check the failed jobs before assuming it happened.')]
-            : ['type' => 'success', 'message' => __('Order refunded.')]);
+            $announcementFailed => ['type' => 'warning', 'message' => __('The refund is recorded and the money is on its way back, but announcing it inside Konventix failed. The release of the seat is being retried — check the failed jobs before assuming it happened.')],
+            // The order was already cancelled and stays cancelled; saying
+            // "Order refunded." here would describe something that did not
+            // happen (#6).
+            $unapplied => ['type' => 'success', 'message' => __('Unapplied payment refunded.')],
+            default => ['type' => 'success', 'message' => __('Order refunded.')],
+        });
 
         return back();
+    }
+
+    /**
+     * The reference the provider gave the refund this request just made
+     * (#247). Newest first, because an order can be refunded more than once
+     * over its life — a partial refund followed by the rest.
+     */
+    private function providerRefundReference(Order $order): ?string
+    {
+        /** @var string|null $reference */
+        $reference = PaymentReversal::withoutBrandScope()
+            ->where('order_id', $order->getKey())
+            // Either kind is this refund's own reference (`re_…`): `refund`
+            // when we recorded it, `external_refund` when the provider's own
+            // notification won the race and recorded it first (review NEW-3).
+            // What the operator needs is the identifier, not which path
+            // wrote it.
+            ->whereIn('kind', [ReversalKind::Refund->value, ReversalKind::ExternalRefund->value])
+            // ULIDs are monotone, unlike two `created_at` in the same clock
+            // tick — an order can be refunded more than once over its life.
+            ->orderByDesc('id')
+            ->value('provider_reference');
+
+        return $reference;
     }
 }

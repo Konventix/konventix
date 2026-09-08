@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { formatDateTime, withDateTimeSettings } from '@/lib/datetime';
 import { update } from '@/routes/admin/settings/operator';
 
 /**
@@ -40,7 +42,22 @@ const form = useForm({
     vatId: props.operator.vatId ?? '',
     taxNumber: props.operator.taxNumber ?? '',
     smallBusinessScheme: props.operator.smallBusinessScheme,
+    dateFormat: props.operator.dateFormat,
+    timeFormat: props.operator.timeFormat,
 });
+
+/**
+ * A sample rendered with whatever is currently picked (#242), so the choice
+ * is read as a date rather than as a pattern. It is the same helper every
+ * page and every table uses, driven off the form rather than off the saved
+ * setting — the preview moves before the save does.
+ */
+const sample = computed(() =>
+    withDateTimeSettings(
+        { dateFormat: form.dateFormat, timeFormat: form.timeFormat },
+        () => formatDateTime('2026-09-08T14:05:00+00:00'),
+    ),
+);
 
 useUnsavedChanges(() => form.isDirty);
 
@@ -178,16 +195,77 @@ function submit(): void {
                 </CardContent>
             </Card>
 
+            <Card>
+                <CardHeader>
+                    <CardTitle>Dates and times</CardTitle>
+                </CardHeader>
+                <CardContent class="grid gap-4 sm:grid-cols-2">
+                    <p class="text-xs text-text-muted sm:col-span-2">
+                        How this instance writes a date and a time — on every
+                        console page, in every mail and on every invoice. Each
+                        person still reads them in their own timezone, which
+                        they set on their profile.
+                    </p>
+
+                    <div class="grid gap-2">
+                        <Label for="dateFormat">Date format</Label>
+                        <select
+                            id="dateFormat"
+                            v-model="form.dateFormat"
+                            class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                        >
+                            <option value="DD.MM.YYYY">DD.MM.YYYY</option>
+                            <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                            <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                        </select>
+                        <InputError :message="form.errors.dateFormat" />
+                    </div>
+
+                    <div class="grid gap-2">
+                        <Label for="timeFormat">Time format</Label>
+                        <select
+                            id="timeFormat"
+                            v-model="form.timeFormat"
+                            class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                        >
+                            <option value="24h">24-hour (14:05)</option>
+                            <option value="12h">12-hour (2:05 PM)</option>
+                        </select>
+                        <InputError :message="form.errors.timeFormat" />
+                    </div>
+
+                    <!--
+                        A live region, because the only thing that changes when
+                        either select moves is the sample: without it a screen
+                        reader hears the option it picked and never the result
+                        (ADR-0055). The element is always rendered and only its
+                        text changes, which is what a live region announces.
+                    -->
+                    <p
+                        class="text-sm text-text-muted sm:col-span-2"
+                        role="status"
+                        data-test="date-format-sample"
+                    >
+                        A timestamp reads as
+                        <span class="font-medium text-text">{{ sample }}</span>
+                        .
+                    </p>
+                </CardContent>
+            </Card>
+
             <div class="flex items-center gap-3">
                 <Button type="submit" :disabled="form.processing">
                     {{ form.processing ? 'Saving…' : 'Save changes' }}
                 </Button>
-                <span
-                    v-if="form.isDirty"
-                    role="status"
-                    class="text-sm text-warning"
-                >
-                    Unsaved changes
+                <!--
+                    The region is always in the document and only its text
+                    appears: a `role="status"` inserted in the same tick as its
+                    own content is announced by essentially no screen reader,
+                    because there was no live region to observe when the text
+                    arrived (ADR-0055).
+                -->
+                <span role="status" class="text-sm text-warning">
+                    <template v-if="form.isDirty">Unsaved changes</template>
                 </span>
             </div>
         </form>

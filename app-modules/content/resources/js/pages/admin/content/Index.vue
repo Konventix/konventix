@@ -30,6 +30,7 @@ import type {
     DataTableFilters,
 } from '@/composables/useDataTable';
 import { seedSelectionFilter, useDataTable } from '@/composables/useDataTable';
+import { formatDateTime } from '@/lib/datetime';
 import {
     edit as editEntry,
     index as contentIndex,
@@ -241,7 +242,9 @@ const columns: ColumnDef<EntryRow>[] = [
             h(
                 'span',
                 { class: 'text-text-muted' },
-                row.original.publishedAt ?? '—',
+                // The reader's own zone, through the shared helper — the
+                // server sends an instant with an offset (#208, #246).
+                formatDateTime(row.original.publishedAt) || '—',
             ),
     },
 ];

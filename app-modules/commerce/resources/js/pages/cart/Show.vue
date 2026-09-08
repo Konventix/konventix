@@ -6,17 +6,17 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+import {
+    ORDER_WITH_OBLIGATION_TO_PAY,
+    fulfilmentNote,
+    taxNote,
+} from '@/lib/purchaseTexts';
 import { checkout as checkoutCart } from '@/routes/commerce/cart';
 import {
     destroy as destroyLine,
     update as updateLine,
 } from '@/routes/commerce/cart/lines';
 import { index as shopIndex } from '@/routes/commerce/shop';
-import {
-    ORDER_WITH_OBLIGATION_TO_PAY,
-    fulfilmentNote,
-    taxNote,
-} from '../../lib/purchaseTexts';
 
 /**
  * The person-owned cart (ADR-0047, Task 11): line list with quantity

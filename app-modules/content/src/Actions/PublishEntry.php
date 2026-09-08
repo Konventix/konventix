@@ -28,6 +28,13 @@ use Konventix\Content\Models\ContentEntry;
  *
  * Republishing is idempotent — an already-live entry is left alone rather
  * than re-emitting and re-notifying everyone.
+ *
+ * The moment is normalised to UTC here, where the transition is owned, not
+ * at the caller: `content_entries.published_at` is a zone-less column and
+ * Eloquent formats a Carbon in whatever zone the instance carries, so a
+ * moment parsed as `+02:00` would be written down as its own digits and read
+ * back two hours wrong (#246). Doing it in the console controller alone left
+ * the next caller free to reintroduce that with nothing in the way.
  */
 final class PublishEntry
 {
@@ -38,7 +45,7 @@ final class PublishEntry
                 return $entry;
             }
 
-            $moment = $at ?? now();
+            $moment = ($at ?? now())->utc();
             $isFuture = $moment->greaterThan(now());
 
             $entry->forceFill([

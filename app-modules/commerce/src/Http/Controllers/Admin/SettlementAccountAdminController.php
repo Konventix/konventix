@@ -26,6 +26,7 @@ use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\OperatorContext;
+use Konventix\Platform\Slots\SlotRegistry;
 
 /**
  * Operator console: where each brand's money goes (ADR-0007/ADR-0039).
@@ -60,7 +61,7 @@ class SettlementAccountAdminController
         SettlementAccount::PROVIDER_UNZER,
     ];
 
-    public function index(StripeCredentials $credentials): Response
+    public function index(StripeCredentials $credentials, SlotRegistry $slots): Response
     {
         Gate::authorize(Permission::ManageSettlementAccount->value);
 
@@ -76,6 +77,19 @@ class SettlementAccountAdminController
             ->groupBy('brand_id');
 
         return Inertia::render('admin/settlement-accounts/Index', [
+            // #222: this is where an operator switches a brand's selling on,
+            // and a brand whose checkout resolves no AGB and no
+            // Widerrufsbelehrung sells anyway — the decision is "warn only".
+            // Compliance owns that fact and Commerce may not ask it directly
+            // (ADR-0004), so the page declares a slot and renders whatever
+            // comes back, exactly as the public shop does for Registration.
+            'slots' => $slots->for('admin.settlement-accounts')
+                ->map(fn (array $entry): array => [
+                    'module' => $entry['module'],
+                    'component' => $entry['component'],
+                    'props' => $entry['props'],
+                ])
+                ->all(),
             // This instance's own Stripe account (ADR-0058 point 2): the
             // console is where an operator sets or rotates the key, and
             // where they find out one is missing — so it carries which

@@ -8,10 +8,11 @@ use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\MediaItem;
 
 /**
- * The shared `auth.user` prop keeps Identity's four-field promise (ADR-0051
- * §5): ULID, display name, avatar URL, locale — never the whole model.
+ * The shared `auth.user` prop keeps Identity's promise (ADR-0051 §5): ULID,
+ * display name, avatar URL, locale, and since #243 the zone every timestamp
+ * on screen is rendered in — never the whole model.
  */
-it('shares exactly the four promised fields', function (): void {
+it('shares exactly the five promised fields', function (): void {
     $this->withBrand();
     $user = User::factory()->create();
 
@@ -20,6 +21,7 @@ it('shares exactly the four promised fields', function (): void {
         ->where('auth.user.name', $user->name)
         ->where('auth.user.locale', 'en')
         ->where('auth.user.avatarUrl', null)
+        ->where('auth.user.timezone', $user->timezone)
         ->missing('auth.user.email'));
 });
 

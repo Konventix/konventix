@@ -304,6 +304,7 @@ function moduleLabel(module: string): string {
                             </div>
                         </div>
 
+                        <!-- datetime-raw: alwaysOn.map(moduleLabel).join(', ') — module names, not a timestamp -->
                         <div v-if="alwaysOn.length" class="flex flex-col gap-1">
                             <span class="text-xs font-medium text-text-muted">
                                 Always on

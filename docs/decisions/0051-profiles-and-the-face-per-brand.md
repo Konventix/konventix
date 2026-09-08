@@ -75,11 +75,14 @@ real users to handles would be machinery for users who do not exist.
    library and points the membership at the copy. A profile picture that
    changes when Steam's CDN does is not the person's.
 
-5. **The shared `auth.user` prop becomes the four-field shape Identity's
-   SPEC promised** — ULID, display name, avatar URL, locale — before any
+5. **The shared `auth.user` prop becomes the minimal shape Identity's SPEC
+   promised** — ULID, display name, avatar URL, locale — before any
    avatar reaches the topbar. The avatar URL is resolved from the current
    brand's membership server-side; the whole model stops being
-   serialized.
+   serialized. A fifth field joined it in #243: `timezone`, the zone every
+   system timestamp is rendered in, `null` for a person who has chosen
+   none and reads on their own device's clock. The rule is the ceiling, not
+   the count: anything a page needs beyond these is that page's own prop.
 
 6. **Two events, matching the two scopes.** `UserProfileUpdated` widens
    with `username`, `tagline` and `statusEmoji` — operator-wide facts in

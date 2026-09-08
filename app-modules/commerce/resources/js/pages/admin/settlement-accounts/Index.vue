@@ -15,6 +15,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import {
     mollie as connectMollie,
     stripe as connectStripe,
@@ -44,6 +45,17 @@ type Props = {
         commerceSettings: Konventix.Commerce.Data.CommerceBrandSettingsData;
     }[];
     stripeSetup: Konventix.Commerce.Data.StripeSetupData;
+    /**
+     * Whatever other modules have to say about selling for these brands
+     * (#222) — today Compliance's warning about a brand whose checkout
+     * resolves no AGB and no Widerrufsbelehrung. This page never learns
+     * what they are.
+     */
+    slots: {
+        module: string;
+        component: string;
+        props: Record<string, unknown>;
+    }[];
 };
 
 const providerLabels: Record<Provider, string> = {
@@ -117,6 +129,17 @@ function submitConnect(): void {
             title="Settlement accounts"
             description="Each brand's own payment-provider connections"
         />
+
+        <template
+            v-for="slot in props.slots"
+            :key="`${slot.module}-${slot.component}`"
+        >
+            <component
+                :is="resolveRegisteredComponent(slot.component)"
+                v-if="resolveRegisteredComponent(slot.component)"
+                v-bind="slot.props"
+            />
+        </template>
 
         <p class="max-w-2xl text-sm text-text-muted">
             Money flows directly from the participant into the operator's own

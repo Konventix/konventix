@@ -2,6 +2,7 @@
 import { Form } from '@inertiajs/vue3';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/datetime';
 import sessionRoutes from '@/routes/sessions';
 
 defineProps<{
@@ -38,7 +39,7 @@ defineProps<{
                     <p class="text-sm text-muted-foreground">
                         {{ session.ipAddress ?? 'Unknown location' }} · last
                         active
-                        {{ new Date(session.lastActiveAt).toLocaleString() }}
+                        {{ formatDateTime(session.lastActiveAt) }}
                     </p>
                 </div>
 

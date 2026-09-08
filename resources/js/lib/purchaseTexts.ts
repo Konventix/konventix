@@ -15,6 +15,14 @@
  * purchase path a unit test can pin (there is no Vue component runner
  * here, see `vitest.config.ts`), and the exact strings are the thing worth
  * pinning.
+ *
+ * App-level rather than Commerce's own since #240: `/shop` lists
+ * Registration's types beside Commerce's products and both must print the
+ * same end price with the same label, and a module reaching into another
+ * module's `resources/js` by relative path is the one coupling
+ * `.ai/rules/resources.md` names outright. This is shared purchase-path UI,
+ * so it lives where shared UI lives — beside `datetime.ts`, which crossed
+ * the same line for the same reason.
  */
 
 /** §312j (3) BGB: the label of the button that concludes the contract. */
@@ -24,8 +32,22 @@ export const ORDER_WITH_OBLIGATION_TO_PAY = 'Order with obligation to pay';
  * PAngV: a consumer price is the end price, and it has to say so. The
  * `net` case is the B2B display a brand may choose for its own audience,
  * where the net amount is the honest one and the label says which it is.
+ *
+ * `includesTax` is false where the operator elected the §19 UStG
+ * small-business scheme (ADR-0030): the calculator then puts no VAT on any
+ * line, gross equals net, and both "incl. VAT" and "excl. VAT" claim a tax
+ * that does not exist — §19 (1) sentence 4 UStG in fact requires the
+ * absence to be stated. Defaults to true so a surface that has not been
+ * told keeps its current wording (branch review finding 12).
  */
-export function taxNote(priceDisplay: 'gross' | 'net'): string {
+export function taxNote(
+    priceDisplay: 'gross' | 'net',
+    includesTax = true,
+): string {
+    if (!includesTax) {
+        return 'no VAT (§ 19 UStG)';
+    }
+
     return priceDisplay === 'gross' ? 'incl. VAT' : 'excl. VAT';
 }
 

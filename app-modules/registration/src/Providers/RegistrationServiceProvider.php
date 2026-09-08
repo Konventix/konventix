@@ -18,9 +18,11 @@ use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Events\PaymentReversed;
 use Konventix\Commerce\Events\RegistrationLinePlacedInCart;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
+use Konventix\Event\Events\EventPublished;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -58,6 +60,7 @@ use Konventix\Registration\Listeners\RecordPaymentOnOrderLineSettled;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
 use Konventix\Registration\Listeners\RecordReversalOnOrderLineReversed;
 use Konventix\Registration\Listeners\RecordReversalOnPaymentReversed;
+use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
 
 /**
@@ -157,6 +160,14 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
         Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
         Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleArchived']);
+        // #240: `/shop` lists offers across every event, so the projection
+        // has to know which events are public — `event.landing` gets that
+        // from `Event::isVisibleOnLanding()`, which Registration may not
+        // read. Both transitions out of `Draft`, and no listener for
+        // `EventUnpublished`: unpublishing returns the event to `Announced`,
+        // where the landing page still sells it (re-review N3).
+        Event::listen(EventAnnounced::class, [ProjectEventSummary::class, 'handleAnnounced']);
+        Event::listen(EventPublished::class, [ProjectEventSummary::class, 'handlePublished']);
 
         // ADR-0048 point 3: the module that owns an event owns its mail —
         // Registration's own lifecycle, told to the registrant every time
@@ -622,6 +633,74 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     ->map(fn (RegistrationType $type): array => PublicOfferData::ofType($type)->toArray())
                     ->all(),
             ],
+            order: 10,
+        );
+
+        // The shop's brand-wide counterpart (GitLab #240). `/shop` lists
+        // what a brand sells with no event in the address, and until this
+        // it listed goods only — a visitor who landed there saw the
+        // merchandise and no way to register for anything, though ADR-0047
+        // point 3 has a registration join the same cart.
+        //
+        // The same window rule as the landing slot, deliberately: one
+        // module, one answer to "may this be bought now". The event's name
+        // travels with each offer because "Weekend Ticket" on its own does
+        // not say what it is a ticket to, and it comes from this module's
+        // own `EventSummary` projection (ADR-0004).
+        //
+        // Unlike `event.landing`, this one needs its own visibility gate:
+        // that slot cannot run for a hidden event at all, because
+        // `EventLandingController` 404s on `Event::isVisibleOnLanding()`
+        // long before it. `/shop` is addressed by no event, so it carries
+        // the whole rule itself — and the rule a *listing* owes is the
+        // stricter `Event::scopeListedPublicly()`: out of `Draft`
+        // (`public_since`), `Public` rather than `Unlisted` (`visibility`),
+        // and not archived. Each of the three was a real leak: next year's
+        // unannounced convention, an invite-only track, last year's
+        // edition.
+        $slots->add(
+            slot: 'shop.index',
+            module: 'registration',
+            component: 'registration/ShopOffers',
+            props: static function (array $context): array {
+                // One bounded read of the projection, and the *positive*
+                // form of the filter (review finding 2): a subquery over
+                // the summaries that are public and unarchived, rather than
+                // a full-table read inlined as a growing literal
+                // `NOT IN (…)`. It is also the only shape that can express
+                // finding 1 — an event this module cannot name, or cannot
+                // confirm is public, is exactly the one `/shop` must not
+                // advertise.
+                $listable = EventSummary::query()
+                    ->whereNotNull('public_since')
+                    // Blocker 2: a listing surface owes
+                    // `Event::scopeListedPublicly()`, not
+                    // `isVisibleOnLanding()`. An `Unlisted` event is
+                    // reachable by its own link and never enumerated — an
+                    // invite-only track had its name, its ticket names and
+                    // its prices on `/shop` until this line.
+                    ->where('visibility', EventSummary::VISIBILITY_PUBLIC)
+                    ->whereNull('archived_at');
+
+                $eventNames = (clone $listable)->pluck('name', 'event_id');
+
+                return [
+                    'offers' => RegistrationType::query()
+                        ->where('visibility', RegistrationVisibility::Public)
+                        ->whereIn('event_id', (clone $listable)->select('event_id'))
+                        ->saleNotOver()
+                        ->orderBy('name')
+                        ->get()
+                        ->map(fn (RegistrationType $type): array => PublicOfferData::ofType(
+                            $type,
+                            // Never null here: the subquery above already
+                            // dropped every type whose event has no listable
+                            // summary (review finding 3).
+                            (string) $eventNames->get($type->event_id),
+                        )->toArray())
+                        ->all(),
+                ];
+            },
             order: 10,
         );
     }

@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { AlertTriangle, Plus } from '@lucide/vue';
+import { Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
-import { computed, h, ref, watch } from 'vue';
+import { computed, h, onMounted, ref, watch } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
 import InputError from '@/components/InputError.vue';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -26,6 +25,7 @@ import {
     index as policiesIndex,
     store as storePolicy,
 } from '@/routes/admin/policies';
+import CheckoutLegalTextGapNotice from '../../../components/CheckoutLegalTextGapNotice.vue';
 
 /**
  * Every brand's legal documents in one list. The column that matters is
@@ -69,13 +69,14 @@ const props = defineProps<{
     checkoutRoles: CheckoutRole[];
     /** Brands the checkout currently resolves nothing for (#200). */
     checkoutGaps: CheckoutGap[];
+    /**
+     * The slug and brand a `?create=` link arrived with (#222): the warning
+     * elsewhere in the console links straight into this page's create
+     * dialog, prefilled, so nobody retypes the slug that caused the gap.
+     */
+    createIntent: { slug: string; brandId: string | null } | null;
     filters: DataTableFilters;
 }>();
-
-/** The name of a checkout role by slug, for the gap list's wording. */
-function checkoutRoleName(slug: string): string {
-    return props.checkoutRoles.find((role) => role.slug === slug)?.name ?? slug;
-}
 
 const { filters, setSearch, toggleSort, setPerPage, setPage } = useDataTable(
     () => policiesIndex().url,
@@ -259,6 +260,23 @@ watch(checkoutRoleChoice, (slug) => {
     slugTouched.value = true;
 });
 
+/**
+ * Open the create dialog on a named role for a named brand (#222) — from
+ * the warning's own buttons, and from a `?create=` link that arrived from
+ * another console page.
+ */
+function startCreating(slug: string, brandId: string | null): void {
+    checkoutRoleChoice.value = slug;
+    form.brand_id = brandId ?? props.brands[0]?.id ?? '';
+    open.value = true;
+}
+
+onMounted(() => {
+    if (props.createIntent !== null) {
+        startCreating(props.createIntent.slug, props.createIntent.brandId);
+    }
+});
+
 function submit(): void {
     form.post(storePolicy().url, {
         onSuccess: () => {
@@ -281,42 +299,36 @@ function submit(): void {
         />
 
         <!--
-            #200: `CheckoutLegalTexts::SLUGS` decides which texts a checkout
-            asks for. A brand it resolves nothing under sells with no
-            consent control at all, and nothing said so before this.
+            #200/#222: `CheckoutLegalTexts::SLUGS` decides which texts a
+            checkout asks for. A brand it resolves nothing under sells with
+            no consent control at all. The buttons open this page's own
+            create dialog rather than linking back to it.
         -->
-        <Alert v-if="props.checkoutGaps.length > 0" variant="destructive">
-            <AlertTriangle class="size-4" />
-            <AlertTitle>
-                The checkout resolves no legal text for
-                {{ props.checkoutGaps.length }}
-                brand<span v-if="props.checkoutGaps.length !== 1">s</span>
-            </AlertTitle>
-            <AlertDescription>
-                <p>
-                    A brand with no
-                    <code>terms</code> or <code>withdrawal</code> text takes
-                    orders without asking for any agreement. Publish one under
-                    that exact slug, or leave the operator-wide text in place by
-                    removing the brand's own policy under it.
-                </p>
-                <ul class="mt-2 flex flex-col gap-1">
-                    <li
-                        v-for="gap in props.checkoutGaps"
-                        :key="gap.brandId"
-                        class="text-sm"
+        <CheckoutLegalTextGapNotice
+            :gaps="props.checkoutGaps"
+            :roles="props.checkoutRoles"
+        >
+            <template #actions="{ gap }">
+                <span class="mt-1 flex flex-wrap gap-2">
+                    <Button
+                        v-for="slug in gap.missingSlugs"
+                        :key="slug"
+                        size="sm"
+                        variant="outline"
+                        @click="startCreating(slug, gap.brandId)"
                     >
-                        <span class="font-medium">{{ gap.brandName }}</span> —
-                        missing
+                        <Plus class="size-4" />
+                        Create
                         {{
-                            gap.missingSlugs
-                                .map((slug) => checkoutRoleName(slug))
-                                .join(', ')
+                            props.checkoutRoles.find(
+                                (role) => role.slug === slug,
+                            )?.name ?? slug
                         }}
-                    </li>
-                </ul>
-            </AlertDescription>
-        </Alert>
+                        for {{ gap.brandName }}
+                    </Button>
+                </span>
+            </template>
+        </CheckoutLegalTextGapNotice>
 
         <DataTableToolbar
             :search="filters.search ?? ''"

@@ -6,10 +6,12 @@ namespace Konventix\Registration\Mail;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
+use Konventix\Messaging\Actions\ResolveBrandTimezone;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Registration;
@@ -33,6 +35,10 @@ final class RegistrationMailer
     public function __construct(
         private readonly SendMessage $sendMessage,
         private readonly BrandUrl $brandUrl,
+        // One instance per class, not one per formatted value: the service
+        // memoises the operator's chosen formats (review finding 6).
+        private readonly OperatorDateTimeFormat $dates,
+        private readonly ResolveBrandTimezone $brandTimezone,
     ) {}
 
     public function send(Registration $registration, string $templateKey, Data $payload): void
@@ -102,16 +108,17 @@ final class RegistrationMailer
      * guards: Commerce's routes are behind the shop feature, and a mail
      * must not fail to render because a brand has it off.
      *
-     * The deadline names its zone. There is no per-operator timezone in
-     * the platform yet, so the value is `config('app.timezone')` — printing
-     * "00:30" with no zone would repeat exactly the mistake B5 found on the
-     * policy page.
+     * The deadline is rendered on the brand's own clock and names the zone
+     * it is on (`ResolveBrandTimezone`, #131/#5) — printing "00:30" with no
+     * zone, or on the deployment's UTC, would repeat exactly the mistake B5
+     * found on the policy page.
      *
      * @return array{cartUrl: ?string, cartHoldExpiresAt: ?string}
      */
     public function cartFields(Registration $registration): array
     {
         $holdExpiresAt = $registration->cart_hold_expires_at;
+        $zone = $this->brandTimezone->handle($registration->brand_id);
 
         if (
             $registration->payment_status === PaymentStatus::Paid
@@ -124,7 +131,7 @@ final class RegistrationMailer
 
         return [
             'cartUrl' => $this->brandAbsolute($registration, route('commerce.cart.show', absolute: false)),
-            'cartHoldExpiresAt' => $holdExpiresAt->format('d.m.Y H:i T'),
+            'cartHoldExpiresAt' => $this->dates->dateTime($holdExpiresAt, $zone).' '.$holdExpiresAt->copy()->setTimezone($zone)->format('T'),
         ];
     }
 

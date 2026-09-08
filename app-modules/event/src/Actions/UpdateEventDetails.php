@@ -48,6 +48,7 @@ final class UpdateEventDetails
                 brandId: $event->brand_id,
                 slug: $event->slug,
                 name: $event->name,
+                visibility: $event->visibility->value,
             ));
 
             if ($rescheduled) {

@@ -59,6 +59,7 @@ final class CreateEvent
                 endsAt: $event->ends_at->format('Y-m-d H:i:s'),
                 timezone: $event->timezone,
                 predecessorEventId: $event->predecessor_event_id,
+                visibility: $event->visibility->value,
             ));
 
             // Emitted at creation, not only on change: a consumer that hears

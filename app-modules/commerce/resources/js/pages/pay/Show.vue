@@ -11,13 +11,14 @@ import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
-import { start as startCheckout } from '@/routes/commerce/pay';
 import {
     ORDER_WITH_OBLIGATION_TO_PAY,
     fulfilmentNote,
     taxNote,
-} from '../../lib/purchaseTexts';
+} from '@/lib/purchaseTexts';
+import { start as startCheckout } from '@/routes/commerce/pay';
 
 /**
  * Public checkout for an `instant`-settled registration (ADR-0039). This
@@ -89,9 +90,7 @@ const canPay = computed(
  * page states the deadline once and says what happens at it.
  */
 const holdUntilLabel = computed(() =>
-    props.holdUntil === null
-        ? null
-        : new Date(props.holdUntil).toLocaleString(),
+    props.holdUntil === null ? null : formatDateTime(props.holdUntil),
 );
 
 // The id of the account currently starting a checkout — only that
@@ -171,7 +170,10 @@ const lastAttemptFailed = computed(
             <RotateCcw class="size-5" />
             <span>
                 Payment reversed — owed again<template v-if="props.repayDueOn">
-                    until {{ props.repayDueOn }}</template
+                    until
+                    <time :datetime="props.repayDueOn">{{
+                        formatCalendarDate(props.repayDueOn)
+                    }}</time></template
                 >.
             </span>
         </div>

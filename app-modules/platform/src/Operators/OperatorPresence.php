@@ -12,9 +12,9 @@ use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Models\Brand;
 
 /**
- * The operator behind the brand this host serves, and its other brands
- * (#184, ADR-0054) — what the auth pages need in order to say whose account
- * is being created or used.
+ * The brand this host serves, the operator behind it, and its other brands
+ * (#184, #241, ADR-0054) — what the auth pages need in order to say whose
+ * account is being created or used, and where.
  *
  * Null off a brand host. The operator console resolves no brand (ADR-0029)
  * and introduces nobody; sharing this there would also mean picking an
@@ -77,6 +77,9 @@ final class OperatorPresence
         return new OperatorPresenceData(
             name: $operator->name,
             legalName: $operator->legal_name,
+            // The brand the visitor is actually standing on, named beside
+            // the operator rather than only flagged inside `brands` (#241).
+            brandName: $brand->name,
             brands: array_values($brands
                 ->map(fn (Brand $sibling): OperatorBrandLinkData => new OperatorBrandLinkData(
                     id: (string) $sibling->getKey(),

@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Commerce\Actions\Concerns\AsksThePspBeforeCancelling;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Settlement\HostedPaymentProbe;
 use Konventix\Commerce\Settlement\PaymentWindow;
 
 /**
@@ -69,10 +71,15 @@ use Konventix\Commerce\Settlement\PaymentWindow;
  * order is never selected here, so there is no document to correct
  * (ADR-0031).
  *
- * A late payment against an order this sweep cancelled behaves exactly as
- * it does after the cart sweep (#6): `RecordPaymentSuccess` refuses to
- * settle a cancelled order and records `PaymentUnapplied` (ADR-0057 point
- * 9) so the operator sees the money and decides.
+ * **The provider is asked before an order with an open hosted payment is
+ * cancelled (#231)**, exactly as in `ExpireCarts`: money at the PSP is
+ * booked through `RecordPaymentSuccess` rather than cancelled, and a
+ * provider that cannot answer keeps its order until the next run.
+ *
+ * A late payment against an order this sweep cancelled anyway behaves
+ * exactly as it does after the cart sweep (#6): `RecordPaymentSuccess`
+ * refuses to settle a cancelled order and records `PaymentUnapplied`
+ * (ADR-0057 point 9) so the operator sees the money and decides.
  *
  * One transaction per order so one bad row never blocks the rest, and
  * every read escapes BrandScope explicitly (ADR-0010): this runs from a
@@ -82,6 +89,8 @@ use Konventix\Commerce\Settlement\PaymentWindow;
  */
 final class ExpireRegistrationOrders
 {
+    use AsksThePspBeforeCancelling;
+
     /**
      * The reason code `OrderCancelled` carries. Registration keys its
      * cancellation listeners on the reason, so this string is contract.
@@ -96,7 +105,11 @@ final class ExpireRegistrationOrders
 
     private const string SETTLES_REGISTRATION = 'registration';
 
-    public function __construct(private readonly PaymentWindow $paymentWindow) {}
+    public function __construct(
+        private readonly PaymentWindow $paymentWindow,
+        private readonly HostedPaymentProbe $probe,
+        private readonly RecordPaymentSuccess $recordSuccess,
+    ) {}
 
     /**
      * @return int the number of orders cancelled
@@ -104,6 +117,10 @@ final class ExpireRegistrationOrders
     public function handle(?string $brandId = null): int
     {
         $cancelled = 0;
+
+        // Opens the run's provider-call budget (#231): a slow PSP must not
+        // turn one scheduled command into hundreds of sequential calls.
+        $this->startSweepRun();
 
         // Resolved once, ahead of the query, and applied *in SQL* (fix round
         // 2, whole-branch review finding 4). Filtering this in PHP meant a
@@ -140,6 +157,15 @@ final class ExpireRegistrationOrders
         }
 
         foreach ($query->cursor() as $order) {
+            // #231, the same question `ExpireCarts` asks: a hosted session
+            // may have been paid without its webhook ever arriving, and a
+            // sweep that cancels without asking cancels a paid order. Asked
+            // outside the transaction — a network call must not be made
+            // while a row lock is held.
+            if (! $this->providerSaysThisOrderMayBeCancelled($order, 'Registration-order sweep')) {
+                continue;
+            }
+
             $handled = DB::transaction(function () use ($order): bool {
                 $locked = Order::withoutBrandScope()
                     ->whereKey($order->id)
@@ -172,6 +198,10 @@ final class ExpireRegistrationOrders
 
             if ($handled) {
                 $cancelled++;
+
+                // The valve's operator notice, once the cancellation is
+                // committed and not before (fix round 3, review F-4).
+                $this->reportCancellation($order, 'Registration-order sweep');
             }
         }
 

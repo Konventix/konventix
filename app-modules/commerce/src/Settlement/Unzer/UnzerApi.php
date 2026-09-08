@@ -31,7 +31,11 @@ interface UnzerApi
      */
     public function fetchPayment(string $paymentId, string $privateKey): UnzerPaymentSnapshot;
 
-    public function refundPayment(string $paymentId, float $amount, string $privateKey): void;
+    /**
+     * Returns Unzer's own identifier for the cancellation, which the
+     * reversal row records (#247).
+     */
+    public function refundPayment(string $paymentId, float $amount, string $privateKey): string;
 
     /**
      * Registers `$url` as the account's notification endpoint for all

@@ -38,6 +38,11 @@ class ProfileController
                 'statusEmoji' => $user->status_emoji,
                 'socialLinks' => $user->social_links ?? (object) [],
                 'visibility' => $user->profile_visibility->value,
+                // The zone every system timestamp is shown in (#243), or
+                // null for an account that has never chosen one — which the
+                // select offers as "Browser (…)" and the helper answers with
+                // the reader's own browser zone.
+                'timezone' => $user->timezone,
             ],
             'membershipImages' => $this->membershipImages($user, $media),
             'steamAvatarUrl' => $this->steamAvatarUrl($user),
@@ -93,6 +98,7 @@ class ProfileController
             'status_emoji' => $data->statusEmoji !== '' ? $data->statusEmoji : null,
             'social_links' => array_filter($data->socialLinks ?? []) ?: null,
             'profile_visibility' => ProfileVisibility::from($data->visibility),
+            'timezone' => $data->timezone === '' ? null : $data->timezone,
         ]);
 
         if ($request->user()->isDirty('email')) {

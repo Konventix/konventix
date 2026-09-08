@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
-import { formatDateTime } from '@/lib/datetime';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { document as creditNoteDocument } from '@/routes/admin/credit-notes';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
 import { bookPayment, cancelReversed, refund } from '@/routes/admin/orders';
@@ -202,6 +202,22 @@ const refundReasons = Object.entries(refundReasonLabels).map(
     }),
 );
 
+/**
+ * Two orders can be refunded (#6, ADR-0057 point 9): a paid one, and a
+ * cancelled one still holding money nobody could apply — the PSP success
+ * that landed after a sweep had already called the order off. The second is
+ * `RefundOrder`'s provider leg without a credit note: the money goes back
+ * through the account it came from, the order stays cancelled, and no
+ * document is written, because a cancelled order has none to correct.
+ *
+ * Until this the console could only *show* that money and send the operator
+ * to the provider's dashboard, which is the manual step the issue was filed
+ * about.
+ */
+const canRefund = computed(
+    () => props.order.status === 'paid' || props.unappliedPayment !== null,
+);
+
 const refundOpen = ref(false);
 
 /**
@@ -301,12 +317,16 @@ function returnFocusAfterRefund(): void {
                 Book bank transfer
             </Button>
             <Button
-                v-if="order.status === 'paid'"
+                v-if="canRefund"
                 variant="outline"
                 @click="refundOpen = true"
             >
                 <Undo2 class="size-4 text-danger" />
-                Refund whole order
+                {{
+                    unappliedPayment
+                        ? 'Refund unapplied payment'
+                        : 'Refund whole order'
+                }}
             </Button>
             <Button
                 v-if="order.status === 'payment_reversed'"
@@ -338,7 +358,11 @@ function returnFocusAfterRefund(): void {
         >
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Refund whole order</DialogTitle>
+                    <DialogTitle>{{
+                        unappliedPayment
+                            ? 'Refund unapplied payment'
+                            : 'Refund whole order'
+                    }}</DialogTitle>
                     <DialogDescription>
                         Return the full {{ order.totalGross }}
                         {{ order.currency }} through the account that took it.
@@ -448,8 +472,9 @@ function returnFocusAfterRefund(): void {
                     formatDateTime(unappliedPayment.receivedAt) ||
                     'at an unknown time'
                 }}, and this order is not paid. The money moved; what happens to
-                it is yours to decide — refunding it goes through the payment's
-                own account in the provider's dashboard.
+                it is yours to decide — "Refund unapplied payment" sends it back
+                through the account it came from, without a credit note, since a
+                cancelled order has no document to correct.
                 <span
                     v-if="unappliedPayment.externalId"
                     class="font-mono text-xs"
@@ -575,11 +600,11 @@ function returnFocusAfterRefund(): void {
                             <dl class="grid grid-cols-2 gap-1 text-text-muted">
                                 <dt>Issued</dt>
                                 <dd class="text-right text-text">
-                                    {{ invoice.issuedOn }}
+                                    {{ formatCalendarDate(invoice.issuedOn) }}
                                 </dd>
                                 <dt>Due</dt>
                                 <dd class="text-right text-text">
-                                    {{ invoice.dueOn }}
+                                    {{ formatCalendarDate(invoice.dueOn) }}
                                 </dd>
                                 <dt>Amount</dt>
                                 <dd class="text-right text-text">
@@ -634,7 +659,8 @@ function returnFocusAfterRefund(): void {
                             <div>
                                 <p class="font-medium">{{ note.number }}</p>
                                 <p class="text-xs text-text-muted">
-                                    {{ note.reasonCode }} · {{ note.issuedOn }}
+                                    {{ note.reasonCode }} ·
+                                    {{ formatCalendarDate(note.issuedOn) }}
                                 </p>
                             </div>
                             <div class="flex items-center gap-2">
@@ -835,7 +861,11 @@ function returnFocusAfterRefund(): void {
                                     {{ reversal.reasonCode ?? '—' }}
                                 </td>
                                 <td class="p-3 text-text-muted">
-                                    {{ reversal.repayDueOn ?? '—' }}
+                                    {{
+                                        formatCalendarDate(
+                                            reversal.repayDueOn,
+                                        ) || '—'
+                                    }}
                                 </td>
                                 <td class="p-3 text-text-muted">
                                     {{

@@ -60,8 +60,8 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 
 | Event | Emitted when | Payload | Status |
 |---|---|---|---|
-| `EventCreated` | An event is created under a brand | `event_id`, `brand_id`, `slug`, `name`, `starts_at`, `ends_at`, `timezone`, `predecessor_event_id` | implemented |
-| `EventDetailsUpdated` | Name, slug or description changes | `event_id`, `brand_id`, `slug`, `name` | implemented |
+| `EventCreated` | An event is created under a brand | `event_id`, `brand_id`, `slug`, `name`, `starts_at`, `ends_at`, `timezone`, `predecessor_event_id`, `visibility` | implemented |
+| `EventDetailsUpdated` | Name, slug, description or visibility changes | `event_id`, `brand_id`, `slug`, `name`, `visibility` | implemented |
 | `EventAnnounced` | Draft → Announced: teased, not yet fully published | `event_id`, `brand_id`, `announced_at` | implemented |
 | `EventPublished` | The event becomes publicly visible | `event_id`, `brand_id`, `published_at` | implemented |
 | `EventUnpublished` | The event is withdrawn from public view | `event_id`, `brand_id` | implemented |

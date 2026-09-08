@@ -28,7 +28,13 @@ it('opens an export request, sets the statutory 30-day deadline, and emits DataE
 
     expect($request->type)->toBe(DataSubjectRequestType::Export)
         ->and($request->state)->toBe(DataSubjectRequestState::Received)
-        ->and($request->created_at->diffInDays($request->deadline_at))->toBe(30.0);
+        // Art. 12(3) gives a month, and a month is a day rather than a
+        // moment: the deadline is the end of the thirtieth day, so that the
+        // console, the public page and the escalation mail cannot name three
+        // different dates for it (branch review finding 16).
+        ->and($request->created_at->toDateString())
+        ->toBe($request->deadline_at->copy()->subDays(30)->toDateString())
+        ->and($request->deadline_at->format('H:i:s'))->toBe('23:59:59');
 
     Event::assertDispatched(
         DataExportRequested::class,

@@ -41,7 +41,10 @@ return new class extends Migration
 
             $table->string('provider', 32);
 
-            // return | dispute | external_refund — ReversalKind.
+            // return | dispute | external_refund | refund — ReversalKind.
+            // `refund` (#247) is our own console refund, recorded for the
+            // provider's reference; the column is a plain string, so the
+            // value needed no migration of its own.
             $table->string('kind', 32);
 
             // open | final | withdrawn — ReversalStatus.

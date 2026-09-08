@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Settlement\Mollie;
 
+use Illuminate\Support\Facades\Log;
+use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\Order;
@@ -16,6 +18,7 @@ use LogicException;
 use Mollie\Api\Exceptions\ApiException as MollieApiException;
 use Mollie\Api\Exceptions\MollieException;
 use RuntimeException;
+use Throwable;
 
 /**
  * Mollie, per ADR-0039: hosted payment page against the brand's own API key
@@ -80,12 +83,55 @@ final class MollieSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         return new CheckoutRedirect(paymentId: $payment->id, url: $created->checkoutUrl);
     }
 
+    /**
+     * #231: the sweep asks before it cancels. `paid` is the same status
+     * `MollieWebhookController` settles on. `open`, `failed`, `canceled`
+     * and `expired` are decided against the money; `pending` and
+     * `authorized` are money still on its way, which is not a reason to
+     * cancel and not a settlement either — the next sweep asks again.
+     *
+     * Every failure is `Unreachable` rather than `NotPaid`: a rejected key
+     * or an unreachable Mollie means "we do not know", and not knowing must
+     * not cancel an order somebody paid for. Money Mollie says is still on
+     * its way is `InFlight`, which the sweep holds for a fortnight rather
+     * than a day (fix round 2, review NEW-2).
+     */
+    public function hostedPaymentState(Payment $payment): HostedPaymentState
+    {
+        $account = $payment->settlement_account_id === null
+            ? null
+            : SettlementAccount::withoutBrandScope()->find($payment->settlement_account_id);
+
+        if ($payment->external_id === null || $payment->external_id === '' || $account === null) {
+            return HostedPaymentState::Unanswerable;
+        }
+
+        try {
+            $snapshot = $this->mollie->fetchPayment($payment->external_id, $this->apiKeyOf($account));
+        } catch (Throwable $e) {
+            Log::warning('Mollie could not be asked whether a pending hosted payment was paid (#231).', [
+                'payment_id' => $payment->id,
+                'order_id' => $payment->order_id,
+                'external_id' => $payment->external_id,
+                'reason' => $e->getMessage(),
+            ]);
+
+            return HostedPaymentState::Unreachable;
+        }
+
+        return match ($snapshot->status) {
+            'paid' => HostedPaymentState::Paid,
+            'pending', 'authorized' => HostedPaymentState::InFlight,
+            default => HostedPaymentState::NotPaid,
+        };
+    }
+
     public function refund(
         string $accountId,
         Order $order,
         string $amount,
         string $currency,
-    ): void {
+    ): string {
         $payment = Payment::withoutBrandScope()
             ->where('order_id', $order->id)
             ->where('provider', SettlementAccount::PROVIDER_MOLLIE)
@@ -107,7 +153,8 @@ final class MollieSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         // `Exception`, so an unrefundable payment used to reach the console
         // as a 500 rather than as Mollie's own sentence in the form.
         try {
-            $this->mollie->refundPayment($payment->external_id, [
+            // Mollie's own `re_…`, carried back for the reversal row (#247).
+            return $this->mollie->refundPayment($payment->external_id, [
                 'amount' => [
                     'currency' => $currency,
                     'value' => $amount,

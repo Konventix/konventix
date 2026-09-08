@@ -203,3 +203,43 @@ it('carries no landing-card slot when the feature is off', function (): void {
     $this->get('/events/'.$event->slug)
         ->assertInertia(fn (AssertableInertia $page) => expect(shopLandingSlot($page))->toBeNull());
 });
+
+/**
+ * GitLab #240: the shop is a page other modules contribute to, not a
+ * product list. Registration hangs its own types off `shop.index` — the
+ * same direction Commerce contributes `ShopLandingCard` to Event's landing
+ * page — so this page must carry the slot bag whether or not anything is
+ * in it, and Commerce never learns what is (ADR-0004).
+ */
+it('carries the shop.index slot bag for other modules to hang offers off', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('shop/Index')
+            ->has('slots'));
+});
+
+/**
+ * ADR-0030 / branch review finding 12: under the operator's §19 election the
+ * calculator puts no VAT on any line, so the card may not label the amount
+ * "incl. VAT". The page is told which case it is in; the wording itself is
+ * `purchaseTexts::taxNote()`'s, pinned in its own unit test.
+ */
+it('tells the shop pages whether the price contains any VAT at all', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $product = Product::factory()->published()->create(['name' => 'Event T-Shirt']);
+    ProductVariant::factory()->create(['product_id' => $product->getKey()]);
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('smallBusinessScheme', false));
+
+    $this->get('/shop/'.$product->slug)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('smallBusinessScheme', false));
+});

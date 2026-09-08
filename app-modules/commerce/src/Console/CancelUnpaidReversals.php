@@ -39,9 +39,13 @@ use Throwable;
  * **An order whose admission was already used is never cancelled.** Someone
  * attended, and what they owe is a receivable, not a cancellation: the
  * invoice's `overdue_at` is set to the deadline it missed and the ordinary
- * dunning ladder (`RunDunningSweep`) takes it from there. `overdue_at` is
- * written only where it is still null — `RaiseDunningLevel` treats it as
- * "when this first went overdue" and emits `InvoiceOverdue` once off it.
+ * dunning ladder (`RunDunningSweep`) takes it from there — and it is set
+ * *whatever stood there before* (#196). An invoice-settled order that was
+ * already overdue once, then paid online, then charged back, carries the
+ * old date: leaving it would have `RaiseDunningLevel`'s second arm count
+ * from a deadline weeks past and mail a high Mahnstufe the morning after
+ * the reversal mail promised a fresh seven days. The column has two authors
+ * and the reversal is the later fact, so the reversal wins.
  *
  * `external_refund` is excluded: it is not a receivable at all. The
  * operator refunded in the provider's dashboard, `RecordPaymentReversal`
@@ -159,13 +163,27 @@ final class CancelUnpaidReversals extends Command
      * not as of today: the days-overdue thresholds
      * (`RaiseDunningLevel::LEVEL_THRESHOLDS`) should count from when the
      * money was due back.
+     *
+     * **Written over whatever stood there (#196.)** `overdue_at` has two
+     * authors — this sweep and `RaiseDunningLevel`, which stamps `now()` the
+     * first time it finds an invoice past its due date — and picking the
+     * invoice only `whereNull('overdue_at')` meant an order that had already
+     * been dunned before it was paid online kept that first date. The payer
+     * then held a reversal mail promising seven days while the next morning's
+     * sweep counted them as long overdue and raised the ladder. The
+     * repayment deadline is the later fact about the same debt, so it wins;
+     * re-running the sweep writes the same `repay_due_on` again, which is why
+     * overwriting stays idempotent.
+     *
+     * The ladder goes back to zero with it (review nit 9): a fresh deadline
+     * that resumed at the old level would skip its own first reminder and
+     * open with the step the previous, unrelated overdue period had reached.
      */
     private function handToDunning(Order $order, PaymentReversal $reversal): void
     {
         $invoice = Invoice::withoutBrandScope()
             ->where('brand_id', $order->brand_id)
             ->where('order_id', $order->id)
-            ->whereNull('overdue_at')
             ->latest('issued_on')
             ->first();
 
@@ -173,7 +191,18 @@ final class CancelUnpaidReversals extends Command
             return;
         }
 
-        $invoice->forceFill(['overdue_at' => $reversal->repay_due_on])->save();
+        // The level goes back with the date (fix round 1, review nit 9). The
+        // payer holds a mail promising a fresh window; resuming the ladder at
+        // the step the *old* overdue date had reached would skip the first,
+        // gentlest reminder of the new one and open with a Mahnung.
+        // `overdue_at` stays non-null throughout, so `InvoiceOverdue` is
+        // still emitted once per invoice and this is not a second "went
+        // overdue" announcement.
+        $invoice->forceFill([
+            'overdue_at' => $reversal->repay_due_on,
+            'dunning_level' => 0,
+            'dunning_raised_at' => null,
+        ])->save();
 
         Log::info('Unpaid reversal left as a receivable: the admission was already used (ADR-0057 point 4).', [
             'order_id' => $order->id,

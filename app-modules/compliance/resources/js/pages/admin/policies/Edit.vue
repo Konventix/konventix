@@ -3,6 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Plus } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import DateTimeField from '@/components/datetime/DateTimeField.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,6 +36,7 @@ import {
     store as storeVersion,
     update as updateVersion,
 } from '@/routes/admin/policy-versions';
+import CheckoutLegalTextGapNotice from '../../../components/CheckoutLegalTextGapNotice.vue';
 import { toInstant, versionFormValues } from './versionForm';
 
 /**
@@ -71,6 +73,11 @@ type Props = {
      */
     checkoutRole: Konventix.Compliance.Data.CheckoutLegalTextRoleData | null;
     checkoutRoles: Konventix.Compliance.Data.CheckoutLegalTextRoleData[];
+    /**
+     * Brands whose checkout resolves neither text (#222) — this policy's
+     * own brand, or every brand for an operator-wide text.
+     */
+    checkoutGaps: Konventix.Compliance.Data.CheckoutLegalTextGapData[];
     versions: VersionRow[];
     selected:
         | (Konventix.Compliance.Data.PolicyVersionData & {
@@ -215,6 +222,18 @@ function openVersion(id: string): void {
             </Button>
         </AdminPageHeader>
 
+        <!--
+            #222: the warning follows the operator onto the page they fix it
+            on. It links back to the list's create dialog, because the text
+            this editor is open on is rarely the missing one — a brand
+            editing its AGB is usually the brand with no Widerrufsbelehrung.
+        -->
+        <CheckoutLegalTextGapNotice
+            :gaps="props.checkoutGaps"
+            :roles="props.checkoutRoles"
+            :policies-url="policiesIndex().url"
+        />
+
         <div class="grid gap-6 lg:grid-cols-3">
             <div class="flex flex-col gap-6 lg:col-span-2">
                 <Card>
@@ -263,22 +282,14 @@ function openVersion(id: string): void {
                                         :message="versionForm.errors.version"
                                     />
                                 </div>
-                                <div class="grid gap-2">
-                                    <Label for="version-effective">
-                                        Effective from
-                                    </Label>
-                                    <Input
-                                        id="version-effective"
-                                        v-model="versionForm.effectiveAt"
-                                        type="datetime-local"
-                                        :disabled="!props.selected.editable"
-                                    />
-                                    <InputError
-                                        :message="
-                                            versionForm.errors.effectiveAt
-                                        "
-                                    />
-                                </div>
+                                <DateTimeField
+                                    id="version-effective"
+                                    v-model="versionForm.effectiveAt"
+                                    label="Effective from"
+                                    hint="Before this moment the public page answers 404."
+                                    :disabled="!props.selected.editable"
+                                    :error="versionForm.errors.effectiveAt"
+                                />
                             </div>
 
                             <div class="flex items-center gap-2">

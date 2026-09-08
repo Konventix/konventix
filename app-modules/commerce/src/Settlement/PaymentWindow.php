@@ -27,8 +27,12 @@ use Konventix\Commerce\Models\SettlementAccount;
  * Two kinds of order, two sources for the same fact:
  *
  * - a **cart** order's window is its checked-out cart's `expires_at`, set
- *   when the payer was sent to the PSP and never renewed by a retry
- *   (ADR-0047 point 4, `ExpireCarts`). Read whatever the order's status is
+ *   when the payer was sent to the PSP — and **renewed by a retry**:
+ *   `PlaceOrderFromCart` reuses a checked-out cart's still-pending order
+ *   and pushes `expires_at` a fresh grace forward every time the payer
+ *   starts another attempt, so the deadline this class states is always the
+ *   current attempt's (ADR-0047 point 4, `ExpireCarts`, finding 5 — the
+ *   docblock here used to claim the opposite). Read whatever the order's status is
  *   — the pay pages check the status separately and a reversed order's
  *   revived receivable must not be refused for a cart that expired long
  *   ago.

@@ -24,7 +24,9 @@ final class UpdateUserAccount
                 'name' => $data->name,
                 'email' => $data->email,
                 'locale' => $data->locale,
-                'timezone' => $data->timezone,
+                // Empty means "no zone of their own" (#243), not an empty
+                // string an `Intl` call would then throw on.
+                'timezone' => $data->timezone === '' ? null : $data->timezone,
             ]);
 
             if ($user->isDirty('email')) {

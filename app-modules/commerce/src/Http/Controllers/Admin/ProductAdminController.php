@@ -69,7 +69,9 @@ class ProductAdminController
                 unitAmountNet: $product->unit_amount_net,
                 priceDisplay: $product->price_display,
                 published: $product->published_at !== null,
-                updatedAt: $product->updated_at?->toDateTimeString(),
+                // ISO 8601 with the offset (#243): the table renders it in the
+                // reader's own zone and the operator's format.
+                updatedAt: $product->updated_at?->toIso8601String(),
             ))->toArray()),
             'brands' => $this->brandOptions(),
             'filters' => $this->currentFilters($request, $sort, $perPage, ['brand' => $brandId]),

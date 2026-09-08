@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Plus, Star, Trash2 } from '@lucide/vue';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import DateField from '@/components/datetime/DateField.vue';
+import TimeField from '@/components/datetime/TimeField.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,8 +23,14 @@ import {
 /**
  * Event editing: details (EventData shape), the day set (D-ADM-04), and
  * venue assignment (D-EVT-15). Times are wall-clock strings + zone
- * (ADR-0027) — edited as text, never through a Date picker that would
- * re-interpret them in the browser's zone.
+ * (ADR-0027) — never a `datetime-local` control, whose value the browser
+ * would resolve against the *reader's* zone and turn into an instant.
+ *
+ * `DateField` and `TimeField` (#242) are exactly the right shape for one:
+ * neither converts anything, because a date and a time on their own have no
+ * offset to convert against. They replace three free-text inputs that asked
+ * the operator to type `Y-m-d H:i:s` by hand and had no labels on the day
+ * rows at all.
  */
 type Props = {
     event: {
@@ -56,6 +64,73 @@ const form = useForm({
     reentryPolicy: props.event.reentryPolicy,
     predecessorEventId: props.event.predecessorEventId,
     days: [...props.days],
+});
+
+/**
+ * The two halves of an ADR-0027 wall clock, `Y-m-d H:i:s`.
+ *
+ * Joined back exactly as it came apart, seconds included: `UpdateEventDetails`
+ * decides whether an event was *rescheduled* by comparing the stored
+ * `Y-m-d H:i:s` against what arrives, so normalising the seconds away would
+ * announce a reschedule to everyone holding a registration every time somebody
+ * saved the description.
+ */
+function wallClockParts(value: string): [string, string, string] {
+    const parts = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?$/.exec(
+        value,
+    );
+
+    return parts === null
+        ? ['', '', '00']
+        : [parts[1], parts[2], parts[3] ?? '00'];
+}
+
+function joinWallClock(value: string, date: string, time: string): string {
+    const [, , seconds] = wallClockParts(value);
+
+    return date === ''
+        ? ''
+        : `${date} ${time === '' ? '00:00' : time}:${seconds}`;
+}
+
+const startsOn = computed({
+    get: () => wallClockParts(form.startsAt)[0],
+    set: (date: string) =>
+        (form.startsAt = joinWallClock(
+            form.startsAt,
+            date,
+            wallClockParts(form.startsAt)[1],
+        )),
+});
+
+const startsAtTime = computed({
+    get: () => wallClockParts(form.startsAt)[1],
+    set: (time: string) =>
+        (form.startsAt = joinWallClock(
+            form.startsAt,
+            wallClockParts(form.startsAt)[0],
+            time,
+        )),
+});
+
+const endsOn = computed({
+    get: () => wallClockParts(form.endsAt)[0],
+    set: (date: string) =>
+        (form.endsAt = joinWallClock(
+            form.endsAt,
+            date,
+            wallClockParts(form.endsAt)[1],
+        )),
+});
+
+const endsAtTime = computed({
+    get: () => wallClockParts(form.endsAt)[1],
+    set: (time: string) =>
+        (form.endsAt = joinWallClock(
+            form.endsAt,
+            wallClockParts(form.endsAt)[0],
+            time,
+        )),
 });
 
 useUnsavedChanges(() => form.isDirty);
@@ -138,21 +213,49 @@ function promoteVenue(venueId: string): void {
                         />
                         <InputError :message="form.errors.description" />
                     </div>
-                    <div class="grid grid-cols-3 gap-4">
-                        <div class="grid gap-2">
-                            <Label for="edit-starts">Starts (local)</Label>
-                            <Input id="edit-starts" v-model="form.startsAt" />
-                            <InputError :message="form.errors.startsAt" />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="edit-ends">Ends (local)</Label>
-                            <Input id="edit-ends" v-model="form.endsAt" />
-                            <InputError :message="form.errors.endsAt" />
-                        </div>
-                        <div class="grid gap-2">
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <DateField
+                            id="edit-starts-date"
+                            v-model="startsOn"
+                            label="Starts on"
+                            :error="form.errors.startsAt"
+                        />
+                        <TimeField
+                            id="edit-starts-time"
+                            v-model="startsAtTime"
+                            label="Starts at"
+                            hint="The event's own clock, not yours."
+                        />
+                        <DateField
+                            id="edit-ends-date"
+                            v-model="endsOn"
+                            label="Ends on"
+                            :error="form.errors.endsAt"
+                        />
+                        <TimeField
+                            id="edit-ends-time"
+                            v-model="endsAtTime"
+                            label="Ends at"
+                            hint="The event's own clock, not yours."
+                        />
+                        <div class="grid gap-2 sm:col-span-2">
                             <Label for="edit-tz">Timezone</Label>
-                            <Input id="edit-tz" v-model="form.timezone" />
-                            <InputError :message="form.errors.timezone" />
+                            <Input
+                                id="edit-tz"
+                                v-model="form.timezone"
+                                aria-describedby="edit-tz-hint edit-tz-error"
+                            />
+                            <p
+                                id="edit-tz-hint"
+                                class="text-xs text-text-muted"
+                            >
+                                The zone the two clocks above are read in
+                                (ADR-0027) — an IANA name such as Europe/Berlin.
+                            </p>
+                            <InputError
+                                id="edit-tz-error"
+                                :message="form.errors.timezone"
+                            />
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
@@ -191,20 +294,26 @@ function promoteVenue(venueId: string): void {
                     <div
                         v-for="(day, index) in form.days"
                         :key="index"
-                        class="flex items-center gap-2"
+                        class="flex items-end gap-2"
                     >
-                        <Input
+                        <DateField
+                            :id="`edit-day-${index}-date`"
                             v-model="day.date"
-                            placeholder="2027-05-14"
-                            class="w-40"
+                            label="Date"
+                            class="w-44"
                         />
-                        <Input
-                            :model-value="day.label ?? ''"
-                            placeholder="Label (optional)"
-                            @update:model-value="
-                                day.label = String($event) || null
-                            "
-                        />
+                        <div class="grid flex-1 gap-2">
+                            <Label :for="`edit-day-${index}-label`">
+                                Label (optional)
+                            </Label>
+                            <Input
+                                :id="`edit-day-${index}-label`"
+                                :model-value="day.label ?? ''"
+                                @update:model-value="
+                                    day.label = String($event) || null
+                                "
+                            />
+                        </div>
                         <Button
                             type="button"
                             variant="ghost"

@@ -50,7 +50,21 @@ final class ConsentGateTestFakeStripe implements StripeApi
         return new StripeCheckoutSession(id: 'cs_gate_'.count($this->sessions), url: 'https://checkout.stripe.test/gate-session');
     }
 
-    public function createRefund(array $params): void {}
+    /**
+     * Nothing took this payment's money back (#235). Every fake here answers
+     * the empty pair unless its own test says otherwise.
+     *
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
+     */
+    public function fetchPaymentIntentReversals(string $paymentIntentId): array
+    {
+        return ['disputes' => [], 'refunds' => []];
+    }
+
+    public function createRefund(array $params): string
+    {
+        return 're_test_fake';
+    }
 
     /**
      * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}

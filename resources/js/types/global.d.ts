@@ -37,6 +37,15 @@ declare module '@inertiajs/core' {
             /** The corner ribbon off production; null on production. */
             environment: Konventix.Platform.Data.EnvironmentRibbonData | null;
             auth: Auth;
+            /**
+             * How this operator writes a date and a time (#242) — the
+             * vocabulary of `Konventix.Platform.Enums.DateFormat` and
+             * `TimeFormat`, applied by `resources/js/lib/datetime.ts`.
+             */
+            dateTimeFormat: {
+                date: Konventix.Platform.Enums.DateFormat;
+                time: Konventix.Platform.Enums.TimeFormat;
+            };
             sidebarOpen: boolean;
             cookies: {
                 functional: boolean | null;

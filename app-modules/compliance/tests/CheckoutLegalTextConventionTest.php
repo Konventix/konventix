@@ -167,3 +167,66 @@ it('resolves every brand\'s gaps in the same number of queries, however many bra
     expect($withTenBrands)->toBe($withTwoBrands)
         ->and($withTwoBrands)->toBeLessThan(10);
 });
+
+/**
+ * #222, operator ruling of 2026-09-08: "warn only, but with a bigger
+ * hint/problem statement in the UI". No hard refusal at checkout, so the
+ * warning has to reach the operator on every page they manage selling from
+ * — including the policy editor they land on while fixing it.
+ */
+it('warns on the policy editor too, for that policy\'s own brand', function (): void {
+    [, $admin] = complianceOperator();
+
+    $bare = Brand::factory()->create(['name' => 'Bare Con']);
+    $this->withBrand($bare);
+    $policy = Policy::factory()->create(['slug' => 'privacy', 'name' => 'Privacy']);
+
+    $this->actingAs($admin)
+        ->get('http://admin.compliance.test/admin/policies/'.$policy->getKey().'/edit')
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page) use ($bare): void {
+            $gaps = collect($page->toArray()['props']['checkoutGaps']);
+
+            expect($gaps)->toHaveCount(1)
+                ->and($gaps->firstWhere('brandId', $bare->getKey()))
+                ->toMatchArray(['brandName' => 'Bare Con', 'missingSlugs' => ['terms', 'withdrawal']]);
+        });
+});
+
+it('says nothing on the editor of a brand whose checkout resolves both texts', function (): void {
+    [, $admin] = complianceOperator();
+
+    $covered = Brand::factory()->create(['name' => 'Covered Con']);
+    $this->withBrand($covered);
+    checkoutRolePublishedPolicy('terms');
+    $policy = checkoutRolePublishedPolicy('withdrawal');
+
+    $this->actingAs($admin)
+        ->get('http://admin.compliance.test/admin/policies/'.$policy->getKey().'/edit')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('checkoutGaps', []));
+});
+
+/**
+ * The warning's "create this text" link lands on the list with the slug and
+ * the brand already chosen — retyping the slug by hand is what produced the
+ * `agb` policy no checkout ever found (#200).
+ */
+it('carries the create intent a warning link arrives with, and refuses a slug the checkout never asks for', function (): void {
+    [, $admin] = complianceOperator();
+
+    $brand = Brand::factory()->create(['name' => 'Bare Con']);
+    $this->withBrand($brand);
+
+    $this->actingAs($admin)
+        ->get('http://admin.compliance.test/admin/policies?create=withdrawal&brand='.$brand->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('createIntent.slug', 'withdrawal')
+            ->where('createIntent.brandId', (string) $brand->getKey()));
+
+    $this->actingAs($admin)
+        ->get('http://admin.compliance.test/admin/policies?create=agb')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('createIntent', null));
+});

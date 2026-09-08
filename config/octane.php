@@ -189,23 +189,54 @@ return [
     | the --watch option offered by Octane. If any of the directories and
     | files are changed, Octane will automatically reload your workers.
     |
+    | Every entry becomes a `watch <absolute path>` line in the generated
+    | Caddyfile, and FrankenPHP's watcher recurses from the pattern's base
+    | directory. So an entry is a promise about the whole tree under it, not
+    | only about the files the glob matches: `bootstrap` also meant
+    | `bootstrap/ssr`, rewritten by every `npm run build:ssr`, and a
+    | recursive glob under `public` also meant `public/build`, rewritten by
+    | every Vite build. Both are named file by file now (#195). Deliberately
+    | absent, and to stay absent: `vendor`, `node_modules`, `storage`,
+    | `.superpowers`, `public/build` and `bootstrap/ssr` — none of them is
+    | code a worker executes, and all of them churn.
+    |
     */
 
     'watch' => [
+        // Short, and every entry a plain directory or a named file (#195).
+        // FrankenPHP starts one watcher session per `watch` line in the
+        // Caddyfile Octane generates, and its C++ watcher aborts with
+        // `std::bad_alloc` (exit 134; supervisord respawns it and HTTP
+        // answers "Empty reply from server" in the gap). Measured on
+        // 2026-09-08 over two minutes of continuous edits: the previous
+        // twelve entries — three of them recursive globs rooted at the same
+        // `app-modules` tree — crashed 12 times; this list crashes 0 times
+        // for edits under `app`, `config` or `routes`. Add an entry only for
+        // code a *worker* executes, and never one whose tree another entry
+        // already covers.
+        //
+        // Not watched, and not to be added: `vendor`, `node_modules`,
+        // `storage`, `.superpowers`, `public/build`, `bootstrap/ssr` — none
+        // of them is worker code and all of them churn. Nor `database` or
+        // `composer.lock`: migrations, seeders and factories run in fresh
+        // processes, and an install is rare enough to pay for a
+        // `sail restart laravel.test`.
         'app',
         // All domain code lives in modules (.ai/rules/src.md) — without this
         // entry the dev web role serves stale module code until a manual
         // octane:reload, while fresh-process tests pass against the new code.
-        'app-modules/*/src/**/*.php',
-        'app-modules/*/routes/**/*.php',
-        'app-modules/*/database/**/*.php',
-        'bootstrap',
-        'config/**/*.php',
-        'database/**/*.php',
-        'public/**/*.php',
-        'resources/**/*.php',
+        // This is also the tree the watcher is closest to its limit on: one
+        // measured run of edits confined here still cost four aborts, where
+        // edits under `app` cost none and the mixed run cost none. README's
+        // "The dev web server watches files" carries the numbers and says
+        // how to trade the watching away when that is not good enough.
+        'app-modules',
+        // Named files, not the `bootstrap` directory: that also holds
+        // `ssr/` (rewritten by every `npm run build:ssr`) and `cache/`.
+        'bootstrap/app.php',
+        'bootstrap/providers.php',
+        'config',
         'routes',
-        'composer.lock',
         '.env',
     ],
 

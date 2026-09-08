@@ -255,13 +255,34 @@ to what the change can have broken, and formatting is nobody's decision (#64):
   `vendor/bin/sail composer verify -- commerce identity`. Measured on
   2026-09-03 with a warm phpstan cache: pint 1 s, phpstan 3 s, the commerce
   module's 297 tests 85 s, the root Feature and Unit suites 180 s.
+- **One test, one command: `vendor/bin/sail artisan test --compact`.** While
+  you are working on a single thing, run it directly — with a path
+  (`vendor/bin/sail artisan test --compact app-modules/content/tests`) or a
+  filter (`--filter=BrandUrl`). It skips the lint and type passes
+  `composer test` runs first, which are the hook's job anyway (#193), and
+  answers in seconds instead of minutes. `composer verify` is the wider net
+  for the moment before a commit; `composer test` is the full suite.
 - **The full suite is the pipeline's, and runs locally at most once per
   change.** `composer verify` says when it is owed — the change touches
   config, routes, migrations, the lockfile, the platform module or the test
   bootstrap. Even then, push and let the merge request pipeline run it; run
   `vendor/bin/sail composer test` yourself only when you need the answer
   before pushing, such as a migration or a `TestCase` change every module's
-  tests go through. Everything else — the whole Pest suite on every merge
-  request, the scanners, the image — is the pipeline's.
+  tests go through. It takes about twelve minutes and runs to the end:
+  `composer.json` sets `config.process-timeout` to `0`, because Composer's
+  own 300-second default killed the run before the suite finished and the
+  failure read like a test failure (#193). Everything else — the whole Pest
+  suite on every merge request, the scanners, the image — is the pipeline's.
 - Never run two test processes at once; they share one database
   (`.ai/rules/tests.md`).
+- **When the browser disagrees with a passing test, suspect a stale worker.**
+  The dev web role is Octane with `--watch`, and the watch list in
+  `config/octane.php` is deliberately seven short entries — FrankenPHP starts
+  one watcher session per entry and its watcher crashes with `std::bad_alloc`
+  as they multiply and overlap (#195, README "The dev web server watches
+  files"). Nothing outside `app`, `app-modules`, `bootstrap/app.php`,
+  `bootstrap/providers.php`, `config`, `routes` and `.env` reloads a worker,
+  so after any other change:
+  `vendor/bin/sail artisan octane:reload`, or
+  `vendor/bin/sail restart laravel.test` for the queue, scheduler and reverb
+  roles, which hold code in memory too.

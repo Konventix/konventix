@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Konventix\Content\Actions\ModerateComment;
@@ -75,6 +76,24 @@ it('carries intent only, never a channel or a delivery time', function (): void 
     expect($properties)->toEqualCanonicalizing([
         'entryId', 'brandId', 'eventId', 'title', 'urgency', 'audience', 'publishedAt',
     ]);
+});
+
+it('stores the moment it was handed in UTC, whatever zone it carried (#246)', function (): void {
+    // The Action owns the transition, so it owns this invariant: Eloquent
+    // formats a Carbon in whatever zone the instance carries, and
+    // `content_entries.published_at` is a zone-less column — so a moment
+    // parsed as `+02:00` would be written down as its own digits and read back
+    // two hours wrong. The controller normalised it before this lived here;
+    // any other caller would have reintroduced the bug (#246 review 11).
+    $this->withBrand();
+
+    $entry = ContentEntry::factory()->create();
+
+    $moment = CarbonImmutable::parse('2099-06-08T22:00:00+02:00');
+
+    $published = app(PublishEntry::class)->handle($entry, $moment);
+
+    expect($published->published_at->utc()->toDateTimeString())->toBe('2099-06-08 20:00:00');
 });
 
 it('schedules a future publish rather than marking it live', function (): void {

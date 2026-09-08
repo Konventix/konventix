@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -9,11 +11,15 @@ use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Actions\IssueCreditNote;
+use Konventix\Commerce\Actions\RecordPaymentReversal;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
 use Konventix\Commerce\Actions\RecordRefund;
 use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\ReversalKind;
+use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\CreditNoteIssued;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
@@ -26,6 +32,7 @@ use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Settlement\SettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Identity\Models\User;
@@ -44,6 +51,9 @@ final class RefundTestSpyAdapter implements SettlementAdapter
 
     public bool $refuse = false;
 
+    /** What the provider answers with (#247); null is `manual`'s answer. */
+    public ?string $reference = 're_spy_1';
+
     public function markOrderPaid(
         string $accountId,
         Order $order,
@@ -54,13 +64,16 @@ final class RefundTestSpyAdapter implements SettlementAdapter
         return $order;
     }
 
-    public function refund(string $accountId, Order $order, string $amount, string $currency): void
+    public function refund(string $accountId, Order $order, string $amount, string $currency): ?string
     {
         if ($this->refuse) {
             throw new RuntimeException('provider refused the refund');
         }
 
         $this->refunds[] = ['accountId' => $accountId, 'amount' => $amount, 'currency' => $currency];
+
+        // The provider's own identifier for the refund (#247).
+        return $this->reference;
     }
 }
 
@@ -249,6 +262,75 @@ it('refuses to refund an order that was never paid', function (): void {
         ->toThrow(RuntimeException::class);
 });
 
+it('refunds an unapplied payment on a cancelled order, without a credit note (#6)', function (): void {
+    // ADR-0057 point 9: the PSP success that landed after a sweep had
+    // already cancelled the order. The money moved and paid for nothing;
+    // sending it back is the provider leg alone — there is no document to
+    // correct and no sale to undo.
+    $this->withBrand();
+
+    $order = Order::factory()->create([
+        'status' => OrderStatus::Cancelled,
+        'settles_type' => 'cart',
+        'total_gross' => '119.00',
+    ]);
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'settlement_account_id' => (string) Str::ulid(),
+        'amount' => '119.00',
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    $spy = app(RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, $spy);
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    $reversal = PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->sole();
+
+    expect($spy->refunds)->toHaveCount(1)
+        ->and($reversal->kind)->toBe(ReversalKind::Refund)
+        ->and($reversal->provider_reference)->toBe('re_spy_1')
+        // The order is not "refunded": nothing was sold to undo.
+        ->and($order->refresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0)
+        // And the money leaves the console's "decide about this" list.
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Reversed)
+        ->and(Payment::withoutBrandScope()->unapplied()->where('order_id', $order->id)->count())->toBe(0);
+
+    Event::assertNotDispatched(OrderRefunded::class);
+    Event::assertNotDispatched(CreditNoteIssued::class);
+});
+
+it('refuses a second refund of unapplied money the first one already sent back (#6)', function (): void {
+    $this->withBrand();
+
+    $order = Order::factory()->create(['status' => OrderStatus::Cancelled, 'total_gross' => '119.00']);
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => '119.00',
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    // The payment is `reversed` now, so there is no unapplied money left and
+    // the guard refuses — the operator pressing the button twice cannot send
+    // the money back twice.
+    expect(fn () => app(RefundOrder::class)->handle($order->refresh(), reasonCode: 'customer-request'))
+        ->toThrow(RuntimeException::class);
+});
+
 it('draws credit-note numbers from their own gapless series', function (): void {
     // A separate sequence from invoices, so a tax advisor can tell the two
     // document kinds apart by the number alone.
@@ -396,6 +478,454 @@ it('sends the PSP refund through the provider that took the payment', function (
     expect($spy->refunds)->toHaveCount(1)
         ->and($spy->refunds[0]['accountId'])->toBe($accountId)
         ->and($spy->refunds[0]['amount'])->toBe((string) $order->total_gross);
+});
+
+it('records the provider\'s own reference for the refund on a reversal row (#247)', function (): void {
+    // Before this the `re_…` never left the adapter: after a refund no path
+    // led from the order to the money's identifier at the provider, and the
+    // "already refunded" branch of #236 could only tell the operator to go
+    // and look in the dashboard.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+    $accountId = (string) Str::ulid();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'settlement_account_id' => $accountId,
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    $reversal = PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->sole();
+
+    expect($reversal->kind)->toBe(ReversalKind::Refund)
+        ->and($reversal->status)->toBe(ReversalStatus::Final)
+        ->and($reversal->provider_reference)->toBe('re_spy_1')
+        ->and($reversal->payment_id)->toBe($payment->id)
+        ->and($reversal->settlement_account_id)->toBe($accountId)
+        ->and($reversal->brand_id)->toBe($order->brand_id)
+        ->and((string) $reversal->amount)->toBe((string) $order->total_gross)
+        // The refund's own consequences stay exactly where they were: the
+        // row carries the reference, it does not re-run the refund.
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
+});
+
+it('lets the provider notification own the paperwork when it wins the race (#247)', function (): void {
+    // `charge.refunded` for our own refund can be delivered between the API
+    // call returning `re_…` and this transaction committing (review finding
+    // 5, NEW-3). The provider's path issues its own credit note and
+    // `OrderRefunded`, so the unique key on the reversal row decides who
+    // does that work: the winner does it, the loser stops. Two credit notes
+    // for one refund is paperwork nobody can undo (ADR-0031).
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
+
+    // The notification lands the moment `RecordOwnRefund` looks for its row
+    // — the whole webhook path, not just the row, because that is what a
+    // real one does.
+    $raced = false;
+
+    DB::listen(function (QueryExecuted $query) use (&$raced, $payment): void {
+        if ($raced || ! str_starts_with($query->sql, 'select') || ! str_contains($query->sql, 'payment_reversals')) {
+            return;
+        }
+
+        $raced = true;
+
+        app(RecordPaymentReversal::class)->handle(
+            payment: $payment->fresh(),
+            kind: ReversalKind::ExternalRefund,
+            status: ReversalStatus::Final,
+            amount: (string) $payment->amount,
+            currency: $payment->currency,
+            providerReference: 're_spy_1',
+            reasonCode: null,
+            feeAmount: null,
+            occurredAt: now(),
+        );
+    });
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect($raced)->toBeTrue()
+        // One row, one credit note, one announcement — the provider's.
+        ->and(PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1)
+        ->and(PaymentReversal::withoutBrandScope()->sole()->kind)->toBe(ReversalKind::ExternalRefund)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
+
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
+});
+
+it('keeps the paperwork to itself when the console wins the race (#247)', function (): void {
+    // The other ordering: our row is committed first, so the provider's
+    // notification for the same `re_…` converges on it and does nothing —
+    // no second credit note, no second `OrderRefunded`.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect(PaymentReversal::withoutBrandScope()->sole()->kind)->toBe(ReversalKind::Refund);
+
+    app(RecordPaymentReversal::class)->handle(
+        payment: $payment->fresh(),
+        kind: ReversalKind::ExternalRefund,
+        status: ReversalStatus::Final,
+        amount: (string) $payment->amount,
+        currency: $payment->currency,
+        providerReference: 're_spy_1',
+        reasonCode: null,
+        feeAmount: null,
+        occurredAt: now(),
+    );
+
+    expect(PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1)
+        ->and(PaymentReversal::withoutBrandScope()->sole()->kind)->toBe(ReversalKind::Refund)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
+});
+
+it('converges the provider notification too when it loses the unique key (#247)', function (): void {
+    // The other connection's view of the same race (fix round 3, review
+    // F-6). `RecordPaymentReversal`'s lookup misses the console's row —
+    // another transaction has written it and not committed — so its own
+    // insert raises the unique violation. Catching it and converging is what
+    // keeps this a convergence instead of a 500 the provider retries into,
+    // and it must not produce a second credit note for the refund the
+    // console already documented.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    // The console's row lands *after* the notification has looked and found
+    // nothing, which is the only way to reach the insert's own collision.
+    $raced = false;
+
+    DB::listen(function (QueryExecuted $query) use (&$raced, $order, $payment): void {
+        if ($raced || ! str_starts_with($query->sql, 'select') || ! str_contains($query->sql, 'payment_reversals')) {
+            return;
+        }
+
+        $raced = true;
+
+        DB::table('payment_reversals')->insert([
+            'id' => (string) Str::ulid(),
+            'brand_id' => $order->brand_id,
+            'payment_id' => $payment->id,
+            'order_id' => $order->id,
+            'provider' => 'spy',
+            'kind' => ReversalKind::Refund->value,
+            'status' => ReversalStatus::Final->value,
+            'amount' => $order->total_gross,
+            'currency' => $order->currency,
+            'provider_reference' => 're_spy_1',
+            'occurred_at' => now(),
+            'finalized_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    // No throw: the notification finds the row it collided with and treats it
+    // as the replay it is.
+    app(RecordPaymentReversal::class)->handle(
+        payment: $payment,
+        kind: ReversalKind::ExternalRefund,
+        status: ReversalStatus::Final,
+        amount: (string) $payment->amount,
+        currency: $payment->currency,
+        providerReference: 're_spy_1',
+        reasonCode: null,
+        feeAmount: null,
+        occurredAt: now(),
+    );
+
+    expect($raced)->toBeTrue()
+        ->and(PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1)
+        // The console's row survives, and with it the `re_…` the audit entry
+        // reads.
+        ->and(PaymentReversal::withoutBrandScope()->sole()->kind)->toBe(ReversalKind::Refund)
+        // And the notification writes no paperwork of its own for a refund
+        // that is already recorded.
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+
+    Event::assertNotDispatched(OrderRefunded::class);
+});
+
+it('issues one credit note when two console refunds race with no provider reference (blocker 1)', function (): void {
+    // A `manual` refund has no reference to claim, so the reversal row's
+    // unique key cannot serialize anything: two POSTs — a double submit, a
+    // browser resubmit — both read `paid` and both issue a credit note.
+    // Credit notes are immutable (ADR-0031/0048) and the bookkeeping export
+    // books them (ADR-0040), so a duplicate reaches the books with no
+    // recovery path. The order row is the claim that closes it.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    // The competing refund completes while this one is between its own
+    // reads — which is what the second connection's transaction does once it
+    // has waited for the order lock.
+    $raced = false;
+
+    // Fired on the first read of `payments`, which is before the order lock
+    // — the point a second connection's transaction is released from that
+    // lock and finishes ahead of this one.
+    DB::listen(function (QueryExecuted $query) use (&$raced, $order): void {
+        if ($raced || ! str_contains($query->sql, 'from "payments"')) {
+            return;
+        }
+
+        $raced = true;
+
+        app(RecordRefund::class)->handle($order->fresh(), reasonCode: 'customer-request');
+    });
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect($raced)->toBeTrue()
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
+
+    // And exactly one announcement: two would have Registration cancel the
+    // same seat twice (ADR-0057 point 5).
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
+});
+
+it('issues one credit note when the webhook keys our own refund on the charge (blocker 1)', function (): void {
+    // The one case the reversal row's unique key cannot converge:
+    // `charge.refunds` unexpanded *and* Stripe unreachable, so the webhook
+    // keys `ch_…` where `RefundOrder` keyed `re_…`. Different keys, both
+    // rows insert — and only the order lock stops the second credit note.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
+
+    $raced = false;
+
+    // Fired before this refund takes the order lock, which is where the
+    // provider's notification wins the race.
+    DB::listen(function (QueryExecuted $query) use (&$raced, $payment): void {
+        if ($raced || ! str_contains($query->sql, 'from "payments"')) {
+            return;
+        }
+
+        $raced = true;
+
+        // The provider's notification, keyed on the charge instead of the
+        // refund — its own credit note and `OrderRefunded` included.
+        app(RecordPaymentReversal::class)->handle(
+            payment: $payment->fresh(),
+            kind: ReversalKind::ExternalRefund,
+            status: ReversalStatus::Final,
+            amount: (string) $payment->amount,
+            currency: $payment->currency,
+            providerReference: 'ch_spy_1',
+            reasonCode: null,
+            feeAmount: null,
+            occurredAt: now(),
+        );
+    });
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect($raced)->toBeTrue()
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
+
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
+});
+
+it('refuses a second unapplied refund that reaches the payment while the first is in flight (#6)', function (): void {
+    // "Refused by construction" was a sequential argument (finding 6): two
+    // POSTs both read `succeeded` and both called the provider — Stripe
+    // rejects a second full refund, a partial one and both other providers
+    // go through twice. The payment's own lock is what makes the claim true.
+    $this->withBrand();
+
+    $order = Order::factory()->create(['status' => OrderStatus::Cancelled, 'total_gross' => '119.00']);
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => '119.00',
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    $spy = app(RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, $spy);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Reversed)
+        ->and($spy->refunds)->toHaveCount(1);
+
+    // The second press finds no unapplied money and never reaches the
+    // provider.
+    expect(fn () => app(RefundOrder::class)->handle($order->refresh(), reasonCode: 'customer-request'))
+        ->toThrow(RuntimeException::class);
+
+    expect($spy->refunds)->toHaveCount(1)
+        ->and(PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+});
+
+it('takes the order lock before the payment lock on both money paths (#247, review NEW-5)', function (): void {
+    // The console refund locks the order and then writes the reversal row;
+    // the provider's notification used to lock the *payment* first and reach
+    // the order last. Opposite orders on the same three rows is a deadlock
+    // cycle: Postgres kills one of them with SQLSTATE 40P01, which is not a
+    // unique violation, so the convergence catch does not see it and the
+    // operator gets a 500 for a refund whose money did leave. One order for
+    // every path — order, then payment — is the whole fix, and it is what
+    // this pins.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
+
+    /** @var list<string> $locks */
+    $locks = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$locks): void {
+        if (! str_contains($query->sql, 'for update')) {
+            return;
+        }
+
+        foreach (['orders', 'payments', 'payment_reversals'] as $table) {
+            if (str_contains($query->sql, sprintf('from "%s"', $table))) {
+                $locks[] = $table;
+
+                return;
+            }
+        }
+    });
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    // Re-locking a row this transaction already holds is free and happens
+    // (`RecordOwnRefund` says the sequence again rather than trusting its
+    // caller), so what matters is the order the tables are *first* reached in.
+    expect(array_slice(array_values(array_unique($locks)), 0, 2))->toBe(['orders', 'payments']);
+
+    $locks = [];
+
+    app(RecordPaymentReversal::class)->handle(
+        payment: $payment->fresh(),
+        kind: ReversalKind::Return,
+        status: ReversalStatus::Final,
+        amount: (string) $payment->amount,
+        currency: $payment->currency,
+        providerReference: 'chb_lock_order_1',
+        reasonCode: null,
+        feeAmount: null,
+        occurredAt: now(),
+    );
+
+    // The same two, in the same order, from the other side.
+    expect(array_slice(array_values(array_unique($locks)), 0, 2))->toBe(['orders', 'payments']);
+});
+
+it('records no reversal row for a refund no provider gave a reference to (#247)', function (): void {
+    // `manual` wires the money back outside the platform: there is no
+    // reference, and a row whose `provider_reference` is invented would
+    // collide with the unique key the reversal table is built on.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    $spy = app(RefundTestSpyAdapter::class);
+    $spy->reference = null;
+    app()->instance(RefundTestSpyAdapter::class, $spy);
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect(PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
 });
 
 it('aborts the refund entirely when the provider refuses it', function (): void {

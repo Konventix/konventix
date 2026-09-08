@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Data;
 
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Settlement\PayLink;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -22,6 +23,14 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * points at is a separate request that Commerce could not authorize on its
  * own, and the signature carries the decision forward instead of asking
  * Commerce to make one it has no basis for.
+ *
+ * `payUrl` and `repayDueOn` are `Settlement\PayLink`'s answers (GitLab
+ * #197), resolved here rather than handed in by the slot: this page used
+ * to inline `status === Pending`, which hid the link on a `payment_reversed`
+ * order that ADR-0057 point 3 makes payable again — while `/my/orders` and
+ * both mails, all three reading `PayLink`, still offered it. Four surfaces,
+ * one rule. `repayDueOn` is the day that money is owed back by (point 4);
+ * a link without it does not say when the seat goes away.
  */
 #[TypeScript]
 final class RegistrationSettlementData extends Data
@@ -32,6 +41,7 @@ final class RegistrationSettlementData extends Data
         public readonly string $currency,
         public readonly string $totalGross,
         public readonly ?string $payUrl,
+        public readonly ?string $repayDueOn,
         public readonly ?string $invoiceNumber,
         public readonly ?string $issuedOn,
         public readonly ?string $dueOn,
@@ -43,14 +53,21 @@ final class RegistrationSettlementData extends Data
      * static `from*` method through its magic-creation resolver
      * (.ai/rules/data.md).
      */
-    public static function ofOrder(Order $order, ?Invoice $invoice, ?string $payUrl, ?string $documentUrl): self
+    public static function ofOrder(Order $order, ?Invoice $invoice, ?string $documentUrl): self
     {
+        $payLink = app(PayLink::class);
+        $link = $payLink->forOrder($order);
+
         return new self(
             orderId: $order->getKey(),
             status: $order->status->value,
             currency: $order->currency,
             totalGross: $order->total_gross,
-            payUrl: $payUrl,
+            // Root-relative: this page is rendered on the brand's own host
+            // and an absolute URL would pin the link to whichever of the
+            // brand's domains the request happened to arrive on (ADR-0001).
+            payUrl: $link === null ? null : route($link['route'], $link['parameters'], absolute: false),
+            repayDueOn: $payLink->repayDueOnFor($order),
             invoiceNumber: $invoice?->invoice_number,
             issuedOn: $invoice?->issued_on->toDateString(),
             dueOn: $invoice?->due_on->toDateString(),

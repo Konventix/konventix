@@ -72,7 +72,9 @@ class StaticPageAdminController
                 slug: $page->slug,
                 brandName: $brandNames[$page->brand_id] ?? '—',
                 published: $page->published_at !== null,
-                updatedAt: $page->updated_at?->toDateTimeString(),
+                // ISO 8601 with the offset (#243): the table renders it in the
+                // reader's own zone and the operator's format.
+                updatedAt: $page->updated_at?->toIso8601String(),
             ))->toArray()),
             'brands' => $this->brandOptions(),
             'filters' => $this->currentFilters($request, $sort, $perPage, $filters),

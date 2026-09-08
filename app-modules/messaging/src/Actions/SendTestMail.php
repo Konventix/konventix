@@ -7,6 +7,7 @@ namespace Konventix\Messaging\Actions;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Messaging\Data\TestMailData;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Operators\OperatorDateTimeFormat;
 
 /**
  * "Send test mail to me" (Task 8, ADR-0048 decisions 4/6): an operator
@@ -16,7 +17,11 @@ use Konventix\Platform\Models\Brand;
  */
 final class SendTestMail
 {
-    public function __construct(private readonly SendMessage $sendMessage) {}
+    public function __construct(
+        private readonly SendMessage $sendMessage,
+        private readonly OperatorDateTimeFormat $dates,
+        private readonly ResolveBrandTimezone $brandTimezone,
+    ) {}
 
     public function handle(Brand $brand, string $toEmail): void
     {
@@ -25,7 +30,7 @@ final class SendTestMail
             templateKey: 'messaging.test-mail',
             payload: new TestMailData(
                 brandName: $brand->name,
-                date: now()->format('d.m.Y'),
+                date: $this->dates->date(now(), $this->brandTimezone->handle($brand->getKey())),
             ),
             recipientEmail: $toEmail,
             recipientLocale: 'de',

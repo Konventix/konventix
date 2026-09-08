@@ -64,7 +64,7 @@ ADR-0048); the bookkeeping export books documents, never payments
    this pay?" question stays a one-column read; the row says why and how
    much.
 
-   Three kinds, two moments:
+   Four kinds, two moments:
 
    - **`return`** — final the moment it arrives. A SEPA Rücklastschrift, a
      Mollie chargeback (`chb_…`), Unzer's `chargeback` state, a Stripe
@@ -87,6 +87,14 @@ ADR-0048); the bookkeeping export books documents, never payments
      exactly as if `RefundOrder` had run minus the provider call. It is the
      operator's own decision, made in the wrong place; the check-in guard
      of ADR-0037 cannot run after the fact and the notice says so.
+   - **`refund`** — our own console refund, recorded so the provider's
+     reference for it has a row (#247). It has no reaction of its own:
+     `RefundOrder` has already issued the credit note, moved the order and
+     announced it. The row exists to name the money at the provider, and to
+     give the provider's own notification of that same refund — Stripe
+     sends `charge.refunded` for ours too — a row to converge on under the
+     unique `(provider, provider_reference)` key instead of undoing the
+     sale a second time.
 
    A **partial** reversal (Mollie allows one) creates the row and the
    notice, moves neither payment nor order, and is an operator case until
@@ -209,6 +217,28 @@ ADR-0048); the bookkeeping export books documents, never payments
    allows, a flow this ADR does not build. The operator refunds it through
    the payment's own account, `RefundOrder`'s provider leg without a
    credit note — a cancelled cart order has no document to correct.
+
+   Implemented in #6: `RefundOrder` accepts a `cancelled` order holding a
+   succeeded unapplied payment and refunds it through the account the money
+   came from. No credit note (there is no document to correct and the
+   sweeps never cancel an invoiced order), no `OrderRefunded` (nothing of
+   the order was sold to undo, and Registration would cancel a
+   registration the sweep already cancelled), and the order stays
+   `cancelled`. What is written is the money's own record: the reversal row
+   **where the provider gave a reference**, and the payment leaving
+   `succeeded`, which takes it off the console's unapplied list and refuses
+   a second press.
+
+   `manual` gives none — the organizer wires the money back outside the
+   platform — and no row is written for it. `payment_reversals.provider_reference`
+   stays NOT NULL deliberately: the unique `(provider, provider_reference)`
+   key is this table's whole convergence mechanism, and Postgres treats
+   NULLs as distinct, so a nullable column would admit unlimited unkeyed
+   rows past the guarantee for exactly the rows that have no key. The record
+   for a `manual` refund is the `commerce.order.refunded` audit entry, which
+   carries the reason, the amount, the currency and `unapplied: true`. That
+   entry is written by the console, so a future caller that is not the
+   console owes an equivalent of its own.
 
 ### Alternatives considered
 
