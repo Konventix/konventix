@@ -42,7 +42,8 @@ final class UnappliedPaymentData extends Data
             amount: $payment->amount,
             currency: $payment->currency,
             externalId: $payment->external_id,
-            receivedAt: $payment->received_at?->format('Y-m-d H:i'),
+            // An instant (#238), rendered in the reader's zone by the page.
+            receivedAt: $payment->received_at?->toIso8601String(),
         );
     }
 }

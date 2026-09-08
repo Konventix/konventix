@@ -402,7 +402,7 @@ it('refuses to cut capacity below the places already taken', function (): void {
  * freeze with the terms — closing a sale early, or extending it by a day, is
  * an operational decision that reinterprets nobody's existing registration.
  */
-it('saves a sales window and hands it back to the form as a datetime string', function (): void {
+it('saves a sales window and hands it back to the form as an instant', function (): void {
     $brand = $this->withBrand();
     $eventId = registrationTypeEvent($brand);
     [, $admin] = registrationTypeOperator();
@@ -430,11 +430,71 @@ it('saves a sales window and hands it back to the form as a datetime string', fu
     $this->actingAs($admin)
         ->get("http://admin.regtypes.test/admin/registration-types/{$type->id}/edit")
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('type.salesStart', '2026-10-01 18:00:00')
-            ->where('type.salesEnd', '2026-10-08 18:00:00')
-            // The clock the operator is typing in, named rather than assumed
-            // (fix round 1, review finding 7).
-            ->where('appTimezone', config('app.timezone')));
+            // Instants, not wall-clock digits (#237): the page names the
+            // reader's own zone, so nothing here has a clock to be read in.
+            ->where('type.salesStart', '2026-10-01T18:00:00+00:00')
+            ->where('type.salesEnd', '2026-10-08T18:00:00+00:00')
+            ->missing('appTimezone'));
+});
+
+/**
+ * #237: the form sent the `datetime-local` value through unchanged and the
+ * backend read it in `config('app.timezone')` (UTC), so an operator in
+ * Europe/Berlin who typed 10:17 got a window that opened at 12:17 on their
+ * own clock — "Last Minute Ticket" was unbuyable at the minute it was meant
+ * for. The browser now resolves its wall clock into an instant before
+ * sending, which is the only form the server can store without guessing
+ * whose clock it was (#202's pattern, `versionForm.ts`).
+ */
+it('stores an ISO instant with an offset as UTC rather than as wall-clock digits (#237)', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create(['event_id' => $eventId]);
+
+    $this->actingAs($admin)
+        ->put(
+            "http://admin.regtypes.test/admin/registration-types/{$type->id}",
+            registrationTypeWindowPayload($eventId, [
+                // CEST, the operator's own clock — 10:17 in Berlin.
+                'salesStart' => '2026-09-08T10:17:00+02:00',
+                'salesEnd' => '2026-09-08T10:20:00+02:00',
+            ]),
+        )
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    expect($type->refresh()->sales_start?->toIso8601String())->toBe('2026-09-08T08:17:00+00:00')
+        ->and($type->sales_end?->toIso8601String())->toBe('2026-09-08T08:20:00+00:00');
+
+    // And back out as an instant, so the browser renders it in the reader's
+    // own zone (#208) instead of the form re-reading UTC digits as local.
+    $this->actingAs($admin)
+        ->get("http://admin.regtypes.test/admin/registration-types/{$type->id}/edit")
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('type.salesStart', '2026-09-08T08:17:00+00:00')
+            ->where('type.salesEnd', '2026-09-08T08:20:00+00:00'));
+});
+
+it('still refuses an end before the start when both bounds are ISO instants (#237)', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create(['event_id' => $eventId]);
+
+    $this->actingAs($admin)
+        ->put(
+            "http://admin.regtypes.test/admin/registration-types/{$type->id}",
+            registrationTypeWindowPayload($eventId, [
+                'salesStart' => '2026-09-08T10:20:00+02:00',
+                'salesEnd' => '2026-09-08T10:17:00+02:00',
+            ]),
+        )
+        ->assertSessionHasErrors('salesEnd');
+
+    expect($type->refresh()->sales_start)->toBeNull();
 });
 
 it('refuses a sales window that ends before it starts', function (): void {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Registration\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Enums\WaitlistState;
 use Konventix\Registration\Events\QuotaReleased;
 use Konventix\Registration\Events\WaitlistOfferExpired;
@@ -35,8 +36,12 @@ final class ExpireWaitlistOffers
 
         foreach ($entries as $entry) {
             DB::transaction(function () use ($entry): void {
+                // The `quotas()` relation escapes BrandScope on its own
+                // query, not just the type's (#236 fix round 1): this runs
+                // from a console command with no brand in context, where a
+                // relation call would read an empty set and release nothing.
                 $quotas = $entry->registrationType()->withoutGlobalScopes()->firstOrFail()
-                    ->quotas()->lockForUpdate()->get();
+                    ->quotas()->withoutGlobalScope(BrandScope::class)->lockForUpdate()->get();
 
                 $entry->forceFill(['state' => WaitlistState::Expired])->save();
 

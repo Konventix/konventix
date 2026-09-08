@@ -44,9 +44,11 @@ final class MessageLogRowData extends Data
             templateKey: $record->template_key,
             channel: $record->channel,
             status: $record->status,
-            queuedAt: $record->queued_at->format('Y-m-d H:i'),
-            sentAt: $record->sent_at?->format('Y-m-d H:i'),
-            failedAt: $record->failed_at?->format('Y-m-d H:i'),
+            // ISO instants (#238): the console renders them in the reader's
+            // own zone through `formatDateTime()` (#208), never in UTC.
+            queuedAt: $record->queued_at->toIso8601String(),
+            sentAt: $record->sent_at?->toIso8601String(),
+            failedAt: $record->failed_at?->toIso8601String(),
             lastError: $record->last_error === null ? null : mb_substr($record->last_error, 0, 120),
             resentFromId: $record->resent_from_id,
         );

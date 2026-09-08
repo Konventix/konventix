@@ -11,6 +11,7 @@ use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Events\PaymentFailed;
 use Konventix\Commerce\Events\PaymentReversed;
+use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
@@ -18,11 +19,19 @@ use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
 use Konventix\Commerce\Settlement\Mollie\MolliePaymentSnapshot;
 use Konventix\Commerce\Settlement\Mollie\MollieSettlementAdapter;
+use Mollie\Api\Exceptions\MollieException;
 
 /**
  * Mollie adapter + fetch-back webhook (ADR-0039) against a fake of the
  * `MollieApi` seam — no SDK call leaves the process.
  */
+/**
+ * `MollieException` is abstract and `ApiException` needs a whole PSR response
+ * to build — this is the smallest concrete member of the hierarchy the
+ * adapter is asked to translate (#236 fix round 1).
+ */
+final class MollieAdapterTestRefusal extends MollieException {}
+
 final class MollieAdapterTestFakeApi implements MollieApi
 {
     /** @var list<array{params: array<string, mixed>, apiKey: string}> */
@@ -73,8 +82,14 @@ final class MollieAdapterTestFakeApi implements MollieApi
         );
     }
 
+    public bool $refuseRefund = false;
+
     public function refundPayment(string $paymentId, array $params, string $apiKey): void
     {
+        if ($this->refuseRefund) {
+            throw new MollieAdapterTestRefusal('The payment is already fully refunded.');
+        }
+
         $this->refunds[] = ['paymentId' => $paymentId, 'params' => $params, 'apiKey' => $apiKey];
     }
 }
@@ -226,6 +241,31 @@ it('refunds through the brand key against the settled Mollie payment', function 
         ->and($fake->refunds[0]['paymentId'])->toBe('tr_fake_1')
         ->and($fake->refunds[0]['params']['amount'])->toBe(['currency' => 'EUR', 'value' => '119.00'])
         ->and($fake->refunds[0]['apiKey'])->toBe('live_fake_key');
+});
+
+/**
+ * #236 fix round 1, review finding 5: `Mollie\Api\Exceptions\ApiException`
+ * extends `Exception`, so a refund Mollie refuses used to leave the adapter
+ * untranslated and reach the console as a 500 — the same defect the Stripe
+ * path was filed for. Every adapter now speaks one Commerce exception.
+ */
+it('translates a refusal from the Mollie SDK into a provider refusal (#236)', function (): void {
+    [$account, $order, $fake] = mollieAdapterTestSetup();
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_MOLLIE,
+        'settlement_account_id' => $account->id,
+        'external_id' => 'tr_fake_1',
+        'provider_transaction_id' => 'tr_fake_1',
+        'amount' => '119.00',
+        'currency' => 'EUR',
+    ]);
+
+    $fake->refuseRefund = true;
+
+    expect(fn () => app(MollieSettlementAdapter::class)->refund($account->id, $order, '119.00', 'EUR'))
+        ->toThrow(ProviderRefusedRefundException::class, 'already fully refunded');
 });
 
 /**

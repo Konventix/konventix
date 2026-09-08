@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Actions\Concerns;
 
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Events\QuotaReleased;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationAmendment;
@@ -21,14 +22,23 @@ use Konventix\Registration\Models\RegistrationAmendment;
  */
 trait ReleasesQuotas
 {
+    // Both reads below happen on a path a Commerce listener may drive from
+    // the operator admin host, where BrandScope hardens to zero rows — #236.
+    use LoadsRegistrationType;
+
     private function releaseQuotas(Registration $registration): void
     {
-        // Explicit loadMissing(): Model::shouldBeStrict() (non-production)
-        // forbids lazy-loading an unloaded relation through the magic
-        // property, and a caller here only ever has the registration's ID.
-        $quotas = $registration->loadMissing('registrationType')
-            ->registrationType
+        // Explicit load: Model::shouldBeStrict() (non-production) forbids
+        // lazy-loading an unloaded relation through the magic property, and
+        // a caller here only ever has the registration's ID. The type is
+        // read through `LoadsRegistrationType` and the quotas escape
+        // BrandScope on their own query: a relation call re-applies the
+        // scope on the *related* model, so `withoutBrandScope()` on the
+        // registration would still have read an empty set here (#236,
+        // `.ai/rules/app-modules-src.md`).
+        $quotas = $this->registrationTypeOf($registration)
             ->quotas()
+            ->withoutGlobalScope(BrandScope::class)
             ->lockForUpdate()
             ->get();
 

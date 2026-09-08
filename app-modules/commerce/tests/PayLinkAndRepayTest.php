@@ -256,6 +256,9 @@ it('takes a second attempt on a registration order whose last payment failed, an
         'status' => OrderStatus::Pending,
         'settles_type' => 'registration',
         'settles_id' => $registrationId,
+        // The payer this link belongs to — since GitLab #185 the pay page
+        // serves nobody else.
+        'payer_user_id' => $payer->getKey(),
         'total_gross' => '119.00',
         'currency' => 'EUR',
     ]);
@@ -284,6 +287,7 @@ it('still refuses a second attempt once a payment has succeeded', function (): v
         'status' => OrderStatus::Pending,
         'settles_type' => 'registration',
         'settles_id' => $registrationId,
+        'payer_user_id' => $payer->getKey(),
     ]);
     OrderLine::factory()->forOrder($order)->create();
 

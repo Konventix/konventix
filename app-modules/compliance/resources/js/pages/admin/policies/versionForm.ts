@@ -17,42 +17,16 @@
  */
 
 /**
- * The stored instant as the reader's own wall clock, in the format
- * `datetime-local` accepts. An unparsable or absent value leaves the field
- * empty rather than showing `Invalid Date`.
+ * The round trip itself moved to `@/lib/datetime` when #237 needed the same
+ * pair for the sales window — one implementation, re-exported here so this
+ * page and its test keep their own vocabulary.
  */
-export function toLocalInput(value: string | null): string {
-    if (value === null || value === '') {
-        return '';
-    }
+import { toLocalDateTimeInput as toLocalInput } from '@/lib/datetime';
 
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-        return '';
-    }
-
-    const pad = (part: number): string => String(part).padStart(2, '0');
-
-    return (
-        `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-        `T${pad(date.getHours())}:${pad(date.getMinutes())}`
-    );
-}
-
-/**
- * The typed wall clock as an absolute instant, which is the only form the
- * server can store without guessing whose clock it was.
- */
-export function toInstant(value: string): string | null {
-    if (value === '') {
-        return null;
-    }
-
-    const date = new Date(value);
-
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
+export {
+    toInstant,
+    toLocalDateTimeInput as toLocalInput,
+} from '@/lib/datetime';
 
 /** The subset of a selected version the editor's form is built out of. */
 export type SelectedVersion = {

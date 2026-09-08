@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
+import { formatDateTime } from '@/lib/datetime';
 import { show as showMessage } from '@/routes/admin/messages';
 
 export type MessageRow = Konventix.Messaging.Data.MessageLogRowData;
@@ -92,7 +93,7 @@ export const columns: ColumnDef<MessageRow>[] = [
             h(
                 'span',
                 { class: 'text-text-muted' },
-                row.original.queuedAt ?? '—',
+                formatDateTime(row.original.queuedAt) || '—',
             ),
     },
     {
@@ -100,7 +101,11 @@ export const columns: ColumnDef<MessageRow>[] = [
         header: 'Sent',
         enableSorting: true,
         cell: ({ row }) =>
-            h('span', { class: 'text-text-muted' }, row.original.sentAt ?? '—'),
+            h(
+                'span',
+                { class: 'text-text-muted' },
+                formatDateTime(row.original.sentAt) || '—',
+            ),
     },
     {
         id: 'lastError',

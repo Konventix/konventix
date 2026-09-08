@@ -12,8 +12,10 @@ use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\OrderCancelled;
+use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderRefunded;
+use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
@@ -21,6 +23,11 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
+use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\SettlementAdapter;
+use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
+use Konventix\Commerce\Settlement\Stripe\StripeApi;
+use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
 use Konventix\Compliance\Models\AuditLogEntry;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
@@ -28,6 +35,7 @@ use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
+use Stripe\Exception\InvalidRequestException;
 
 /**
  * ADR-0029: Commerce's operator-console surface — the orders index and
@@ -427,6 +435,66 @@ it('lists orders with an open or final reversal and orders with unapplied money 
         ->and($rows->firstWhere('id', $wonOrder->id))->toBeNull();
 });
 
+/**
+ * #238: the orders list printed "Placed" as the string the server had
+ * formatted, which is UTC — a reader in Berlin saw two hours too little, and
+ * #208 introduced `formatDateTime()` in `resources/js/lib/datetime.ts` for
+ * exactly that. A system timestamp reaches the browser as an ISO-8601
+ * instant and is rendered in the reader's own zone; only a calendar date
+ * (`dueOn`, `issuedOn`, `repayDueOn`) stays a date, because it is one.
+ */
+it('sends every order timestamp as an ISO instant, not a preformatted string (#238)', function (): void {
+    [, $admin] = commerceOperator();
+
+    $brand = $this->withBrand();
+
+    $order = Order::factory()->paid()->create(['paid_at' => now()->subHour()]);
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'mollie',
+        'received_at' => now()->subMinutes(30),
+    ]);
+
+    PaymentReversal::factory()->create([
+        'order_id' => $order->id,
+        'payment_id' => $payment->id,
+        'brand_id' => $brand->id,
+        'kind' => ReversalKind::Return,
+        'status' => ReversalStatus::Final,
+        'occurred_at' => now()->subMinutes(20),
+        'finalized_at' => now()->subMinutes(10),
+    ]);
+
+    $iso = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/';
+
+    $response = $this->actingAs($admin)
+        ->get('http://admin.commerce.test/admin/orders')
+        ->assertOk();
+
+    $row = collect($response->viewData('page')['props']['orders']['data'])
+        ->firstWhere('id', $order->id);
+
+    expect($row['createdAt'])->toMatch($iso)
+        ->and($row['paidAt'])->toMatch($iso)
+        ->and($row['reversals'][0]['occurredAt'])->toMatch($iso)
+        ->and($row['reversals'][0]['finalizedAt'])->toMatch($iso);
+
+    $show = $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders/{$order->id}")
+        ->assertOk();
+
+    $props = $show->viewData('page')['props'];
+
+    expect($props['order']['createdAt'])->toMatch($iso)
+        ->and($props['order']['paidAt'])->toMatch($iso)
+        ->and($props['payments'][0]['receivedAt'])->toMatch($iso)
+        ->and($props['reversals'][0]['occurredAt'])->toMatch($iso)
+        // A due date is a calendar date, not an instant — it must not move
+        // with the reader (the other half of the same distinction).
+        ->and($props['invoice']['dueOn'] ?? '2026-09-14')->not->toMatch($iso);
+});
+
 it('echoes the reversals view back and drops a view it does not offer', function (): void {
     [, $admin] = commerceOperator();
 
@@ -665,6 +733,9 @@ it('refunds a whole paid order from the console, crediting its invoice', functio
             'reason_note' => 'Cancelled by phone.',
             'amount' => '119.00',
             'currency' => $order->currency,
+            // The clean path (fix round 1, NEW-1): the seat went with the
+            // money. Its counterpart is asserted true below.
+            'announcement_failed' => false,
         ]);
 });
 
@@ -736,6 +807,235 @@ it('422s a refund with no reason, or one the console does not offer', function (
 
     expect($order->refresh()->status)->toBe(OrderStatus::Paid)
         ->and(AuditLogEntry::query()->where('action', 'commerce.order.refunded')->count())->toBe(0);
+});
+
+/**
+ * #236: `SdkStripeApi` lets the SDK's own exception out, and
+ * `Stripe\Exception\ApiErrorException` is not a `RuntimeException` — the
+ * console answered 500 and told the operator nothing. The second attempt at
+ * a refund Stripe had already made is exactly that case, and it is the one
+ * an operator hits after the first attempt half-failed.
+ */
+final class OrderAdminTestRefusingStripeApi implements StripeApi
+{
+    public function createCheckoutSession(array $params): StripeCheckoutSession
+    {
+        return new StripeCheckoutSession(id: 'cs_test_fake', url: 'https://checkout.stripe.test/pay/cs_test_fake');
+    }
+
+    public function createRefund(array $params): void
+    {
+        throw InvalidRequestException::factory(
+            message: 'Charge ch_3UDIXCDvM5KSDNOI2 has already been refunded.',
+            httpStatus: 400,
+            stripeParam: 'charge',
+        );
+    }
+
+    /**
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId): array
+    {
+        return [
+            'status' => 'complete',
+            'payment_status' => 'paid',
+            'payment_intent' => null,
+            'payment_intent_status' => null,
+        ];
+    }
+}
+
+function orderAdminStripePaidOrder(): Order
+{
+    $account = SettlementAccount::factory()->create([
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+    ]);
+
+    $order = Order::factory()->paid()->create(['total_gross' => '11.90']);
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'settlement_account_id' => $account->id,
+        'provider_transaction_id' => 'pi_3UDIXCDvM5KSDNOI2yhJYJ26',
+        'amount' => '11.90',
+        'currency' => $order->currency,
+    ]);
+
+    app()->instance(StripeApi::class, new OrderAdminTestRefusingStripeApi);
+
+    return $order;
+}
+
+it('422s a refund Stripe refuses, naming Stripe\'s own message instead of answering 500 (#236)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = orderAdminStripePaidOrder();
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['order' => 'has already been refunded']);
+
+    // And the operator is told what to do about money the provider says is
+    // already back: reconcile it, rather than press the button again.
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertInvalid(['order' => 'reconcile']);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+});
+
+/**
+ * #236 fix round 1, review finding 5: the console must read the same for
+ * every provider. The refusal arrives as one Commerce exception whichever
+ * SDK raised it, so this exercises the path with an adapter that owes
+ * nothing to any SDK — and pins the two sentences apart: a refusal asks for
+ * a reconciliation, a rejected key asks for the credentials (review nit 7).
+ */
+final class OrderAdminTestRefusingAdapter implements SettlementAdapter
+{
+    public bool $misconfigured = false;
+
+    public function markOrderPaid(
+        string $accountId,
+        Order $order,
+        string $amountPaid,
+        string $currency,
+        string $settlementMethod,
+    ): Order {
+        return $order;
+    }
+
+    public function refund(string $accountId, Order $order, string $amount, string $currency): void
+    {
+        throw $this->misconfigured
+            ? ProviderRefusedRefundException::misconfigured('spy', 'Invalid API Key provided.')
+            : ProviderRefusedRefundException::refused('spy', 'The charge has already been refunded.');
+    }
+}
+
+function orderAdminSpyRefundOrder(bool $misconfigured = false): Order
+{
+    $order = Order::factory()->paid()->create(['total_gross' => '11.90']);
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'settlement_account_id' => (string) Str::ulid(),
+        'amount' => '11.90',
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', OrderAdminTestRefusingAdapter::class);
+    $spy = app(OrderAdminTestRefusingAdapter::class);
+    $spy->misconfigured = $misconfigured;
+    app()->instance(OrderAdminTestRefusingAdapter::class, $spy);
+
+    return $order;
+}
+
+it('422s a provider refusal from any adapter, not only Stripe (#236)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = orderAdminSpyRefundOrder();
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['order' => 'has already been refunded'])
+        ->assertInvalid(['order' => 'reconcile']);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+});
+
+it('reads a rejected provider key as a settings problem, not as a refusal (#236)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = orderAdminSpyRefundOrder(misconfigured: true);
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['order' => 'credentials']);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+/**
+ * #236 fix round 1, review NEW-1: `RefundEventRelayFailedException` is a
+ * `RuntimeException`, and under a `sync` queue the relay runs inside the
+ * after-commit callback — so it landed in the arm meant for "nothing moved"
+ * and the operator was told 422 about a refund that had gone through, with
+ * no audit row and no toast. The money is back with the payer at that point;
+ * the only honest answer is that the refund stands and the follow-up needs
+ * looking at.
+ */
+it('reports a refund whose announcement failed as recorded, not as refused (#236)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+
+    // A cart order, so the refund emits `OrderLineCancelled` per line — the
+    // event whose consumer actually blew up on dev.
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'cart',
+        'settles_id' => (string) Str::ulid(),
+        'total_gross' => '11.90',
+    ]);
+    Invoice::factory()->create(['order_id' => $order->id]);
+    OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'position' => 1,
+        'settles_kind' => 'registration',
+        'settles_ref' => (string) Str::ulid(),
+    ]);
+
+    Event::listen(OrderLineCancelled::class, function (): void {
+        throw new RuntimeException('the consumer blew up');
+    });
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+            'reasonNote' => 'Cancelled by phone.',
+        ])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    // Recorded, and said to be recorded.
+    expect($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+
+    $toast = session('inertia.flash_data')['toast'];
+
+    expect($toast['type'])->toBe('warning')
+        ->and($toast['message'])->toContain('refund is recorded')
+        // The follow-up failure is named, but nothing of the provider's
+        // payload leaks into a message an operator reads.
+        ->and($toast['message'])->not->toContain('the consumer blew up');
+
+    // The audit row is the point: who sent the money back is not conditional
+    // on whether a downstream listener behaved.
+    $audit = AuditLogEntry::query()->where('action', 'commerce.order.refunded')->sole();
+
+    expect($audit->actor_user_id)->toBe((string) $admin->id)
+        ->and($audit->subject_id)->toBe($order->id)
+        ->and($audit->context['announcement_failed'])->toBeTrue();
 });
 
 it('403s a refund without the issue-refunds capability', function (): void {

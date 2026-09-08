@@ -166,6 +166,13 @@ it('lists entries newest first and filters by action', function (): void {
             ->where('entries.data.0.action', 'registration.registrations.exported')
             // No brand means the operator host, not a missing value.
             ->where('entries.data.0.brandName', null)
+            // An ISO instant, not a preformatted UTC string (#238 fix round
+            // 1, review finding 6): the page renders it in the reader's own
+            // zone through `formatDateTime()`, like every other admin list.
+            ->where('entries.data.0.occurredAt', fn (string $at): bool => (bool) preg_match(
+                '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/',
+                $at,
+            ))
             ->has('actions', 2));
 
     $this->actingAs($admin)

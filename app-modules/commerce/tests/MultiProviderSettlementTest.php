@@ -205,13 +205,16 @@ it('lists every offered hosted account on the checkout page with its label', fun
     $this->withBrand();
     // Both `/pay/registration/...` routes carry `auth` since #2 — a
     // declaration at checkout needs a subject to record it against.
-    $this->actingAs(User::factory()->create());
+    $payer = User::factory()->create();
+    $this->actingAs($payer);
     $registrationId = (string) Str::ulid();
 
     Order::factory()->create([
         'status' => OrderStatus::Pending,
         'settles_type' => 'registration',
         'settles_id' => $registrationId,
+        // GitLab #185: the pay page serves the order's own payer only.
+        'payer_user_id' => $payer->getKey(),
         'total_gross' => '119.00',
         'currency' => 'EUR',
     ]);
@@ -242,13 +245,16 @@ it('starts the hosted checkout on the chosen account and records it on the payme
     $this->withBrand();
     // Both `/pay/registration/...` routes carry `auth` since #2 — a
     // declaration at checkout needs a subject to record it against.
-    $this->actingAs(User::factory()->create());
+    $payer = User::factory()->create();
+    $this->actingAs($payer);
     $registrationId = (string) Str::ulid();
 
     $order = Order::factory()->create([
         'status' => OrderStatus::Pending,
         'settles_type' => 'registration',
         'settles_id' => $registrationId,
+        // GitLab #185: the pay page serves the order's own payer only.
+        'payer_user_id' => $payer->getKey(),
         'total_gross' => '119.00',
         'currency' => 'EUR',
     ]);
@@ -270,13 +276,16 @@ it('refuses an account that is not offered, not this brand\'s, or missing', func
     $brand = $this->withBrand();
     // Both `/pay/registration/...` routes carry `auth` since #2 — a
     // declaration at checkout needs a subject to record it against.
-    $this->actingAs(User::factory()->create());
+    $payer = User::factory()->create();
+    $this->actingAs($payer);
     $registrationId = (string) Str::ulid();
 
     Order::factory()->create([
         'status' => OrderStatus::Pending,
         'settles_type' => 'registration',
         'settles_id' => $registrationId,
+        // GitLab #185: the pay page serves the order's own payer only.
+        'payer_user_id' => $payer->getKey(),
         'total_gross' => '119.00',
         'currency' => 'EUR',
     ]);
@@ -313,13 +322,16 @@ it('refuses a second account once a payment succeeded', function (): void {
     $this->withBrand();
     // Both `/pay/registration/...` routes carry `auth` since #2 — a
     // declaration at checkout needs a subject to record it against.
-    $this->actingAs(User::factory()->create());
+    $payer = User::factory()->create();
+    $this->actingAs($payer);
     $registrationId = (string) Str::ulid();
 
     $order = Order::factory()->create([
         'status' => OrderStatus::Pending,
         'settles_type' => 'registration',
         'settles_id' => $registrationId,
+        // GitLab #185: the pay page serves the order's own payer only.
+        'payer_user_id' => $payer->getKey(),
         'total_gross' => '119.00',
         'currency' => 'EUR',
     ]);

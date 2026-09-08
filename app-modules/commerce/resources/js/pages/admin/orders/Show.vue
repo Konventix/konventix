@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { formatDateTime } from '@/lib/datetime';
 import { document as creditNoteDocument } from '@/routes/admin/credit-notes';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
 import { bookPayment, cancelReversed, refund } from '@/routes/admin/orders';
@@ -280,7 +281,7 @@ function returnFocusAfterRefund(): void {
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="`Order · ${order.settlesType} ${order.settlesId}`"
-            :description="`${order.brand} — created ${order.createdAt ?? 'unknown'}`"
+            :description="`${order.brand} — created ${formatDateTime(order.createdAt) || 'unknown'}`"
         >
             <Badge :variant="statusVariant(order.status)">{{
                 orderStatusLabel(order.status)
@@ -443,10 +444,12 @@ function returnFocusAfterRefund(): void {
                 {{ unappliedPayment.provider }} reported
                 {{ unappliedPayment.amount }} {{ unappliedPayment.currency }}
                 received
-                {{ unappliedPayment.receivedAt ?? 'at an unknown time' }}, and
-                this order is not paid. The money moved; what happens to it is
-                yours to decide — refunding it goes through the payment's own
-                account in the provider's dashboard.
+                {{
+                    formatDateTime(unappliedPayment.receivedAt) ||
+                    'at an unknown time'
+                }}, and this order is not paid. The money moved; what happens to
+                it is yours to decide — refunding it goes through the payment's
+                own account in the provider's dashboard.
                 <span
                     v-if="unappliedPayment.externalId"
                     class="font-mono text-xs"
@@ -537,7 +540,7 @@ function returnFocusAfterRefund(): void {
                     <p class="mt-2 text-xs text-text-muted">
                         Tax treatment: {{ order.taxTreatment }}
                         <template v-if="order.paidAt">
-                            · paid {{ order.paidAt }}
+                            · paid {{ formatDateTime(order.paidAt) }}
                         </template>
                         <template v-if="order.provider">
                             · via {{ order.provider }}
@@ -727,9 +730,10 @@ function returnFocusAfterRefund(): void {
                                 </td>
                                 <td class="p-3 text-text-muted">
                                     {{
-                                        payment.receivedAt ??
-                                        payment.failedAt ??
-                                        '—'
+                                        formatDateTime(
+                                            payment.receivedAt ??
+                                                payment.failedAt,
+                                        ) || '—'
                                     }}
                                 </td>
                             </tr>
@@ -835,8 +839,10 @@ function returnFocusAfterRefund(): void {
                                 </td>
                                 <td class="p-3 text-text-muted">
                                     {{
-                                        reversal.finalizedAt ??
-                                        reversal.occurredAt
+                                        formatDateTime(
+                                            reversal.finalizedAt ??
+                                                reversal.occurredAt,
+                                        )
                                     }}
                                 </td>
                             </tr>

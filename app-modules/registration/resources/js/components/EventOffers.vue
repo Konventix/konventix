@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
+import { formatDateTime } from '@/lib/datetime';
 
 /**
  * Registration's contribution to Event's `event.landing` slot: what a
@@ -16,6 +17,12 @@ import { ArrowRight } from '@lucide/vue';
  * through login and back. Announcing the requirement in front of the button
  * only adds a reason to stop.
  *
+ * The announced start is formatted through the shared `formatDateTime()`
+ * (#208): the props were rendered on a server that knows nothing about where
+ * the page was opened, so the visitor's own zone is the only one the
+ * announcement can honestly claim — and one implementation of that decision
+ * is enough (#237).
+ *
  * #218: an offer that is not on sale yet is announced, not linked — there is
  * nothing to click until the window opens, and a link that leads to a refusal
  * is worse than a date. It renders as a plain `<li>` rather than a disabled
@@ -28,18 +35,6 @@ type Offer = Konventix.Registration.Data.PublicOfferData;
 const props = defineProps<{
     offers: Offer[];
 }>();
-
-/**
- * The instant is formatted in the visitor's own timezone, which is the only
- * timezone the announcement can honestly claim — the props were rendered on
- * a server that knows nothing about where the page was opened.
- */
-function saleStart(value: string): string {
-    return new Date(value).toLocaleString(undefined, {
-        dateStyle: 'long',
-        timeStyle: 'short',
-    });
-}
 </script>
 
 <template>
@@ -95,7 +90,11 @@ function saleStart(value: string): string {
                             <template v-if="offer.salesStart">
                                 Sale starts
                                 <time :datetime="offer.salesStart">
-                                    {{ saleStart(offer.salesStart) }}
+                                    {{
+                                        formatDateTime(offer.salesStart, {
+                                            dateStyle: 'long',
+                                        })
+                                    }}
                                 </time>
                             </template>
                             <template v-else> Not on sale </template>

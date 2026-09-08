@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Settlement\Unzer;
 
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
@@ -13,6 +14,7 @@ use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapter;
 use LogicException;
 use RuntimeException;
+use UnzerSDK\Exceptions\UnzerApiException;
 
 /**
  * Unzer, per ADR-0039: hosted Paypage (v2, charge mode) against the brand's
@@ -84,11 +86,23 @@ final class UnzerSettlementAdapter implements ProvidesHostedCheckout, Settlement
             ));
         }
 
-        $this->unzer->refundPayment(
-            $payment->provider_transaction_id,
-            round((float) $amount, 2),
-            $this->privateKeyOf($account),
-        );
+        // Translated at the seam (#236 fix round 1): `UnzerApiException`
+        // extends `Exception`, so a cancellation Unzer refuses used to reach
+        // the console as a 500. `getMerchantMessage()` is the sentence
+        // written for an operator; the customer-facing one is not.
+        try {
+            $this->unzer->refundPayment(
+                $payment->provider_transaction_id,
+                round((float) $amount, 2),
+                $this->privateKeyOf($account),
+            );
+        } catch (UnzerApiException $e) {
+            throw ProviderRefusedRefundException::refused(
+                SettlementAccount::PROVIDER_UNZER,
+                $e->getMerchantMessage() !== '' ? $e->getMerchantMessage() : $e->getMessage(),
+                $e,
+            );
+        }
     }
 
     /**

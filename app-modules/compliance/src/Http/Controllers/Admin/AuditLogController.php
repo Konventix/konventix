@@ -68,7 +68,10 @@ class AuditLogController
                 'subjectId' => $entry->subject_id,
                 'brandName' => $entry->brand_id === null ? null : ($brandNames[$entry->brand_id] ?? $entry->brand_id),
                 'context' => $entry->context ?? [],
-                'occurredAt' => $entry->occurred_at->toDateTimeString(),
+                // An ISO instant (#238): the trail is read by operators in
+                // more than one zone, and the page formats it in the
+                // reader's own through `formatDateTime()`.
+                'occurredAt' => $entry->occurred_at->toIso8601String(),
             ]),
             // The actions actually present, so the filter offers what the
             // trail contains rather than a catalogue nobody maintains.

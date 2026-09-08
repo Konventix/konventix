@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { DataTableFilters } from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
+import { formatDateTime } from '@/lib/datetime';
 import {
     destroy as destroyMedia,
     index as mediaIndex,
@@ -182,7 +183,7 @@ const columns: ColumnDef<MediaRow>[] = [
             h(
                 'span',
                 { class: 'text-text-muted' },
-                row.original.uploadedAt ?? '—',
+                formatDateTime(row.original.uploadedAt) || '—',
             ),
     },
     {

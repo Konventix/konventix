@@ -41,8 +41,11 @@ final class CreateRegistrationType
                 // Not a frozen axis (#218): closing a sale early or extending
                 // it by a day is an operational decision — it reinterprets
                 // nobody's existing registration the way the terms would.
-                'sales_start' => $data->salesStart,
-                'sales_end' => $data->salesEnd,
+                // Normalised to UTC (#237): the payload carries the
+                // browser's own offset, and a zone-less column would
+                // otherwise store the operator's wall-clock digits.
+                'sales_start' => $data->salesStartInstant(),
+                'sales_end' => $data->salesEndInstant(),
             ]);
 
             $type->forceFill(['brand_id' => $brandId])->save();
