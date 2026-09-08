@@ -13,8 +13,11 @@
 - [ ] B2C invoices above 250 € need a postal address (§14 UStG vs §33
       UStDV): a way for the operator or payer to complete the billing
       address on a cart order.
-- [ ] A cart order whose payment failed has no re-pay link (the grace sweep
-      cancels it after 60 min; the payer re-shops).
+- [x] A cart order whose payment failed has no re-pay link (the grace sweep
+      cancels it after 60 min; the payer re-shops). Fixed: order-scoped
+      re-pay at `GET`/`POST /pay/order/{order}` (`CheckoutController::
+      showOrder()`/`startOrder()`), authorized on the order's buyer, reached
+      from the order confirmation and the payment-failed mail (#5).
 - [x] A PSP success arriving for an order already cancelled by
       `ExpireCarts`' checkout-grace sweep is a domain record, not a log
       line: `RecordPaymentSuccess` emits `PaymentUnapplied` and
@@ -28,11 +31,12 @@
       Stripe's `charge.dispute.*` and `charge.refunded`, Mollie's
       chargeback and refund lists, Unzer's `chargeback` state, which is no
       longer a code comment.
-- [ ] A whole-order refund of a cart order cancels nothing on the
-      registration side: `OrderRefunded` carries `settlesType` but no
-      per-line counterpart (`OrderLineReversed` exists for a reversal,
-      there is no `OrderLineRefunded` for a refund), so Registration's
-      guard cannot act line by line. A real gap in ADR-0037's closure.
+- [x] A whole-order refund of a cart order cancels nothing on the
+      registration side. Fixed without a new event: a whole refund of a
+      cart order now emits one existing `OrderLineCancelled` per
+      registration-kind line, reason `order_refunded` — the same event and
+      producer pattern `CancelOrderForUnpaidReversal` already used, just a
+      new value of the reason field (#73, whole-branch review finding 3).
 - [x] `SendCreditNoteMail` names a cancellation credit note
       Stornierung/Cancellation rather than Erstattung/Refund (ADR-0057
       point 4): its own arm in the reason map and its own sentence in the
@@ -134,7 +138,29 @@
       `<livewire:.../>` line, with the ongoing cost of keeping that
       published copy in step with Pulse's own default on every upgrade.
 - [ ] Refunding a cart order leaves its product lines' stock_consumed raised on purpose (SPEC, Cart) — if operators keep raising capacity by hand after refunds, give RefundOrder an explicit "return to shelf" option per product line.
-- [ ] The shop renders a product's net amount even when price_display is gross — honest only because it is captioned "excl. VAT". A real gross display needs ShopProductData to carry a server-computed unitAmountGross from TaxCalculator (no billing party, so ADR-0030's domestic-standard treatment), the way the cart page already computes its totals.
+- [x] The shop renders a product's net amount even when price_display is gross. Fixed (PAngV): `ShopProductData.unitAmountGross`, `ShopVariantData.unitAmountGross` and `CartLineData.unitAmountGross` are all computed server-side through `TaxCalculator` (#3). The order button reads "Order with obligation to pay" and the delivery statement is shown on the cart and pay pages (#75) — still open: a separate confirmation step in the cart is a product decision, not built here.
+- [ ] `/my/orders` shows no deadline beside a pay link, for a cart order or a
+      registration order — the only surface `Settlement\PaymentWindow`
+      does not reach (`MyOrderData`).
+- [ ] Print the refund reason and note on the credit note document. Both are
+      recorded on the audit trail and on the refund record today; the
+      credit note itself always says "Grund: Erstattung" (#73).
+- [ ] `OrderAdminController::refund()` catches `RuntimeException`, which is
+      every reasoned refusal the settlement adapters make; an SDK transport
+      failure (`\Stripe\Exception\ApiErrorException`,
+      `\Mollie\Api\Exceptions\ApiException`) still reaches the operator as a
+      500. Wrap SDK failures in a Commerce exception inside `Settlement/**`
+      and the console gets a sentence instead of an error page.
+- [ ] #231 — the cart sweep can cancel an order whose hosted-checkout
+      session may already be paid at the PSP, without asking first — a
+      money-risk gap distinct from #131's payment-window sweep.
+- [ ] #233 — `cart_lines` deadlock risk: an FK `KEY SHARE` → `NO KEY UPDATE`
+      lock escalation on `carts` at four sites, plus two unordered
+      multi-row lock sites. Filed, code untouched.
+- [ ] #234 — gross/net mismatch on the event landing page: the Registration
+      card cannot show the gross amount without a new cross-module tax
+      contract (ADR-0004 forbids importing `Commerce\Tax\*`). Filed, needs
+      a design decision, not a fix.
 - [ ] PlaceRegistrationLineInCart's read-then-insert can lose a race to cart_lines_request_key_unique and throw a QueryException out of a listener, the same shape PlaceOrderFromSettlementRequest carries. The 2026-08-27 rush never surfaced it (0 × 5xx across 754 arrivals), so this stays a converge-on-conflict cleanup — catch the violation and re-read the line the winner created, as OpenCart::for() already does.
 
 ## Done
@@ -681,10 +707,19 @@
       because the download is a separate request Commerce could not
       authorize on its own.
 
-- [ ] The confirmation mail still does not carry the pay link. The account
-      page does now (see Done), but a payer who never comes back to the site
-      has nothing to click — and `instant` settlement is exactly the case
-      where they might not.
+- [x] The confirmation mail still does not carry the pay link. Fixed:
+      `Settlement\PayLink` now feeds the order confirmation mail too, plus
+      the payment-failed mail and `MyOrderData` (#5).
+- [x] Sales window per registration type: columns, admin form, landing-page
+      filter, refusal at submission and at the cart line (#218).
+- [x] #131 Registration orders expire past their payment window:
+      `commerce:expire-registration-orders` cancels a pending
+      `settles_type = registration` order past
+      `Cart::CHECKOUT_GRACE_MINUTES` with `OrderCancelled` reason
+      `payment_window_expired` — hosted population only, so a brand
+      settling by bank transfer only is never touched by it. The window
+      and the deadline shown on the pay page and in the payment-failed
+      mail now share one predicate, `Settlement\PaymentWindow`.
 
 - [x] The standalone "my orders/invoices" list, now that the payer read
       model exists (ADR-0044). `GET /my/orders` (`commerce.mine.index`)
