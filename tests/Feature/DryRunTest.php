@@ -219,6 +219,28 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
 {
     $name = (string) $route->getName();
 
+    // The checkout page authorizes on the order's payer since GitLab #185 —
+    // knowing the registration ULID is no longer enough — so this may not be
+    // "any registration of this brand that produced an order" either. It has
+    // to be one the walking member is the payer of, or the page 404s exactly
+    // as it does for a stranger. `DemoComplianceSeeder` prefers a payer when
+    // it picks the subject this walk signs in as, so such a registration
+    // exists for both archetypes.
+    if ($name === 'commerce.pay.show' && $member !== null) {
+        $own = Order::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->where('settles_type', 'registration')
+            ->where('payer_user_id', $member->getKey())
+            ->first();
+
+        $registration = $own === null ? null : Registration::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->whereKey($own->settles_id)
+            ->first();
+
+        return $registration === null ? null : ['registration' => $registration];
+    }
+
     // The registrant's own registration: the controller authorizes on
     // ownership and 403s for anyone else, so this may not be "any
     // registration of this brand" the way the console's screens are.
@@ -309,9 +331,10 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             $parameter === 'account' => SettlementAccount::withoutBrandScope()
                 ->where('brand_id', $brand->getKey())
                 ->first(),
-            // The checkout page is addressed by the registration its order
-            // settles, and 404s for one that never produced an order — so it
-            // must be pointed at a registration that did.
+            // A registration that produced an order, for any route that
+            // names one without owning it the way `commerce.pay.show` does
+            // (that one is resolved against the walking member's own payer
+            // row above, GitLab #185).
             $parameter === 'registration' => Registration::withoutBrandScope()
                 ->where('brand_id', $brand->getKey())
                 ->whereIn('id', Order::withoutBrandScope()

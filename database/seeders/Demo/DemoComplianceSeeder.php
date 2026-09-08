@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders\Demo;
 
 use Illuminate\Support\Collection;
+use Konventix\Commerce\Models\Order;
 use Konventix\Compliance\Actions\CreatePolicy;
 use Konventix\Compliance\Actions\DraftPolicyVersion;
 use Konventix\Compliance\Actions\GrantConsent;
@@ -229,7 +230,21 @@ final class DemoComplianceSeeder
             ->where('brand_id', $brand->getKey())
             ->pluck('registrant_user_id');
 
-        $eligible = $members->whereIn('id', $registered)->values();
+        // GitLab #185: the same walk also opens `commerce.pay.show`, which
+        // now serves the order's own payer and 404s for everybody else. Only
+        // about a third of the registrants buy a priced ticket, so a subject
+        // drawn from the registered members alone had that page 404 whenever
+        // the draw missed a payer — the dry run failed or passed by row
+        // order. Payers are preferred here rather than required, so a brand
+        // with none still seeds its requests.
+        $paying = Order::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->whereNotNull('payer_user_id')
+            ->pluck('payer_user_id');
+
+        $eligible = $members->whereIn('id', $registered)
+            ->sortByDesc(fn (User $user): int => $paying->contains($user->getKey()) ? 1 : 0)
+            ->values();
 
         $subjects = ($eligible->count() >= 3 ? $eligible : $members)->take(3)->values();
 

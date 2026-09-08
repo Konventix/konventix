@@ -446,6 +446,15 @@ class CheckoutController
      * payer: nobody paid for it online and nobody is going to, so there is
      * no person this page could belong to.
      *
+     * There is deliberately no "fall back to the registration's owner" arm.
+     * For a registration order the payer *is* the registrant — the
+     * settlement request carries `registrantUserId` and
+     * `CreateOrderOnSettlementRequested` writes it here (ADR-0044,
+     * `PayerOnOrdersTest` pins the whole chain) — and looking the owner up
+     * again would mean Commerce reading Registration's tables, which
+     * ADR-0004 and `RegistrationSettlementRequested`'s own docblock forbid
+     * in as many words.
+     *
      * The order was read under the brand scope (ADR-0010) — this runs on
      * the brand host — so another brand's order is already gone before the
      * payer is compared at all.
