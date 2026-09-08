@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Settlement\Mollie;
 
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
@@ -12,6 +13,8 @@ use Konventix\Commerce\Settlement\CheckoutRedirect;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapter;
 use LogicException;
+use Mollie\Api\Exceptions\ApiException as MollieApiException;
+use Mollie\Api\Exceptions\MollieException;
 use RuntimeException;
 
 /**
@@ -100,12 +103,28 @@ final class MollieSettlementAdapter implements ProvidesHostedCheckout, Settlemen
             ));
         }
 
-        $this->mollie->refundPayment($payment->external_id, [
-            'amount' => [
-                'currency' => $currency,
-                'value' => $amount,
-            ],
-        ], $this->apiKeyOf($account));
+        // Translated at the seam (#236 fix round 1): `ApiException` extends
+        // `Exception`, so an unrefundable payment used to reach the console
+        // as a 500 rather than as Mollie's own sentence in the form.
+        try {
+            $this->mollie->refundPayment($payment->external_id, [
+                'amount' => [
+                    'currency' => $currency,
+                    'value' => $amount,
+                ],
+            ], $this->apiKeyOf($account));
+        } catch (MollieException $e) {
+            // The whole SDK hierarchy, not just `ApiException`: a connection
+            // failure is as unrecoverable for the operator as a refusal, and
+            // both must read as a sentence rather than a stack trace.
+            // `getPlainMessage()` is Mollie's own text; `getMessage()` wraps
+            // it in a timestamp, the documentation URL and the request body.
+            throw ProviderRefusedRefundException::refused(
+                SettlementAccount::PROVIDER_MOLLIE,
+                $e instanceof MollieApiException ? $e->getPlainMessage() : $e->getMessage(),
+                $e,
+            );
+        }
     }
 
     /**

@@ -14,6 +14,7 @@ use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderRefunded;
+use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
@@ -22,6 +23,8 @@ use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\SettlementAdapter;
+use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
 use Konventix\Compliance\Models\AuditLogEntry;
@@ -884,6 +887,89 @@ it('422s a refund Stripe refuses, naming Stripe\'s own message instead of answer
 
     expect($order->refresh()->status)->toBe(OrderStatus::Paid)
         ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+});
+
+/**
+ * #236 fix round 1, review finding 5: the console must read the same for
+ * every provider. The refusal arrives as one Commerce exception whichever
+ * SDK raised it, so this exercises the path with an adapter that owes
+ * nothing to any SDK — and pins the two sentences apart: a refusal asks for
+ * a reconciliation, a rejected key asks for the credentials (review nit 7).
+ */
+final class OrderAdminTestRefusingAdapter implements SettlementAdapter
+{
+    public bool $misconfigured = false;
+
+    public function markOrderPaid(
+        string $accountId,
+        Order $order,
+        string $amountPaid,
+        string $currency,
+        string $settlementMethod,
+    ): Order {
+        return $order;
+    }
+
+    public function refund(string $accountId, Order $order, string $amount, string $currency): void
+    {
+        throw $this->misconfigured
+            ? ProviderRefusedRefundException::misconfigured('spy', 'Invalid API Key provided.')
+            : ProviderRefusedRefundException::refused('spy', 'The charge has already been refunded.');
+    }
+}
+
+function orderAdminSpyRefundOrder(bool $misconfigured = false): Order
+{
+    $order = Order::factory()->paid()->create(['total_gross' => '11.90']);
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'settlement_account_id' => (string) Str::ulid(),
+        'amount' => '11.90',
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', OrderAdminTestRefusingAdapter::class);
+    $spy = app(OrderAdminTestRefusingAdapter::class);
+    $spy->misconfigured = $misconfigured;
+    app()->instance(OrderAdminTestRefusingAdapter::class, $spy);
+
+    return $order;
+}
+
+it('422s a provider refusal from any adapter, not only Stripe (#236)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = orderAdminSpyRefundOrder();
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['order' => 'has already been refunded'])
+        ->assertInvalid(['order' => 'reconcile']);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+});
+
+it('reads a rejected provider key as a settings problem, not as a refusal (#236)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = orderAdminSpyRefundOrder(misconfigured: true);
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['order' => 'credentials']);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid);
 });
 
 it('403s a refund without the issue-refunds capability', function (): void {

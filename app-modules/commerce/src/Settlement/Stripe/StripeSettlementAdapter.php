@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Settlement\Stripe;
 
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
@@ -18,6 +19,8 @@ use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Scopes\BrandScope;
 use LogicException;
 use RuntimeException;
+use Stripe\Exception\ApiErrorException;
+use Stripe\Exception\AuthenticationException;
 use Stripe\Exception\InvalidRequestException;
 
 /**
@@ -210,10 +213,44 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
 
         // Direct on this instance's own account (ADR-0058): the intent
         // recorded at settlement is the whole address of the money.
-        $this->stripe->createRefund([
-            'payment_intent' => $payment->provider_transaction_id,
-            'amount' => MinorUnits::fromDecimal($amount, $currency),
-        ]);
+        //
+        // The SDK's exception is translated here rather than let out (#236
+        // fix round 1): `ApiErrorException` extends `Exception`, so it used
+        // to reach the console as a 500, and the console must not have to
+        // know a provider's SDK. `getError()?->message` is Stripe's own
+        // sentence about this request; `getMessage()` prefixes it with the
+        // HTTP status, which is noise in a form error.
+        try {
+            $this->stripe->createRefund([
+                'payment_intent' => $payment->provider_transaction_id,
+                'amount' => MinorUnits::fromDecimal($amount, $currency),
+            ]);
+        } catch (AuthenticationException $e) {
+            throw ProviderRefusedRefundException::misconfigured(
+                SettlementAccount::PROVIDER_STRIPE,
+                self::stripeMessage($e),
+                $e,
+            );
+        } catch (ApiErrorException $e) {
+            throw ProviderRefusedRefundException::refused(
+                SettlementAccount::PROVIDER_STRIPE,
+                self::stripeMessage($e),
+                $e,
+            );
+        }
+    }
+
+    /**
+     * Stripe's own sentence about the request. `getMessage()` prefixes it
+     * with "Error sending request to Stripe: (Status 400)", which is noise
+     * in a form error; the error object carries the sentence alone — but it
+     * is absent for a transport failure, which has no API error body.
+     */
+    private static function stripeMessage(ApiErrorException $e): string
+    {
+        $message = $e->getError()?->message;
+
+        return $message === null || $message === '' ? $e->getMessage() : $message;
     }
 
     /**

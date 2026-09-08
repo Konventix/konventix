@@ -19,6 +19,7 @@ use Konventix\Commerce\Data\RefundOrderData;
 use Konventix\Commerce\Data\UnappliedPaymentData;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Enums\ReversalStatus;
+use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
@@ -30,7 +31,6 @@ use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\ConsoleSelection;
 use RuntimeException;
-use Stripe\Exception\ApiErrorException;
 
 /**
  * Operator console: orders and their invoices (ADR-0029). Route middleware
@@ -379,18 +379,23 @@ class OrderAdminController
      * it (check the admission out, book the payment first), which is the
      * whole point of ADR-0037 refusing "explicitly and with a reason".
      *
-     * The provider's own refusal is not a `RuntimeException` and used to
-     * escape as a 500 (#236): `Stripe\Exception\ApiErrorException` extends
-     * `Exception` directly, and the operator whose first refund half-failed
-     * pressed the button again and got "charge has already been refunded" as
-     * a stack trace. It is caught here as its own case, because the answer is
-     * different: the Action's refusals mean nothing moved, while a provider
-     * error leaves open whether the money went back — so the message carries
-     * the provider's own words and asks for a reconciliation rather than a
-     * retry. Recording the provider's existing refund automatically is
-     * deliberately not attempted: the `StripeApi` seam exposes no way to read
-     * a refund back, and inventing a domain refund from an error string would
-     * be a document (ADR-0031) built on a guess.
+     * The provider's own refusal used to escape as a 500 (#236): every SDK
+     * raises from outside the `RuntimeException` hierarchy, and the operator
+     * whose first refund half-failed pressed the button again and got
+     * "charge has already been refunded" as a stack trace. Each adapter now
+     * translates its SDK into `ProviderRefusedRefundException` (fix round 1,
+     * review finding 5), so this reads the same for Stripe, Mollie and Unzer
+     * and no SDK is named outside `src/Settlement/<provider>/`. It is caught
+     * before the `RuntimeException` arm, because the answer is different: an
+     * Action's refusal means nothing moved, while a provider error leaves
+     * open whether the money went back — so the message carries the
+     * provider's own words and asks for a reconciliation rather than a retry.
+     * A rejected key reads as a settings problem instead (review nit 7).
+     *
+     * Recording the provider's existing refund automatically is deliberately
+     * not attempted: no adapter's seam exposes a way to read a refund back,
+     * and inventing a domain refund from an error string would be a document
+     * (ADR-0031) built on a guess.
      */
     public function refund(
         string $order,
@@ -409,15 +414,20 @@ class OrderAdminController
                 reasonCode: $data->reasonCode->value,
                 reasonNote: $data->reasonNote,
             );
+        } catch (ProviderRefusedRefundException $e) {
+            throw ValidationException::withMessages([
+                'order' => $e->isConfigurationProblem
+                    ? __(
+                        'This brand\'s :provider account is not usable: :message Nothing was refunded — check the settlement account\'s credentials before trying again.',
+                        ['provider' => $e->provider, 'message' => $e->getMessage()],
+                    )
+                    : __(
+                        'The payment provider refused the refund: :message Nothing was recorded here — check the payment in the provider dashboard and reconcile the order by hand if the money did go back.',
+                        ['message' => $e->getMessage()],
+                    ),
+            ]);
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['order' => $e->getMessage()]);
-        } catch (ApiErrorException $e) {
-            throw ValidationException::withMessages([
-                'order' => __(
-                    'The payment provider refused the refund: :message Nothing was recorded here — check the payment in the provider dashboard and reconcile the order by hand if the money did go back.',
-                    ['message' => $e->getMessage()],
-                ),
-            ]);
         }
 
         // The explicit half of the audit trail (Round 6, D-BATCH), the same
