@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Content\Http\Controllers\Admin;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Konventix\Content\Actions\ArchiveEntry;
@@ -27,6 +27,13 @@ use Konventix\Content\Models\ContentEntry;
  * Publishing with a future `publishedAt` produces `Scheduled`, not
  * `Published` — that is `PublishEntry`'s decision, and the console shows
  * whichever state came back rather than assuming.
+ *
+ * `publishedAt` arrives as an ISO-8601 instant with an offset, because a
+ * `datetime-local` control speaks wall clock and nothing else: the editor's
+ * browser resolves what they typed against their own zone before sending
+ * (#246, the shape #202 and #237 settled). Parsing it in
+ * `config('app.timezone')` is what made an editor in Berlin who typed 22:00
+ * schedule for midnight.
  */
 class ContentLifecycleController
 {
@@ -35,7 +42,15 @@ class ContentLifecycleController
         Gate::authorize(Permission::PublishEntries->value);
 
         $validated = $request->validate(['publishedAt' => ['nullable', 'date']]);
-        $at = isset($validated['publishedAt']) ? Carbon::parse($validated['publishedAt']) : null;
+        $submitted = $validated['publishedAt'] ?? null;
+
+        // `content_entries.published_at` is a zone-less column and Eloquent
+        // formats a Carbon in whatever zone the instance carries, so an
+        // instant parsed as `+02:00` would be written down as its own digits
+        // and read back two hours wrong — normalise to UTC first (#246).
+        $at = is_string($submitted) && $submitted !== ''
+            ? CarbonImmutable::parse($submitted)->utc()
+            : null;
 
         $model = $publishEntry->handle($this->find($entry), $at);
 

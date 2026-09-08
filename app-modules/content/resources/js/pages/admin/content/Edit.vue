@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { browserTimezone, formatDateTime, withZoneName } from '@/lib/datetime';
 import {
     archive as archiveEntry,
     index as contentIndex,
@@ -18,6 +19,7 @@ import {
     update as updateEntry,
 } from '@/routes/admin/content';
 import { index as commentsIndex } from '@/routes/admin/content/comments';
+import { publishedAtInstant } from './publishForm';
 
 /**
  * One entry: its content on the left, its lifecycle on the right.
@@ -78,6 +80,15 @@ const stateClasses: Record<Konventix.Content.Enums.PublicationState, string> = {
 /** Empty means "now"; a future moment schedules instead of publishing. */
 const publishAt = ref('');
 
+/**
+ * The instant the typed wall clock stands for, echoed under the field so the
+ * editor can see which moment they actually picked before they commit to it
+ * (#246, the same reassurance the sales window grew in #237).
+ */
+const publishAtEcho = computed(() =>
+    formatDateTime(publishedAtInstant(publishAt.value), withZoneName),
+);
+
 function submit(): void {
     form.transform((data) => ({
         ...data,
@@ -88,7 +99,9 @@ function submit(): void {
 function publish(): void {
     router.post(
         publishEntry(props.entry.id).url,
-        { publishedAt: publishAt.value === '' ? null : publishAt.value },
+        // An instant with an offset, never the wall-clock digits: the server
+        // cannot know whose clock they were typed on (#246).
+        { publishedAt: publishedAtInstant(publishAt.value) },
         { preserveScroll: true },
     );
 }
@@ -288,7 +301,13 @@ function archive(): void {
                     <CardContent class="flex flex-col gap-4">
                         <p class="text-sm text-text-muted">
                             <template v-if="props.entry.publishedAt">
-                                Live from {{ props.entry.publishedAt }}.
+                                Live from
+                                {{
+                                    formatDateTime(
+                                        props.entry.publishedAt,
+                                        withZoneName,
+                                    )
+                                }}.
                             </template>
                             <template v-else> Never published. </template>
                         </p>
@@ -304,7 +323,18 @@ function archive(): void {
                                 id="entry-publish-at"
                                 v-model="publishAt"
                                 type="datetime-local"
+                                aria-describedby="entry-publish-at-hint"
                             />
+                            <p
+                                id="entry-publish-at-hint"
+                                class="text-xs text-text-muted"
+                            >
+                                Times in your timezone ({{ browserTimezone }}).
+                                <template v-if="publishAtEcho">
+                                    = {{ publishAtEcho }} — a time that does not
+                                    exist on that date moves to the next one.
+                                </template>
+                            </p>
                             <Button @click="publish">
                                 {{ publishAt === '' ? 'Publish' : 'Schedule' }}
                             </Button>

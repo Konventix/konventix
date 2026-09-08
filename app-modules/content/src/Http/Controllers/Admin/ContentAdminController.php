@@ -111,8 +111,13 @@ class ContentAdminController
                     : ($authorNames[$entry->author_user_id] ?? __('Participant')),
                 'type' => $entry->type->value,
                 'state' => $entry->state->value,
-                'publishedAt' => $entry->published_at?->toDateTimeString(),
-                'updatedAt' => $entry->updated_at?->toDateTimeString(),
+                // ISO with an offset, not naked UTC digits: the console
+                // renders these through `formatDateTime()` in the reader's own
+                // zone, and a zone-less string is parsed as their wall clock —
+                // the console would confirm the very value that is wrong
+                // (#208, #246).
+                'publishedAt' => $entry->published_at?->toIso8601String(),
+                'updatedAt' => $entry->updated_at?->toIso8601String(),
                 'publicUrl' => $this->publicUrl($entry, $brandBases[$entry->brand_id] ?? null),
             ]),
             'brands' => $this->brandOptionsFrom($brands),
@@ -152,7 +157,7 @@ class ContentAdminController
             'entry' => [
                 'id' => $model->getKey(),
                 'state' => $model->state->value,
-                'publishedAt' => $model->published_at?->toDateTimeString(),
+                'publishedAt' => $model->published_at?->toIso8601String(),
                 'brandName' => $brand === null ? '—' : $brand->name,
                 'publicUrl' => $this->publicUrl(
                     $model,

@@ -124,8 +124,10 @@ class CommentModerationController
                 'state' => $comment->state->value,
                 'reportCount' => $comment->report_count,
                 'reactionCount' => $comment->reaction_count,
-                'postedAt' => $comment->created_at?->toDateTimeString(),
-                'moderatedAt' => $comment->moderated_at?->toDateTimeString(),
+                // Same reason as the entry list: `formatDateTime()` needs an
+                // offset to put these in the reader's own zone (#208, #246).
+                'postedAt' => $comment->created_at?->toIso8601String(),
+                'moderatedAt' => $comment->moderated_at?->toIso8601String(),
             ]),
             'brands' => $this->brandOptions(),
             'states' => $this->stateValues(),

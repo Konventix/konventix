@@ -13,6 +13,7 @@ import type {
     DataTableFilters,
 } from '@/composables/useDataTable';
 import { seedSelectionFilter, useDataTable } from '@/composables/useDataTable';
+import { formatDateTime } from '@/lib/datetime';
 import { edit as editEntry } from '@/routes/admin/content';
 import {
     index as commentsIndex,
@@ -235,7 +236,9 @@ const columns: ColumnDef<CommentRow>[] = [
             h(
                 'span',
                 { class: 'text-text-muted' },
-                row.original.postedAt ?? '—',
+                // The reader's own zone, through the shared helper (#208,
+                // #246).
+                formatDateTime(row.original.postedAt) || '—',
             ),
     },
     {
