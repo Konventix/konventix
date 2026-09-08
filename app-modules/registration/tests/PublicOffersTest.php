@@ -6,7 +6,9 @@ use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Event\Actions\UnpublishEvent;
 use Konventix\Event\Enums\EventLifecycleState;
+use Konventix\Event\Enums\EventVisibility;
 use Konventix\Event\Events\EventAnnounced;
+use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Models\Event;
 use Konventix\Platform\Models\Brand;
@@ -226,6 +228,7 @@ it('offers a public registration type on the shop, named by its event', function
         'event_id' => $event->getKey(),
         'name' => 'Wintercon',
         'slug' => 'wintercon',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
         'public_since' => Carbon::now()->subWeek(),
     ]);
     $type = RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Weekend Ticket']);
@@ -255,6 +258,7 @@ it('keeps a type whose sale is over off the shop and announces one whose sale is
         'event_id' => $event->getKey(),
         'name' => 'Wintercon',
         'slug' => 'wintercon',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
         'public_since' => Carbon::now()->subWeek(),
     ]);
 
@@ -288,6 +292,7 @@ it('never advertises a token-only type on the shop, nor another brand\'s', funct
         'event_id' => $event->getKey(),
         'name' => 'Wintercon',
         'slug' => 'wintercon',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
         'public_since' => Carbon::now()->subWeek(),
     ]);
     RegistrationType::factory()->forEvent($event->getKey())->inviteOnly()->create();
@@ -312,6 +317,7 @@ it('drops the offers of an archived event from the shop', function (): void {
         'event_id' => $event->getKey(),
         'name' => 'Lastcon',
         'slug' => 'lastcon',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
         'public_since' => Carbon::now()->subYear(),
         'archived_at' => Carbon::now()->subMonth(),
     ]);
@@ -346,6 +352,7 @@ it('never lists the offers of an event that is still a draft', function (): void
         'event_id' => $event->getKey(),
         'name' => 'Next Year',
         'slug' => 'next-year',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
     ]);
     RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Weekend Ticket']);
 
@@ -363,6 +370,7 @@ it('lists them once the event is published', function (): void {
         'event_id' => $event->getKey(),
         'name' => 'Next Year',
         'slug' => 'next-year',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
     ]);
     RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Weekend Ticket']);
 
@@ -398,6 +406,7 @@ it('keeps selling on both public surfaces after the event is unpublished back to
         'event_id' => $event->getKey(),
         'name' => 'Next Year',
         'slug' => 'next-year',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
     ]);
     RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Weekend Ticket']);
 
@@ -439,6 +448,7 @@ it('lists the offers of a merely announced event', function (): void {
         'event_id' => $event->getKey(),
         'name' => 'Teased Con',
         'slug' => 'teased-con',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
     ]);
     RegistrationType::factory()->forEvent($event->getKey())->create();
 
@@ -467,6 +477,7 @@ it('carries a Commerce-computed gross amount for every priced offer on the shop'
         'event_id' => $event->getKey(),
         'name' => 'Wintercon',
         'slug' => 'wintercon',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
         'public_since' => Carbon::now()->subWeek(),
     ]);
 
@@ -502,6 +513,7 @@ it('leaves a free offer without a price untouched on the shop', function (): voi
         'event_id' => $event->getKey(),
         'name' => 'Wintercon',
         'slug' => 'wintercon',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
         'public_since' => Carbon::now()->subWeek(),
     ]);
     RegistrationType::factory()->forEvent($event->getKey())->create(['price_declaration' => null]);
@@ -509,4 +521,81 @@ it('leaves a free offer without a price untouched on the shop', function (): voi
     $this->get('/shop')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page)[0]['price'])->toBeNull());
+});
+
+/**
+ * Branch review blocker 2: `/shop` is a listing, and a listing owes
+ * `Event::scopeListedPublicly()`, not `isVisibleOnLanding()`. `Unlisted`
+ * means reachable by direct link and never enumerated — an invite-only
+ * track, a staff registration — and an announced one had its name, its
+ * ticket names and its prices on a public page.
+ *
+ * The landing page is the other half of the same rule and must keep
+ * selling: that is what "reachable by direct link" is for.
+ */
+it('never lists an unlisted event on the shop, though its landing page still sells it', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->published()->create(['visibility' => EventVisibility::Unlisted]);
+    EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Staff Con',
+        'slug' => 'staff-con',
+        'visibility' => 'unlisted',
+        'public_since' => Carbon::now()->subWeek(),
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Staff Pass']);
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toBe([]));
+
+    $this->get('/events/'.$event->slug)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => expect(landingOffers($page))->toHaveCount(1));
+});
+
+/**
+ * The projection learns visibility from the contract events themselves
+ * (ADR-0004), so making an event unlisted takes its offers off `/shop`
+ * without anything reading Event's tables.
+ */
+it('drops offers off the shop when the event is made unlisted, and brings them back', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->published()->create();
+    EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Wintercon',
+        'slug' => 'wintercon',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
+        'public_since' => Carbon::now()->subWeek(),
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create();
+
+    $projector = app(ProjectEventSummary::class);
+
+    $projector->handleDetailsUpdated(new EventDetailsUpdated(
+        eventId: (string) $event->getKey(),
+        brandId: (string) $brand->getKey(),
+        slug: $event->slug,
+        name: 'Wintercon',
+        visibility: 'unlisted',
+    ));
+
+    $this->get('/shop')
+        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toBe([]));
+
+    $projector->handleDetailsUpdated(new EventDetailsUpdated(
+        eventId: (string) $event->getKey(),
+        brandId: (string) $brand->getKey(),
+        slug: $event->slug,
+        name: 'Wintercon',
+        visibility: 'public',
+    ));
+
+    $this->get('/shop')
+        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toHaveCount(1));
 });

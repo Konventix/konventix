@@ -26,6 +26,13 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * `archived_at` is the column for an event that leaves public view for
  * good.
  *
+ * `visibility` is the other half, and the two together are
+ * `Event::scopeListedPublicly()` rather than `isVisibleOnLanding()` (branch
+ * review blocker 2): a *listing* surface owes the stricter rule, because
+ * `Unlisted` means reachable by direct link and never listed. `/shop` asks
+ * for both; the landing page asks for neither, because it is addressed by
+ * the event itself and Event has already decided.
+ *
  * No factory: rows exist only through `Listeners\ProjectEventSummary`, so a
  * test emits `EventCreated` rather than inventing an event.
  *
@@ -34,6 +41,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $event_id
  * @property string $name
  * @property string $slug
+ * @property string|null $visibility
  * @property Carbon|null $public_since
  * @property Carbon|null $archived_at
  * @property Carbon|null $created_at
@@ -46,7 +54,15 @@ class EventSummary extends Model
 
     protected $table = 'registration_event_summaries';
 
-    protected $fillable = ['event_id', 'name', 'slug', 'public_since', 'archived_at'];
+    /**
+     * The one visibility a listing surface may show. Compared as a string,
+     * never as `Konventix\Event\Enums\EventVisibility`: that enum is
+     * Event's, and this module may not import it (ADR-0004). The value
+     * arrives on the contract event as a scalar for the same reason.
+     */
+    public const string VISIBILITY_PUBLIC = 'public';
+
+    protected $fillable = ['event_id', 'name', 'slug', 'visibility', 'public_since', 'archived_at'];
 
     /**
      * @return array<string, string>

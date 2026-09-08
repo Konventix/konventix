@@ -649,13 +649,15 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // own `EventSummary` projection (ADR-0004).
         //
         // Unlike `event.landing`, this one needs its own visibility gate:
-        // that slot cannot run for a draft event at all, because
+        // that slot cannot run for a hidden event at all, because
         // `EventLandingController` 404s on `Event::isVisibleOnLanding()`
-        // long before it. `/shop` is addressed by no event, so without the
-        // `public_since` gate next year's unannounced convention — its name,
-        // its ticket names and its prices — stood on a public page (review
-        // finding 1). An archived event drops out too: its offers are last
-        // year's.
+        // long before it. `/shop` is addressed by no event, so it carries
+        // the whole rule itself — and the rule a *listing* owes is the
+        // stricter `Event::scopeListedPublicly()`: out of `Draft`
+        // (`public_since`), `Public` rather than `Unlisted` (`visibility`),
+        // and not archived. Each of the three was a real leak: next year's
+        // unannounced convention, an invite-only track, last year's
+        // edition.
         $slots->add(
             slot: 'shop.index',
             module: 'registration',
@@ -671,6 +673,13 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 // advertise.
                 $listable = EventSummary::query()
                     ->whereNotNull('public_since')
+                    // Blocker 2: a listing surface owes
+                    // `Event::scopeListedPublicly()`, not
+                    // `isVisibleOnLanding()`. An `Unlisted` event is
+                    // reachable by its own link and never enumerated — an
+                    // invite-only track had its name, its ticket names and
+                    // its prices on `/shop` until this line.
+                    ->where('visibility', EventSummary::VISIBILITY_PUBLIC)
                     ->whereNull('archived_at');
 
                 $eventNames = (clone $listable)->pluck('name', 'event_id');
