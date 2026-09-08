@@ -55,6 +55,12 @@ dataset('overrideGuardUnsafeFragments', [
     'a raw PHP tag' => ['<?php echo 1; ?>'],
     'a directive glued to a word' => ['@if($x)A@endif'],
     'a directive whose ( sits on the next line' => ["@if\n(\$x)\nA\n@endif"],
+    // #9: widening the conditional grammar to numeric comparisons must not
+    // widen it to arbitrary expressions on either side of the operator.
+    'a ternary in an echo' => ["{{ \$daysLeft < 0 ? 'Overdue' : 'Left' }}"],
+    'a comparison against another variable' => ["@if (\$a < \$b)\nA\n@endif"],
+    'a comparison against a function call' => ["@if (\$a < exec('id'))\nA\n@endif"],
+    'a directive glued to the end of a word' => ['Paid@else'],
 ]);
 
 // The guard's own grammar, verbatim — independent of any real template's
@@ -65,6 +71,16 @@ dataset('overrideGuardSafeFragments', [
     'if/else' => ["@if (\$paid)\nA\n@else\nB\n@endif"],
     'foreach with array access' => ["@foreach (\$lines as \$line)\n{{ \$line['label'] }}\n@endforeach"],
     'unless' => ["@unless (\$x)\nHidden unless truthy\n@endunless"],
+    // #9: a literal address in a signature. Blade never compiles `@example`
+    // here — its own directive regex needs a non-word boundary before the
+    // `@` — so refusing it was the guard reading text Blade reads as text.
+    'a literal email address' => ['<p>Fragen? info@example.com</p>'],
+    'an email address in a signature block' => ["Mit freundlichen Gruessen\nDas Team\nsupport@konventix.de\n{{ \$name }}"],
+    'a mailto link' => ['<a href="mailto:info@example.com">Mail</a>'],
+    // #9: the shape `compliance.deadline-warning` needs in order to say the
+    // same thing without a ternary — a numeric comparison in an `@if`.
+    'a less-than comparison' => ["@if (\$daysLeft < 0)\nOverdue\n@else\nOn time\n@endif"],
+    'a greater-or-equal comparison' => ["@if (\$openModules >= 1)\nWaiting\n@endif"],
 ]);
 
 // The same shapes, against fields two real templates actually sample —
@@ -77,6 +93,7 @@ dataset('overrideGuardSafeIntegrationFragments', [
     'if/else' => ['commerce.invoice-issued', "@if (\$recipientName)\nPaid\n@else\nUnpaid\n@endif"],
     'unless' => ['commerce.invoice-issued', "@unless (\$recipientName)\nHidden\n@endunless"],
     'foreach with array access' => ['commerce.order-confirmation', "@foreach (\$lines as \$line)\n{{ \$line['label'] }}\n@endforeach"],
+    'an email address in the text' => ['commerce.invoice-issued', '<p>Fragen? info@example.com</p>'],
 ]);
 
 it('refuses an unsafe fragment', function (string $fragment): void {
