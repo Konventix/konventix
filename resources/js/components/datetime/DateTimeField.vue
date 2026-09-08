@@ -48,9 +48,11 @@ const props = withDefaults(
 const hintId = computed(() => `${props.id}-hint`);
 const errorId = computed(() => `${props.id}-error`);
 
-// Both, not one or the other: the hint is where the reader's zone and the
+// Both ids, not one or the other: the hint is where the reader's zone and the
 // echo live, and losing it at the moment the field is rejected takes the
-// context away from exactly the person who needs it most (ADR-0055).
+// context away from exactly the person who needs it most (ADR-0055). The hint
+// paragraph here is unconditional — it always names the zone — so `hintId`
+// never dangles.
 const describedBy = computed(() =>
     props.error ? `${hintId.value} ${errorId.value}` : hintId.value,
 );

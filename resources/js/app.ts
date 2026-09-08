@@ -1,3 +1,4 @@
+import type { InertiaConfig } from '@inertiajs/core';
 import { createInertiaApp } from '@inertiajs/vue3';
 import { configureEcho } from '@laravel/echo-vue';
 import type { DefineComponent } from 'vue';
@@ -7,7 +8,6 @@ import AppTopbarLayout from '@/layouts/AppTopbarLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { configureDateTime } from '@/lib/datetime';
-import type { DateFormat, TimeFormat } from '@/lib/datetime';
 import { initializeFlashToast } from '@/lib/flashToast';
 import { resolveReverbEndpoint } from '@/lib/reverbEndpoint';
 
@@ -151,18 +151,13 @@ function layoutFor(name: string) {
  * A page that had to ask for the zone itself is a page that could forget to,
  * which is why this is not a per-page prop.
  */
-function applyDateTimeSettings(props: unknown): void {
-    const page = props as
-        | {
-              auth?: { user?: { timezone?: string | null } | null };
-              dateTimeFormat?: { date?: DateFormat; time?: TimeFormat };
-          }
-        | undefined;
+type SharedProps = InertiaConfig['sharedPageProps'];
 
+function applyDateTimeSettings(props?: Partial<SharedProps>): void {
     configureDateTime({
-        timezone: page?.auth?.user?.timezone ?? null,
-        dateFormat: page?.dateTimeFormat?.date ?? 'DD.MM.YYYY',
-        timeFormat: page?.dateTimeFormat?.time ?? '24h',
+        timezone: props?.auth?.user?.timezone ?? null,
+        dateFormat: props?.dateTimeFormat?.date ?? 'DD.MM.YYYY',
+        timeFormat: props?.dateTimeFormat?.time ?? '24h',
     });
 }
 

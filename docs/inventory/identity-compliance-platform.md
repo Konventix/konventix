@@ -269,7 +269,7 @@ Identity's events.
 | `locale` | Yes | — |
 | `timezone` (new) | Yes | — |
 | `phone`, `street`, `city`, `zip_code`, `country` | **No** | Commerce — invoice recipient data attached to the Registration that needed it |
-| `avatar_source`, `avatar_path` | Yes | Required by the four-field shared prop (`avatar_url`) |
+| `avatar_source`, `avatar_path` | Yes | Required by the shared `auth.user` prop (`avatar_url`) |
 | `banner_path` | **No** | Community — profile banner |
 | `short_bio`, `profile_description`, `profile_emoji` | **No** | Community — public profile fields |
 | `profile_visibility` | **No** | Community — the rule only governs a Community-owned page |
@@ -300,7 +300,7 @@ Identity's events.
 | `hasCompleteProfile()` | **No** | Commerce — a checkout precondition, not an identity fact |
 | `isDiscoverableBy()` | **No** | Registration |
 | `isSeatNameVisibleTo(?User, Event)` | **No** | Resources — it takes an `Event` as an argument, which is the tell |
-| `avatarUrl()` | Yes | Part of the four-field shared prop |
+| `avatarUrl()` | Yes | Part of the shared `auth.user` prop (five fields since #243) |
 | `bannerUrl()`, `profileUrl()` | **No** | Community |
 | `hasSteam()`, `steamLinkStatus()`, `scopeWhereSteamStatus()` | **No** (off User) | Identity — `SocialIdentity` query, driver-agnostic |
 | `hasUsablePassword()` | Yes | Feeds the `passwordless` account state |

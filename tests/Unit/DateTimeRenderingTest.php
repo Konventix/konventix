@@ -91,7 +91,7 @@ function templateRenderings(string $markup): array
     preg_match_all('/\{\{(.+?)\}\}|v-text="([^"]+)"/s', $markup, $matches, PREG_SET_ORDER);
 
     return array_map(
-        static fn (array $match): string => trim($match[2] ?? '' !== '' ? ($match[2] ?? $match[1]) : $match[1]),
+        static fn (array $match): string => trim($match[2] ?? $match[1]),
         $matches,
     );
 }
@@ -108,6 +108,12 @@ it('renders no timestamp straight out of a prop', function (): void {
     // attribute — says so with a `datetime-raw: <expression>` comment in the
     // same file, which is a list the next sweep starts from rather than a
     // grep it has to invent again.
+    //
+    // Two blind spots, named so the next reader does not mistake green for
+    // proof: a raw instant handed to a *prop or attribute*
+    // (`:when="order.placedAt"`) is not a rendering and is not matched, and
+    // one `datetime-raw:` marker whitelists every occurrence of that
+    // expression in its file rather than the one line it sits beside.
     $dateish = '/\b[a-z]\w*(At|On|Date|Time|Deadline|Since|Until)\b/';
 
     $offenders = [];

@@ -43,11 +43,19 @@ const props = withDefaults(
 const hintId = computed(() => `${props.id}-hint`);
 const errorId = computed(() => `${props.id}-error`);
 
-// Both, not one or the other: the hint is where the reader's zone and the
+// Whether there is a hint paragraph at all: an empty field has no echo, and
+// pointing `aria-describedby` at an element that is not in the document is a
+// dangling IDREF (harmless, but three files spelling one rule three ways is
+// how the fourth gets it wrong).
+const hasHint = computed(() => echo.value !== '' || props.hint !== undefined);
+
+// Both ids, not one or the other: the hint is where the reader's zone and the
 // echo live, and losing it at the moment the field is rejected takes the
 // context away from exactly the person who needs it most (ADR-0055).
 const describedBy = computed(() =>
-    props.error ? `${hintId.value} ${errorId.value}` : hintId.value,
+    [hasHint.value ? hintId.value : null, props.error ? errorId.value : null]
+        .filter((id): id is string => id !== null)
+        .join(' '),
 );
 const echo = computed(() => formatDate(model.value));
 </script>
@@ -63,7 +71,7 @@ const echo = computed(() => formatDate(model.value));
             :max="max"
             :required="required"
             :aria-invalid="error ? true : undefined"
-            :aria-describedby="describedBy"
+            :aria-describedby="describedBy || undefined"
         />
         <p v-if="echo || hint" :id="hintId" class="text-xs text-text-muted">
             <template v-if="echo">= {{ echo }}. </template>

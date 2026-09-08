@@ -19,9 +19,13 @@ use Konventix\Platform\Models\Operator;
  * `OperatorSettings`: a Platform service handing back plain strings, so
  * nothing has to import the `Operator` model across a boundary (ADR-0004).
  *
- * It decides the *shape* of a date and nothing about which clock: a mail
- * deadline is put into the brand's own zone at the call site
- * (`ResolveBrandTimezone`, #131/#5) and arrives here already converted.
+ * It decides the *shape* of a date, and converts the clock only when asked
+ * to. A mail renders an instant on the *brand's* clock (#131/#5): the caller
+ * resolves that zone — `Messaging\Actions\ResolveBrandTimezone`, which
+ * Platform may not import, being the kernel — and passes it in. A value from a
+ * `date` column (an invoice's `issued_on`, a repayment deadline) is a day and
+ * has no clock to convert: those callers pass nothing, deliberately, because
+ * shifting a day by an offset is how a deadline lands on the wrong date.
  *
  * Deliberately not a singleton: under Octane a cached operator row would
  * outlive the change that edited it. Memoised per instance instead, which is
@@ -32,19 +36,32 @@ final class OperatorDateTimeFormat
     /** @var array{date_format: string|null, time_format: string|null}|null */
     private ?array $chosen = null;
 
-    public function date(CarbonInterface $at): string
+    public function date(CarbonInterface $at, ?string $zone = null): string
     {
-        return $at->format($this->dateFormat()->phpFormat());
+        return $this->on($at, $zone)->format($this->dateFormat()->phpFormat());
     }
 
-    public function time(CarbonInterface $at): string
+    public function time(CarbonInterface $at, ?string $zone = null): string
     {
-        return $at->format($this->timeFormat()->phpFormat());
+        return $this->on($at, $zone)->format($this->timeFormat()->phpFormat());
     }
 
-    public function dateTime(CarbonInterface $at): string
+    public function dateTime(CarbonInterface $at, ?string $zone = null): string
     {
-        return $this->date($at).' '.$this->time($at);
+        $moment = $this->on($at, $zone);
+
+        return $this->date($moment).' '.$this->time($moment);
+    }
+
+    /**
+     * The same moment on the named clock, or exactly as handed over when no
+     * clock was named. Copied rather than mutated: the caller's Carbon is
+     * usually a model attribute, and a `setTimezone()` on it would change what
+     * the *next* line of the same mail prints.
+     */
+    private function on(CarbonInterface $at, ?string $zone): CarbonInterface
+    {
+        return $zone === null ? $at : $at->copy()->setTimezone($zone);
     }
 
     public function dateFormat(): DateFormat
@@ -70,8 +87,7 @@ final class OperatorDateTimeFormat
      * the last step is not a guess — it is the same row the console edits.
      * Before install has seeded one, both settings fall back to the German
      * convention the instance already prints on its invoices.
-     */
-    /**
+     *
      * @return array{date_format: string|null, time_format: string|null}
      */
     private function settings(): array

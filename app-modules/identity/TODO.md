@@ -27,8 +27,9 @@ person behind it. The value here is in what is left out.
       (lessons-from-lancore #5).
       Done with slice 25 (v0.4.0): `auth.user` in
       `App\Http\Middleware\HandleInertiaRequests` (host-level, out of this
-      module's file scope) shares exactly the four fields, the avatar URL
-      resolved through `AvatarUrlResolver`.
+      module's file scope) shares exactly the promised fields, the avatar URL
+      resolved through `AvatarUrlResolver`. Five since #243, which added
+      `timezone`.
 
 ## Backlog
 

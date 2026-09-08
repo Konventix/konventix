@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { formatDateTime } from '@/lib/datetime';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import {
     acceptConsentWithdrawal as acceptConsentWithdrawalRequest,
     download as downloadArchive,
@@ -171,7 +171,7 @@ function acceptConsentWithdrawal(): void {
                         </p>
                         <p>
                             <span class="text-text-muted">Deadline:</span>
-                            {{ formatDateTime(props.request.deadlineAt) }}
+                            {{ formatCalendarDate(props.request.deadlineAt) }}
                         </p>
                         <p v-if="props.request.closedAt">
                             <span class="text-text-muted">Closed:</span>

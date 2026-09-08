@@ -122,9 +122,7 @@ final class SendPaymentFailedMailOnPaymentFailed
             return null;
         }
 
-        $timezone = app(ResolveBrandTimezone::class)->handle($order->brand_id);
-
-        return $this->dates->dateTime($deadline->setTimezone($timezone));
+        return $this->dates->dateTime($deadline, app(ResolveBrandTimezone::class)->handle($order->brand_id));
     }
 
     private function reasonSentence(string $reasonCode): string

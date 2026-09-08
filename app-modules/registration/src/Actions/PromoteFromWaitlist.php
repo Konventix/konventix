@@ -7,6 +7,7 @@ namespace Konventix\Registration\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
+use Konventix\Messaging\Actions\ResolveBrandTimezone;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Models\Scopes\BrandScope;
@@ -39,6 +40,7 @@ final class PromoteFromWaitlist
         // One instance per class, not one per formatted value: the service
         // memoises the operator's chosen formats (review finding 6).
         private readonly OperatorDateTimeFormat $dates,
+        private readonly ResolveBrandTimezone $brandTimezone,
     ) {}
 
     public function handle(string $quotaId, string $brandId): ?WaitlistEntry
@@ -142,7 +144,13 @@ final class PromoteFromWaitlist
                     $entry->offer_expires_at,
                     ['entry' => $entry->id],
                 ),
-                offerExpiresAt: $this->dates->dateTime($entry->offer_expires_at),
+                // The brand's clock (#131/#5): the offer expires at an hour the
+                // registrant reads on their own event's time, not the
+                // deployment's UTC.
+                offerExpiresAt: $this->dates->dateTime(
+                    $entry->offer_expires_at,
+                    $this->brandTimezone->handle($entry->brand_id),
+                ),
             ),
             brandId: $entry->brand_id,
         ));

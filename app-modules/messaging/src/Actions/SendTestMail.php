@@ -20,6 +20,7 @@ final class SendTestMail
     public function __construct(
         private readonly SendMessage $sendMessage,
         private readonly OperatorDateTimeFormat $dates,
+        private readonly ResolveBrandTimezone $brandTimezone,
     ) {}
 
     public function handle(Brand $brand, string $toEmail): void
@@ -29,7 +30,7 @@ final class SendTestMail
             templateKey: 'messaging.test-mail',
             payload: new TestMailData(
                 brandName: $brand->name,
-                date: $this->dates->date(now()),
+                date: $this->dates->date(now(), $this->brandTimezone->handle($brand->getKey())),
             ),
             recipientEmail: $toEmail,
             recipientLocale: 'de',

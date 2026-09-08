@@ -149,7 +149,13 @@ class SubjectRequestController
                 // Instants as ISO 8601 with the offset (#243): the page renders them
                 // in the reader's own zone, and an offsetless string would be read
                 // as their local clock and then shifted again.
-                'deadlineAt' => $model->deadline_at->toIso8601String(),
+                //
+                // The statutory deadline is the exception: it is a day (Art.
+                // 12(3), `OpenSubjectRequest`), so it goes out as one and is
+                // printed with `formatCalendarDate()`. Sent as an instant it
+                // moved with the reader and the console named a different day
+                // from the mail (branch review finding 16).
+                'deadlineAt' => $model->deadline_at->toDateString(),
                 'openedAt' => $model->created_at?->toIso8601String(),
                 'closedAt' => $model->closed_at?->toIso8601String(),
                 'reasonCode' => $model->reason_code,

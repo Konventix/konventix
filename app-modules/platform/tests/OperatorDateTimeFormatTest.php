@@ -78,18 +78,35 @@ it('falls back to the German convention when nothing has been chosen', function 
         ->toBe('08.09.2026 14:05');
 });
 
-it('renders whatever zone the caller handed it, and converts none itself', function (): void {
-    // The brand timezone (#131/#5) is resolved at the call site — a mail
-    // deadline goes through `ResolveBrandTimezone` before it gets here. This
-    // service decides the *shape* of a date and nothing about which clock.
+it('converts to the clock the caller names, and to none when it names none', function (): void {
+    // The brand timezone (#131/#5): the caller resolves it —
+    // `Messaging\Actions\ResolveBrandTimezone`, which Platform may not import,
+    // being the kernel — and hands it over. Without one the moment is printed
+    // exactly as it arrived, which is what a `date` column wants: a day has no
+    // clock, and shifting one by an offset is how a deadline lands on the
+    // wrong date.
     operatorFormatting('DD.MM.YYYY', '24h');
 
     $instant = Carbon::parse('2026-09-08T22:30:00+00:00');
 
-    expect(app(OperatorDateTimeFormat::class)->dateTime($instant->copy()->setTimezone('Europe/Berlin')))
+    expect(app(OperatorDateTimeFormat::class)->dateTime($instant, 'Europe/Berlin'))
         ->toBe('09.09.2026 00:30')
+        ->and(app(OperatorDateTimeFormat::class)->date($instant, 'Europe/Berlin'))
+        ->toBe('09.09.2026')
         ->and(app(OperatorDateTimeFormat::class)->dateTime($instant))
         ->toBe('08.09.2026 22:30');
+});
+
+it('leaves the caller’s own Carbon on the clock it was on', function (): void {
+    // A mail prints several dates off the same model. Mutating the attribute
+    // to convert it would change what the next line reads.
+    operatorFormatting('DD.MM.YYYY', '24h');
+
+    $instant = Carbon::parse('2026-09-08T22:30:00+00:00');
+
+    app(OperatorDateTimeFormat::class)->dateTime($instant, 'Australia/Sydney');
+
+    expect($instant->format('d.m.Y H:i'))->toBe('08.09.2026 22:30');
 });
 
 it('shares the operator’s format with every page', function (): void {
