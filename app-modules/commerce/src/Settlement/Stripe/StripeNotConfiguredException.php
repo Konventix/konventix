@@ -14,9 +14,14 @@ use RuntimeException;
  * Nothing catches it. It was introduced so the settlement console could catch
  * exactly this one and repeat its message instead of answering 500 (GitLab
  * #194), and that catch site went with the Connect console in ADR-0058: the
- * payer path now short-circuits on `SettlementAccount::isOffered()` — which
- * asks the same question this throws on — before an adapter is ever resolved,
- * and the console reads `StripeSetupData` rather than provoking a client.
+ * payer path now short-circuits on `SettlementAccount::isOffered()` before an
+ * adapter is ever resolved, and the console reads `StripeSetupData` rather
+ * than provoking a client. `isOffered()` asks the *stricter* question — the
+ * secret key and the webhook signing secret both, because a checkout that
+ * cannot be verified must not start (ADR-0039 point 2) — while this is thrown
+ * on the missing key alone, so that a refund or a reconciliation sweep still
+ * runs on an instance whose signing secret has yet to be entered. Anything
+ * that gets past `isOffered()` and still meets this has no key at all.
  *
  * It stays a class of its own for the message, which is the whole point: it
  * names what is missing *and* both places it can be put, so an operator who

@@ -419,6 +419,30 @@ it('corrects a Stripe statement descriptor suffix in place', function (): void {
     expect($account->refresh()->statement_descriptor_suffix)->toBeNull();
 });
 
+it('leaves the statement descriptor alone when the form does not send it', function (): void {
+    // The checkout label and the descriptor are edited by the same form, but
+    // an omitted key is not a cleared value: a caller that only knows about
+    // the label — an older client, a partial update — must not silently wipe
+    // what the payer reads on their card statement. Explicit null clears; a
+    // missing key changes nothing.
+    [$admin, $brand] = settlementAdminOperator();
+
+    $account = SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'statement_descriptor_suffix' => 'SXLAN',
+    ]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+        ])
+        ->assertRedirect();
+
+    expect($account->refresh()->statement_descriptor_suffix)->toBe('SXLAN')
+        ->and($account->checkout_label)->toBe('Pay by card');
+});
+
 it('holds an edited statement descriptor suffix to the same budget the enable form uses', function (): void {
     [$admin, $brand] = settlementAdminOperator();
 

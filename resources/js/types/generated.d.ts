@@ -272,7 +272,7 @@ declare namespace Konventix {
             };
             export type UpdateSettlementAccountLabelData = {
                 readonly checkoutLabel: string | null;
-                readonly statementDescriptorSuffix: string | null;
+                readonly statementDescriptorSuffix: undefined | string | null;
             };
             export type WaitingRoomSettingsData = {
                 readonly admitPerInterval: number;

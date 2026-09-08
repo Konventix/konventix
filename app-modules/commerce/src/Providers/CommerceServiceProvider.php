@@ -322,10 +322,23 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // `StripeCredentials` answers row-before-environment, and every
         // call is made on this instance's own account — no Connect, no
         // `Stripe-Account` header. Bound lazily: the key is only required
-        // the moment a Stripe-enabled brand actually settles something.
-        // The throw is a typed one so a caller that can say something
-        // useful — the settlement console — catches exactly this and shows
-        // the operator what to configure, rather than a bare 500 (#194).
+        // the moment something actually calls Stripe.
+        //
+        // It throws on the **secret key alone**, deliberately narrower than
+        // `StripeCredentials::configured()`, which also wants the webhook
+        // signing secret: a refund and the reconciliation sweep need only the
+        // key, and refusing to build a client without a signing secret would
+        // turn a half-configured instance into an outage instead of a closed
+        // door on new checkouts.
+        //
+        // Nothing catches the exception. It does not need catching on the
+        // paths that matter: a payer never reaches here, because
+        // `SettlementAccount::isOffered()` requires the pair before Stripe is
+        // offered at all and `CheckoutController` re-checks it on submit, and
+        // the console never provokes a client — it reads `StripeSetupData` and
+        // names the missing half itself. What is left is the message, for
+        // whoever meets this in a log, a failed job or a console command; the
+        // typed class keeps that message findable (#194).
         $this->app->bind(StripeApi::class, function (): StripeApi {
             $secret = $this->app->make(StripeCredentials::class)->secret();
 

@@ -147,8 +147,12 @@
       the environment). No connected accounts, no `Stripe-Account` header,
       no onboarding, no capability sweep. A brand's Stripe row is the
       enablement flag and carries `checkout_label` and the new
-      `statement_descriptor_suffix` (≤22 characters, Stripe truncates past
-      that); every Checkout Session and PaymentIntent carries
+      `statement_descriptor_suffix` (≤10 characters: Stripe caps the account
+      prefix and the suffix together at 22 and refuses the charge if they
+      overflow, and the prefix cannot be read back since Connect went, so the
+      rule keeps what survives the longest legal prefix — and the adapter
+      retries once without the suffix if Stripe refuses it anyway, rather than
+      500ing a payer); every Checkout Session and PaymentIntent carries
       `konventix_brand_id`, `konventix_brand_name` and
       `konventix_operator_id`. #161 closed as superseded, #198 and #199
       obsolete.

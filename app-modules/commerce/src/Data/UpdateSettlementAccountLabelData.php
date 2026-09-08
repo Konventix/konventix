@@ -10,6 +10,7 @@ use Spatie\LaravelData\Attributes\Validation\Nullable;
 use Spatie\LaravelData\Attributes\Validation\Regex;
 use Spatie\LaravelData\Attributes\Validation\StringType;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\Optional;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
@@ -36,8 +37,16 @@ final class UpdateSettlementAccountLabelData extends Data
          * The same budget and the same character rules the enable form
          * applies — both read the constants on the model so they cannot
          * drift apart.
+         *
+         * `Optional` rather than a nullable default, because the two states
+         * are different answers: an **omitted** key means "I am not editing
+         * this" and leaves the suffix alone, while an explicit `null` means
+         * "use the account's own descriptor" and clears it. Without that
+         * distinction any caller that knows only about the checkout label —
+         * an older client, a partial update — would silently wipe what the
+         * payer reads on their card statement.
          */
         #[Nullable, StringType, Max(SettlementAccount::STATEMENT_DESCRIPTOR_SUFFIX_MAX), Regex(SettlementAccount::STATEMENT_DESCRIPTOR_SUFFIX_PATTERN)]
-        public readonly ?string $statementDescriptorSuffix = null,
+        public readonly string|Optional|null $statementDescriptorSuffix = new Optional,
     ) {}
 }
