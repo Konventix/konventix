@@ -209,7 +209,7 @@ return [
         // `std::bad_alloc` (exit 134; supervisord respawns it and HTTP
         // answers "Empty reply from server" in the gap). Measured on
         // 2026-09-08 over two minutes of continuous edits: the previous
-        // eleven entries — three of them recursive globs rooted at the same
+        // twelve entries — three of them recursive globs rooted at the same
         // `app-modules` tree — crashed 12 times; this list crashes 0 times
         // for edits under `app`, `config` or `routes`. Add an entry only for
         // code a *worker* executes, and never one whose tree another entry

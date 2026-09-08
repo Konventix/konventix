@@ -165,7 +165,7 @@ in `config/octane.php`'s `watch` array becomes one `watch <path>` line in the Ca
 Octane generates, and each line is its own watcher session.
 
 Those sessions are the reason the list is seven short entries and no recursive globs
-(#195). With the eleven it replaced — three of them globs rooted at the same `app-modules`
+(#195). With the twelve it replaced — three of them globs rooted at the same `app-modules`
 tree — FrankenPHP's C++ watcher died of `std::bad_alloc` (exit 134) about twelve times per
 two minutes of ordinary editing; supervisord respawned it each time and HTTP answered
 `Empty reply from server` in the gaps. The other half of that fix is in `compose.yaml`:
@@ -178,7 +178,7 @@ Measured on 2026-09-08, two minutes of continuous edits each time:
 
 | watch list | edits under | crashes |
 | --- | --- | --- |
-| the previous eleven entries | `app` + `app-modules` | 12 |
+| the previous twelve entries | `app` + `app-modules` | 12 |
 | this list | `app` only | 0 |
 | this list | `app-modules` only | 4 |
 | this list | `app` + `app-modules` | 0 |
@@ -191,10 +191,16 @@ aborts, so the watcher is close to its limit on that tree rather than comfortabl
 it. Each abort is a crash the workers come back from in about a second, and it is
 FrankenPHP's watcher rather than something this repository can configure away.
 
-If that is not good enough, take the watching away rather than living with it:
+If that is not good enough, take the watching away rather than living with it — by
+**deleting** the flag. There is no `--no-watch`: `octane:start` declares `--watch` as a
+plain switch (`{--watch : …}`, which Laravel's console parser maps to Symfony's
+`VALUE_NONE`), so `--no-watch` is rejected with `The "--no-watch" option does not exist.`,
+the command exits at once, and supervisord respawn-loops the web role — the very failure
+this section exists to cure. Verified against `sail artisan octane:start --help` in the
+container on 2026-09-08.
 
 ```bash
-# compose.yaml, SUPERVISOR_PHP_COMMAND: replace --watch with --no-watch
+# compose.yaml, SUPERVISOR_PHP_COMMAND: delete the trailing --watch, nothing replaces it
 ./vendor/bin/sail up -d laravel.test      # env changes need a recreate, not a restart
 ./vendor/bin/sail artisan octane:reload   # after every backend change, by hand
 ```

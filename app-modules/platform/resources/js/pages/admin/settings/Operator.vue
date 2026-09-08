@@ -234,8 +234,16 @@ function submit(): void {
                         <InputError :message="form.errors.timeFormat" />
                     </div>
 
+                    <!--
+                        A live region, because the only thing that changes when
+                        either select moves is the sample: without it a screen
+                        reader hears the option it picked and never the result
+                        (ADR-0055). The element is always rendered and only its
+                        text changes, which is what a live region announces.
+                    -->
                     <p
                         class="text-sm text-text-muted sm:col-span-2"
+                        role="status"
                         data-test="date-format-sample"
                     >
                         A timestamp reads as
@@ -249,12 +257,15 @@ function submit(): void {
                 <Button type="submit" :disabled="form.processing">
                     {{ form.processing ? 'Saving…' : 'Save changes' }}
                 </Button>
-                <span
-                    v-if="form.isDirty"
-                    role="status"
-                    class="text-sm text-warning"
-                >
-                    Unsaved changes
+                <!--
+                    The region is always in the document and only its text
+                    appears: a `role="status"` inserted in the same tick as its
+                    own content is announced by essentially no screen reader,
+                    because there was no live region to observe when the text
+                    arrived (ADR-0055).
+                -->
+                <span role="status" class="text-sm text-warning">
+                    <template v-if="form.isDirty">Unsaved changes</template>
                 </span>
             </div>
         </form>
