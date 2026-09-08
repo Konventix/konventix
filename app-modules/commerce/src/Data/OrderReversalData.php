@@ -60,8 +60,11 @@ final class OrderReversalData extends Data
             feeAmount: $reversal->fee_amount,
             // Console timestamps, in the format every other row on these two
             // pages uses — the payment attempts beside them included.
-            occurredAt: $reversal->occurred_at->format('Y-m-d H:i'),
-            finalizedAt: $reversal->finalized_at?->format('Y-m-d H:i'),
+            // Instants (#238): the page renders them in the reader's own
+            // zone through `formatDateTime()`. `repayDueOn` below stays a
+            // calendar date on purpose — a deadline is not an instant.
+            occurredAt: $reversal->occurred_at->toIso8601String(),
+            finalizedAt: $reversal->finalized_at?->toIso8601String(),
             repayDueOn: $reversal->repay_due_on?->toDateString(),
         );
     }

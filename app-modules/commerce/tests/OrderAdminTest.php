@@ -431,6 +431,66 @@ it('lists orders with an open or final reversal and orders with unapplied money 
         ->and($rows->firstWhere('id', $wonOrder->id))->toBeNull();
 });
 
+/**
+ * #238: the orders list printed "Placed" as the string the server had
+ * formatted, which is UTC — a reader in Berlin saw two hours too little, and
+ * #208 introduced `formatDateTime()` in `resources/js/lib/datetime.ts` for
+ * exactly that. A system timestamp reaches the browser as an ISO-8601
+ * instant and is rendered in the reader's own zone; only a calendar date
+ * (`dueOn`, `issuedOn`, `repayDueOn`) stays a date, because it is one.
+ */
+it('sends every order timestamp as an ISO instant, not a preformatted string (#238)', function (): void {
+    [, $admin] = commerceOperator();
+
+    $brand = $this->withBrand();
+
+    $order = Order::factory()->paid()->create(['paid_at' => now()->subHour()]);
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'mollie',
+        'received_at' => now()->subMinutes(30),
+    ]);
+
+    PaymentReversal::factory()->create([
+        'order_id' => $order->id,
+        'payment_id' => $payment->id,
+        'brand_id' => $brand->id,
+        'kind' => ReversalKind::Return,
+        'status' => ReversalStatus::Final,
+        'occurred_at' => now()->subMinutes(20),
+        'finalized_at' => now()->subMinutes(10),
+    ]);
+
+    $iso = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/';
+
+    $response = $this->actingAs($admin)
+        ->get('http://admin.commerce.test/admin/orders')
+        ->assertOk();
+
+    $row = collect($response->viewData('page')['props']['orders']['data'])
+        ->firstWhere('id', $order->id);
+
+    expect($row['createdAt'])->toMatch($iso)
+        ->and($row['paidAt'])->toMatch($iso)
+        ->and($row['reversals'][0]['occurredAt'])->toMatch($iso)
+        ->and($row['reversals'][0]['finalizedAt'])->toMatch($iso);
+
+    $show = $this->actingAs($admin)
+        ->get("http://admin.commerce.test/admin/orders/{$order->id}")
+        ->assertOk();
+
+    $props = $show->viewData('page')['props'];
+
+    expect($props['order']['createdAt'])->toMatch($iso)
+        ->and($props['order']['paidAt'])->toMatch($iso)
+        ->and($props['payments'][0]['receivedAt'])->toMatch($iso)
+        ->and($props['reversals'][0]['occurredAt'])->toMatch($iso)
+        // A due date is a calendar date, not an instant — it must not move
+        // with the reader (the other half of the same distinction).
+        ->and($props['invoice']['dueOn'] ?? '2026-09-14')->not->toMatch($iso);
+});
+
 it('echoes the reversals view back and drops a view it does not offer', function (): void {
     [, $admin] = commerceOperator();
 

@@ -145,8 +145,11 @@ class OrderAdminController
                     'unappliedPayment' => $unapplied === null
                         ? null
                         : UnappliedPaymentData::ofPayment($unapplied)->toArray(),
-                    'paidAt' => $order->paid_at?->format('Y-m-d H:i'),
-                    'createdAt' => $order->created_at?->format('Y-m-d H:i'),
+                    // ISO instants, formatted in the reader's own zone by
+                    // `formatDateTime()` (#208, #238): the console printed
+                    // UTC to everyone before this.
+                    'paidAt' => $order->paid_at?->toIso8601String(),
+                    'createdAt' => $order->created_at?->toIso8601String(),
                     'invoice' => $invoice === null ? null : [
                         'id' => $invoice->getKey(),
                         'number' => $invoice->invoice_number,
@@ -200,8 +203,8 @@ class OrderAdminController
                 'totalGross' => $model->total_gross,
                 'taxTreatment' => $model->tax_treatment->value,
                 'provider' => $provider,
-                'paidAt' => $model->paid_at?->format('Y-m-d H:i'),
-                'createdAt' => $model->created_at?->format('Y-m-d H:i'),
+                'paidAt' => $model->paid_at?->toIso8601String(),
+                'createdAt' => $model->created_at?->toIso8601String(),
             ],
             'lines' => OrderLine::withoutBrandScope()
                 ->where('order_id', $model->getKey())
@@ -245,8 +248,8 @@ class OrderAdminController
                     'currency' => $payment->currency,
                     'externalId' => $payment->external_id,
                     'failureReason' => $payment->failure_reason,
-                    'receivedAt' => $payment->received_at?->format('Y-m-d H:i'),
-                    'failedAt' => $payment->failed_at?->format('Y-m-d H:i'),
+                    'receivedAt' => $payment->received_at?->toIso8601String(),
+                    'failedAt' => $payment->failed_at?->toIso8601String(),
                 ])
                 ->values()
                 ->all(),

@@ -6,6 +6,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDateTime } from '@/lib/datetime';
 import {
     show as showMessage,
     resend as resendMessage,
@@ -101,11 +102,11 @@ function resend(): void {
                         <dt class="text-text-muted">Attempts</dt>
                         <dd>{{ message.attempts }}</dd>
                         <dt class="text-text-muted">Queued</dt>
-                        <dd>{{ message.queuedAt ?? '—' }}</dd>
+                        <dd>{{ formatDateTime(message.queuedAt) || '—' }}</dd>
                         <dt class="text-text-muted">Sent</dt>
-                        <dd>{{ message.sentAt ?? '—' }}</dd>
+                        <dd>{{ formatDateTime(message.sentAt) || '—' }}</dd>
                         <dt class="text-text-muted">Failed</dt>
-                        <dd>{{ message.failedAt ?? '—' }}</dd>
+                        <dd>{{ formatDateTime(message.failedAt) || '—' }}</dd>
                         <dt class="text-text-muted">Provider id</dt>
                         <dd class="font-mono text-xs">
                             {{ message.providerMessageId ?? '—' }}
@@ -219,7 +220,7 @@ function resend(): void {
                             :href="showMessage(entry.id).url"
                             class="underline-offset-4 hover:underline"
                         >
-                            {{ entry.queuedAt ?? entry.id }}
+                            {{ formatDateTime(entry.queuedAt) || entry.id }}
                         </a>
                         <Badge :variant="statusVariant(entry.status)">{{
                             entry.status

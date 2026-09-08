@@ -75,6 +75,12 @@ it('uploads a file with a generated thumb variant and lists it', function (): vo
             ->component('admin/media/Index')
             ->has('media.data', 1)
             ->where('media.data.0.originalFilename', 'logo.png')
+            // An ISO instant, not a preformatted UTC string (#238): the page
+            // renders it in the reader's own zone through `formatDateTime()`.
+            ->where('media.data.0.uploadedAt', fn (string $at): bool => (bool) preg_match(
+                '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/',
+                $at,
+            ))
             ->where('media.data.0.usageCount', 0));
 });
 
