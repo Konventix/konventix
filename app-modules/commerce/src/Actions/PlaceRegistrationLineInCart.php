@@ -48,8 +48,10 @@ use Konventix\Commerce\Models\CartLine;
  *
  * The window is also snapshotted onto the line, normalized to UTC first
  * (Eloquent's `datetime` cast stores an offset-bearing string by its
- * wall-clock digits). It is kept for display and audit only — the checkout
- * does not re-check it; see `PlaceOrderFromCart`.
+ * wall-clock digits). It is kept for audit only — nothing renders it, and
+ * the checkout does not re-check it; see `PlaceOrderFromCart`. The window
+ * this Action itself enforces is the one on the *event*, read off the
+ * unsaved probe below, never off a persisted column.
  *
  * Idempotent on `(cart, registration, request_key)`: the partial unique
  * index `cart_lines_request_key_unique` is `(cart_id, kind, request_key)`,

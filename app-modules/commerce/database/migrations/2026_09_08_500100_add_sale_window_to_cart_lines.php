@@ -15,8 +15,11 @@ return new class extends Migration
      *
      * Commerce never reads Registration's table (ADR-0004), so the window
      * arrives once, as two nullable ISO-8601 scalars on
-     * `RegistrationSettlementRequested`, and is kept here for display and
-     * audit: what window was this line placed under.
+     * `RegistrationSettlementRequested`, and is kept here for audit: what
+     * window was this line placed under. Nothing reads the persisted columns
+     * back — `CartLineData` carries no such property and no page renders one
+     * (whole-branch review finding 11) — which is exactly what makes them an
+     * audit record and not a display value.
      *
      * **It is a snapshot, and nothing refreshes it** (fix round 1). An
      * operator who extends `sales_end` for stragglers does not reach a line

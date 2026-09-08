@@ -33,7 +33,9 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * applies to a settled order, taken one step earlier here. `sale_starts_at`
  * and `sale_ends_at` join that snapshot for a registration line (#218):
  * Commerce never reads Registration's table (ADR-0004), so the window the
- * settlement request declared is kept here for display and audit.
+ * settlement request declared is kept here for audit — an answer to "what
+ * window was this line placed under", read by nobody at render time
+ * (whole-branch review finding 11).
  *
  * Like every other column on this line, the window is frozen at creation and
  * nothing refreshes it — an operator extending or shortening a sale
