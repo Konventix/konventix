@@ -58,6 +58,7 @@ use Konventix\Registration\Listeners\RecordPaymentOnOrderLineSettled;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
 use Konventix\Registration\Listeners\RecordReversalOnOrderLineReversed;
 use Konventix\Registration\Listeners\RecordReversalOnPaymentReversed;
+use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
 
 /**
@@ -622,6 +623,43 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     ->map(fn (RegistrationType $type): array => PublicOfferData::ofType($type)->toArray())
                     ->all(),
             ],
+            order: 10,
+        );
+
+        // The shop's brand-wide counterpart (GitLab #240). `/shop` lists
+        // what a brand sells with no event in the address, and until this
+        // it listed goods only — a visitor who landed there saw the
+        // merchandise and no way to register for anything, though ADR-0047
+        // point 3 has a registration join the same cart.
+        //
+        // The same window rule as the landing slot, deliberately: one
+        // module, one answer to "may this be bought now". The event's name
+        // travels with each offer because "Weekend Ticket" on its own does
+        // not say what it is a ticket to, and it comes from this module's
+        // own `EventSummary` projection (ADR-0004). An archived event drops
+        // out entirely — its offers are last year's.
+        $slots->add(
+            slot: 'shop.index',
+            module: 'registration',
+            component: 'registration/ShopOffers',
+            props: static function (): array {
+                $eventNames = EventSummary::query()->whereNull('archived_at')->pluck('name', 'event_id');
+                $archived = EventSummary::query()->whereNotNull('archived_at')->pluck('event_id');
+
+                return [
+                    'offers' => RegistrationType::query()
+                        ->where('visibility', RegistrationVisibility::Public)
+                        ->whereNotIn('event_id', $archived)
+                        ->saleNotOver()
+                        ->orderBy('name')
+                        ->get()
+                        ->map(fn (RegistrationType $type): array => PublicOfferData::ofType(
+                            $type,
+                            $eventNames->get($type->event_id),
+                        )->toArray())
+                        ->all(),
+                ];
+            },
             order: 10,
         );
     }

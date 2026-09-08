@@ -12,6 +12,7 @@ use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Operators\OperatorSettings;
+use Konventix\Platform\Slots\SlotRegistry;
 
 /**
  * The brand's public shop (ADR-0047, Task 8), resolved on the brand's own
@@ -28,6 +29,7 @@ final class ShopController
         private readonly MediaLibrary $media,
         private readonly TaxCalculator $taxCalculator,
         private readonly OperatorSettings $operatorSettings,
+        private readonly SlotRegistry $slots,
     ) {}
 
     public function index(BrandContext $brandContext): Response
@@ -48,6 +50,19 @@ final class ShopController
                     $this->taxCalculator,
                     $smallBusinessScheme,
                 )->toArray())
+                ->all(),
+            // What else this brand offers, from modules Commerce knows
+            // nothing about (GitLab #240): Registration hangs its own types
+            // here, exactly the way Commerce hangs `ShopLandingCard` off
+            // Event's landing page, and the slot applies the per-brand
+            // activation gate on the way out (ADR-0003 point 3). Commerce
+            // never queries a registration table (ADR-0004).
+            'slots' => $this->slots->for('shop.index')
+                ->map(fn (array $entry): array => [
+                    'module' => $entry['module'],
+                    'component' => $entry['component'],
+                    'props' => $entry['props'],
+                ])
                 ->all(),
         ]);
     }

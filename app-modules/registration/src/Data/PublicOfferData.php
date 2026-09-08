@@ -26,6 +26,14 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * knows (the slot renders server-side for a page anyone in the world may
  * open). A type whose sale has *ended* never reaches this class — the slot
  * drops it — so `onSale: false` always means "not yet".
+ *
+ * `eventName` is null on the event landing page, where the reader is
+ * already standing on the event and repeating its name would be noise, and
+ * set on `/shop` (#240), which is brand-wide and event-independent: there
+ * "Weekend Ticket" alone does not say what it is a ticket to. It comes from
+ * this module's own `EventSummary` read model, never from Event's tables
+ * (ADR-0004), and stays nullable because a summary that has not arrived yet
+ * must not hide an offer that is on sale.
  */
 #[TypeScript]
 final class PublicOfferData extends Data
@@ -38,6 +46,7 @@ final class PublicOfferData extends Data
         public readonly bool $requiresApproval,
         public readonly bool $onSale = true,
         public readonly ?string $salesStart = null,
+        public readonly ?string $eventName = null,
     ) {}
 
     /**
@@ -45,7 +54,7 @@ final class PublicOfferData extends Data
      * public static `from*` method through its magic-creation resolver
      * (.ai/rules/data.md).
      */
-    public static function ofType(RegistrationType $registrationType): self
+    public static function ofType(RegistrationType $registrationType, ?string $eventName = null): self
     {
         return new self(
             registrationTypeId: $registrationType->id,
@@ -63,6 +72,7 @@ final class PublicOfferData extends Data
             requiresApproval: $registrationType->approval === RegistrationApproval::Required,
             onSale: $registrationType->isOnSale(),
             salesStart: $registrationType->sales_start?->toIso8601String(),
+            eventName: $eventName,
         );
     }
 }

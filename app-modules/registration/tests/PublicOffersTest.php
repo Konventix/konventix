@@ -5,7 +5,9 @@ declare(strict_types=1);
 use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Event\Models\Event;
+use Konventix\Platform\Models\Brand;
 use Konventix\Registration\Enums\RegistrationVisibility;
+use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
 
 /**
@@ -187,4 +189,110 @@ it('offers a type that declares no window at all as on sale', function (): void 
                 ->and($offers[0]['onSale'])->toBeTrue()
                 ->and($offers[0]['salesStart'])->toBeNull();
         });
+});
+
+/**
+ * GitLab #240: `/shop` is the brand-wide, event-independent list of what can
+ * be had, and it listed goods only — a visitor who arrived there saw the
+ * merchandise and no way to register for anything. Registration contributes
+ * its types through Commerce's `shop.index` slot, the same direction the
+ * event landing page already works in: Commerce renders offers it never
+ * queried, and never reads a registration table (ADR-0004).
+ *
+ * Prefixed helper — Pest helpers are process-global (.ai/rules/tests.md).
+ */
+function shopIndexOffers(AssertableInertia $page): array
+{
+    $slot = collect($page->toArray()['props']['slots'])
+        ->firstWhere('component', 'registration/ShopOffers');
+
+    return $slot === null ? [] : $slot['props']['offers'];
+}
+
+it('offers a public registration type on the shop, named by its event', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->published()->create();
+    EventSummary::query()->create(['event_id' => $event->getKey(), 'name' => 'Wintercon', 'slug' => 'wintercon']);
+    $type = RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Weekend Ticket']);
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page) use ($event, $type): void {
+            $offers = shopIndexOffers($page);
+
+            expect($offers)->toHaveCount(1)
+                ->and($offers[0]['name'])->toBe('Weekend Ticket')
+                ->and($offers[0]['eventName'])->toBe('Wintercon')
+                ->and($offers[0]['onSale'])->toBeTrue()
+                // ADR-0047 point 3: a registration joins the cart by
+                // submitting first, so the card links to the form, never to
+                // an "add to cart" the shop could not honour.
+                ->and($offers[0]['url'])->toBe('/events/'.$event->getKey().'/register/'.$type->getKey());
+        });
+});
+
+it('keeps a type whose sale is over off the shop and announces one whose sale is ahead', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->published()->create();
+    EventSummary::query()->create(['event_id' => $event->getKey(), 'name' => 'Wintercon', 'slug' => 'wintercon']);
+
+    RegistrationType::factory()->forEvent($event->getKey())->create([
+        'name' => 'Early Bird',
+        'sales_end' => Carbon::now()->subDay(),
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create([
+        'name' => 'Late Bird',
+        'sales_start' => Carbon::parse('2026-12-01 09:00:00'),
+    ]);
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            $offers = shopIndexOffers($page);
+
+            expect($offers)->toHaveCount(1)
+                ->and($offers[0]['name'])->toBe('Late Bird')
+                ->and($offers[0]['onSale'])->toBeFalse()
+                ->and($offers[0]['salesStart'])->toBe(Carbon::parse('2026-12-01 09:00:00')->toIso8601String());
+        });
+});
+
+it('never advertises a token-only type on the shop, nor another brand\'s', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->published()->create();
+    RegistrationType::factory()->forEvent($event->getKey())->inviteOnly()->create();
+
+    $other = $this->withBrand(Brand::factory()->create());
+    $this->activateFeature('commerce:shop', $other);
+    $theirEvent = Event::factory()->published()->create();
+    RegistrationType::factory()->forEvent($theirEvent->getKey())->create();
+    $this->withBrand($brand);
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toBe([]));
+});
+
+it('drops the offers of an archived event from the shop', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->published()->create();
+    EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Lastcon',
+        'slug' => 'lastcon',
+        'archived_at' => Carbon::now()->subMonth(),
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create();
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toBe([]));
 });

@@ -220,6 +220,7 @@ declare namespace Konventix {
                 readonly currency: string;
                 readonly totalGross: string;
                 readonly payUrl: string | null;
+                readonly repayDueOn: string | null;
                 readonly invoiceNumber: string | null;
                 readonly issuedOn: string | null;
                 readonly dueOn: string | null;
@@ -859,6 +860,7 @@ declare namespace Konventix {
             export type OperatorPresenceData = {
                 readonly name: string;
                 readonly legalName: string;
+                readonly brandName: string;
                 readonly brands: Konventix.Platform.Data.OperatorBrandLinkData[];
                 readonly privacyPolicyUrl: string | null;
             };
@@ -1030,6 +1032,7 @@ declare namespace Konventix {
                 readonly requiresApproval: boolean;
                 readonly onSale: boolean;
                 readonly salesStart: string | null;
+                readonly eventName: string | null;
             };
             export type QuotaData = {
                 readonly name: string;
