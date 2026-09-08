@@ -7,11 +7,13 @@ use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
@@ -49,6 +51,17 @@ final class OrderRepayTestFakeStripe implements StripeApi
         $this->sessions[] = $params;
 
         return new StripeCheckoutSession(id: 'cs_repay_'.count($this->sessions), url: 'https://checkout.stripe.test/repay-'.count($this->sessions));
+    }
+
+    /**
+     * Nothing took this payment's money back (#235). Every fake here answers
+     * the empty pair unless its own test says otherwise.
+     *
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     */
+    public function fetchPaymentIntentReversals(string $paymentIntentId): array
+    {
+        return ['disputes' => [], 'refunds' => []];
     }
 
     public function createRefund(array $params): void {}
@@ -262,4 +275,68 @@ it('sends the payer to the consent screen before the form when a contract text i
         ->get('/pay/order/'.$order->getKey())
         ->assertRedirect(route('policies.required', absolute: false))
         ->assertSessionHas('url.intended', '/pay/order/'.$order->getKey());
+});
+
+/**
+ * ADR-0057 point 3, GitLab #186: a reversal revives the receivable, and a
+ * cart order is then "exactly like a pending one" again — except that the
+ * chargeback lands days after `Cart::CHECKOUT_GRACE_MINUTES` has run out,
+ * so the reservation refusal used to close the only self-service way back
+ * to the money for every reversed cart order there is.
+ *
+ * Nothing is reserved any more that could be sold twice: `ExpireCarts`
+ * only ever cancels an order that is still `pending`, so a reversed one is
+ * never swept, and the seats and stock its lines hold were handed over
+ * when it was paid the first time.
+ */
+it('takes a reversed cart order past the reservation the first payment used', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order] = orderRepayFailedCartOrder($payer, held: false);
+    $account = orderRepayAccount();
+
+    Payment::factory()->create(['order_id' => $order->getKey(), 'status' => PaymentStatus::Reversed]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('order.status', 'payment_reversed')
+            ->where('payable', true)
+            ->where('refusalReason', null));
+
+    test()->actingAs($payer)
+        ->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->getKey()])
+        ->assertRedirect('https://checkout.stripe.test/repay-1');
+
+    expect(Payment::withoutBrandScope()->where('order_id', $order->getKey())->count())->toBe(3);
+});
+
+/**
+ * The deadline the reversal put on the money (ADR-0057 point 4), on the
+ * order-addressed page too — `pay/Show.vue` has carried it since the
+ * registration half of #186's sibling and this page said nothing.
+ */
+it('names the day a reversed cart order is owed back by', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order] = orderRepayFailedCartOrder($payer, held: false);
+    orderRepayAccount();
+
+    $payment = Payment::factory()->create(['order_id' => $order->getKey(), 'status' => PaymentStatus::Reversed]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
+    PaymentReversal::factory()->create([
+        'payment_id' => $payment->getKey(),
+        'order_id' => $order->getKey(),
+        'status' => ReversalStatus::Final,
+        'occurred_at' => now()->subDay(),
+        'repay_due_on' => now()->addDays(6)->toDateString(),
+    ]);
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('repayDueOn', now()->addDays(6)->toDateString()));
 });

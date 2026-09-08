@@ -16,16 +16,15 @@ use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
-use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
-use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\CheckoutConsentSlots;
+use Konventix\Commerce\Settlement\PayLink;
 use Konventix\Commerce\Settlement\PaymentWindow;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
@@ -66,6 +65,7 @@ class CheckoutController
         private readonly SettlementAdapterRegistry $registry,
         private readonly CheckoutConsentSlots $consentSlots,
         private readonly PaymentWindow $paymentWindow,
+        private readonly PayLink $payLink,
     ) {}
 
     public function show(Request $request, string $registration): Response|RedirectResponse
@@ -137,7 +137,7 @@ class CheckoutController
             // ADR-0057 point 4: the day the money is owed back by, so a
             // reversed order reads as "owed again until …" rather than as an
             // ordinary unpaid one. Null for every other status.
-            'repayDueOn' => $this->repayDueOn($order),
+            'repayDueOn' => $this->payLink->repayDueOnFor($order),
             // Compliance's consent control (GitLab #2) — see
             // `Settlement\CheckoutConsentSlots` for why it arrives as a slot
             // contribution rather than as props this controller computes.
@@ -333,6 +333,11 @@ class CheckoutController
             // page then says the reservation is gone rather than offering a
             // button that cannot help.
             'holdUntil' => $hold?->toIso8601String(),
+            // ADR-0057 point 4, GitLab #186: a reversed cart order is
+            // payable past its hold, so the deadline that matters to the
+            // payer is no longer the reservation but the day the money is
+            // owed back by.
+            'repayDueOn' => $this->payLink->repayDueOnFor($model),
             'payable' => $refusal === null,
             'refusalReason' => $refusal,
             'consentSlots' => $consentSlots,
@@ -512,12 +517,22 @@ class CheckoutController
             return __('This order is already settled.');
         }
 
-        // A cart order's hold is what reserves its stock and its
+        // A *pending* cart order's hold is what reserves its stock and its
         // registration lines (ADR-0047 point 4). Past it, `ExpireCarts` is
         // about to cancel the order, and taking money for it would sell
         // what has just been given back. A cart order with no cart left has
         // nothing to reserve either, so a missing hold refuses too.
-        if ($order->settles_type === 'cart' && ($hold === null || $hold->isPast())) {
+        //
+        // A *reversed* one is exempt (ADR-0057 point 3, GitLab #186): the
+        // chargeback lands days after `Cart::CHECKOUT_GRACE_MINUTES` has
+        // run out, so this refusal closed the only self-service way back to
+        // the money for every reversed cart order there is. Nothing is
+        // held that could be sold twice — `ExpireCarts` sweeps a
+        // `pending` order only, so a reversed one is never cancelled, and
+        // what its lines claim was handed over when it was first paid.
+        if ($order->status === OrderStatus::Pending
+            && $order->settles_type === 'cart'
+            && ($hold === null || $hold->isPast())) {
             return __('The reservation for this order has run out.');
         }
 
@@ -582,28 +597,6 @@ class CheckoutController
         $request->session()->put('url.intended', $intended);
 
         return redirect()->to($outstandingUrl);
-    }
-
-    /**
-     * The day a reversed order's money is owed back by (ADR-0057 point 4):
-     * the newest final reversal's `repay_due_on`, the same rule the operator
-     * console reads through `repaymentDeadline()`. An open dispute carries
-     * none — the provider still holds the money and nothing is owed yet.
-     *
-     * Brand-scoped implicitly, like `orderFor()`: this runs on the brand host.
-     */
-    private function repayDueOn(Order $order): ?string
-    {
-        if ($order->status !== OrderStatus::PaymentReversed) {
-            return null;
-        }
-
-        return PaymentReversal::query()
-            ->where('order_id', $order->id)
-            ->where('status', ReversalStatus::Final)
-            ->whereNotNull('repay_due_on')
-            ->orderByDesc('occurred_at')
-            ->first()?->repay_due_on?->toDateString();
     }
 
     /**

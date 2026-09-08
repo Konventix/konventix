@@ -53,6 +53,11 @@ type Props = {
     paymentStatus: string | null;
     /** The first placement's deadline, ISO-8601, or null when there is none. */
     holdUntil: string | null;
+    /**
+     * ADR-0057 point 4 — the day a reversed order's money is owed back by,
+     * from the newest final reversal. Null for every other status.
+     */
+    repayDueOn: string | null;
     payable: boolean;
     /** Why not, in the payer's own words — null while `payable` is true. */
     refusalReason: string | null;
@@ -147,7 +152,13 @@ const holdUntilLabel = computed(() =>
             class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-danger"
         >
             <RotateCcw class="size-5" />
-            <span>Payment reversed — this amount is owed again.</span>
+            <span>
+                Payment reversed — this amount is owed again<template
+                    v-if="props.repayDueOn"
+                >
+                    until {{ props.repayDueOn }}</template
+                >.
+            </span>
         </div>
 
         <div
@@ -159,8 +170,13 @@ const holdUntilLabel = computed(() =>
             <span>The last payment attempt did not go through.</span>
         </div>
 
+        <!--
+            #186: a reversed order is payable long past the reservation the
+            first payment used, so the hold is no longer the deadline that
+            binds it — the banner above names the one that does.
+        -->
         <p
-            v-if="props.payable && holdUntilLabel"
+            v-if="props.payable && holdUntilLabel && !reversed"
             role="status"
             class="text-sm text-text-muted"
         >

@@ -5,7 +5,9 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
@@ -134,4 +136,35 @@ it('keeps the pay link on an order whose payment was reversed', function (): voi
         ->get('/my/orders')
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('orders.0.payUrl', '/pay/registration/'.$order->settles_id));
+});
+
+it('keeps a working pay link on a reversed cart order, past the checkout hold', function (): void {
+    // GitLab #186: the link existed before this and dead-ended — the pay
+    // page refused every cart order whose reservation had lapsed, and a
+    // chargeback always lands after it has. Followed here rather than only
+    // asserted, because a link that renders is not the same as one that pays.
+    $this->withBrand();
+    $me = User::factory()->create();
+
+    $order = Order::factory()->forPayer($me->getKey())->create(['settles_type' => 'cart']);
+    OrderLine::factory()->forOrder($order)->create(['label' => 'Con Shirt']);
+    Cart::factory()->create([
+        'payer_user_id' => $me->getKey(),
+        'status' => CartStatus::CheckedOut,
+        'checked_out_order_id' => $order->getKey(),
+        'expires_at' => now()->subDays(3),
+    ]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
+
+    $this->actingAs($me)
+        ->get('/my/orders')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('orders.0.payUrl', '/pay/order/'.$order->getKey()));
+
+    $this->actingAs($me)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payable', true)
+            ->where('refusalReason', null));
 });
