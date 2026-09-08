@@ -143,11 +143,17 @@ class CheckoutController
             return $redirect;
         }
 
+        // Computed once and handed to `refusalReason()` below (review N5):
+        // this method also needs the answer for its own hard 409, and
+        // asking `Payment::…->exists()` twice per request cost one for
+        // nothing.
+        $paymentSucceeded = $this->paymentSucceededFor($order);
+
         // Every refusal is settled before validation (review 6 parked nit
         // B): a POST against an order whose window has lapsed has to answer
         // with that fact, not with an `accept_terms` error about a form the
         // page no longer shows.
-        $refusal = $this->refusalReason($order, $this->holdFor($order));
+        $refusal = $this->refusalReason($order, $this->holdFor($order), $paymentSucceeded);
 
         // ADR-0057 point 3: a reversal revives the receivable — the sale
         // stands and the amount is owed again, and `RecordPaymentSuccess`
@@ -166,11 +172,7 @@ class CheckoutController
         // no new cart, no new order, one more `Payment` row per attempt
         // (`payments_provider_external_id_unique` is per provider session and
         // is untouched by that: each attempt gets its own).
-        abort_if(
-            Payment::query()->where('order_id', $order->id)->where('status', PaymentStatus::Succeeded)->exists(),
-            409,
-            'This order is already settled.',
-        );
+        abort_if($paymentSucceeded, 409, 'This order is already settled.');
 
         // Only the window refusal can still be standing here, and it is a
         // sentence on the form rather than a 409 for the same reason
@@ -424,15 +426,19 @@ class CheckoutController
      * null when it can. Three refusals and no others: the order is no
      * longer owed, a payment already succeeded, or the reservation the
      * first placement fixed has run out.
+     *
+     * `$paymentSucceeded`, when the caller already knows the answer (`start()`
+     * asks the same question again for its own hard 409), skips the repeat
+     * `Payment::…->exists()` query rather than running it twice per request.
      */
-    private function refusalReason(Order $order, ?CarbonInterface $hold): ?string
+    private function refusalReason(Order $order, ?CarbonInterface $hold, ?bool $paymentSucceeded = null): ?string
     {
         // ADR-0057 point 3: a reversed order is owed again and stays payable.
         if (! in_array($order->status, [OrderStatus::Pending, OrderStatus::PaymentReversed], true)) {
             return __('This order is no longer awaiting payment.');
         }
 
-        if (Payment::query()->where('order_id', $order->id)->where('status', PaymentStatus::Succeeded)->exists()) {
+        if ($paymentSucceeded ?? $this->paymentSucceededFor($order)) {
             return __('This order is already settled.');
         }
 
@@ -480,6 +486,11 @@ class CheckoutController
             ->where('order_id', $order->id)
             ->latest('created_at')
             ->first();
+    }
+
+    private function paymentSucceededFor(Order $order): bool
+    {
+        return Payment::query()->where('order_id', $order->id)->where('status', PaymentStatus::Succeeded)->exists();
     }
 
     /**

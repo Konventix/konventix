@@ -10,6 +10,7 @@ use Konventix\Commerce\Events\PaymentFailed;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Settlement\PayLink;
 use Konventix\Commerce\Settlement\PaymentWindow;
+use Konventix\Messaging\Actions\ResolveBrandTimezone;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
@@ -96,11 +97,30 @@ final class SendPaymentFailedMailOnPaymentFailed
                 // deadline. `Settlement\PaymentWindow` is the same answer
                 // `ExpireRegistrationOrders` acts on, so this mail cannot
                 // invite a payment the sweep is about to orphan without
-                // saying when it stops.
-                payBy: app(PaymentWindow::class)->endsFor($order)?->format('d.m.Y H:i'),
+                // saying when it stops. Rendered in the brand's own
+                // timezone (`ResolveBrandTimezone`, the same setting
+                // `Digests\HoldPolicy` reads for quiet hours) rather than
+                // the application's UTC — the pay page states the same
+                // instant in the viewer's own zone, and a mail that named
+                // a different clock time for it would read as a different
+                // deadline.
+                payBy: $this->formatPayBy($order),
             ),
             brandId: $event->brandId,
         ));
+    }
+
+    private function formatPayBy(Order $order): ?string
+    {
+        $deadline = app(PaymentWindow::class)->endsFor($order);
+
+        if ($deadline === null) {
+            return null;
+        }
+
+        $timezone = app(ResolveBrandTimezone::class)->handle($order->brand_id);
+
+        return $deadline->setTimezone($timezone)->format('d.m.Y H:i');
     }
 
     private function reasonSentence(string $reasonCode): string

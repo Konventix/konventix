@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
@@ -18,6 +19,8 @@ use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
+use Konventix\Messaging\Actions\UpdateBrandMailSettings;
+use Konventix\Messaging\Data\MailSettingsData;
 use Konventix\Messaging\Data\SendMessageData;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Jobs\SendQueuedMessage;
@@ -349,6 +352,43 @@ it('names no deadline for a bank-transfer brand, which has none (#131)', functio
 
     Queue::assertPushedOn('messaging', SendQueuedMessage::class, fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-failed'
         && $job->message->payload->toArray()['payBy'] === null);
+});
+
+/**
+ * The pay page states the deadline in the viewer's own timezone; the mail
+ * must not state a different clock time for the same instant by silently
+ * rendering it in the application's UTC (review N4). `ResolveBrandTimezone`
+ * is the same setting `Digests\HoldPolicy` already reads for quiet hours.
+ */
+it('names the payment deadline in the brand\'s own timezone, not the application\'s UTC (#131)', function (): void {
+    $brand = $this->withBrand();
+    $payer = orderMailsRecipient($brand->id);
+    app(UpdateBrandMailSettings::class)->handle($brand->id, new MailSettingsData(
+        fromName: 'Test Brand',
+        fromAddress: 'no-reply@example.test',
+        replyTo: null,
+        timezone: 'Europe/Berlin',
+    ));
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
+    Queue::fake();
+
+    // 10:00 UTC is 11:00 CET (Europe/Berlin, UTC+1 in January) — the
+    // deadline sixty minutes later is 12:00 Berlin, not 11:00.
+    $this->travelTo(Carbon::parse('2026-01-15 10:00:00', 'UTC'));
+
+    $order = Order::factory()->create(['settles_type' => 'registration', 'payer_user_id' => $payer->id]);
+
+    event(new PaymentFailed(
+        paymentId: (string) Str::ulid(),
+        orderId: $order->id,
+        brandId: $brand->id,
+        settlementMethod: 'mollie',
+        reasonCode: 'canceled',
+        failedAt: now()->toIso8601String(),
+    ));
+
+    Queue::assertPushedOn('messaging', SendQueuedMessage::class, fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-failed'
+        && $job->message->payload->toArray()['payBy'] === '15.01.2026 12:00');
 });
 
 it('logs a warning and sends nothing when a failed payment has no payer', function (): void {
