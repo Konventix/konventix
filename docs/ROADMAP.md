@@ -140,7 +140,8 @@ interleave.
    ADR-0037 prerequisite), event-day validity, claim links (ADR-0032),
    `BadgeTemplate` + PDF rendering (D-ADM-05).
 6. Offline entrance client (ADR-0002 carve-out) — new work, not a port.
-7. Commerce completion: Stripe Connect Standard + Mollie adapters,
+7. Commerce completion: Stripe (this instance's own account, ADR-0058) +
+   Mollie adapters,
    `SettlementAccount`, public checkout for `instant`, dunning, refunds +
    credit notes (blocked-by-check-in per ADR-0037; credit notes also serve
    ADR-0036 transfer), bookkeeping export.

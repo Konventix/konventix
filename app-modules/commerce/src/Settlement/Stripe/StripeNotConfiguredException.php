@@ -11,11 +11,20 @@ use RuntimeException;
  * may live (ADR-0058 point 2: the operator's console-entered settings row
  * wins, otherwise the environment).
  *
- * It exists as its own class rather than a bare `RuntimeException` so the
- * operator console can catch exactly this one and repeat its message
- * instead of answering 500 (GitLab #194): the message is the whole point,
- * so it names what is missing *and* both places it can be put — an operator
- * reading it should not need to find this file.
+ * Nothing catches it. It was introduced so the settlement console could catch
+ * exactly this one and repeat its message instead of answering 500 (GitLab
+ * #194), and that catch site went with the Connect console in ADR-0058: the
+ * payer path now short-circuits on `SettlementAccount::isOffered()` — which
+ * asks the same question this throws on — before an adapter is ever resolved,
+ * and the console reads `StripeSetupData` rather than provoking a client.
+ *
+ * It stays a class of its own for the message, which is the whole point: it
+ * names what is missing *and* both places it can be put, so an operator who
+ * meets it in a log, a queue failure or the reconciliation command does not
+ * need to find this file. The refund path (`RefundOrder`) resolves the adapter
+ * unconditionally and has no HTTP caller yet; whoever gives it one owes this
+ * exception a catch site, or an operator refunding a Stripe order on an
+ * instance with no key gets a 500 and a message nobody reads.
  */
 final class StripeNotConfiguredException extends RuntimeException
 {

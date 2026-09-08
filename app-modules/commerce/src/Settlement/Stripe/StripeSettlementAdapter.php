@@ -94,7 +94,11 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
             'konventix_order_id' => $order->id,
             'konventix_brand_id' => $order->brand_id,
             'konventix_brand_name' => $brandName,
-            'konventix_operator_id' => (string) ($brand->operator_id ?? ''),
+            // `brands.operator_id` is NOT NULL, so this is a cast and not a
+            // fallback: an empty-string operator id riding into Stripe's
+            // metadata would be worse than the exception a missing column
+            // would raise.
+            'konventix_operator_id' => (string) $brand->operator_id,
         ];
 
         $intentData = [

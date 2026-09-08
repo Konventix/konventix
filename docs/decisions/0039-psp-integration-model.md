@@ -1,6 +1,9 @@
 # ADR-0039: PSP integration — hosted checkout, webhook-confirmed settlement
 
-**Status:** accepted
+**Status:** accepted; point 5 is superseded in full and point 4's Stripe half
+rewritten by [ADR-0058](0058-one-stripe-account-per-instance.md) (2026-09-08).
+Points 1-3 stand unchanged — hosted checkout, webhooks as the only source of
+settlement truth, and `Payment` as a first-class record.
 
 ## Context
 
@@ -49,15 +52,25 @@ times.
 
 4. **Credentials custody.** Per-brand PSP credentials (Mollie API key,
    Unzer private key) live encrypted on `SettlementAccount.credentials` —
-   never in `.env`, never logged. Stripe stores no per-brand secret at all.
+   never in `.env`, never logged.
 
-   *Rewritten by [ADR-0058](0058-one-stripe-account-per-instance.md):*
-   Stripe's pair is no longer a *platform* credential. It is this instance's
-   own Stripe account, held either in an operator-level `StripeSettings` row
-   (encrypted, entered in the console) or in `services.stripe.secret` /
-   `services.stripe.webhook_secret` from the environment — the row wins when
-   it carries a key, and `Settlement\Stripe\StripeCredentials` is the one
-   place that says so.
+   *Stripe's half of this point is superseded by
+   [ADR-0058](0058-one-stripe-account-per-instance.md) (2026-09-08); it is
+   kept here to say what it used to rule:* "Platform-level credentials (the
+   Stripe platform secret and webhook signing secret) live in
+   `config/services.php` from environment, because they belong to the
+   platform, not to a brand. Stripe stores no per-brand secret at all: the
+   connected account id plus the platform key is sufficient (`Stripe-Account`
+   header)."
+
+   What holds now: Stripe's pair is no longer a *platform* credential. It is
+   this instance's own Stripe account, held either in an operator-level
+   `StripeSettings` row (encrypted, entered in the console) or in
+   `services.stripe.secret` / `services.stripe.webhook_secret` from the
+   environment — the row wins when it carries a key, and
+   `Settlement\Stripe\StripeCredentials` is the one place that says so. The
+   per-brand half above is untouched: Mollie's and Unzer's keys stay on
+   `SettlementAccount.credentials`.
 
 5. **Stripe is the SaaS/direct-charge pattern.** *This point is
    superseded in full by [ADR-0058](0058-one-stripe-account-per-instance.md)

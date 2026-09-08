@@ -87,7 +87,7 @@ and the interesting section is **Open decisions**.
 | Order `metadata` JSON as the fulfilment instruction | SHP-F-016 | A JSON blob of `{ticket_type_id, quantity, addon_ids}` on the order; `FulfillOrder` decodes it to decide what to create | Commerce | Typed order lines are the only instruction (ADR-0009) | Drop |
 | `FulfillOrder` creating tickets | SHP-F-012, SHP-F-016 | One action sets the order complete, stamps `paid_at`, locks the ticket type, creates N `Ticket` rows, attaches add-ons, mints tokens, dispatches PDFs, notifies and fires `TicketPurchased` | Registration + Admission + Commerce | Commerce emits `OrderPaid`; Registration confirms; Admission issues (ADR-0006) | Split across modules |
 | Idempotent fulfilment (return URL + webhook) | SHP-F-015, SHP-F-016 | Guarded by an early `status === Completed` return inside `FulfillOrder` | Commerce | Idempotent settlement handling | Port renamed |
-| Stripe Checkout via Cashier | SHP-F-003 | `CreateCheckoutSession` builds Stripe line items and calls `$user->checkout(...)`; Stripe holds the session truth | Commerce | Stripe settlement adapter, **Connect Standard, account-scoped** (ADR-0007) | Generalize |
+| Stripe Checkout via Cashier | SHP-F-003 | `CreateCheckoutSession` builds Stripe line items and calls `$user->checkout(...)`; Stripe holds the session truth | Commerce | Stripe settlement adapter, on this instance's own account (ADR-0058) | Generalize |
 | Stripe `checkout.session.completed` webhook | SHP-F-015 | `HandleStripeCheckoutCompleted` fulfils the order when the buyer never returns | Commerce | Adapter webhook → `PaymentReceived` | Port renamed |
 | PayPal Orders v2 | SHP-F-019 | `PayPalPaymentProvider` via `srmklive/paypal`, create + capture | Commerce | PayPal settlement adapter | Defer post-release |
 | PayPal webhook with local verification | SHP-F-020 | `PAYMENT.CAPTURE.COMPLETED` verified via `verifyWebHookLocally` and `PAYPAL_WEBHOOK_ID` | Commerce | PayPal adapter webhook | Defer post-release |
@@ -207,9 +207,10 @@ and the interesting section is **Open decisions**.
 
 **Deferred to after release**
 
-- **PayPal adapter (SHP-F-019, SHP-F-020).** Stripe Connect plus manual bank
-  transfer covers the release scope; PayPal is a third adapter behind the same
-  contract and adds no modelling insight.
+- **PayPal adapter (SHP-F-019, SHP-F-020).** Stripe plus manual bank transfer
+  covers the release scope. ADR-0058 point 7 has since answered the deferral for
+  good: PayPal is a payment method inside Stripe's or Mollie's hosted checkout,
+  never a settlement provider of its own.
 - **Countdown newsletter signup (CTD-F-002).** Newsletter is explicitly a
   post-release module in the module map. The countdown *timer* (CTD-F-001)
   survives as a Platform content block; the signup form comes with Newsletter.

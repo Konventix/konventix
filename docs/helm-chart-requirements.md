@@ -318,8 +318,8 @@ All roles: `terminationGracePeriodSeconds` ≥ the longest queue timeout
 Octane handle SIGTERM. Scheduled work (every minute: `commerce:waiting-room-tick`,
 `messaging:flush-held`, `health:schedule-check-heartbeat`; every 5/15 minutes:
 `horizon:snapshot`, `health:check`, `commerce:expire-carts`,
-`registration:expire-waitlist-offers`; daily: dunning, retention, backups,
-settlement refresh) runs only in `scheduler`.
+`registration:expire-waitlist-offers`; daily: dunning, retention, backups)
+runs only in `scheduler`.
 
 ### Network
 
@@ -410,9 +410,12 @@ several Konventix instances (ADR-0001).
 
 Both values may also be entered in the operator console, under **Settlement
 accounts → Stripe account**, where they are stored `APP_KEY`-encrypted in an
-operator-level row. **The row wins when it carries a secret key; otherwise
-the environment value is used** — the resolution lives in exactly one place
-per value (`Konventix\Commerce\Settlement\Stripe\StripeCredentials`).
+operator-level row. **The decision is made per value, not once for the pair:
+each of the two — the secret key and the signing secret — is taken from the
+row if the row carries it, and from the environment otherwise.** A row holding
+only a secret key therefore still takes its signing secret from
+`STRIPE_WEBHOOK_SECRET`. The resolution lives in exactly one place
+(`Konventix\Commerce\Settlement\Stripe\StripeCredentials`).
 Both stay supported permanently: the environment is what a fresh deployment
 sets before anyone has logged in, the row is what an operator rotates
 without a redeploy.

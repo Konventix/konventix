@@ -63,6 +63,12 @@ Before starting, .env needs:
   STRIPE_SECRET=sk_test_...
   STRIPE_WEBHOOK_SECRET=<the whsec_... this prints once connected>
 
+BUT: a Stripe pair entered in the operator console (Settlement accounts -> Stripe account)
+outranks .env, per value, since ADR-0058. If you have used that card, the whsec_ this prints
+belongs in there too — otherwise every event this script forwards is refused with a 400
+signature error while .env looks correct. 'Clear keys' on the same card removes the row and
+hands the environment back.
+
 Octane/Sail reads .env live in dev, but a cached config does not follow along — if
 STRIPE_WEBHOOK_SECRET was already cached, run 'sail artisan config:clear' after updating it.
 

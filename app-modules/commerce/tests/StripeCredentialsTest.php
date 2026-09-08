@@ -97,6 +97,24 @@ it('falls back to the environment when the row carries no secret key', function 
         ->and($credentials->source())->toBe('environment');
 });
 
+it('decides per value, so a row with only a secret key still uses the environment\'s signing secret', function (): void {
+    // The order is stated per value, not once for the pair: an operator who
+    // pastes only the secret key into the console keeps verifying webhooks
+    // against `STRIPE_WEBHOOK_SECRET`. Getting this wrong in either direction
+    // is a silent 400 on every event.
+    config()->set('services.stripe.secret', 'sk_test_environment_abcd');
+    config()->set('services.stripe.webhook_secret', 'whsec_environment');
+
+    stripeCredentialsRow(['secret_key' => 'sk_test_console_wxyz', 'webhook_secret' => null]);
+
+    $credentials = app(StripeCredentials::class);
+
+    expect($credentials->secret())->toBe('sk_test_console_wxyz')
+        ->and($credentials->webhookSecret())->toBe('whsec_environment')
+        ->and($credentials->source())->toBe('database')
+        ->and($credentials->webhookSecretConfigured())->toBeTrue();
+});
+
 it('reports nothing configured when neither place carries a key', function (): void {
     config()->set('services.stripe.secret', '');
     config()->set('services.stripe.webhook_secret', '');
