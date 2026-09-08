@@ -48,8 +48,13 @@ final class MyRegistrationData extends Data
             status: $registration->status->value,
             paymentStatus: $registration->payment_status->value,
             organizationName: $registration->organization_name,
-            submittedAt: $registration->submitted_at->format('Y-m-d H:i'),
-            confirmedAt: $registration->confirmed_at?->format('Y-m-d H:i'),
+            // ISO 8601 with the offset, the way Commerce hands `placedAt`
+            // over: these are system instants (ADR-0027), and the page shows
+            // them in the reader's own zone. `Y-m-d H:i` dropped the offset
+            // before the browser ever saw it, so a UTC 21:55 was read in
+            // Berlin as 21:55 rather than 23:55.
+            submittedAt: $registration->submitted_at->toIso8601String(),
+            confirmedAt: $registration->confirmed_at?->toIso8601String(),
         );
     }
 }

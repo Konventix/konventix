@@ -37,7 +37,7 @@ final class UpdatePolicyVersion
                 'content' => $data->content,
                 'requires_consent' => $data->requiresConsent,
                 'lawful_basis' => $data->lawfulBasis,
-                'effective_at' => $data->effectiveAt,
+                'effective_at' => $data->effectiveAtInstant(),
             ])->save();
 
             return $version->refresh();

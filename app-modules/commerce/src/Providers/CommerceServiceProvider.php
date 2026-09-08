@@ -19,9 +19,11 @@ use Konventix\Commerce\Console\ReconcilePayments;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
 use Konventix\Commerce\Console\RunDunningSweep;
 use Konventix\Commerce\Console\WaitingRoomTick;
+use Konventix\Commerce\Data\RegistrationCartSettlementData;
 use Konventix\Commerce\Data\RegistrationSettlementData;
 use Konventix\Commerce\Data\ShopProductData;
 use Konventix\Commerce\Data\WaitingRoomSettingsData;
+use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Events\OrderPaid;
@@ -42,6 +44,8 @@ use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
 use Konventix\Commerce\Listeners\SendOrderConfirmationOnOrderPlaced;
 use Konventix\Commerce\Listeners\SendPaymentFailedMailOnPaymentFailed;
 use Konventix\Commerce\Listeners\SendPaymentReversedMailOnPaymentReversed;
+use Konventix\Commerce\Models\Cart;
+use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
@@ -905,9 +909,15 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     ->first();
 
                 if ($order === null) {
-                    // Free settlement creates no order at all (ADR-0026), so
-                    // "nothing here" is the correct and common answer.
-                    return ['settlement' => null];
+                    // No order is no longer the same as nothing to pay:
+                    // with `commerce:shop` on, an `instant` settlement is a
+                    // cart line instead (ADR-0047 point 3, #210). Free
+                    // settlement creates neither, and both null is then the
+                    // correct and common answer (ADR-0026).
+                    return [
+                        'settlement' => null,
+                        'cart' => self::cartSettlementFor($context['registrationId'])?->toArray(),
+                    ];
                 }
 
                 $invoice = Invoice::query()
@@ -916,6 +926,10 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     ->first();
 
                 return [
+                    // An order settles this registration: that is the
+                    // payable thing, and any cart line it came from has
+                    // already been checked out.
+                    'cart' => null,
                     'settlement' => RegistrationSettlementData::ofOrder(
                         $order,
                         $invoice,
@@ -980,6 +994,78 @@ class CommerceServiceProvider extends ModuleServiceProvider
             feature: 'commerce:shop',
             order: 20,
         );
+    }
+
+    /**
+     * The cart's answer to "where is this registration paid" (#210).
+     *
+     * With `commerce:shop` on, `CreateOrderOnSettlementRequested` routes
+     * every `instant` settlement into the registrant's cart instead of
+     * placing an order (ADR-0047 point 3). Until this existed the slot read
+     * "no order" as "nothing to show", so a registration with a live cart
+     * line rendered an empty page while its twenty-minute hold ran out —
+     * exactly what the operator hit on dev.
+     *
+     * The newest line wins for the same reason the newest order does
+     * (ADR-0036): a re-priced amendment adds a second one, and the payable
+     * one is the last. Brand scoping is `BelongsToBrand`'s global scope —
+     * this slot only ever renders on a brand host.
+     *
+     * `static`, called from the static slot closure that outlives this
+     * provider under Octane; `OperatorSettings` is resolved at call time
+     * rather than captured, for the same reason.
+     */
+    private static function cartSettlementFor(string $registrationId): ?RegistrationCartSettlementData
+    {
+        $line = CartLine::query()
+            ->where('kind', CartLineKind::Registration)
+            ->where('ref_id', $registrationId)
+            ->latest('created_at')
+            ->first();
+
+        if ($line === null) {
+            return null;
+        }
+
+        $cart = Cart::query()->whereKey($line->cart_id)->first();
+
+        if ($cart === null) {
+            return null;
+        }
+
+        $settings = app(OperatorSettings::class);
+
+        return RegistrationCartSettlementData::ofCart(
+            $cart,
+            $settings->currencyForBrand($line->brand_id),
+            self::grossOfLine($line, $settings),
+        );
+    }
+
+    /**
+     * What the line costs the payer, gross (ADR-0030) — the same
+     * `TaxCalculator` call `CartController::show()` makes for the whole
+     * cart, on this one line, so the amount here and the amount one click
+     * away are computed the same way rather than nearly the same way.
+     *
+     * No billing party (`billingVatId`/`billingCountryCode` both null) for
+     * the reason `PlaceOrderFromCart` gives: a cart has no invoice
+     * recipient, so this always resolves ADR-0030's domestic-standard
+     * treatment or the operator's own §19 election — never reverse charge.
+     */
+    private static function grossOfLine(CartLine $line, OperatorSettings $settings): string
+    {
+        return app(TaxCalculator::class)->calculate(
+            lines: [[
+                'label' => $line->label,
+                'quantity' => $line->quantity,
+                'unit_amount_net' => $line->unit_amount_net,
+                'tax_class' => $line->tax_class->value,
+            ]],
+            operatorSmallBusinessScheme: $settings->sellerForBrand($line->brand_id)->smallBusinessScheme,
+            billingVatId: null,
+            billingCountryCode: null,
+        )->totalGross;
     }
 
     protected function registerNavigation(): void

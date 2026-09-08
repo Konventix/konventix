@@ -1,0 +1,136 @@
+<?php
+
+declare(strict_types=1);
+
+use Konventix\Commerce\Enums\CartLineKind;
+use Konventix\Commerce\Models\CartLine;
+use Konventix\Commerce\Models\Order;
+use Konventix\Identity\Models\User;
+use Konventix\Registration\Enums\ConfirmationGate;
+use Konventix\Registration\Enums\RegistrationSettlement;
+use Konventix\Registration\Models\RegistrationType;
+
+/**
+ * A4 (#210): with `commerce:shop` on, an `instant` settlement lands in the
+ * registrant's cart instead of an order (ADR-0047 point 3) — and the person
+ * who just submitted must be taken to the place the money is paid, whatever
+ * the confirmation gate says (ADR-0005).
+ *
+ * The gate does not decide *whether* the cart is the payment place; it
+ * decides *when* the settlement request goes out, and therefore whether a
+ * cart line exists yet at the moment `store()` answers. This test file pins
+ * that per-gate rule end to end.
+ */
+function instantHandoffType(ConfirmationGate $gate, bool $approvalRequired = false): RegistrationType
+{
+    $factory = RegistrationType::factory()
+        ->settlement(RegistrationSettlement::Instant)
+        ->confirmationGate($gate)
+        ->priced(unitAmountNet: '30.00');
+
+    return ($approvalRequired ? $factory->requiringApproval() : $factory)->create();
+}
+
+/**
+ * @return array<string, string|null>
+ */
+function instantHandoffForm(): array
+{
+    return [
+        'organizationName' => null,
+        'billingRecipientName' => 'Ada Lovelace',
+        'billingEmail' => 'ada@example.test',
+    ];
+}
+
+function instantHandoffRegistrationLines(): int
+{
+    return CartLine::query()->where('kind', CartLineKind::Registration)->count();
+}
+
+it('sends an on_payment registrant to the cart, where its settlement request already went', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $type = instantHandoffType(ConfirmationGate::OnPayment);
+
+    $this->actingAs(User::factory()->create())
+        ->post("/events/{$type->event_id}/register/{$type->id}", instantHandoffForm())
+        ->assertRedirect('/cart');
+
+    expect(instantHandoffRegistrationLines())->toBe(1)
+        ->and(Order::query()->count())->toBe(0);
+});
+
+it('sends an on_submit registrant to the cart, because confirming at submission already settled into it', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $type = instantHandoffType(ConfirmationGate::OnSubmit);
+
+    $this->actingAs(User::factory()->create())
+        ->post("/events/{$type->event_id}/register/{$type->id}", instantHandoffForm())
+        ->assertRedirect('/cart');
+
+    expect(instantHandoffRegistrationLines())->toBe(1)
+        ->and(Order::query()->count())->toBe(0);
+});
+
+it('keeps an on_approval registrant on the registration page, since nothing is payable before approval', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $type = instantHandoffType(ConfirmationGate::OnApproval);
+
+    $this->actingAs(User::factory()->create())
+        ->post("/events/{$type->event_id}/register/{$type->id}", instantHandoffForm())
+        ->assertRedirect(route('registration.show', ['event_ulid' => $type->event_id, 'type' => $type->id]));
+
+    expect(instantHandoffRegistrationLines())->toBe(0);
+});
+
+it('keeps an on_submit registrant whose type still needs approval on the registration page', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $type = instantHandoffType(ConfirmationGate::OnSubmit, approvalRequired: true);
+
+    $this->actingAs(User::factory()->create())
+        ->post("/events/{$type->event_id}/register/{$type->id}", instantHandoffForm())
+        ->assertRedirect(route('registration.show', ['event_ulid' => $type->event_id, 'type' => $type->id]));
+
+    expect(instantHandoffRegistrationLines())->toBe(0);
+});
+
+it('leaves the shop-off instant path on its direct order and its own pay page', function (): void {
+    $this->withBrand();
+    $type = instantHandoffType(ConfirmationGate::OnPayment);
+
+    $this->actingAs(User::factory()->create())
+        ->post("/events/{$type->event_id}/register/{$type->id}", instantHandoffForm())
+        ->assertRedirect(route('registration.show', ['event_ulid' => $type->event_id, 'type' => $type->id]));
+
+    expect(instantHandoffRegistrationLines())->toBe(0)
+        ->and(Order::query()->where('settles_type', 'registration')->count())->toBe(1);
+});
+
+it('leaves the invoice path on its direct order even with the shop feature on', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $type = RegistrationType::factory()
+        ->settlement(RegistrationSettlement::Invoice)
+        ->confirmationGate(ConfirmationGate::OnPayment)
+        ->priced(unitAmountNet: '30.00')
+        ->create();
+
+    $this->actingAs(User::factory()->create())
+        ->post("/events/{$type->event_id}/register/{$type->id}", [
+            'organizationName' => 'Analytical Engines Ltd',
+            'billingRecipientName' => 'Ada Lovelace',
+            'billingEmail' => 'ada@example.test',
+            'billingAddressLine' => 'Baker Street 1',
+            'billingPostalCode' => '10115',
+            'billingCity' => 'Berlin',
+            'billingCountryCode' => 'DE',
+        ])
+        ->assertRedirect(route('registration.show', ['event_ulid' => $type->event_id, 'type' => $type->id]));
+
+    expect(instantHandoffRegistrationLines())->toBe(0)
+        ->and(Order::query()->where('settles_type', 'registration')->count())->toBe(1);
+});

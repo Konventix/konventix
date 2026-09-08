@@ -152,10 +152,15 @@ it('refuses to start a checkout for a settled order', function (): void {
         ->assertStatus(409);
 });
 
-it('404s an unknown registration', function (): void {
+it('sends an unknown registration back to its own page with the reason', function (): void {
+    // No longer a bare 404: `errors::404` renders a hard-coded "Not Found"
+    // and drops the message `abort()` was given, so the sentence never
+    // reached the person. `RegistrationCartPayRouteTest` pins the flash.
     checkoutPageOrder();
+    $unknown = (string) Str::ulid();
 
-    $this->get('/pay/registration/'.Str::ulid())->assertNotFound();
+    $this->get('/pay/registration/'.$unknown)
+        ->assertRedirect('/my/registrations/'.$unknown);
 });
 
 it('pays the latest order when an amendment added a second one', function (): void {

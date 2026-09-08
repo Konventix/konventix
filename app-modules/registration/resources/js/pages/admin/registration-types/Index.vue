@@ -39,6 +39,7 @@ type TypeRow = {
     id: string;
     name: string;
     eventName: string;
+    eventPageUrl: string | null;
     visibility: string;
     approval: string;
     settlement: string;
@@ -94,21 +95,35 @@ const columns: ColumnDef<TypeRow>[] = [
         header: 'Name',
         enableSorting: true,
         cell: ({ row }) =>
-            h('div', { class: 'flex flex-col' }, [
-                h(
-                    Link,
-                    {
-                        href: editType(row.original.id).url,
-                        class: 'font-medium hover:text-accent',
-                    },
-                    () => row.original.name,
-                ),
-                h(
-                    'span',
-                    { class: 'text-xs text-text-muted' },
-                    row.original.eventName,
-                ),
-            ]),
+            h(
+                Link,
+                {
+                    href: editType(row.original.id).url,
+                    class: 'font-medium hover:text-accent',
+                },
+                () => row.original.name,
+            ),
+    },
+    {
+        id: 'offeredOn',
+        header: 'Offered on',
+        cell: ({ row }) =>
+            row.original.eventPageUrl === null
+                ? h(
+                      'span',
+                      { class: 'text-text-muted' },
+                      row.original.eventName,
+                  )
+                : h(
+                      'a',
+                      {
+                          href: row.original.eventPageUrl,
+                          target: '_blank',
+                          rel: 'noopener',
+                          class: 'text-text-muted hover:text-accent',
+                      },
+                      `${row.original.eventName} event page`,
+                  ),
     },
     {
         id: 'axes',
@@ -220,6 +235,11 @@ function submit(): void {
             title="Registration types"
             description="The offer: visibility, approval, settlement and confirmation gate"
         />
+
+        <p class="text-sm text-text-muted">
+            Types are offered on their event's own public page, never in the
+            shop, and only while their visibility is public.
+        </p>
 
         <DataTableToolbar
             :search="filters.search ?? ''"

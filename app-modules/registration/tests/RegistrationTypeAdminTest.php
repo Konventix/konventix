@@ -595,3 +595,57 @@ it('refuses a sales window that is not a date at all', function (): void {
         )
         ->assertSessionHasErrors('salesStart');
 });
+
+/**
+ * A1: the console never said where a type is offered, so an operator who had
+ * the shop in mind looked for it there and found nothing. Both screens now
+ * name the event's public page and link to it — on the brand's own host,
+ * because `route()` on the admin host would build an admin-host URL
+ * (ADR-0029, `BrandUrl`).
+ */
+it('links the type console to the public event page a type is offered on', function (): void {
+    $brand = $this->withBrand(); // TestCase gives the test brand the host `localhost`.
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create(['event_id' => $eventId, 'name' => 'Visitor']);
+
+    $this->actingAs($admin)
+        ->get('http://admin.regtypes.test/admin/registration-types')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/registration-types/Index')
+            ->where('types.data.0.eventPageUrl', 'http://localhost/events/sxlan-2027'));
+
+    $this->actingAs($admin)
+        ->get("http://admin.regtypes.test/admin/registration-types/{$type->getKey()}/edit")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/registration-types/Edit')
+            ->where('eventPageUrl', 'http://localhost/events/sxlan-2027'));
+});
+
+it('offers no event-page link while the event summary has not arrived', function (): void {
+    // ADR-0004: the slug is Registration's own projection of Event's contract
+    // event. Until it lands there is no page to point at, and the hint says so
+    // rather than linking somewhere that 404s.
+    $this->withBrand();
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create(['name' => 'Visitor']);
+
+    $this->actingAs($admin)
+        ->get("http://admin.regtypes.test/admin/registration-types/{$type->getKey()}/edit")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('eventPageUrl', null));
+
+    // The list resolves name and slug for the events it shows in one pass;
+    // a row whose summary has not arrived falls back to the raw ULID and
+    // offers no link, rather than dying on a missing key.
+    $this->actingAs($admin)
+        ->get('http://admin.regtypes.test/admin/registration-types')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('types.data.0.eventName', $type->event_id)
+            ->where('types.data.0.eventPageUrl', null));
+});

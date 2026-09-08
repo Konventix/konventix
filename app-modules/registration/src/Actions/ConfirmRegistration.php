@@ -27,6 +27,18 @@ use Konventix\Registration\Models\Registration;
  * emitted it at submission (confirmation there is *caused by* the payment,
  * so requesting settlement again would loop). A `settlement: free`
  * registration still never causes a Commerce record (ADR-0026).
+ *
+ * The settlement request goes out *before* `RegistrationConfirmed`, not
+ * after. Both sit inside the one transaction and the registration row is
+ * already `confirmed` when either fires, so nothing downstream sees a
+ * different state — but Commerce answers a settlement request
+ * synchronously, and with `commerce:shop` on that answer is a cart line
+ * plus its hold (ADR-0047 point 3). Announcing the confirmation second is
+ * what lets `MailOnRegistrationConfirmed` — the only push a registrant on
+ * an `on_submit`/`on_approval` gate gets — name the cart the money is
+ * actually waiting in (#210). Emitted the other way round, the mail was
+ * composed a few microseconds before the line it should have linked to
+ * existed.
  */
 final class ConfirmRegistration
 {
@@ -58,6 +70,13 @@ final class ConfirmRegistration
             // (ApproveRegistration, or a future controller) must not trip it.
             $registrationType = $registration->loadMissing('registrationType')->registrationType;
 
+            if (
+                $registrationType->settlement->requestsSettlement()
+                && $registrationType->confirmation_gate !== ConfirmationGate::OnPayment
+            ) {
+                $this->requestSettlement->handle($registration, $registrationType);
+            }
+
             event(new RegistrationConfirmed(
                 registrationId: $registration->id,
                 registrationTypeId: $registrationType->id,
@@ -74,13 +93,6 @@ final class ConfirmRegistration
                     ])
                     ->all()),
             ));
-
-            if (
-                $registrationType->settlement->requestsSettlement()
-                && $registrationType->confirmation_gate !== ConfirmationGate::OnPayment
-            ) {
-                $this->requestSettlement->handle($registration, $registrationType);
-            }
 
             return $registration->refresh();
         });

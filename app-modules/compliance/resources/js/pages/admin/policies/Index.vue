@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { DataTableFilters } from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
+import { formatDateTime, withZoneName } from '@/lib/datetime';
 import {
     edit as editPolicy,
     index as policiesIndex,
@@ -163,11 +164,27 @@ const columns: ColumnDef<PolicyRow>[] = [
                 ? h('span', { class: 'text-text-muted' }, 'Not published')
                 : h('div', { class: 'flex flex-col' }, [
                       h('span', {}, row.original.publishedVersion),
-                      h(
-                          'span',
-                          { class: 'text-xs text-text-muted' },
-                          row.original.effectiveAt ?? '',
-                      ),
+                      // Rendered in the reader's own zone and naming it:
+                      // the stored instant is UTC, and a legal effective
+                      // date shown as bare digits reads as a different hour
+                      // in every country the operator sells into.
+                      row.original.effectiveAt === null
+                          ? h(
+                                'span',
+                                { class: 'text-xs text-text-muted' },
+                                'no date',
+                            )
+                          : h(
+                                'time',
+                                {
+                                    class: 'text-xs text-text-muted',
+                                    datetime: row.original.effectiveAt,
+                                },
+                                formatDateTime(
+                                    row.original.effectiveAt,
+                                    withZoneName,
+                                ),
+                            ),
                   ]),
     },
     {

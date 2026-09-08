@@ -206,6 +206,14 @@ declare namespace Konventix {
                 readonly position: number;
                 readonly remaining: number | null;
             };
+            export type RegistrationCartSettlementData = {
+                readonly status: string;
+                readonly currency: string;
+                readonly totalGross: string;
+                readonly expiresAt: string | null;
+                readonly cartUrl: string | null;
+                readonly ordersUrl: string | null;
+            };
             export type RegistrationSettlementData = {
                 readonly orderId: string;
                 readonly status: string;
@@ -1045,6 +1053,8 @@ declare namespace Konventix {
                 readonly reason: string | null;
                 readonly cancelReason: string | null;
                 readonly wasPaid: boolean;
+                readonly cartUrl: string | null;
+                readonly cartHoldExpiresAt: string | null;
             };
             export type RegistrationTypeData = {
                 readonly eventId: string;

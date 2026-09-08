@@ -27,6 +27,14 @@ use Konventix\Platform\Brands\BrandContext;
  * Only a *published* version is ever readable, and only once its effective
  * date has arrived. A draft is not a legal text, and a version dated for
  * January must not be readable as the current terms in December.
+ *
+ * `effectiveAt` goes out as an ISO 8601 instant with its offset, never as a
+ * calendar day: `effective_at` is stored in UTC, and a version an operator
+ * in Berlin dated 2026-09-08T00:30 is 2026-09-07T22:30Z — printed as a bare
+ * date it told every reader the text had been in effect since 7 September
+ * (B5). The reader's zone is the browser's to know, so `policies/Show.vue`
+ * resolves it with the shared `formatDateTime()`, inside a `<time datetime>`
+ * carrying the instant itself.
  */
 final class PolicyController
 {
@@ -57,7 +65,7 @@ final class PolicyController
                 // brands' terms deserves to know which one they are reading.
                 'scope' => $policy->isOperatorWide() ? 'operator' : 'brand',
                 'version' => $version->version,
-                'effectiveAt' => $version->effective_at?->toDateString(),
+                'effectiveAt' => $version->effective_at?->toIso8601String(),
                 'requiresConsent' => $version->requires_consent,
                 'html' => $markdown->toHtml($version->content),
             ],
@@ -89,7 +97,7 @@ final class PolicyController
                 'name' => $version->policy->name,
                 'slug' => $version->policy->slug,
                 'version' => $version->version,
-                'effectiveAt' => $version->effective_at?->toDateString(),
+                'effectiveAt' => $version->effective_at?->toIso8601String(),
                 'html' => $markdown->toHtml($version->content),
             ])->all(),
         ]);

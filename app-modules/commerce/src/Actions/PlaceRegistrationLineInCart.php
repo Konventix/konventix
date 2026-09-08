@@ -8,6 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Enums\CartLineKind;
+use Konventix\Commerce\Events\RegistrationLinePlacedInCart;
 use Konventix\Commerce\Exceptions\SaleWindowClosedException;
 use Konventix\Commerce\Models\CartLine;
 
@@ -53,6 +54,12 @@ use Konventix\Commerce\Models\CartLine;
  * this Action itself enforces is the one on the *event*, read off the
  * unsaved probe below, never off a persisted column.
  *
+ * Announces itself with `RegistrationLinePlacedInCart` on the placement
+ * that actually creates the line — never on the idempotent replay, which
+ * has nothing new to tell anyone. Registration listens for it so its
+ * confirmation mail can name the cart and the hold's deadline (#210);
+ * ADR-0004 keeps that a scalar payload rather than a Commerce table read.
+ *
  * Idempotent on `(cart, registration, request_key)`: the partial unique
  * index `cart_lines_request_key_unique` is `(cart_id, kind, request_key)`,
  * so a replayed settlement request (a queued retry) finds the line it
@@ -90,7 +97,7 @@ final class PlaceRegistrationLineInCart
 
         $this->guardSaleWindow($registrationId, $saleStartsAt, $saleEndsAt);
 
-        return DB::transaction(function () use ($cart, $registrationId, $requestKey, $lines, $saleStartsAt, $saleEndsAt): CartLine {
+        $cartLine = DB::transaction(function () use ($cart, $registrationId, $requestKey, $lines, $saleStartsAt, $saleEndsAt): CartLine {
             $first = $lines[0];
 
             $totalNet = '0.00';
@@ -118,6 +125,19 @@ final class PlaceRegistrationLineInCart
 
             return $cartLine;
         });
+
+        event(new RegistrationLinePlacedInCart(
+            cartId: $cart->getKey(),
+            brandId: $cart->brand_id,
+            registrationId: $registrationId,
+            requestKey: $requestKey,
+            // The deadline `touchExpiry()` just wrote — the hold the
+            // registrant actually has, not this Action's own reading of
+            // what `LIFETIME_MINUTES` means.
+            holdExpiresAt: $cart->expires_at->toIso8601String(),
+        ));
+
+        return $cartLine;
     }
 
     /**
