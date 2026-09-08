@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -266,6 +267,51 @@ it('sweeps a checked-out cart past its grace whose order is still pending: cance
 
     Event::assertDispatched(CartExpired::class, fn (CartExpired $event): bool => $event->cartId === $cart->getKey()
         && $event->brandId === $brand->getKey());
+});
+
+it('leaves a cart whose hold was renewed between the query and the transaction (#231, finding 3)', function (): void {
+    // `PlaceOrderFromCart` reuses a checked-out cart's still-pending order
+    // and pushes `expires_at` a fresh grace forward on every new attempt,
+    // and the moment a hold expires is exactly when a payer comes back to
+    // the page. The candidate query re-checked only the order, and this
+    // branch put a synchronous provider call into that window — so the payer
+    // was cancelled mid-attempt and their money landed as unapplied.
+    $this->withBrand();
+    $variant = cartVariant(10);
+
+    $cart = Cart::factory()->create();
+    app(AddProductToCart::class)->handle($cart, $variant, 4);
+
+    $order = Order::factory()->create([
+        'settles_type' => 'cart',
+        'settles_id' => $cart->id,
+        'request_key' => $cart->id,
+        'status' => OrderStatus::Pending,
+    ]);
+    $cart->forceFill([
+        'status' => CartStatus::CheckedOut,
+        'checked_out_order_id' => $order->id,
+        'expires_at' => now()->subMinute(),
+    ])->save();
+
+    // The payer presses "pay again" after the sweep selected the cart and
+    // before it opens its transaction.
+    DB::listen(function (QueryExecuted $query) use ($cart): void {
+        if (! str_contains($query->sql, 'from "carts"') || ! str_contains($query->sql, 'checked_out_order_id')) {
+            return;
+        }
+
+        Cart::withoutBrandScope()->whereKey($cart->getKey())
+            ->update(['expires_at' => now()->addMinutes(Cart::CHECKOUT_GRACE_MINUTES)]);
+    });
+
+    $expiredCount = app(ExpireCarts::class)->handle();
+
+    expect($expiredCount)->toBe(0)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Pending)
+        ->and($cart->fresh()->status)->toBe(CartStatus::CheckedOut)
+        // The stock the payer is about to pay for is still held.
+        ->and($variant->refresh()->stock_consumed)->toBe(4);
 });
 
 it('leaves a checked-out cart whose order is already paid untouched, however long past its grace', function (): void {

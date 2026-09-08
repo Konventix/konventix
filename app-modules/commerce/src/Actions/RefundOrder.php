@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Actions;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Actions\Concerns\GuardsCheckedInAdmissions;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use RuntimeException;
+use Throwable;
 
 /**
  * Returns money for an order, issuing the credit note that documents it
@@ -88,21 +91,23 @@ final class RefundOrder
             $this->guardNotCheckedIn($order);
         }
 
-        // The PSP side effect (ADR-0039) first, and before any domain write:
-        // if the provider refuses the refund, no domain record or credit note
-        // may exist claiming the money moved. Nothing has been written yet at
-        // this point, so a refusal leaves the order exactly as it was.
-        [$payment, $providerReference] = $this->refundThroughProvider($order, $amount);
-
         // Money that was never applied has no sale to undo (ADR-0057
         // point 9): no credit note, because a cancelled order has no
         // document to correct, no `OrderRefunded`, because nothing was
         // refunded *of* the order, and the order stays `cancelled`. Only
         // the money moves — and the payment leaves the unapplied list, so
-        // the console stops asking the operator to decide about it.
+        // the console stops asking the operator to decide about it. It gets
+        // the provider call and the record together, under the payment's own
+        // lock (finding 6).
         if ($unapplied !== null) {
-            return $this->recordUnappliedRefund($order, $unapplied, $providerReference, $amount);
+            return $this->refundUnapplied($order, $unapplied, $amount);
         }
+
+        // The PSP side effect (ADR-0039) first, and before any domain write:
+        // if the provider refuses the refund, no domain record or credit note
+        // may exist claiming the money moved. Nothing has been written yet at
+        // this point, so a refusal leaves the order exactly as it was.
+        [$payment, $providerReference] = $this->refundThroughProvider($order, $amount);
 
         // Everything after the money is the refund's domain leg, shared with
         // the reversal path (ADR-0057 point 1): a refund the operator made in
@@ -202,6 +207,62 @@ final class RefundOrder
             ->where('order_id', $order->id)
             ->orderByDesc('received_at')
             ->first();
+    }
+
+    /**
+     * The unapplied refund end to end (finding 6): the payment locked, the
+     * provider called, the record written — one transaction.
+     *
+     * The lock is what makes "pressing the button twice is refused" true
+     * under concurrency rather than only in sequence. Two console POSTs used
+     * to read `succeeded` at the same moment and both call the provider;
+     * Stripe rejects a second full refund, but a partial one and both other
+     * providers go through twice. The second one in now waits here and finds
+     * the payment `reversed`.
+     *
+     * The provider call happens inside the transaction and after the lock,
+     * which is a deliberate trade: the lock is held across a network call —
+     * only against other writers of this one payment row, which is precisely
+     * the contention we want — and in exchange the money and the record
+     * cannot come apart. A throw after the call still leaves the money gone
+     * and the record rolled back, so it is logged at error level with the
+     * provider's reference: that is an operator's cue, and the only one
+     * there can be.
+     */
+    private function refundUnapplied(Order $order, Payment $unapplied, ?string $amount): Order
+    {
+        return DB::transaction(function () use ($order, $unapplied, $amount): Order {
+            $locked = Payment::withoutBrandScope()->whereKey($unapplied->id)->lockForUpdate()->first();
+
+            if ($locked === null || $locked->status !== PaymentStatus::Succeeded) {
+                throw new RuntimeException(sprintf(
+                    'Payment [%s] is no longer unapplied money; nothing was refunded.',
+                    $unapplied->id,
+                ));
+            }
+
+            $providerReference = null;
+
+            try {
+                [, $providerReference] = $this->refundThroughProvider($order, $amount);
+
+                return $this->recordUnappliedRefund($order, $locked, $providerReference, $amount);
+            } catch (ProviderRefusedRefundException $e) {
+                // Nothing moved: the provider refused before touching the
+                // money, and the rollback below is the whole correction.
+                throw $e;
+            } catch (Throwable $e) {
+                Log::error('An unapplied refund left the provider but was not recorded; the payment stays on the unapplied list (#6).', [
+                    'order_id' => $order->id,
+                    'payment_id' => $locked->id,
+                    'provider' => $locked->provider,
+                    'provider_reference' => $providerReference,
+                    'reason' => $e->getMessage(),
+                ]);
+
+                throw $e;
+            }
+        });
     }
 
     /**

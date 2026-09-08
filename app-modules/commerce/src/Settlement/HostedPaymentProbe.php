@@ -7,7 +7,6 @@ namespace Konventix\Commerce\Settlement;
 use Carbon\CarbonInterface;
 use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\PaymentStatus;
-use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 
@@ -55,6 +54,7 @@ final class HostedPaymentProbe
 
     public function __construct(
         private readonly SettlementAdapterRegistry $registry,
+        private readonly PaymentWindow $paymentWindow,
     ) {}
 
     /**
@@ -94,18 +94,22 @@ final class HostedPaymentProbe
      * not evidence of anything.
      *
      * **Both clocks start at the end of the order's payment window, not at
-     * `orders.created_at`** (fix round 3, review F-1). A checkout hold can
-     * be renewed without limit — `PlaceOrderFromCart` reuses a `checked_out`
-     * cart's still-`pending` order and pushes `carts.expires_at` forward
-     * every time the payer starts another attempt — so the order's age says
-     * nothing about the age of the attempt the provider is being asked
-     * about. On the old clock a payer whose first transfer bounced on day 13
-     * and who started a second one that day was cancelled mid-transfer by
-     * the fortnight horizon, which is what the horizon exists to prevent.
-     * The window's end moves with the renewal, so the grace does too, and it
-     * needs no column of its own: a cart order reads it off its cart, and a
-     * direct registration order off `PaymentWindow`, exactly as the two
-     * sweeps compute their own deadlines.
+     * `orders.created_at`** (fix round 3, review F-1), and the window is
+     * `PaymentWindow`'s (finding 4).
+     *
+     * For a **cart** order that matters twice over: `PlaceOrderFromCart`
+     * reuses a `checked_out` cart's still-`pending` order and pushes
+     * `carts.expires_at` forward every time the payer starts another
+     * attempt, so the order's age says nothing about the age of the attempt
+     * the provider is being asked about. On the old clock a payer whose
+     * first transfer bounced on day 13 and who started a second one that day
+     * was cancelled mid-transfer by the fortnight horizon, which is what the
+     * horizon exists to prevent.
+     *
+     * A **direct registration** order has no such retry: its window is
+     * `PaymentWindow::MINUTES` from placement and nothing moves it (review
+     * nit 26). The clock is still the window's end rather than the order's
+     * creation, so the two kinds are described and computed the same way.
      */
     public function holdExpired(Order $order, HostedPaymentState $state): bool
     {
@@ -116,8 +120,8 @@ final class HostedPaymentProbe
         }
 
         $deadline = match ($state) {
-            HostedPaymentState::Unreachable => $windowEndsAt->copy()->addHours($this->positiveConfig('commerce.sweeps.unknown_payment_grace_hours', 24)),
-            HostedPaymentState::InFlight => $windowEndsAt->copy()->addDays($this->positiveConfig('commerce.sweeps.in_flight_grace_days', 14)),
+            HostedPaymentState::Unreachable => $windowEndsAt->copy()->addHours($this->atLeastOne('commerce.sweeps.unknown_payment_grace_hours', 24)),
+            HostedPaymentState::InFlight => $windowEndsAt->copy()->addDays($this->atLeastOne('commerce.sweeps.in_flight_grace_days', 14)),
             default => null,
         };
 
@@ -128,32 +132,35 @@ final class HostedPaymentProbe
      * When this order's payer ran out of time to pay — the moment both
      * graces count from.
      *
-     * A cart order's hold *is* `carts.expires_at`, the column
-     * `ExpireCarts`' own pass sweeps on and the one `PlaceOrderFromCart`
-     * renews. A direct registration order never had a cart, so its window is
-     * the one `ExpireRegistrationOrders` applies: `PaymentWindow::MINUTES`
-     * from the order's creation. Null where neither can be established,
-     * which means no valve — the safe direction.
+     * `PaymentWindow` is the one answer to that question (finding 4): the
+     * pay pages, the failure mail and `ExpireRegistrationOrders` all read it
+     * there, and a second implementation here could promise a deadline the
+     * sweep does not keep. Null means the order has no window at all — an
+     * invoiced registration order the dunning ladder owns, a bank-transfer
+     * brand's order — and that is the probe's safe direction: no window, no
+     * valve, nothing this sweep may cancel on a clock.
      */
     private function windowEndsAt(Order $order): ?CarbonInterface
     {
-        $cartExpiry = Cart::withoutBrandScope()
-            ->where('checked_out_order_id', $order->id)
-            ->orderByDesc('expires_at')
-            ->value('expires_at');
-
-        if ($cartExpiry instanceof CarbonInterface) {
-            return $cartExpiry;
-        }
-
-        return $order->created_at?->copy()->addMinutes(PaymentWindow::MINUTES);
+        return $this->paymentWindow->endsFor($order);
     }
 
-    private function positiveConfig(string $key, int $fallback): int
+    /**
+     * A sweep knob's value, floored at one (finding 7).
+     *
+     * Zero is a plausible reading of "turn this off" and is the value a
+     * non-numeric env var casts to, and both zeroes are traps: a zero budget
+     * makes every order `Unprobed`, which reaches no valve, so the sweeps
+     * stop cancelling anything at all — silently, for ever. A zero grace
+     * puts the deadline at the window's own end, so the valve fires on the
+     * first run. Neither is a setting anyone means; probing is not
+     * switchable off from here.
+     */
+    private function atLeastOne(string $key, int $fallback): int
     {
         $value = config($key);
 
-        return is_int($value) && $value >= 0 ? $value : $fallback;
+        return max(1, is_int($value) && $value > 0 ? $value : $fallback);
     }
 
     /**
@@ -190,8 +197,17 @@ final class HostedPaymentProbe
             return [HostedPaymentState::Unprobed, $payment];
         }
 
-        $this->budget--;
+        $state = $adapter->hostedPaymentState($payment);
 
-        return [$adapter->hostedPaymentState($payment), $payment];
+        // Only a question that could have cost a network call spends budget
+        // (finding 8). `Unanswerable` is decided locally — Unzer's Paypage
+        // id, a payment that never reached a hosted page — and letting a
+        // backlog of those drain the budget would starve exactly the Stripe
+        // and Mollie orders the budget exists to spend on.
+        if ($state !== HostedPaymentState::Unanswerable) {
+            $this->budget--;
+        }
+
+        return [$state, $payment];
     }
 }

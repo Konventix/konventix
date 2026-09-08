@@ -98,9 +98,10 @@ final class ReconcilePayments extends Command
     public const int PENDING_MAX_AGE_DAYS = 7;
 
     /**
-     * How far back a settled payment is re-read for chargebacks. Longer
-     * than any provider's own chargeback deadline we know of, so a late
-     * dispute is still found.
+     * How far back a settled **Mollie or Unzer** payment is re-read for
+     * chargebacks. Longer than any provider's own chargeback deadline we
+     * know of, so a late dispute is still found. Stripe has its own, much
+     * shorter window below, for the reason given there (review nit 27).
      */
     public const int SETTLED_LOOKBACK_DAYS = 90;
 
@@ -463,6 +464,12 @@ final class ReconcilePayments extends Command
      */
     private function reconcileStripeSettled(Payment $payment, RecordPaymentReversal $recordReversal): void
     {
+        // No `orderStillPaid()` pre-check, unlike the Mollie pass (review
+        // nit 27), and deliberately: this list carries disputes as well as
+        // refunds, and a dispute against a refunded order is still a
+        // reversal that must be recorded. Only the *refund* half needs the
+        // order to be paid, and `RecordPaymentReversal::recordExternalRefund()`
+        // re-checks exactly that under the order's own lock.
         foreach (app(StripeReversalCatchUp::class)->reversalsFor($payment) as $reversal) {
             $this->recordReversal(
                 $payment,

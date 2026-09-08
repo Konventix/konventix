@@ -73,7 +73,7 @@ final class ExpireCarts
         // Opens the run's provider-call budget (#231, fix round 1): a slow
         // PSP must not turn one scheduled command into hundreds of
         // sequential HTTP calls.
-        $this->probe->startRun();
+        $this->startSweepRun();
 
         return $this->expireOpenCarts() + $this->expireCheckedOutCarts();
     }
@@ -93,20 +93,35 @@ final class ExpireCarts
             ->all();
 
         foreach ($carts as $cart) {
-            DB::transaction(function () use ($cart): void {
-                $this->releaseCartLines($cart);
+            $handled = DB::transaction(function () use ($cart): bool {
+                // Re-read under the lock (finding 3): between the query and
+                // here the shopper may have added a line, and every cart
+                // write pushes `expires_at` forward. Releasing the hold then
+                // would take the stock out from under someone who is still
+                // shopping.
+                $locked = Cart::withoutBrandScope()->whereKey($cart->getKey())->lockForUpdate()->first();
 
-                $cart->forceFill(['status' => CartStatus::Expired])->save();
+                if ($locked === null || $locked->status !== CartStatus::Open || $locked->expires_at->isFuture()) {
+                    return false;
+                }
+
+                $this->releaseCartLines($locked);
+
+                $locked->forceFill(['status' => CartStatus::Expired])->save();
 
                 event(new CartExpired(
-                    cartId: $cart->getKey(),
-                    brandId: $cart->brand_id,
-                    payerUserId: $cart->payer_user_id,
+                    cartId: $locked->getKey(),
+                    brandId: $locked->brand_id,
+                    payerUserId: $locked->payer_user_id,
                     expiredAt: now()->toIso8601String(),
                 ));
+
+                return true;
             });
 
-            $expired++;
+            if ($handled) {
+                $expired++;
+            }
         }
 
         return $expired;
@@ -162,8 +177,24 @@ final class ExpireCarts
                     return false;
                 }
 
+                // The cart under its own lock first (finding 3).
+                // `PlaceOrderFromCart` reuses a checked-out cart's still
+                // pending order and pushes `expires_at` a fresh grace
+                // forward on every new attempt, so a payer who pressed "pay
+                // again" between the query above and this transaction — the
+                // moment a hold expires is exactly when they come back — was
+                // cancelled mid-attempt, and this branch now makes a
+                // synchronous provider call inside that window. The probe
+                // does not save them: the session they are looking at
+                // answers `open`/`unpaid`, which is `NotPaid`.
+                $locked = Cart::withoutBrandScope()->whereKey($cart->getKey())->lockForUpdate()->first();
+
+                if ($locked === null || $locked->status !== CartStatus::CheckedOut || $locked->expires_at->isFuture()) {
+                    return false;
+                }
+
                 $order = Order::withoutBrandScope()
-                    ->whereKey($cart->checked_out_order_id)
+                    ->whereKey($locked->checked_out_order_id)
                     ->lockForUpdate()
                     ->first();
 
@@ -180,14 +211,14 @@ final class ExpireCarts
                 // directly, the same way the sweep's other transitions do.
                 $order->forceFill(['status' => OrderStatus::Cancelled])->save();
 
-                $this->releaseCartLines($cart);
+                $this->releaseCartLines($locked);
 
-                $cart->forceFill(['status' => CartStatus::Expired])->save();
+                $locked->forceFill(['status' => CartStatus::Expired])->save();
 
                 event(new CartExpired(
-                    cartId: $cart->getKey(),
-                    brandId: $cart->brand_id,
-                    payerUserId: $cart->payer_user_id,
+                    cartId: $locked->getKey(),
+                    brandId: $locked->brand_id,
+                    payerUserId: $locked->payer_user_id,
                     expiredAt: now()->toIso8601String(),
                 ));
 

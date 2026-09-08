@@ -701,6 +701,138 @@ it('converges the provider notification too when it loses the unique key (#247)'
     Event::assertNotDispatched(OrderRefunded::class);
 });
 
+it('issues one credit note when two console refunds race with no provider reference (blocker 1)', function (): void {
+    // A `manual` refund has no reference to claim, so the reversal row's
+    // unique key cannot serialize anything: two POSTs — a double submit, a
+    // browser resubmit — both read `paid` and both issue a credit note.
+    // Credit notes are immutable (ADR-0031/0048) and the bookkeeping export
+    // books them (ADR-0040), so a duplicate reaches the books with no
+    // recovery path. The order row is the claim that closes it.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    // The competing refund completes while this one is between its own
+    // reads — which is what the second connection's transaction does once it
+    // has waited for the order lock.
+    $raced = false;
+
+    // Fired on the first read of `payments`, which is before the order lock
+    // — the point a second connection's transaction is released from that
+    // lock and finishes ahead of this one.
+    DB::listen(function (QueryExecuted $query) use (&$raced, $order): void {
+        if ($raced || ! str_contains($query->sql, 'from "payments"')) {
+            return;
+        }
+
+        $raced = true;
+
+        app(RecordRefund::class)->handle($order->fresh(), reasonCode: 'customer-request');
+    });
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect($raced)->toBeTrue()
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
+
+    // And exactly one announcement: two would have Registration cancel the
+    // same seat twice (ADR-0057 point 5).
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
+});
+
+it('issues one credit note when the webhook keys our own refund on the charge (blocker 1)', function (): void {
+    // The one case the reversal row's unique key cannot converge:
+    // `charge.refunds` unexpanded *and* Stripe unreachable, so the webhook
+    // keys `ch_…` where `RefundOrder` keyed `re_…`. Different keys, both
+    // rows insert — and only the order lock stops the second credit note.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
+
+    $raced = false;
+
+    // Fired before this refund takes the order lock, which is where the
+    // provider's notification wins the race.
+    DB::listen(function (QueryExecuted $query) use (&$raced, $payment): void {
+        if ($raced || ! str_contains($query->sql, 'from "payments"')) {
+            return;
+        }
+
+        $raced = true;
+
+        // The provider's notification, keyed on the charge instead of the
+        // refund — its own credit note and `OrderRefunded` included.
+        app(RecordPaymentReversal::class)->handle(
+            payment: $payment->fresh(),
+            kind: ReversalKind::ExternalRefund,
+            status: ReversalStatus::Final,
+            amount: (string) $payment->amount,
+            currency: $payment->currency,
+            providerReference: 'ch_spy_1',
+            reasonCode: null,
+            feeAmount: null,
+            occurredAt: now(),
+        );
+    });
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect($raced)->toBeTrue()
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
+
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
+});
+
+it('refuses a second unapplied refund that reaches the payment while the first is in flight (#6)', function (): void {
+    // "Refused by construction" was a sequential argument (finding 6): two
+    // POSTs both read `succeeded` and both called the provider — Stripe
+    // rejects a second full refund, a partial one and both other providers
+    // go through twice. The payment's own lock is what makes the claim true.
+    $this->withBrand();
+
+    $order = Order::factory()->create(['status' => OrderStatus::Cancelled, 'total_gross' => '119.00']);
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => '119.00',
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    $spy = app(RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, $spy);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Reversed)
+        ->and($spy->refunds)->toHaveCount(1);
+
+    // The second press finds no unapplied money and never reaches the
+    // provider.
+    expect(fn () => app(RefundOrder::class)->handle($order->refresh(), reasonCode: 'customer-request'))
+        ->toThrow(RuntimeException::class);
+
+    expect($spy->refunds)->toHaveCount(1)
+        ->and(PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+});
+
 it('records no reversal row for a refund no provider gave a reference to (#247)', function (): void {
     // `manual` wires the money back outside the platform: there is no
     // reference, and a row whose `provider_reference` is invented would

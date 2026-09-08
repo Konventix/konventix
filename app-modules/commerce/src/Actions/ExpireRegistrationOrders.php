@@ -120,7 +120,7 @@ final class ExpireRegistrationOrders
 
         // Opens the run's provider-call budget (#231): a slow PSP must not
         // turn one scheduled command into hundreds of sequential calls.
-        $this->probe->startRun();
+        $this->startSweepRun();
 
         // Resolved once, ahead of the query, and applied *in SQL* (fix round
         // 2, whole-branch review finding 4). Filtering this in PHP meant a

@@ -47,6 +47,22 @@ trait AsksThePspBeforeCancelling
     private array $valveFired = [];
 
     /**
+     * Opens a sweep run: the probe's budget, and an empty valve map.
+     *
+     * The map is cleared here rather than left to grow (review nit 25): an
+     * order whose valve fired and whose transaction then lost the race to a
+     * late webhook leaves an entry behind, and a second `handle()` on the
+     * same instance would send a "the provider never settled this" notice
+     * for an order that was settled. The sweeps are unbound in the container
+     * today, so this is a guarantee rather than a fix.
+     */
+    private function startSweepRun(): void
+    {
+        $this->probe->startRun();
+        $this->valveFired = [];
+    }
+
+    /**
      * Whether the sweep may go on and cancel `$order`.
      *
      * `false` means "leave this order alone this run", for reasons that are

@@ -40,7 +40,19 @@ return [
     | it the run stops asking and simply leaves those orders for the next
     | run — a fifteen-minute delay in releasing a seat, instead of a
     | scheduled command making hundreds of sequential HTTP calls while a
-    | provider is slow.
+    | provider is slow. Only a question that could have cost a call spends
+    | budget: a provider that cannot be asked about a payment at all answers
+    | locally and for free.
+    |
+    | **All three are floored at one.** A zero budget is not "stop probing",
+    | it is "leave every order unasked", and an unasked order reaches no
+    | release valve — so a zero would stop the sweeps cancelling anything at
+    | all, silently and for ever. A zero grace puts the deadline at the
+    | payment window's own end, which is past by construction, so the valve
+    | would fire on the first run. A non-numeric value casts to zero through
+    | `env()` and lands in the same place, which is why the floor is in the
+    | code and not only in this comment. Probing cannot be switched off from
+    | here.
     |
     | `unknown_payment_grace_hours` is the release valve for a provider that
     | cannot be *reached*. An order whose PSP stays silent would otherwise

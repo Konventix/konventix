@@ -90,6 +90,11 @@ final class RecordRefund
      * provider gave the refund. The reversal path passes neither — its
      * `payment_reversals` row already exists, written by
      * `RecordPaymentReversal` from the provider's own notification.
+     *
+     * Returns the order as it stands afterwards. A caller that finds the
+     * domain leg already done gets the order back untouched rather than an
+     * exception: the money moved exactly once either way, and there is
+     * nothing for the operator to act on.
      */
     public function handle(
         Order $order,
@@ -100,14 +105,41 @@ final class RecordRefund
         ?string $providerReference = null,
     ): Order {
         return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount, $payment, $providerReference): Order {
-            // **The unique key on the reversal row decides who owns this
-            // refund's domain leg** (fix round 2, review NEW-3). The
-            // provider can announce our own refund back to us while this
-            // transaction is open, and that notification path issues a
-            // credit note and `OrderRefunded` of its own: whoever inserts
-            // the row first does that work, and the other side stops here.
-            // Two credit notes for one refund is paperwork nobody can undo
-            // (ADR-0031), and the money moved exactly once.
+            // **The order row is the claim** (blocker 1). Everything below
+            // writes paperwork that cannot be taken back — a credit note is
+            // immutable (ADR-0031/0048) and the bookkeeping export books it
+            // (ADR-0040) — so the decision to write it has to serialize
+            // somewhere, and the only thing every caller of this Action
+            // shares is the order. Two console POSTs, a console refund
+            // racing the provider's own `charge.refunded`, and the two
+            // keying the same money differently (`re_…` here, `ch_…` in the
+            // webhook's last-resort fallback) all collapse onto this lock:
+            // the second one in finds the order already `refunded` and does
+            // nothing further.
+            //
+            // Re-read rather than trusted: the instance came from a
+            // controller that fetched it outside any transaction, and the
+            // provider call happened before this (#236 keeps the money leg
+            // first on purpose).
+            $locked = Order::withoutBrandScope()->whereKey($order->getKey())->lockForUpdate()->first();
+
+            if ($locked === null || $locked->status !== OrderStatus::Paid) {
+                Log::warning('The refund\'s domain leg was already recorded by whoever got the order first; nothing further written (blocker 1).', [
+                    'order_id' => $order->id,
+                    'brand_id' => $order->brand_id,
+                    'order_status' => $locked?->status->value,
+                    'provider_reference' => $providerReference,
+                ]);
+
+                return $locked ?? $order->refresh();
+            }
+
+            $order = $locked;
+
+            // The reversal row for the provider's own reference (#247), and
+            // a second, narrower claim: where both sides key the refund on
+            // the same `re_…` the loser stops here rather than at the order
+            // lock, so nothing is written at all.
             if (! $this->claimTheRefund($order, $payment, $providerReference, $amount)) {
                 Log::warning('The provider announced this refund before it was recorded here; its own notification owns the credit note (#247).', [
                     'order_id' => $order->id,
@@ -186,10 +218,12 @@ final class RecordRefund
      * note, moving the order and announcing it, so this caller must not do
      * any of that a second time (fix round 2, review NEW-3).
      *
-     * `true` where there is nothing to claim at all — a `manual` refund the
+     * `true` where there is nothing to claim *here* — a `manual` refund the
      * organizer wires back themselves has no reference, and an order booked
-     * by hand has no payment. Those callers own the domain leg as they
-     * always did; there is no second writer to race with.
+     * by hand has no payment. Those paths are claimed by the order lock
+     * above instead (blocker 1), which is the claim that holds for every
+     * caller; this one only adds the narrower "same `re_…`, so write
+     * nothing" case.
      */
     private function claimTheRefund(
         Order $order,
