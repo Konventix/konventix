@@ -61,7 +61,7 @@ final class ShopController
                 ->map(fn (array $entry): array => [
                     'module' => $entry['module'],
                     'component' => $entry['component'],
-                    'props' => $entry['props'],
+                    'props' => $this->withGrossPrices($entry['props'], $smallBusinessScheme),
                 ])
                 ->all(),
         ]);
@@ -87,6 +87,93 @@ final class ShopController
                 $this->smallBusinessScheme($brandContext),
             )->toArray(),
         ]);
+    }
+
+    /**
+     * The `shop.index` slot's one payload rule, and the whole of ADR-0017 in
+     * five lines (GitLab #240, review finding 8).
+     *
+     * A contributing module declares what its offer costs — a net amount and
+     * a tax *class*, plain scalars — and Commerce computes the end price. So
+     * a contribution's props may carry `offers[]`, each with an optional
+     * `price` of `{unitAmountNet, taxClass, display}`, and this fills in
+     * `unitAmountGross` on the way out, through the very `TaxCalculator` the
+     * product cards, the cart preview and the invoice run through. The
+     * contributor learns no tax rate and Commerce reads no foreign table:
+     * the boundary is crossed by scalars, which is what ADR-0004 asks and
+     * what the settlement event payload already does.
+     *
+     * PAngV (#3) is why it has to happen at all: `/shop` is a consumer sales
+     * page, so a `gross` price display owes the end price rather than a net
+     * amount with a label.
+     *
+     * One calculator pass for every offer in the contribution, in order —
+     * the same shape `ShopProductData::ofModel()` uses for a product and its
+     * variants. No billing party exists on a public shop page (ADR-0030), so
+     * only the §19 election can move the rate.
+     *
+     * @param  array<string, mixed>  $props
+     * @return array<string, mixed>
+     */
+    private function withGrossPrices(array $props, bool $smallBusinessScheme): array
+    {
+        if (! is_array($props['offers'] ?? null)) {
+            return $props;
+        }
+
+        /** @var list<array<string, mixed>> $offers */
+        $offers = array_values($props['offers']);
+
+        /** @var list<int> $pricedIndexes */
+        $pricedIndexes = [];
+        /** @var list<array{label: string, quantity: int, unit_amount_net: numeric-string, tax_class: string}> $lines */
+        $lines = [];
+
+        foreach ($offers as $index => $offer) {
+            $price = $offer['price'] ?? null;
+
+            if (! is_array($price)) {
+                continue;
+            }
+
+            $unitAmountNet = $price['unitAmountNet'] ?? null;
+
+            // A contribution that declares a price owes a decimal string and
+            // a tax class (ADR-0017's own shape). Anything else is skipped
+            // rather than fed to bcmath: this payload crosses a module
+            // boundary, and a malformed offer must cost that offer its
+            // price, not the whole page.
+            if (! is_string($unitAmountNet) || ! is_numeric($unitAmountNet) || ! is_string($price['taxClass'] ?? null)) {
+                continue;
+            }
+
+            $pricedIndexes[] = $index;
+            $lines[] = [
+                'label' => is_string($offer['name'] ?? null) ? $offer['name'] : '',
+                'quantity' => 1,
+                'unit_amount_net' => $unitAmountNet,
+                'tax_class' => $price['taxClass'],
+            ];
+        }
+
+        if ($lines === []) {
+            return $props;
+        }
+
+        $calculation = $this->taxCalculator->calculate(
+            lines: $lines,
+            operatorSmallBusinessScheme: $smallBusinessScheme,
+            billingVatId: null,
+            billingCountryCode: null,
+        );
+
+        foreach ($pricedIndexes as $position => $index) {
+            $offers[$index]['price']['unitAmountGross'] = $calculation->lines[$position]->lineGross;
+        }
+
+        $props['offers'] = $offers;
+
+        return $props;
     }
 
     /**

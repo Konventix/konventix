@@ -2,6 +2,10 @@
 import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
 import { formatDateTime } from '@/lib/datetime';
+import {
+    displayUnitAmount,
+    taxNote,
+} from '../../../../commerce/resources/js/lib/purchaseTexts';
 
 /**
  * Registration's contribution to Commerce's `shop.index` slot (#240): what
@@ -27,16 +31,40 @@ import { formatDateTime } from '@/lib/datetime';
  * `formatDateTime()` — the props were rendered on a server that knows
  * nothing about where the page was opened (#237).
  *
- * The amount is the declared *net* price with its label, because that is
- * what Registration declares (ADR-0017) — Commerce computes the tax when it
- * settles, and the shop's own PAngV end price (#3) has no equivalent here
- * until a decision on #240 says who may compute it across the boundary.
+ * The amount follows ADR-0017 to the letter (#240, review finding 8):
+ * Registration declares a net amount and a tax *class*, and Commerce — which
+ * owns money (ADR-0006) — computes the end price and writes `unitAmountGross`
+ * back into the payload on its way out of `ShopController`. Nothing here does
+ * arithmetic on a price, and the wording is Commerce's own `purchaseTexts`,
+ * the same two functions the product cards on this page use, because a PAngV
+ * end price that read differently three inches apart is exactly what #3 was
+ * filed about.
  */
-type Offer = Konventix.Registration.Data.PublicOfferData;
+/**
+ * `unitAmountGross` is not on `PriceDeclarationData` — Registration cannot
+ * compute it — so it is declared here as what Commerce adds to the payload
+ * for this page.
+ */
+type OfferPrice = Konventix.Registration.Data.PriceDeclarationData & {
+    unitAmountGross: string;
+};
+
+type Offer = Omit<Konventix.Registration.Data.PublicOfferData, 'price'> & {
+    price: OfferPrice | null;
+};
 
 const props = defineProps<{
     offers: Offer[];
 }>();
+
+/** Which of the two amounts this brand's `price_display` says to print (#3). */
+function amount(price: OfferPrice): string {
+    return displayUnitAmount({
+        unitAmountNet: price.unitAmountNet,
+        unitAmountGross: price.unitAmountGross,
+        priceDisplay: price.display,
+    });
+}
 </script>
 
 <template>
@@ -69,9 +97,9 @@ const props = defineProps<{
                         class="mt-auto flex items-center gap-2 pt-2 text-sm font-medium text-text"
                     >
                         <template v-if="offer.price">
-                            {{ offer.price.unitAmountNet }} €
+                            {{ amount(offer.price) }} €
                             <span class="font-normal text-text-muted">
-                                excl. VAT
+                                {{ taxNote(offer.price.display) }}
                             </span>
                         </template>
                         <template v-else>Free</template>
@@ -104,9 +132,9 @@ const props = defineProps<{
 
                     <span class="mt-auto pt-2 text-sm font-medium text-text">
                         <template v-if="offer.price">
-                            {{ offer.price.unitAmountNet }} €
+                            {{ amount(offer.price) }} €
                             <span class="font-normal text-text-muted">
-                                excl. VAT
+                                {{ taxNote(offer.price.display) }}
                             </span>
                         </template>
                         <template v-else>Free</template>

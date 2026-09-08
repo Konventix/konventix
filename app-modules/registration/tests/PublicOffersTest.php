@@ -9,7 +9,10 @@ use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Events\EventUnpublished;
 use Konventix\Event\Models\Event;
 use Konventix\Platform\Models\Brand;
+use Konventix\Registration\Data\PriceDeclarationData;
+use Konventix\Registration\Enums\PriceDisplay;
 use Konventix\Registration\Enums\RegistrationVisibility;
+use Konventix\Registration\Enums\TaxClass;
 use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
@@ -415,4 +418,63 @@ it('lists the offers of a merely announced event', function (): void {
 
     $this->get('/shop')
         ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toHaveCount(1));
+});
+
+/**
+ * ADR-0017 across the slot boundary (#240, review finding 8): Registration
+ * declares a net amount and a tax class as plain scalars, Commerce computes
+ * the end price PAngV requires (#3) through the same `TaxCalculator` the
+ * product cards on this very page run through.
+ */
+it('carries a Commerce-computed gross amount for every priced offer on the shop', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->published()->create();
+    EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Wintercon',
+        'slug' => 'wintercon',
+        'public_since' => Carbon::now()->subWeek(),
+    ]);
+
+    RegistrationType::factory()->forEvent($event->getKey())->create([
+        'name' => 'Weekend Ticket',
+        'price_declaration' => new PriceDeclarationData('19.00', TaxClass::Standard, PriceDisplay::Gross),
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create([
+        'name' => 'Reduced Ticket',
+        'price_declaration' => new PriceDeclarationData('10.00', TaxClass::Reduced, PriceDisplay::Net),
+    ]);
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            $offers = collect(shopIndexOffers($page))->keyBy('name');
+
+            // 19.00 net at the standard 19% rate, and 10.00 at the reduced
+            // 7% — the same arithmetic `GrossPricesTest` pins for products.
+            expect($offers['Weekend Ticket']['price'])
+                ->toMatchArray(['unitAmountNet' => '19.00', 'unitAmountGross' => '22.61', 'display' => 'gross'])
+                ->and($offers['Reduced Ticket']['price'])
+                ->toMatchArray(['unitAmountNet' => '10.00', 'unitAmountGross' => '10.70', 'display' => 'net']);
+        });
+});
+
+it('leaves a free offer without a price untouched on the shop', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->published()->create();
+    EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Wintercon',
+        'slug' => 'wintercon',
+        'public_since' => Carbon::now()->subWeek(),
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create(['price_declaration' => null]);
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page)[0]['price'])->toBeNull());
 });
