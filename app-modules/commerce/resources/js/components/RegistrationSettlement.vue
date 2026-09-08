@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { CreditCard, FileText } from '@lucide/vue';
+import { CreditCard, FileText, ShoppingCart } from '@lucide/vue';
+import { computed } from 'vue';
+import { formatDateTime } from '@/lib/datetime';
 
 /**
  * Commerce's contribution to Registration's account page: what this
@@ -16,12 +18,36 @@ import { CreditCard, FileText } from '@lucide/vue';
  * The invoice download is a temporary signed link minted server-side. It
  * expires; a page left open long enough will need a reload, which is the
  * correct trade for a document carrying a billing address.
+ *
+ * `cart` is the second half of the same question (#210): with
+ * `commerce:shop` on, an `instant` registration settles into a cart line
+ * rather than an order (ADR-0047 point 3), and "no order" then means "pay
+ * it in the cart", not "nothing to pay". Exactly one of the two props is
+ * ever set — the server picks — and both null still renders nothing, which
+ * is the right answer for a free registration.
  */
 type Settlement = Konventix.Commerce.Data.RegistrationSettlementData;
+type CartSettlement = Konventix.Commerce.Data.RegistrationCartSettlementData;
 
 const props = defineProps<{
     settlement: Settlement | null;
+    cart: CartSettlement | null;
 }>();
+
+/**
+ * The hold's deadline in the reader's own zone (ADR-0055 point 4: a time
+ * limit is visible and explained, and never silently extended).
+ */
+const cartExpiresAt = computed<string>(() =>
+    // Date *and* time: a hold that says "until 21:35" and nothing else is
+    // ambiguous the moment the page is read the next morning. Same markup
+    // as the registration timestamps (#208) — a `<time datetime>` carrying
+    // the instant, with the reader's own wall clock inside it.
+    formatDateTime(props.cart?.expiresAt, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    }),
+);
 
 const statusTone: Record<string, string> = {
     paid: 'bg-success/15 text-success',
@@ -33,7 +59,70 @@ const statusTone: Record<string, string> = {
 
 <template>
     <section
-        v-if="props.settlement"
+        v-if="props.cart"
+        class="flex flex-col gap-3"
+        aria-labelledby="registration-cart-settlement"
+    >
+        <h2 id="registration-cart-settlement" class="text-lg font-medium">
+            Payment
+        </h2>
+
+        <div
+            class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-surface-raised p-4"
+        >
+            <span class="text-lg font-medium">
+                {{ props.cart.totalGross }} {{ props.cart.currency }}
+            </span>
+
+            <p
+                v-if="props.cart.status === 'in_cart'"
+                class="text-sm text-text-muted"
+                role="status"
+            >
+                Waiting in your cart<template
+                    v-if="props.cart.expiresAt && cartExpiresAt"
+                >
+                    — reserved until
+                    <time :datetime="props.cart.expiresAt">{{
+                        cartExpiresAt
+                    }}</time></template
+                >.
+            </p>
+            <p
+                v-else-if="props.cart.status === 'checkout_started'"
+                class="text-sm text-text-muted"
+                role="status"
+            >
+                Checkout started — finish it from your orders.
+            </p>
+            <p v-else class="text-sm text-text-muted" role="status">
+                Your cart reservation ran out before this registration was paid,
+                so it was released. Register again to take the spot.
+            </p>
+
+            <span class="flex-1" />
+
+            <Link
+                v-if="props.cart.cartUrl"
+                :href="props.cart.cartUrl"
+                class="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent/90"
+            >
+                <ShoppingCart class="size-4" />
+                Pay now in the cart
+            </Link>
+            <Link
+                v-else-if="props.cart.ordersUrl"
+                :href="props.cart.ordersUrl"
+                class="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-subtle"
+            >
+                <CreditCard class="size-4" />
+                Go to your orders
+            </Link>
+        </div>
+    </section>
+
+    <section
+        v-else-if="props.settlement"
         class="flex flex-col gap-3"
         aria-labelledby="registration-settlement"
     >

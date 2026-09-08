@@ -13,6 +13,7 @@ import type {
     DataTableFilters,
 } from '@/composables/useDataTable';
 import { seedSelectionFilter, useDataTable } from '@/composables/useDataTable';
+import { formatDateTime } from '@/lib/datetime';
 import {
     bulkApprove,
     exportMethod as exportRegistrations,
@@ -256,8 +257,17 @@ const columns: ColumnDef<RegistrationRow>[] = [
         accessorFn: (row) => row.submittedAt,
         header: 'Submitted',
         enableSorting: true,
+        // The instant carries its offset; the reader's own zone is what the
+        // column shows, with the machine-readable value on the `<time>`.
         cell: ({ row }) =>
-            h('span', { class: 'text-text-muted' }, row.original.submittedAt),
+            h(
+                'time',
+                {
+                    class: 'text-text-muted',
+                    datetime: row.original.submittedAt,
+                },
+                formatDateTime(row.original.submittedAt),
+            ),
     },
 ];
 </script>

@@ -25,6 +25,13 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * — the one place a registration mail template is not branch-free.
  * `holderName` stands in for a precomputed greeting too: every body opens
  * with `Guten Tag{{ $holderName ? ' '.$holderName : '' }},` inline.
+ *
+ * `cartUrl`/`cartHoldExpiresAt` are the one pair that carries a formatted
+ * timestamp rather than a code (`WaitlistOfferMailData::$offerExpiresAt`
+ * set that precedent): a deadline is a number and a separator, not a
+ * sentence, and the recipient needs to read it in the brand's own zone
+ * (#210). Both null unless the settlement went into the registrant's cart
+ * — an order-settled or free registration says nothing about a cart.
  */
 #[TypeScript]
 final class RegistrationMailData extends Data
@@ -38,5 +45,7 @@ final class RegistrationMailData extends Data
         public readonly ?string $reason = null,
         public readonly ?string $cancelReason = null,
         public readonly bool $wasPaid = false,
+        public readonly ?string $cartUrl = null,
+        public readonly ?string $cartHoldExpiresAt = null,
     ) {}
 }

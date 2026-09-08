@@ -163,3 +163,30 @@ it('offers the list from the account menu, and only to a signed-in account', fun
                 ->and($entry['url'])->toBe('/my/registrations');
         });
 });
+
+/**
+ * A3: the timeline printed `Y-m-d H:i` of a UTC instant, and the page put
+ * those digits on screen unchanged — so a reader in Europe/Berlin saw a
+ * registration made at 23:55 local as 21:55. Registration timestamps are
+ * system instants, not event wall-clock (ADR-0027), so what goes to the
+ * browser is the instant with its offset; the page formats it in the
+ * reader's own zone.
+ */
+it('hands the registrant their timestamps as instants with a zone offset', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+
+    $registration = Registration::factory()->create([
+        'registrant_user_id' => $user->getKey(),
+        'submitted_at' => '2026-09-07 21:55:02',
+        'confirmed_at' => '2026-09-07 22:10:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('registration.submittedAt', '2026-09-07T21:55:02+00:00')
+            ->where('registration.confirmedAt', '2026-09-07T22:10:00+00:00'));
+});

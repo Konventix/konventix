@@ -104,7 +104,10 @@ class PolicyAdminController
                     'versions' => $own->count(),
                     'publishedVersion' => $published?->version,
                     'requiresConsent' => (bool) $published?->requires_consent,
-                    'effectiveAt' => $published?->effective_at?->toDateString(),
+                    // ISO-8601 with the offset in it: the console renders
+                    // every effective date in the reader's own zone, and a
+                    // bare `Y-m-d` cannot say which day it means abroad.
+                    'effectiveAt' => $published?->effective_at?->toIso8601String(),
                 ];
             }),
             'brands' => $this->brandOptionsFrom($brands),
@@ -167,8 +170,8 @@ class PolicyAdminController
                 'version' => $version->version,
                 'state' => $version->state->value,
                 'requiresConsent' => $version->requires_consent,
-                'effectiveAt' => $version->effective_at?->toDateTimeString(),
-                'publishedAt' => $version->published_at?->toDateTimeString(),
+                'effectiveAt' => $version->effective_at?->toIso8601String(),
+                'publishedAt' => $version->published_at?->toIso8601String(),
                 'consents' => (int) ($consents[$version->getKey()] ?? 0),
                 'editable' => $version->state === PolicyVersionState::Draft,
             ])->all(),

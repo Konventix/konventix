@@ -15,6 +15,7 @@ use Konventix\Messaging\Templates\TemplateRenderer;
 use Konventix\Registration\Actions\ApproveRegistration;
 use Konventix\Registration\Actions\CancelPendingRegistrationForCart;
 use Konventix\Registration\Actions\CancelRegistration;
+use Konventix\Registration\Actions\RecordOrderPaidForRegistration;
 use Konventix\Registration\Actions\RejectRegistration;
 use Konventix\Registration\Actions\SubmitRegistration;
 use Konventix\Registration\Data\RegistrationMailData;
@@ -24,6 +25,7 @@ use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
 use Konventix\Registration\Models\RegistrationType;
+use Spatie\LaravelData\Data;
 
 /**
  * ADR-0048 point 3: Registration owns its own lifecycle mail — a registration
@@ -34,6 +36,21 @@ use Konventix\Registration\Models\RegistrationType;
  * and none of these tests are about settlement (`SettlementRequestTest.php`
  * already covers that faking pattern for the same reason).
  */
+/**
+ * The `registration.confirmed` payload as it looked before the cart fields
+ * existed — what a message already on Messaging's queue, or replayed from
+ * the delivery log, still carries.
+ */
+final class RegistrationMailsLegacyConfirmedPayload extends Data
+{
+    public function __construct(
+        public readonly string $registrationTypeName,
+        public readonly string $registrationUrl,
+        public readonly ?string $eventName = null,
+        public readonly ?string $holderName = null,
+    ) {}
+}
+
 function regMailsRecipient(string $brandId): User
 {
     $user = User::factory()->create();
@@ -422,4 +439,119 @@ it('renders the registrant-vs-operator cancellation phrasing and the refund sent
     expect(regMailsRender('registration.cancelled', $byOperatorPaid))
         ->toContain('durch den Veranstalter')
         ->toContain('Gutschrift');
+});
+
+/**
+ * #210 acceptance point 5. With `commerce:shop` on, an `instant` settlement
+ * becomes a cart line rather than an order (ADR-0047 point 3), and for every
+ * gate but `on_payment` the person is not standing in the shop when that
+ * happens — the confirmation mail is the only push they get. It has to say
+ * where the money is paid and how long the hold lasts, or the twenty minutes
+ * run out on a page nobody was sent to.
+ */
+it('names the cart and its hold deadline in registration.confirmed when the settlement went to the cart', function (): void {
+    $brand = $this->withBrand();
+    $registrant = regMailsRecipient($brand->id);
+    $this->activateFeature('commerce:shop', $brand);
+    Queue::fake();
+
+    $type = RegistrationType::factory()
+        ->settlement(RegistrationSettlement::Instant)
+        ->confirmationGate(ConfirmationGate::OnSubmit)
+        ->priced(unitAmountNet: '30.00')
+        ->create();
+
+    app(SubmitRegistration::class)->handle($type, $registrant->id, regMailsBilledSubmission());
+
+    $confirmed = regMailsPushed('registration.confirmed');
+    expect($confirmed)->toHaveCount(1);
+
+    $payload = $confirmed[0]->message->payload->toArray();
+    expect($payload['cartUrl'])->toContain('/cart')
+        ->and($payload['cartHoldExpiresAt'])->not->toBeNull();
+
+    expect(regMailsRender('registration.confirmed', $confirmed[0]->message->payload))
+        ->toContain('Warenkorb')
+        ->toContain($payload['cartUrl'])
+        ->toContain($payload['cartHoldExpiresAt']);
+
+    expect(regMailsRender('registration.confirmed', $confirmed[0]->message->payload, 'en'))
+        ->toContain('cart')
+        ->toContain($payload['cartUrl']);
+});
+
+it('leaves the confirmed mail free of any cart wording on the invoice and shop-off paths', function (): void {
+    $brand = $this->withBrand();
+    $registrant = regMailsRecipient($brand->id);
+    Event::fake([RegistrationSettlementRequested::class]);
+    Queue::fake();
+
+    // Shop off: `CreateOrderOnSettlementRequested` places an order, and the
+    // pay link on the registration page is the way to it.
+    $type = RegistrationType::factory()
+        ->settlement(RegistrationSettlement::Instant)
+        ->confirmationGate(ConfirmationGate::OnSubmit)
+        ->priced(unitAmountNet: '30.00')
+        ->create();
+
+    app(SubmitRegistration::class)->handle($type, $registrant->id, regMailsBilledSubmission());
+
+    $payload = regMailsPushed('registration.confirmed')[0]->message->payload;
+
+    expect($payload->toArray()['cartUrl'])->toBeNull()
+        ->and($payload->toArray()['cartHoldExpiresAt'])->toBeNull();
+
+    expect(regMailsRender('registration.confirmed', $payload))
+        ->not->toContain('Warenkorb');
+});
+
+it('says nothing about a cart in the confirmation mail once the cart has been paid', function (): void {
+    // The `on_payment` flow with the shop on: the line goes into the cart at
+    // submission, the registrant pays it there *within* the hold, and the
+    // payment is what confirms. The hold's stamp is still in the future at
+    // that moment, so "reserved until …" would greet a payer who had just
+    // paid — the mail has to read the payment, not the clock.
+    $brand = $this->withBrand();
+    $registrant = regMailsRecipient($brand->id);
+    $this->activateFeature('commerce:shop', $brand);
+    Queue::fake();
+
+    $type = regMailsInstantOnPaymentType();
+    $registration = app(SubmitRegistration::class)->handle($type, $registrant->id, regMailsBilledSubmission());
+
+    expect($registration->refresh()->cart_hold_expires_at)->not->toBeNull();
+
+    app(RecordOrderPaidForRegistration::class)->handle($registration->id, $brand->id);
+
+    $payload = regMailsPushed('registration.confirmed')[0]->message->payload;
+
+    expect($payload->toArray()['cartUrl'])->toBeNull()
+        ->and($payload->toArray()['cartHoldExpiresAt'])->toBeNull()
+        ->and($registration->refresh()->cart_hold_expires_at)->toBeNull();
+
+    expect(regMailsRender('registration.confirmed', $payload))
+        ->not->toContain('Warenkorb');
+});
+
+it('renders a confirmation mail enqueued before the cart fields existed', function (): void {
+    // A message already on the queue, or replayed from the delivery log,
+    // carries a payload with no `cartUrl` key at all. `@if ($cartUrl)` on a
+    // missing variable is an ErrorException, i.e. a send that dies rather
+    // than a mail without a paragraph.
+    $body = app(TemplateRenderer::class)->render(new SendMessageData(
+        messageId: (string) Str::ulid(),
+        brandId: (string) Str::ulid(),
+        recipientId: (string) Str::ulid(),
+        recipientEmail: 'registrant@example.test',
+        recipientLocale: 'de',
+        templateKey: 'registration.confirmed',
+        payload: new RegistrationMailsLegacyConfirmedPayload(
+            registrationTypeName: 'Visitor Ticket',
+            registrationUrl: 'https://brand.example.test/my/registrations/abc',
+        ),
+        channel: Channel::Mail->value,
+    ))->body;
+
+    expect($body)->toContain('ist bestätigt.')
+        ->not->toContain('Warenkorb');
 });

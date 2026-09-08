@@ -339,3 +339,24 @@ it('exports only the rows the query string names — brand, event and status ali
         ->and($everything)->toContain('SXLan Next Year')
         ->and($everything)->toContain('Xpertise Crew');
 });
+
+/**
+ * A3, second occurrence: the console's "Submitted" column printed the UTC
+ * digits of an instant as if they were local time, while the CSV export of
+ * the same controller already handed over ISO 8601. Both now say the same
+ * thing, and the page formats it in the reader's zone.
+ */
+it('gives the console the same instant format as its own CSV export', function (): void {
+    [, $admin] = registrationsOperator();
+
+    $this->withBrand();
+
+    Registration::factory()->create(['submitted_at' => '2026-09-07 21:55:02']);
+
+    $this->actingAs($admin)
+        ->get('http://admin.regs.test/admin/registrations')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/registrations/Index')
+            ->where('registrations.data.0.submittedAt', '2026-09-07T21:55:02+00:00'));
+});

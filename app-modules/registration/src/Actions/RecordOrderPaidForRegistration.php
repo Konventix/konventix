@@ -54,7 +54,14 @@ final class RecordOrderPaidForRegistration
 
             $previous = $registration->payment_status;
 
-            $registration->forceFill(['payment_status' => PaymentStatus::Paid])->save();
+            $registration->forceFill([
+                'payment_status' => PaymentStatus::Paid,
+                // The hold is over — the money left the cart (#210). Left
+                // standing, a stamp still in the future made the
+                // confirmation mail this very Action triggers tell a payer
+                // who had just paid to go and pay in the cart.
+                'cart_hold_expires_at' => null,
+            ])->save();
 
             event(new RegistrationPaymentStatusChanged(
                 registrationId: $registration->id,
