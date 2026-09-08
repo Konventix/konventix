@@ -160,6 +160,7 @@ declare namespace Konventix {
                 readonly reason: string;
                 readonly retryUrl: string;
                 readonly ordersUrl: string;
+                readonly payBy: string | null;
             };
             export type PaymentReversedMailData = {
                 readonly orderNumberShort: string;
