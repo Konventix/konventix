@@ -44,6 +44,22 @@ class StripeSettings extends Model
         'publishable_key',
     ];
 
+    /**
+     * The casts below decrypt on read, so any `toArray()` — a log context, an
+     * exception dump, a queued payload — would otherwise hand over all three in
+     * cleartext. `Brand.reverb_app_secret` is the same defence for the same
+     * reason. Reading the attribute directly still works; only serialisation
+     * is closed, which is what this model's "whether, never what" promise
+     * needs (ADR-0058 point 2).
+     *
+     * @var list<string>
+     */
+    protected $hidden = [
+        'secret_key',
+        'webhook_secret',
+        'publishable_key',
+    ];
+
     public static function forOperator(string $operatorId): self
     {
         return self::query()->where('operator_id', $operatorId)->first()

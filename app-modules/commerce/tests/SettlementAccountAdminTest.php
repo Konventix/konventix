@@ -278,6 +278,49 @@ it('refuses keys that are not the Stripe shapes they claim to be', function (arr
     ],
 ]);
 
+it('never flashes a Stripe key back into the session when the form is rejected', function (): void {
+    // A rejected form flashes the whole request body into `_old_input` so the
+    // page can repopulate — and `config/session.php` leaves `SESSION_ENCRYPT`
+    // off, so a good `sk_live_` beside a mistyped signing secret would sit in
+    // the session store as cleartext. `dontFlash` in `bootstrap/app.php` is
+    // the only thing between the two.
+    [$admin] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => 'sk_live_never_flash_me_9999',
+            'webhookSecret' => 'we_not_a_signing_secret',
+            'publishableKey' => 'pk_live_never_flash_me_9999',
+        ])
+        ->assertSessionHasErrors('webhookSecret');
+
+    $session = json_encode(session()->all());
+
+    expect($session)->not->toContain('sk_live_never_flash_me_9999')
+        ->and($session)->not->toContain('pk_live_never_flash_me_9999')
+        ->and(session()->getOldInput('secretKey'))->toBeNull()
+        ->and(session()->getOldInput('publishableKey'))->toBeNull();
+});
+
+it('never flashes a brand PSP key back into the session either', function (string $provider, string $field, string $value): void {
+    // Mollie's and Unzer's keys predate this branch and ride the same
+    // channel; one `dontFlash` list covers all four credentials.
+    [$admin] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/'.$provider, [
+            'brand_id' => 'not-a-ulid',
+            $field => $value,
+        ])
+        ->assertSessionHasErrors('brand_id');
+
+    expect(json_encode(session()->all()))->not->toContain($value)
+        ->and(session()->getOldInput($field))->toBeNull();
+})->with([
+    'mollie' => ['mollie', 'api_key', 'live_mollie_never_flash_me'],
+    'unzer' => ['unzer', 'private_key', 's-priv-never-flash-me'],
+]);
+
 it('clears the console keys so the environment applies again', function (): void {
     [$admin] = settlementAdminOperator();
 

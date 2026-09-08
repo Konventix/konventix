@@ -81,7 +81,26 @@ class ObservabilityServiceProvider extends ServiceProvider
      */
     private function scrubTelescopeEntries(): void
     {
-        Telescope::hideRequestParameters(['_token', 'password', 'password_confirmation', 'current_password']);
+        // The credential fields the settlement console posts are named here
+        // one by one: Stripe's pair and optional publishable key for this
+        // instance (ADR-0058 point 2), and Mollie's and Unzer's per-brand keys
+        // (ADR-0039 point 4). Telescope is `require-dev`, so production never
+        // sees these entries — but staging is exactly where an operator pastes
+        // a live key, which is the case the console's own warning is about.
+        Telescope::hideRequestParameters([
+            '_token',
+            'password',
+            'password_confirmation',
+            'current_password',
+            'secretKey',
+            'secret_key',
+            'webhookSecret',
+            'webhook_secret',
+            'publishableKey',
+            'publishable_key',
+            'api_key',
+            'private_key',
+        ]);
 
         Telescope::hideRequestHeaders(['cookie', 'x-csrf-token', 'x-xsrf-token', 'authorization']);
     }

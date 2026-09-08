@@ -117,6 +117,26 @@ it('stores the keys encrypted and never returns them to a page', function (): vo
         ->and($props['webhookSecretSet'])->toBeTrue();
 });
 
+it('keeps the keys out of any serialisation of the model', function (): void {
+    // Third leg of the same theme as the session flash and Telescope: the
+    // casts decrypt on read, so a `toArray()` in a log context or an exception
+    // dump would hand over all three in cleartext. `Brand.reverb_app_secret`
+    // is the house precedent.
+    $settings = stripeCredentialsRow([
+        'secret_key' => 'sk_live_console_wxyz',
+        'webhook_secret' => 'whsec_console',
+        'publishable_key' => 'pk_live_console',
+    ]);
+
+    expect(json_encode($settings->toArray()))->not->toContain('sk_live_console_wxyz')
+        ->and(json_encode($settings->toArray()))->not->toContain('whsec_console')
+        ->and(json_encode($settings->toArray()))->not->toContain('pk_live_console')
+        ->and($settings->toArray())->not->toHaveKeys(['secret_key', 'webhook_secret', 'publishable_key'])
+        // Hidden from serialisation, still readable through the attribute —
+        // that is the whole point of `$hidden` rather than a dropped cast.
+        ->and($settings->secret_key)->toBe('sk_live_console_wxyz');
+});
+
 it('warns about a live key on a non-production instance', function (): void {
     config()->set('services.stripe.secret', 'sk_live_env_1234');
     config()->set('app.env', 'staging');
