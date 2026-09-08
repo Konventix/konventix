@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { ChevronRight } from '@lucide/vue';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 
 /**
@@ -12,12 +13,25 @@ import Heading from '@/components/Heading.vue';
  * facts (SPEC.md "Two independent status fields"): a confirmed registration
  * can still be unpaid, and collapsing them into one word would have to lie
  * about one of them.
+ *
+ * Cancellations are hidden by default (#239) — history the registrant can do
+ * nothing with — and the toggle is a real link to `?show=all` rather than
+ * client state: it is keyboard-reachable without any wiring, and a reload or
+ * a back button keeps the choice, which a `ref` would silently drop.
  */
 type Registration = Konventix.Registration.Data.MyRegistrationData;
 
 const props = defineProps<{
     registrations: Registration[];
+    /** Whether cancelled registrations are in `registrations` (#239). */
+    showAll: boolean;
+    /** How many of them there are, shown whichever way the toggle stands. */
+    cancelledCount: number;
 }>();
+
+const toggleUrl = computed(() =>
+    props.showAll ? '/my/registrations' : '/my/registrations?show=all',
+);
 
 const statusTone: Record<string, string> = {
     confirmed: 'bg-success/15 text-success',
@@ -45,10 +59,26 @@ const paymentTone: Record<string, string> = {
         />
 
         <p
-            v-if="props.registrations.length === 0"
+            v-if="
+                props.registrations.length === 0 && props.cancelledCount === 0
+            "
             class="text-sm text-text-muted"
         >
             You have not registered for anything yet.
+        </p>
+
+        <!--
+            #239: the same empty list, and not the same sentence — an account
+            whose only registration was cancelled has registered for
+            something, and the toggle is what it is being told about.
+        -->
+        <p
+            v-else-if="props.registrations.length === 0"
+            class="text-sm text-text-muted"
+        >
+            Everything you registered for was cancelled. Show all registrations
+            to see
+            {{ props.cancelledCount === 1 ? 'it' : 'them' }}.
         </p>
 
         <ul v-else class="flex flex-col gap-3">
@@ -97,5 +127,21 @@ const paymentTone: Record<string, string> = {
                 </Link>
             </li>
         </ul>
+
+        <p v-if="props.cancelledCount > 0" class="pt-4 text-sm">
+            <Link
+                :href="toggleUrl"
+                preserve-scroll
+                class="text-text-muted underline underline-offset-4 hover:text-text"
+            >
+                <template v-if="props.showAll">
+                    Hide cancelled registrations
+                </template>
+                <template v-else>
+                    Show all registrations ({{ props.cancelledCount }}
+                    cancelled)
+                </template>
+            </Link>
+        </p>
     </div>
 </template>

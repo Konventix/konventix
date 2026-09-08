@@ -10,6 +10,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Data\MyRegistrationData;
+use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
@@ -30,15 +31,42 @@ final class MyRegistrationsController
 {
     public function __construct(private readonly SlotRegistry $slots) {}
 
+    /**
+     * The list, without the cancellations unless they are asked for
+     * (GitLab #239).
+     *
+     * A cancelled registration is history: there is nothing on it the
+     * registrant can act on, and an account that registered three times and
+     * cancelled twice opened this page on two dead rows. The choice lives in
+     * the query string rather than in component state so a reload — or a
+     * link someone sends themselves — keeps it, the same reason the console's
+     * list filters live in the URL.
+     *
+     * `cancelledCount` is sent whichever way the toggle stands: the page
+     * needs it to label the toggle, and to tell "you have not registered for
+     * anything" apart from "everything you registered for was cancelled",
+     * which are the same empty list and not the same sentence.
+     */
     public function index(Request $request): Response
     {
-        $registrations = Registration::query()
-            ->where('registrant_user_id', (string) $request->user()->getAuthIdentifier())
-            ->orderByDesc('submitted_at')
-            ->get();
+        $registrantId = (string) $request->user()->getAuthIdentifier();
+        $showAll = $request->query('show') === 'all';
+
+        $query = Registration::query()->where('registrant_user_id', $registrantId);
+
+        if (! $showAll) {
+            $query->where('status', '!=', RegistrationStatus::Cancelled);
+        }
+
+        $registrations = $query->orderByDesc('submitted_at')->get();
 
         return Inertia::render('registration/my/Index', [
             'registrations' => $this->present($registrations),
+            'showAll' => $showAll,
+            'cancelledCount' => Registration::query()
+                ->where('registrant_user_id', $registrantId)
+                ->where('status', RegistrationStatus::Cancelled)
+                ->count(),
         ]);
     }
 
