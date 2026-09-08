@@ -498,6 +498,9 @@ in the owning module's `TODO.md` when it lands.
     into a list, and the Stripe `card_payments.status` check Commerce's
     `TODO.md` owes becomes the rule for whether a method is *offered*, not
     only whether it is connected.
+    (Superseded for Stripe by ADR-0058/#215: with Connect removed there is
+    no `card_payments` capability to read — a Stripe row is offered when the
+    instance holds a Stripe secret key.)
     **Done** (ADR-0046).
 
 24. **The shop: products, a cart, and a door for the rush.** Commerce

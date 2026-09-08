@@ -375,18 +375,24 @@ licensing.
   repayment deadline, and the unapplied-payment callout of ADR-0057
   point 9. A withdrawn dispute is deliberately absent from the list: it
   moved no money and is no operator task.
-- **Settlement adapters** behind a single contract, **account-scoped from day
-  one** (ADR-0007): each brand or operator connects its own Stripe, Mollie or
-  Unzer account, and every adapter call carries that account. ADR-0039 pins
-  the mechanics: hosted checkout only, settlement truth exclusively from
-  verified webhooks, per-brand credentials encrypted on the account row.
+- **Settlement adapters** behind a single contract, **account-scoped from
+  day one** (ADR-0007): each brand or operator connects its own Mollie or
+  Unzer account, and every adapter call carries that account. Stripe is the
+  exception since ADR-0058: the instance settles into **one** Stripe
+  account — the operator's own — and a brand's Stripe row is the flag that
+  says it sells through it. ADR-0039 pins the mechanics: hosted checkout
+  only, settlement truth exclusively from verified webhooks, per-brand
+  credentials encrypted on the account row, Stripe's own key operator-level
+  (`stripe_settings`) or from the environment.
 - **`SettlementAccount`** — one live account per provider per brand
-  (ADR-0046): a brand may connect Stripe for cards and Mollie for PayPal and
-  iDEAL at once, and the checkout page offers every account that is live,
-  connected, and — for Stripe — has an active `card_payments` capability.
-  The payer chooses which account settles their order; `settlement_method`
-  on the settlement events is always the provider, and the events also carry
-  the account id.
+  (ADR-0046): a brand may connect Stripe for cards and Mollie for PayPal
+  and iDEAL at once, and the checkout page offers every account that is
+  live, connected, and — for Stripe — backed by a Stripe secret key on this
+  instance (ADR-0058). A Stripe row additionally carries an optional
+  `statement_descriptor_suffix`, which names the brand on the payer's card
+  statement. The payer chooses which account settles their order;
+  `settlement_method` on the settlement events is always the provider, and
+  the events also carry the account id.
 - **Vouchers and discount codes**, their rules and their redemption records.
 - **Bookkeeping exports** for the tax advisor (ADR-0040): a DATEV
   Buchungsstapel plus a readable journal, one export per operator and month,
