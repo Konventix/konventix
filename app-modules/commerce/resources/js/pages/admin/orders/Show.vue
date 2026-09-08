@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { AlertCircle, FileText, Landmark, Undo2, XCircle } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -176,17 +176,28 @@ function submitCancelReversed(): void {
  * reason on the document is a follow-up, not something this dialog may
  * promise.
  *
- * The vocabulary is `Konventix\Commerce\Enums\RefundReason` restated: that
- * enum carries no `#[TypeScript]` because the Data class validating it is
- * inbound-only and generates no type. The server rejects anything not in the
- * set, so a drift here shows up as a form error rather than a wrong value.
+ * The vocabulary is `Konventix.Commerce.Enums.RefundReason`, the generated
+ * type, and not a hand-kept copy of it (ADR-0009, whole-branch review
+ * finding 10): `EnumTransformer` is registered over every module's `Enums`
+ * directory, so the enum is emitted whether or not a Data class references
+ * it. A `Record` keyed by that type is exhaustive — adding, renaming or
+ * removing a case fails `npm run types:check` here rather than reaching an
+ * operator as a form error.
  */
-const refundReasons = [
-    { value: 'customer-request', label: 'The customer asked for it' },
-    { value: 'event-cancelled', label: 'The event was cancelled' },
-    { value: 'duplicate-payment', label: 'Paid twice' },
-    { value: 'goodwill', label: 'Goodwill' },
-] as const;
+const refundReasonLabels: Record<Konventix.Commerce.Enums.RefundReason, string> =
+    {
+        'customer-request': 'The customer asked for it',
+        'event-cancelled': 'The event was cancelled',
+        'duplicate-payment': 'Paid twice',
+        goodwill: 'Goodwill',
+    };
+
+const refundReasons = Object.entries(refundReasonLabels).map(
+    ([value, label]) => ({
+        value: value as Konventix.Commerce.Enums.RefundReason,
+        label,
+    }),
+);
 
 const refundOpen = ref(false);
 
@@ -199,7 +210,7 @@ const refundOpen = ref(false);
  * "Unsaved changes" note appears exactly when something has been entered.
  */
 const refundForm = useForm<{
-    reasonCode: (typeof refundReasons)[number]['value'] | null;
+    reasonCode: Konventix.Commerce.Enums.RefundReason | null;
     reasonNote: string | null;
 }>({
     reasonCode: null,
@@ -233,8 +244,31 @@ function submitRefund(): void {
             onSuccess: () => {
                 refundForm.reset();
                 refundOpen.value = false;
+                returnFocusAfterRefund();
             },
         });
+}
+
+/**
+ * Where the keyboard goes once the refund has gone through (ADR-0055 point
+ * 1, whole-branch review finding 6).
+ *
+ * The dialog restores focus to the trigger it captured, and that trigger is
+ * `v-if="order.status === 'paid'"` — the refund has just flipped the status,
+ * so reka-ui calls `.focus()` on a detached node and focus lands on `<body>`.
+ * A keyboard operator was silently returned to the top of the document
+ * after the console's most consequential action. `main#main-content` is the
+ * layout's own landing place for exactly this (`.ai/rules/js.md`, #181), it
+ * carries `tabindex="-1"`, and it is where the refreshed order — now
+ * "Refunded", with its credit note — is.
+ *
+ * After `nextTick`, because the props that remove the trigger have not been
+ * applied when `onSuccess` runs.
+ */
+function returnFocusAfterRefund(): void {
+    void nextTick(() => {
+        document.getElementById('main-content')?.focus();
+    });
 }
 </script>
 
