@@ -7,12 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
-import { start as startOrderCheckout } from '@/routes/commerce/pay/order';
 import {
     ORDER_WITH_OBLIGATION_TO_PAY,
     fulfilmentNote,
     taxNote,
 } from '@/lib/purchaseTexts';
+import { start as startOrderCheckout } from '@/routes/commerce/pay/order';
 
 /**
  * The way back to an order whose payment failed (GitLab #5) — a cart order

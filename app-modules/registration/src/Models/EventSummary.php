@@ -19,9 +19,12 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * registration types across every event and must not advertise a draft one.
  *
  * `public_since` is the projection of `Event::isVisibleOnLanding()`'s rule
- * ("has left `Draft`"): set by `EventAnnounced` and `EventPublished`,
- * cleared by `EventUnpublished`. Null therefore means "not public", which is
- * also what a summary projected by `EventCreated` alone correctly says.
+ * ("has left `Draft`"): set by `EventAnnounced` and `EventPublished`, and
+ * never cleared — `UnpublishEvent` returns the event to `Announced`, where
+ * its landing page still sells. Null therefore means "still a draft", which
+ * is exactly what a summary projected by `EventCreated` alone says.
+ * `archived_at` is the column for an event that leaves public view for
+ * good.
  *
  * No factory: rows exist only through `Listeners\ProjectEventSummary`, so a
  * test emits `EventCreated` rather than inventing an event.

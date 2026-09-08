@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
+import { displayUnitAmount, taxNote } from '@/lib/purchaseTexts';
 import { show as showProduct } from '@/routes/commerce/shop';
-import { displayUnitAmount, taxNote } from '../lib/purchaseTexts';
 
 /**
  * Commerce's contribution to Event's `event.landing` slot (ADR-0047,

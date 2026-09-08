@@ -13,12 +13,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
-import { start as startCheckout } from '@/routes/commerce/pay';
 import {
     ORDER_WITH_OBLIGATION_TO_PAY,
     fulfilmentNote,
     taxNote,
 } from '@/lib/purchaseTexts';
+import { start as startCheckout } from '@/routes/commerce/pay';
 
 /**
  * Public checkout for an `instant`-settled registration (ADR-0039). This

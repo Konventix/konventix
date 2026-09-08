@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Event\Actions\UnpublishEvent;
+use Konventix\Event\Enums\EventLifecycleState;
 use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventPublished;
-use Konventix\Event\Events\EventUnpublished;
 use Konventix\Event\Models\Event;
 use Konventix\Platform\Models\Brand;
 use Konventix\Registration\Data\PriceDeclarationData;
@@ -353,21 +354,19 @@ it('never lists the offers of an event that is still a draft', function (): void
         ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toBe([]));
 });
 
-it('lists them once the event is announced or published, and drops them again when it is unpublished', function (): void {
+it('lists them once the event is published', function (): void {
     $brand = $this->withBrand();
     $this->activateFeature('commerce:shop', $brand);
 
     $event = Event::factory()->create();
-    $summary = EventSummary::query()->create([
+    EventSummary::query()->create([
         'event_id' => $event->getKey(),
         'name' => 'Next Year',
         'slug' => 'next-year',
     ]);
     RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Weekend Ticket']);
 
-    $projector = app(ProjectEventSummary::class);
-
-    $projector->handlePublished(new EventPublished(
+    app(ProjectEventSummary::class)->handlePublished(new EventPublished(
         eventId: (string) $event->getKey(),
         brandId: (string) $brand->getKey(),
         publishedAt: Carbon::now()->toIso8601String(),
@@ -380,16 +379,49 @@ it('lists them once the event is announced or published, and drops them again wh
             expect($offers)->toHaveCount(1)
                 ->and($offers[0]['eventName'])->toBe('Next Year');
         });
+});
 
-    $projector->handleUnpublished(new EventUnpublished(
+/**
+ * Re-review N3: `UnpublishEvent` returns the event to `Announced`, not to
+ * `Draft` — its landing page keeps resolving and keeps selling the same
+ * registration types. `/shop` follows exactly the same rule, so the two
+ * public surfaces of one brand can never disagree about one event; nothing
+ * clears `public_since`, and `EventArchived` is the transition that takes
+ * offers off both.
+ */
+it('keeps selling on both public surfaces after the event is unpublished back to announced', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->published()->create();
+    $summary = EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Next Year',
+        'slug' => 'next-year',
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Weekend Ticket']);
+
+    app(ProjectEventSummary::class)->handlePublished(new EventPublished(
         eventId: (string) $event->getKey(),
         brandId: (string) $brand->getKey(),
+        publishedAt: Carbon::now()->subDay()->toIso8601String(),
     ));
 
-    expect($summary->fresh()->public_since)->toBeNull();
+    app(UnpublishEvent::class)->handle($event);
 
+    expect($event->fresh()->state)->toBe(EventLifecycleState::Announced)
+        ->and($event->fresh()->isVisibleOnLanding())->toBeTrue()
+        ->and($summary->fresh()->public_since)->not->toBeNull();
+
+    // The landing page still sells it …
+    $this->get('/events/'.$event->slug)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => expect(landingOffers($page))->toHaveCount(1));
+
+    // … so the shop must too.
     $this->get('/shop')
-        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toBe([]));
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toHaveCount(1));
 });
 
 /**

@@ -6,9 +6,9 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { displayUnitAmount, taxNote } from '@/lib/purchaseTexts';
 import { login } from '@/routes';
 import { store as storeCartLine } from '@/routes/commerce/cart/lines';
-import { displayUnitAmount, taxNote } from '../../lib/purchaseTexts';
 
 /**
  * One shop product (ADR-0047, Task 8/11). The buy button posts straight to

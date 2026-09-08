@@ -15,6 +15,14 @@
  * purchase path a unit test can pin (there is no Vue component runner
  * here, see `vitest.config.ts`), and the exact strings are the thing worth
  * pinning.
+ *
+ * App-level rather than Commerce's own since #240: `/shop` lists
+ * Registration's types beside Commerce's products and both must print the
+ * same end price with the same label, and a module reaching into another
+ * module's `resources/js` by relative path is the one coupling
+ * `.ai/rules/resources.md` names outright. This is shared purchase-path UI,
+ * so it lives where shared UI lives — beside `datetime.ts`, which crossed
+ * the same line for the same reason.
  */
 
 /** §312j (3) BGB: the label of the button that concludes the contract. */

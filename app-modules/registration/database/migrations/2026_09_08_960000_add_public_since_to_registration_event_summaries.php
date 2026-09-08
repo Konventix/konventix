@@ -27,12 +27,17 @@ return new class extends Migration
      * of "has left `Draft`", which `EventAnnounced` reaches as well as
      * `EventPublished`, and a column called `published_at` that is set for
      * an `announced` event would be a lie about Event's own column of that
-     * name.
+     * name. Nothing ever clears it — `UnpublishEvent` returns an event to
+     * `Announced`, where its landing page still sells — so this backfill's
+     * `state <> 'draft'` and the projection state one rule, not two.
      */
     public function up(): void
     {
         Schema::table('registration_event_summaries', function (Blueprint $table): void {
-            $table->timestamp('public_since')->nullable()->after('slug');
+            // No `after()`: Postgres has no such column modifier and Laravel's
+            // grammar drops it silently, so writing one would promise an
+            // ordering the only supported database does not give (N8).
+            $table->timestamp('public_since')->nullable();
         });
 
         // One-off backfill for summaries that already exist: without it every

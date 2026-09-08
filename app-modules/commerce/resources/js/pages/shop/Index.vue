@@ -2,8 +2,8 @@
 import { Head, Link } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+import { displayUnitAmount, taxNote } from '@/lib/purchaseTexts';
 import { show as showProduct } from '@/routes/commerce/shop';
-import { displayUnitAmount, taxNote } from '../../lib/purchaseTexts';
 
 /**
  * The brand's public shop listing (ADR-0047, Task 8) — every published

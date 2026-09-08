@@ -9,7 +9,6 @@ use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
-use Konventix\Event\Events\EventUnpublished;
 use Konventix\Registration\Models\EventSummary;
 
 /**
@@ -23,6 +22,17 @@ use Konventix\Registration\Models\EventSummary;
  *
  * Not gated on anything: Registration is a Core module and always active, and
  * a projection must stay current regardless of what consumes it later.
+ *
+ * `public_since` is `Event::isVisibleOnLanding()`'s rule — "has left
+ * `Draft`" — held in the only form ADR-0004 allows this module. Both
+ * transitions out of `Draft` set it, and nothing clears it:
+ * `EventUnpublished` is deliberately *not* projected, because
+ * `UnpublishEvent` returns the event to `Announced` rather than to `Draft`,
+ * so its landing page keeps resolving and keeps selling the very same
+ * registration types. Clearing the column there made `/shop` and the landing
+ * page disagree about one event (#240 re-review N3). `EventArchived` is the
+ * transition that genuinely takes offers off both, and it has its own
+ * column.
  */
 final class ProjectEventSummary
 {
@@ -54,18 +64,6 @@ final class ProjectEventSummary
     public function handlePublished(EventPublished $event): void
     {
         $this->markPublic($event->eventId, $event->brandId, $event->publishedAt);
-    }
-
-    /**
-     * Withdrawn from public view: the offers leave `/shop` with it. The row
-     * stays — existing registrations still need the event's name.
-     */
-    public function handleUnpublished(EventUnpublished $event): void
-    {
-        EventSummary::withoutBrandScope()
-            ->where('brand_id', $event->brandId)
-            ->where('event_id', $event->eventId)
-            ->update(['public_since' => null]);
     }
 
     /**

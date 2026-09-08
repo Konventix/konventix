@@ -23,7 +23,6 @@ use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
-use Konventix\Event\Events\EventUnpublished;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -163,10 +162,12 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleArchived']);
         // #240: `/shop` lists offers across every event, so the projection
         // has to know which events are public — `event.landing` gets that
-        // from `Event::isVisibleOnLanding()`, which Registration may not read.
+        // from `Event::isVisibleOnLanding()`, which Registration may not
+        // read. Both transitions out of `Draft`, and no listener for
+        // `EventUnpublished`: unpublishing returns the event to `Announced`,
+        // where the landing page still sells it (re-review N3).
         Event::listen(EventAnnounced::class, [ProjectEventSummary::class, 'handleAnnounced']);
         Event::listen(EventPublished::class, [ProjectEventSummary::class, 'handlePublished']);
-        Event::listen(EventUnpublished::class, [ProjectEventSummary::class, 'handleUnpublished']);
 
         // ADR-0048 point 3: the module that owns an event owns its mail —
         // Registration's own lifecycle, told to the registrant every time

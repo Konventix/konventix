@@ -2,10 +2,7 @@
 import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
 import { formatDateTime } from '@/lib/datetime';
-import {
-    displayUnitAmount,
-    taxNote,
-} from '../../../../commerce/resources/js/lib/purchaseTexts';
+import { displayUnitAmount, taxNote } from '@/lib/purchaseTexts';
 
 /**
  * Registration's contribution to Commerce's `shop.index` slot (#240): what
@@ -35,8 +32,8 @@ import {
  * Registration declares a net amount and a tax *class*, and Commerce — which
  * owns money (ADR-0006) — computes the end price and writes `unitAmountGross`
  * back into the payload on its way out of `ShopController`. Nothing here does
- * arithmetic on a price, and the wording is Commerce's own `purchaseTexts`,
- * the same two functions the product cards on this page use, because a PAngV
+ * arithmetic on a price, and the wording comes from the shared
+ * `@/lib/purchaseTexts` the product cards on this page use, because a PAngV
  * end price that read differently three inches apart is exactly what #3 was
  * filed about.
  */
