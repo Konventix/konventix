@@ -62,6 +62,13 @@ type Props = {
         brandName: string;
         slugFrozen: boolean;
     };
+    /**
+     * The role this policy's slug plays at checkout, null where it plays
+     * none (#200) — and the whole catalogue, so the editor can say what
+     * the alternative is.
+     */
+    checkoutRole: Konventix.Compliance.Data.CheckoutLegalTextRoleData | null;
+    checkoutRoles: Konventix.Compliance.Data.CheckoutLegalTextRoleData[];
     versions: VersionRow[];
     selected:
         | (Konventix.Compliance.Data.PolicyVersionData & {
@@ -410,6 +417,31 @@ function openVersion(id: string): void {
                                 >
                                     Frozen: a version has been published, and
                                     consent records resolve through this URL.
+                                </p>
+                                <!--
+                                    #200: the slug is what the checkout looks
+                                    for, so the editor says which role this
+                                    one plays — or that it plays none.
+                                -->
+                                <p
+                                    v-if="props.checkoutRole"
+                                    class="text-xs text-text-muted"
+                                >
+                                    <span class="font-medium text-text">
+                                        Checkout role:
+                                        {{ props.checkoutRole.name }}
+                                    </span>
+                                    {{ props.checkoutRole.description }}
+                                </p>
+                                <p v-else class="text-xs text-text-muted">
+                                    The checkout never asks for this text — it
+                                    resolves only
+                                    <code>{{
+                                        props.checkoutRoles
+                                            .map((role) => role.slug)
+                                            .join(', ')
+                                    }}</code
+                                    >.
                                 </p>
                                 <InputError :message="policyForm.errors.slug" />
                             </div>

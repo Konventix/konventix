@@ -13,6 +13,8 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Compliance\Actions\CreatePolicy;
 use Konventix\Compliance\Actions\UpdatePolicy;
+use Konventix\Compliance\Data\CheckoutLegalTextGapData;
+use Konventix\Compliance\Data\CheckoutLegalTextRoleData;
 use Konventix\Compliance\Data\PolicyData;
 use Konventix\Compliance\Data\PolicyVersionData;
 use Konventix\Compliance\Enums\Permission;
@@ -20,6 +22,7 @@ use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
+use Konventix\Compliance\Support\CheckoutLegalTexts;
 use Konventix\Compliance\Support\PolicyMarkdown;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
@@ -108,8 +111,55 @@ class PolicyAdminController
                 ];
             }),
             'brands' => $this->brandOptionsFrom($brands),
+            // The convention `CheckoutLegalTexts::SLUGS` is (#200): which
+            // two slugs the purchase path looks for, what each one means,
+            // and which brands it currently finds nothing under. Until this
+            // was on the page, a brand whose AGB lived under `agb` sold
+            // without ever asking for an agreement, silently.
+            'checkoutRoles' => array_map(
+                fn (CheckoutLegalTextRoleData $role): array => $role->toArray(),
+                CheckoutLegalTextRoleData::roles(),
+            ),
+            'checkoutGaps' => array_map(
+                fn (CheckoutLegalTextGapData $gap): array => $gap->toArray(),
+                $this->checkoutGaps($brands),
+            ),
             'filters' => $this->currentFilters($request, $sort, $perPage),
         ]);
+    }
+
+    /**
+     * Every brand the checkout resolves no text for, asked through
+     * `CheckoutLegalTexts::forBrand()` itself rather than through a query
+     * written a second time here: the console must report what the checkout
+     * actually sees, including the shadowing rule that makes an unpublished
+     * brand policy hide a published operator one.
+     *
+     * @param  Collection<int, Brand>  $brands
+     * @return list<CheckoutLegalTextGapData>
+     */
+    private function checkoutGaps(Collection $brands): array
+    {
+        $texts = app(CheckoutLegalTexts::class);
+
+        $gaps = [];
+
+        foreach ($brands as $brand) {
+            $resolved = array_column($texts->forBrand((string) $brand->getKey()), 'slug');
+            $missing = array_values(array_diff(CheckoutLegalTexts::SLUGS, $resolved));
+
+            if ($missing === []) {
+                continue;
+            }
+
+            $gaps[] = new CheckoutLegalTextGapData(
+                brandId: (string) $brand->getKey(),
+                brandName: $brand->name,
+                missingSlugs: $missing,
+            );
+        }
+
+        return $gaps;
     }
 
     public function store(Request $request, CreatePolicy $createPolicy): RedirectResponse
@@ -162,6 +212,15 @@ class PolicyAdminController
                 ),
                 ...PolicyData::fromModel($model)->toArray(),
             ],
+            // Which role this policy plays at checkout, and the whole
+            // catalogue beside it so the editor can say what the other one
+            // is (#200). Null where the slug plays none — a privacy policy
+            // is a policy the purchase path never asks for.
+            'checkoutRole' => CheckoutLegalTextRoleData::forSlug($model->slug)?->toArray(),
+            'checkoutRoles' => array_map(
+                fn (CheckoutLegalTextRoleData $role): array => $role->toArray(),
+                CheckoutLegalTextRoleData::roles(),
+            ),
             'versions' => $versions->map(fn (PolicyVersion $version): array => [
                 'id' => $version->getKey(),
                 'version' => $version->version,

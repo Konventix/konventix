@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Konventix\Compliance\Models\Policy;
+use Konventix\Compliance\Support\CheckoutLegalTexts;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -67,4 +69,26 @@ test('install refuses to create the admin without a password in the environment'
 
 test('install refuses to run without the required options', function () {
     $this->artisan('konventix:install')->assertFailed();
+});
+
+test('install seeds the operator-wide checkout legal texts, and is idempotent about them (#200)', function () {
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'first-run-secret';
+
+    $this->artisan('konventix:install', installArguments())->assertSuccessful();
+    $this->artisan('konventix:install', installArguments())->assertSuccessful();
+
+    // A fresh instance must never be able to sell without the checkout
+    // resolving a terms and a withdrawal text: `konventix:seed` is a demo
+    // command a real deployment never runs (#200).
+    foreach (CheckoutLegalTexts::SLUGS as $slug) {
+        $policy = Policy::withoutBrandScope()->whereNull('brand_id')->where('slug', $slug)->get();
+
+        expect($policy)->toHaveCount(1)
+            ->and($policy->first()->currentVersion())->not->toBeNull();
+    }
+
+    $brand = Brand::query()->firstWhere('slug', 'acme-con');
+
+    expect(array_column(app(CheckoutLegalTexts::class)->forBrand($brand->getKey()), 'slug'))
+        ->toBe(CheckoutLegalTexts::SLUGS);
 });
