@@ -59,7 +59,7 @@ final class SdkStripeApi implements StripeApi
      *
      * @return array{
      *     disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>,
-     *     refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>,
+     *     refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>,
      * }
      */
     public function fetchPaymentIntentReversals(string $paymentIntentId): array
@@ -89,6 +89,10 @@ final class SdkStripeApi implements StripeApi
                 'amount' => (int) $refund->amount,
                 'currency' => (string) $refund->currency,
                 'reason' => is_string($refund->reason) ? $refund->reason : null,
+                // The charge the refund belongs to, so the catch-up can tell
+                // that `charge.refunded` already recorded this money under
+                // the charge id (fix round 1, review finding 3).
+                'charge' => is_string($refund->charge) ? $refund->charge : null,
                 'created' => $refund->created,
             ];
         }

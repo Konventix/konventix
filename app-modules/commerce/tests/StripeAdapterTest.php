@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Log;
+use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Models\Order;
@@ -40,7 +41,7 @@ final class StripeAdapterTestFakeApi implements StripeApi
      * Nothing took this payment's money back (#235). Every fake here answers
      * the empty pair unless its own test says otherwise.
      *
-     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
      */
     public function fetchPaymentIntentReversals(string $paymentIntentId): array
     {
@@ -55,19 +56,24 @@ final class StripeAdapterTestFakeApi implements StripeApi
     }
 
     /**
-     * Unused here: only `commerce:reconcile-payments` (#71) reads a session
-     * back, and this fake never drives it.
+     * What Stripe says the session is doing. `hostedPaymentState()` reads it
+     * (#231), so the tests set it.
      *
+     * @var array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public array $session = [
+        'status' => 'open',
+        'payment_status' => 'unpaid',
+        'payment_intent' => null,
+        'payment_intent_status' => null,
+    ];
+
+    /**
      * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
      */
     public function fetchCheckoutSession(string $sessionId): array
     {
-        return [
-            'status' => 'open',
-            'payment_status' => 'unpaid',
-            'payment_intent' => null,
-            'payment_intent_status' => null,
-        ];
+        return $this->session;
     }
 }
 
@@ -103,7 +109,7 @@ final class StripeAdapterTestRefusesDescriptorApi implements StripeApi
      * Nothing took this payment's money back (#235). Every fake here answers
      * the empty pair unless its own test says otherwise.
      *
-     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
      */
     public function fetchPaymentIntentReversals(string $paymentIntentId): array
     {
@@ -315,6 +321,116 @@ it('refuses to refund without a recorded payment intent', function (): void {
 
     expect(fn () => app(StripeSettlementAdapter::class)->refund($account->id, $order, '154.70', 'EUR'))
         ->toThrow(RuntimeException::class, 'no refundable Stripe payment');
+});
+
+/**
+ * Stripe refusing to answer at all (#231): every question is a failure, and
+ * the adapter must read that as "we do not know", never as "not paid".
+ */
+final class StripeAdapterTestUnreachableApi implements StripeApi
+{
+    public function createCheckoutSession(array $params): StripeCheckoutSession
+    {
+        throw new RuntimeException('Stripe is unreachable');
+    }
+
+    public function createRefund(array $params): string
+    {
+        throw new RuntimeException('Stripe is unreachable');
+    }
+
+    /**
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
+     */
+    public function fetchPaymentIntentReversals(string $paymentIntentId): array
+    {
+        throw new RuntimeException('Stripe is unreachable');
+    }
+
+    /**
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId): array
+    {
+        throw new RuntimeException('Stripe is unreachable');
+    }
+}
+
+/**
+ * #231 fix round 1, review finding 1: `unpaid` is not "not paid". A
+ * delayed-notification method (SEPA debit, bank transfer) completes the
+ * session while the money is still travelling, and calling that `NotPaid`
+ * has the sweep cancel the order and mail the buyer mid-transfer — the
+ * failure #231 exists to prevent. Only an intent that has given up is a
+ * cancellation, which is the rule `ReconcilePayments` already applies to the
+ * same seam and Mollie's adapter to `pending`/`authorized`.
+ */
+it('answers the sweep about a hosted Stripe session', function (
+    string $status,
+    string $paymentStatus,
+    ?string $intentStatus,
+    HostedPaymentState $expected,
+): void {
+    [, $order, $fake] = stripeAdapterTestSetup();
+
+    $payment = Payment::factory()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'external_id' => 'cs_test_pending',
+        'amount' => '154.70',
+        'currency' => 'EUR',
+    ]);
+
+    $fake->session = [
+        'status' => $status,
+        'payment_status' => $paymentStatus,
+        'payment_intent' => 'pi_test_state',
+        'payment_intent_status' => $intentStatus,
+    ];
+
+    expect(app(StripeSettlementAdapter::class)->hostedPaymentState($payment))->toBe($expected);
+})->with([
+    'paid' => ['complete', 'paid', 'succeeded', HostedPaymentState::Paid],
+    'nothing to pay' => ['complete', 'no_payment_required', null, HostedPaymentState::Paid],
+    'SEPA still travelling' => ['complete', 'unpaid', 'processing', HostedPaymentState::Undecided],
+    'waiting on the payer' => ['complete', 'unpaid', 'requires_action', HostedPaymentState::Undecided],
+    'intent not expanded' => ['complete', 'unpaid', null, HostedPaymentState::Undecided],
+    'refused' => ['complete', 'unpaid', 'requires_payment_method', HostedPaymentState::NotPaid],
+    'given up' => ['complete', 'unpaid', 'canceled', HostedPaymentState::NotPaid],
+    'never finished' => ['open', 'unpaid', null, HostedPaymentState::NotPaid],
+    'session expired' => ['expired', 'unpaid', null, HostedPaymentState::NotPaid],
+]);
+
+it('answers the sweep Undecided when Stripe cannot be reached at all (#231)', function (): void {
+    [, $order] = stripeAdapterTestSetup();
+
+    $payment = Payment::factory()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'external_id' => 'cs_test_pending',
+        'amount' => '154.70',
+        'currency' => 'EUR',
+    ]);
+
+    app()->instance(StripeApi::class, new StripeAdapterTestUnreachableApi);
+
+    expect(app(StripeSettlementAdapter::class)->hostedPaymentState($payment))
+        ->toBe(HostedPaymentState::Undecided);
+});
+
+it('has nothing to ask about a payment that never reached a hosted page (#231)', function (): void {
+    [, $order] = stripeAdapterTestSetup();
+
+    $payment = Payment::factory()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'external_id' => null,
+        'amount' => '154.70',
+        'currency' => 'EUR',
+    ]);
+
+    expect(app(StripeSettlementAdapter::class)->hostedPaymentState($payment))
+        ->toBe(HostedPaymentState::Unanswerable);
 });
 
 it('never marks a Stripe order paid outside the webhook path', function (): void {

@@ -49,7 +49,7 @@ interface StripeApi
      *
      * @return array{
      *     disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>,
-     *     refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>,
+     *     refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>,
      * }
      */
     public function fetchPaymentIntentReversals(string $paymentIntentId): array;

@@ -124,6 +124,9 @@ final class ExpireRegistrationOrders
         // they never leave the result set, and the sweep's working set grew
         // without bound. One query over `settlement_accounts` lets Postgres
         // exclude them instead.
+        // Opens the run's provider-call budget (#231, fix round 1).
+        $this->probe->startRun();
+
         $hostedBrandIds = $this->paymentWindow->brandIdsOfferingHostedCheckout();
 
         if ($hostedBrandIds === []) {
@@ -230,15 +233,30 @@ final class ExpireRegistrationOrders
         }
 
         if ($state === HostedPaymentState::Undecided) {
-            Log::warning('Registration-order sweep left an order standing: the provider could not say whether its hosted payment was paid (#231).', [
+            if (! $this->probe->holdExpired($order)) {
+                Log::warning('Registration-order sweep left an order standing: the provider could not say whether its hosted payment was paid (#231).', [
+                    'order_id' => $order->id,
+                    'brand_id' => $order->brand_id,
+                    'payment_id' => $payment->id,
+                    'provider' => $payment->provider,
+                    'external_id' => $payment->external_id,
+                ]);
+
+                return false;
+            }
+
+            // The release valve (fix round 1, review finding 4), the same one
+            // `ExpireCarts` uses: a provider that never answers must not hold
+            // the quota for ever, and money that did move comes back as
+            // unapplied money the console can refund (#6).
+            Log::warning('Registration-order sweep cancelled an order the provider never answered for; check it for unapplied money (#231).', [
                 'order_id' => $order->id,
                 'brand_id' => $order->brand_id,
                 'payment_id' => $payment->id,
                 'provider' => $payment->provider,
                 'external_id' => $payment->external_id,
+                'order_created_at' => $order->created_at?->toIso8601String(),
             ]);
-
-            return false;
         }
 
         return true;

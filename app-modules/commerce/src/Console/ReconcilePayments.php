@@ -25,6 +25,7 @@ use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeReversalCatchUp;
+use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
@@ -121,15 +122,14 @@ final class ReconcilePayments extends Command
     private const string MOLLIE_REFUND_TRANSFERRED = 'refunded';
 
     /**
-     * Stripe PaymentIntent statuses that mean the attempt will not settle:
-     * `requires_payment_method` is where a refused asynchronous payment
-     * lands (the intent asks for another method), `canceled` is the
-     * terminal give-up. `processing` and `requires_action` are deliberately
-     * absent — money still in flight must never be failed by a sweep.
+     * Which PaymentIntent statuses mean the attempt has given up — owned by
+     * `StripeSettlementAdapter`, because the expiry sweeps ask the same
+     * question of the same seam (#231, fix round 1) and the two answers must
+     * not be able to drift apart.
      *
      * @var list<string>
      */
-    private const array REFUSED_INTENT_STATUSES = ['requires_payment_method', 'canceled'];
+    private const array REFUSED_INTENT_STATUSES = StripeSettlementAdapter::REFUSED_INTENT_STATUSES;
 
     protected $signature = 'commerce:reconcile-payments
         {--brand= : Restrict the sweep to one brand}

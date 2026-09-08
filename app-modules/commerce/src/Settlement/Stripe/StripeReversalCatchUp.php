@@ -10,6 +10,7 @@ use InvalidArgumentException;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Settlement\MinorUnits;
 
 /**
@@ -136,11 +137,22 @@ final class StripeReversalCatchUp
      * stored (#247), so `RecordPaymentReversal` converges on that row
      * instead of undoing the sale a second time.
      *
-     * @param  array{id: string, amount: int, currency: string, reason: ?string, created: ?int}  $refund
+     * @param  array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}  $refund
      * @return array{kind: ReversalKind, status: ReversalStatus, amount: string, currency: string, providerReference: string, reasonCode: ?string, feeAmount: ?string, occurredAt: Carbon}|null
      */
     private function refund(array $refund, Payment $payment): ?array
     {
+        // The documented fallback of `StripeWebhookController::chargeRefunded()`:
+        // an unexpanded `charge.refunds` leaves that path with the *charge*
+        // id as its only unique handle, and this list names the same money by
+        // its refund id. Recognising the charge's row here is what stops one
+        // dashboard refund appearing twice on the order and being counted as
+        // a second lost notification (fix round 1, review finding 3).
+        if ($refund['charge'] !== null
+            && PaymentReversal::forProviderReference($payment->provider, $refund['charge']) !== null) {
+            return null;
+        }
+
         $currency = $this->currency($refund['currency'], $payment);
         $amount = $this->toDecimal($refund['amount'], $currency);
 

@@ -150,21 +150,29 @@ class StripeWebhookController
      * a deployment with no credentials at all must leave that standing, not
      * turn into a 500 that makes Stripe retry a settlement it already
      * delivered. The daily reconciliation of #71 asks the same question
-     * again, which is what makes swallowing this one safe.
+     * again, which is what makes swallowing this one safe. Only the *read*
+     * is swallowed (review finding 7): a throw out of `RecordPaymentReversal`
+     * — a listener, a deadlock — still reaches the endpoint as a 500 and is
+     * retried by Stripe, which is the right answer for a write we could not
+     * complete.
+     *
+     * Returns whether Stripe answered with anything, which
+     * `chargeRefunded()` reads to decide whether it still needs its own
+     * charge-id fallback.
      */
-    private function catchUpOnReversals(Payment $payment, RecordPaymentReversal $recordReversal): void
+    private function catchUpOnReversals(Payment $payment, RecordPaymentReversal $recordReversal): bool
     {
         try {
             $reversals = app(StripeReversalCatchUp::class)->reversalsFor($payment);
         } catch (Throwable $e) {
-            Log::warning('Stripe could not be asked about reversals at settlement; the reconciliation sweep asks again (#235).', [
+            Log::warning('Stripe could not be asked about reversals; the reconciliation sweep asks again (#235).', [
                 'payment_id' => $payment->id,
                 'order_id' => $payment->order_id,
                 'provider_transaction_id' => $payment->provider_transaction_id,
                 'reason' => $e->getMessage(),
             ]);
 
-            return;
+            return false;
         }
 
         foreach ($reversals as $reversal) {
@@ -184,6 +192,12 @@ class StripeWebhookController
             // a refund after a dispute reads the payment's new status.
             $payment->refresh();
         }
+
+        // Whether the question was *answered*, not whether it found anything:
+        // `chargeRefunded()` needs to know that it may stop, and an empty
+        // answer to a refund event means Stripe does not list that refund
+        // yet — which its own fallback then has to record.
+        return $reversals !== [];
     }
 
     private function failed(
@@ -308,10 +322,27 @@ class StripeWebhookController
         }
 
         $refund = $charge->refunds->data[0] ?? null;
-        // A charge whose refund list was not expanded still identifies the
-        // event uniquely by its own id, which is what the row needs to
-        // converge on a replay.
-        $reference = is_string($refund->id ?? null) ? $refund->id : ($charge->id ?? null);
+        $reference = is_string($refund->id ?? null) ? $refund->id : null;
+
+        if ($reference === null) {
+            // `charge.refunds` has not been expanded by default since API
+            // version 2022-11-15, so in production this event usually names
+            // no `re_…` at all — and the catch-up of #235 lists the same
+            // money *by* its `re_…`. Two paths, two keys, two rows for one
+            // refund (fix round 1, review finding 3). Asking the seam for
+            // the refund list is what makes them agree, and it is the same
+            // question `settled()` and the reconciliation ask.
+            if ($this->catchUpOnReversals($payment, $recordReversal)) {
+                return response()->json(['received' => true]);
+            }
+
+            // Only if Stripe could not be asked at all: the charge's own id
+            // still identifies this event uniquely, so the reversal is
+            // recorded rather than lost. `StripeReversalCatchUp` knows about
+            // this fallback and skips a refund whose charge already carries a
+            // row, so the later sweep does not add a second one.
+            $reference = $charge->id ?? null;
+        }
 
         if (! is_string($reference)) {
             return response()->json(['received' => true]);

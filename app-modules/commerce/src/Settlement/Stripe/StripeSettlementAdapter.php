@@ -193,10 +193,35 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
     }
 
     /**
+     * Stripe PaymentIntent statuses that mean the attempt will not settle:
+     * `requires_payment_method` is where a refused asynchronous payment
+     * lands (the intent asks for another method), `canceled` is the
+     * terminal give-up. `processing` and `requires_action` are deliberately
+     * absent — money still in flight must never be called off.
+     *
+     * Shared with `ReconcilePayments`, which asks the same question of the
+     * same seam on a schedule: the two must not be able to drift.
+     *
+     * @var list<string>
+     */
+    public const array REFUSED_INTENT_STATUSES = ['requires_payment_method', 'canceled'];
+
+    /**
      * #231: the sweep asks before it cancels. `payment_status` is the same
      * field `StripeWebhookController::settled()` gates on — with a
-     * delayed-notification method a session reaches `complete` while still
-     * `unpaid`, so the session's own `status` cannot answer this.
+     * delayed-notification method (SEPA debit, bank transfer) a session
+     * reaches `complete` while still `unpaid`, so the session's own `status`
+     * cannot answer this on its own.
+     *
+     * **`unpaid` is therefore not "not paid"** (fix round 1, review finding
+     * 1). A completed session whose intent is still `processing` is money on
+     * its way: calling that `NotPaid` would have the sweep cancel the order
+     * and mail the buyer mid-transfer, which is the very class of failure
+     * #231 was filed for. Only an intent that has actually given up —
+     * `REFUSED_INTENT_STATUSES`, the same list `ReconcilePayments` fails a
+     * pending payment on — makes it `NotPaid`, and so does a session that
+     * was never completed at all. Mollie's sibling draws the same line for
+     * `pending`/`authorized`.
      *
      * Any failure at all is `Undecided`, never `NotPaid`: an outage, a
      * rejected key or a session id Stripe does not recognise all mean "we
@@ -222,9 +247,20 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
             return HostedPaymentState::Undecided;
         }
 
-        return $session['payment_status'] === 'unpaid'
-            ? HostedPaymentState::NotPaid
-            : HostedPaymentState::Paid;
+        if ($session['payment_status'] !== 'unpaid') {
+            return HostedPaymentState::Paid;
+        }
+
+        // Completed and unpaid: a delayed-notification method. The intent is
+        // the only thing that can say whether it is still coming. A session
+        // Stripe declined to expand an intent for says nothing either, which
+        // is also "we do not know".
+        if ($session['status'] === 'complete'
+            && ! in_array($session['payment_intent_status'], self::REFUSED_INTENT_STATUSES, true)) {
+            return HostedPaymentState::Undecided;
+        }
+
+        return HostedPaymentState::NotPaid;
     }
 
     public function refund(

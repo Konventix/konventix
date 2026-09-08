@@ -360,7 +360,7 @@ final class CartSweepTestAdapter implements ProvidesHostedCheckout, SettlementAd
  *
  * @return array{0: Cart, 1: Order, 2: Payment}
  */
-function cartSweepTestOpenHostedCheckout(HostedPaymentState $state): array
+function cartSweepTestOpenHostedCheckout(HostedPaymentState $state, string $sessionId = 'cs_sweep_1'): array
 {
     test()->withBrand();
 
@@ -382,7 +382,7 @@ function cartSweepTestOpenHostedCheckout(HostedPaymentState $state): array
     $payment = Payment::factory()->create([
         'order_id' => $order->id,
         'provider' => SettlementAccount::PROVIDER_STRIPE,
-        'external_id' => 'cs_sweep_1',
+        'external_id' => $sessionId,
         'amount' => '119.00',
         'currency' => 'EUR',
     ]);
@@ -427,6 +427,44 @@ it('leaves the order standing when the PSP cannot say whether the session was pa
         ->and(CartSweepTestAdapter::$asked)->toBe(1)
         ->and($order->fresh()->status)->toBe(OrderStatus::Pending)
         ->and($cart->fresh()->status)->toBe(CartStatus::CheckedOut);
+});
+
+it('stops asking once the run has spent its probe budget (#231)', function (): void {
+    // An outage cancels nothing, so the candidate set only grows and the next
+    // run would make more sequential provider calls than the last. Past the
+    // budget the run simply stops asking; those orders keep their seats for
+    // another quarter of an hour (fix round 1, review finding 4).
+    config(['commerce.sweeps.probe_budget' => 1]);
+
+    [, $first] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Undecided, 'cs_sweep_budget_1');
+    [, $second] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Undecided, 'cs_sweep_budget_2');
+
+    CartSweepTestAdapter::$asked = 0;
+
+    $expiredCount = app(ExpireCarts::class)->handle();
+
+    expect($expiredCount)->toBe(0)
+        ->and(CartSweepTestAdapter::$asked)->toBe(1)
+        // Not asked is not "not paid": both orders stand.
+        ->and($first->fresh()->status)->toBe(OrderStatus::Pending)
+        ->and($second->fresh()->status)->toBe(OrderStatus::Pending);
+});
+
+it('cancels an order the PSP has never been able to answer for once the hold runs out (#231)', function (): void {
+    // The release valve: "we do not know" must not hold a seat, a quota and
+    // stock for the length of an outage. Money that did move comes back as
+    // unapplied money the console shows and can refund (#6).
+    config(['commerce.sweeps.unknown_payment_grace_hours' => 24]);
+
+    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Undecided);
+
+    $order->forceFill(['created_at' => now()->subDays(2)])->save();
+
+    $expiredCount = app(ExpireCarts::class)->handle();
+
+    expect($expiredCount)->toBe(1)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($cart->fresh()->status)->toBe(CartStatus::Expired);
 });
 
 it('cancels the order once the PSP says nothing was paid', function (): void {

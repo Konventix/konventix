@@ -39,7 +39,7 @@ final class CheckoutPageTestFakeStripe implements StripeApi
      * Nothing took this payment's money back (#235). Every fake here answers
      * the empty pair unless its own test says otherwise.
      *
-     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
      */
     public function fetchPaymentIntentReversals(string $paymentIntentId): array
     {

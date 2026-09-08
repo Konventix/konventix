@@ -69,6 +69,11 @@ final class ExpireCarts
 
     public function handle(): int
     {
+        // Opens the run's provider-call budget (#231, fix round 1): a slow
+        // PSP must not turn one scheduled command into hundreds of
+        // sequential HTTP calls.
+        $this->probe->startRun();
+
         return $this->expireOpenCarts() + $this->expireCheckedOutCarts();
     }
 
@@ -232,15 +237,30 @@ final class ExpireCarts
         }
 
         if ($state === HostedPaymentState::Undecided) {
-            Log::warning('Cart sweep left an order standing: the provider could not say whether its hosted payment was paid (#231).', [
+            if (! $this->probe->holdExpired($order)) {
+                Log::warning('Cart sweep left an order standing: the provider could not say whether its hosted payment was paid (#231).', [
+                    'order_id' => $order->id,
+                    'brand_id' => $order->brand_id,
+                    'payment_id' => $payment->id,
+                    'provider' => $payment->provider,
+                    'external_id' => $payment->external_id,
+                ]);
+
+                return false;
+            }
+
+            // The release valve (fix round 1, review finding 4): "we do not
+            // know" cannot hold a seat for ever. Money that did move is found
+            // by `commerce:reconcile-payments` and lands as unapplied money
+            // the console shows and can refund (#6, ADR-0057 point 9).
+            Log::warning('Cart sweep cancelled an order the provider never answered for; check it for unapplied money (#231).', [
                 'order_id' => $order->id,
                 'brand_id' => $order->brand_id,
                 'payment_id' => $payment->id,
                 'provider' => $payment->provider,
                 'external_id' => $payment->external_id,
+                'order_created_at' => $order->created_at?->toIso8601String(),
             ]);
-
-            return false;
         }
 
         return true;

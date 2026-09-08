@@ -26,6 +26,7 @@ use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Models\StripeSettings;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
+use Konventix\Commerce\Settlement\Stripe\StripeReversalCatchUp;
 use Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents;
 use Konventix\Platform\Models\Operator;
 
@@ -44,7 +45,7 @@ const STRIPE_WEBHOOK_TEST_SECRET = 'whsec_test_secret';
  */
 final class StripeWebhookTestFakeApi implements StripeApi
 {
-    /** @var array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>} */
+    /** @var array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>} */
     public array $reversals = ['disputes' => [], 'refunds' => []];
 
     /** @var list<string> */
@@ -61,7 +62,7 @@ final class StripeWebhookTestFakeApi implements StripeApi
     }
 
     /**
-     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
      */
     public function fetchPaymentIntentReversals(string $paymentIntentId): array
     {
@@ -475,6 +476,92 @@ it('records a refund made in the Stripe dashboard as an external refund', functi
         ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
 
     Event::assertDispatched(OrderRefunded::class, fn (OrderRefunded $e): bool => $e->whole === true);
+});
+
+it('keys a dashboard refund on the refund id even when Stripe did not expand it (#235, #247)', function (): void {
+    // `charge.refunds` has not been expanded by default since API version
+    // 2022-11-15, so this is the shape production actually delivers. Keying
+    // the row on the *charge* id here while the #235 catch-up keys the same
+    // money on its `re_…` produced two rows for one refund (fix round 1,
+    // review finding 3).
+    [$order] = stripeWebhookTestSettled();
+    Invoice::factory()->create(['order_id' => $order->id]);
+
+    $stripe = new StripeWebhookTestFakeApi;
+    $stripe->reversals = [
+        'disputes' => [],
+        'refunds' => [[
+            'id' => 're_unexpanded_1',
+            'amount' => 11900,
+            'currency' => 'eur',
+            'reason' => 'requested_by_customer',
+            'charge' => 'ch_test_1',
+            'created' => Carbon::parse('2026-09-07 09:00:00')->getTimestamp(),
+        ]],
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    Event::fake([OrderRefunded::class]);
+
+    stripeWebhookTestPostObject('charge.refunded', 'charge', [
+        'id' => 'ch_test_1',
+        'payment_intent' => 'pi_test_settled',
+        'amount' => 11900,
+        'amount_refunded' => 11900,
+        'currency' => 'eur',
+    ])->assertOk();
+
+    $reversal = PaymentReversal::withoutBrandScope()->sole();
+
+    expect($stripe->intentFetches)->toBe(['pi_test_settled'])
+        ->and($reversal->provider_reference)->toBe('re_unexpanded_1')
+        ->and($reversal->kind)->toBe(ReversalKind::ExternalRefund)
+        ->and((string) $reversal->amount)->toBe('119.00')
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
+});
+
+it('falls back to the charge id only when Stripe cannot be asked, and the sweep then adds nothing (#235)', function (): void {
+    // The documented fallback: the money must be recorded even when the
+    // refund list cannot be read. Both paths still meet, because the
+    // catch-up skips a refund whose charge already carries a row.
+    [$order, $payment] = stripeWebhookTestSettled();
+
+    app()->bind(StripeApi::class, function (): never {
+        throw new RuntimeException('Stripe is unreachable');
+    });
+
+    stripeWebhookTestPostObject('charge.refunded', 'charge', [
+        'id' => 'ch_test_1',
+        'payment_intent' => 'pi_test_settled',
+        'amount' => 11900,
+        'amount_refunded' => 11900,
+        'currency' => 'eur',
+    ])->assertOk();
+
+    expect(PaymentReversal::withoutBrandScope()->sole()->provider_reference)->toBe('ch_test_1')
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
+
+    // Stripe comes back, and the sweep of #235 lists the same money under
+    // its refund id. It must recognise the charge's row rather than record
+    // a second reversal for one refund.
+    $stripe = new StripeWebhookTestFakeApi;
+    $stripe->reversals = [
+        'disputes' => [],
+        'refunds' => [[
+            'id' => 're_unexpanded_1',
+            'amount' => 11900,
+            'currency' => 'eur',
+            'reason' => null,
+            'charge' => 'ch_test_1',
+            'created' => Carbon::parse('2026-09-07 09:00:00')->getTimestamp(),
+        ]],
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    expect(app(StripeReversalCatchUp::class)->reversalsFor($payment->refresh()))->toBe([]);
 });
 
 it('ignores a charge refund that our own RefundOrder already explains', function (): void {
