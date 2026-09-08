@@ -62,6 +62,11 @@ const props = defineProps<Props>();
  * used to name the *application's* zone and echo the value converted out of
  * it, which confirmed the wrong number rather than catching it; it now names
  * the operator's own zone, because that is the clock the field speaks.
+ *
+ * A wall clock inside a DST gap — 02:30 on the spring-forward night — is
+ * shifted to the hour that does exist, so the echo differs from what was
+ * typed. There is no other honest answer for a sales window, and the hint
+ * says so rather than letting the field look like it lost the value.
  */
 const salesStartEcho = computed(() =>
     formatDateTime(toInstant(form.salesStart)),
@@ -504,7 +509,9 @@ function submit(): void {
                             >
                                 Times in your timezone ({{ browserTimezone }}).
                                 <template v-if="salesStartEcho">
-                                    = {{ salesStartEcho }}.
+                                    = {{ salesStartEcho }} — a time that does
+                                    not exist on that date moves to the next
+                                    one.
                                 </template>
                                 Before this, the landing page announces the type
                                 instead of linking to it.
@@ -526,7 +533,8 @@ function submit(): void {
                             >
                                 Times in your timezone ({{ browserTimezone }}).
                                 <template v-if="salesEndEcho">
-                                    = {{ salesEndEcho }}.
+                                    = {{ salesEndEcho }} — a time that does not
+                                    exist on that date moves to the next one.
                                 </template>
                                 Must be after the start. After it, the type
                                 disappears from the landing page and a new

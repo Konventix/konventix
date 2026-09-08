@@ -372,6 +372,32 @@ BaFin/ZAG licensing.
   that path does not run `guardNotCheckedIn()` — without ADR-0037's
   check-in guard, consistent with how a direct order's whole refund has
   always been able to reach an already checked-in registration.
+
+  **The record commits before the announcement, and the announcement is a
+  queued job** (#236). The provider is called first, then the credit note,
+  the `refunded` status and the events are written in one transaction, and
+  `RelayRefundEvents` is dispatched with `->afterCommit()` — which fires on
+  the **outermost** transaction, so the `RecordPaymentReversal` caller is
+  covered too, and runs immediately when there is none. The money has
+  already moved by then: a consumer that throws must be an error somebody
+  sees, never a rollback of a refund the provider has executed. Order
+  `01m1zv9ryqhh04qnx7e3szpb78` on dev sat at `paid` with 11.90 EUR back on
+  the payer's card because it used to be one transaction. Inside the relay
+  every event is dispatched before any failure is raised, as one
+  `RefundEventRelayFailedException`, so a broken consumer on a cart order's
+  first line cannot silence the remaining lines.
+
+  *The residual window.* The relay being a queued job puts Horizon's retries
+  behind it, and a fan-out that keeps failing lands in `failed_jobs` where an
+  operator can see and replay it. What is still unowned is the moment between
+  the commit and the push: an OOM or a worker recycle in that window leaves
+  an order `refunded` with its registration confirmed and its quota consumed,
+  and nothing to retry it. This is accepted rather than solved — an outbox
+  table is the solution and is not worth its weight yet. The backstop is
+  reconciliation: an order that is `refunded` while the registration it
+  settles is not cancelled is a detectable state, and a
+  `commerce:reconcile-refunded-orders` sweep is owed for it. Until it exists,
+  `failed_jobs` and the Pulse exception rows are where such a refund shows up.
 - **`Settlement\PayLink`** answers where an unpaid order is paid: a
   registration order's public checkout, every other order's own
   `/pay/order/{order}` page (`CheckoutController::showOrder()`), which

@@ -121,6 +121,9 @@ describe('toInstant', () => {
 });
 
 describe('toLocalDateTimeInput', () => {
+    // A tautology of the two helpers on its own — it pins that they are each
+    // other's inverse, nothing more. The offset case below is the one
+    // carrying the weight (review nit 10).
     it('puts a stored instant back as the wall clock that produced it', () => {
         expect(toLocalDateTimeInput(toInstant('2026-09-08T10:17'))).toBe(
             '2026-09-08T10:17',
