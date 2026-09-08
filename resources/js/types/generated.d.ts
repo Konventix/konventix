@@ -310,7 +310,8 @@ declare namespace Konventix {
                 | 'payment-reconciled'
                 | 'payment-reversed'
                 | 'dispute-opened'
-                | 'payment-unapplied';
+                | 'payment-unapplied'
+                | 'sweep-cancelled-unsettled';
             export type OrderStatus =
                 | 'pending'
                 | 'paid'

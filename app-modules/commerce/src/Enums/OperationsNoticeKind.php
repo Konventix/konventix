@@ -48,4 +48,14 @@ enum OperationsNoticeKind: string
      * order cannot take it; what happens next is the operator's decision.
      */
     case PaymentUnapplied = 'payment-unapplied';
+
+    /**
+     * #231: an expiry sweep cancelled an order without the provider ever
+     * confirming what happened to its money — it was unreachable for the
+     * whole grace, or it reported the payment as still travelling until the
+     * long horizon ran out. The seat had to be released; whether the money
+     * moved is now the operator's question, and the answer arrives as
+     * unapplied money if it did (ADR-0057 point 9).
+     */
+    case SweepCancelledUnsettled = 'sweep-cancelled-unsettled';
 }

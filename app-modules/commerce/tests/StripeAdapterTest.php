@@ -392,16 +392,16 @@ it('answers the sweep about a hosted Stripe session', function (
 })->with([
     'paid' => ['complete', 'paid', 'succeeded', HostedPaymentState::Paid],
     'nothing to pay' => ['complete', 'no_payment_required', null, HostedPaymentState::Paid],
-    'SEPA still travelling' => ['complete', 'unpaid', 'processing', HostedPaymentState::Undecided],
-    'waiting on the payer' => ['complete', 'unpaid', 'requires_action', HostedPaymentState::Undecided],
-    'intent not expanded' => ['complete', 'unpaid', null, HostedPaymentState::Undecided],
+    'SEPA still travelling' => ['complete', 'unpaid', 'processing', HostedPaymentState::InFlight],
+    'waiting on the payer' => ['complete', 'unpaid', 'requires_action', HostedPaymentState::InFlight],
+    'intent not expanded' => ['complete', 'unpaid', null, HostedPaymentState::InFlight],
     'refused' => ['complete', 'unpaid', 'requires_payment_method', HostedPaymentState::NotPaid],
     'given up' => ['complete', 'unpaid', 'canceled', HostedPaymentState::NotPaid],
     'never finished' => ['open', 'unpaid', null, HostedPaymentState::NotPaid],
     'session expired' => ['expired', 'unpaid', null, HostedPaymentState::NotPaid],
 ]);
 
-it('answers the sweep Undecided when Stripe cannot be reached at all (#231)', function (): void {
+it('answers the sweep Unreachable when Stripe cannot be reached at all (#231)', function (): void {
     [, $order] = stripeAdapterTestSetup();
 
     $payment = Payment::factory()->create([
@@ -415,7 +415,7 @@ it('answers the sweep Undecided when Stripe cannot be reached at all (#231)', fu
     app()->instance(StripeApi::class, new StripeAdapterTestUnreachableApi);
 
     expect(app(StripeSettlementAdapter::class)->hostedPaymentState($payment))
-        ->toBe(HostedPaymentState::Undecided);
+        ->toBe(HostedPaymentState::Unreachable);
 });
 
 it('has nothing to ask about a payment that never reached a hosted page (#231)', function (): void {

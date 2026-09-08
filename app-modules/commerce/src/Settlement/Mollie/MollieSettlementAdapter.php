@@ -90,9 +90,11 @@ final class MollieSettlementAdapter implements ProvidesHostedCheckout, Settlemen
      * `authorized` are money still on its way, which is not a reason to
      * cancel and not a settlement either — the next sweep asks again.
      *
-     * Every failure is `Undecided` rather than `NotPaid`: a rejected key or
-     * an unreachable Mollie means "we do not know", and not knowing must
-     * not cancel an order somebody paid for.
+     * Every failure is `Unreachable` rather than `NotPaid`: a rejected key
+     * or an unreachable Mollie means "we do not know", and not knowing must
+     * not cancel an order somebody paid for. Money Mollie says is still on
+     * its way is `InFlight`, which the sweep holds for a fortnight rather
+     * than a day (fix round 2, review NEW-2).
      */
     public function hostedPaymentState(Payment $payment): HostedPaymentState
     {
@@ -114,12 +116,12 @@ final class MollieSettlementAdapter implements ProvidesHostedCheckout, Settlemen
                 'reason' => $e->getMessage(),
             ]);
 
-            return HostedPaymentState::Undecided;
+            return HostedPaymentState::Unreachable;
         }
 
         return match ($snapshot->status) {
             'paid' => HostedPaymentState::Paid,
-            'pending', 'authorized' => HostedPaymentState::Undecided,
+            'pending', 'authorized' => HostedPaymentState::InFlight,
             default => HostedPaymentState::NotPaid,
         };
     }

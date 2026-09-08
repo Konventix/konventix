@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Konventix\Commerce\Actions\Concerns\AsksThePspBeforeCancelling;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
-use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CartExpired;
 use Konventix\Commerce\Events\CartLineExpired;
@@ -62,6 +61,8 @@ use Konventix\Commerce\Settlement\HostedPaymentProbe;
  */
 final class ExpireCarts
 {
+    use AsksThePspBeforeCancelling;
+
     public function __construct(
         private readonly HostedPaymentProbe $probe,
         private readonly RecordPaymentSuccess $recordSuccess,
@@ -139,7 +140,7 @@ final class ExpireCarts
             // Asked before the transaction, never inside it: this is a
             // network call, and holding a row lock across one would let a
             // provider's latency block whatever else touches the order.
-            if (! $this->providerSaysThisOrderMayBeCancelled($cart)) {
+            if (! $this->askTheProviderAboutCart($cart)) {
                 continue;
             }
 
@@ -189,22 +190,17 @@ final class ExpireCarts
     }
 
     /**
-     * The #231 question, asked once per cart this pass is about to cancel.
+     * The #231 question, asked once per cart this pass is about to cancel —
+     * the decision itself lives in `AsksThePspBeforeCancelling`, shared with
+     * the registration-order sweep.
      *
-     * `false` means "leave this cart alone this run", for one of two very
-     * different reasons — the money is at the provider and has just been
-     * booked, or the provider could not say. Both are recorded at warning
-     * level: an operator has to be able to see that the notification path
-     * is lossy, which is the only thing a sweep can say about it.
-     *
-     * Booking here is the ordinary settlement path, not a shortcut:
-     * `RecordPaymentSuccess` writes the payment, the order and `OrderPaid`
-     * exactly as the lost webhook would have, so the buyer gets the
-     * confirmation instead of a cancellation mail. The cart stays
-     * `checked_out` — a paid cart is never swept, and releasing its lines
-     * would hand away the seats that were just paid for.
+     * A cart is asked about through its order, and a cart with no order can
+     * be swept as before. Note what is *not* done when the answer is `Paid`:
+     * the cart stays `checked_out` and `releaseCartLines()` is never
+     * reached, so the seats and the stock that were just paid for are not
+     * handed back.
      */
-    private function providerSaysThisOrderMayBeCancelled(Cart $cart): bool
+    private function askTheProviderAboutCart(Cart $cart): bool
     {
         if ($cart->checked_out_order_id === null) {
             return true;
@@ -216,54 +212,7 @@ final class ExpireCarts
             return true;
         }
 
-        [$state, $payment] = $this->probe->ask($order);
-
-        if ($payment === null) {
-            return true;
-        }
-
-        if ($state === HostedPaymentState::Paid) {
-            Log::warning('Cart sweep found a hosted payment the provider calls paid; booking it instead of cancelling (#231).', [
-                'order_id' => $order->id,
-                'brand_id' => $order->brand_id,
-                'payment_id' => $payment->id,
-                'provider' => $payment->provider,
-                'external_id' => $payment->external_id,
-            ]);
-
-            $this->recordSuccess->handle($payment);
-
-            return false;
-        }
-
-        if ($state === HostedPaymentState::Undecided) {
-            if (! $this->probe->holdExpired($order)) {
-                Log::warning('Cart sweep left an order standing: the provider could not say whether its hosted payment was paid (#231).', [
-                    'order_id' => $order->id,
-                    'brand_id' => $order->brand_id,
-                    'payment_id' => $payment->id,
-                    'provider' => $payment->provider,
-                    'external_id' => $payment->external_id,
-                ]);
-
-                return false;
-            }
-
-            // The release valve (fix round 1, review finding 4): "we do not
-            // know" cannot hold a seat for ever. Money that did move is found
-            // by `commerce:reconcile-payments` and lands as unapplied money
-            // the console shows and can refund (#6, ADR-0057 point 9).
-            Log::warning('Cart sweep cancelled an order the provider never answered for; check it for unapplied money (#231).', [
-                'order_id' => $order->id,
-                'brand_id' => $order->brand_id,
-                'payment_id' => $payment->id,
-                'provider' => $payment->provider,
-                'external_id' => $payment->external_id,
-                'order_created_at' => $order->created_at?->toIso8601String(),
-            ]);
-        }
-
-        return true;
+        return $this->providerSaysThisOrderMayBeCancelled($order, 'Cart sweep');
     }
 
     /**

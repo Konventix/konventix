@@ -223,10 +223,12 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
      * was never completed at all. Mollie's sibling draws the same line for
      * `pending`/`authorized`.
      *
-     * Any failure at all is `Undecided`, never `NotPaid`: an outage, a
+     * Any failure at all is `Unreachable`, never `NotPaid`: an outage, a
      * rejected key or a session id Stripe does not recognise all mean "we
      * do not know", and not knowing must not cancel an order somebody paid
-     * for.
+     * for. Money the intent says is still travelling is `InFlight`, which
+     * the sweep holds far longer than a provider that simply went quiet
+     * (fix round 2, review NEW-2).
      */
     public function hostedPaymentState(Payment $payment): HostedPaymentState
     {
@@ -244,7 +246,7 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
                 'reason' => $e->getMessage(),
             ]);
 
-            return HostedPaymentState::Undecided;
+            return HostedPaymentState::Unreachable;
         }
 
         if ($session['payment_status'] !== 'unpaid') {
@@ -257,7 +259,7 @@ final class StripeSettlementAdapter implements ProvidesHostedCheckout, Settlemen
         // is also "we do not know".
         if ($session['status'] === 'complete'
             && ! in_array($session['payment_intent_status'], self::REFUSED_INTENT_STATUSES, true)) {
-            return HostedPaymentState::Undecided;
+            return HostedPaymentState::InFlight;
         }
 
         return HostedPaymentState::NotPaid;

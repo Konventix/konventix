@@ -121,7 +121,7 @@ final class RegistrationSweepTestAdapter implements ProvidesHostedCheckout, Sett
  * An order past the window whose hosted payment is still open — the case
  * #231 is about, on this sweep rather than the cart one.
  */
-function expiryTestOrderWithOpenHostedPayment(HostedPaymentState $state): Order
+function expiryTestOrderWithOpenHostedPayment(HostedPaymentState $state, string $sessionId = 'tr_sweep_1'): Order
 {
     RegistrationSweepTestAdapter::$state = $state;
     RegistrationSweepTestAdapter::$asked = 0;
@@ -132,7 +132,7 @@ function expiryTestOrderWithOpenHostedPayment(HostedPaymentState $state): Order
     Payment::factory()->create([
         'order_id' => $order->id,
         'provider' => SettlementAccount::PROVIDER_MOLLIE,
-        'external_id' => 'tr_sweep_1',
+        'external_id' => $sessionId,
         'amount' => (string) $order->total_gross,
         'currency' => $order->currency,
     ]);
@@ -161,7 +161,7 @@ it('leaves a registration order standing while the PSP cannot say (#231)', funct
     $this->withBrand();
     expiryTestHostedAccount();
 
-    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::Undecided);
+    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::Unreachable);
 
     Event::fake([OrderCancelled::class]);
 
@@ -170,6 +170,83 @@ it('leaves a registration order standing while the PSP cannot say (#231)', funct
     expect($order->refresh()->status)->toBe(OrderStatus::Pending);
 
     Event::assertNotDispatched(OrderCancelled::class);
+});
+
+it('never cancels a registration order this run did not ask the PSP about (#231)', function (): void {
+    // The same guarantee as the cart sweep, tested on the sweep that
+    // releases registration quota (fix round 2, review NEW-5): out of
+    // budget is not a verdict.
+    $this->withBrand();
+    expiryTestHostedAccount();
+
+    config([
+        'commerce.sweeps.probe_budget' => 0,
+        'commerce.sweeps.unknown_payment_grace_hours' => 24,
+    ]);
+
+    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::NotPaid);
+    $order->forceFill(['created_at' => now()->subDays(5)])->save();
+    RegistrationSweepTestAdapter::$asked = 0;
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending)
+        ->and(RegistrationSweepTestAdapter::$asked)->toBe(0);
+
+    Event::assertNotDispatched(OrderCancelled::class);
+});
+
+it('holds a registration order the PSP says is still travelling past the unreachable grace (#231)', function (): void {
+    // Two clocks on this sweep too (fix round 2, review NEW-2 and NEW-5):
+    // a bank transfer takes banking days, and the hours a silent provider
+    // gets would cancel exactly those.
+    $this->withBrand();
+    expiryTestHostedAccount();
+
+    config([
+        'commerce.sweeps.unknown_payment_grace_hours' => 24,
+        'commerce.sweeps.in_flight_grace_days' => 14,
+    ]);
+
+    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::InFlight);
+    $order->forceFill(['created_at' => now()->subDays(3)])->save();
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+
+    // Only its own, much longer horizon ends it.
+    $order->forceFill(['created_at' => now()->subDays(15)])->save();
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Cancelled);
+});
+
+it('releases a registration order a silent PSP never settled once the grace runs out (#231)', function (): void {
+    $this->withBrand();
+    expiryTestHostedAccount();
+
+    config(['commerce.sweeps.unknown_payment_grace_hours' => 24]);
+
+    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::Unreachable);
+    $order->forceFill(['created_at' => now()->subDays(2)])->save();
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Cancelled);
+
+    // The quota comes back the ordinary way: Registration keys on this
+    // reason code, so the release valve must not invent one of its own.
+    Event::assertDispatched(
+        OrderCancelled::class,
+        fn (OrderCancelled $e): bool => $e->orderId === $order->id
+            && $e->reasonCode === ExpireRegistrationOrders::REASON_PAYMENT_WINDOW_EXPIRED,
+    );
 });
 
 it('cancels a pending direct registration order past the payment window', function (): void {

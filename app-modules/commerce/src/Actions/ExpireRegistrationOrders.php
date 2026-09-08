@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Konventix\Commerce\Enums\HostedPaymentState;
+use Konventix\Commerce\Actions\Concerns\AsksThePspBeforeCancelling;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Models\Invoice;
@@ -90,6 +89,8 @@ use Konventix\Commerce\Settlement\PaymentWindow;
  */
 final class ExpireRegistrationOrders
 {
+    use AsksThePspBeforeCancelling;
+
     /**
      * The reason code `OrderCancelled` carries. Registration keys its
      * cancellation listeners on the reason, so this string is contract.
@@ -117,6 +118,10 @@ final class ExpireRegistrationOrders
     {
         $cancelled = 0;
 
+        // Opens the run's provider-call budget (#231): a slow PSP must not
+        // turn one scheduled command into hundreds of sequential calls.
+        $this->probe->startRun();
+
         // Resolved once, ahead of the query, and applied *in SQL* (fix round
         // 2, whole-branch review finding 4). Filtering this in PHP meant a
         // bank-transfer brand's orders were streamed on every run, skipped,
@@ -124,9 +129,6 @@ final class ExpireRegistrationOrders
         // they never leave the result set, and the sweep's working set grew
         // without bound. One query over `settlement_accounts` lets Postgres
         // exclude them instead.
-        // Opens the run's provider-call budget (#231, fix round 1).
-        $this->probe->startRun();
-
         $hostedBrandIds = $this->paymentWindow->brandIdsOfferingHostedCheckout();
 
         if ($hostedBrandIds === []) {
@@ -160,7 +162,7 @@ final class ExpireRegistrationOrders
             // sweep that cancels without asking cancels a paid order. Asked
             // outside the transaction — a network call must not be made
             // while a row lock is held.
-            if (! $this->providerSaysThisOrderMayBeCancelled($order)) {
+            if (! $this->providerSaysThisOrderMayBeCancelled($order, 'Registration-order sweep')) {
                 continue;
             }
 
@@ -200,65 +202,5 @@ final class ExpireRegistrationOrders
         }
 
         return $cancelled;
-    }
-
-    /**
-     * The provider's word before the deadline's (#231). `false` leaves the
-     * order standing for this run: either the money is at the provider and
-     * has just been booked through the ordinary success path, or the
-     * provider could not say and the next run asks again. Both are logged
-     * at warning level, because a lost notification is an operational fact
-     * an operator has to be able to see.
-     */
-    private function providerSaysThisOrderMayBeCancelled(Order $order): bool
-    {
-        [$state, $payment] = $this->probe->ask($order);
-
-        if ($payment === null) {
-            return true;
-        }
-
-        if ($state === HostedPaymentState::Paid) {
-            Log::warning('Registration-order sweep found a hosted payment the provider calls paid; booking it instead of cancelling (#231).', [
-                'order_id' => $order->id,
-                'brand_id' => $order->brand_id,
-                'payment_id' => $payment->id,
-                'provider' => $payment->provider,
-                'external_id' => $payment->external_id,
-            ]);
-
-            $this->recordSuccess->handle($payment);
-
-            return false;
-        }
-
-        if ($state === HostedPaymentState::Undecided) {
-            if (! $this->probe->holdExpired($order)) {
-                Log::warning('Registration-order sweep left an order standing: the provider could not say whether its hosted payment was paid (#231).', [
-                    'order_id' => $order->id,
-                    'brand_id' => $order->brand_id,
-                    'payment_id' => $payment->id,
-                    'provider' => $payment->provider,
-                    'external_id' => $payment->external_id,
-                ]);
-
-                return false;
-            }
-
-            // The release valve (fix round 1, review finding 4), the same one
-            // `ExpireCarts` uses: a provider that never answers must not hold
-            // the quota for ever, and money that did move comes back as
-            // unapplied money the console can refund (#6).
-            Log::warning('Registration-order sweep cancelled an order the provider never answered for; check it for unapplied money (#231).', [
-                'order_id' => $order->id,
-                'brand_id' => $order->brand_id,
-                'payment_id' => $payment->id,
-                'provider' => $payment->provider,
-                'external_id' => $payment->external_id,
-                'order_created_at' => $order->created_at?->toIso8601String(),
-            ]);
-        }
-
-        return true;
     }
 }

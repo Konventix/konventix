@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Konventix\Commerce\Actions\AddProductToCart;
 use Konventix\Commerce\Actions\ChangeCartLineQuantity;
@@ -31,6 +33,11 @@ use Konventix\Commerce\Settlement\CheckoutRedirect;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
+use Konventix\Identity\Events\UserRegistered;
+use Konventix\Identity\Models\User;
+use Konventix\Messaging\Jobs\SendQueuedMessage;
+use Konventix\Platform\Models\Permission as PermissionModel;
+use Konventix\Platform\Models\Role;
 
 /**
  * The cart and its reservation (ADR-0047, Task 9): a person-owned root that
@@ -396,6 +403,40 @@ function cartSweepTestOpenHostedCheckout(HostedPaymentState $state, string $sess
     return [$cart, $order, $payment];
 }
 
+/**
+ * A shop operator of `$brandId` — the recipient of the sweep's operations
+ * notice (#231's fourth criterion). Same shape as the reconciliation test's
+ * own holder.
+ */
+function cartSweepTestOperator(string $brandId): User
+{
+    PermissionModel::query()->firstOrCreate(['name' => 'commerce.manage-products', 'guard_name' => 'web']);
+
+    $role = Role::query()->create(['name' => 'Sweep Manager', 'guard_name' => 'web', 'brand_id' => $brandId]);
+    $role->givePermissionTo(['commerce.manage-products']);
+
+    $user = User::factory()->create();
+
+    event(new UserRegistered(
+        userId: $user->id,
+        brandId: $brandId,
+        email: $user->email,
+        displayName: $user->name,
+        username: $user->username,
+        locale: $user->locale,
+        registeredAt: now()->toIso8601String(),
+    ));
+
+    DB::table('model_has_roles')->insert([
+        'role_id' => $role->id,
+        'model_type' => $user->getMorphClass(),
+        'model_id' => $user->id,
+        'brand_id' => $brandId,
+    ]);
+
+    return $user;
+}
+
 it('books a checked-out cart\'s order instead of cancelling it when the PSP says the session was paid', function (): void {
     // The DEV incident of 2026-09-08: a Stripe session paid at 01:57 whose
     // webhook never arrived, cancelled by this sweep at 03:00:05 with the
@@ -419,7 +460,7 @@ it('books a checked-out cart\'s order instead of cancelling it when the PSP says
 it('leaves the order standing when the PSP cannot say whether the session was paid', function (): void {
     // Not knowing must never cancel an order somebody may have paid for;
     // the next run asks again.
-    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Undecided);
+    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Unreachable);
 
     $expiredCount = app(ExpireCarts::class)->handle();
 
@@ -436,8 +477,8 @@ it('stops asking once the run has spent its probe budget (#231)', function (): v
     // another quarter of an hour (fix round 1, review finding 4).
     config(['commerce.sweeps.probe_budget' => 1]);
 
-    [, $first] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Undecided, 'cs_sweep_budget_1');
-    [, $second] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Undecided, 'cs_sweep_budget_2');
+    [, $first] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Unreachable, 'cs_sweep_budget_1');
+    [, $second] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Unreachable, 'cs_sweep_budget_2');
 
     CartSweepTestAdapter::$asked = 0;
 
@@ -451,20 +492,79 @@ it('stops asking once the run has spent its probe budget (#231)', function (): v
 });
 
 it('cancels an order the PSP has never been able to answer for once the hold runs out (#231)', function (): void {
-    // The release valve: "we do not know" must not hold a seat, a quota and
-    // stock for the length of an outage. Money that did move comes back as
-    // unapplied money the console shows and can refund (#6).
+    // The release valve: a provider that stays silent must not hold a seat,
+    // a quota and stock for the length of an outage. Money that did move
+    // comes back as unapplied money the console shows and can refund (#6),
+    // and the operators are told this happened.
     config(['commerce.sweeps.unknown_payment_grace_hours' => 24]);
 
-    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Undecided);
+    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Unreachable);
+    $holder = cartSweepTestOperator($order->brand_id);
 
     $order->forceFill(['created_at' => now()->subDays(2)])->save();
+
+    Queue::fake();
 
     $expiredCount = app(ExpireCarts::class)->handle();
 
     expect($expiredCount)->toBe(1)
         ->and($order->fresh()->status)->toBe(OrderStatus::Cancelled)
         ->and($cart->fresh()->status)->toBe(CartStatus::Expired);
+
+    // #231's fourth criterion: the operator hears about an order called off
+    // without the provider ever saying what happened to its money.
+    Queue::assertPushedOn('messaging', SendQueuedMessage::class, function (SendQueuedMessage $job) use ($holder): bool {
+        $payload = $job->message->payload->toArray();
+
+        return $job->message->recipientId === $holder->id
+            && $job->message->templateKey === 'commerce.operations-notice'
+            && $payload['kind'] === 'sweep-cancelled-unsettled';
+    });
+});
+
+it('holds an order the PSP says is still travelling far past the unreachable grace (#231)', function (): void {
+    // SEPA direct debit and bank transfer take banking days. Cancelling one
+    // a day in would mail the buyer mid-transfer — the exact failure the PSP
+    // question was added to prevent.
+    config([
+        'commerce.sweeps.unknown_payment_grace_hours' => 24,
+        'commerce.sweeps.in_flight_grace_days' => 14,
+    ]);
+
+    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::InFlight);
+
+    $order->forceFill(['created_at' => now()->subDays(3)])->save();
+
+    expect(app(ExpireCarts::class)->handle())->toBe(0)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Pending)
+        ->and($cart->fresh()->status)->toBe(CartStatus::CheckedOut);
+
+    // Only its own, much longer horizon ends it.
+    $order->forceFill(['created_at' => now()->subDays(15)])->save();
+
+    expect(app(ExpireCarts::class)->handle())->toBe(1)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Cancelled);
+});
+
+it('never cancels an order this run did not ask the PSP about (#231)', function (): void {
+    // The budget manufactures no verdict: an order past position 50 in a
+    // run's candidate list is not an order the provider failed to answer
+    // for, and cancelling it would release a seat with no question asked at
+    // all — during an outage, which is exactly when the budget runs out.
+    config([
+        'commerce.sweeps.probe_budget' => 0,
+        'commerce.sweeps.unknown_payment_grace_hours' => 24,
+    ]);
+
+    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::NotPaid);
+
+    $order->forceFill(['created_at' => now()->subDays(5)])->save();
+    CartSweepTestAdapter::$asked = 0;
+
+    expect(app(ExpireCarts::class)->handle())->toBe(0)
+        ->and(CartSweepTestAdapter::$asked)->toBe(0)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Pending)
+        ->and($cart->fresh()->status)->toBe(CartStatus::CheckedOut);
 });
 
 it('cancels the order once the PSP says nothing was paid', function (): void {

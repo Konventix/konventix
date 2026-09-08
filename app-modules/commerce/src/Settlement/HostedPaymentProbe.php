@@ -74,25 +74,48 @@ final class HostedPaymentProbe
     }
 
     /**
-     * Whether an order the provider has never been able to answer for has
-     * waited long enough to be cancelled anyway (#231, fix round 1, review
-     * finding 4).
+     * Whether an order the provider has not settled has waited long enough
+     * to be cancelled anyway (#231, review finding 4) — and **the ceiling
+     * depends on what the provider said** (fix round 2, review NEW-2).
      *
-     * The release valve for an outage: `Undecided` on its own holds the
-     * seat, the quota and the stock for as long as the provider is unwell,
-     * and "for ever" is not an answer a sweep may give. Past
-     * `commerce.sweeps.unknown_payment_grace_hours` the order is called off
-     * like any other — safe, because money that did move is found by
-     * `commerce:reconcile-payments` and recorded as unapplied money
-     * (ADR-0057 point 9), which the console shows and can refund (#6).
+     * A provider that cannot be reached gets
+     * `commerce.sweeps.unknown_payment_grace_hours` (a day): silence must
+     * not hold a seat for the length of an outage. A provider that answers
+     * "the money is on its way" gets `commerce.sweeps.in_flight_grace_days`
+     * (a fortnight), because SEPA direct debit and bank transfer take
+     * banking days and the shorter clock would cancel exactly the payments
+     * the sweep's question exists to protect.
+     *
+     * Every other state — including `Unprobed`, the order this run never
+     * asked about (NEW-1) — has no valve at all: `Paid`, `NotPaid` and
+     * `Unanswerable` are decisions in themselves, and "we did not ask" is
+     * not evidence of anything.
+     *
+     * Both clocks run from `orders.created_at`, the only moment the row
+     * carries. That is deliberately conservative for the in-flight case
+     * (the payment page was opened after it) and it means the horizon is
+     * about the *order's* age, not a per-order tally of failed questions.
      */
-    public function holdExpired(Order $order): bool
+    public function holdExpired(Order $order, HostedPaymentState $state): bool
     {
-        $hours = config('commerce.sweeps.unknown_payment_grace_hours');
-        $hours = is_int($hours) && $hours >= 0 ? $hours : 24;
+        if ($order->created_at === null) {
+            return false;
+        }
 
-        return $order->created_at !== null
-            && $order->created_at->lte(now()->subHours($hours));
+        $deadline = match ($state) {
+            HostedPaymentState::Unreachable => now()->subHours($this->positiveConfig('commerce.sweeps.unknown_payment_grace_hours', 24)),
+            HostedPaymentState::InFlight => now()->subDays($this->positiveConfig('commerce.sweeps.in_flight_grace_days', 14)),
+            default => null,
+        };
+
+        return $deadline !== null && $order->created_at->lte($deadline);
+    }
+
+    private function positiveConfig(string $key, int $fallback): int
+    {
+        $value = config($key);
+
+        return is_int($value) && $value >= 0 ? $value : $fallback;
     }
 
     /**
@@ -123,11 +146,10 @@ final class HostedPaymentProbe
         }
 
         if ($this->budget <= 0) {
-            // Out of budget for this run: the honest answer is that we did
-            // not ask, which is `Undecided` — the order keeps its seat and
-            // the next run asks. Deliberately not `Unanswerable`, which
-            // would cancel it unasked.
-            return [HostedPaymentState::Undecided, $payment];
+            // Out of budget for this run: not an answer, and a state of its
+            // own so it can never reach a release valve (fix round 2, review
+            // NEW-1). The order waits for the next run.
+            return [HostedPaymentState::Unprobed, $payment];
         }
 
         $this->budget--;

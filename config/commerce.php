@@ -42,19 +42,30 @@ return [
     | scheduled command making hundreds of sequential HTTP calls while a
     | provider is slow.
     |
-    | `unknown_payment_grace_hours` is the release valve. An order whose
-    | provider has never been able to answer would otherwise hold its seat,
-    | its quota and its stock for as long as the outage lasts, so past this
-    | age it is cancelled anyway. That is safe because the money, if it did
-    | move, is found by `commerce:reconcile-payments` and recorded as
-    | unapplied money (ADR-0057 point 9), which the console shows and can
-    | refund (#6).
+    | `unknown_payment_grace_hours` is the release valve for a provider that
+    | cannot be *reached*. An order whose PSP stays silent would otherwise
+    | hold its seat, its quota and its stock for as long as the outage lasts,
+    | so past this age it is cancelled anyway and an operator is told. That
+    | is safe because the money, if it did move, is found by
+    | `commerce:reconcile-payments` and recorded as unapplied money
+    | (ADR-0057 point 9), which the console shows and can refund (#6).
+    |
+    | `in_flight_grace_days` is the separate, much longer horizon for a
+    | provider that *answers* — with "the money is on its way". SEPA direct
+    | debit and bank transfer take banking days, so the hours above would
+    | cancel exactly the payments the sweep's PSP question exists to
+    | protect. A fortnight is longer than any of those methods takes; past
+    | it the order is called off and an operator is told.
+    |
+    | An order the run never asked about (budget spent) reaches neither
+    | valve: not asking is not an answer.
     |
     */
 
     'sweeps' => [
         'probe_budget' => (int) env('COMMERCE_SWEEP_PROBE_BUDGET', 50),
         'unknown_payment_grace_hours' => (int) env('COMMERCE_UNKNOWN_PAYMENT_GRACE_HOURS', 24),
+        'in_flight_grace_days' => (int) env('COMMERCE_IN_FLIGHT_GRACE_DAYS', 14),
     ],
 
 ];
