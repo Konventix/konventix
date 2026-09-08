@@ -54,6 +54,36 @@ function paymentReversalTestPaid(): array
     return [$order, $payment];
 }
 
+/**
+ * #236 fix round 1, review finding 1: `RecordPaymentReversal` wraps
+ * `RecordRefund` in a transaction of its own, so dispatching "after
+ * `RecordRefund`'s own transaction" still ran the consumers inside the outer
+ * one — a consumer that threw rolled back the credit note, the `refunded`
+ * status *and* the `payment_reversals` row. On the ADR-0039 webhook path,
+ * where no brand is ever resolved, that is the likeliest place for the
+ * BrandScope trap to fire, so the guarantee has to hold here too.
+ */
+it('keeps an external refund recorded when a consumer throws, reversal row included (#236)', function (): void {
+    $this->withBrand();
+    [$order, $payment] = paymentReversalTestPaid();
+
+    Invoice::factory()->create(['order_id' => $order->id]);
+
+    Event::listen(OrderRefunded::class, function (): void {
+        throw new RuntimeException('the external-refund consumer blew up');
+    });
+
+    expect(fn () => paymentReversalTestRecord(
+        $payment,
+        ReversalKind::ExternalRefund,
+        reference: 're_relay_1',
+    ))->toThrow(RuntimeException::class, 'the external-refund consumer blew up');
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and(CreditNote::query()->where('order_id', $order->id)->count())->toBe(1)
+        ->and(PaymentReversal::query()->where('provider_reference', 're_relay_1')->count())->toBe(1);
+});
+
 it('stores a reversal with its casts and both relations', function (): void {
     $this->withBrand();
     [$order, $payment] = paymentReversalTestPaid();

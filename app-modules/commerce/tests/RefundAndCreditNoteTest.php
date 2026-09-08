@@ -19,6 +19,7 @@ use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Exceptions\CreditNoteRequiresInvoiceException;
 use Konventix\Commerce\Exceptions\RefundBlockedByCheckInException;
+use Konventix\Commerce\Exceptions\RefundEventRelayFailedException;
 use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
@@ -451,6 +452,54 @@ it('keeps the recorded refund when a consumer of OrderRefunded throws (#236)', f
 
     expect($order->refresh()->status)->toBe(OrderStatus::Refunded)
         ->and(CreditNote::query()->where('order_id', $order->id)->count())->toBe(1);
+});
+
+/**
+ * #236 fix round 1, review finding 3: a plain `foreach` over the events
+ * stopped at the first throwing consumer, so on a three-line cart order
+ * lines 2 and 3 never heard about the refund at all — they stayed confirmed
+ * with their quota consumed, and nothing rolled back or retried them. Each
+ * line is dispatched on its own now; the failures are collected and rethrown
+ * as one, so the job fails (and Horizon retries it) without any line being
+ * skipped silently.
+ */
+it('dispatches every line even when the first consumer throws (#236)', function (): void {
+    $this->withBrand();
+
+    $order = refundTestPaidCartOrder();
+
+    $first = (string) Str::ulid();
+    $second = (string) Str::ulid();
+
+    OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'position' => 1,
+        'settles_kind' => 'registration',
+        'settles_ref' => $first,
+    ]);
+    OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'position' => 2,
+        'settles_kind' => 'registration',
+        'settles_ref' => $second,
+    ]);
+
+    $seen = [];
+
+    Event::listen(OrderLineCancelled::class, function (OrderLineCancelled $event) use (&$seen, $first): void {
+        $seen[] = $event->refId;
+
+        if ($event->refId === $first) {
+            throw new RuntimeException('the first line\'s consumer blew up');
+        }
+    });
+
+    expect(fn () => app(RefundOrder::class)->handle($order, reasonCode: 'customer-request'))
+        ->toThrow(RefundEventRelayFailedException::class);
+
+    // Both lines heard about it, in position order, and the refund stands.
+    expect($seen)->toBe([$first, $second])
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded);
 });
 
 it('keeps the recorded refund when a consumer of OrderLineCancelled throws (#236)', function (): void {

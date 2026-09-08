@@ -74,12 +74,12 @@ final class RefundOrder
         //
         // Deliberately NOT wrapped in a transaction of this Action's own
         // (#236). `RecordRefund` commits the credit note, the status and the
-        // provider's act on its own, then dispatches the domain events. An
-        // outer transaction here would put those consumers back inside a
-        // transaction that their failure rolls back — which is exactly what
-        // left order 01m1zv9ryqhh04qnx7e3szpb78 at `paid` on dev after Stripe
-        // had already sent 11.90 EUR back. A failing consumer must surface as
-        // an error, never as an undo of money that is gone.
+        // provider's act on its own, and announces them only once the
+        // outermost transaction has committed. An outer transaction here
+        // would simply be that outermost one — harmless now that the
+        // guarantee lives in `RecordRefund` rather than in each caller (fix
+        // round 1, review finding 1), and still pointless: there is nothing
+        // above the record left to make atomic with it.
         return $this->recordRefund->handle(
             order: $order,
             reasonCode: $reasonCode,

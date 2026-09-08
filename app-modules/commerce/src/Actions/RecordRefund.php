@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
+use Konventix\Commerce\Jobs\RelayRefundEvents;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
@@ -49,9 +49,18 @@ use Konventix\Commerce\Models\OrderLine;
  * dev they did not: `CancelRegistrationOnOrderLineCancelled` threw inside the
  * console's refund request, the rollback took the credit note and the status
  * with it, and the order sat at `paid` with 11.90 EUR already back on the
- * card. Collecting the events and dispatching them after `DB::transaction()`
- * returns keeps a failing consumer visible as an error while leaving the
- * record of the refund exactly where it belongs: committed.
+ * card.
+ *
+ * The guarantee is made here rather than in each caller, because it has to
+ * hold for **every** caller (fix round 1, review finding 1): dispatching
+ * merely after this Action's own `DB::transaction()` still ran the consumers
+ * inside `RecordPaymentReversal`'s outer transaction, so the webhook path —
+ * the one where no brand is ever resolved — kept the old defect. The events
+ * go to `RelayRefundEvents` with `->afterCommit()`, which registers on the
+ * same `db.transactions` manager `DB::afterCommit()` uses: it fires when the
+ * **outermost** applicable transaction commits, and immediately when there is
+ * none. That the relay is a queued job is the other half — see its docblock,
+ * and `SPEC.md`'s refund section for the window that remains.
  */
 final class RecordRefund
 {
@@ -78,8 +87,7 @@ final class RecordRefund
         ?string $reasonNote = null,
         ?string $amount = null,
     ): Order {
-        /** @var array{0: Order, 1: list<object>} $recorded */
-        $recorded = DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount): array {
+        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount): Order {
             // An order paid at checkout was never invoiced, so there is no
             // document to correct (ADR-0031) — the money still goes back, it
             // simply produces no paperwork.
@@ -128,19 +136,15 @@ final class RecordRefund
                 $events = [...$events, ...$this->orderLineCancelledEvents($order, $refundedAt)];
             }
 
-            return [$order->refresh(), $events];
+            // Queued from inside the transaction but pushed only once the
+            // outermost one commits (#236): `->afterCommit()` hands the push
+            // to `db.transactions`, which also drops it if that transaction
+            // rolls back — so an announcement can never outlive a refund that
+            // was not recorded, and a consumer can never unrecord one.
+            RelayRefundEvents::dispatch($order->id, $events)->afterCommit();
+
+            return $order->refresh();
         });
-
-        [$refunded, $events] = $recorded;
-
-        // Outside the transaction on purpose (#236): a consumer that throws
-        // is an error the caller sees, never a rollback of money that is
-        // already gone.
-        foreach ($events as $domainEvent) {
-            Event::dispatch($domainEvent);
-        }
-
-        return $refunded;
     }
 
     /**
