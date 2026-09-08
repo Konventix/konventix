@@ -156,9 +156,11 @@ class StripeWebhookController
      * retried by Stripe, which is the right answer for a write we could not
      * complete.
      *
-     * Returns whether Stripe answered with anything, which
-     * `chargeRefunded()` reads to decide whether it still needs its own
-     * charge-id fallback.
+     * Returns whether a **refund** was recorded — not whether Stripe
+     * answered at all (fix round 2, review NEW-4). `chargeRefunded()` reads
+     * it to decide whether it still needs its own charge-id fallback, and a
+     * payment carrying an open dispute must not answer that question for the
+     * refund the event was about.
      */
     private function catchUpOnReversals(Payment $payment, RecordPaymentReversal $recordReversal): bool
     {
@@ -344,9 +346,11 @@ class StripeWebhookController
                 return response()->json(['received' => true]);
             }
 
-            // Only if Stripe could not be asked at all: the charge's own id
-            // still identifies this event uniquely, so the reversal is
-            // recorded rather than lost. `StripeReversalCatchUp` knows about
+            // Reached when Stripe could not be asked at all, and when it
+            // answered without listing this refund yet (an open dispute is
+            // not an answer about a refund). The charge's own id still
+            // identifies this event uniquely, so the reversal is recorded
+            // rather than lost. `StripeReversalCatchUp` knows about
             // this fallback and skips a refund whose charge already carries a
             // row, so the later sweep does not add a second one.
             $reference = $charge->id ?? null;

@@ -303,7 +303,12 @@ declare namespace Konventix {
             export type CartLineKind = 'product' | 'registration';
             export type CartStatus = 'open' | 'expired' | 'checked_out';
             export type HostedPaymentState =
-                'paid' | 'not_paid' | 'undecided' | 'unanswerable';
+                | 'paid'
+                | 'not_paid'
+                | 'in_flight'
+                | 'unreachable'
+                | 'unprobed'
+                | 'unanswerable';
             export type OperationsNoticeKind =
                 | 'stock-exhausted'
                 | 'payment-failed'

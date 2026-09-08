@@ -133,14 +133,27 @@ final class ExpireCarts
             ->whereIn('checked_out_order_id', function ($query): void {
                 $query->select('id')->from('orders')->where('status', OrderStatus::Pending->value);
             })
+            // Oldest first, like the registration sweep (fix round 3, review
+            // F-5). Unordered, Postgres tends to return the same rows in the
+            // same order every run, so during an outage a backlog larger than
+            // the probe budget would starve the same tail run after run —
+            // holding its stock and its registration lines long past their
+            // own grace without ever being asked about.
+            ->orderBy('id')
             ->get()
             ->all();
 
         foreach ($carts as $cart) {
+            $order = $cart->checked_out_order_id === null
+                ? null
+                : Order::withoutBrandScope()->find($cart->checked_out_order_id);
+
             // Asked before the transaction, never inside it: this is a
             // network call, and holding a row lock across one would let a
-            // provider's latency block whatever else touches the order.
-            if (! $this->askTheProviderAboutCart($cart)) {
+            // provider's latency block whatever else touches the order. A
+            // cart without an order has nothing to ask about and is swept as
+            // it always was.
+            if ($order !== null && ! $this->providerSaysThisOrderMayBeCancelled($order, 'Cart sweep')) {
                 continue;
             }
 
@@ -183,36 +196,19 @@ final class ExpireCarts
 
             if ($handled) {
                 $expired++;
+
+                // The valve's operator notice, once the cancellation is
+                // committed and not before (fix round 3, review F-4): the
+                // transaction above gives up if a late webhook settled the
+                // order under the lock, and nobody may be told about a
+                // cancellation that then did not happen.
+                if ($order !== null) {
+                    $this->reportCancellation($order, 'Cart sweep');
+                }
             }
         }
 
         return $expired;
-    }
-
-    /**
-     * The #231 question, asked once per cart this pass is about to cancel —
-     * the decision itself lives in `AsksThePspBeforeCancelling`, shared with
-     * the registration-order sweep.
-     *
-     * A cart is asked about through its order, and a cart with no order can
-     * be swept as before. Note what is *not* done when the answer is `Paid`:
-     * the cart stays `checked_out` and `releaseCartLines()` is never
-     * reached, so the seats and the stock that were just paid for are not
-     * handed back.
-     */
-    private function askTheProviderAboutCart(Cart $cart): bool
-    {
-        if ($cart->checked_out_order_id === null) {
-            return true;
-        }
-
-        $order = Order::withoutBrandScope()->find($cart->checked_out_order_id);
-
-        if ($order === null) {
-            return true;
-        }
-
-        return $this->providerSaysThisOrderMayBeCancelled($order, 'Cart sweep');
     }
 
     /**

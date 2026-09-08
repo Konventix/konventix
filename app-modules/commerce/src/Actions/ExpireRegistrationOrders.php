@@ -198,6 +198,10 @@ final class ExpireRegistrationOrders
 
             if ($handled) {
                 $cancelled++;
+
+                // The valve's operator notice, once the cancellation is
+                // committed and not before (fix round 3, review F-4).
+                $this->reportCancellation($order, 'Registration-order sweep');
             }
         }
 

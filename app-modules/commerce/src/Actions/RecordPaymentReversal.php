@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Carbon\CarbonInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Enums\OrderStatus;
@@ -30,6 +31,13 @@ use Konventix\Commerce\Settlement\RepaymentWindow;
  * provider_reference)`, the payment is row-locked, and only `Open` ever
  * moves. A replay with the status the row already has returns it untouched,
  * so a provider that notifies three times produces one `PaymentReversed`.
+ *
+ * That holds across connections too (fix round 3, review F-6): a lookup can
+ * miss a row another transaction has written but not committed — the console
+ * refund of #247 recording the very refund this notification is about — and
+ * the insert then raises the unique violation instead. It is caught and
+ * converged on the committed row rather than escaping as a 500 the provider
+ * retries into.
  *
  * **This Action never asks whether anyone checked in.** ADR-0037's guard
  * belongs to the *voluntary* refund, which a human starts; a chargeback has
@@ -101,7 +109,28 @@ final class RecordPaymentReversal
             ]);
             // brand_id from the payment, not ambient context (ADR-0010):
             // the api surface resolves no brand.
-            $reversal->forceFill(['brand_id' => $locked->brand_id])->save();
+            $reversal->forceFill(['brand_id' => $locked->brand_id]);
+
+            try {
+                // A nested transaction, which Postgres runs as a SAVEPOINT:
+                // a unique violation aborts the transaction it runs in, and
+                // only a savepoint keeps that rollback to this one insert.
+                DB::transaction(fn () => $reversal->save());
+            } catch (UniqueConstraintViolationException) {
+                // The lookup above missed a row another connection had not
+                // committed yet — `RefundOrder` recording the refund we are
+                // being notified about is the case that happens (fix round 3,
+                // review F-6). Converging here is what keeps that a
+                // convergence instead of a 500 the provider has to retry
+                // into, and `transition()` is the same no-op a replay gets.
+                $existing = PaymentReversal::withoutBrandScope()
+                    ->where('provider', $locked->provider)
+                    ->where('provider_reference', $providerReference)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                return $this->transition($existing, $locked, $status, $occurredAt);
+            }
 
             $this->announce($reversal);
             $this->react($reversal, $locked);

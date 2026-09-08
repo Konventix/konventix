@@ -501,7 +501,9 @@ it('cancels an order the PSP has never been able to answer for once the hold run
     [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::Unreachable);
     $holder = cartSweepTestOperator($order->brand_id);
 
-    $order->forceFill(['created_at' => now()->subDays(2)])->save();
+    // The clock starts where the payer's window ended (F-1), not at the
+    // order's creation.
+    $cart->forceFill(['expires_at' => now()->subDays(2)])->save();
 
     Queue::fake();
 
@@ -533,14 +535,14 @@ it('holds an order the PSP says is still travelling far past the unreachable gra
 
     [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::InFlight);
 
-    $order->forceFill(['created_at' => now()->subDays(3)])->save();
+    $cart->forceFill(['expires_at' => now()->subDays(3)])->save();
 
     expect(app(ExpireCarts::class)->handle())->toBe(0)
         ->and($order->fresh()->status)->toBe(OrderStatus::Pending)
         ->and($cart->fresh()->status)->toBe(CartStatus::CheckedOut);
 
     // Only its own, much longer horizon ends it.
-    $order->forceFill(['created_at' => now()->subDays(15)])->save();
+    $cart->forceFill(['expires_at' => now()->subDays(15)])->save();
 
     expect(app(ExpireCarts::class)->handle())->toBe(1)
         ->and($order->fresh()->status)->toBe(OrderStatus::Cancelled);
@@ -558,13 +560,43 @@ it('never cancels an order this run did not ask the PSP about (#231)', function 
 
     [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::NotPaid);
 
-    $order->forceFill(['created_at' => now()->subDays(5)])->save();
+    $cart->forceFill(['expires_at' => now()->subDays(5)])->save();
     CartSweepTestAdapter::$asked = 0;
 
     expect(app(ExpireCarts::class)->handle())->toBe(0)
         ->and(CartSweepTestAdapter::$asked)->toBe(0)
         ->and($order->fresh()->status)->toBe(OrderStatus::Pending)
         ->and($cart->fresh()->status)->toBe(CartStatus::CheckedOut);
+});
+
+it('starts the release valve at the end of the hold, so renewing it pushes the valve (#231)', function (): void {
+    // `PlaceOrderFromCart` reuses a checked-out cart's still-pending order
+    // and moves `carts.expires_at` forward every time the payer starts
+    // another attempt. Clocked on the order's age, the valve cancelled a
+    // transfer that had left the bank that morning because an earlier
+    // attempt on the same order was a fortnight old (fix round 3, review
+    // F-1).
+    config([
+        'commerce.sweeps.unknown_payment_grace_hours' => 24,
+        'commerce.sweeps.in_flight_grace_days' => 14,
+    ]);
+
+    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::InFlight);
+
+    // An old order — the first attempt was three weeks ago.
+    $order->forceFill(['created_at' => now()->subDays(21)])->save();
+
+    // …whose payer started again just now, which renews the hold.
+    $cart->forceFill(['expires_at' => now()->addMinutes(30)])->save();
+
+    expect(app(ExpireCarts::class)->handle())->toBe(0)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Pending);
+
+    // The same order, once *that* attempt's window is a fortnight past.
+    $cart->forceFill(['expires_at' => now()->subDays(15)])->save();
+
+    expect(app(ExpireCarts::class)->handle())->toBe(1)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Cancelled);
 });
 
 it('cancels the order once the PSP says nothing was paid', function (): void {

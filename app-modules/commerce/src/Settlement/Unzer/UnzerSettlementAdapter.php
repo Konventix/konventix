@@ -73,9 +73,11 @@ final class UnzerSettlementAdapter implements ProvidesHostedCheckout, Settlement
      * Correlating one before that needs Unzer's own order-id lookup, which
      * this seam does not carry.
      *
-     * `Unanswerable`, deliberately, not `Undecided`: there is no answer
-     * coming, and a sweep that waited for one would hold an abandoned
-     * Paypage's seat for ever.
+     * `Unanswerable`, deliberately, and not one of the states that hold the
+     * order: `Unreachable` and `InFlight` both say "ask again", and there is
+     * nothing to ask again — a sweep that waited would hold an abandoned
+     * Paypage's seat for ever. `Unprobed` would be a lie of a different
+     * kind: this question was reached, it simply has no answer.
      */
     public function hostedPaymentState(Payment $payment): HostedPaymentState
     {

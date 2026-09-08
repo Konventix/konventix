@@ -33,6 +33,20 @@ use RuntimeException;
 trait AsksThePspBeforeCancelling
 {
     /**
+     * Orders whose release valve fired this run, and what the provider had
+     * said about them — kept until the caller has actually cancelled them
+     * (fix round 3, review F-4).
+     *
+     * The decision happens before the sweep's transaction, and that
+     * transaction re-reads the order under a lock and gives up if a late
+     * webhook settled it in between — the very case the probe exists for. An
+     * operator must not be told an order was cancelled that then was not.
+     *
+     * @var array<string, array{payment: Payment, state: HostedPaymentState}>
+     */
+    private array $valveFired = [];
+
+    /**
      * Whether the sweep may go on and cancel `$order`.
      *
      * `false` means "leave this order alone this run", for reasons that are
@@ -106,7 +120,9 @@ trait AsksThePspBeforeCancelling
             return false;
         }
 
-        $this->reportHoldExpired($order, $payment, $state, $sweep);
+        // Recorded, not sent: `reportCancellation()` sends it once the
+        // caller's transaction has committed the cancellation (F-4).
+        $this->valveFired[$order->id] = ['payment' => $payment, 'state' => $state];
 
         return true;
     }
@@ -118,9 +134,25 @@ trait AsksThePspBeforeCancelling
      * carries the ids, the notice carries the sentence — composed the way
      * `ReconcilePayments` composes its own, same topic, same template, same
      * absolute admin link.
+     *
+     * Called by the sweep **after** its transaction committed the
+     * cancellation, and a no-op for every order whose valve did not fire, so
+     * a cancellation that lost the race to a late webhook is never announced
+     * (fix round 3, review F-4).
      */
-    private function reportHoldExpired(Order $order, Payment $payment, HostedPaymentState $state, string $sweep): void
+    private function reportCancellation(Order $order, string $sweep): void
     {
+        $fired = $this->valveFired[$order->id] ?? null;
+
+        if ($fired === null) {
+            return;
+        }
+
+        unset($this->valveFired[$order->id]);
+
+        $payment = $fired['payment'];
+        $state = $fired['state'];
+
         Log::warning(sprintf('%s cancelled an order the provider never settled; check it for unapplied money (#231).', $sweep), [
             'order_id' => $order->id,
             'brand_id' => $order->brand_id,
@@ -128,7 +160,6 @@ trait AsksThePspBeforeCancelling
             'provider' => $payment->provider,
             'external_id' => $payment->external_id,
             'state' => $state->value,
-            'order_created_at' => $order->created_at?->toIso8601String(),
         ]);
 
         $detail = $state === HostedPaymentState::InFlight

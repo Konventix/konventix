@@ -48,8 +48,12 @@ interface ProvidesHostedCheckout
      * was cancelled by the cart sweep four minutes later, while the money
      * sat at the provider.
      *
-     * Never throws. Every failure is `Undecided`, because not knowing must
-     * never be able to cancel an order somebody has paid for.
+     * Never throws. Every failure is `HostedPaymentState::Unreachable`,
+     * because not knowing must never be able to cancel an order somebody has
+     * paid for — and money the provider says is still travelling is
+     * `InFlight`, which the sweeps hold far longer than a provider that has
+     * merely gone quiet. `NotPaid` is reserved for an answer: nothing was
+     * paid and nothing is coming.
      */
     public function hostedPaymentState(Payment $payment): HostedPaymentState;
 

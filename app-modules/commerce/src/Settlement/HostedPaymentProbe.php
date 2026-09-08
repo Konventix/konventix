@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Settlement;
 
+use Carbon\CarbonInterface;
 use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 
@@ -91,24 +93,60 @@ final class HostedPaymentProbe
      * `Unanswerable` are decisions in themselves, and "we did not ask" is
      * not evidence of anything.
      *
-     * Both clocks run from `orders.created_at`, the only moment the row
-     * carries. That is deliberately conservative for the in-flight case
-     * (the payment page was opened after it) and it means the horizon is
-     * about the *order's* age, not a per-order tally of failed questions.
+     * **Both clocks start at the end of the order's payment window, not at
+     * `orders.created_at`** (fix round 3, review F-1). A checkout hold can
+     * be renewed without limit — `PlaceOrderFromCart` reuses a `checked_out`
+     * cart's still-`pending` order and pushes `carts.expires_at` forward
+     * every time the payer starts another attempt — so the order's age says
+     * nothing about the age of the attempt the provider is being asked
+     * about. On the old clock a payer whose first transfer bounced on day 13
+     * and who started a second one that day was cancelled mid-transfer by
+     * the fortnight horizon, which is what the horizon exists to prevent.
+     * The window's end moves with the renewal, so the grace does too, and it
+     * needs no column of its own: a cart order reads it off its cart, and a
+     * direct registration order off `PaymentWindow`, exactly as the two
+     * sweeps compute their own deadlines.
      */
     public function holdExpired(Order $order, HostedPaymentState $state): bool
     {
-        if ($order->created_at === null) {
+        $windowEndsAt = $this->windowEndsAt($order);
+
+        if ($windowEndsAt === null) {
             return false;
         }
 
         $deadline = match ($state) {
-            HostedPaymentState::Unreachable => now()->subHours($this->positiveConfig('commerce.sweeps.unknown_payment_grace_hours', 24)),
-            HostedPaymentState::InFlight => now()->subDays($this->positiveConfig('commerce.sweeps.in_flight_grace_days', 14)),
+            HostedPaymentState::Unreachable => $windowEndsAt->copy()->addHours($this->positiveConfig('commerce.sweeps.unknown_payment_grace_hours', 24)),
+            HostedPaymentState::InFlight => $windowEndsAt->copy()->addDays($this->positiveConfig('commerce.sweeps.in_flight_grace_days', 14)),
             default => null,
         };
 
-        return $deadline !== null && $order->created_at->lte($deadline);
+        return $deadline !== null && $deadline->isPast();
+    }
+
+    /**
+     * When this order's payer ran out of time to pay — the moment both
+     * graces count from.
+     *
+     * A cart order's hold *is* `carts.expires_at`, the column
+     * `ExpireCarts`' own pass sweeps on and the one `PlaceOrderFromCart`
+     * renews. A direct registration order never had a cart, so its window is
+     * the one `ExpireRegistrationOrders` applies: `PaymentWindow::MINUTES`
+     * from the order's creation. Null where neither can be established,
+     * which means no valve — the safe direction.
+     */
+    private function windowEndsAt(Order $order): ?CarbonInterface
+    {
+        $cartExpiry = Cart::withoutBrandScope()
+            ->where('checked_out_order_id', $order->id)
+            ->orderByDesc('expires_at')
+            ->value('expires_at');
+
+        if ($cartExpiry instanceof CarbonInterface) {
+            return $cartExpiry;
+        }
+
+        return $order->created_at?->copy()->addMinutes(PaymentWindow::MINUTES);
     }
 
     private function positiveConfig(string $key, int $fallback): int

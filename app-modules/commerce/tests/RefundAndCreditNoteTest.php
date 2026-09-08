@@ -625,6 +625,82 @@ it('keeps the paperwork to itself when the console wins the race (#247)', functi
     Event::assertDispatchedTimes(OrderRefunded::class, 1);
 });
 
+it('converges the provider notification too when it loses the unique key (#247)', function (): void {
+    // The other connection's view of the same race (fix round 3, review
+    // F-6). `RecordPaymentReversal`'s lookup misses the console's row —
+    // another transaction has written it and not committed — so its own
+    // insert raises the unique violation. Catching it and converging is what
+    // keeps this a convergence instead of a 500 the provider retries into,
+    // and it must not produce a second credit note for the refund the
+    // console already documented.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    // The console's row lands *after* the notification has looked and found
+    // nothing, which is the only way to reach the insert's own collision.
+    $raced = false;
+
+    DB::listen(function (QueryExecuted $query) use (&$raced, $order, $payment): void {
+        if ($raced || ! str_starts_with($query->sql, 'select') || ! str_contains($query->sql, 'payment_reversals')) {
+            return;
+        }
+
+        $raced = true;
+
+        DB::table('payment_reversals')->insert([
+            'id' => (string) Str::ulid(),
+            'brand_id' => $order->brand_id,
+            'payment_id' => $payment->id,
+            'order_id' => $order->id,
+            'provider' => 'spy',
+            'kind' => ReversalKind::Refund->value,
+            'status' => ReversalStatus::Final->value,
+            'amount' => $order->total_gross,
+            'currency' => $order->currency,
+            'provider_reference' => 're_spy_1',
+            'occurred_at' => now(),
+            'finalized_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    // No throw: the notification finds the row it collided with and treats it
+    // as the replay it is.
+    app(RecordPaymentReversal::class)->handle(
+        payment: $payment,
+        kind: ReversalKind::ExternalRefund,
+        status: ReversalStatus::Final,
+        amount: (string) $payment->amount,
+        currency: $payment->currency,
+        providerReference: 're_spy_1',
+        reasonCode: null,
+        feeAmount: null,
+        occurredAt: now(),
+    );
+
+    expect($raced)->toBeTrue()
+        ->and(PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1)
+        // The console's row survives, and with it the `re_…` the audit entry
+        // reads.
+        ->and(PaymentReversal::withoutBrandScope()->sole()->kind)->toBe(ReversalKind::Refund)
+        // And the notification writes no paperwork of its own for a refund
+        // that is already recorded.
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+
+    Event::assertNotDispatched(OrderRefunded::class);
+});
+
 it('records no reversal row for a refund no provider gave a reference to (#247)', function (): void {
     // `manual` wires the money back outside the platform: there is no
     // reference, and a row whose `provider_reference` is invented would
