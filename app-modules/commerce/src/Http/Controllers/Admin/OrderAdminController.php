@@ -13,7 +13,9 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Actions\BookManualPayment;
 use Konventix\Commerce\Actions\CancelOrderForUnpaidReversal;
+use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Data\OrderReversalData;
+use Konventix\Commerce\Data\RefundOrderData;
 use Konventix\Commerce\Data\UnappliedPaymentData;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Enums\ReversalStatus;
@@ -346,6 +348,50 @@ class OrderAdminController
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Order cancelled.')]);
+
+        return back();
+    }
+
+    /**
+     * Send the money back for the whole order (#73, ADR-0037). Until now
+     * `RefundOrder` was reachable only from tests and tinker; this is the
+     * console surface the issue's first open item asks for.
+     *
+     * Whole order, no amount: `RefundOrder` accepts a partial one, but a
+     * partial credit note still splits the tax like the full invoice (#7),
+     * so the button that exists is the one that produces a correct
+     * document. Transfers and seat release are the issue's other items.
+     *
+     * Its own capability, deliberately not `BookManualPayment`: taking
+     * money in and giving it back are different decisions (ADR-0013,
+     * SPEC.md "Capabilities").
+     *
+     * Every refusal the Action makes is a `RuntimeException` carrying the
+     * reason — the ADR-0037 check-in guard, "only a paid order can be
+     * refunded", and each adapter's "no refundable payment on this
+     * account". They become a form error rather than a 500, the shape
+     * `cancelReversed()` above uses: the operator is told what to do about
+     * it (check the admission out, book the payment first), which is the
+     * whole point of ADR-0037 refusing "explicitly and with a reason".
+     */
+    public function refund(string $order, RefundOrderData $data, RefundOrder $refundOrder): RedirectResponse
+    {
+        Gate::authorize(Permission::IssueRefunds->value);
+
+        /** @var Order $model */
+        $model = Order::withoutBrandScope()->findOrFail($order);
+
+        try {
+            $refundOrder->handle(
+                order: $model,
+                reasonCode: $data->reasonCode->value,
+                reasonNote: $data->reasonNote,
+            );
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['order' => $e->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Order refunded.')]);
 
         return back();
     }

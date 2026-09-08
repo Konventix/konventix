@@ -1,15 +1,25 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
-import { AlertCircle, FileText, Landmark, XCircle } from '@lucide/vue';
-import { computed } from 'vue';
+import { Head, router, useForm } from '@inertiajs/vue3';
+import { AlertCircle, FileText, Landmark, Undo2, XCircle } from '@lucide/vue';
+import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import InputError from '@/components/InputError.vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { document as creditNoteDocument } from '@/routes/admin/credit-notes';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
-import { bookPayment, cancelReversed } from '@/routes/admin/orders';
+import { bookPayment, cancelReversed, refund } from '@/routes/admin/orders';
 import type { OrderReversal, UnappliedPayment } from './reversals';
 import {
     canBookPayment,
@@ -137,6 +147,60 @@ function submitBookPayment(): void {
  * plain-`confirm()` pattern the products page uses for its own destructive
  * action (`products/Edit.vue`).
  */
+/**
+ * #73: the whole-order refund, the first console surface `RefundOrder` has
+ * ever had (ADR-0037). A dialog rather than the plain `confirm()` the
+ * cancel button uses, because this one collects something — the reason goes
+ * onto the credit note, an immutable document (ADR-0031), so it is asked
+ * for once and asked for properly.
+ *
+ * The vocabulary is `Konventix\Commerce\Enums\RefundReason` restated: that
+ * enum carries no `#[TypeScript]` because the Data class validating it is
+ * inbound-only and generates no type. The server rejects anything not in
+ * the set, so a drift here shows up as a form error rather than a bad
+ * document.
+ */
+const refundReasons = [
+    { value: 'customer-request', label: 'The customer asked for it' },
+    { value: 'event-cancelled', label: 'The event was cancelled' },
+    { value: 'duplicate-payment', label: 'Paid twice' },
+    { value: 'goodwill', label: 'Goodwill' },
+] as const;
+
+const refundOpen = ref(false);
+
+const refundForm = useForm<{
+    reasonCode: (typeof refundReasons)[number]['value'];
+    reasonNote: string | null;
+}>({
+    reasonCode: 'customer-request',
+    reasonNote: null,
+});
+
+// Only while the dialog is open (ADR-0038): a closed dialog's untouched
+// draft is not unsaved work, the same scoping `products/Index.vue` uses.
+useUnsavedChanges(() => refundOpen.value && refundForm.isDirty);
+
+/**
+ * Every refusal `RefundOrder` makes — the ADR-0037 check-in guard, "only a
+ * paid order can be refunded", a provider with nothing refundable — arrives
+ * as a validation error under `order`, which is not one of this form's own
+ * fields, so it is read by name like `products/Index.vue` reads `brand`.
+ */
+const refundRefusal = computed(
+    () => (refundForm.errors as Record<string, string>).order,
+);
+
+function submitRefund(): void {
+    refundForm.post(refund(props.order.id).url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            refundForm.reset();
+            refundOpen.value = false;
+        },
+    });
+}
+
 function submitCancelReversed(): void {
     if (
         confirm(
@@ -178,6 +242,14 @@ function submitCancelReversed(): void {
                 Book bank transfer
             </Button>
             <Button
+                v-if="order.status === 'paid'"
+                variant="outline"
+                @click="refundOpen = true"
+            >
+                <Undo2 class="size-4 text-danger" />
+                Refund whole order
+            </Button>
+            <Button
                 v-if="order.status === 'payment_reversed'"
                 variant="ghost"
                 @click="submitCancelReversed"
@@ -186,6 +258,109 @@ function submitCancelReversed(): void {
                 Cancel order
             </Button>
         </AdminPageHeader>
+
+        <!-- #73: the money goes back for the whole order. Partial refunds,
+             transfers and seat release are the issue's other open items. -->
+        <Dialog
+            :open="refundOpen"
+            @update:open="
+                (value: boolean) => {
+                    refundOpen = value;
+                    if (!value) {
+                        refundForm.reset();
+                        refundForm.clearErrors();
+                    }
+                }
+            "
+        >
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Refund whole order</DialogTitle>
+                    <DialogDescription>
+                        Return the full {{ order.totalGross }}
+                        {{ order.currency }} through the account that took it.
+                        Where an invoice exists it is credited, and the reason
+                        below is printed on that credit note. This cannot be
+                        undone here.
+                    </DialogDescription>
+                </DialogHeader>
+                <form
+                    class="flex flex-col gap-4"
+                    @submit.prevent="submitRefund"
+                >
+                    <InputError :message="refundRefusal" />
+                    <div class="grid gap-2">
+                        <Label for="refund-reason">Reason</Label>
+                        <select
+                            id="refund-reason"
+                            v-model="refundForm.reasonCode"
+                            class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                            :aria-invalid="
+                                refundForm.errors.reasonCode ? true : undefined
+                            "
+                            :aria-describedby="
+                                refundForm.errors.reasonCode
+                                    ? 'refund-reason-error'
+                                    : undefined
+                            "
+                        >
+                            <option
+                                v-for="reason in refundReasons"
+                                :key="reason.value"
+                                :value="reason.value"
+                            >
+                                {{ reason.label }}
+                            </option>
+                        </select>
+                        <InputError
+                            id="refund-reason-error"
+                            :message="refundForm.errors.reasonCode"
+                        />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="refund-note">Note (optional)</Label>
+                        <textarea
+                            id="refund-note"
+                            v-model="refundForm.reasonNote"
+                            rows="3"
+                            class="rounded-md border border-border bg-surface px-3 py-2 text-sm"
+                            :aria-invalid="
+                                refundForm.errors.reasonNote ? true : undefined
+                            "
+                            :aria-describedby="
+                                refundForm.errors.reasonNote
+                                    ? 'refund-note-error'
+                                    : undefined
+                            "
+                        />
+                        <InputError
+                            id="refund-note-error"
+                            :message="refundForm.errors.reasonNote"
+                        />
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            :disabled="refundForm.processing"
+                            @click="refundOpen = false"
+                        >
+                            Cancel
+                        </Button>
+                        <Button type="submit" :disabled="refundForm.processing">
+                            Refund {{ order.totalGross }} {{ order.currency }}
+                        </Button>
+                        <span
+                            v-if="refundForm.isDirty"
+                            role="status"
+                            class="text-sm text-warning"
+                        >
+                            Unsaved changes
+                        </span>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
 
         <Alert v-if="unappliedPayment">
             <AlertCircle class="size-4" />

@@ -12,6 +12,7 @@ use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Events\OrderPaid;
+use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
@@ -592,4 +593,128 @@ it('books a manual payment on a payment_reversed order, the way the console now 
 
     Event::assertDispatched(OrderPaid::class, fn (OrderPaid $event): bool => $event->orderId === $order->id
         && $event->settlementMethod === 'manual');
+});
+
+/**
+ * #73's first open item: the whole-order refund an operator can reach from
+ * the console at all. `RefundOrder` has done the work since ADR-0037 and
+ * was reachable only from tests and tinker; these cases pin the console
+ * route onto it — the reason travels with the money (ADR-0031's credit
+ * note carries it), and every refusal the Action makes comes back as a
+ * form error rather than a 500.
+ *
+ * Partial refunds, ticket transfers and seat release are the issue's other
+ * open items and deliberately not here: this route refunds the order whole.
+ */
+function orderAdminRefundPermissions(): array
+{
+    return ['platform.access-admin', 'commerce.view-orders', 'commerce.issue-refunds'];
+}
+
+it('refunds a whole paid order from the console, crediting its invoice', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    // No payment row: `RefundOrder` then resolves the manual adapter, whose
+    // refund is a no-op — the money leg of a bank transfer is the bank's.
+    $order = Order::factory()->paid()->create(['total_gross' => '119.00']);
+    Invoice::factory()->create(['order_id' => $order->id]);
+
+    Event::fake([OrderRefunded::class]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+            'reasonNote' => 'Cancelled by phone.',
+        ])
+        ->assertRedirect();
+
+    // `withoutBrandScope()`: the request ran on the admin host, which
+    // leaves no resolved brand and hardens BrandScope to zero rows
+    // (ADR-0029, `.ai/rules/tests.md`).
+    expect($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+
+    Event::assertDispatched(OrderRefunded::class, fn (OrderRefunded $event): bool => $event->orderId === $order->id
+        && $event->reasonCode === 'customer-request'
+        && $event->creditNoteId !== null
+        && $event->whole === true);
+});
+
+it('422s a refund the check-in guard blocks, naming the reason and leaving the order paid', function (): void {
+    // ADR-0037 / D-COM-15: someone attended, so returning the money is a
+    // decision a human makes deliberately — an explicit refusal with a
+    // reason, never a silent no-op and never a 500.
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $registrationId = (string) Str::ulid();
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'registration',
+        'settles_id' => $registrationId,
+    ]);
+    CheckedInAdmission::query()->create([
+        'admission_id' => (string) Str::ulid(),
+        'registration_id' => $registrationId,
+        'first_checked_in_at' => now()->subHour(),
+    ]);
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['order' => 'ADR-0037']);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
+});
+
+it('422s a refund of an order that was never paid', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = Order::factory()->create(['status' => OrderStatus::Pending]);
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['order' => 'only a paid order']);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+});
+
+it('422s a refund whose reason is not one the console offers', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = Order::factory()->paid()->create();
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'because-i-said-so',
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['reasonCode']);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+it('403s a refund without the issue-refunds capability', function (): void {
+    // Deliberately not the booking capability: taking money in and giving
+    // it back are different decisions (ADR-0013, SPEC.md "Capabilities").
+    [, $admin] = commerceOperator(['platform.access-admin', 'commerce.view-orders', 'commerce.book-manual-payment']);
+
+    $this->withBrand();
+    $order = Order::factory()->paid()->create();
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertForbidden();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid);
 });
