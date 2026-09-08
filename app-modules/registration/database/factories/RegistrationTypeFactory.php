@@ -104,6 +104,19 @@ class RegistrationTypeFactory extends Factory
     }
 
     /**
+     * A sales window (#218, #216 draft i). Both bounds are optional and
+     * default to null — "no bound" — so `->salesWindow(start: ...)` declares
+     * an opening date without inventing a closing one.
+     */
+    public function salesWindow(?string $start = null, ?string $end = null): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'sales_start' => $start,
+            'sales_end' => $end,
+        ]);
+    }
+
+    /**
      * A priced type (ADR-0017). Settlement stays whatever the other states
      * set it to — a price declaration and the settlement axis are
      * independent; combine with `->settlement(...)`.
