@@ -11,6 +11,7 @@ use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Models\RegistrationType;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Attributes\Validation\ArrayType;
+use Spatie\LaravelData\Attributes\Validation\Date;
 use Spatie\LaravelData\Attributes\Validation\IntegerType;
 use Spatie\LaravelData\Attributes\Validation\Max;
 use Spatie\LaravelData\Attributes\Validation\Min;
@@ -72,7 +73,36 @@ final class RegistrationTypeData extends Data
         /** @var list<string> */
         #[ArrayType]
         public readonly array $quotaIds = [],
+
+        /**
+         * The sales window (#218, #216 draft i). Plain `Y-m-d H:i:s` strings
+         * rather than Carbon instances, exactly as `EventData` carries its
+         * own datetimes: the form's `datetime-local` control round-trips a
+         * string, and the model's `datetime` cast does the parsing.
+         *
+         * These are instants in the application timezone (UTC), not
+         * wall-clock times — the migration's docblock says why a sales window
+         * is not an ADR-0027 event time.
+         */
+        #[Nullable, Date]
+        public readonly ?string $salesStart = null,
+
+        #[Nullable, Date]
+        public readonly ?string $salesEnd = null,
     ) {}
+
+    /**
+     * @return array<string, array<int, string>>
+     */
+    public static function rules(): array
+    {
+        return [
+            // Cross-field, so it cannot live on the `salesEnd` attribute
+            // alone. A window that ends before it starts is never on sale,
+            // and nothing downstream would say so.
+            'salesEnd' => ['after:salesStart'],
+        ];
+    }
 
     public static function fromModel(RegistrationType $type): self
     {
@@ -87,6 +117,8 @@ final class RegistrationTypeData extends Data
             grants: array_values($type->grants->all()),
             priceDeclaration: $type->price_declaration,
             quotaIds: array_values($type->quotas->pluck('id')->all()),
+            salesStart: $type->sales_start?->format('Y-m-d H:i:s'),
+            salesEnd: $type->sales_end?->format('Y-m-d H:i:s'),
         );
     }
 }

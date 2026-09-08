@@ -42,6 +42,21 @@ type Props = {
 
 const props = defineProps<Props>();
 
+/**
+ * `datetime-local` wants `YYYY-MM-DDTHH:MM`; the backend sends and accepts a
+ * plain `Y-m-d H:i:s` datetime string (#202's round trip, the same pair the
+ * policy-version form uses). Converting in both directions here keeps the
+ * Data object free of a browser input's formatting quirk, and keeps the
+ * string an instant rather than shifting it through a Date object.
+ */
+function toLocalInput(value: string | null): string {
+    return value === null ? '' : value.replace(' ', 'T').slice(0, 16);
+}
+
+function toInstant(value: string): string | null {
+    return value === '' ? null : `${value.replace('T', ' ')}:00`;
+}
+
 const form = useForm({
     eventId: props.type.eventId,
     name: props.type.name,
@@ -55,6 +70,8 @@ const form = useForm({
         ? { ...props.type.priceDeclaration }
         : null,
     quotaIds: [...props.type.quotaIds],
+    salesStart: toLocalInput(props.type.salesStart ?? null),
+    salesEnd: toLocalInput(props.type.salesEnd ?? null),
 });
 
 useUnsavedChanges(() => form.isDirty);
@@ -95,7 +112,11 @@ function toggleQuota(quotaId: string, checked: boolean): void {
 }
 
 function submit(): void {
-    form.put(updateType(props.type.id).url, { preserveScroll: true });
+    form.transform((data) => ({
+        ...data,
+        salesStart: toInstant(data.salesStart),
+        salesEnd: toInstant(data.salesEnd),
+    })).put(updateType(props.type.id).url, { preserveScroll: true });
 }
 </script>
 
@@ -409,6 +430,57 @@ function submit(): void {
                         </template>
 
                         <InputError :message="form.errors.priceDeclaration" />
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Sales window</CardTitle>
+                    </CardHeader>
+                    <CardContent class="flex flex-col gap-4">
+                        <p class="text-sm text-text-muted">
+                            When this type may be bought. Leave a field empty
+                            for no bound — the start is inclusive, the end is
+                            not. Times are in UTC, the application's own
+                            timezone.
+                        </p>
+
+                        <div class="grid gap-2">
+                            <Label for="type-sales-start">Sale starts</Label>
+                            <Input
+                                id="type-sales-start"
+                                v-model="form.salesStart"
+                                type="datetime-local"
+                                aria-describedby="type-sales-start-hint"
+                            />
+                            <p
+                                id="type-sales-start-hint"
+                                class="text-xs text-text-muted"
+                            >
+                                Before this, the landing page announces the type
+                                instead of linking to it.
+                            </p>
+                            <InputError :message="form.errors.salesStart" />
+                        </div>
+
+                        <div class="grid gap-2">
+                            <Label for="type-sales-end">Sale ends</Label>
+                            <Input
+                                id="type-sales-end"
+                                v-model="form.salesEnd"
+                                type="datetime-local"
+                                aria-describedby="type-sales-end-hint"
+                            />
+                            <p
+                                id="type-sales-end-hint"
+                                class="text-xs text-text-muted"
+                            >
+                                Must be after the start. After it, the type
+                                disappears from the landing page and neither a
+                                submission nor a checkout is accepted.
+                            </p>
+                            <InputError :message="form.errors.salesEnd" />
+                        </div>
                     </CardContent>
                 </Card>
 

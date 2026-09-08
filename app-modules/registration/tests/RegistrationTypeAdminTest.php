@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
@@ -393,4 +394,100 @@ it('refuses to cut capacity below the places already taken', function (): void {
         ->assertRedirect();
 
     expect($quota->refresh()->capacity)->toBe(120);
+});
+
+/**
+ * #218 (#216 draft i): the sales window. Both bounds are optional, they are
+ * instants (see the migration's docblock), and they deliberately do NOT
+ * freeze with the terms — closing a sale early, or extending it by a day, is
+ * an operational decision that reinterprets nobody's existing registration.
+ */
+it('saves a sales window and hands it back to the form as a datetime string', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create(['event_id' => $eventId]);
+
+    $this->actingAs($admin)
+        ->put("http://admin.regtypes.test/admin/registration-types/{$type->id}", [
+            'eventId' => $eventId,
+            'name' => $type->name,
+            'visibility' => 'public',
+            'approval' => 'none',
+            'settlement' => 'free',
+            'confirmationGate' => 'on_submit',
+            'termsDays' => 14,
+            'grants' => [],
+            'salesStart' => '2026-10-01 18:00:00',
+            'salesEnd' => '2026-10-08 18:00:00',
+        ])
+        ->assertRedirect();
+
+    expect($type->refresh()->sales_start?->toIso8601String())->toBe('2026-10-01T18:00:00+00:00')
+        ->and($type->sales_end?->toIso8601String())->toBe('2026-10-08T18:00:00+00:00');
+
+    $this->actingAs($admin)
+        ->get("http://admin.regtypes.test/admin/registration-types/{$type->id}/edit")
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('type.salesStart', '2026-10-01 18:00:00')
+            ->where('type.salesEnd', '2026-10-08 18:00:00'));
+});
+
+it('refuses a sales window that ends before it starts', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $this->actingAs($admin)
+        ->post('http://admin.regtypes.test/admin/registration-types', [
+            'brand_id' => $brand->id,
+            'eventId' => $eventId,
+            'name' => 'Backwards window',
+            'visibility' => 'public',
+            'approval' => 'none',
+            'settlement' => 'free',
+            'confirmationGate' => 'on_submit',
+            'termsDays' => 0,
+            'grants' => [],
+            'salesStart' => '2026-10-08 18:00:00',
+            'salesEnd' => '2026-10-01 18:00:00',
+        ])
+        ->assertSessionHasErrors('salesEnd');
+
+    expect(RegistrationType::withoutBrandScope()->where('name', 'Backwards window')->exists())->toBeFalse();
+});
+
+it('keeps the sales window editable once registrations exist', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create([
+        'event_id' => $eventId,
+        'settlement' => RegistrationSettlement::Free,
+        'confirmation_gate' => ConfirmationGate::OnSubmit,
+        'price_declaration' => null,
+        'grants' => [],
+    ]);
+    Registration::factory()->create([
+        'registration_type_id' => $type->id,
+        'event_id' => $eventId,
+    ]);
+
+    $this->actingAs($admin)
+        ->put("http://admin.regtypes.test/admin/registration-types/{$type->id}", [
+            'eventId' => $eventId,
+            'name' => $type->name,
+            'visibility' => $type->visibility->value,
+            'approval' => $type->approval->value,
+            'settlement' => 'free',
+            'confirmationGate' => 'on_submit',
+            'termsDays' => $type->terms_days,
+            'grants' => [],
+            'salesEnd' => '2026-10-08 18:00:00',
+        ])
+        ->assertRedirect();
+
+    expect($type->refresh()->sales_end?->toIso8601String())->toBe('2026-10-08T18:00:00+00:00');
 });
