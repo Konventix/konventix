@@ -275,3 +275,14 @@ to what the change can have broken, and formatting is nobody's decision (#64):
   suite on every merge request, the scanners, the image — is the pipeline's.
 - Never run two test processes at once; they share one database
   (`.ai/rules/tests.md`).
+- **When the browser disagrees with a passing test, suspect a stale worker.**
+  The dev web role is Octane with `--watch`, and the watch list in
+  `config/octane.php` is deliberately seven short entries — FrankenPHP starts
+  one watcher session per entry and its watcher crashes with `std::bad_alloc`
+  as they multiply and overlap (#195, README "The dev web server watches
+  files"). Nothing outside `app`, `app-modules`, `bootstrap/app.php`,
+  `bootstrap/providers.php`, `config`, `routes` and `.env` reloads a worker,
+  so after any other change:
+  `vendor/bin/sail artisan octane:reload`, or
+  `vendor/bin/sail restart laravel.test` for the queue, scheduler and reverb
+  roles, which hold code in memory too.

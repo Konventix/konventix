@@ -148,6 +148,59 @@ Garage applies its own cluster layout and creates the first key and bucket at bo
 command adds the second bucket and the anonymous read access that Garage only offers through
 website mode, having neither bucket policies nor ACLs.
 
+### The dev web server watches files, and how to make it stop
+
+`compose.yaml` starts the web role as `octane:start --server=frankenphp … --watch`, so
+saving a PHP file reloads the workers. FrankenPHP does that watching natively: every entry
+in `config/octane.php`'s `watch` array becomes one `watch <path>` line in the Caddyfile
+Octane generates, and each line is its own watcher session.
+
+Those sessions are the reason the list is seven short entries and no recursive globs
+(#195). With the eleven it replaced — three of them globs rooted at the same `app-modules`
+tree — FrankenPHP's C++ watcher died of `std::bad_alloc` (exit 134) about twelve times per
+two minutes of ordinary editing; supervisord respawned it each time and HTTP answered
+`Empty reply from server` in the gaps. The other half of that fix is in `compose.yaml`:
+`XDG_CONFIG_HOME` and `XDG_DATA_HOME` now point at `/tmp`, the way the production image
+already does, instead of at `/var/www/html/config` and `/var/www/html/data` — which put
+FrankenPHP's own autosave inside the very tree it was watching, and is what made the
+container crash roughly once a minute even with nobody typing.
+
+Measured on 2026-09-08, two minutes of continuous edits each time:
+
+| watch list | edits under | crashes |
+| --- | --- | --- |
+| the previous eleven entries | `app` + `app-modules` | 12 |
+| this list | `app` only | 0 |
+| this list | `app-modules` only | 4 |
+| this list | `app` + `app-modules` | 0 |
+| idle, nobody editing | — | 0 |
+
+So the loop is gone: idle is quiet, and two minutes of continuous editing across both trees
+left the workers up throughout. It is not proved to be *never* — one run of edits confined
+to `app-modules` (17 MB, thousands of files, where all the domain code is) still cost four
+aborts, so the watcher is close to its limit on that tree rather than comfortably inside
+it. Each abort is a crash the workers come back from in about a second, and it is
+FrankenPHP's watcher rather than something this repository can configure away.
+
+If that is not good enough, take the watching away rather than living with it:
+
+```bash
+# compose.yaml, SUPERVISOR_PHP_COMMAND: replace --watch with --no-watch
+./vendor/bin/sail up -d laravel.test      # env changes need a recreate, not a restart
+./vendor/bin/sail artisan octane:reload   # after every backend change, by hand
+```
+
+`sail restart laravel.test` re-reads `config/octane.php` and is enough after a change to
+the watch list itself; a change to the container's environment needs `sail up -d`. To see
+whether the loop is running:
+
+```bash
+docker exec konventix-poc-laravel.test-1 tail -f /var/log/supervisor/supervisord.log
+```
+
+`exited: php (exit status 134; not expected)` is the crash; a healthy stretch shows one
+`spawned: 'php'` and nothing after it.
+
 **compose.yaml deliberately defines no compose profiles.** `vendor/bin/sail` has no
 `--profile` handling anywhere in it — it forwards extra `-f` files through `SAIL_FILES` and
 nothing else — so a profile-gated service is unreachable through the command this project
