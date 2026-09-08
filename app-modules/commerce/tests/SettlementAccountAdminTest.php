@@ -380,6 +380,81 @@ it('saves a custom checkout label', function (): void {
     expect($account->refresh()->checkout_label)->toBe('Pay by card');
 });
 
+it('corrects a Stripe statement descriptor suffix in place', function (): void {
+    // A typo in what the payer reads on their card statement used to cost a
+    // disconnect and a re-enable, because `connectStripe()` refuses a second
+    // live Stripe row — while the checkout label beside it edited in place.
+    [$admin, $brand] = settlementAdminOperator();
+
+    $account = SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'statement_descriptor_suffix' => 'SXLNA',
+    ]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+            'statementDescriptorSuffix' => 'SXLAN',
+        ])
+        ->assertRedirect();
+
+    expect($account->refresh()->statement_descriptor_suffix)->toBe('SXLAN')
+        ->and($account->checkout_label)->toBe('Pay by card');
+
+    // And clearing it is a legitimate choice: no suffix means Stripe uses the
+    // account's own descriptor, which is what a brand-less row had before.
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+            'statementDescriptorSuffix' => null,
+        ])
+        ->assertRedirect();
+
+    expect($account->refresh()->statement_descriptor_suffix)->toBeNull();
+});
+
+it('holds an edited statement descriptor suffix to the same budget the enable form uses', function (): void {
+    [$admin, $brand] = settlementAdminOperator();
+
+    $account = SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'statement_descriptor_suffix' => 'SXLAN',
+    ]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+            'statementDescriptorSuffix' => 'SXLAN EVENT',
+        ])
+        ->assertSessionHasErrors('statementDescriptorSuffix');
+
+    expect($account->refresh()->statement_descriptor_suffix)->toBe('SXLAN');
+});
+
+it('leaves a non-Stripe account\'s statement descriptor alone', function (): void {
+    // The column exists on every row; only Stripe reads it. A hand-made POST
+    // must not park a dead value on a Mollie account.
+    [$admin, $brand] = settlementAdminOperator();
+
+    $account = SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_MOLLIE,
+        'credentials' => ['api_key' => 'k'],
+    ]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+            'statementDescriptorSuffix' => 'SXLAN',
+        ])
+        ->assertRedirect();
+
+    expect($account->refresh()->statement_descriptor_suffix)->toBeNull()
+        ->and($account->checkout_label)->toBe('Pay by card');
+});
+
 it('connects Mollie in one step and emits the contract event', function (): void {
     [$admin, $brand] = settlementAdminOperator();
 

@@ -40,6 +40,10 @@ const providerNames: Record<string, string> = {
 
 const labelForm = useForm({
     checkoutLabel: props.account.checkoutLabel ?? '',
+    // Stripe only: what the payer reads on their card statement (ADR-0058
+    // point 3). Correctable here rather than by disconnecting, because
+    // `connectStripe()` refuses a second live Stripe row per brand.
+    statementDescriptorSuffix: props.account.statementDescriptorSuffix ?? '',
 });
 
 useUnsavedChanges(() => labelForm.isDirty);
@@ -131,11 +135,56 @@ function offeredStatus(account: SettlementAccount): OfferedStatus {
                     v-model="labelForm.checkoutLabel"
                     placeholder="Card payment"
                     class="max-w-xs"
+                    :aria-invalid="
+                        labelForm.errors.checkoutLabel ? true : undefined
+                    "
+                    :aria-describedby="
+                        labelForm.errors.checkoutLabel
+                            ? `checkout-label-${account.id}-error`
+                            : undefined
+                    "
                 />
-                <InputError :message="labelForm.errors.checkoutLabel" />
+                <InputError
+                    :id="`checkout-label-${account.id}-error`"
+                    :message="labelForm.errors.checkoutLabel"
+                />
+            </div>
+            <div
+                v-if="account.provider === 'stripe'"
+                class="flex flex-col gap-2"
+            >
+                <Label :for="`statement-suffix-${account.id}`">
+                    Statement descriptor suffix
+                </Label>
+                <Input
+                    :id="`statement-suffix-${account.id}`"
+                    v-model="labelForm.statementDescriptorSuffix"
+                    placeholder="SXLAN"
+                    maxlength="10"
+                    autocomplete="off"
+                    class="max-w-xs"
+                    :aria-invalid="
+                        labelForm.errors.statementDescriptorSuffix
+                            ? true
+                            : undefined
+                    "
+                    :aria-describedby="`statement-suffix-${account.id}-hint${labelForm.errors.statementDescriptorSuffix ? ` statement-suffix-${account.id}-error` : ''}`"
+                />
+                <InputError
+                    :id="`statement-suffix-${account.id}-error`"
+                    :message="labelForm.errors.statementDescriptorSuffix"
+                />
+                <p
+                    :id="`statement-suffix-${account.id}-hint`"
+                    class="max-w-xs text-xs text-text-muted"
+                >
+                    Stripe prepends the account's own prefix and caps the two
+                    together at 22 characters. Leave empty to use the account's
+                    own descriptor.
+                </p>
             </div>
             <Button type="submit" size="sm" :disabled="labelForm.processing">
-                Save label
+                Save
             </Button>
             <span
                 v-if="labelForm.isDirty"

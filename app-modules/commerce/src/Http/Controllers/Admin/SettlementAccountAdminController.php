@@ -145,8 +145,8 @@ class SettlementAccountAdminController
             'statement_descriptor_suffix' => [
                 'nullable',
                 'string',
-                'max:10',
-                'regex:/^[^<>\\\\"\']*[A-Za-z][^<>\\\\"\']*$/',
+                'max:'.SettlementAccount::STATEMENT_DESCRIPTOR_SUFFIX_MAX,
+                'regex:'.SettlementAccount::STATEMENT_DESCRIPTOR_SUFFIX_PATTERN,
             ],
         ]);
 
@@ -288,7 +288,7 @@ class SettlementAccountAdminController
 
         $update->handle(SettlementAccount::withoutBrandScope()->findOrFail($account), $data);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Checkout label saved.')]);
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Account details saved.')]);
 
         return back();
     }

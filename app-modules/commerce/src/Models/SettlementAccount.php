@@ -72,6 +72,26 @@ class SettlementAccount extends Model
     /** Unzer, against the organizer's own private key (ADR-0039). */
     public const string PROVIDER_UNZER = 'unzer';
 
+    /**
+     * How much of Stripe's statement descriptor a brand may claim.
+     *
+     * Stripe caps the account's own prefix plus this suffix at 22 characters
+     * together and refuses the charge if they overflow; the prefix cannot be
+     * read back since `fetchAccount()` went with Connect (ADR-0058), so the
+     * budget is the worst legal case — a 10-character prefix and its
+     * separator leave 11, and this keeps 10.
+     *
+     * Both the enable form and the in-place edit validate against these two
+     * constants so the two rules cannot drift apart.
+     */
+    public const int STATEMENT_DESCRIPTOR_SUFFIX_MAX = 10;
+
+    /**
+     * The characters Stripe refuses outright (`<`, `>`, `\`, `"`, `'`), plus
+     * its requirement of at least one latin letter.
+     */
+    public const string STATEMENT_DESCRIPTOR_SUFFIX_PATTERN = '/^[^<>\\\\"\']*[A-Za-z][^<>\\\\"\']*$/';
+
     protected $fillable = [
         'provider',
         'label',
