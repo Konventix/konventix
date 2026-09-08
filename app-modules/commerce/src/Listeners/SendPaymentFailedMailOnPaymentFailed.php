@@ -7,7 +7,6 @@ namespace Konventix\Commerce\Listeners;
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Data\PaymentFailedMailData;
 use Konventix\Commerce\Events\PaymentFailed;
-use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Settlement\PayLink;
 use Konventix\Messaging\Actions\SendMessage;
@@ -19,11 +18,11 @@ use RuntimeException;
 /**
  * ADR-0048 point 3: Commerce owns `PaymentFailed`, so Commerce owns telling
  * the payer their attempt did not go through — the order stays pending, and
- * the mail's own retry link says where to try again: `commerce.pay.show`
- * for a registration order (ADR-0039's public checkout), `/my/orders` for a
- * cart order (ADR-0047), where the shop's own retry lives.
+ * the mail's own retry link says where to try again.
  *
- * The retry link is `Settlement\PayLink`'s answer since #5, so the failure
+ * That link is `Settlement\PayLink`'s answer since #5 — `commerce.pay.show`
+ * for a registration order (ADR-0039's public checkout), the order's own
+ * `/pay/order/{order}` page for a cart order (ADR-0047) — so the failure
  * mail and the order confirmation always name the same place.
  *
  * `reasonCode` values come from the three PSP webhook controllers that
@@ -74,16 +73,10 @@ final class SendPaymentFailedMailOnPaymentFailed
     private function send(PaymentFailed $event, Order $order): void
     {
         // GitLab #5: `PayLink` owns the rule — a registration order's public
-        // checkout, a cart order's own cart while the checkout-grace hold is
-        // still alive (a further `POST /cart/checkout` resumes the same order
-        // through `PlaceOrderFromCart`'s idempotent branch), the order list
-        // once that hold is gone. Shared with the order confirmation so a
-        // payer is never sent to two different places for one order.
-        $checkedOutCart = Cart::withoutBrandScope()
-            ->where('checked_out_order_id', $order->id)
-            ->first();
-
-        $link = app(PayLink::class)->forOrder($order, $checkedOutCart);
+        // checkout, every other order's own `/pay/order/{order}` page.
+        // Shared with the order confirmation so a payer is never sent to two
+        // different places for one order.
+        $link = app(PayLink::class)->forOrder($order);
 
         $retryUrl = $link === null
             ? $this->absoluteUrl($event->brandId, 'commerce.mine.index')

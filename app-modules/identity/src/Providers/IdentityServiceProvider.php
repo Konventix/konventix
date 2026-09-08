@@ -140,7 +140,6 @@ class IdentityServiceProvider extends ModuleServiceProvider
         // account without ever importing Identity's User model (ADR-0004) —
         // see SubjectResolver's docblock.
         $this->app->bind(SubjectResolver::class, IdentitySubjectResolver::class);
-
     }
 
     /**

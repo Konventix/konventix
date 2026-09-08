@@ -244,7 +244,9 @@ it('sends the payment-failed mail to the order payer with a mapped reason and a 
             && $job->message->recipientId === $payer->id
             && $payload['orderNumberShort'] === strtoupper(substr($order->id, -8))
             && $payload['reason'] === 'Die Zahlung ist abgelaufen.'
-            && str_ends_with($payload['retryUrl'], '/my/orders');
+            // GitLab #5: a cart order retries on its own order-addressed pay
+            // page, not on the order list — see `Settlement\PayLink`.
+            && str_ends_with($payload['retryUrl'], '/pay/order/'.$order->id);
     });
 });
 

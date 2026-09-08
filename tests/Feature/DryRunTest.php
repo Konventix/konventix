@@ -122,6 +122,17 @@ function dryRunSkippedRoutes(): array
         // `{message}` parameter to point at. `admin.messages.index` still
         // walks; only the detail screen needs a row.
         'admin.messages.show' => 'no message record after seeding — konventix:seed sends no mail',
+
+        // The order-addressed pay page (GitLab #5) authorizes on the order's
+        // own buyer and 404s for anyone else — unlike `commerce.pay.show`,
+        // where knowing the registration ULID is the authorization. The walk
+        // signs in as one member chosen for their registration and their data
+        // request, and konventix:seed leaves that person owning no order, so
+        // there is no URL this walk could build that the controller would
+        // serve. A genuine seed gap, not a route that cannot be a screen —
+        // `OrderRepayPageTest` walks the page itself, both arms of the
+        // ownership check included.
+        'commerce.pay.order.show' => 'no order owned by the walking member after seeding',
     ];
 }
 

@@ -104,15 +104,15 @@ final class SendOrderConfirmationOnOrderPlaced
                 // GitLab #5: an unpaid order's confirmation says where to pay
                 // it. `PayLink` owns the rule so this mail and the
                 // payment-failed one cannot point at different places.
-                payUrl: $this->payUrl($event->brandId, $order, $checkedOutCart),
+                payUrl: $this->payUrl($event->brandId, $order),
             ),
             brandId: $event->brandId,
         ));
     }
 
-    private function payUrl(string $brandId, Order $order, ?Cart $checkedOutCart): ?string
+    private function payUrl(string $brandId, Order $order): ?string
     {
-        $link = app(PayLink::class)->forOrder($order, $checkedOutCart);
+        $link = app(PayLink::class)->forOrder($order);
 
         return $link === null ? null : $this->absoluteUrl($brandId, $link['route'], $link['parameters']);
     }

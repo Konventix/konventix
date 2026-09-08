@@ -24,7 +24,6 @@ use Konventix\Commerce\Data\CartLineQuantityData;
 use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
-use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Exceptions\CartCheckoutRefusedException;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
@@ -33,12 +32,12 @@ use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\CheckoutConsentSlots;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Operators\OperatorSettings;
-use Konventix\Platform\Slots\SlotRegistry;
 use LogicException;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
@@ -57,13 +56,27 @@ final class CartController
         private readonly TaxCalculator $taxCalculator,
         private readonly OperatorSettings $operatorSettings,
         private readonly SettlementAdapterRegistry $registry,
-        private readonly SlotRegistry $slots,
+        private readonly CheckoutConsentSlots $consentSlots,
     ) {}
 
-    public function show(Request $request, BrandContext $brandContext): Response
+    public function show(Request $request, BrandContext $brandContext): Response|RedirectResponse
     {
         $brand = $brandContext->current();
         abort_if($brand === null, 404);
+
+        // GitLab #205, review 6 finding 5: a republished contract text is
+        // settled before the form is shown, not after the payer has picked
+        // an account and ticked the box. Loop-free — `policies.required`
+        // carries no gate of its own — and the intent it remembers brings
+        // them straight back here.
+        $consentSlots = $this->consentSlots->contributions();
+        $outstandingUrl = $this->consentSlots->outstandingUrl($consentSlots);
+
+        if ($outstandingUrl !== null) {
+            $request->session()->put('url.intended', route('commerce.cart.show', absolute: false));
+
+            return redirect()->to($outstandingUrl);
+        }
 
         $cart = $this->openCartFor($request);
         $lines = $cart?->lines()->get() ?? new Collection;
@@ -105,7 +118,7 @@ final class CartController
             // its own props here through Platform's slot registry (ADR-0003
             // enforcement point 3), exactly as Registration contributes to
             // Event's landing page.
-            'consentSlots' => $this->consentSlots(),
+            'consentSlots' => $consentSlots,
             'cart' => CartData::ofCart(
                 $cart,
                 $lineData,
@@ -177,16 +190,16 @@ final class CartController
 
     public function checkout(Request $request): SymfonyResponse
     {
-        $consentSlots = $this->consentSlots();
+        $consentSlots = $this->consentSlots->contributions();
 
-        // GitLab #205: a text the sale itself rests on, republished since
-        // this payer last agreed, is settled before the order button — not
-        // recorded silently behind it. Checked before validation so the
-        // payer is not first told to tick a box on a page they are about to
-        // be sent away from. The intent is the cart page, deliberately, not
-        // this POST: agreeing has to land them back where they were, and a
-        // consent screen may not replay a purchase.
-        $outstandingUrl = $this->outstandingConsentUrl($consentSlots);
+        // GitLab #205: the page gate above is the one a payer normally
+        // meets; this is the one that holds when the version was published
+        // between the render and the submit. Checked before validation so
+        // the payer is not first told to tick a box on a page they are
+        // about to be sent away from. The intent is the cart page,
+        // deliberately, not this POST: agreeing has to land them back where
+        // they were, and a consent screen may not replay a purchase.
+        $outstandingUrl = $this->consentSlots->outstandingUrl($consentSlots);
 
         if ($outstandingUrl !== null) {
             $request->session()->put('url.intended', route('commerce.cart.show', absolute: false));
@@ -201,7 +214,7 @@ final class CartController
         // there is something to declare: an instance with no published texts
         // renders no control, and a checkout that insisted on one anyway
         // could never be completed.
-        $validated = $request->validate($this->consentRequired($consentSlots)
+        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
             ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
             : ['account' => ['required', 'ulid']]);
 
@@ -231,7 +244,7 @@ final class CartController
         // authorizes it, and an adapter failure a moment later must not lose
         // the record that it was made. Compliance decides which documents
         // and which version — Commerce never writes a consent row (ADR-0004).
-        if ($this->consentRequired($consentSlots)) {
+        if ($this->consentSlots->declarationRequired($consentSlots)) {
             event(new CheckoutConsentGiven(
                 brandId: $cart->brand_id,
                 subjectId: (string) $request->user()->getAuthIdentifier(),
@@ -255,37 +268,23 @@ final class CartController
     }
 
     /**
-     * The payer's own cart to show, or null — the cart page's empty state
+     * The payer's own open cart, or null — the cart page's empty state
      * when there is none. Never a bare `Cart::find()`: another payer's
      * cart, on this same brand, must never resolve here.
      *
-     * An open cart, or — since GitLab #5 — one already `checked_out` whose
-     * checkout-grace hold has not run out and whose order is still pending.
-     * That is the state a payer is left in when a hosted checkout fails or
-     * is abandoned: the lines are still reserved (ADR-0047 point 4; only
-     * `Actions\ExpireCarts` releases them, and nothing here changes when),
-     * so the page they come back to has to be the cart itself. Posting the
-     * checkout again resumes the very same order through
-     * `PlaceOrderFromCart`'s idempotent branch — a retry, never a second
-     * order.
-     *
-     * Newest first, so a payer who started shopping again after an
-     * abandoned checkout sees the open cart they are filling rather than
-     * the one they walked away from.
+     * Open only. A cart already `checked_out` is not shown here even while
+     * its hold is alive (review 6 finding 1): this page's quantity and
+     * remove controls resolve through `cartLineFor()`, which needs an open
+     * cart, and rendering a state whose own controls 404 is worse than
+     * rendering the empty state. Re-paying such an order is order-scoped
+     * instead — `CheckoutController::showOrder()` and `/pay/order/{order}`
+     * (#5).
      */
     private function openCartFor(Request $request): ?Cart
     {
         return Cart::query()
+            ->open()
             ->where('payer_user_id', (string) $request->user()->getAuthIdentifier())
-            ->where(fn (Builder $query): Builder => $query
-                ->where(fn (Builder $open): Builder => $open->where('status', CartStatus::Open))
-                ->orWhere(fn (Builder $held): Builder => $held
-                    ->where('status', CartStatus::CheckedOut)
-                    ->where('expires_at', '>', now())
-                    ->whereIn('checked_out_order_id', function ($orders): void {
-                        $orders->select('id')->from('orders')->where('status', OrderStatus::Pending->value);
-                    })))
-            ->latest('updated_at')
             ->first();
     }
 
@@ -316,65 +315,6 @@ final class CartController
             ->firstOrFail();
 
         return $cart->lines()->findOrFail($line);
-    }
-
-    /**
-     * Compliance's contribution to the consent control, resolved through
-     * Platform's slot registry — same shape and same reason as
-     * `CheckoutController::consentSlots()`.
-     *
-     * @return list<array{module: string, component: string, props: array<string, mixed>}>
-     */
-    private function consentSlots(): array
-    {
-        return array_values($this->slots->for('checkout.consent')
-            ->map(fn (array $entry): array => [
-                'module' => $entry['module'],
-                'component' => $entry['component'],
-                'props' => $entry['props'],
-            ])
-            ->all());
-    }
-
-    /**
-     * Where a contribution says this payer must settle an outstanding
-     * agreement before the order may be placed, or null when none says so
-     * (GitLab #205). A URL and nothing else: Commerce refuses the checkout
-     * without learning that a policy exists, the same way `required` tells
-     * it a declaration is owed without naming a document. Same as
-     * `CheckoutController::outstandingConsentUrl()`.
-     *
-     * @param  list<array{module: string, component: string, props: array<string, mixed>}>  $consentSlots
-     */
-    private function outstandingConsentUrl(array $consentSlots): ?string
-    {
-        foreach ($consentSlots as $slot) {
-            $url = $slot['props']['outstandingUrl'] ?? null;
-
-            if (is_string($url) && $url !== '') {
-                return $url;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Whether a contribution says the payer must confirm it before the order
-     * is placed — the whole of what this module knows about the control it
-     * renders. Same as `CheckoutController::consentRequired()`.
-     *
-     * @param  list<array{module: string, component: string, props: array<string, mixed>}>  $consentSlots
-     */
-    private function consentRequired(array $consentSlots): bool
-    {
-        foreach ($consentSlots as $slot) {
-            if (($slot['props']['required'] ?? false) === true) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

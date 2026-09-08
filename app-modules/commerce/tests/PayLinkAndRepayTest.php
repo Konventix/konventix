@@ -26,13 +26,18 @@ use Konventix\Platform\Models\Operator;
 
 /**
  * GitLab #5: the confirmation of an unpaid order says where to pay it, and
- * a failed attempt can be repeated inside the reservation window without
- * shopping again.
+ * the payer's own order list offers the same way back.
  *
- * The window itself is `ExpireCarts`' second pass (ADR-0047 point 4): a
+ * Fix round 1: that destination is *order*-addressed — `/pay/order/{order}`
+ * for every order that is not a registration — so a payer who kept shopping
+ * after an abandoned checkout can neither be shown nor check out the wrong
+ * cart (review 6 findings 1, 2 and 4). The page itself is
+ * `OrderRepayPageTest`; this file covers the links that lead to it.
+ *
+ * The window is `ExpireCarts`' second pass (ADR-0047 point 4): a
  * `checked_out` cart holds its stock and its registration lines for
  * `Cart::CHECKOUT_GRACE_MINUTES`, and only that sweep releases them. Nothing
- * here changes it — re-paying inside the window is what the hold was for.
+ * here changes it.
  *
  * Helper names prefixed `payLink*` — Pest helpers are process-global
  * (.ai/rules/tests.md).
@@ -114,54 +119,53 @@ function payLinkCheckedOutCartOrder(Brand $brand, User $payer, bool $held = true
     return [$order->fresh(), $cart->fresh()];
 }
 
-it('puts the cart on the confirmation of an unpaid cart order while the reservation holds', function (): void {
+function payLinkPlaceOrder(Brand $brand, Cart $cart): void
+{
+    event(new OrderPlaced(
+        orderId: (string) $cart->checked_out_order_id,
+        brandId: $brand->getKey(),
+        settlesType: 'cart',
+        settlesId: $cart->getKey(),
+        totalNet: '30.00',
+        totalGross: '35.70',
+        currency: 'EUR',
+        placedAt: now()->toIso8601String(),
+    ));
+}
+
+function payLinkConfirmation(): SendQueuedMessage
+{
+    return Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.order-confirmation',
+    )->sole();
+}
+
+it("puts the order's own pay page on the confirmation of an unpaid cart order", function (): void {
     $brand = payLinkBrand();
     $payer = orderMailsRecipient($brand->getKey());
     [$order, $cart] = payLinkCheckedOutCartOrder($brand, $payer);
     Queue::fake();
 
-    event(new OrderPlaced(
-        orderId: $order->getKey(),
-        brandId: $brand->getKey(),
-        settlesType: 'cart',
-        settlesId: $cart->getKey(),
-        totalNet: '30.00',
-        totalGross: '35.70',
-        currency: 'EUR',
-        placedAt: now()->toIso8601String(),
-    ));
+    payLinkPlaceOrder($brand, $cart);
 
-    $job = Queue::pushed(
-        SendQueuedMessage::class,
-        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.order-confirmation',
-    )->sole();
-
-    expect($job->message->payload->toArray()['payUrl'])->toEndWith('/cart');
+    expect(payLinkConfirmation()->message->payload->toArray()['payUrl'])
+        ->toEndWith('/pay/order/'.$order->getKey());
 });
 
-it('falls back to my orders on the confirmation once the reservation is gone', function (): void {
+it('keeps that link once the reservation is gone, because the page is what explains it', function (): void {
     $brand = payLinkBrand();
     $payer = orderMailsRecipient($brand->getKey());
     [$order, $cart] = payLinkCheckedOutCartOrder($brand, $payer, held: false);
     Queue::fake();
 
-    event(new OrderPlaced(
-        orderId: $order->getKey(),
-        brandId: $brand->getKey(),
-        settlesType: 'cart',
-        settlesId: $cart->getKey(),
-        totalNet: '30.00',
-        totalGross: '35.70',
-        currency: 'EUR',
-        placedAt: now()->toIso8601String(),
-    ));
+    payLinkPlaceOrder($brand, $cart);
 
-    $job = Queue::pushed(
-        SendQueuedMessage::class,
-        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.order-confirmation',
-    )->sole();
-
-    expect($job->message->payload->toArray()['payUrl'])->toEndWith('/my/orders');
+    // Not `/my/orders`: `/pay/order/{order}` states "the reservation for this
+    // order has run out" and refuses, which is a better answer to a payer
+    // holding a mail than a list with no button on it (review 6 finding 4).
+    expect(payLinkConfirmation()->message->payload->toArray()['payUrl'])
+        ->toEndWith('/pay/order/'.$order->getKey());
 });
 
 it('leaves the pay link off the confirmation of an order that is already paid', function (): void {
@@ -171,23 +175,9 @@ it('leaves the pay link off the confirmation of an order that is already paid', 
     $order->forceFill(['status' => OrderStatus::Paid])->save();
     Queue::fake();
 
-    event(new OrderPlaced(
-        orderId: $order->getKey(),
-        brandId: $brand->getKey(),
-        settlesType: 'cart',
-        settlesId: $cart->getKey(),
-        totalNet: '30.00',
-        totalGross: '35.70',
-        currency: 'EUR',
-        placedAt: now()->toIso8601String(),
-    ));
+    payLinkPlaceOrder($brand, $cart);
 
-    $job = Queue::pushed(
-        SendQueuedMessage::class,
-        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.order-confirmation',
-    )->sole();
-
-    expect($job->message->payload->toArray()['payUrl'])->toBeNull();
+    expect(payLinkConfirmation()->message->payload->toArray()['payUrl'])->toBeNull();
 });
 
 it('renders the pay link in the confirmation mail body', function (): void {
@@ -196,28 +186,14 @@ it('renders the pay link in the confirmation mail body', function (): void {
     [$order, $cart] = payLinkCheckedOutCartOrder($brand, $payer);
     Queue::fake();
 
-    event(new OrderPlaced(
-        orderId: $order->getKey(),
-        brandId: $brand->getKey(),
-        settlesType: 'cart',
-        settlesId: $cart->getKey(),
-        totalNet: '30.00',
-        totalGross: '35.70',
-        currency: 'EUR',
-        placedAt: now()->toIso8601String(),
-    ));
+    payLinkPlaceOrder($brand, $cart);
 
-    $job = Queue::pushed(
-        SendQueuedMessage::class,
-        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.order-confirmation',
-    )->sole();
-
-    expect(app(TemplateRenderer::class)->render($job->message)->body)
+    expect(app(TemplateRenderer::class)->render(payLinkConfirmation()->message)->body)
         ->toContain('>Pay now</a>')
-        ->toContain('/cart"');
+        ->toContain('/pay/order/'.$order->getKey().'"');
 });
 
-it('points a failed cart payment back at the cart while the reservation holds', function (): void {
+it("points a failed cart payment back at the order's own pay page", function (): void {
     $brand = payLinkBrand();
     $payer = orderMailsRecipient($brand->getKey());
     [$order] = payLinkCheckedOutCartOrder($brand, $payer);
@@ -237,47 +213,37 @@ it('points a failed cart payment back at the cart while the reservation holds', 
         fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.payment-failed',
     )->sole();
 
-    expect($job->message->payload->toArray()['retryUrl'])->toEndWith('/cart');
+    expect($job->message->payload->toArray()['retryUrl'])->toEndWith('/pay/order/'.$order->getKey());
 });
 
-it('shows the still-held cart after a failed payment, so it can be paid again without a new one', function (): void {
+it('gives a cart order the same pay link on the payer\'s own order list', function (): void {
     $brand = payLinkBrand();
     $payer = User::factory()->create();
     [$order] = payLinkCheckedOutCartOrder($brand, $payer);
+
+    test()->actingAs($payer)
+        ->get('/my/orders')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('orders.0.payUrl', '/pay/order/'.$order->getKey()));
+});
+
+it('leaves the cart page on open carts only, so its own line controls keep working', function (): void {
+    $brand = payLinkBrand();
+    $payer = User::factory()->create();
+    payLinkCheckedOutCartOrder($brand, $payer);
     payLinkStripeAccount();
 
-    Payment::factory()->create([
-        'order_id' => $order->getKey(),
-        'status' => PaymentStatus::Failed,
-    ]);
-
+    // Review 6 finding 1: a `checked_out` cart is not rendered here. The
+    // quantity and remove controls resolve through an open cart only, and a
+    // page whose own buttons 404 is worse than the empty state. Re-paying is
+    // `/pay/order/{order}`'s job.
     test()->actingAs($payer)
         ->get('/cart')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('cart/Show')
-            ->has('cart.lines', 1)
-            ->has('cart.accounts', 1));
-});
-
-it('pays a cart order again inside the window without a new cart, on the same order', function (): void {
-    $brand = payLinkBrand();
-    $payer = User::factory()->create();
-    [$order] = payLinkCheckedOutCartOrder($brand, $payer);
-    $account = payLinkStripeAccount();
-
-    Payment::factory()->create([
-        'order_id' => $order->getKey(),
-        'settlement_account_id' => $account->getKey(),
-        'status' => PaymentStatus::Failed,
-    ]);
-
-    test()->actingAs($payer)
-        ->post('/cart/checkout', ['account' => $account->getKey()])
-        ->assertRedirect('https://checkout.stripe.test/paylink-1');
-
-    expect(Order::query()->count())->toBe(1)
-        ->and(Payment::withoutBrandScope()->where('order_id', $order->getKey())->count())->toBe(2);
+            ->where('cart.lines', []));
 });
 
 it('takes a second attempt on a registration order whose last payment failed, and writes a payment row per attempt', function (): void {

@@ -36,6 +36,21 @@ const props = defineProps<{
     policies: ConsentPolicy[];
     exemptionNotice: string;
     error?: string;
+    /**
+     * Where the payer has to settle an outstanding *contract* agreement
+     * before this purchase may proceed (GitLab #205), or null — the server
+     * side of the same slot contribution, which the checkout controllers
+     * read to refuse the order.
+     *
+     * Declared but not rendered, on purpose. Every page that renders this
+     * control now redirects on GET while it is set
+     * (`CartController::show()`, `CheckoutController::show()` and
+     * `::showOrder()`), so the payer never reaches a form in that state and
+     * a notice here would be unreachable. Declaring it is what stops Vue
+     * falling it through onto the root element as
+     * `outstandingurl="/policies-required"` (review 6 finding 6).
+     */
+    outstandingUrl?: string | null;
 }>();
 
 const checkboxId = 'checkout-accept-terms';

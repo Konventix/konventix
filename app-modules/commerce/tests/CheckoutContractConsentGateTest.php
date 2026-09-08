@@ -242,3 +242,67 @@ it('does not block a checkout over a consent-based required text', function (): 
         ->post('/cart/checkout', ['account' => $account->id, 'accept_terms' => true])
         ->assertRedirect('https://checkout.stripe.test/gate-session');
 });
+
+/**
+ * Review 6 finding 5: the payer is not made to pick an account and tick a
+ * box only to be bounced by the POST. Every page that renders the control
+ * redirects on GET while the agreement is outstanding, and the intent it
+ * remembers is the page itself.
+ */
+it('sends the payer to the consent screen before the cart form is shown', function (): void {
+    $brand = consentGateBrand();
+    consentGateLegalTexts();
+    $user = User::factory()->create();
+    consentGateCart($brand, $user->getKey());
+    consentGateAccount();
+
+    test()->actingAs($user)
+        ->get('/cart')
+        ->assertRedirect(route('policies.required', absolute: false))
+        ->assertSessionHas('url.intended', route('commerce.cart.show', absolute: false));
+});
+
+it('sends the payer to the consent screen before the registration pay form is shown', function (): void {
+    consentGateBrand();
+    consentGateLegalTexts();
+    $user = User::factory()->create();
+    $registrationId = consentGateRegistrationOrder();
+    consentGateAccount();
+
+    test()->actingAs($user)
+        ->get('/pay/registration/'.$registrationId)
+        ->assertRedirect(route('policies.required', absolute: false))
+        ->assertSessionHas('url.intended', route('commerce.pay.show', ['registration' => $registrationId], absolute: false));
+});
+
+/**
+ * Review 6 nit 11: agreeing at the consent screen has to clear the checkout
+ * gate in the same session. The inline `accept_terms` box still appears —
+ * that is the order-level declaration §312j BGB asks for at the order
+ * button (#2, ADR-0048), a different act from agreeing to a republished
+ * version — but the *gate* must not fire twice, and a payer who consented a
+ * moment ago must reach the checkout.
+ */
+it('lets a payer who just agreed at the consent screen straight through the checkout', function (): void {
+    $brand = consentGateBrand();
+    $terms = consentGateLegalTexts();
+    $user = User::factory()->create();
+    consentGateCart($brand, $user->getKey());
+    $account = consentGateAccount();
+
+    test()->actingAs($user)
+        ->get('/cart')
+        ->assertRedirect(route('policies.required', absolute: false));
+
+    test()->actingAs($user)
+        ->post('/consents', ['versionIds' => [$terms->getKey()]])
+        ->assertRedirect(route('commerce.cart.show', absolute: false));
+
+    test()->actingAs($user)->get('/cart')->assertOk();
+
+    test()->actingAs($user)
+        ->post('/cart/checkout', ['account' => $account->getKey(), 'accept_terms' => true])
+        ->assertRedirect('https://checkout.stripe.test/gate-session');
+
+    expect(Order::query()->count())->toBe(1);
+});

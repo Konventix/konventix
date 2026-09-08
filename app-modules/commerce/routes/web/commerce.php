@@ -86,6 +86,23 @@ Route::middleware(['auth'])->group(function (): void {
     Route::post('/pay/registration/{registration}/start', [CheckoutController::class, 'start'])
         ->whereUlid('registration')
         ->name('commerce.pay.start');
+
+    // The order-addressed pair (GitLab #5): the way back to a cart order
+    // whose payment failed, which has no registration ULID to be addressed
+    // by. Deliberately order-scoped rather than cart-scoped — a payer who
+    // kept shopping after an abandoned checkout has two carts, and a link
+    // naming a cart would show, and check out, the wrong one.
+    //
+    // Unlike the registration pair above, knowing the id authorizes
+    // nothing here: an order id travels in mails and browser history, and
+    // the page names what somebody bought. `CheckoutController` checks the
+    // order's own buyer and 404s otherwise.
+    Route::get('/pay/order/{order}', [CheckoutController::class, 'showOrder'])
+        ->whereUlid('order')
+        ->name('commerce.pay.order.show');
+    Route::post('/pay/order/{order}/start', [CheckoutController::class, 'startOrder'])
+        ->whereUlid('order')
+        ->name('commerce.pay.order.start');
 });
 
 // The registrant's own invoice PDF. `signed` is the authorization — see
