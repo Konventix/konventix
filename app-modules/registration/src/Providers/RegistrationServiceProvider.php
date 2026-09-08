@@ -18,9 +18,12 @@ use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Events\PaymentReversed;
 use Konventix\Commerce\Events\RegistrationLinePlacedInCart;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
+use Konventix\Event\Events\EventPublished;
+use Konventix\Event\Events\EventUnpublished;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -158,6 +161,12 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
         Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
         Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleArchived']);
+        // #240: `/shop` lists offers across every event, so the projection
+        // has to know which events are public — `event.landing` gets that
+        // from `Event::isVisibleOnLanding()`, which Registration may not read.
+        Event::listen(EventAnnounced::class, [ProjectEventSummary::class, 'handleAnnounced']);
+        Event::listen(EventPublished::class, [ProjectEventSummary::class, 'handlePublished']);
+        Event::listen(EventUnpublished::class, [ProjectEventSummary::class, 'handleUnpublished']);
 
         // ADR-0048 point 3: the module that owns an event owns its mail —
         // Registration's own lifecycle, told to the registrant every time
@@ -636,26 +645,48 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // module, one answer to "may this be bought now". The event's name
         // travels with each offer because "Weekend Ticket" on its own does
         // not say what it is a ticket to, and it comes from this module's
-        // own `EventSummary` projection (ADR-0004). An archived event drops
-        // out entirely — its offers are last year's.
+        // own `EventSummary` projection (ADR-0004).
+        //
+        // Unlike `event.landing`, this one needs its own visibility gate:
+        // that slot cannot run for a draft event at all, because
+        // `EventLandingController` 404s on `Event::isVisibleOnLanding()`
+        // long before it. `/shop` is addressed by no event, so without the
+        // `public_since` gate next year's unannounced convention — its name,
+        // its ticket names and its prices — stood on a public page (review
+        // finding 1). An archived event drops out too: its offers are last
+        // year's.
         $slots->add(
             slot: 'shop.index',
             module: 'registration',
             component: 'registration/ShopOffers',
-            props: static function (): array {
-                $eventNames = EventSummary::query()->whereNull('archived_at')->pluck('name', 'event_id');
-                $archived = EventSummary::query()->whereNotNull('archived_at')->pluck('event_id');
+            props: static function (array $context): array {
+                // One bounded read of the projection, and the *positive*
+                // form of the filter (review finding 2): a subquery over
+                // the summaries that are public and unarchived, rather than
+                // a full-table read inlined as a growing literal
+                // `NOT IN (…)`. It is also the only shape that can express
+                // finding 1 — an event this module cannot name, or cannot
+                // confirm is public, is exactly the one `/shop` must not
+                // advertise.
+                $listable = EventSummary::query()
+                    ->whereNotNull('public_since')
+                    ->whereNull('archived_at');
+
+                $eventNames = (clone $listable)->pluck('name', 'event_id');
 
                 return [
                     'offers' => RegistrationType::query()
                         ->where('visibility', RegistrationVisibility::Public)
-                        ->whereNotIn('event_id', $archived)
+                        ->whereIn('event_id', (clone $listable)->select('event_id'))
                         ->saleNotOver()
                         ->orderBy('name')
                         ->get()
                         ->map(fn (RegistrationType $type): array => PublicOfferData::ofType(
                             $type,
-                            $eventNames->get($type->event_id),
+                            // Never null here: the subquery above already
+                            // dropped every type whose event has no listable
+                            // summary (review finding 3).
+                            (string) $eventNames->get($type->event_id),
                         )->toArray())
                         ->all(),
                 ];

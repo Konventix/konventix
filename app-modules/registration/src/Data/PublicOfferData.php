@@ -29,11 +29,16 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  *
  * `eventName` is null on the event landing page, where the reader is
  * already standing on the event and repeating its name would be noise, and
- * set on `/shop` (#240), which is brand-wide and event-independent: there
- * "Weekend Ticket" alone does not say what it is a ticket to. It comes from
- * this module's own `EventSummary` read model, never from Event's tables
- * (ADR-0004), and stays nullable because a summary that has not arrived yet
- * must not hide an offer that is on sale.
+ * always a real name on `/shop` (#240), which is brand-wide and
+ * event-independent: there "Weekend Ticket" alone does not say what it is a
+ * ticket to. It comes from this module's own `EventSummary` read model,
+ * never from Event's tables (ADR-0004).
+ *
+ * The shop contribution guarantees it rather than tolerating a gap (review
+ * finding 3): its query selects types whose event has a summary that is
+ * public and unarchived, so an offer whose event this module cannot name is
+ * not listed at all instead of rendering an unlabelled card. The nullability
+ * of the field is the landing page's, not a degraded shop card.
  */
 #[TypeScript]
 final class PublicOfferData extends Data

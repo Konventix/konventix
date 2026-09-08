@@ -14,8 +14,14 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * Event's models, so it projects what it needs from Event's contract events).
  *
  * Exists so an organizer creating a registration type picks an event by name
- * instead of pasting a ULID. Name, slug, and whether it is archived — nothing
- * else, because nothing else here would be used.
+ * instead of pasting a ULID. Name, slug, whether it is archived, and — since
+ * #240 — since when it is publicly visible, because `/shop` lists a brand's
+ * registration types across every event and must not advertise a draft one.
+ *
+ * `public_since` is the projection of `Event::isVisibleOnLanding()`'s rule
+ * ("has left `Draft`"): set by `EventAnnounced` and `EventPublished`,
+ * cleared by `EventUnpublished`. Null therefore means "not public", which is
+ * also what a summary projected by `EventCreated` alone correctly says.
  *
  * No factory: rows exist only through `Listeners\ProjectEventSummary`, so a
  * test emits `EventCreated` rather than inventing an event.
@@ -25,6 +31,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $event_id
  * @property string $name
  * @property string $slug
+ * @property Carbon|null $public_since
  * @property Carbon|null $archived_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -36,7 +43,7 @@ class EventSummary extends Model
 
     protected $table = 'registration_event_summaries';
 
-    protected $fillable = ['event_id', 'name', 'slug', 'archived_at'];
+    protected $fillable = ['event_id', 'name', 'slug', 'public_since', 'archived_at'];
 
     /**
      * @return array<string, string>
@@ -44,6 +51,7 @@ class EventSummary extends Model
     protected function casts(): array
     {
         return [
+            'public_since' => 'datetime',
             'archived_at' => 'datetime',
         ];
     }

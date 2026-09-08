@@ -202,22 +202,6 @@ const refundReasons = Object.entries(refundReasonLabels).map(
     }),
 );
 
-/**
- * Two orders can be refunded (#6, ADR-0057 point 9): a paid one, and a
- * cancelled one still holding money nobody could apply — the PSP success
- * that landed after a sweep had already called the order off. The second is
- * `RefundOrder`'s provider leg without a credit note: the money goes back
- * through the account it came from, the order stays cancelled, and no
- * document is written, because a cancelled order has none to correct.
- *
- * Until this the console could only *show* that money and send the operator
- * to the provider's dashboard, which is the manual step the issue was filed
- * about.
- */
-const canRefund = computed(
-    () => props.order.status === 'paid' || props.unappliedPayment !== null,
-);
-
 const refundOpen = ref(false);
 
 /**
@@ -317,16 +301,12 @@ function returnFocusAfterRefund(): void {
                 Book bank transfer
             </Button>
             <Button
-                v-if="canRefund"
+                v-if="order.status === 'paid'"
                 variant="outline"
                 @click="refundOpen = true"
             >
                 <Undo2 class="size-4 text-danger" />
-                {{
-                    unappliedPayment
-                        ? 'Refund unapplied payment'
-                        : 'Refund whole order'
-                }}
+                Refund whole order
             </Button>
             <Button
                 v-if="order.status === 'payment_reversed'"
@@ -358,11 +338,7 @@ function returnFocusAfterRefund(): void {
         >
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>{{
-                        unappliedPayment
-                            ? 'Refund unapplied payment'
-                            : 'Refund whole order'
-                    }}</DialogTitle>
+                    <DialogTitle>Refund whole order</DialogTitle>
                     <DialogDescription>
                         Return the full {{ order.totalGross }}
                         {{ order.currency }} through the account that took it.
@@ -472,9 +448,8 @@ function returnFocusAfterRefund(): void {
                     formatDateTime(unappliedPayment.receivedAt) ||
                     'at an unknown time'
                 }}, and this order is not paid. The money moved; what happens to
-                it is yours to decide — "Refund unapplied payment" sends it back
-                through the account it came from, without a credit note, since
-                a cancelled order has no document to correct.
+                it is yours to decide — refunding it goes through the payment's
+                own account in the provider's dashboard.
                 <span
                     v-if="unappliedPayment.externalId"
                     class="font-mono text-xs"

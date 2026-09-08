@@ -14,7 +14,6 @@ use Konventix\Commerce\Actions\RecordRefund;
 use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Enums\OrderStatus;
-use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\CreditNoteIssued;
@@ -256,75 +255,6 @@ it('refuses to refund an order that was never paid', function (): void {
     $order = Order::factory()->create(['settles_type' => 'registration']);
 
     expect(fn () => app(RefundOrder::class)->handle($order, reasonCode: 'customer-request'))
-        ->toThrow(RuntimeException::class);
-});
-
-it('refunds an unapplied payment on a cancelled order, without a credit note (#6)', function (): void {
-    // ADR-0057 point 9: the PSP success that landed after a sweep had
-    // already cancelled the order. The money moved and paid for nothing;
-    // sending it back is the provider leg alone — there is no document to
-    // correct and no sale to undo.
-    $this->withBrand();
-
-    $order = Order::factory()->create([
-        'status' => OrderStatus::Cancelled,
-        'settles_type' => 'cart',
-        'total_gross' => '119.00',
-    ]);
-
-    $payment = Payment::factory()->succeeded()->create([
-        'order_id' => $order->id,
-        'provider' => 'spy',
-        'settlement_account_id' => (string) Str::ulid(),
-        'amount' => '119.00',
-        'currency' => $order->currency,
-    ]);
-
-    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
-    $spy = app(RefundTestSpyAdapter::class);
-    app()->instance(RefundTestSpyAdapter::class, $spy);
-
-    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
-
-    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
-
-    $reversal = PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->sole();
-
-    expect($spy->refunds)->toHaveCount(1)
-        ->and($reversal->kind)->toBe(ReversalKind::Refund)
-        ->and($reversal->provider_reference)->toBe('re_spy_1')
-        // The order is not "refunded": nothing was sold to undo.
-        ->and($order->refresh()->status)->toBe(OrderStatus::Cancelled)
-        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0)
-        // And the money leaves the console's "decide about this" list.
-        ->and($payment->refresh()->status)->toBe(PaymentStatus::Reversed)
-        ->and(Payment::withoutBrandScope()->unapplied()->where('order_id', $order->id)->count())->toBe(0);
-
-    Event::assertNotDispatched(OrderRefunded::class);
-    Event::assertNotDispatched(CreditNoteIssued::class);
-});
-
-it('refuses a second refund of unapplied money the first one already sent back (#6)', function (): void {
-    $this->withBrand();
-
-    $order = Order::factory()->create(['status' => OrderStatus::Cancelled, 'total_gross' => '119.00']);
-
-    Payment::factory()->succeeded()->create([
-        'order_id' => $order->id,
-        'provider' => 'spy',
-        'amount' => '119.00',
-        'currency' => $order->currency,
-    ]);
-
-    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
-    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
-
-    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
-
-    // The payment is `reversed` now, so there is no unapplied money left and
-    // the guard refuses — the operator pressing the button twice cannot send
-    // the money back twice.
-    expect(fn () => app(RefundOrder::class)->handle($order->refresh(), reasonCode: 'customer-request'))
         ->toThrow(RuntimeException::class);
 });
 

@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Event\Events\EventAnnounced;
+use Konventix\Event\Events\EventPublished;
+use Konventix\Event\Events\EventUnpublished;
 use Konventix\Event\Models\Event;
 use Konventix\Platform\Models\Brand;
 use Konventix\Registration\Enums\RegistrationVisibility;
+use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
 
@@ -214,7 +218,12 @@ it('offers a public registration type on the shop, named by its event', function
     $this->activateFeature('commerce:shop', $brand);
 
     $event = Event::factory()->published()->create();
-    EventSummary::query()->create(['event_id' => $event->getKey(), 'name' => 'Wintercon', 'slug' => 'wintercon']);
+    EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Wintercon',
+        'slug' => 'wintercon',
+        'public_since' => Carbon::now()->subWeek(),
+    ]);
     $type = RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Weekend Ticket']);
 
     $this->get('/shop')
@@ -238,7 +247,12 @@ it('keeps a type whose sale is over off the shop and announces one whose sale is
     $this->activateFeature('commerce:shop', $brand);
 
     $event = Event::factory()->published()->create();
-    EventSummary::query()->create(['event_id' => $event->getKey(), 'name' => 'Wintercon', 'slug' => 'wintercon']);
+    EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Wintercon',
+        'slug' => 'wintercon',
+        'public_since' => Carbon::now()->subWeek(),
+    ]);
 
     RegistrationType::factory()->forEvent($event->getKey())->create([
         'name' => 'Early Bird',
@@ -266,6 +280,12 @@ it('never advertises a token-only type on the shop, nor another brand\'s', funct
     $this->activateFeature('commerce:shop', $brand);
 
     $event = Event::factory()->published()->create();
+    EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Wintercon',
+        'slug' => 'wintercon',
+        'public_since' => Carbon::now()->subWeek(),
+    ]);
     RegistrationType::factory()->forEvent($event->getKey())->inviteOnly()->create();
 
     $other = $this->withBrand(Brand::factory()->create());
@@ -288,6 +308,7 @@ it('drops the offers of an archived event from the shop', function (): void {
         'event_id' => $event->getKey(),
         'name' => 'Lastcon',
         'slug' => 'lastcon',
+        'public_since' => Carbon::now()->subYear(),
         'archived_at' => Carbon::now()->subMonth(),
     ]);
     RegistrationType::factory()->forEvent($event->getKey())->create();
@@ -295,4 +316,103 @@ it('drops the offers of an archived event from the shop', function (): void {
     $this->get('/shop')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toBe([]));
+});
+
+/**
+ * Review finding 1 on #240: `/shop` is addressed by no event, so nothing
+ * 404s in front of it the way `EventLandingController` does for the landing
+ * slot. Without a gate of its own, next year's unannounced convention — its
+ * name, its ticket names and its prices — stood on a public page from the
+ * moment an organizer created it, because `EventCreated` projects a summary
+ * straight away.
+ *
+ * The projection carries `public_since` now, fed by the `EventAnnounced` /
+ * `EventPublished` / `EventUnpublished` contract events (ADR-0004), which is
+ * `Event::isVisibleOnLanding()`'s "has left Draft" rule in the only form
+ * Registration is allowed to hold it.
+ */
+it('never lists the offers of an event that is still a draft', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->create();
+    // Exactly what `ProjectEventSummary::handleCreated()` writes for a
+    // brand-new draft: a name and no `public_since`.
+    EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Next Year',
+        'slug' => 'next-year',
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Weekend Ticket']);
+
+    $this->get('/shop')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toBe([]));
+});
+
+it('lists them once the event is announced or published, and drops them again when it is unpublished', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->create();
+    $summary = EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Next Year',
+        'slug' => 'next-year',
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create(['name' => 'Weekend Ticket']);
+
+    $projector = app(ProjectEventSummary::class);
+
+    $projector->handlePublished(new EventPublished(
+        eventId: (string) $event->getKey(),
+        brandId: (string) $brand->getKey(),
+        publishedAt: Carbon::now()->toIso8601String(),
+    ));
+
+    $this->get('/shop')
+        ->assertInertia(function (AssertableInertia $page): void {
+            $offers = shopIndexOffers($page);
+
+            expect($offers)->toHaveCount(1)
+                ->and($offers[0]['eventName'])->toBe('Next Year');
+        });
+
+    $projector->handleUnpublished(new EventUnpublished(
+        eventId: (string) $event->getKey(),
+        brandId: (string) $brand->getKey(),
+    ));
+
+    expect($summary->fresh()->public_since)->toBeNull();
+
+    $this->get('/shop')
+        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toBe([]));
+});
+
+/**
+ * `EventAnnounced` counts too: `isVisibleOnLanding()` is `state !== Draft`,
+ * so an announced event's landing page already sells, and dropping its
+ * offers off `/shop` for the whole announced phase would be a second,
+ * quieter version of the same bug.
+ */
+it('lists the offers of a merely announced event', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+
+    $event = Event::factory()->create();
+    EventSummary::query()->create([
+        'event_id' => $event->getKey(),
+        'name' => 'Teased Con',
+        'slug' => 'teased-con',
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create();
+
+    app(ProjectEventSummary::class)->handleAnnounced(new EventAnnounced(
+        eventId: (string) $event->getKey(),
+        brandId: (string) $brand->getKey(),
+        announcedAt: Carbon::now()->toIso8601String(),
+    ));
+
+    $this->get('/shop')
+        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page))->toHaveCount(1));
 });

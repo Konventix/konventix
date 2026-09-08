@@ -10,7 +10,10 @@ import { formatDateTime } from '@/lib/datetime';
  *
  * The same `PublicOfferData` the landing page renders, with the event's
  * name filled in — `/shop` has no event in its address, so "Weekend Ticket"
- * alone would not say what it is a ticket to.
+ * alone would not say what it is a ticket to. The name is always there: the
+ * contribution's own query lists an offer only where its event has a public,
+ * unarchived summary to name it by, so there is no unlabelled-card case to
+ * guard against (review finding 3).
  *
  * A registration is not added to the cart from here: ADR-0047 point 3 has
  * it join the cart by *submitting the form first*, which is where the
@@ -52,10 +55,7 @@ const props = defineProps<{
                     class="flex h-full flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4 transition hover:border-accent"
                 >
                     <span class="font-medium text-text">{{ offer.name }}</span>
-                    <span
-                        v-if="offer.eventName"
-                        class="text-sm text-text-muted"
-                    >
+                    <span class="text-sm text-text-muted">
                         {{ offer.eventName }}
                     </span>
                     <span
@@ -85,10 +85,7 @@ const props = defineProps<{
                     class="flex h-full flex-col gap-2 rounded-xl border border-dashed border-border p-4"
                 >
                     <span class="font-medium text-text">{{ offer.name }}</span>
-                    <span
-                        v-if="offer.eventName"
-                        class="text-sm text-text-muted"
-                    >
+                    <span class="text-sm text-text-muted">
                         {{ offer.eventName }}
                     </span>
                     <span class="text-sm text-text-muted">
