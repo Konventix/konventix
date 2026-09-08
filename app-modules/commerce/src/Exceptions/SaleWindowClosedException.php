@@ -11,15 +11,22 @@ use RuntimeException;
  * asked to turn into a cart line declares a sales window that is not open
  * right now (#218, #216 draft i).
  *
- * Typed rather than a raw `RuntimeException` because the caller is a
- * listener, not a controller: a queued replay of a stale settlement request
- * must fail loudly and land in `failed_jobs` with a name that says what
- * happened, instead of quietly creating a line the checkout would refuse
- * anyway.
+ * The request only carries a window when Registration says it must honour
+ * one — a fresh registration someone is buying now (fix round 1). A waitlist
+ * conversion, a confirmation after approval and a priced amendment all send
+ * nulls and are never refused here: Registration is the authority on who may
+ * register.
  *
- * The checkout's own refusal is `CartCheckoutRefusedException::saleWindowClosed()`
- * — a different class because `CartController::checkout()` catches exactly
- * that one and turns it into a 409 for the payer.
+ * `CreateOrderOnSettlementRequested` is a plain synchronous listener, so this
+ * throw propagates into the emitting Action's own transaction and rolls it
+ * back — nothing placed, which is the right outcome. It is typed so
+ * `SubmitRegistration` can tell that refusal apart from a real failure and
+ * turn it into a form error rather than a 500. (It does so by re-evaluating
+ * the window rather than importing this class: ADR-0004 forbids Registration
+ * depending on Commerce.)
+ *
+ * The checkout does not re-check the window at all — see `PlaceOrderFromCart`
+ * for why a line placed during the sale stays payable within its cart hold.
  */
 final class SaleWindowClosedException extends RuntimeException
 {

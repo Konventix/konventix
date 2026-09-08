@@ -27,15 +27,23 @@ namespace Konventix\Registration\Events;
  * module's tables to find it.
  *
  * `saleStartsAt`/`saleEndsAt` are the type's sales window (#218, #216 draft
- * i) as nullable ISO-8601 instants — null on either side meaning no bound.
- * They are here because Commerce enforces the same window and may not read
- * this module's tables to learn it (ADR-0004): it snapshots them onto the
- * cart line and checks them again at checkout. Instants rather than
- * wall-clock times plus a zone, because Commerce could not resolve a zone it
- * never sees (the registration-side migration says why a sales window is not
- * an ADR-0027 event time). They are appended last with null defaults, so
- * every existing named-argument emission keeps working and an old queued
- * payload replays as "no window" rather than as a refusal.
+ * i) as nullable ISO-8601 instants. They are here because Commerce enforces
+ * the window for a fresh sale and may not read this module's tables to learn
+ * it (ADR-0004). Instants rather than wall-clock times plus a zone, because
+ * Commerce could not resolve a zone it never sees (the registration-side
+ * migration says why a sales window is not an ADR-0027 event time).
+ *
+ * **Null on either field means "not window-bound" — not "no bound this
+ * side".** The window travels only with a request Commerce may refuse: a
+ * fresh registration someone is buying now. A waitlist conversion, a
+ * confirmation after approval and a priced amendment all send both fields
+ * null, because Registration has already decided those may settle whatever
+ * the clock says (`RequestSettlement::$enforcesSalesWindow`). Registration is
+ * the authority on who may register.
+ *
+ * They are appended last with null defaults, so every existing
+ * named-argument emission keeps working and an old queued payload replays as
+ * "not window-bound" rather than as a refusal.
  *
  * `requestKey` is what makes Commerce idempotent, and it is deliberately not
  * the registration ULID: ADR-0036 lets one registration map to N orders over

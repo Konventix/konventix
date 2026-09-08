@@ -125,7 +125,19 @@ final class SubmitRegistration
                 $registrationType->confirmation_gate === ConfirmationGate::OnPayment
                 && $registrationType->settlement->requestsSettlement()
             ) {
-                $this->requestSettlement->handle($registration, $registrationType);
+                try {
+                    $this->requestSettlement->handle(
+                        $registration,
+                        $registrationType,
+                        // #218: a fresh submission is the one settlement
+                        // request Commerce may refuse on window grounds. A
+                        // waitlist conversion carries no window (see
+                        // RequestSettlement).
+                        enforcesSalesWindow: $fromWaitlist === null,
+                    );
+                } catch (RuntimeException $exception) {
+                    $this->convertSettlementRefusal($exception, $registrationType);
+                }
             }
 
             // Approval is a precondition, not a gate: a type declaring
@@ -141,6 +153,31 @@ final class SubmitRegistration
 
             return $registration;
         });
+    }
+
+    /**
+     * The settlement request runs through Commerce's synchronous listener,
+     * inside this transaction. If Commerce refuses the request because the
+     * sales window closed between this Action's own check and the listener's
+     * — a race of milliseconds, but the money path — the registrant must see
+     * the refusal the form shows, not a 500. Rolling back with nothing placed
+     * is the correct outcome either way.
+     *
+     * The condition is re-evaluated rather than matched on Commerce's
+     * exception class: ADR-0004 forbids importing it (enforced by
+     * `tests/Unit/ArchitectureTest.php`), and "the window has closed since"
+     * is the same fact without the dependency. Anything else rethrows
+     * untouched.
+     */
+    private function convertSettlementRefusal(RuntimeException $exception, RegistrationType $registrationType): never
+    {
+        if ($registrationType->isOnSale()) {
+            throw $exception;
+        }
+
+        throw ValidationException::withMessages([
+            'registrationType' => __('This registration is no longer on sale.'),
+        ]);
     }
 
     /**

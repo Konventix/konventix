@@ -7,7 +7,6 @@ namespace Konventix\Commerce\Actions;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Data\BillingPartyData;
-use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CartCheckedOut;
@@ -40,16 +39,18 @@ use Konventix\Platform\Operators\OperatorSettings;
  * leaves a stray pending order behind — a later retry with a good account
  * still finds nothing to reuse, since no order was ever placed.
  *
- * **The sales window** (#218, #216 draft i): every registration-kind line is
- * re-checked against the window it snapshotted when it was created. A cart
- * sits open for twenty minutes and a checkout grace for sixty more, so a
- * line can easily outlive the sale it belongs to — and #216 names exactly
- * that as the gap `Product::published_at` still has, read when the line is
- * created and never again. The window is read from the line, never from
- * Registration's table (ADR-0004). The resumed-order branch above is
- * deliberately not guarded: that order was placed while the window was open,
- * it is a real debt, and refusing to send its payer to the PSP would leave
- * them with something they owe and cannot pay.
+ * **The sales window is deliberately NOT re-checked here** (#218, fix round
+ * 1). A registration line is only ever placed while its sale is open
+ * (`PlaceRegistrationLineInCart`), and the registration it settles already
+ * exists and already holds its quota. Refusing the checkout of a line that
+ * was placed legitimately would leave the payer owing something they cannot
+ * pay — the same reasoning that leaves the resumed-order branch below
+ * unguarded — and it would fire on the helpful case too: an operator who
+ * extends `sales_end` for stragglers would see every cart placed before the
+ * edit refuse with a 409 nobody can explain, because the line's window is a
+ * snapshot no later edit reaches. The cart's own hold (twenty minutes, plus
+ * a sixty-minute checkout grace) is what bounds a line's life; `ExpireCarts`
+ * enforces it. The snapshot on the line stays for display and audit.
  *
  * `TaxCalculator::calculate()` runs with no billing party at all
  * (`billingVatId`/`billingCountryCode` both null): a cart has no invoice
@@ -100,8 +101,6 @@ final class PlaceOrderFromCart
         if ($lines->isEmpty()) {
             throw CartCheckoutRefusedException::cartEmpty($cart->id);
         }
-
-        $this->guardSaleWindows($lines);
 
         // Vetted before the order exists (see class docblock).
         $offered = $this->guardAccountOffered($cart->brand_id, $account);
@@ -202,18 +201,6 @@ final class PlaceOrderFromCart
         ));
 
         return $order;
-    }
-
-    /**
-     * @param  Collection<int, CartLine>  $lines
-     */
-    private function guardSaleWindows(Collection $lines): void
-    {
-        $closed = $lines->first(fn (CartLine $line): bool => $line->kind === CartLineKind::Registration && ! $line->isOnSale());
-
-        if ($closed !== null) {
-            throw CartCheckoutRefusedException::saleWindowClosed($closed->id);
-        }
     }
 
     /**

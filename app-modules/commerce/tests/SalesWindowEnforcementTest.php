@@ -8,7 +8,6 @@ use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\PlaceOrderFromCart;
 use Konventix\Commerce\Actions\PlaceRegistrationLineInCart;
 use Konventix\Commerce\Enums\CartLineKind;
-use Konventix\Commerce\Exceptions\CartCheckoutRefusedException;
 use Konventix\Commerce\Exceptions\SaleWindowClosedException;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Identity\Models\User;
@@ -120,7 +119,14 @@ it('places a registration line that declares no window at all', function (): voi
         ->and($line->sale_ends_at)->toBeNull();
 });
 
-it('refuses a checkout whose registration line left its window while the cart sat open', function (): void {
+/**
+ * Fix round 1, review finding 2: the checkout deliberately does NOT re-check
+ * the window. A line is only ever placed while its sale is open, and the
+ * registration it settles already exists and already holds its quota —
+ * refusing to let its payer pay would leave them owing something they cannot
+ * settle. The snapshot columns stay for display and audit.
+ */
+it('checks out a registration line whose sale has ended since it was placed', function (): void {
     $brand = saleWindowBrand();
     $user = User::factory()->create();
     $account = cartCheckoutAccount();
@@ -130,31 +136,6 @@ it('refuses a checkout whose registration line left its window while the cart sa
         'label' => 'Weekend Ticket',
         'unit_amount_net' => '50.00',
         'sale_ends_at' => '2026-09-08 18:00:00',
-    ]);
-
-    $this->travelTo(Carbon::parse('2026-09-08 19:00:00Z'));
-
-    expect(fn () => app(PlaceOrderFromCart::class)->handle(
-        $cart->fresh(),
-        $account,
-        'https://brand.test/cart',
-        cartCheckoutBillingParty($user),
-    ))->toThrow(CartCheckoutRefusedException::class);
-
-    expect($cart->fresh()->checked_out_order_id)->toBeNull();
-});
-
-it('checks out a registration line that is still inside its window', function (): void {
-    $brand = saleWindowBrand();
-    $user = User::factory()->create();
-    $account = cartCheckoutAccount();
-
-    $cart = OpenCart::for($brand->getKey(), $user->getKey());
-    CartLine::factory()->forCart($cart)->registration()->create([
-        'label' => 'Weekend Ticket',
-        'unit_amount_net' => '50.00',
-        'sale_starts_at' => '2026-09-01 18:00:00',
-        'sale_ends_at' => '2026-10-01 18:00:00',
     ]);
 
     $this->travelTo(Carbon::parse('2026-09-08 19:00:00Z'));
