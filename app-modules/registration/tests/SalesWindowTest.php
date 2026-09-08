@@ -18,6 +18,7 @@ use Konventix\Registration\Enums\GrantKind;
 use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
+use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
 use Konventix\Registration\Models\WaitlistEntry;
@@ -274,10 +275,20 @@ it('sends no window for a priced amendment after the sale has ended', function (
 it('turns a settlement refusal into a form error rather than a 500 when the window closes under the submission', function (): void {
     // The race the Commerce guard exists for: the window is open when
     // SubmitRegistration checks it and closed by the time the synchronous
-    // listener builds the cart line. Registration may not import Commerce's
-    // exception class (ADR-0004, tests/Unit/ArchitectureTest.php), so the
-    // stand-in below is any RuntimeException from a settlement listener —
-    // which is exactly what the Action can observe.
+    // listener builds the cart line.
+    //
+    // The clock moves on `RegistrationSubmitted`, which `SubmitRegistration`
+    // dispatches *before* it asks for settlement, so Commerce's own listener
+    // runs against a closed window and `PlaceRegistrationLineInCart` throws
+    // its real `SaleWindowClosedException`. Nothing here throws anything
+    // (whole-branch review finding 15): the previous shape attached the
+    // traveller to `RegistrationSettlementRequested`, where Commerce's
+    // listener had already placed the line successfully, and threw a
+    // synthetic `RuntimeException` afterwards — so deleting
+    // `guardSaleWindow()` entirely left this test green. Registration still
+    // may not import Commerce's exception class (ADR-0004,
+    // `tests/Unit/ArchitectureTest.php`), which is why the assertion is on
+    // the form error and not on the class.
     salesWindowShopBrand();
 
     $type = RegistrationType::factory()
@@ -289,10 +300,8 @@ it('turns a settlement refusal into a form error rather than a 500 when the wind
 
     $this->travelTo(Carbon::parse('2026-09-08 12:00:00Z'));
 
-    Event::listen(RegistrationSettlementRequested::class, function (): void {
+    Event::listen(RegistrationSubmitted::class, function (): void {
         test()->travelTo(Carbon::parse('2026-09-08 13:00:00Z'));
-
-        throw new RuntimeException('Registration is not on sale.');
     });
 
     try {
