@@ -92,15 +92,36 @@ final class RegistrationTypeData extends Data
     ) {}
 
     /**
+     * Every entry here is written out in full, on purpose.
+     *
+     * laravel-data 4.x **replaces** the inferred ruleset for any key this
+     * method returns rather than merging into it
+     * (`DataValidationRulesResolver`: `$shouldMergeRules ? merge() : add()`,
+     * and this class carries no `#[MergeValidationRules]`). Returning the
+     * cross-field rule alone therefore silently dropped `nullable` and
+     * `date` from `salesEnd`, and the admin form — which transforms on every
+     * submit and so always sends both keys, null when the input is empty —
+     * could no longer save *any* type, windowed or not (fix round 1,
+     * review finding 1). `EventData::rules()` gets away with the short form
+     * only because its `endsAt` is required and always a date.
+     *
+     * `quotaIds` is here for the same reason: the inferred ruleset makes a
+     * non-nullable array `required`, and Laravel's `required` rejects the
+     * empty array the form sends when no quota is ticked.
+     *
      * @return array<string, array<int, string>>
      */
     public static function rules(): array
     {
         return [
-            // Cross-field, so it cannot live on the `salesEnd` attribute
-            // alone. A window that ends before it starts is never on sale,
-            // and nothing downstream would say so.
-            'salesEnd' => ['after:salesStart'],
+            'salesStart' => ['nullable', 'date'],
+            // `after` is cross-field, so it cannot live on the `salesEnd`
+            // attribute alone. A window that ends before it starts is never
+            // on sale, and nothing downstream would say so.
+            'salesEnd' => ['nullable', 'date', 'after:salesStart'],
+            // Absent is fine (the quick-create form omits it); present must
+            // be an array, empty included.
+            'quotaIds' => ['sometimes', 'array'],
         ];
     }
 

@@ -491,3 +491,104 @@ it('keeps the sales window editable once registrations exist', function (): void
 
     expect($type->refresh()->sales_end?->toIso8601String())->toBe('2026-10-08T18:00:00+00:00');
 });
+
+/**
+ * Fix round 1, finding 1: the payload the Vue form actually sends. `Edit.vue`
+ * transforms on every submit and therefore always sends both keys, `null`
+ * when the input is empty — so a `rules()` entry that drops the inferred
+ * `nullable` breaks saving *any* type, not just a windowed one.
+ *
+ * @param  array<string, mixed>  $window
+ */
+function registrationTypeWindowPayload(string $eventId, array $window): array
+{
+    return [
+        'eventId' => $eventId,
+        'name' => 'Windowed',
+        'visibility' => 'public',
+        'approval' => 'none',
+        'settlement' => 'free',
+        'confirmationGate' => 'on_submit',
+        'termsDays' => 14,
+        'grants' => [],
+        'quotaIds' => [],
+        ...$window,
+    ];
+}
+
+it('saves the form payload the admin page sends for every shape of window', function (array $window, ?string $expectedStart, ?string $expectedEnd): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create([
+        'event_id' => $eventId,
+        'sales_start' => '2026-01-01 00:00:00',
+        'sales_end' => '2026-12-31 00:00:00',
+    ]);
+
+    $this->actingAs($admin)
+        ->put(
+            "http://admin.regtypes.test/admin/registration-types/{$type->id}",
+            registrationTypeWindowPayload($eventId, $window),
+        )
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    expect($type->refresh()->sales_start?->toIso8601String())->toBe($expectedStart)
+        ->and($type->sales_end?->toIso8601String())->toBe($expectedEnd);
+})->with([
+    'both null (an unwindowed type, and the way a window is cleared)' => [
+        ['salesStart' => null, 'salesEnd' => null], null, null,
+    ],
+    'start only (the brief\'s own headline case: "sale starts <date>")' => [
+        ['salesStart' => '2026-10-01 18:00:00', 'salesEnd' => null],
+        '2026-10-01T18:00:00+00:00',
+        null,
+    ],
+    'end only' => [
+        ['salesStart' => null, 'salesEnd' => '2026-10-08 18:00:00'],
+        null,
+        '2026-10-08T18:00:00+00:00',
+    ],
+    'both set' => [
+        ['salesStart' => '2026-10-01 18:00:00', 'salesEnd' => '2026-10-08 18:00:00'],
+        '2026-10-01T18:00:00+00:00',
+        '2026-10-08T18:00:00+00:00',
+    ],
+]);
+
+it('still refuses an end before the start when the form sends both keys', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create(['event_id' => $eventId]);
+
+    $this->actingAs($admin)
+        ->put(
+            "http://admin.regtypes.test/admin/registration-types/{$type->id}",
+            registrationTypeWindowPayload($eventId, [
+                'salesStart' => '2026-10-08 18:00:00',
+                'salesEnd' => '2026-10-01 18:00:00',
+            ]),
+        )
+        ->assertSessionHasErrors('salesEnd');
+
+    expect($type->refresh()->sales_start)->toBeNull();
+});
+
+it('refuses a sales window that is not a date at all', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create(['event_id' => $eventId]);
+
+    $this->actingAs($admin)
+        ->put(
+            "http://admin.regtypes.test/admin/registration-types/{$type->id}",
+            registrationTypeWindowPayload($eventId, ['salesStart' => 'whenever', 'salesEnd' => null]),
+        )
+        ->assertSessionHasErrors('salesStart');
+});
