@@ -10,10 +10,12 @@ use Inertia\Testing\AssertableInertia;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Actions\IssueCreditNote;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
+use Konventix\Commerce\Actions\RecordRefund;
 use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CreditNoteIssued;
+use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Exceptions\CreditNoteRequiresInvoiceException;
 use Konventix\Commerce\Exceptions\RefundBlockedByCheckInException;
@@ -549,4 +551,102 @@ it('refunds a paid cart order into a mailed, downloadable Gutschrift', function 
                 'orders.0.creditNotes.0.documentUrl',
                 fn (?string $url): bool => $url !== null && str_contains($url, 'signature='),
             ));
+});
+
+/**
+ * Whole-branch review finding 3. `RecordRefund` emitted `OrderRefunded` and
+ * nothing else, and `CancelRegistrationOnOrderUndone` ignores a `cart`
+ * order — so refunding a cart order that paid for a registration sent the
+ * money back and left the place, the quota and the admission standing,
+ * while the same button on a direct registration order released them. The
+ * per-line event `CancelOrderForUnpaidReversal` already emits for exactly
+ * this reason is now emitted here too.
+ */
+function refundTestPaidCartOrder(): Order
+{
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'cart',
+        'settles_id' => (string) Str::ulid(),
+    ]);
+
+    Invoice::factory()->create(['order_id' => $order->id]);
+
+    return $order;
+}
+
+it('releases a cart order\'s registration lines on a whole refund (#73)', function (): void {
+    $this->withBrand();
+
+    $order = refundTestPaidCartOrder();
+
+    $registrationLine = OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'position' => 1,
+        'settles_kind' => 'registration',
+        'settles_ref' => (string) Str::ulid(),
+    ]);
+    $productLine = OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'position' => 2,
+        'settles_kind' => 'product',
+        'settles_ref' => (string) Str::ulid(),
+    ]);
+
+    Event::fake([OrderRefunded::class, OrderLineCancelled::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    // One event, for the registration line only: a product line is
+    // Commerce's own business.
+    Event::assertDispatchedTimes(OrderLineCancelled::class, 1);
+    Event::assertDispatched(
+        OrderLineCancelled::class,
+        fn (OrderLineCancelled $e): bool => $e->orderId === $order->id
+            && $e->kind === 'registration'
+            && $e->refId === $registrationLine->settles_ref
+            && $e->reasonCode === RecordRefund::REASON_ORDER_REFUNDED
+            && $e->cancelledByUserId === null,
+    );
+
+    expect($productLine->settles_ref)->not->toBe($registrationLine->settles_ref);
+});
+
+it('releases nothing on a partial refund of a cart order (#73)', function (): void {
+    $this->withBrand();
+
+    $order = refundTestPaidCartOrder();
+
+    OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'settles_kind' => 'registration',
+        'settles_ref' => (string) Str::ulid(),
+    ]);
+
+    Event::fake([OrderLineCancelled::class]);
+
+    app(RefundOrder::class)->handle(
+        $order,
+        reasonCode: 'goodwill',
+        amount: bcdiv((string) $order->total_gross, '2', 2),
+    );
+
+    Event::assertNotDispatched(OrderLineCancelled::class);
+});
+
+it('emits no line event for a direct registration order, which OrderRefunded already names (#73)', function (): void {
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'settles_kind' => 'registration',
+        'settles_ref' => $order->settles_id,
+    ]);
+
+    Event::fake([OrderLineCancelled::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    Event::assertNotDispatched(OrderLineCancelled::class);
 });

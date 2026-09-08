@@ -56,6 +56,8 @@
       no operator screen yet — issue/revoke currently means tinker. The type
       editor now exists to hang it on: an `invite_only` or `link` type's own
       screen is where its tokens belong.
+- [x] Sales window per registration type: columns, admin form, landing-page
+      filter, refusal at submission and at the cart line (#218).
 
 ## Done
 

@@ -7,6 +7,9 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Support\Facades\Event;
+use Konventix\Compliance\Enums\LawfulBasis;
+use Konventix\Compliance\Models\Policy;
+use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Identity\Enums\AccountState;
 use Konventix\Identity\Events\SocialIdentityLinked;
 use Konventix\Identity\Models\BrandMembership;
@@ -193,4 +196,27 @@ it('records the remember choice when the sign-in starts', function (): void {
     $this->get('/auth/steam/redirect?remember=1')
         ->assertRedirect()
         ->assertSessionHas('identity.social.remember', true);
+});
+
+/**
+ * GitLab #205: a social sign-in is a sign-in. The `require-consent` alias on
+ * the signup-completion routes cannot cover this — the person is still a
+ * guest when that middleware runs — so the gate sits on the redirect the
+ * controller hands back, exactly as it sits on Fortify's login response.
+ */
+it('sends a social sign-in with an outstanding contract text to the consent screen', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    SocialIdentity::factory()->for($user)->create(['provider' => 'steam', 'provider_user_id' => '76561198000000052']);
+
+    PolicyVersion::factory()->for(Policy::factory()->terms())->published()->create([
+        'requires_consent' => true,
+        'lawful_basis' => LawfulBasis::Contract,
+    ]);
+
+    identityCallbackFrom($this, '76561198000000052')
+        ->assertRedirect(route('policies.required', absolute: false));
+
+    expect(auth()->id())->toBe($user->getKey());
 });

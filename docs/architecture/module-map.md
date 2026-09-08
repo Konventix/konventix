@@ -7,10 +7,10 @@ not cosmetic — they force generic data models instead of relabeled LAN concept
 
 | Konventix | Absorbs from LanCore | Owns |
 |---|---|---|
-| **Platform** | Theme, EventContext, central wiring | Brand model & resolution, theming/design tokens, plugin registry, Pennant gating, navigation registry, UI slot registry, block-based CMS for brand static pages (modules register their own block types) |
+| **Platform** | Theme, EventContext, central wiring | Brand model & resolution, theming/design tokens, plugin registry, Pennant gating, navigation registry, UI slot registry, block-based CMS for brand static pages (modules register their own block types), `Platform\Legal\PublicLegalTexts` — the contract for linking to a brand's published legal text without reading a policy; Platform declares it and binds a null default, Compliance binds the resolver (ADR-0004, #184) |
 | **Identity** | Auth, Profile, Steam auth | User (slim!), social login as `SocialProvider` drivers (Steam is one of many), 2FA, sessions |
 | **Event** | Event, Venue | Event lifecycle, venue as sub-concept |
-| **Compliance** | Policy, DataLifecycle | Consent/policies, GDPR export & deletion orchestration (delegating to per-module `Gdpr/` exporters), audit |
+| **Compliance** | Policy, DataLifecycle | Consent/policies, GDPR export & deletion orchestration (delegating to per-module `Gdpr/` exporters), audit, `CheckoutLegalTexts::SLUGS` — the checkout's `terms`/`withdrawal` roles (#200 AK 4) |
 | **Messaging** | Notification, EmailLog | Channel abstraction (mail, push, in-app), delivery log as infrastructure; delivery log and template overrides have screens (`/admin/messages`) |
 
 ## Core (every brand)
@@ -19,7 +19,7 @@ not cosmetic — they force generic data models instead of relabeled LAN concept
 |---|---|---|
 | **Registration** | Ticketing (sales side) | RegistrationType with explicit axes, Registration (1) → Admissions/Bookings (N), Quota as standalone entity |
 | **Admission** | Ticketing (entrance side) | Per-person access rights, badge, check-in, ticket tokens, entrance API (offline-capable client) |
-| **Commerce** | Shop, Cashier, PayPal | Cart, own Order/Invoice entities as source of truth, settlement adapters (Stripe, Mollie, bank transfer), vouchers, per-brand invoice number ranges |
+| **Commerce** | Shop, Cashier, PayPal | Cart, own Order/Invoice entities as source of truth, settlement adapters (Stripe, Mollie, bank transfer), vouchers, per-brand invoice number ranges, `Settlement\PayLink`/`Settlement\PaymentWindow` — where and how long an unpaid order stays payable (#5, #131) |
 | **Content** | News, Announcement, Publishing | One publishing model, multiple content types, comments |
 
 ## Modules (Pennant-gated per brand)

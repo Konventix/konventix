@@ -9,9 +9,10 @@ use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Data\OrderConfirmationMailData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderPlaced;
-use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
+use Konventix\Commerce\Settlement\PayLink;
+use Konventix\Commerce\Settlement\PaymentWindow;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
@@ -77,9 +78,11 @@ final class SendOrderConfirmationOnOrderPlaced
 
     private function send(OrderPlaced $event, Order $order): void
     {
-        $checkedOutCart = Cart::withoutBrandScope()
-            ->where('checked_out_order_id', $order->id)
-            ->first();
+        // #131, whole-branch review finding 2: one answer for "how long is
+        // this payable", shared with the pay pages, the payment-failed mail
+        // and the sweep that acts on it — a cart order's checked-out cart
+        // expiry here, a direct registration order's sixty minutes there.
+        $payableUntil = app(PaymentWindow::class)->endsFor($order);
 
         $this->sendMessage->handle(new SendMessageRequest(
             recipientId: $order->payer_user_id,
@@ -98,11 +101,22 @@ final class SendOrderConfirmationOnOrderPlaced
                 totalGross: $order->total_gross,
                 currency: $order->currency,
                 paid: $order->status === OrderStatus::Paid,
-                reservationUntil: $checkedOutCart?->expires_at->format('d.m.Y H:i'),
+                reservationUntil: $payableUntil?->format('d.m.Y H:i'),
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
+                // GitLab #5: an unpaid order's confirmation says where to pay
+                // it. `PayLink` owns the rule so this mail and the
+                // payment-failed one cannot point at different places.
+                payUrl: $this->payUrl($event->brandId, $order),
             ),
             brandId: $event->brandId,
         ));
+    }
+
+    private function payUrl(string $brandId, Order $order): ?string
+    {
+        $link = app(PayLink::class)->forOrder($order);
+
+        return $link === null ? null : $this->absoluteUrl($brandId, $link['route'], $link['parameters']);
     }
 
     /**

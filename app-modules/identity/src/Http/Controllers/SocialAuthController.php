@@ -11,6 +11,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Identity\Actions\CompleteSocialSignup;
 use Konventix\Identity\Actions\LinkSocialIdentity;
+use Konventix\Identity\Concerns\RedirectsOutstandingContractConsent;
 use Konventix\Identity\Data\CompleteSocialSignupData;
 use Konventix\Identity\Enums\AccountState;
 use Konventix\Identity\Models\SocialIdentity;
@@ -21,6 +22,7 @@ use Konventix\Identity\Social\SocialIdentityData;
 use Konventix\Identity\Social\SocialProvider;
 use Konventix\Identity\Social\SocialProviderRegistry;
 use Konventix\Identity\Social\UnknownSocialProvider;
+use Konventix\Platform\Operators\OperatorPresence;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -35,6 +37,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class SocialAuthController
 {
+    use RedirectsOutstandingContractConsent;
+
     /**
      * Where a completed handshake waits while the person fills in the details
      * the provider could not supply. Namespaced by provider so two half-
@@ -108,8 +112,12 @@ final class SocialAuthController
      * Reads the stash rather than the query string: the provider identity this
      * signup will be linked to is not something the request may name.
      */
-    public function complete(Request $request, string $provider, SocialProviderRegistry $registry): Response|RedirectResponse
-    {
+    public function complete(
+        Request $request,
+        string $provider,
+        SocialProviderRegistry $registry,
+        OperatorPresence $operatorPresence,
+    ): Response|RedirectResponse {
         $driver = $this->provider($provider, $registry);
         $pending = $this->pendingIdentity($request, $driver->key());
 
@@ -124,6 +132,9 @@ final class SocialAuthController
             // Steam persona shown at an event, and a deployment with no Web API
             // key has nothing to suggest at all.
             'suggestedName' => $pending->nickname,
+            // This page creates an account, so it says whose (#184) — the
+            // same prop every Fortify auth view carries.
+            ...$operatorPresence->props(),
         ]);
     }
 
@@ -156,7 +167,11 @@ final class SocialAuthController
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard'));
+        // GitLab #205: the same contract-consent gate the password login
+        // applies, on the way in that Fortify's responses never see. The
+        // `require-consent` alias on this route cannot do it — the person is
+        // still a guest when the middleware runs.
+        return $this->outstandingContractRedirect($request) ?? redirect()->intended(route('dashboard'));
     }
 
     /**
@@ -214,7 +229,8 @@ final class SocialAuthController
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard'));
+        // GitLab #205, as in `store()` above.
+        return $this->outstandingContractRedirect($request) ?? redirect()->intended(route('dashboard'));
     }
 
     private function findIdentity(SocialIdentityData $identity): ?SocialIdentity

@@ -26,6 +26,24 @@ what comes back (ADR-0004).
   consent was captured in, and withdrawal. A subject is a ULID that may be a
   user or — for people who registered without an account — a subject key issued
   by Compliance.
+- **The login and checkout re-consent gate** (#205): a narrower question
+  than the `require-consent` route alias — `OutstandingConsents::
+  subjectHasOutstandingContract()` adds `lawful_basis = contract` to the
+  required-version query. A newly published contract version is asked for
+  once, at the next login or checkout, and the consent row written for
+  that version id silences both. A fresh registration and a remember-me
+  recall are **not** gated by this. The login gate's answer crosses to
+  Identity as one session key, `compliance.consent_redirect`, written by
+  `Listeners\FlagOutstandingContractConsent` on Laravel's `Login` event;
+  Identity reads the key by name and never imports Compliance (ADR-0004).
+  `konventix:install` seeds three operator-wide placeholder policies —
+  `terms`, `withdrawal` and `privacy` — and publishes each one. **None of
+  them requires consent**: a placeholder that binds nobody must never
+  raise this gate, since the install runs on every release and a
+  consent-requiring placeholder would redirect every existing account on
+  every brand to `policies.required`. Publishing the operator's real AGB
+  with `requires_consent` is what raises the gate, once, for a text that
+  deserves it (#91, #200).
 - **The data subject request workflow**: a request entity with a type (export,
   deletion, rectification), a state (received, in progress, fulfilled, refused),
   the statutory deadline, and the record of which modules have responded.

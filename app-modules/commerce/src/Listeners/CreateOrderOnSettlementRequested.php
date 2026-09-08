@@ -55,6 +55,13 @@ final class CreateOrderOnSettlementRequested
                 registrationId: $event->registrationId,
                 requestKey: $event->requestKey,
                 lines: $event->lines,
+                // #218: the window travels with the request only when
+                // Registration says it must be honoured — null means "not
+                // window-bound". The Action refuses a closed one and
+                // snapshots an open one onto the line for audit; the
+                // checkout does not re-check it, and nothing renders it.
+                saleStartsAt: $event->saleStartsAt,
+                saleEndsAt: $event->saleEndsAt,
             );
 
             return;

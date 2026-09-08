@@ -10,6 +10,7 @@ use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
+use Konventix\Commerce\Settlement\PayLink;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -29,6 +30,11 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * `invoicePaid` (ADR-0048) is whether the invoice — if there is one —
  * carries a payment snapshot, so the page can label its document button
  * "Rechnung (bezahlt)" rather than "Rechnung".
+ *
+ * `payUrl` is `Settlement\PayLink`'s answer (GitLab #5): where this order
+ * is paid while it still owes money, shared with the two mails so the page
+ * and the mail never name different places. A cart order gets one now — it
+ * is how a failed shop payment is retried without shopping again.
  *
  * `creditNotes` (ADR-0048 point 2, Task 3): every Gutschrift issued against
  * this order, newest last — a refund of a paid order leaves one behind, and
@@ -77,6 +83,8 @@ final class MyOrderData extends Data
             ? $firstLine->label
             : str_replace('_', ' ', ucfirst($order->settles_type));
 
+        $payLink = app(PayLink::class)->forOrder($order);
+
         return new self(
             id: $order->getKey(),
             placedAt: $order->created_at?->toIso8601String() ?? now()->toIso8601String(),
@@ -88,13 +96,15 @@ final class MyOrderData extends Data
             totalGross: $order->total_gross,
             invoiceNumber: $invoice?->invoice_number,
             invoicePaid: $invoice?->paid_at !== null,
-            // ADR-0057 point 3: a reversed order is owed again and
-            // `CheckoutController::start()` takes it, so the pay link stays
-            // beside `pending` rather than disappearing with the reversal.
-            payUrl: in_array($order->status, [OrderStatus::Pending, OrderStatus::PaymentReversed], true)
-                && $order->settles_type === 'registration'
-                ? route('commerce.pay.show', ['registration' => $order->settles_id], absolute: false)
-                : null,
+            // GitLab #5: the same rule the confirmation and payment-failed
+            // mails follow (`Settlement\PayLink`) — a registration order's
+            // public checkout, every other order's own `/pay/order/{order}`
+            // page, and null once nothing is owed. Before #5 a cart order
+            // got no link at all and this page had no way back to a failed
+            // payment (review 6 finding 4).
+            payUrl: $payLink === null
+                ? null
+                : route($payLink['route'], $payLink['parameters'], absolute: false),
             documentUrl: $invoice?->document_path === null ? null : URL::temporarySignedRoute(
                 'commerce.my.invoice.document',
                 now()->addMinutes(30),

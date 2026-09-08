@@ -13,6 +13,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { start as startCheckout } from '@/routes/commerce/pay';
+import {
+    ORDER_WITH_OBLIGATION_TO_PAY,
+    fulfilmentNote,
+    taxNote,
+} from '../../lib/purchaseTexts';
 
 /**
  * Public checkout for an `instant`-settled registration (ADR-0039). This
@@ -44,6 +49,16 @@ type Props = {
     accounts: Konventix.Commerce.Data.CheckoutAccountData[];
     paymentStatus: string | null;
     /**
+     * #131 — the moment this order's payment window closes, ISO-8601.
+     * Sixty minutes from placement on a brand that offers a hosted
+     * checkout; null on one that settles by bank transfer, where a transfer
+     * takes as long as it takes and nothing sweeps the order.
+     */
+    holdUntil: string | null;
+    payable: boolean;
+    /** Why not, in the payer's own words — null while `payable` is true. */
+    refusalReason: string | null;
+    /**
      * ADR-0057 point 4 — the day a reversed order's money is owed back by,
      * from the newest final reversal. Null for every other status.
      */
@@ -64,7 +79,20 @@ const acceptTerms = ref(false);
 const consentRequired = computed(() =>
     props.consentSlots.some((slot) => slot.props.required === true),
 );
-const canPay = computed(() => !consentRequired.value || acceptTerms.value);
+const canPay = computed(
+    () => props.payable && (!consentRequired.value || acceptTerms.value),
+);
+
+/**
+ * A visible, explained time limit rather than a ticking counter
+ * (.ai/rules/js.md, ADR-0055 point 4): the window is never extended, so the
+ * page states the deadline once and says what happens at it.
+ */
+const holdUntilLabel = computed(() =>
+    props.holdUntil === null
+        ? null
+        : new Date(props.holdUntil).toLocaleString(),
+);
 
 // The id of the account currently starting a checkout — only that
 // account's button disables, so a second attempt on a different account
@@ -124,8 +152,8 @@ const lastAttemptFailed = computed(
                 >
                     <span>Total</span>
                     <span
-                        >{{ props.order.totalGross }}
-                        {{ props.order.currency }}</span
+                        >{{ props.order.totalGross }} {{ props.order.currency }}
+                        {{ taxNote('gross') }}</span
                     >
                 </div>
                 <p class="text-xs text-text-muted">
@@ -179,46 +207,89 @@ const lastAttemptFailed = computed(
                 <span>The last payment attempt did not go through.</span>
             </div>
 
-            <template v-for="slot in props.consentSlots" :key="slot.component">
-                <component
-                    :is="resolveRegisteredComponent(slot.component)"
-                    v-if="resolveRegisteredComponent(slot.component)"
-                    v-model="acceptTerms"
-                    v-bind="slot.props"
-                    :error="consentError"
-                />
-            </template>
-
-            <div
-                v-if="props.accounts.length > 0"
-                class="flex flex-col items-start gap-2"
+            <p
+                v-if="props.payable && holdUntilLabel"
+                role="status"
+                class="text-sm text-text-muted"
             >
-                <Button
-                    v-for="account in props.accounts"
-                    :key="account.id"
-                    :disabled="starting === account.id || !canPay"
-                    @click="pay(account.id)"
-                >
-                    <CreditCard class="size-4" />
-                    {{
-                        lastAttemptFailed || awaitingConfirmation
-                            ? 'Try again'
-                            : 'Pay'
-                    }}
-                    — {{ account.label }}
-                </Button>
+                Your place is held until {{ holdUntilLabel }}. After that the
+                order is released and the place goes back on sale.
+            </p>
 
-                <p v-if="!canPay" role="status" class="text-sm text-text-muted">
-                    Confirm the documents above to pay.
+            <p
+                v-if="!props.payable"
+                role="status"
+                class="rounded-md border border-border bg-surface p-4 text-sm text-danger"
+            >
+                {{ props.refusalReason }}
+            </p>
+
+            <template v-if="props.payable">
+                <!--
+                    #75: how and when what was bought arrives, stated before
+                    the order is concluded rather than only in the
+                    confirmation mail.
+                -->
+                <p class="text-sm text-text-muted">
+                    {{ fulfilmentNote(props.accounts.length > 0) }}
                 </p>
 
-                <InputError :message="accountError" />
-            </div>
+                <template
+                    v-for="slot in props.consentSlots"
+                    :key="slot.component"
+                >
+                    <component
+                        :is="resolveRegisteredComponent(slot.component)"
+                        v-if="resolveRegisteredComponent(slot.component)"
+                        v-model="acceptTerms"
+                        v-bind="slot.props"
+                        :error="consentError"
+                    />
+                </template>
 
-            <p v-else class="text-sm text-text-muted">
-                This organizer settles by bank transfer — payment details arrive
-                with your confirmation.
-            </p>
+                <div
+                    v-if="props.accounts.length > 0"
+                    role="group"
+                    aria-label="Payment options"
+                    :aria-describedby="
+                        accountError ? 'pay-show-account-error' : undefined
+                    "
+                    class="flex flex-col items-start gap-2"
+                >
+                    <Button
+                        v-for="account in props.accounts"
+                        :key="account.id"
+                        :disabled="starting === account.id || !canPay"
+                        @click="pay(account.id)"
+                    >
+                        <CreditCard class="size-4" />
+                        {{
+                            lastAttemptFailed || awaitingConfirmation
+                                ? 'Try again'
+                                : ORDER_WITH_OBLIGATION_TO_PAY
+                        }}
+                        — {{ account.label }}
+                    </Button>
+
+                    <p
+                        v-if="!canPay"
+                        role="status"
+                        class="text-sm text-text-muted"
+                    >
+                        Confirm the documents above to pay.
+                    </p>
+
+                    <!--
+                        The refusal is linked to the control it is about
+                        (.ai/rules/js.md): `InputError` carries no `id` prop
+                        of its own yet, so the id sits on the wrapper the
+                        button group points at (review 6 parked nit D).
+                    -->
+                    <div id="pay-show-account-error">
+                        <InputError :message="accountError" />
+                    </div>
+                </div>
+            </template>
         </template>
     </div>
 </template>

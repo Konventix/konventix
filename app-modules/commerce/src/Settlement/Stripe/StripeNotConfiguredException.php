@@ -27,9 +27,11 @@ use RuntimeException;
  * names what is missing *and* both places it can be put, so an operator who
  * meets it in a log, a queue failure or the reconciliation command does not
  * need to find this file. The refund path (`RefundOrder`) resolves the adapter
- * unconditionally and has no HTTP caller yet; whoever gives it one owes this
- * exception a catch site, or an operator refunding a Stripe order on an
- * instance with no key gets a 500 and a message nobody reads.
+ * unconditionally, and its HTTP caller is `OrderAdminController::refund()`
+ * (#73), which catches `RuntimeException` and repeats this message to the
+ * operator as a form error — so the debt this comment used to record is
+ * discharged: refunding a Stripe order on an instance with no key is a
+ * sentence in the dialog, not a 500 nobody reads.
  */
 final class StripeNotConfiguredException extends RuntimeException
 {

@@ -29,6 +29,8 @@ use Konventix\Platform\Http\Controllers\MediaFileController;
 use Konventix\Platform\Http\Middleware\EnsureFeatureIsActive;
 use Konventix\Platform\Http\Middleware\EnsureModuleIsActive;
 use Konventix\Platform\Http\Middleware\EnsureWaitingRoomAdmission;
+use Konventix\Platform\Legal\NoPublicLegalTexts;
+use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Listeners\GuardNonProductionMail;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -153,6 +155,16 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->app->singleton(StorageMigrationRegistry::class);
         $this->app->singleton(CookieRegistry::class);
         $this->app->singleton(BrandFeatureRegistry::class);
+
+        // The default answer to "where is this brand's privacy policy?" is
+        // "nowhere" (#184). Compliance binds the real resolver in its own
+        // provider, and `singletonIf` is what makes the order of the two
+        // irrelevant: module providers register in composer's order, so a
+        // plain `singleton()` here would overwrite Compliance's answer on any
+        // deployment where Platform happens to register second. A contract
+        // with no implementation at all would make `OperatorPresence` throw
+        // rather than say "no link".
+        $this->app->singletonIf(PublicLegalTexts::class, NoPublicLegalTexts::class);
 
         // Config-derived and request-free: which kind of instance this is
         // does not change between two requests a worker serves.

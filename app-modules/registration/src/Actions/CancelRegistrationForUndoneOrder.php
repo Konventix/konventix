@@ -48,6 +48,15 @@ final class CancelRegistrationForUndoneOrder
 
     public const string REASON_ORDER_REFUNDED = 'order_refunded';
 
+    /**
+     * The direct `instant` order behind this registration was never paid
+     * inside the payment window and the `commerce:expire-registration-orders`
+     * sweep called it off (#131). Distinct from `payment_reversed` for the
+     * reason the other two are distinct from each other: nobody ever paid
+     * here, which is not a payer taking money back.
+     */
+    public const string REASON_PAYMENT_WINDOW_EXPIRED = 'payment_window_expired';
+
     public function __construct(
         private readonly CancelRegistration $cancelRegistration,
     ) {}

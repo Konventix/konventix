@@ -6,6 +6,7 @@ namespace Konventix\Compliance\Support;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Konventix\Compliance\Enums\LawfulBasis;
 use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
@@ -70,6 +71,44 @@ final class OutstandingConsents
         }
 
         return $required->whereNotIn('id', $this->consentedVersionIds($subjectId))->exists();
+    }
+
+    /**
+     * The same question narrowed to the texts the sale itself rests on
+     * (`LawfulBasis::Contract`) — what the login and checkout gates ask
+     * (GitLab #205, operator decision of 08.09.2026).
+     *
+     * "Outstanding" is `requiredVersions()` plus `lawful_basis = contract`:
+     * the currently published version of a policy this brand reads, which
+     * requires consent, whose effective date has arrived, whose basis is
+     * the contract, and for which the subject holds no consent that has not
+     * been withdrawn.
+     *
+     * Consent is recorded against a *version* id, and
+     * `PublishPolicyVersion` keeps at most one published effective version
+     * per policy — so publishing a new version of a contract text makes
+     * exactly that one version outstanding, the next login or checkout asks
+     * once, and the row `ConsentController::store()` writes for it silences
+     * both gates together. Neither gate can therefore ask twice for the
+     * same version, and neither can miss a new one.
+     *
+     * The wider `subjectHasOutstanding()` stays what the `require-consent`
+     * route gate asks: a consent-based required text still blocks the
+     * routes that opt into it, it just does not stand between someone and
+     * their own account.
+     */
+    public function subjectHasOutstandingContract(string $subjectId): bool
+    {
+        $required = $this->requiredVersions();
+
+        if ($required === null) {
+            return false;
+        }
+
+        return $required
+            ->where('lawful_basis', LawfulBasis::Contract)
+            ->whereNotIn('id', $this->consentedVersionIds($subjectId))
+            ->exists();
     }
 
     /**

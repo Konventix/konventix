@@ -24,10 +24,22 @@ keeps as its own read model.
   is deferred to the `Gdpr/` handler (TODO.md Backlog).
 - **Authentication**: registration of accounts, login and logout, password
   reset, email verification, remember-me, and lockout after failed attempts.
+  Fortify's `LoginResponse` and `TwoFactorLoginResponse` are rebound in
+  `boot()` — never `registerBindings()`, since Fortify's own provider binds
+  them in `register()`, after every module provider's — so a login with an
+  outstanding contract text lands on `policies.required` with
+  `url.intended` preserved. They read
+  `session('compliance.consent_redirect')` rather than asking Compliance
+  directly (#205).
 - **Social login** behind a `SocialProvider` driver contract. A linked identity
   is a row (`provider`, `provider_user_id`, linked-at) referencing the user —
   never a column on User. Steam is a driver, so are Discord, Google, and
   whatever comes next.
+- **`RecordBrandMembership`**'s "you already have an account here" notice
+  is scoped to the resolved brand's own **operator** (`brands.operator_id`):
+  an account is global to the instance — `users` has no `operator_id` —
+  so without that join the notice could name another operator's brand on
+  this operator's auth page (ADR-0054, #184).
 - **Two-factor authentication**: enrolment, confirmation, recovery codes, reset
   by an administrator.
 - **Sessions**: the list of a user's active sessions and their revocation.

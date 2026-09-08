@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Actions;
 
+use Carbon\CarbonInterface;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Events\RegistrationLinePlacedInCart;
+use Konventix\Commerce\Exceptions\SaleWindowClosedException;
 use Konventix\Commerce\Models\CartLine;
 
 /**
@@ -21,6 +24,35 @@ use Konventix\Commerce\Models\CartLine;
  * first line's label, `tax_class` the first line's class — the cart shows
  * "your registration", not an itemised breakdown Registration never asked
  * for.
+ *
+ * #218 (#216 draft i, fix round 1): the request may carry the type's sales
+ * window as two nullable ISO-8601 instants, and **this is the only place
+ * Commerce enforces it**. Null means "not window-bound", which is what
+ * Registration sends for a waitlist conversion, a confirmation after
+ * approval and a priced amendment — it is the authority on who may register,
+ * and this Action never second-guesses it. A window that is present and not
+ * open is a fresh sale arriving too early or too late, and it is refused:
+ * the registrant is at the form right now and gets told.
+ *
+ * The refusal sits *after* the idempotency lookup on purpose. A replay of a
+ * request whose line already exists returns that line whatever the clock
+ * says; the line was placed while the sale was open and refusing it now would
+ * contradict the promise below. That ordering also puts the refusal below
+ * `OpenCart::for()`, which may create the cart row a refused request then
+ * never fills (fix round 2, review finding N5): the lookup needs the cart, so
+ * the two cannot both come first. It is harmless as called — the throw
+ * propagates into the emitting Action's own `DB::transaction`, which rolls
+ * the cart back with everything else — and only a caller outside a
+ * transaction could leave an empty cart behind. Reordering would mean
+ * splitting `OpenCart::for()` into a find and a create, which is a larger
+ * change than an unreachable stray row is worth.
+ *
+ * The window is also snapshotted onto the line, normalized to UTC first
+ * (Eloquent's `datetime` cast stores an offset-bearing string by its
+ * wall-clock digits). It is kept for audit only — nothing renders it, and
+ * the checkout does not re-check it; see `PlaceOrderFromCart`. The window
+ * this Action itself enforces is the one on the *event*, read off the
+ * unsaved probe below, never off a persisted column.
  *
  * Announces itself with `RegistrationLinePlacedInCart` on the placement
  * that actually creates the line — never on the idempotent replay, which
@@ -45,6 +77,8 @@ final class PlaceRegistrationLineInCart
         string $registrationId,
         string $requestKey,
         array $lines,
+        ?string $saleStartsAt = null,
+        ?string $saleEndsAt = null,
     ): CartLine {
         $cart = OpenCart::for($brandId, $registrantUserId);
 
@@ -58,7 +92,12 @@ final class PlaceRegistrationLineInCart
             return $existing;
         }
 
-        $cartLine = DB::transaction(function () use ($cart, $registrationId, $requestKey, $lines): CartLine {
+        $saleStartsAt = $saleStartsAt === null ? null : Carbon::parse($saleStartsAt)->utc();
+        $saleEndsAt = $saleEndsAt === null ? null : Carbon::parse($saleEndsAt)->utc();
+
+        $this->guardSaleWindow($registrationId, $saleStartsAt, $saleEndsAt);
+
+        $cartLine = DB::transaction(function () use ($cart, $registrationId, $requestKey, $lines, $saleStartsAt, $saleEndsAt): CartLine {
             $first = $lines[0];
 
             $totalNet = '0.00';
@@ -76,6 +115,8 @@ final class PlaceRegistrationLineInCart
                 'unit_amount_net' => $totalNet,
                 'tax_class' => $first['tax_class'],
                 'position' => $cart->lines()->count(),
+                'sale_starts_at' => $saleStartsAt,
+                'sale_ends_at' => $saleEndsAt,
             ]);
             $cartLine->brand_id = $cart->brand_id;
             $cartLine->save();
@@ -97,5 +138,26 @@ final class PlaceRegistrationLineInCart
         ));
 
         return $cartLine;
+    }
+
+    /**
+     * The boundary rule is asked of an unsaved `CartLine` rather than written
+     * out a second time (fix round 1, review finding 4): Commerce owns exactly
+     * one window predicate, `CartLine::isOnSale()`, and it agrees with
+     * `RegistrationType::isOnSale()` across the module boundary — start
+     * inclusive, end exclusive, null = open. Three hand-written copies of a
+     * boundary rule in a money path drift; one does not.
+     */
+    private function guardSaleWindow(string $registrationId, ?CarbonInterface $saleStartsAt, ?CarbonInterface $saleEndsAt): void
+    {
+        $probe = new CartLine(['sale_starts_at' => $saleStartsAt, 'sale_ends_at' => $saleEndsAt]);
+
+        if (! $probe->isOnSale()) {
+            throw SaleWindowClosedException::forRegistration(
+                $registrationId,
+                $saleStartsAt?->toIso8601String(),
+                $saleEndsAt?->toIso8601String(),
+            );
+        }
     }
 }

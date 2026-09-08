@@ -165,6 +165,11 @@ class RegistrationTypeAdminController
             'quotas' => $this->quotaOptions($type->brand_id),
             'options' => $this->axisOptions(),
             'registrations' => $registrations,
+            // #218 (fix round 1): the sales window is stored as an instant in
+            // the application's own timezone, and a `datetime-local` control
+            // labels itself as local time in every browser. The form names
+            // both clocks rather than hard-coding one of them in prose.
+            'appTimezone' => config('app.timezone'),
             // Terms freeze once anyone has registered under them — the form
             // disables what `UpdateRegistrationType` would refuse anyway.
             'termsFrozen' => $registrations > 0,

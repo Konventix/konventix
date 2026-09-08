@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\URL;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Console\CancelUnpaidReversals;
 use Konventix\Commerce\Console\ExpireCartsCommand;
+use Konventix\Commerce\Console\ExpireRegistrationOrdersCommand;
 use Konventix\Commerce\Console\ProbeInvoiceNumbering;
 use Konventix\Commerce\Console\ReconcilePayments;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
@@ -402,7 +403,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // sweep that silently fails to register would look like "no invoices
         // are overdue" rather than like a bug.
         if ($this->app->runningInConsole()) {
-            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, ExpireCartsCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class, ReconcilePayments::class, CancelUnpaidReversals::class]);
+            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, ExpireCartsCommand::class, ExpireRegistrationOrdersCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class, ReconcilePayments::class, CancelUnpaidReversals::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
@@ -442,6 +443,14 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // makes one run take longer than fifteen minutes must not stack
             // a second run on top of it.
             $schedule->command('commerce:expire-carts')->everyFifteenMinutes()->withoutOverlapping();
+
+            // The same question for an order that never had a cart (#131):
+            // a brand without `commerce:shop` places a direct registration
+            // order straight from the settlement request, and nothing swept
+            // it, so an unpaid `instant` registration held its quota
+            // forever. Same cadence and same window as the sweep above,
+            // because it is the same deadline seen from the other side.
+            $schedule->command('commerce:expire-registration-orders')->everyFifteenMinutes()->withoutOverlapping();
 
             // The waiting room's own heartbeat (ADR-0047 point 5, Task 13):
             // every minute, stagger up to twelve admission batches per busy
@@ -636,6 +645,9 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Ihre Reservierung gilt bis {{ $reservationUntil }} — schließen Sie die
                     Zahlung bis dahin ab.</p>
                     @endif
+                    @if ($payUrl)
+                    <p><a href="{{ $payUrl }}">Jetzt bezahlen</a></p>
+                    @endif
                     <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -662,6 +674,9 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Your reservation holds until {{ $reservationUntil }} — please
                     complete payment before then.</p>
                     @endif
+                    @if ($payUrl)
+                    <p><a href="{{ $payUrl }}">Pay now</a></p>
+                    @endif
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
             ],
@@ -677,6 +692,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 'totalGross' => '25.00',
                 'reservationUntil' => '28.08.2026 18:00',
                 'ordersUrl' => 'https://example.test/my/orders',
+                'payUrl' => 'https://example.test/cart',
             ],
         ));
 
@@ -694,6 +710,10 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Guten Tag,</p>
                     <p>Ihre Zahlung zur Bestellung <strong>{{ $orderNumberShort }}</strong>
                     ist fehlgeschlagen. {{ $reason }}</p>
+                    @if ($payBy)
+                    <p>Bitte schließen Sie die Zahlung bis {{ $payBy }} ab — danach wird die
+                    Bestellung storniert und das Reservierte wieder freigegeben.</p>
+                    @endif
                     <p><a href="{{ $retryUrl }}">Zahlung erneut versuchen</a></p>
                     <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
                     BLADE,
@@ -701,6 +721,10 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Hello,</p>
                     <p>your payment for order <strong>{{ $orderNumberShort }}</strong>
                     failed. {{ $reason }}</p>
+                    @if ($payBy)
+                    <p>Please complete the payment by {{ $payBy }} — after that the order is
+                    cancelled and what it held goes back on sale.</p>
+                    @endif
                     <p><a href="{{ $retryUrl }}">Try payment again</a></p>
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
@@ -711,6 +735,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 'reason' => 'Die Karte wurde abgelehnt.',
                 'retryUrl' => 'https://example.test/pay/A1B2C3',
                 'ordersUrl' => 'https://example.test/my/orders',
+                'payBy' => '08.09.2026 18:00',
             ],
         ));
 
@@ -944,12 +969,24 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     ->get();
 
                 $media = app(MediaLibrary::class);
+                $taxCalculator = app(TaxCalculator::class);
+
+                // The PAngV end price is the server's to compute (#3), and
+                // the §19 election that decides it belongs to the brand's
+                // operator. Resolved once off the first product rather than
+                // per product: every row here is this brand's.
+                $first = $products->first();
+                $smallBusinessScheme = $first === null
+                    ? false
+                    : app(OperatorSettings::class)->sellerForBrand($first->brand_id)->smallBusinessScheme;
 
                 return [
                     'products' => $products
                         ->map(fn (Product $product): array => ShopProductData::ofModel(
                             $product,
                             $product->image_media_id === null ? null : $media->urlFor($product->image_media_id),
+                            $taxCalculator,
+                            $smallBusinessScheme,
                         )->toArray())
                         ->all(),
                 ];

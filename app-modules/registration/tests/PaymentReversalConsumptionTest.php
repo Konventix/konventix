@@ -352,6 +352,50 @@ it('cancels a cart line\'s registration when the cart order is cancelled as reve
     );
 });
 
+/**
+ * Whole-branch review finding 3: a whole-order refund released the seat for
+ * a direct registration order and silently did not for a cart order, which
+ * is the same money going back with the place, the quota and the admission
+ * left standing. `RecordRefund` now emits the per-line event the cart
+ * cancellation path already used, and this listener recognises its reason.
+ */
+it('cancels a cart line\'s registration when the cart order is wholly refunded (#73)', function (): void {
+    reversalOperator($this->withBrand());
+
+    $quota = Quota::factory()->withCapacity(5)->create();
+    $registration = reversalPaidRegistration($quota);
+
+    Event::fake([RegistrationCancelled::class]);
+
+    event(reversalOrderLineCancelledEvent($registration, reasonCode: 'order_refunded'));
+
+    $registration->refresh();
+
+    // The same reason code a direct order's refund writes, so the audit
+    // column does not depend on which kind of order paid for the place.
+    expect($registration->status)->toBe(RegistrationStatus::Cancelled)
+        ->and($registration->reason_code)->toBe('order_refunded')
+        ->and($quota->fresh()->consumed)->toBe(0);
+
+    Event::assertDispatched(
+        RegistrationCancelled::class,
+        fn (RegistrationCancelled $event): bool => $event->registrationId === $registration->id
+            && $event->reasonCode === 'order_refunded',
+    );
+});
+
+it('ignores an OrderLineCancelled whose reason this module was not told to act on', function (): void {
+    reversalOperator($this->withBrand());
+
+    $quota = Quota::factory()->withCapacity(5)->create();
+    $registration = reversalPaidRegistration($quota);
+
+    event(reversalOrderLineCancelledEvent($registration, reasonCode: 'some_other_reason'));
+
+    expect($registration->refresh()->status)->toBe(RegistrationStatus::Confirmed)
+        ->and($quota->fresh()->consumed)->toBe(1);
+});
+
 it('ignores a product-kind OrderLineCancelled', function (): void {
     reversalOperator($this->withBrand());
 

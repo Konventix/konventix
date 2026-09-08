@@ -19,11 +19,20 @@ use Konventix\Platform\Models\Brand;
  *    cookie (wrong signature, or a ticket the store has forgotten) reads
  *    as no cookie at all.
  * 2. No usable cookie, but the visitor is signed in and the store
- *    remembers a ticket for this user — reused, so switching devices or
- *    clearing cookies does not queue the same person twice.
- * 3. Neither — a genuinely new arrival. The per-IP cap (five new tickets
- *    per hour, ADR-0047 point 5's "nothing more" anti-abuse floor) is
- *    charged only here, then a fresh ticket is enqueued.
+ *    remembers a ticket for this user that the store still knows (same
+ *    check as case 1) — reused, so switching devices or clearing cookies
+ *    does not queue the same person twice. The user→ticket mapping
+ *    outlives an admission (`RedisWaitingRoomStore::USER_TTL_SECONDS`,
+ *    two hours, versus `admission_ttl_minutes`, thirty by default), so
+ *    without this check a user whose admission has lapsed but whose
+ *    mapping has not would get back a ticket that is neither queued nor
+ *    admitted — stuck until the mapping itself expires.
+ * 3. Neither — a genuinely new arrival, including a signed-in user whose
+ *    remembered ticket the store no longer knows. The per-IP cap (five
+ *    new tickets per hour, ADR-0047 point 5's "nothing more" anti-abuse
+ *    floor) is charged only here, then a fresh ticket is enqueued —
+ *    `enqueue()` overwrites the user mapping too, so case 2 finds the new
+ *    ticket next time.
  */
 final class IssueWaitingRoomTicket
 {
@@ -48,7 +57,7 @@ final class IssueWaitingRoomTicket
         if ($userId !== null) {
             $existing = $this->store->ticketForUser($brandId, $userId);
 
-            if ($existing !== null) {
+            if ($existing !== null && $this->isKnown($brandId, $existing)) {
                 return $this->ticketFor($brandId, $existing);
             }
         }

@@ -25,10 +25,10 @@ use RuntimeException;
 
 /**
  * Accepts a registration form and persists it (ADR-0005, SPEC.md "Owns" —
- * "the approval workflow — submission ..."). Validates visibility and
- * account (D-REG-08 — `docs/inventory/decision-log.md` Round 5: registrants
- * must hold an account), consumes the type's quotas, and emits
- * `RegistrationSubmitted`.
+ * "the approval workflow — submission ..."). Validates visibility, the
+ * sales window (#218) and account (D-REG-08 —
+ * `docs/inventory/decision-log.md` Round 5: registrants must hold an
+ * account), consumes the type's quotas, and emits `RegistrationSubmitted`.
  *
  * When `confirmation_gate: on_submit`, this Action confirms the
  * registration in the same transaction by calling `ConfirmRegistration`
@@ -58,6 +58,7 @@ final class SubmitRegistration
         return DB::transaction(function () use ($registrationType, $registrantUserId, $data, $invitationToken, $fromWaitlist): Registration {
             if ($fromWaitlist === null) {
                 $this->guardVisibility($registrationType, $invitationToken);
+                $this->guardSalesWindow($registrationType);
             }
             $this->guardAccount($registrantUserId);
             $this->guardBillingParty($registrationType, $data);
@@ -124,7 +125,21 @@ final class SubmitRegistration
                 $registrationType->confirmation_gate === ConfirmationGate::OnPayment
                 && $registrationType->settlement->requestsSettlement()
             ) {
-                $this->requestSettlement->handle($registration, $registrationType);
+                // #218: a fresh submission is the one settlement request
+                // Commerce may refuse on window grounds. A waitlist
+                // conversion carries no window (see RequestSettlement), and
+                // the same flag decides whether a refusal may be read as one.
+                $windowBound = $fromWaitlist === null;
+
+                try {
+                    $this->requestSettlement->handle(
+                        $registration,
+                        $registrationType,
+                        enforcesSalesWindow: $windowBound,
+                    );
+                } catch (RuntimeException $exception) {
+                    $this->convertSettlementRefusal($exception, $registrationType, $windowBound);
+                }
             }
 
             // Approval is a precondition, not a gate: a type declaring
@@ -140,6 +155,45 @@ final class SubmitRegistration
 
             return $registration;
         });
+    }
+
+    /**
+     * The settlement request runs through Commerce's synchronous listener,
+     * inside this transaction. If Commerce refuses the request because the
+     * sales window closed between this Action's own check and the listener's
+     * — a race of milliseconds, but the money path — the registrant must see
+     * the refusal the form shows, not a 500. Rolling back with nothing placed
+     * is the correct outcome either way.
+     *
+     * The condition is re-evaluated rather than matched on Commerce's
+     * exception class: ADR-0004 forbids importing it (enforced by
+     * `tests/Unit/ArchitectureTest.php`), and "the window has closed since"
+     * is the same fact without the dependency.
+     *
+     * Both conditions are required, and `$windowBound` is the load-bearing
+     * one (fix round 2, review finding N1). `RuntimeException` is a wide net —
+     * `QueryException` is a `PDOException` is a `RuntimeException`, so a
+     * deadlock or a constraint violation anywhere in the listener chain lands
+     * here. Re-reading the window is only evidence of a race where
+     * `guardSalesWindow()` ran microseconds earlier and passed. A waitlist
+     * conversion skips that guard by design and its window is closed *by
+     * construction* (D-REG-12), so on that path a false `isOnSale()` says
+     * nothing at all — converting there would tell the registrant the one
+     * thing that is certainly not the cause and throw the real one away.
+     * Everything else rethrows untouched.
+     */
+    private function convertSettlementRefusal(
+        RuntimeException $exception,
+        RegistrationType $registrationType,
+        bool $windowBound,
+    ): never {
+        if (! $windowBound || $registrationType->isOnSale()) {
+            throw $exception;
+        }
+
+        throw ValidationException::withMessages([
+            'registrationType' => __('This registration is no longer on sale.'),
+        ]);
     }
 
     /**
@@ -169,6 +223,34 @@ final class SubmitRegistration
         }
 
         $token->increment('uses');
+    }
+
+    /**
+     * #218 (#216 draft i): the sales window is enforced here, server-side and
+     * independently of the waiting room — #216 is explicit that the room
+     * shapes the queue and is never the access control. The landing page
+     * already hides a type whose sale is over, but a bookmark, a stale tab or
+     * a direct POST arrives here regardless.
+     *
+     * A `ValidationException` rather than a `RuntimeException`, so the
+     * registration form shows a refusal the way it shows a missing billing
+     * field — the same shape `guardBillingParty()` uses.
+     *
+     * A waitlist conversion is exempt (the caller skips this guard): the spot
+     * was promised and its quota held at offer time, and a queue that drains
+     * after the sale ends is the point of the queue (D-REG-12).
+     */
+    private function guardSalesWindow(RegistrationType $registrationType): void
+    {
+        if ($registrationType->isOnSale()) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'registrationType' => $registrationType->sales_start !== null && now()->lessThan($registrationType->sales_start)
+                ? __('This registration is not on sale yet.')
+                : __('This registration is no longer on sale.'),
+        ]);
     }
 
     private function guardAccount(?string $registrantUserId): void

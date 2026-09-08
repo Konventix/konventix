@@ -16,11 +16,21 @@ use Konventix\Messaging\Exceptions\UnsafeTemplateException;
  * this off, so this is an allow-list instead: an override may contain plain
  * text, a `{{ $field }}` / `{{ $field ?? 'literal' }}` echo of a payload
  * field, and `@if`/`@elseif`/`@unless`/`@isset`/`@empty`/`@foreach` gated on
- * a payload field with at most one scalar comparison. Everything else is
+ * a payload field with at most one comparison against a scalar *literal*
+ * (`===`, `!==`, `<`, `<=`, `>`, `>=` — #9 added the four ordering ones so
+ * a template can say "overdue" without a ternary). Everything else is
  * refused, including every other directive by name (`@php`, `@include`,
  * `@inject`, `@component`, `@livewire`, `@json`, `@method`, `@csrf`, `@dd`,
  * …) — allow-listing is what keeps this closed against a directive nobody
  * thought to deny yet.
+ *
+ * An `@` that Blade itself would never read as a directive is left alone:
+ * Blade's directive regex demands a non-word boundary before the `@`, so
+ * `info@example.com` is plain text to Blade and refusing it (#9) was the
+ * guard reading danger into a signature. A *known* directive glued to a
+ * preceding word stays refused — `bezahlt@else` is the trap
+ * `.ai/rules/app-modules-src.md` records, where the template silently
+ * stops doing what it looks like it does.
  *
  * Applied to both `subject` and `body`, before the compile check
  * (`SaveTemplateOverride`) and before rendering a preview
@@ -39,6 +49,13 @@ final class TemplateOverrideGuard
 
     /** @var list<string> */
     private const array BARE_DIRECTIVES = ['else', 'endif', 'endunless', 'endisset', 'endempty', 'endforeach'];
+
+    /**
+     * The comparisons a condition may make. Identity first so `!==` is
+     * never read as `!` plus something, and the two-character ordering
+     * operators before their one-character prefixes.
+     */
+    private const string COMPARISON = '(?:===|!==|<=|>=|<|>)';
 
     private const string FIELD = '\$[a-zA-Z_][a-zA-Z0-9_]*(?:\[[\'"][a-zA-Z0-9_-]+[\'"]\])*';
 
@@ -87,6 +104,23 @@ final class TemplateOverrideGuard
         }
     }
 
+    /**
+     * Every directive name the allow-list recognises, in one list: the
+     * glued-directive check has to tell "a directive in the wrong place"
+     * apart from "an `@` inside a word".
+     *
+     * @return list<string>
+     */
+    private static function knownDirectives(): array
+    {
+        return [
+            ...self::CONDITIONAL_DIRECTIVES,
+            ...self::IDENTITY_DIRECTIVES,
+            self::FOREACH_DIRECTIVE,
+            ...self::BARE_DIRECTIVES,
+        ];
+    }
+
     private function assertDirectivesSafe(string $blade): void
     {
         if (preg_match_all('/@([a-zA-Z]+)([ \t]*\((?:[^()]|\([^()]*\))*\))?/', $blade, $matches, PREG_OFFSET_CAPTURE) === 0) {
@@ -104,14 +138,28 @@ final class TemplateOverrideGuard
             // to compile as intended.
             $before = $offset > 0 ? $blade[$offset - 1] : null;
             $after = $blade[$offset + strlen($fragment)] ?? null;
+            $glued = $before !== null && preg_match('/[a-zA-Z0-9_]/', $before) === 1;
 
-            if (($before !== null && preg_match('/[a-zA-Z0-9_]/', $before) === 1)
-                || ($after !== null && preg_match('/[a-zA-Z0-9_]/', $after) === 1)) {
+            if ($glued) {
+                // Blade will not compile this one at all. Where the word
+                // after the `@` is a directive this guard knows, that is
+                // the silent-failure trap and the operator is told; where
+                // it is not — `info@example.com`, an `@handle` inside a
+                // word — it is text, and text is what the allow-list is
+                // for (#9).
+                if (! in_array($name, self::knownDirectives(), true)) {
+                    continue;
+                }
+
+                throw new UnsafeTemplateException($fragment, $offset);
+            }
+
+            if ($after !== null && preg_match('/[a-zA-Z0-9_]/', $after) === 1) {
                 throw new UnsafeTemplateException($fragment, $offset);
             }
 
             if (in_array($name, self::CONDITIONAL_DIRECTIVES, true)) {
-                $condition = '/^\(\s*!?\s*'.self::FIELD.'(?:\s*(?:===|!==)\s*(?:\'[^\'\\\\]*\'|\d+|true|false|null))?\s*\)$/';
+                $condition = '/^\(\s*!?\s*'.self::FIELD.'(?:\s*'.self::COMPARISON.'\s*(?:\'[^\'\\\\]*\'|-?\d+|true|false|null))?\s*\)$/';
 
                 if (! preg_match($condition, $args)) {
                     throw new UnsafeTemplateException($fragment, $offset);

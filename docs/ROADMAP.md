@@ -563,6 +563,9 @@ in the owning module's `TODO.md` when it lands.
     full 1,000-VU profile; k6's own threshold keeps 1% for real
     infrastructure. The fix belongs to a later infrastructure task (more
     Octane workers behind a real load balancer, not a dev compose file).
+    **#218 done:** sales windows per registration type, refused at
+    submission and at the cart line. **#216 stays open:** arming the
+    waiting room from a sales window.
 
 25. **Profiles, and a page for them.** Identity for the account of
     record, Community for the page — which pulls Community forward from

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
+import OperatorPresenceNotice from '@/components/OperatorPresenceNotice.vue';
 import { home } from '@/routes';
 
 const page = usePage();
@@ -43,6 +44,8 @@ defineProps<{
                     </p>
                 </div>
                 <slot />
+
+                <OperatorPresenceNotice />
             </div>
         </div>
     </div>

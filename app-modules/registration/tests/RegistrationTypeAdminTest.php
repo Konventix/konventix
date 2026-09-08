@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
@@ -393,6 +394,206 @@ it('refuses to cut capacity below the places already taken', function (): void {
         ->assertRedirect();
 
     expect($quota->refresh()->capacity)->toBe(120);
+});
+
+/**
+ * #218 (#216 draft i): the sales window. Both bounds are optional, they are
+ * instants (see the migration's docblock), and they deliberately do NOT
+ * freeze with the terms — closing a sale early, or extending it by a day, is
+ * an operational decision that reinterprets nobody's existing registration.
+ */
+it('saves a sales window and hands it back to the form as a datetime string', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create(['event_id' => $eventId]);
+
+    $this->actingAs($admin)
+        ->put("http://admin.regtypes.test/admin/registration-types/{$type->id}", [
+            'eventId' => $eventId,
+            'name' => $type->name,
+            'visibility' => 'public',
+            'approval' => 'none',
+            'settlement' => 'free',
+            'confirmationGate' => 'on_submit',
+            'termsDays' => 14,
+            'grants' => [],
+            'salesStart' => '2026-10-01 18:00:00',
+            'salesEnd' => '2026-10-08 18:00:00',
+        ])
+        ->assertRedirect();
+
+    expect($type->refresh()->sales_start?->toIso8601String())->toBe('2026-10-01T18:00:00+00:00')
+        ->and($type->sales_end?->toIso8601String())->toBe('2026-10-08T18:00:00+00:00');
+
+    $this->actingAs($admin)
+        ->get("http://admin.regtypes.test/admin/registration-types/{$type->id}/edit")
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('type.salesStart', '2026-10-01 18:00:00')
+            ->where('type.salesEnd', '2026-10-08 18:00:00')
+            // The clock the operator is typing in, named rather than assumed
+            // (fix round 1, review finding 7).
+            ->where('appTimezone', config('app.timezone')));
+});
+
+it('refuses a sales window that ends before it starts', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $this->actingAs($admin)
+        ->post('http://admin.regtypes.test/admin/registration-types', [
+            'brand_id' => $brand->id,
+            'eventId' => $eventId,
+            'name' => 'Backwards window',
+            'visibility' => 'public',
+            'approval' => 'none',
+            'settlement' => 'free',
+            'confirmationGate' => 'on_submit',
+            'termsDays' => 0,
+            'grants' => [],
+            'salesStart' => '2026-10-08 18:00:00',
+            'salesEnd' => '2026-10-01 18:00:00',
+        ])
+        ->assertSessionHasErrors('salesEnd');
+
+    expect(RegistrationType::withoutBrandScope()->where('name', 'Backwards window')->exists())->toBeFalse();
+});
+
+it('keeps the sales window editable once registrations exist', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create([
+        'event_id' => $eventId,
+        'settlement' => RegistrationSettlement::Free,
+        'confirmation_gate' => ConfirmationGate::OnSubmit,
+        'price_declaration' => null,
+        'grants' => [],
+    ]);
+    Registration::factory()->create([
+        'registration_type_id' => $type->id,
+        'event_id' => $eventId,
+    ]);
+
+    $this->actingAs($admin)
+        ->put("http://admin.regtypes.test/admin/registration-types/{$type->id}", [
+            'eventId' => $eventId,
+            'name' => $type->name,
+            'visibility' => $type->visibility->value,
+            'approval' => $type->approval->value,
+            'settlement' => 'free',
+            'confirmationGate' => 'on_submit',
+            'termsDays' => $type->terms_days,
+            'grants' => [],
+            'salesEnd' => '2026-10-08 18:00:00',
+        ])
+        ->assertRedirect();
+
+    expect($type->refresh()->sales_end?->toIso8601String())->toBe('2026-10-08T18:00:00+00:00');
+});
+
+/**
+ * Fix round 1, finding 1: the payload the Vue form actually sends. `Edit.vue`
+ * transforms on every submit and therefore always sends both keys, `null`
+ * when the input is empty — so a `rules()` entry that drops the inferred
+ * `nullable` breaks saving *any* type, not just a windowed one.
+ *
+ * @param  array<string, mixed>  $window
+ */
+function registrationTypeWindowPayload(string $eventId, array $window): array
+{
+    return [
+        'eventId' => $eventId,
+        'name' => 'Windowed',
+        'visibility' => 'public',
+        'approval' => 'none',
+        'settlement' => 'free',
+        'confirmationGate' => 'on_submit',
+        'termsDays' => 14,
+        'grants' => [],
+        'quotaIds' => [],
+        ...$window,
+    ];
+}
+
+it('saves the form payload the admin page sends for every shape of window', function (array $window, ?string $expectedStart, ?string $expectedEnd): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create([
+        'event_id' => $eventId,
+        'sales_start' => '2026-01-01 00:00:00',
+        'sales_end' => '2026-12-31 00:00:00',
+    ]);
+
+    $this->actingAs($admin)
+        ->put(
+            "http://admin.regtypes.test/admin/registration-types/{$type->id}",
+            registrationTypeWindowPayload($eventId, $window),
+        )
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    expect($type->refresh()->sales_start?->toIso8601String())->toBe($expectedStart)
+        ->and($type->sales_end?->toIso8601String())->toBe($expectedEnd);
+})->with([
+    'both null (an unwindowed type, and the way a window is cleared)' => [
+        ['salesStart' => null, 'salesEnd' => null], null, null,
+    ],
+    'start only (the brief\'s own headline case: "sale starts <date>")' => [
+        ['salesStart' => '2026-10-01 18:00:00', 'salesEnd' => null],
+        '2026-10-01T18:00:00+00:00',
+        null,
+    ],
+    'end only' => [
+        ['salesStart' => null, 'salesEnd' => '2026-10-08 18:00:00'],
+        null,
+        '2026-10-08T18:00:00+00:00',
+    ],
+    'both set' => [
+        ['salesStart' => '2026-10-01 18:00:00', 'salesEnd' => '2026-10-08 18:00:00'],
+        '2026-10-01T18:00:00+00:00',
+        '2026-10-08T18:00:00+00:00',
+    ],
+]);
+
+it('still refuses an end before the start when the form sends both keys', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create(['event_id' => $eventId]);
+
+    $this->actingAs($admin)
+        ->put(
+            "http://admin.regtypes.test/admin/registration-types/{$type->id}",
+            registrationTypeWindowPayload($eventId, [
+                'salesStart' => '2026-10-08 18:00:00',
+                'salesEnd' => '2026-10-01 18:00:00',
+            ]),
+        )
+        ->assertSessionHasErrors('salesEnd');
+
+    expect($type->refresh()->sales_start)->toBeNull();
+});
+
+it('refuses a sales window that is not a date at all', function (): void {
+    $brand = $this->withBrand();
+    $eventId = registrationTypeEvent($brand);
+    [, $admin] = registrationTypeOperator();
+
+    $type = RegistrationType::factory()->create(['event_id' => $eventId]);
+
+    $this->actingAs($admin)
+        ->put(
+            "http://admin.regtypes.test/admin/registration-types/{$type->id}",
+            registrationTypeWindowPayload($eventId, ['salesStart' => 'whenever', 'salesEnd' => null]),
+        )
+        ->assertSessionHasErrors('salesStart');
 });
 
 /**

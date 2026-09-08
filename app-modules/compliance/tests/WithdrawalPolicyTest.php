@@ -75,7 +75,10 @@ it('seeds operator-wide placeholders that say they are placeholders and carry th
 
     $policies = Policy::withoutBrandScope()->whereNull('brand_id')->get();
 
-    expect($policies->pluck('slug')->sort()->values()->all())->toBe(['terms', 'withdrawal']);
+    // `privacy` joined the pair in #184: the registration page names the
+    // controller under Art. 13 DSGVO and links here, and on a fresh instance
+    // that link went nowhere.
+    expect($policies->pluck('slug')->sort()->values()->all())->toBe(['privacy', 'terms', 'withdrawal']);
 
     $withdrawal = $policies->firstWhere('slug', 'withdrawal');
     $version = PolicyVersion::withoutBrandScope()->where('policy_id', $withdrawal?->getKey())->sole();
@@ -92,7 +95,21 @@ it('seeds operator-wide placeholders that say they are placeholders and carry th
         ->sole();
 
     expect($terms->content)->toContain('PLACEHOLDER')
-        ->and($terms->requires_consent)->toBeTrue();
+        // A real AGB requires consent; this placeholder must not, or the
+        // #205 login gate would hold every existing account hostage to a
+        // text that binds nobody (whole-branch review finding 1).
+        ->and($terms->requires_consent)->toBeFalse();
+
+    $privacy = PolicyVersion::withoutBrandScope()
+        ->where('policy_id', $policies->firstWhere('slug', 'privacy')?->getKey())
+        ->sole();
+
+    expect($privacy->content)->toContain('PLACEHOLDER')
+        // An information duty, not a consent one — and marking it
+        // `requires_consent` would put it in front of every signed-in
+        // visitor through the `require-consent` gate.
+        ->and($privacy->requires_consent)->toBeFalse()
+        ->and($privacy->state)->toBe(PolicyVersionState::Published);
 });
 
 it('re-seeds without duplicating a policy or drafting a second version', function (): void {
@@ -101,6 +118,6 @@ it('re-seeds without duplicating a policy or drafting a second version', functio
     app(OperatorLegalTextsSeeder::class)->run();
     app(OperatorLegalTextsSeeder::class)->run();
 
-    expect(Policy::withoutBrandScope()->whereNull('brand_id')->count())->toBe(2)
-        ->and(PolicyVersion::withoutBrandScope()->whereNull('brand_id')->count())->toBe(2);
+    expect(Policy::withoutBrandScope()->whereNull('brand_id')->count())->toBe(3)
+        ->and(PolicyVersion::withoutBrandScope()->whereNull('brand_id')->count())->toBe(3);
 });

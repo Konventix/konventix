@@ -6,10 +6,12 @@ namespace Konventix\Identity\Listeners;
 
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Registered;
+use Inertia\Inertia;
 use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Models\Brand;
 
 /**
  * Establishes the user↔brand relationship the first time an account touches a
@@ -19,6 +21,15 @@ use Konventix\Platform\Brands\BrandContext;
  * With no brand in context (console, tests without a request) it does nothing;
  * membership is a statement about a brand interaction, and without a brand
  * there was none.
+ *
+ * First contact with a *further* brand of the same operator is announced
+ * once (#184, ADR-0054): the account is the operator's (ADR-0016), and
+ * someone who knows two brands without knowing they share a house should
+ * be told rather than left to wonder why their password worked. A session
+ * flash on the response that follows the sign-in, derived from the
+ * membership just written and the oldest one the account already had — no
+ * new column, no new state, and nothing to show a second time because a
+ * membership is only ever created once.
  *
  * `BrandContext` is resolved at call time, never constructor-injected. The
  * event dispatcher is a boot-time singleton that builds listeners with the
@@ -49,6 +60,8 @@ class RecordBrandMembership
         );
 
         if ($membership->wasRecentlyCreated) {
+            $this->announceFirstContact($membership);
+
             // First contact: no image yet, but "member since" must be
             // replayable from the moment it exists (ruling 2).
             event(new BrandMembershipProfileUpdated(
@@ -60,5 +73,70 @@ class RecordBrandMembership
                 updatedAt: now()->toIso8601String(),
             ));
         }
+    }
+
+    /**
+     * "You already have an account here" — said once, on the first contact
+     * with a brand that is not the first this account ever met (#184).
+     *
+     * The oldest membership by `first_seen_at` names the brand the person
+     * is most likely to recognise; the brand *just* created is excluded by
+     * asking for a different `brand_id` rather than by ordering, so a
+     * membership written in the same second cannot name itself.
+     *
+     * `withoutBrandScope()` deliberately (ADR-0010): the whole question is
+     * what this account has done on the operator's *other* brands, which
+     * the scoped query can never see.
+     *
+     * Scoped to *this brand's operator* (whole-branch review finding 13).
+     * `users` has no `operator_id` — an account is global to the instance,
+     * by design — so without the join a person who used their account on
+     * operator A's brand and then first meets operator B's would be told, on
+     * B's own login page, that they first used it at A's brand. ADR-0054
+     * frames the whole feature as "which operator holds it"; naming another
+     * operator's brand is the opposite of that, and it becomes a tenancy
+     * leak the moment a second operator exists. A brand with no operator
+     * cannot answer the question at all and says nothing.
+     */
+    private function announceFirstContact(BrandMembership $membership): void
+    {
+        $operatorId = Brand::query()->whereKey($membership->brand_id)->value('operator_id');
+
+        if ($operatorId === null) {
+            return;
+        }
+
+        $earliest = BrandMembership::withoutBrandScope()
+            ->where('user_id', $membership->user_id)
+            ->where('brand_id', '!=', $membership->brand_id)
+            ->whereIn(
+                'brand_id',
+                Brand::query()->where('operator_id', $operatorId)->select('id'),
+            )
+            ->orderBy('first_seen_at')
+            ->first();
+
+        if ($earliest === null) {
+            return;
+        }
+
+        $names = Brand::query()
+            ->whereIn('id', [$membership->brand_id, $earliest->brand_id])
+            ->pluck('name', 'id');
+
+        $here = $names[$membership->brand_id] ?? null;
+        $first = $names[$earliest->brand_id] ?? null;
+
+        if ($here === null || $first === null) {
+            return;
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'info',
+            'message' => __('Welcome to :brand. You are signed in with the account you first used at :first.', [
+                'brand' => $here,
+                'first' => $first,
+            ]),
+        ]);
     }
 }

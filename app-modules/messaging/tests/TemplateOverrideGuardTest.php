@@ -6,6 +6,7 @@ use Konventix\Identity\Models\User;
 use Konventix\Messaging\Exceptions\UnsafeTemplateException;
 use Konventix\Messaging\Models\TemplateOverride;
 use Konventix\Messaging\Templates\TemplateOverrideGuard;
+use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
@@ -55,6 +56,12 @@ dataset('overrideGuardUnsafeFragments', [
     'a raw PHP tag' => ['<?php echo 1; ?>'],
     'a directive glued to a word' => ['@if($x)A@endif'],
     'a directive whose ( sits on the next line' => ["@if\n(\$x)\nA\n@endif"],
+    // #9: widening the conditional grammar to numeric comparisons must not
+    // widen it to arbitrary expressions on either side of the operator.
+    'a ternary in an echo' => ["{{ \$daysLeft < 0 ? 'Overdue' : 'Left' }}"],
+    'a comparison against another variable' => ["@if (\$a < \$b)\nA\n@endif"],
+    'a comparison against a function call' => ["@if (\$a < exec('id'))\nA\n@endif"],
+    'a directive glued to the end of a word' => ['Paid@else'],
 ]);
 
 // The guard's own grammar, verbatim — independent of any real template's
@@ -65,6 +72,16 @@ dataset('overrideGuardSafeFragments', [
     'if/else' => ["@if (\$paid)\nA\n@else\nB\n@endif"],
     'foreach with array access' => ["@foreach (\$lines as \$line)\n{{ \$line['label'] }}\n@endforeach"],
     'unless' => ["@unless (\$x)\nHidden unless truthy\n@endunless"],
+    // #9: a literal address in a signature. Blade never compiles `@example`
+    // here — its own directive regex needs a non-word boundary before the
+    // `@` — so refusing it was the guard reading text Blade reads as text.
+    'a literal email address' => ['<p>Fragen? info@example.com</p>'],
+    'an email address in a signature block' => ["Mit freundlichen Gruessen\nDas Team\nsupport@konventix.de\n{{ \$name }}"],
+    'a mailto link' => ['<a href="mailto:info@example.com">Mail</a>'],
+    // #9: the shape `compliance.deadline-warning` needs in order to say the
+    // same thing without a ternary — a numeric comparison in an `@if`.
+    'a less-than comparison' => ["@if (\$daysLeft < 0)\nOverdue\n@else\nOn time\n@endif"],
+    'a greater-or-equal comparison' => ["@if (\$openModules >= 1)\nWaiting\n@endif"],
 ]);
 
 // The same shapes, against fields two real templates actually sample —
@@ -77,7 +94,28 @@ dataset('overrideGuardSafeIntegrationFragments', [
     'if/else' => ['commerce.invoice-issued', "@if (\$recipientName)\nPaid\n@else\nUnpaid\n@endif"],
     'unless' => ['commerce.invoice-issued', "@unless (\$recipientName)\nHidden\n@endunless"],
     'foreach with array access' => ['commerce.order-confirmation', "@foreach (\$lines as \$line)\n{{ \$line['label'] }}\n@endforeach"],
+    'an email address in the text' => ['commerce.invoice-issued', '<p>Fragen? info@example.com</p>'],
 ]);
+
+it('accepts the shipped compliance.deadline-warning bodies, the last default the guard refused (#9)', function (): void {
+    $template = app(TemplateRegistry::class)->get('compliance.deadline-warning');
+    $guard = app(TemplateOverrideGuard::class);
+
+    expect($template)->not->toBeNull();
+
+    // Both locales, because the editor seeds the override textarea with
+    // whichever one the operator is editing.
+    foreach (array_keys($template->bodies) as $locale) {
+        expect(fn () => $guard->assertSafe($template->bodyFor($locale)))
+            ->not->toThrow(UnsafeTemplateException::class);
+    }
+
+    // The whole point: the branch is an `@if` over a payload field, not a
+    // ternary with `abs()` in it.
+    expect($template->bodyFor('de'))->toContain('@if ($daysLeft < 0)')
+        ->and($template->bodyFor('de'))->toContain('{{ $daysOverdue }}')
+        ->and($template->bodyFor('de'))->not->toContain('abs(');
+});
 
 it('refuses an unsafe fragment', function (string $fragment): void {
     expect(fn () => app(TemplateOverrideGuard::class)->assertSafe($fragment))

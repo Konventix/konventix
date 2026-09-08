@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Compliance\Support;
 
+use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Models\Policy;
+use Konventix\Compliance\Models\PolicyVersion;
 
 /**
  * The legal texts a public purchase path has to put in front of a payer
@@ -85,5 +87,87 @@ final class CheckoutLegalTexts
         }
 
         return $texts;
+    }
+
+    /**
+     * The same question as `forBrand()`, asked for many brands at once and
+     * answered from the other side: which of `SLUGS` each brand resolves
+     * *nothing* for (#200, fix round 1).
+     *
+     * The policy console asks this for every brand on every render, and
+     * `forBrand()` costs four queries per brand — two policy lookups and two
+     * version lookups. This costs two, whatever the number of brands: the
+     * candidate policy rows, then their published versions.
+     *
+     * The shadowing rule is `Policy::resolveFor()`'s, restated over the rows
+     * in memory rather than re-queried: a brand's own row wins over the
+     * operator-wide one *whether or not it has anything published*, which is
+     * exactly the case #200 was filed about — a brand that publishes an `agb`
+     * policy and an empty `terms` one silently loses its checkout consent.
+     *
+     * `withoutBrandScope()` throughout (ADR-0010): this is asked from the
+     * operator admin host, where `BrandScope` hardens brand-owned queries to
+     * zero rows, and the operator-wide rows carry a null `brand_id` that the
+     * scope could never see anyway.
+     *
+     * @param  list<string>  $brandIds
+     * @return array<string, list<string>> brand ULID => the slugs it resolves nothing for, in `SLUGS` order
+     */
+    public function missingSlugsForBrands(array $brandIds): array
+    {
+        if ($brandIds === []) {
+            return [];
+        }
+
+        $policies = Policy::withoutBrandScope()
+            ->whereIn('slug', self::SLUGS)
+            ->where(function ($query) use ($brandIds): void {
+                $query->whereIn('brand_id', $brandIds)->orWhereNull('brand_id');
+            })
+            ->get(['id', 'brand_id', 'slug']);
+
+        $published = PolicyVersion::withoutBrandScope()
+            ->whereIn('policy_id', $policies->pluck('id'))
+            ->where('state', PolicyVersionState::Published)
+            ->where('effective_at', '<=', now())
+            ->pluck('policy_id')
+            ->flip();
+
+        /** @var array<string, Policy> $operatorWide slug => the operator's own row */
+        $operatorWide = [];
+        /** @var array<string, array<string, Policy>> $ownedByBrand brand ULID => slug => that brand's own row */
+        $ownedByBrand = [];
+
+        foreach ($policies as $policy) {
+            if ($policy->brand_id === null) {
+                $operatorWide[$policy->slug] = $policy;
+
+                continue;
+            }
+
+            $ownedByBrand[$policy->brand_id][$policy->slug] = $policy;
+        }
+
+        $missing = [];
+
+        foreach ($brandIds as $brandId) {
+            $gaps = [];
+
+            foreach (self::SLUGS as $slug) {
+                // The brand's own row shadows the operator's even when it has
+                // nothing published — that is what makes it a gap.
+                $resolved = $ownedByBrand[$brandId][$slug] ?? $operatorWide[$slug] ?? null;
+
+                if ($resolved === null || ! $published->has($resolved->getKey())) {
+                    $gaps[] = $slug;
+                }
+            }
+
+            if ($gaps !== []) {
+                $missing[$brandId] = $gaps;
+            }
+        }
+
+        return $missing;
     }
 }

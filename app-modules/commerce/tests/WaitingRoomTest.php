@@ -197,6 +197,56 @@ it('gives the same signed-in user the same ticket on a second visit', function (
         ->and($secondId)->toBe($firstId);
 });
 
+it('re-queues a signed-in user instead of handing back their stale ticket once its admission has expired', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+    WaitingRoomSettings::factory()->create(['admission_ttl_minutes' => 5]);
+    $user = User::factory()->create();
+
+    $first = $this->actingAs($user)->get('/shop');
+    $firstId = TicketCookie::parse(waitingRoomCookieValue($first, $brand));
+
+    app(AdmitFromWaitingRoom::class)->handle($brand, 1);
+
+    $store = app(WaitingRoomStore::class);
+    expect($store->isAdmitted($brand->getKey(), $firstId))->toBeTrue();
+
+    Carbon::setTestNow(now()->addMinutes(6));
+
+    // No cookie carried over, and the admission has expired: the stale
+    // ticket (no longer queued, no longer admitted) must not come back —
+    // the user is enqueued again instead.
+    $second = $this->actingAs($user)->get('/shop');
+    $secondId = TicketCookie::parse(waitingRoomCookieValue($second, $brand));
+
+    expect($secondId)->not->toBeNull()
+        ->and($secondId)->not->toBe($firstId)
+        ->and($store->positionOf($brand->getKey(), $secondId))->toBe(1);
+
+    Carbon::setTestNow();
+});
+
+it('still passes an admitted, unexpired signed-in user through without disturbing their ticket', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+    $user = User::factory()->create();
+
+    $first = $this->actingAs($user)->get('/shop');
+    $firstId = TicketCookie::parse(waitingRoomCookieValue($first, $brand));
+
+    app(AdmitFromWaitingRoom::class)->handle($brand, 1);
+
+    // No cookie carried over — the user mapping resolves the still-valid
+    // admission, and the request passes straight through.
+    $this->actingAs($user)->get('/shop')->assertOk();
+
+    $store = app(WaitingRoomStore::class);
+    expect($store->ticketForUser($brand->getKey(), (string) $user->getAuthIdentifier()))->toBe($firstId)
+        ->and($store->isAdmitted($brand->getKey(), $firstId))->toBeTrue();
+});
+
 it('caps new tickets from one IP and refuses the sixth', function (): void {
     $brand = $this->withBrand();
     $this->activateFeature('commerce:shop', $brand);
