@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use Konventix\Compliance\Actions\DraftPolicyVersion;
+use Konventix\Compliance\Actions\PublishPolicyVersion;
+use Konventix\Compliance\Data\PolicyVersionData;
+use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Support\CheckoutLegalTexts;
 use Konventix\Identity\Models\User;
@@ -91,4 +95,55 @@ test('install seeds the operator-wide checkout legal texts, and is idempotent ab
 
     expect(array_column(app(CheckoutLegalTexts::class)->forBrand($brand->getKey()), 'slug'))
         ->toBe(CheckoutLegalTexts::SLUGS);
+});
+
+/**
+ * Whole-branch review finding 1. `konventix:install` is the command a
+ * release runs, and #205 turned every published, effective, consent-requiring
+ * contract version into a login gate. A placeholder that binds nobody must
+ * therefore never be published as one: the first install after the release
+ * would otherwise redirect every existing account on every brand to
+ * `policies.required` and hold it there until it "agreed" to a text whose own
+ * first line says it is not a legal document.
+ */
+test('the seeded placeholders leave an existing account\'s next login alone (#200, #205)', function () {
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'first-run-secret';
+
+    // The dangerous run: an instance that already has accounts on it.
+    $member = User::factory()->create();
+
+    $this->artisan('konventix:install', installArguments())->assertSuccessful();
+
+    $this->withBrand();
+
+    $this->post(route('login'), ['email' => $member->email, 'password' => 'password'])
+        ->assertRedirect(route('dashboard', absolute: false));
+});
+
+test('publishing the operator\'s real terms raises the login gate once (#200, #205)', function () {
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'first-run-secret';
+    $member = User::factory()->create();
+
+    $this->artisan('konventix:install', installArguments())->assertSuccessful();
+
+    $this->withBrand();
+
+    // What the operator does under *Policies* once the real AGB exists (#91).
+    $terms = Policy::withoutBrandScope()->whereNull('brand_id')->where('slug', 'terms')->sole();
+    $real = app(DraftPolicyVersion::class)($terms, new PolicyVersionData(
+        version: 'agb-1',
+        content: 'The operator\'s actual terms of participation.',
+        requiresConsent: true,
+        lawfulBasis: 'contract',
+    ));
+    app(PublishPolicyVersion::class)($real);
+
+    $this->post(route('login'), ['email' => $member->email, 'password' => 'password'])
+        ->assertRedirect(route('policies.required', absolute: false));
+
+    // Once: the consent recorded against that version silences the gate.
+    Consent::factory()->for($real, 'policyVersion')->create(['subject_id' => $member->getKey()]);
+
+    $this->post(route('login'), ['email' => $member->email, 'password' => 'password'])
+        ->assertRedirect(route('dashboard', absolute: false));
 });

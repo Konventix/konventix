@@ -95,7 +95,10 @@ it('seeds operator-wide placeholders that say they are placeholders and carry th
         ->sole();
 
     expect($terms->content)->toContain('PLACEHOLDER')
-        ->and($terms->requires_consent)->toBeTrue();
+        // A real AGB requires consent; this placeholder must not, or the
+        // #205 login gate would hold every existing account hostage to a
+        // text that binds nobody (whole-branch review finding 1).
+        ->and($terms->requires_consent)->toBeFalse();
 
     $privacy = PolicyVersion::withoutBrandScope()
         ->where('policy_id', $policies->firstWhere('slug', 'privacy')?->getKey())

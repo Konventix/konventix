@@ -49,7 +49,23 @@ final class OperatorLegalTextsSeeder extends Seeder
         $this->seed(
             slug: 'terms',
             name: 'Terms of Participation',
-            requiresConsent: true,
+            // Deliberately *not* consent-requiring, even though a real AGB
+            // is (whole-branch review finding 1). #205 turns every
+            // published, effective, consent-requiring contract version into
+            // a login gate, and `konventix:install` runs this seeder on
+            // every release — so publishing the placeholder as one would
+            // redirect every existing account on every brand to
+            // `policies.required` and hold it there until it agreed to a
+            // text that says in its own first line that it binds nobody.
+            // Those consent rows would be evidence of nothing, and #91's
+            // real AGB would supersede them and ask everyone again.
+            //
+            // Nothing else needs the flag: the checkout control renders
+            // from `CheckoutLegalTexts::forBrand()`, which reads only the
+            // current version. Publishing the operator's own terms with
+            // `requires_consent` is what raises the gate, once, for a text
+            // that deserves it.
+            requiresConsent: false,
             body: <<<'TEXT'
                 ## PLACEHOLDER — not the operator's terms
 
