@@ -23,8 +23,12 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  *
  * `reservationUntil` is null once the order settles directly, or the
  * checked-out cart behind it has already been consumed; when set it is the
- * still-open window the payer's hosted checkout has to finish within
- * (ADR-0047's `Cart::CHECKOUT_GRACE_MINUTES`).
+ * still-open window the payer's hosted checkout has to finish within.
+ * `Settlement\PaymentWindow` is the source (#131, whole-branch review
+ * finding 2) — the same class `ExpireRegistrationOrders` and the pay pages
+ * act on — rather than a cart lookup repeated here; for a cart order it
+ * reads the same `carts.expires_at` ADR-0047's `Cart::CHECKOUT_GRACE_MINUTES`
+ * sets.
  *
  * `payUrl` (GitLab #5) is where the order is paid while it still owes
  * money — `Settlement\PayLink` decides, so the confirmation and the

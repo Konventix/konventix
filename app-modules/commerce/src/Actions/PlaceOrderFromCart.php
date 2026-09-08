@@ -50,7 +50,8 @@ use Konventix\Platform\Operators\OperatorSettings;
  * edit refuse with a 409 nobody can explain, because the line's window is a
  * snapshot no later edit reaches. The cart's own hold (twenty minutes, plus
  * a sixty-minute checkout grace) is what bounds a line's life; `ExpireCarts`
- * enforces it. The snapshot on the line stays for display and audit.
+ * enforces it. The snapshot on the line stays for audit and reconciliation
+ * only — nothing renders it.
  *
  * `TaxCalculator::calculate()` runs with no billing party at all
  * (`billingVatId`/`billingCountryCode` both null): a cart has no invoice

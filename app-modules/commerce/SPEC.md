@@ -364,7 +364,14 @@ BaFin/ZAG licensing.
   order: a direct registration order through `OrderRefunded` with
   `whole: true`, a cart order through one `OrderLineCancelled` per
   registration-kind line with reason `order_refunded`. A partial refund
-  releases nothing (#73).
+  releases nothing (#73). The same path is reached from outside the
+  console: an external refund the operator issued in the PSP's own
+  dashboard (`ReversalKind::ExternalRefund`, `RecordPaymentReversal` ->
+  `RecordRefund`) cancels a cart order's registrations through
+  `OrderLineCancelled` (`order_refunded`) exactly as above, and — because
+  that path does not run `guardNotCheckedIn()` — without ADR-0037's
+  check-in guard, consistent with how a direct order's whole refund has
+  always been able to reach an already checked-in registration.
 - **`Settlement\PayLink`** answers where an unpaid order is paid: a
   registration order's public checkout, every other order's own
   `/pay/order/{order}` page (`CheckoutController::showOrder()`), which
