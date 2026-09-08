@@ -25,10 +25,10 @@ use RuntimeException;
 
 /**
  * Accepts a registration form and persists it (ADR-0005, SPEC.md "Owns" —
- * "the approval workflow — submission ..."). Validates visibility and
- * account (D-REG-08 — `docs/inventory/decision-log.md` Round 5: registrants
- * must hold an account), consumes the type's quotas, and emits
- * `RegistrationSubmitted`.
+ * "the approval workflow — submission ..."). Validates visibility, the
+ * sales window (#218) and account (D-REG-08 —
+ * `docs/inventory/decision-log.md` Round 5: registrants must hold an
+ * account), consumes the type's quotas, and emits `RegistrationSubmitted`.
  *
  * When `confirmation_gate: on_submit`, this Action confirms the
  * registration in the same transaction by calling `ConfirmRegistration`
@@ -58,6 +58,7 @@ final class SubmitRegistration
         return DB::transaction(function () use ($registrationType, $registrantUserId, $data, $invitationToken, $fromWaitlist): Registration {
             if ($fromWaitlist === null) {
                 $this->guardVisibility($registrationType, $invitationToken);
+                $this->guardSalesWindow($registrationType);
             }
             $this->guardAccount($registrantUserId);
             $this->guardBillingParty($registrationType, $data);
@@ -169,6 +170,34 @@ final class SubmitRegistration
         }
 
         $token->increment('uses');
+    }
+
+    /**
+     * #218 (#216 draft i): the sales window is enforced here, server-side and
+     * independently of the waiting room — #216 is explicit that the room
+     * shapes the queue and is never the access control. The landing page
+     * already hides a type whose sale is over, but a bookmark, a stale tab or
+     * a direct POST arrives here regardless.
+     *
+     * A `ValidationException` rather than a `RuntimeException`, so the
+     * registration form shows a refusal the way it shows a missing billing
+     * field — the same shape `guardBillingParty()` uses.
+     *
+     * A waitlist conversion is exempt (the caller skips this guard): the spot
+     * was promised and its quota held at offer time, and a queue that drains
+     * after the sale ends is the point of the queue (D-REG-12).
+     */
+    private function guardSalesWindow(RegistrationType $registrationType): void
+    {
+        if ($registrationType->isOnSale()) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'registrationType' => $registrationType->sales_start !== null && now()->lessThan($registrationType->sales_start)
+                ? __('This registration is not on sale yet.')
+                : __('This registration is no longer on sale.'),
+        ]);
     }
 
     private function guardAccount(?string $registrantUserId): void
