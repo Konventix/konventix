@@ -24,6 +24,7 @@ use Konventix\Commerce\Data\CartLineQuantityData;
 use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Exceptions\CartCheckoutRefusedException;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
@@ -254,15 +255,37 @@ final class CartController
     }
 
     /**
-     * The payer's own open cart, or null — the cart page's empty state
+     * The payer's own cart to show, or null — the cart page's empty state
      * when there is none. Never a bare `Cart::find()`: another payer's
      * cart, on this same brand, must never resolve here.
+     *
+     * An open cart, or — since GitLab #5 — one already `checked_out` whose
+     * checkout-grace hold has not run out and whose order is still pending.
+     * That is the state a payer is left in when a hosted checkout fails or
+     * is abandoned: the lines are still reserved (ADR-0047 point 4; only
+     * `Actions\ExpireCarts` releases them, and nothing here changes when),
+     * so the page they come back to has to be the cart itself. Posting the
+     * checkout again resumes the very same order through
+     * `PlaceOrderFromCart`'s idempotent branch — a retry, never a second
+     * order.
+     *
+     * Newest first, so a payer who started shopping again after an
+     * abandoned checkout sees the open cart they are filling rather than
+     * the one they walked away from.
      */
     private function openCartFor(Request $request): ?Cart
     {
         return Cart::query()
-            ->open()
             ->where('payer_user_id', (string) $request->user()->getAuthIdentifier())
+            ->where(fn (Builder $query): Builder => $query
+                ->where(fn (Builder $open): Builder => $open->where('status', CartStatus::Open))
+                ->orWhere(fn (Builder $held): Builder => $held
+                    ->where('status', CartStatus::CheckedOut)
+                    ->where('expires_at', '>', now())
+                    ->whereIn('checked_out_order_id', function ($orders): void {
+                        $orders->select('id')->from('orders')->where('status', OrderStatus::Pending->value);
+                    })))
+            ->latest('updated_at')
             ->first();
     }
 

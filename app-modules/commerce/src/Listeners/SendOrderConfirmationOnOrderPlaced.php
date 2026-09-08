@@ -12,6 +12,7 @@ use Konventix\Commerce\Events\OrderPlaced;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
+use Konventix\Commerce\Settlement\PayLink;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
@@ -100,9 +101,20 @@ final class SendOrderConfirmationOnOrderPlaced
                 paid: $order->status === OrderStatus::Paid,
                 reservationUntil: $checkedOutCart?->expires_at->format('d.m.Y H:i'),
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
+                // GitLab #5: an unpaid order's confirmation says where to pay
+                // it. `PayLink` owns the rule so this mail and the
+                // payment-failed one cannot point at different places.
+                payUrl: $this->payUrl($event->brandId, $order, $checkedOutCart),
             ),
             brandId: $event->brandId,
         ));
+    }
+
+    private function payUrl(string $brandId, Order $order, ?Cart $checkedOutCart): ?string
+    {
+        $link = app(PayLink::class)->forOrder($order, $checkedOutCart);
+
+        return $link === null ? null : $this->absoluteUrl($brandId, $link['route'], $link['parameters']);
     }
 
     /**

@@ -25,6 +25,13 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * checked-out cart behind it has already been consumed; when set it is the
  * still-open window the payer's hosted checkout has to finish within
  * (ADR-0047's `Cart::CHECKOUT_GRACE_MINUTES`).
+ *
+ * `payUrl` (GitLab #5) is where the order is paid while it still owes
+ * money — `Settlement\PayLink` decides, so the confirmation and the
+ * payment-failed mail cannot drift apart. Null on a settled order, and
+ * defaulted so every existing `new OrderConfirmationMailData(...)` call
+ * site stays valid (additive-only payload changes, global constraints
+ * D-BATCH-7).
  */
 #[TypeScript]
 final class OrderConfirmationMailData extends Data
@@ -42,5 +49,6 @@ final class OrderConfirmationMailData extends Data
         public readonly bool $paid,
         public readonly ?string $reservationUntil,
         public readonly string $ordersUrl,
+        public readonly ?string $payUrl = null,
     ) {}
 }

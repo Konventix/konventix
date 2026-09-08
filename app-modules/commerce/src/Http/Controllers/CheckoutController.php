@@ -125,6 +125,13 @@ class CheckoutController
             409,
             'This order is not payable.',
         );
+        // GitLab #5: a *succeeded* payment is what closes this page, not a
+        // payment attempt. An order whose last attempt is `failed` or
+        // `expired` is still pending and still holds what it reserved, so
+        // this page takes another attempt for as long as the window lasts —
+        // no new cart, no new order, one more `Payment` row per attempt
+        // (`payments_provider_external_id_unique` is per provider session and
+        // is untouched by that: each attempt gets its own).
         abort_if(
             Payment::query()->where('order_id', $order->id)->where('status', PaymentStatus::Succeeded)->exists(),
             409,

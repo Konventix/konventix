@@ -641,6 +641,9 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Ihre Reservierung gilt bis {{ $reservationUntil }} — schließen Sie die
                     Zahlung bis dahin ab.</p>
                     @endif
+                    @if ($payUrl)
+                    <p><a href="{{ $payUrl }}">Jetzt bezahlen</a></p>
+                    @endif
                     <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -667,6 +670,9 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Your reservation holds until {{ $reservationUntil }} — please
                     complete payment before then.</p>
                     @endif
+                    @if ($payUrl)
+                    <p><a href="{{ $payUrl }}">Pay now</a></p>
+                    @endif
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
             ],
@@ -682,6 +688,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 'totalGross' => '25.00',
                 'reservationUntil' => '28.08.2026 18:00',
                 'ordersUrl' => 'https://example.test/my/orders',
+                'payUrl' => 'https://example.test/cart',
             ],
         ));
 

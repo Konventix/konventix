@@ -7,7 +7,9 @@ namespace Konventix\Commerce\Listeners;
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Data\PaymentFailedMailData;
 use Konventix\Commerce\Events\PaymentFailed;
+use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Settlement\PayLink;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
@@ -20,6 +22,9 @@ use RuntimeException;
  * the mail's own retry link says where to try again: `commerce.pay.show`
  * for a registration order (ADR-0039's public checkout), `/my/orders` for a
  * cart order (ADR-0047), where the shop's own retry lives.
+ *
+ * The retry link is `Settlement\PayLink`'s answer since #5, so the failure
+ * mail and the order confirmation always name the same place.
  *
  * `reasonCode` values come from the three PSP webhook controllers that
  * actually call `RecordPaymentFailure` — `Http\Controllers\Api\*WebhookController`
@@ -68,9 +73,21 @@ final class SendPaymentFailedMailOnPaymentFailed
 
     private function send(PaymentFailed $event, Order $order): void
     {
-        $retryUrl = $order->settles_type === 'registration'
-            ? $this->absoluteUrl($event->brandId, 'commerce.pay.show', ['registration' => $order->settles_id])
-            : $this->absoluteUrl($event->brandId, 'commerce.mine.index');
+        // GitLab #5: `PayLink` owns the rule — a registration order's public
+        // checkout, a cart order's own cart while the checkout-grace hold is
+        // still alive (a further `POST /cart/checkout` resumes the same order
+        // through `PlaceOrderFromCart`'s idempotent branch), the order list
+        // once that hold is gone. Shared with the order confirmation so a
+        // payer is never sent to two different places for one order.
+        $checkedOutCart = Cart::withoutBrandScope()
+            ->where('checked_out_order_id', $order->id)
+            ->first();
+
+        $link = app(PayLink::class)->forOrder($order, $checkedOutCart);
+
+        $retryUrl = $link === null
+            ? $this->absoluteUrl($event->brandId, 'commerce.mine.index')
+            : $this->absoluteUrl($event->brandId, $link['route'], $link['parameters']);
 
         $this->sendMessage->handle(new SendMessageRequest(
             recipientId: $order->payer_user_id,
