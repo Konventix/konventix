@@ -10,8 +10,10 @@ use Konventix\Commerce\Events\OrderLineReversed;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Events\PaymentReversed;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
+use Konventix\Platform\Operators\OperatorContext;
 use Konventix\Registration\Actions\SubmitRegistration;
 use Konventix\Registration\Data\SubmitRegistrationData;
 use Konventix\Registration\Enums\ConfirmationGate;
@@ -382,6 +384,35 @@ it('cancels a cart line\'s registration when the cart order is wholly refunded (
         fn (RegistrationCancelled $event): bool => $event->registrationId === $registration->id
             && $event->reasonCode === 'order_refunded',
     );
+});
+
+/**
+ * #236: the console's refund runs the `order_refunded` consumer inside the
+ * operator's own request, on the admin host — where no brand is resolved and
+ * `BrandScope` hardens every brand-owned query to zero rows (ADR-0029). The
+ * registration itself is found through `withoutBrandScope()`, but the
+ * `registrationType` relation and its quotas re-apply the scope, so the
+ * release read `null` and the whole refund died with the money already gone.
+ * Every read on this path escapes per relation, exactly as the mail
+ * listeners do (`.ai/rules/app-modules-src.md`).
+ */
+it('cancels a cart line\'s registration and releases its quota with no brand in context (#236)', function (): void {
+    $brand = reversalOperator($this->withBrand());
+
+    $quota = Quota::factory()->withCapacity(5)->create();
+    $registration = reversalPaidRegistration($quota);
+
+    // The console request: an operator, no brand.
+    app(BrandContext::class)->forget();
+    app(OperatorContext::class)->set($brand->operator);
+
+    event(reversalOrderLineCancelledEvent($registration, reasonCode: 'order_refunded'));
+
+    $reloaded = Registration::withoutBrandScope()->whereKey($registration->id)->sole();
+
+    expect($reloaded->status)->toBe(RegistrationStatus::Cancelled)
+        ->and($reloaded->reason_code)->toBe('order_refunded')
+        ->and(Quota::withoutBrandScope()->whereKey($quota->id)->sole()->consumed)->toBe(0);
 });
 
 it('ignores an OrderLineCancelled whose reason this module was not told to act on', function (): void {

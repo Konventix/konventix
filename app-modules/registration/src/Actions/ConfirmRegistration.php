@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Registration\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Registration\Actions\Concerns\LoadsRegistrationType;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Events\RegistrationConfirmed;
@@ -42,6 +43,8 @@ use Konventix\Registration\Models\Registration;
  */
 final class ConfirmRegistration
 {
+    use LoadsRegistrationType;
+
     public function __construct(
         private readonly RequestSettlement $requestSettlement,
     ) {}
@@ -64,11 +67,14 @@ final class ConfirmRegistration
                 'confirmed_at' => now(),
             ])->save();
 
-            // Explicit loadMissing(): Model::shouldBeStrict() (non-production)
+            // Explicit load: Model::shouldBeStrict() (non-production)
             // forbids lazy-loading an unloaded relation through the magic
             // property, so a caller that only had the registration's ID
             // (ApproveRegistration, or a future controller) must not trip it.
-            $registrationType = $registration->loadMissing('registrationType')->registrationType;
+            // Through the trait, because `RecordOrderPaidForRegistration`
+            // reaches this Action from a Commerce listener that may run with
+            // no brand in context (#236).
+            $registrationType = $this->registrationTypeOf($registration);
 
             if (
                 $registrationType->settlement->requestsSettlement()

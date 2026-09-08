@@ -30,6 +30,7 @@ use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\ConsoleSelection;
 use RuntimeException;
+use Stripe\Exception\ApiErrorException;
 
 /**
  * Operator console: orders and their invoices (ADR-0029). Route middleware
@@ -374,6 +375,19 @@ class OrderAdminController
      * `cancelReversed()` above uses: the operator is told what to do about
      * it (check the admission out, book the payment first), which is the
      * whole point of ADR-0037 refusing "explicitly and with a reason".
+     *
+     * The provider's own refusal is not a `RuntimeException` and used to
+     * escape as a 500 (#236): `Stripe\Exception\ApiErrorException` extends
+     * `Exception` directly, and the operator whose first refund half-failed
+     * pressed the button again and got "charge has already been refunded" as
+     * a stack trace. It is caught here as its own case, because the answer is
+     * different: the Action's refusals mean nothing moved, while a provider
+     * error leaves open whether the money went back — so the message carries
+     * the provider's own words and asks for a reconciliation rather than a
+     * retry. Recording the provider's existing refund automatically is
+     * deliberately not attempted: the `StripeApi` seam exposes no way to read
+     * a refund back, and inventing a domain refund from an error string would
+     * be a document (ADR-0031) built on a guess.
      */
     public function refund(
         string $order,
@@ -394,6 +408,13 @@ class OrderAdminController
             );
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['order' => $e->getMessage()]);
+        } catch (ApiErrorException $e) {
+            throw ValidationException::withMessages([
+                'order' => __(
+                    'The payment provider refused the refund: :message Nothing was recorded here — check the payment in the provider dashboard and reconcile the order by hand if the money did go back.',
+                    ['message' => $e->getMessage()],
+                ),
+            ]);
         }
 
         // The explicit half of the audit trail (Round 6, D-BATCH), the same

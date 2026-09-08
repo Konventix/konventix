@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Actions;
 
-use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Actions\Concerns\GuardsCheckedInAdmissions;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
@@ -32,6 +31,10 @@ use RuntimeException;
  * note, the status and `OrderRefunded` live in `RecordRefund`, which the
  * `external_refund` reversal path reaches without them (ADR-0057 point 1).
  *
+ * The order of the three is the whole safety argument (#236): guards, then
+ * the provider, then the record — each step only ever runs once the one
+ * before it succeeded, and none of them can undo the one before it.
+ *
  * ADR-0037 accepts a known gap: an offline device reconciles late (ADR-0033),
  * so a refund executed inside that sync window can slip past a check-in that
  * has happened but not yet arrived. That is a risk the ADR takes knowingly
@@ -55,29 +58,34 @@ final class RefundOrder
         ?string $reasonNote = null,
         ?string $amount = null,
     ): Order {
-        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount): Order {
-            $this->guardPaid($order);
-            $this->guardNotCheckedIn($order);
+        $this->guardPaid($order);
+        $this->guardNotCheckedIn($order);
 
-            // The PSP side effect (ADR-0039), first and inside the
-            // transaction: if the provider refuses the refund, no domain
-            // record or credit note may exist claiming the money moved. The
-            // inverse gap — provider refunded, then this transaction fails —
-            // is accepted; replaying the action converges because providers
-            // treat a second refund of the same payment as already done.
-            $this->refundThroughProvider($order, $amount);
+        // The PSP side effect (ADR-0039) first, and before any domain write:
+        // if the provider refuses the refund, no domain record or credit note
+        // may exist claiming the money moved. Nothing has been written yet at
+        // this point, so a refusal leaves the order exactly as it was.
+        $this->refundThroughProvider($order, $amount);
 
-            // Everything after the money is the refund's domain leg, shared
-            // with the reversal path (ADR-0057 point 1): a refund the
-            // operator made in the provider's own dashboard has already
-            // moved the money and reaches `RecordRefund` directly.
-            return $this->recordRefund->handle(
-                order: $order,
-                reasonCode: $reasonCode,
-                reasonNote: $reasonNote,
-                amount: $amount,
-            );
-        });
+        // Everything after the money is the refund's domain leg, shared with
+        // the reversal path (ADR-0057 point 1): a refund the operator made in
+        // the provider's own dashboard has already moved the money and
+        // reaches `RecordRefund` directly.
+        //
+        // Deliberately NOT wrapped in a transaction of this Action's own
+        // (#236). `RecordRefund` commits the credit note, the status and the
+        // provider's act on its own, then dispatches the domain events. An
+        // outer transaction here would put those consumers back inside a
+        // transaction that their failure rolls back — which is exactly what
+        // left order 01m1zv9ryqhh04qnx7e3szpb78 at `paid` on dev after Stripe
+        // had already sent 11.90 EUR back. A failing consumer must surface as
+        // an error, never as an undo of money that is gone.
+        return $this->recordRefund->handle(
+            order: $order,
+            reasonCode: $reasonCode,
+            reasonNote: $reasonNote,
+            amount: $amount,
+        );
     }
 
     /**

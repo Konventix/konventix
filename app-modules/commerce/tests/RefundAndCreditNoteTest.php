@@ -418,11 +418,63 @@ it('aborts the refund entirely when the provider refuses it', function (): void 
     expect(fn () => app(RefundOrder::class)->handle($order, reasonCode: 'customer-request'))
         ->toThrow(RuntimeException::class, 'provider refused');
 
-    // Rolled back: no domain record may claim money moved that did not.
+    // Never reached: the provider call comes before any domain write, so no
+    // record can claim money moved that did not (#236 kept this order).
     expect($order->refresh()->status)->toBe(OrderStatus::Paid)
         ->and(CreditNote::query()->where('order_id', $order->id)->count())->toBe(0);
 
     Event::assertNotDispatched(OrderRefunded::class);
+});
+
+/**
+ * #236: the money left Stripe, then the `order_refunded` consumer threw
+ * inside the console request — and because the provider call and the domain
+ * record shared one transaction with the consumers, the rollback undid the
+ * credit note and the `refunded` status while the refund stood at the
+ * provider. The order was left `paid` with the money gone.
+ *
+ * The recorded refund is committed first and the domain events go out after
+ * the commit: a failing consumer is still an error the operator sees, but it
+ * can no longer erase what the provider already did.
+ */
+it('keeps the recorded refund when a consumer of OrderRefunded throws (#236)', function (): void {
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    Event::listen(OrderRefunded::class, function (): void {
+        throw new RuntimeException('the consumer blew up');
+    });
+
+    expect(fn () => app(RefundOrder::class)->handle($order, reasonCode: 'customer-request'))
+        ->toThrow(RuntimeException::class, 'the consumer blew up');
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and(CreditNote::query()->where('order_id', $order->id)->count())->toBe(1);
+});
+
+it('keeps the recorded refund when a consumer of OrderLineCancelled throws (#236)', function (): void {
+    // The cart order's per-line leg, which is the one that actually failed
+    // on dev: `CancelRegistrationOnOrderLineCancelled` runs on this event.
+    $this->withBrand();
+
+    $order = refundTestPaidCartOrder();
+
+    OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'settles_kind' => 'registration',
+        'settles_ref' => (string) Str::ulid(),
+    ]);
+
+    Event::listen(OrderLineCancelled::class, function (): void {
+        throw new RuntimeException('the line consumer blew up');
+    });
+
+    expect(fn () => app(RefundOrder::class)->handle($order, reasonCode: 'customer-request'))
+        ->toThrow(RuntimeException::class, 'the line consumer blew up');
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and(CreditNote::query()->where('order_id', $order->id)->count())->toBe(1);
 });
 
 /**

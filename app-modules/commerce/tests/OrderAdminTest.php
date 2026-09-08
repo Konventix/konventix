@@ -21,6 +21,9 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
+use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\Stripe\StripeApi;
+use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
 use Konventix\Compliance\Models\AuditLogEntry;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
@@ -28,6 +31,7 @@ use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
+use Stripe\Exception\InvalidRequestException;
 
 /**
  * ADR-0029: Commerce's operator-console surface — the orders index and
@@ -736,6 +740,90 @@ it('422s a refund with no reason, or one the console does not offer', function (
 
     expect($order->refresh()->status)->toBe(OrderStatus::Paid)
         ->and(AuditLogEntry::query()->where('action', 'commerce.order.refunded')->count())->toBe(0);
+});
+
+/**
+ * #236: `SdkStripeApi` lets the SDK's own exception out, and
+ * `Stripe\Exception\ApiErrorException` is not a `RuntimeException` — the
+ * console answered 500 and told the operator nothing. The second attempt at
+ * a refund Stripe had already made is exactly that case, and it is the one
+ * an operator hits after the first attempt half-failed.
+ */
+final class OrderAdminTestRefusingStripeApi implements StripeApi
+{
+    public function createCheckoutSession(array $params): StripeCheckoutSession
+    {
+        return new StripeCheckoutSession(id: 'cs_test_fake', url: 'https://checkout.stripe.test/pay/cs_test_fake');
+    }
+
+    public function createRefund(array $params): void
+    {
+        throw InvalidRequestException::factory(
+            message: 'Charge ch_3UDIXCDvM5KSDNOI2 has already been refunded.',
+            httpStatus: 400,
+            stripeParam: 'charge',
+        );
+    }
+
+    /**
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId): array
+    {
+        return [
+            'status' => 'complete',
+            'payment_status' => 'paid',
+            'payment_intent' => null,
+            'payment_intent_status' => null,
+        ];
+    }
+}
+
+function orderAdminStripePaidOrder(): Order
+{
+    $account = SettlementAccount::factory()->create([
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+    ]);
+
+    $order = Order::factory()->paid()->create(['total_gross' => '11.90']);
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'settlement_account_id' => $account->id,
+        'provider_transaction_id' => 'pi_3UDIXCDvM5KSDNOI2yhJYJ26',
+        'amount' => '11.90',
+        'currency' => $order->currency,
+    ]);
+
+    app()->instance(StripeApi::class, new OrderAdminTestRefusingStripeApi);
+
+    return $order;
+}
+
+it('422s a refund Stripe refuses, naming Stripe\'s own message instead of answering 500 (#236)', function (): void {
+    [, $admin] = commerceOperator(orderAdminRefundPermissions());
+
+    $this->withBrand();
+    $order = orderAdminStripePaidOrder();
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertStatus(422)
+        ->assertInvalid(['order' => 'has already been refunded']);
+
+    // And the operator is told what to do about money the provider says is
+    // already back: reconcile it, rather than press the button again.
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/refund", [
+            'reasonCode' => 'customer-request',
+        ])
+        ->assertInvalid(['order' => 'reconcile']);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0);
 });
 
 it('403s a refund without the issue-refunds capability', function (): void {
