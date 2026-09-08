@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -517,6 +519,66 @@ it('records the provider\'s own reference for the refund on a reversal row (#247
         ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
 
     Event::assertDispatchedTimes(OrderRefunded::class, 1);
+});
+
+it('converges when the provider announces our own refund before it is recorded (#247)', function (): void {
+    // `charge.refunded` for our own refund can be delivered between the API
+    // call returning `re_…` and this transaction committing (fix round 1,
+    // review finding 5). The unique key would then reject our insert, and a
+    // 500 would roll back the credit note and the status for money that is
+    // already back with the payer.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
+
+    // The webhook's row appears between the lookup and the insert: written
+    // the moment `RecordOwnRefund` asks whether it already exists.
+    $raced = false;
+
+    DB::listen(function (QueryExecuted $query) use (&$raced, $order, $payment): void {
+        if ($raced || ! str_starts_with($query->sql, 'select') || ! str_contains($query->sql, 'payment_reversals')) {
+            return;
+        }
+
+        $raced = true;
+
+        DB::table('payment_reversals')->insert([
+            'id' => (string) Str::ulid(),
+            'brand_id' => $order->brand_id,
+            'payment_id' => $payment->id,
+            'order_id' => $order->id,
+            'provider' => 'spy',
+            'kind' => ReversalKind::ExternalRefund->value,
+            'status' => ReversalStatus::Final->value,
+            'amount' => $order->total_gross,
+            'currency' => $order->currency,
+            'provider_reference' => 're_spy_1',
+            'occurred_at' => now(),
+            'finalized_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect($raced)->toBeTrue()
+        // One row for one refund, and the refund itself stands.
+        ->and(PaymentReversal::withoutBrandScope()->where('provider_reference', 're_spy_1')->count())->toBe(1)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
 });
 
 it('records no reversal row for a refund no provider gave a reference to (#247)', function (): void {

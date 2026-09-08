@@ -197,26 +197,33 @@ it('counts the ladder from the repayment deadline, not from an overdue date the 
     expect($invoice->refresh()->overdue_at?->toDateString())
         ->toBe($reversal->repay_due_on->toDateString());
 
+    // And the ladder goes back with it (review nit 9): the payer holds a mail
+    // promising a fresh window, so the first reminder of that window is due
+    // before its second.
+    expect($invoice->dunning_level)->toBe(0);
+
     Event::fake([DunningLevelRaised::class]);
 
     // The next morning: the deadline passed yesterday, which is no level at
     // all. Counted from the old date it would be 60 days and level 3.
     $this->artisan('commerce:dunning')->assertSuccessful();
 
-    expect($invoice->refresh()->dunning_level)->toBe(1);
+    expect($invoice->refresh()->dunning_level)->toBe(0);
 
     Event::assertNotDispatched(DunningLevelRaised::class);
 
-    // And three weeks after the deadline it climbs — from the deadline.
-    $this->travelTo(now()->addDays(21));
+    // A week after the deadline, level 1 — counted from the deadline, which
+    // is what the issue asks for ("nach Ablauf der Nachzahlungsfrist Stufe 1
+    // ab der Frist").
+    $this->travelTo(now()->addDays(7));
 
     $this->artisan('commerce:dunning')->assertSuccessful();
 
-    expect($invoice->refresh()->dunning_level)->toBe(2);
+    expect($invoice->refresh()->dunning_level)->toBe(1);
 
     Event::assertDispatched(
         DunningLevelRaised::class,
-        fn (DunningLevelRaised $e): bool => $e->invoiceId === $invoice->id && $e->level === 2 && $e->daysOverdue === 22,
+        fn (DunningLevelRaised $e): bool => $e->invoiceId === $invoice->id && $e->level === 1 && $e->daysOverdue === 8,
     );
 });
 

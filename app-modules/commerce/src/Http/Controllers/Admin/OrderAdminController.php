@@ -17,6 +17,7 @@ use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Data\OrderReversalData;
 use Konventix\Commerce\Data\RefundOrderData;
 use Konventix\Commerce\Data\UnappliedPaymentData;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
@@ -426,6 +427,12 @@ class OrderAdminController
 
         $announcementFailed = false;
 
+        // Read before the Action moves anything: only a cancelled order takes
+        // `RefundOrder`'s unapplied path (ADR-0057 point 9, #6), and the trail
+        // has to be able to tell that apart from a real order refund — the
+        // order was not refunded, money that was never applied to it was.
+        $unapplied = $model->status === OrderStatus::Cancelled;
+
         try {
             $refundOrder->handle(
                 order: $model,
@@ -486,6 +493,10 @@ class OrderAdminController
                 // and for a refund that reached the announcement failure
                 // above, since the row is written before the announcement.
                 'provider_reference' => $this->providerRefundReference($model),
+                // Nothing of the order was refunded on this path: it stays
+                // cancelled, no credit note is written, and only the money
+                // that could never be applied went back (#6).
+                'unapplied' => $unapplied,
                 // Whether the seat, the quota and the admission were released
                 // with the money. An operator reconstructing "why is this
                 // registration still confirmed" reads it here rather than
@@ -494,12 +505,17 @@ class OrderAdminController
             ],
         );
 
-        Inertia::flash('toast', $announcementFailed
+        Inertia::flash('toast', match (true) {
             // Deliberately says nothing of the underlying error: the operator
             // can act on "it is recorded, the release did not run", not on a
             // consumer's exception message.
-            ? ['type' => 'warning', 'message' => __('The refund is recorded and the money is on its way back, but announcing it inside Konventix failed. The release of the seat is being retried — check the failed jobs before assuming it happened.')]
-            : ['type' => 'success', 'message' => __('Order refunded.')]);
+            $announcementFailed => ['type' => 'warning', 'message' => __('The refund is recorded and the money is on its way back, but announcing it inside Konventix failed. The release of the seat is being retried — check the failed jobs before assuming it happened.')],
+            // The order was already cancelled and stays cancelled; saying
+            // "Order refunded." here would describe something that did not
+            // happen (#6).
+            $unapplied => ['type' => 'success', 'message' => __('Unapplied payment refunded.')],
+            default => ['type' => 'success', 'message' => __('Order refunded.')],
+        });
 
         return back();
     }
@@ -515,7 +531,9 @@ class OrderAdminController
         $reference = PaymentReversal::withoutBrandScope()
             ->where('order_id', $order->getKey())
             ->where('kind', ReversalKind::Refund->value)
-            ->orderByDesc('created_at')
+            // ULIDs are monotone, unlike two `created_at` in the same clock
+            // tick — an order can be refunded more than once over its life.
+            ->orderByDesc('id')
             ->value('provider_reference');
 
         return $reference;

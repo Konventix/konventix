@@ -8,19 +8,25 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
+use Konventix\Commerce\Actions\RefundOrder;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\OrderPaid;
+use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Events\PaymentFailed;
 use Konventix\Commerce\Events\PaymentReversed;
+use Konventix\Commerce\Models\CreditNote;
+use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
 use Konventix\Commerce\Settlement\Mollie\MolliePaymentSnapshot;
+use Konventix\Commerce\Settlement\SettlementAdapter;
+use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
@@ -72,7 +78,7 @@ final class ReconciliationTestStripeApi implements StripeApi
      * test says otherwise, and every question is recorded so a test can
      * prove the sweep asks once per payment.
      *
-     * @var array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     * @var array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
      */
     public array $reversals = ['disputes' => [], 'refunds' => []];
 
@@ -80,7 +86,7 @@ final class ReconciliationTestStripeApi implements StripeApi
     public array $reversalFetches = [];
 
     /**
-     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
      */
     public function fetchPaymentIntentReversals(string $paymentIntentId): array
     {
@@ -674,6 +680,75 @@ it('runs the pending pass hourly and the settled pass daily', function (): void 
     expect($entries)->toHaveCount(2)
         ->and($entries->get('0 * * * *'))->toContain('--pending')
         ->and($entries->get('40 6 * * *'))->toContain('--settled');
+});
+
+/**
+ * A provider adapter that refunds and answers with the reference, so a
+ * console refund can be made against the Stripe provider without an SDK
+ * (#247).
+ */
+final class ReconciliationTestRefundingAdapter implements SettlementAdapter
+{
+    public function markOrderPaid(string $accountId, Order $order, string $amountPaid, string $currency, string $settlementMethod): Order
+    {
+        return $order;
+    }
+
+    public function refund(string $accountId, Order $order, string $amount, string $currency): ?string
+    {
+        return 're_console_1';
+    }
+}
+
+it('adds no second reversal for a refund the console itself made (#235, #247)', function (): void {
+    // The invariant #247's "no migration" argument rests on: the console
+    // refund stores its `re_…` on the reversal row, so when the #235 sweep
+    // lists the same refund at Stripe it converges on that row instead of
+    // recording an external refund against an order we refunded ourselves —
+    // which would credit-note it twice and report a lost notification that
+    // never existed.
+    [$order, $payment] = reconciliationTestStripeSettled();
+    Invoice::factory()->create(['order_id' => $order->id]);
+
+    app(SettlementAdapterRegistry::class)->register(
+        SettlementAccount::PROVIDER_STRIPE,
+        ReconciliationTestRefundingAdapter::class,
+    );
+
+    Event::fake([OrderRefunded::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect(PaymentReversal::withoutBrandScope()->sole()->kind)->toBe(ReversalKind::Refund);
+
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->reversals = [
+        'disputes' => [],
+        'refunds' => [[
+            'id' => 're_console_1',
+            'amount' => 11900,
+            'currency' => 'eur',
+            'reason' => null,
+            'charge' => 'ch_console_1',
+            'created' => now()->getTimestamp(),
+        ]],
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    $this->artisan('commerce:reconcile-payments --settled')
+        ->expectsOutputToContain('0 reversal(s) found')
+        ->assertSuccessful();
+
+    $reversal = PaymentReversal::withoutBrandScope()->sole();
+
+    expect($stripe->reversalFetches)->toBe(['pi_recon_settled'])
+        ->and($reversal->kind)->toBe(ReversalKind::Refund)
+        ->and($reversal->provider_reference)->toBe('re_console_1')
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Succeeded);
+
+    Event::assertDispatchedTimes(OrderRefunded::class, 1);
 });
 
 it('finds a Stripe dispute whose notification was lost in the race with the settlement', function (): void {

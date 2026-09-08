@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Actions;
 
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
+use RuntimeException;
 
 /**
  * The `payment_reversals` row for a refund **Konventix itself** made through
@@ -33,6 +36,13 @@ use Konventix\Commerce\Models\PaymentReversal;
  * key makes them find this row instead of recording an `external_refund`
  * against an order we refunded ourselves.
  *
+ * **And it converges in both directions** (fix round 1, review finding 5).
+ * `charge.refunded` can be delivered between the refund call returning
+ * `re_…` and `RecordRefund`'s transaction committing, so the row may already
+ * exist by the time this runs: it is looked up first, and an insert that
+ * still loses the race reads the webhook's row back instead of letting a
+ * unique violation roll back a credit note for money already with the payer.
+ *
  * Escapes BrandScope by taking `brand_id` from the order rather than from
  * ambient context (ADR-0010).
  */
@@ -44,6 +54,12 @@ final class RecordOwnRefund
         string $amount,
         string $providerReference,
     ): PaymentReversal {
+        $existing = PaymentReversal::forProviderReference($payment->provider, $providerReference);
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
         $reversal = new PaymentReversal([
             'payment_id' => $payment->id,
             'order_id' => $order->id,
@@ -64,7 +80,37 @@ final class RecordOwnRefund
             'finalized_at' => now(),
         ]);
 
-        $reversal->forceFill(['brand_id' => $order->brand_id])->save();
+        // brand_id from the order, not ambient context (ADR-0010).
+        $reversal->forceFill(['brand_id' => $order->brand_id]);
+
+        try {
+            // Its own nested transaction, which Postgres runs as a
+            // SAVEPOINT: a unique violation aborts the statement *and* the
+            // transaction it runs in, so without this the caller's
+            // transaction — the credit note, the order's status — would be
+            // unusable from here on even though we mean to recover. The
+            // savepoint keeps the rollback to this insert.
+            DB::transaction(fn () => $reversal->save());
+        } catch (UniqueConstraintViolationException) {
+            // The provider announced our own refund back to us while this
+            // transaction was still open (fix round 1, review finding 5):
+            // `charge.refunded` can be delivered between the API call
+            // returning `re_…` and this commit. Converging on the row the
+            // webhook wrote is the only acceptable answer — the money is
+            // already back with the payer, so failing here would roll back a
+            // refund that happened.
+            $row = PaymentReversal::forProviderReference($payment->provider, $providerReference);
+
+            if ($row === null) {
+                throw new RuntimeException(sprintf(
+                    'Refund reference [%s] on provider [%s] collided but cannot be read back.',
+                    $providerReference,
+                    $payment->provider,
+                ));
+            }
+
+            return $row;
+        }
 
         return $reversal;
     }

@@ -737,6 +737,9 @@ it('refunds a whole paid order from the console, crediting its invoice', functio
             // (#247): a bank transfer's reference is on the organizer's own
             // statement.
             'provider_reference' => null,
+            // A real order refund, not the unapplied-money path (#6): the
+            // trail has to be able to tell those apart.
+            'unapplied' => false,
             // The clean path (fix round 1, NEW-1): the seat went with the
             // money. Its counterpart is asserted true below.
             'announcement_failed' => false,
@@ -831,7 +834,7 @@ final class OrderAdminTestRefusingStripeApi implements StripeApi
      * Nothing took this payment's money back (#235). Every fake here answers
      * the empty pair unless its own test says otherwise.
      *
-     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, created: ?int}>}
+     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
      */
     public function fetchPaymentIntentReversals(string $paymentIntentId): array
     {
@@ -1092,7 +1095,10 @@ it('refunds unapplied money on a cancelled order from the console (#6)', functio
 
     $audit = AuditLogEntry::query()->where('action', 'commerce.order.refunded')->sole();
 
-    expect($audit->context['provider_reference'])->toBe('re_console_1');
+    // Nothing of the order was refunded — it stays cancelled — so the trail
+    // says which of the two refunds this was (review nit 6).
+    expect($audit->context['provider_reference'])->toBe('re_console_1')
+        ->and($audit->context['unapplied'])->toBeTrue();
 });
 
 it('422s a provider refusal from any adapter, not only Stripe (#236)', function (): void {
