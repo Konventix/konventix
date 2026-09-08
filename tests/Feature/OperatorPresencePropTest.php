@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Compliance\Database\Seeders\OperatorLegalTextsSeeder;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -12,9 +15,10 @@ use Spatie\Permission\PermissionRegistrar;
 
 /**
  * #184 / ADR-0054: the account is the operator's (ADR-0016), so every auth
- * surface names the operator and links its other brands. Platform shares
- * that beside the footer data — on brand hosts only, never on the operator
- * console's own host (ADR-0029).
+ * surface names the operator and links its other brands. Platform resolves
+ * that where it is shown — the auth pages ask for it, and nothing else does
+ * (fix round 1) — and it is null on the operator console's own host, which
+ * resolves no brand (ADR-0029).
  *
  * Helper names prefixed `presence*`: Pest helpers are process-global
  * (`.ai/rules/tests.md`).
@@ -79,8 +83,57 @@ it('shares nothing on the operator host, which resolves no brand', function (): 
     $admin->assignRole($role);
     $registrar->setPermissionsTeamId(null);
 
+    // The console's own login page is an auth surface, so it carries the
+    // prop — and it is null, because no brand answers on the admin host.
+    $this->get('http://admin.acme.test/login')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('operatorPresence', null));
+
     $this->actingAs($admin)
         ->get('http://admin.acme.test/admin')
         ->assertOk()
-        ->assertInertia(fn (AssertableInertia $page) => $page->where('operatorPresence', null));
+        ->assertInertia(fn (AssertableInertia $page) => $page->missing('operatorPresence'));
+});
+
+it('costs a brand page that never shows the notice nothing at all', function (): void {
+    presenceOperatorWithBrands(['Alpha Con']);
+
+    $queries = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$queries): void {
+        $queries[] = $query->sql;
+    });
+
+    // A plain brand-host page. The prop is not there, and none of the three
+    // queries behind it ran.
+    $this->get('http://alpha-con.test/')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->missing('operatorPresence'));
+
+    // The two `OperatorPresence` runs itself: the operator's brands, and
+    // their primary domains. The brand-resolution and footer queries every
+    // brand-host page makes are not this prop's.
+    $operatorQueries = array_values(array_filter(
+        $queries,
+        fn (string $sql): bool => str_contains($sql, 'from "brands" where "operator_id"')
+            || str_contains($sql, 'from "brand_domains" where "brand_id" in'),
+    ));
+
+    expect($operatorQueries)->toBe([]);
+});
+
+it('links the Art. 13 sentence only where a privacy policy resolves', function (): void {
+    presenceOperatorWithBrands(['Alpha Con']);
+
+    $this->get('http://alpha-con.test/register')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('operatorPresence.privacyPolicyUrl', null));
+
+    app(OperatorLegalTextsSeeder::class)->run();
+
+    $this->get('http://alpha-con.test/register')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('operatorPresence.privacyPolicyUrl', '/policies/privacy'));
 });

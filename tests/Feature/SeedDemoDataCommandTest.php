@@ -551,19 +551,21 @@ it('seeds content, compliance paperwork and messaging history', function () {
         ->and($comments->where('state', CommentState::Rejected))->toHaveCount(1)
         ->and($comments->where('report_count', '>', 0))->toHaveCount(1);
 
-    // The operator's own AGB and Widerrufsbelehrung, seeded once for every
-    // brand rather than per brand (#76): without them the public checkouts
-    // render no consent control at all on a freshly seeded instance.
+    // The operator's own AGB, Widerrufsbelehrung and Datenschutzerklaerung,
+    // seeded once for every brand rather than per brand (#76, #184): without
+    // them the public checkouts render no consent control at all on a freshly
+    // seeded instance, and the registration page's Art. 13 sentence links
+    // nowhere.
     $operatorPolicies = Policy::withoutBrandScope()->whereNull('brand_id')->get();
 
-    expect($operatorPolicies->pluck('slug')->sort()->values()->all())->toBe(['terms', 'withdrawal']);
+    expect($operatorPolicies->pluck('slug')->sort()->values()->all())->toBe(['privacy', 'terms', 'withdrawal']);
 
     $operatorVersions = PolicyVersion::withoutBrandScope()
         ->whereIn('policy_id', $operatorPolicies->modelKeys())
         ->get();
 
-    expect($operatorVersions)->toHaveCount(2)
-        ->and($operatorVersions->where('state', PolicyVersionState::Published))->toHaveCount(2)
+    expect($operatorVersions)->toHaveCount(3)
+        ->and($operatorVersions->where('state', PolicyVersionState::Published))->toHaveCount(3)
         // Nothing in the repository passes itself off as the operator's real
         // legal text — the real ones wait on #91.
         ->and($operatorVersions->every(fn (PolicyVersion $version): bool => str_contains($version->content, 'PLACEHOLDER')))->toBeTrue();

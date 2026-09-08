@@ -22,6 +22,7 @@ use Konventix\Identity\Social\SocialIdentityData;
 use Konventix\Identity\Social\SocialProvider;
 use Konventix\Identity\Social\SocialProviderRegistry;
 use Konventix\Identity\Social\UnknownSocialProvider;
+use Konventix\Platform\Operators\OperatorPresence;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -111,8 +112,12 @@ final class SocialAuthController
      * Reads the stash rather than the query string: the provider identity this
      * signup will be linked to is not something the request may name.
      */
-    public function complete(Request $request, string $provider, SocialProviderRegistry $registry): Response|RedirectResponse
-    {
+    public function complete(
+        Request $request,
+        string $provider,
+        SocialProviderRegistry $registry,
+        OperatorPresence $operatorPresence,
+    ): Response|RedirectResponse {
         $driver = $this->provider($provider, $registry);
         $pending = $this->pendingIdentity($request, $driver->key());
 
@@ -127,6 +132,9 @@ final class SocialAuthController
             // Steam persona shown at an event, and a deployment with no Web API
             // key has nothing to suggest at all.
             'suggestedName' => $pending->nickname,
+            // This page creates an account, so it says whose (#184) — the
+            // same prop every Fortify auth view carries.
+            ...$operatorPresence->props(),
         ]);
     }
 

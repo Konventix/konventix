@@ -26,7 +26,6 @@ use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\ConsoleEventSources;
 use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Platform\Operators\OperatorContext;
-use Konventix\Platform\Operators\OperatorPresence;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -128,13 +127,6 @@ class HandleInertiaRequests extends Middleware
                     : [],
                 'selection' => $this->consoleSelection(),
             ] : null,
-            // Who the account belongs to (#184, ADR-0054): the operator's
-            // name, the controller under Art. 13 DSGVO, and its brands with
-            // a link to each primary domain. Beside the footer data because
-            // it is the same kind of fact — the operator behind this host —
-            // and null on the operator console, which resolves no brand
-            // (ADR-0029).
-            'operatorPresence' => app(OperatorPresence::class)->current()?->toArray(),
             // The operator's footer, rendered by the brand shell on every
             // page (the operator console has its own chrome and renders
             // none of this).

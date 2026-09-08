@@ -2,7 +2,6 @@
 import { usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import TextLink from '@/components/TextLink.vue';
-import { show as policy } from '@/routes/policies';
 
 /**
  * Whose account this is (#184, ADR-0054). One account belongs to the whole
@@ -19,7 +18,13 @@ import { show as policy } from '@/routes/policies';
  *
  * Renders nothing when `operatorPresence` is absent: that is the operator
  * console's own host, which resolves no brand and introduces nobody
- * (ADR-0029).
+ * (ADR-0029), and every page that is not an auth surface, which does not
+ * ask for the prop at all.
+ *
+ * The Art. 13 sentence names the controller either way; it links to the
+ * privacy policy only where the brand resolves a published one, because a
+ * dead link from the sentence that tells someone who processes their data
+ * is worse than no link (fix round 1).
  */
 const page = usePage();
 
@@ -87,9 +92,13 @@ const showList = computed(() => allBrands.value.length > 1);
         </p>
 
         <p v-if="creatingAccount" class="mt-1">
-            {{ presence.legalName }} is responsible for processing your data —
-            see the
-            <TextLink :href="policy('privacy').url">privacy policy</TextLink>.
+            {{ presence.legalName }} is responsible for processing your
+            data<template v-if="presence.privacyPolicyUrl">
+                — see the
+                <TextLink :href="presence.privacyPolicyUrl">
+                    privacy policy
+                </TextLink></template
+            >.
         </p>
     </section>
 </template>

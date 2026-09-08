@@ -21,6 +21,7 @@ use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\ComplianceGdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Compliance\Http\Middleware\EnsurePoliciesAccepted;
+use Konventix\Compliance\Legal\PolicyPublicLegalTexts;
 use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
 use Konventix\Compliance\Listeners\FlagOutstandingContractConsent;
 use Konventix\Compliance\Listeners\NotifySubjectOfRequestOutcome;
@@ -35,6 +36,7 @@ use Konventix\Event\Events\EventConcluded;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -77,6 +79,12 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // Stateless: it holds two slugs and one statutory sentence, and
         // resolves everything else per call.
         $this->app->singleton(CheckoutLegalTexts::class);
+
+        // Platform declares the contract, Compliance answers it (#184,
+        // ADR-0004): the kernel may not import a `Policy`, so this is how
+        // code outside this module links to a published legal text. Replaces
+        // Platform's null default.
+        $this->app->singleton(PublicLegalTexts::class, PolicyPublicLegalTexts::class);
     }
 
     public function boot(): void

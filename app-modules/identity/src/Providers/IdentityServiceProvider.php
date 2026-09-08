@@ -40,6 +40,7 @@ use Konventix\Platform\Enums\CookieCategory;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Operators\OperatorPresence;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Laravel\Fortify\Features;
@@ -203,32 +204,51 @@ class IdentityServiceProvider extends ModuleServiceProvider
         $this->app->bind(TwoFactorLoginResponseContract::class, ConsentAwareTwoFactorLoginResponse::class);
     }
 
+    /**
+     * Every auth page carries `operatorPresence` (#184, ADR-0054): whose
+     * account this is, and which other brands of the operator it works on.
+     * Spread here rather than shared from the Inertia middleware — it costs
+     * three queries and exactly one component reads it, so the shop and every
+     * member page must not pay for it (fix round 1). `app()` inside a provider
+     * closure is this file's own idiom; the closures run per request, and a
+     * captured instance would outlive one under Octane.
+     */
     private function configureFortifyViews(): void
     {
         Fortify::loginView(fn (Request $request) => Inertia::render('auth/Login', [
             'canResetPassword' => Features::enabled(Features::resetPasswords()),
             'status' => $request->session()->get('status'),
+            ...app(OperatorPresence::class)->props(),
         ]));
 
-        Fortify::registerView(fn () => Inertia::render('auth/Register'));
+        Fortify::registerView(fn () => Inertia::render('auth/Register', [
+            ...app(OperatorPresence::class)->props(),
+        ]));
 
         Fortify::resetPasswordView(fn (Request $request) => Inertia::render('auth/ResetPassword', [
             'email' => $request->email,
             'token' => $request->route('token'),
             'passwordRules' => Password::defaults()->toPasswordRulesString(),
+            ...app(OperatorPresence::class)->props(),
         ]));
 
         Fortify::requestPasswordResetLinkView(fn (Request $request) => Inertia::render('auth/ForgotPassword', [
             'status' => $request->session()->get('status'),
+            ...app(OperatorPresence::class)->props(),
         ]));
 
         Fortify::verifyEmailView(fn (Request $request) => Inertia::render('auth/VerifyEmail', [
             'status' => $request->session()->get('status'),
+            ...app(OperatorPresence::class)->props(),
         ]));
 
-        Fortify::confirmPasswordView(fn () => Inertia::render('auth/ConfirmPassword'));
+        Fortify::confirmPasswordView(fn () => Inertia::render('auth/ConfirmPassword', [
+            ...app(OperatorPresence::class)->props(),
+        ]));
 
-        Fortify::twoFactorChallengeView(fn () => Inertia::render('auth/TwoFactorChallenge'));
+        Fortify::twoFactorChallengeView(fn () => Inertia::render('auth/TwoFactorChallenge', [
+            ...app(OperatorPresence::class)->props(),
+        ]));
     }
 
     private function configureRateLimiting(): void

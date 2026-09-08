@@ -8,6 +8,7 @@ use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Data\OperatorBrandLinkData;
 use Konventix\Platform\Data\OperatorPresenceData;
+use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Models\Brand;
 
 /**
@@ -19,6 +20,12 @@ use Konventix\Platform\Models\Brand;
  * and introduces nobody; sharing this there would also mean picking an
  * operator out of a request that deliberately has no brand in it.
  *
+ * **Resolved where it is shown, not on every request** (fix round 1). This
+ * costs three queries and is read by exactly one component, on the six auth
+ * pages; sharing it from the Inertia middleware charged the shop, the
+ * landing page and every member page for a notice they never render. The
+ * auth surfaces ask for it themselves through `props()`.
+ *
  * `BrandContext` is resolved at call time and never held: this is shared
  * from the Inertia middleware on every request, and a captured brand would
  * outlive the request under Octane (.ai/rules/providers.md).
@@ -29,6 +36,18 @@ use Konventix\Platform\Models\Brand;
 final class OperatorPresence
 {
     public function __construct(private readonly BrandUrl $brandUrl) {}
+
+    /**
+     * The page prop, ready to spread into an `Inertia::render()` on an auth
+     * surface. One place decides the prop's name, so the component and every
+     * caller cannot drift apart.
+     *
+     * @return array{operatorPresence: array<string, mixed>|null}
+     */
+    public function props(): array
+    {
+        return ['operatorPresence' => $this->current()?->toArray()];
+    }
 
     public function current(): ?OperatorPresenceData
     {
@@ -66,6 +85,11 @@ final class OperatorPresence
                     current: $sibling->getKey() === $brand->getKey(),
                 ))
                 ->all()),
+            // Null where nothing is published: the registration text then
+            // names the controller without linking to a page that 404s.
+            // Compliance answers this through Platform's own contract, so
+            // the kernel never names a `Policy` (ADR-0004).
+            privacyPolicyUrl: app(PublicLegalTexts::class)->urlFor((string) $brand->getKey(), 'privacy'),
         );
     }
 }

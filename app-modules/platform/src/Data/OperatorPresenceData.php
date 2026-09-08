@@ -21,6 +21,12 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * the same on each of them, with the answering one flagged. Shared only on
  * a brand host: the operator console resolves no brand (ADR-0029) and has
  * no visitor to introduce itself to.
+ *
+ * `privacyPolicyUrl` is null where this brand resolves no published privacy
+ * policy (fix round 1). The Art. 13 sentence still names the controller —
+ * that duty does not depend on a page existing — but it links nowhere
+ * rather than handing the visitor a 404 from the very sentence that tells
+ * them who processes their data.
  */
 #[TypeScript]
 final class OperatorPresenceData extends Data
@@ -32,5 +38,6 @@ final class OperatorPresenceData extends Data
         public readonly string $name,
         public readonly string $legalName,
         public readonly array $brands,
+        public readonly ?string $privacyPolicyUrl,
     ) {}
 }
