@@ -11,6 +11,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Identity\Actions\CompleteSocialSignup;
 use Konventix\Identity\Actions\LinkSocialIdentity;
+use Konventix\Identity\Concerns\RedirectsOutstandingContractConsent;
 use Konventix\Identity\Data\CompleteSocialSignupData;
 use Konventix\Identity\Enums\AccountState;
 use Konventix\Identity\Models\SocialIdentity;
@@ -35,6 +36,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class SocialAuthController
 {
+    use RedirectsOutstandingContractConsent;
+
     /**
      * Where a completed handshake waits while the person fills in the details
      * the provider could not supply. Namespaced by provider so two half-
@@ -156,7 +159,11 @@ final class SocialAuthController
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard'));
+        // GitLab #205: the same contract-consent gate the password login
+        // applies, on the way in that Fortify's responses never see. The
+        // `require-consent` alias on this route cannot do it — the person is
+        // still a guest when the middleware runs.
+        return $this->outstandingContractRedirect($request) ?? redirect()->intended(route('dashboard'));
     }
 
     /**
@@ -214,7 +221,8 @@ final class SocialAuthController
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard'));
+        // GitLab #205, as in `store()` above.
+        return $this->outstandingContractRedirect($request) ?? redirect()->intended(route('dashboard'));
     }
 
     private function findIdentity(SocialIdentityData $identity): ?SocialIdentity

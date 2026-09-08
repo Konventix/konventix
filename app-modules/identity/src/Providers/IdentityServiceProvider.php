@@ -23,6 +23,8 @@ use Konventix\Identity\Console\ReplayProfilesCommand;
 use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Gdpr\IdentitySubjectResolver;
+use Konventix\Identity\Http\Responses\ConsentAwareLoginResponse;
+use Konventix\Identity\Http\Responses\ConsentAwareTwoFactorLoginResponse;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Listeners\SendWelcomeOnVerified;
 use Konventix\Identity\Social\SocialProviderRegistry;
@@ -38,6 +40,8 @@ use Konventix\Platform\Enums\CookieCategory;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
+use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
 use SocialiteProviders\Manager\SocialiteWasCalled;
@@ -69,6 +73,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         $this->configureFortifyActions();
+        $this->configureFortifyResponses();
         $this->configureFortifyViews();
         $this->configureRateLimiting();
 
@@ -135,6 +140,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
         // account without ever importing Identity's User model (ADR-0004) —
         // see SubjectResolver's docblock.
         $this->app->bind(SubjectResolver::class, IdentitySubjectResolver::class);
+
     }
 
     /**
@@ -177,6 +183,25 @@ class IdentityServiceProvider extends ModuleServiceProvider
         // this is the only enforcement point that reaches both the plain and
         // the two-factor-redirect login paths).
         Fortify::authenticateUsing(new AuthenticateUser);
+    }
+
+    /**
+     * GitLab #205: the contract-consent gate at login. Fortify's two login
+     * responses are the only place both the password and the two-factor
+     * path pass through, and neither is a route the `require-consent` alias
+     * could be put on.
+     *
+     * Rebound from `boot()`, not from `registerBindings()`: Fortify's own
+     * provider binds these contracts in its `register()`, which runs after
+     * every module provider's — a binding made in `register()` here is
+     * silently overwritten, and the gate simply never fires.
+     *
+     * `bind`, not `singleton`: a response object answers one request.
+     */
+    private function configureFortifyResponses(): void
+    {
+        $this->app->bind(LoginResponseContract::class, ConsentAwareLoginResponse::class);
+        $this->app->bind(TwoFactorLoginResponseContract::class, ConsentAwareTwoFactorLoginResponse::class);
     }
 
     private function configureFortifyViews(): void
