@@ -7,6 +7,7 @@ use Konventix\Compliance\Actions\PublishPolicyVersion;
 use Konventix\Compliance\Data\PolicyVersionData;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
+use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Compliance\Support\CheckoutLegalTexts;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
@@ -75,6 +76,18 @@ test('install refuses to run without the required options', function () {
     $this->artisan('konventix:install')->assertFailed();
 });
 
+/**
+ * Every slug `OperatorLegalTextsSeeder` publishes, not only the two the
+ * checkout resolves: `privacy` joined the pair in #184 and the idempotency
+ * assertions have to cover it too (whole-branch review finding 8).
+ *
+ * @return list<string>
+ */
+function installedLegalTextSlugs(): array
+{
+    return [...CheckoutLegalTexts::SLUGS, 'privacy'];
+}
+
 test('install seeds the operator-wide checkout legal texts, and is idempotent about them (#200)', function () {
     $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'first-run-secret';
 
@@ -84,17 +97,51 @@ test('install seeds the operator-wide checkout legal texts, and is idempotent ab
     // A fresh instance must never be able to sell without the checkout
     // resolving a terms and a withdrawal text: `konventix:seed` is a demo
     // command a real deployment never runs (#200).
-    foreach (CheckoutLegalTexts::SLUGS as $slug) {
-        $policy = Policy::withoutBrandScope()->whereNull('brand_id')->where('slug', $slug)->get();
+    foreach (installedLegalTextSlugs() as $slug) {
+        $policies = Policy::withoutBrandScope()->whereNull('brand_id')->where('slug', $slug)->get();
 
-        expect($policy)->toHaveCount(1)
-            ->and($policy->first()->currentVersion())->not->toBeNull();
+        // Counting *versions* is what catches a broken seeder: a second
+        // published placeholder leaves the policy count at 1 and
+        // `currentVersion()` non-null, so the collection assertion alone
+        // passes over the very duplicate the double run exists to detect
+        // (`OperatorLegalTextsSeeder::seed()`'s existing-version guard).
+        expect($policies)->toHaveCount(1)
+            ->and($policies->first()->currentVersion())->not->toBeNull()
+            ->and(PolicyVersion::withoutBrandScope()->where('policy_id', $policies->first()->getKey())->count())
+            ->toBe(1);
     }
 
     $brand = Brand::query()->firstWhere('slug', 'acme-con');
 
     expect(array_column(app(CheckoutLegalTexts::class)->forBrand($brand->getKey()), 'slug'))
         ->toBe(CheckoutLegalTexts::SLUGS);
+});
+
+test('a release install leaves an operator\'s own edit of a seeded text alone (#200)', function () {
+    $_ENV['KONVENTIX_ADMIN_PASSWORD'] = 'first-run-secret';
+
+    $this->artisan('konventix:install', installArguments())->assertSuccessful();
+
+    // The property that matters on the second release: the operator has
+    // replaced the placeholder, and the install must not write over it.
+    foreach (installedLegalTextSlugs() as $slug) {
+        $policy = Policy::withoutBrandScope()->whereNull('brand_id')->where('slug', $slug)->sole();
+        PolicyVersion::withoutBrandScope()
+            ->where('policy_id', $policy->getKey())
+            ->sole()
+            ->forceFill(['content' => "The operator's own {$slug} text."])
+            ->save();
+    }
+
+    $this->artisan('konventix:install', installArguments())->assertSuccessful();
+
+    foreach (installedLegalTextSlugs() as $slug) {
+        $policy = Policy::withoutBrandScope()->whereNull('brand_id')->where('slug', $slug)->sole();
+        $versions = PolicyVersion::withoutBrandScope()->where('policy_id', $policy->getKey())->get();
+
+        expect($versions)->toHaveCount(1)
+            ->and($versions->first()->content)->toBe("The operator's own {$slug} text.");
+    }
 });
 
 /**
