@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\URL;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Console\CancelUnpaidReversals;
 use Konventix\Commerce\Console\ExpireCartsCommand;
+use Konventix\Commerce\Console\ExpireRegistrationOrdersCommand;
 use Konventix\Commerce\Console\ProbeInvoiceNumbering;
 use Konventix\Commerce\Console\ReconcilePayments;
 use Konventix\Commerce\Console\ReportInvoiceRetention;
@@ -396,7 +397,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // sweep that silently fails to register would look like "no invoices
         // are overdue" rather than like a bug.
         if ($this->app->runningInConsole()) {
-            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, ExpireCartsCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class, ReconcilePayments::class, CancelUnpaidReversals::class]);
+            $this->commands([RunDunningSweep::class, ReportInvoiceRetention::class, ExpireCartsCommand::class, ExpireRegistrationOrdersCommand::class, WaitingRoomTick::class, ProbeInvoiceNumbering::class, ReconcilePayments::class, CancelUnpaidReversals::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
@@ -436,6 +437,14 @@ class CommerceServiceProvider extends ModuleServiceProvider
             // makes one run take longer than fifteen minutes must not stack
             // a second run on top of it.
             $schedule->command('commerce:expire-carts')->everyFifteenMinutes()->withoutOverlapping();
+
+            // The same question for an order that never had a cart (#131):
+            // a brand without `commerce:shop` places a direct registration
+            // order straight from the settlement request, and nothing swept
+            // it, so an unpaid `instant` registration held its quota
+            // forever. Same cadence and same window as the sweep above,
+            // because it is the same deadline seen from the other side.
+            $schedule->command('commerce:expire-registration-orders')->everyFifteenMinutes()->withoutOverlapping();
 
             // The waiting room's own heartbeat (ADR-0047 point 5, Task 13):
             // every minute, stagger up to twelve admission batches per busy
