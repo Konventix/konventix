@@ -63,6 +63,7 @@ use Konventix\Commerce\Settlement\Unzer\SdkUnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerSettlementAdapter;
 use Konventix\Commerce\Storage\InvoiceStorageMigration;
+use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Commerce\WaitingRoom\ArrayWaitingRoomStore;
 use Konventix\Commerce\WaitingRoom\CommerceWaitingRoomGate;
 use Konventix\Commerce\WaitingRoom\RedisWaitingRoomStore;
@@ -83,6 +84,7 @@ use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Operators\OperatorSettings;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
@@ -937,12 +939,24 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     ->get();
 
                 $media = app(MediaLibrary::class);
+                $taxCalculator = app(TaxCalculator::class);
+
+                // The PAngV end price is the server's to compute (#3), and
+                // the §19 election that decides it belongs to the brand's
+                // operator. Resolved once off the first product rather than
+                // per product: every row here is this brand's.
+                $first = $products->first();
+                $smallBusinessScheme = $first === null
+                    ? false
+                    : app(OperatorSettings::class)->sellerForBrand($first->brand_id)->smallBusinessScheme;
 
                 return [
                     'products' => $products
                         ->map(fn (Product $product): array => ShopProductData::ofModel(
                             $product,
                             $product->image_media_id === null ? null : $media->urlFor($product->image_media_id),
+                            $taxCalculator,
+                            $smallBusinessScheme,
                         )->toArray())
                         ->all(),
                 ];

@@ -13,6 +13,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { start as startCheckout } from '@/routes/commerce/pay';
+import {
+    ORDER_WITH_OBLIGATION_TO_PAY,
+    fulfilmentNote,
+    taxNote,
+} from '../../lib/purchaseTexts';
 
 /**
  * Public checkout for an `instant`-settled registration (ADR-0039). This
@@ -124,8 +129,8 @@ const lastAttemptFailed = computed(
                 >
                     <span>Total</span>
                     <span
-                        >{{ props.order.totalGross }}
-                        {{ props.order.currency }}</span
+                        >{{ props.order.totalGross }} {{ props.order.currency }}
+                        {{ taxNote('gross') }}</span
                     >
                 </div>
                 <p class="text-xs text-text-muted">
@@ -179,6 +184,14 @@ const lastAttemptFailed = computed(
                 <span>The last payment attempt did not go through.</span>
             </div>
 
+            <!--
+                #75: how and when what was bought arrives, stated before the
+                order is concluded rather than only in the confirmation mail.
+            -->
+            <p class="text-sm text-text-muted">
+                {{ fulfilmentNote(props.accounts.length > 0) }}
+            </p>
+
             <template v-for="slot in props.consentSlots" :key="slot.component">
                 <component
                     :is="resolveRegisteredComponent(slot.component)"
@@ -203,7 +216,7 @@ const lastAttemptFailed = computed(
                     {{
                         lastAttemptFailed || awaitingConfirmation
                             ? 'Try again'
-                            : 'Pay'
+                            : ORDER_WITH_OBLIGATION_TO_PAY
                     }}
                     — {{ account.label }}
                 </Button>

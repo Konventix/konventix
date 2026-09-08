@@ -8,7 +8,10 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Data\ShopProductData;
 use Konventix\Commerce\Models\Product;
+use Konventix\Commerce\Tax\TaxCalculator;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Media\MediaLibrary;
+use Konventix\Platform\Operators\OperatorSettings;
 
 /**
  * The brand's public shop (ADR-0047, Task 8), resolved on the brand's own
@@ -21,9 +24,13 @@ use Konventix\Platform\Media\MediaLibrary;
  */
 final class ShopController
 {
-    public function __construct(private readonly MediaLibrary $media) {}
+    public function __construct(
+        private readonly MediaLibrary $media,
+        private readonly TaxCalculator $taxCalculator,
+        private readonly OperatorSettings $operatorSettings,
+    ) {}
 
-    public function index(): Response
+    public function index(BrandContext $brandContext): Response
     {
         $products = Product::query()
             ->published()
@@ -31,9 +38,16 @@ final class ShopController
             ->orderBy('name')
             ->get();
 
+        $smallBusinessScheme = $this->smallBusinessScheme($brandContext);
+
         return Inertia::render('shop/Index', [
             'products' => $products
-                ->map(fn (Product $product): array => ShopProductData::ofModel($product, $this->imageUrl($product))->toArray())
+                ->map(fn (Product $product): array => ShopProductData::ofModel(
+                    $product,
+                    $this->imageUrl($product),
+                    $this->taxCalculator,
+                    $smallBusinessScheme,
+                )->toArray())
                 ->all(),
         ]);
     }
@@ -44,15 +58,36 @@ final class ShopController
      * `tests/Feature/DryRunTest.php`'s per-route-name `slug` resolver tell
      * this route apart from those.
      */
-    public function show(string $slug): Response
+    public function show(string $slug, BrandContext $brandContext): Response
     {
         $product = Product::query()->published()->where('slug', $slug)->with('variants')->first();
 
         abort_if($product === null, 404);
 
         return Inertia::render('shop/Show', [
-            'product' => ShopProductData::ofModel($product, $this->imageUrl($product))->toArray(),
+            'product' => ShopProductData::ofModel(
+                $product,
+                $this->imageUrl($product),
+                $this->taxCalculator,
+                $this->smallBusinessScheme($brandContext),
+            )->toArray(),
         ]);
+    }
+
+    /**
+     * The operator's §19 UStG election (ADR-0030), the only thing that can
+     * move a public shop price's VAT: there is no billing party on this
+     * surface, so reverse charge cannot apply. Read through Platform's
+     * `OperatorSettings` doorway rather than any foreign Eloquent model,
+     * exactly as `CartController` reads it for the cart's own preview.
+     */
+    private function smallBusinessScheme(BrandContext $brandContext): bool
+    {
+        $brand = $brandContext->current();
+
+        abort_if($brand === null, 404);
+
+        return $this->operatorSettings->sellerForBrand($brand->id)->smallBusinessScheme;
     }
 
     private function imageUrl(Product $product): ?string

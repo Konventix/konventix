@@ -16,6 +16,12 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * the line itself (`CartLine` only snapshots `unit_amount_net`); checkout
  * recomputes it for real onto the order.
  *
+ * `unitAmountGross` is the per-unit end price PAngV asks for (#3),
+ * derived from `lineGross` rather than calculated a second time: the line
+ * total is the authoritative figure (it is what the order snapshots), and
+ * dividing it is the only way the "each" figure the page prints can be
+ * guaranteed to add up to the total printed beside it.
+ *
  * `canChangeQuantity` is `false` for a registration line
  * (`ChangeCartLineQuantity` refuses those) so the page never renders
  * quantity controls it cannot use. `maxQuantity` is the product variant's
@@ -32,6 +38,7 @@ final class CartLineData extends Data
         public readonly string $label,
         public readonly int $quantity,
         public readonly string $unitAmountNet,
+        public readonly string $unitAmountGross,
         public readonly string $lineGross,
         public readonly bool $canChangeQuantity,
         public readonly ?int $maxQuantity,
@@ -45,6 +52,7 @@ final class CartLineData extends Data
             label: $line->label,
             quantity: $line->quantity,
             unitAmountNet: $line->unit_amount_net,
+            unitAmountGross: bcround(bcdiv($lineGross, (string) max(1, $line->quantity), 4), 2),
             lineGross: $lineGross,
             canChangeQuantity: $line->kind === CartLineKind::Product,
             maxQuantity: $maxQuantity,

@@ -98,6 +98,9 @@ class ProductVariant extends Model
     /**
      * The variant's own price when it declares one, else the product's — a
      * size that costs the same as every other size needs no override row.
+     *
+     * @return numeric-string both sides of the coalesce are, and callers
+     *                        hand the result straight to `TaxCalculator`.
      */
     public function effectiveUnitAmountNet(): string
     {

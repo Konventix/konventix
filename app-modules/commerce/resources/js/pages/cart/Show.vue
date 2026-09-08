@@ -12,6 +12,11 @@ import {
     update as updateLine,
 } from '@/routes/commerce/cart/lines';
 import { index as shopIndex } from '@/routes/commerce/shop';
+import {
+    ORDER_WITH_OBLIGATION_TO_PAY,
+    fulfilmentNote,
+    taxNote,
+} from '../../lib/purchaseTexts';
 
 /**
  * The person-owned cart (ADR-0047, Task 11): line list with quantity
@@ -140,7 +145,8 @@ const expiresInMinutes = computed<number | null>(() => {
                             line.label
                         }}</span>
                         <span class="text-sm text-text-muted">
-                            {{ line.unitAmountNet }} € each
+                            {{ line.unitAmountGross }} {{ cart.currency }} each
+                            {{ taxNote('gross') }}
                         </span>
                     </div>
 
@@ -222,9 +228,22 @@ const expiresInMinutes = computed<number | null>(() => {
                     class="flex items-center justify-between font-semibold text-text"
                 >
                     <span>Total</span>
-                    <span>{{ cart.totalGross }} {{ cart.currency }}</span>
+                    <span>
+                        {{ cart.totalGross }} {{ cart.currency }}
+                        <span class="font-normal text-text-muted">
+                            {{ taxNote('gross') }}
+                        </span>
+                    </span>
                 </div>
             </div>
+
+            <!--
+                #75: how and when what was bought arrives has to be stated
+                before the order is placed, not only in the confirmation.
+            -->
+            <p class="text-sm text-text-muted">
+                {{ fulfilmentNote(cart.accounts.length > 0) }}
+            </p>
 
             <template v-for="slot in props.consentSlots" :key="slot.component">
                 <component
@@ -247,7 +266,7 @@ const expiresInMinutes = computed<number | null>(() => {
                     @click="checkout(account.id)"
                 >
                     <CreditCard class="size-4" />
-                    Pay — {{ account.label }}
+                    {{ ORDER_WITH_OBLIGATION_TO_PAY }} — {{ account.label }}
                 </Button>
 
                 <p
