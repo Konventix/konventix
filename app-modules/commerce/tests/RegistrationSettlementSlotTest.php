@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Models\Cart;
+use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Identity\Models\User;
@@ -150,4 +153,116 @@ it('offers no invoice link before the document has been generated', function ():
     $this->actingAs($user)
         ->get('/my/registrations/'.$registration->getKey())
         ->assertInertia(fn (AssertableInertia $page) => expect(settlementProps($page)['documentUrl'])->toBeNull());
+});
+
+/**
+ * A4 (#210): with `commerce:shop` on, an `instant` registration settles into
+ * a cart line rather than an order (ADR-0047 point 3) — so "no order" is no
+ * longer the same answer as "nothing to pay". The slot answers the cart
+ * side too, or the registrant's own page shows nothing at all while money
+ * is owed.
+ */
+function cartSettlementProps(AssertableInertia $page): ?array
+{
+    $slot = collect($page->toArray()['props']['slots'])
+        ->firstWhere('component', 'commerce/RegistrationSettlement');
+
+    return $slot === null ? null : $slot['props']['cart'];
+}
+
+it('shows an open cart line as payable in the cart', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    $registration = Registration::factory()->create(['registrant_user_id' => $user->getKey()]);
+
+    $cart = Cart::factory()->forPayer($user->getKey())->create();
+    CartLine::factory()->forCart($cart)->registration()->create([
+        'ref_id' => $registration->getKey(),
+        'unit_amount_net' => '30.00',
+    ]);
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            $cartSettlement = cartSettlementProps($page);
+
+            expect($cartSettlement['status'])->toBe('in_cart')
+                ->and($cartSettlement['cartUrl'])->toBe('/cart')
+                ->and($cartSettlement['totalGross'])->toBe('35.70')
+                ->and($cartSettlement['expiresAt'])->not->toBeNull()
+                ->and(settlementProps($page))->toBeNull();
+        });
+});
+
+it('says the reservation lapsed once the cart expired', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    $registration = Registration::factory()->create(['registrant_user_id' => $user->getKey()]);
+
+    $cart = Cart::factory()->forPayer($user->getKey())->expired()->create();
+    CartLine::factory()->forCart($cart)->registration()->create(['ref_id' => $registration->getKey()]);
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            $cartSettlement = cartSettlementProps($page);
+
+            expect($cartSettlement['status'])->toBe('expired')
+                ->and($cartSettlement['cartUrl'])->toBeNull();
+        });
+});
+
+it('says the reservation lapsed while the sweep has not caught up with it yet', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    $registration = Registration::factory()->create(['registrant_user_id' => $user->getKey()]);
+
+    $cart = Cart::factory()->forPayer($user->getKey())->pastDue()->create();
+    CartLine::factory()->forCart($cart)->registration()->create(['ref_id' => $registration->getKey()]);
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertInertia(fn (AssertableInertia $page) => expect(cartSettlementProps($page)['status'])->toBe('expired'));
+});
+
+it('points a checked-out cart line at the payer\'s orders', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    $registration = Registration::factory()->create(['registrant_user_id' => $user->getKey()]);
+
+    $cart = Cart::factory()->forPayer($user->getKey())->create();
+    CartLine::factory()->forCart($cart)->registration()->create(['ref_id' => $registration->getKey()]);
+    $cart->forceFill([
+        'status' => CartStatus::CheckedOut,
+        'checked_out_order_id' => Order::factory()->create(['settles_type' => 'cart', 'settles_id' => $cart->getKey()])->getKey(),
+    ])->save();
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertInertia(function (AssertableInertia $page): void {
+            $cartSettlement = cartSettlementProps($page);
+
+            expect($cartSettlement['status'])->toBe('checkout_started')
+                ->and($cartSettlement['ordersUrl'])->toBe('/my/orders')
+                ->and($cartSettlement['cartUrl'])->toBeNull();
+        });
+});
+
+it('reports no cart settlement when a direct order settles the registration', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    $registration = Registration::factory()->create(['registrant_user_id' => $user->getKey()]);
+
+    Order::factory()->settles('registration', $registration->getKey())->create();
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertInertia(fn (AssertableInertia $page) => expect(cartSettlementProps($page))->toBeNull());
 });

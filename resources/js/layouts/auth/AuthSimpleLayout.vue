@@ -2,6 +2,7 @@
 import { Link } from '@inertiajs/vue3';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import EnvironmentRibbon from '@/components/EnvironmentRibbon.vue';
+import OperatorPresenceNotice from '@/components/OperatorPresenceNotice.vue';
 import { home } from '@/routes';
 
 defineProps<{
@@ -39,6 +40,8 @@ defineProps<{
                     </div>
                 </div>
                 <slot />
+
+                <OperatorPresenceNotice />
             </div>
         </div>
     </div>

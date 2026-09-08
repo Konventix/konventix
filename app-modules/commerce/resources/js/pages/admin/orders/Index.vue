@@ -28,8 +28,9 @@ import {
     index as ordersIndex,
     show as showOrder,
 } from '@/routes/admin/orders';
-import { columns as baseColumns } from './columns';
+import { columns as baseColumns, reversalColumn } from './columns';
 import type { OrderRow } from './columns';
+import { canBookPayment } from './reversals';
 
 interface PaginatedOrders {
     data: OrderRow[];
@@ -44,7 +45,7 @@ interface PaginatedOrders {
 const props = defineProps<{
     orders: PaginatedOrders;
     brands: { id: string; name: string }[];
-    filters: DataTableFilters & { brand: string | null };
+    filters: DataTableFilters & { brand: string | null; view: string | null };
 }>();
 
 const selection = useConsoleSelection();
@@ -76,7 +77,24 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
         })),
         clearValue: 'all',
     },
+    // ADR-0057 point 8: one view over the orders whose money is in
+    // dispute — an open or final reversal, or a payment that arrived for
+    // an order that could not take it (point 9, #6). A toolbar filter
+    // rather than a tab strip, because that is what this list already is.
+    {
+        name: 'view',
+        label: 'Orders',
+        value: props.filters.view,
+        options: [{ value: 'reversals', label: 'Reversals & unapplied money' }],
+    },
 ]);
+
+/** The reversals view is a filter, so its empty state is its own sentence. */
+const emptyMessage = computed(() =>
+    props.filters.view === 'reversals'
+        ? 'No reversals and no unapplied money — every payment sits where it belongs.'
+        : 'No orders yet — Commerce wakes up with the first paid registration.',
+);
 
 const sorting = computed<SortingState>(() =>
     filters.sort ? [{ id: filters.sort, desc: filters.dir === 'desc' }] : [],
@@ -123,8 +141,11 @@ function confirmBooking(): void {
  * Actions live here rather than in columns.ts because they need the page's
  * dialog state and route helpers.
  */
-const columns: ColumnDef<OrderRow>[] = [
+const columns = computed<ColumnDef<OrderRow>[]>(() => [
     ...baseColumns,
+    // Only the reversals view renders it: on the ordinary list every cell
+    // would be empty, and the status column already names a reversed order.
+    ...(props.filters.view === 'reversals' ? [reversalColumn] : []),
     {
         id: 'actions',
         header: '',
@@ -145,7 +166,7 @@ const columns: ColumnDef<OrderRow>[] = [
                 );
             }
 
-            if (row.original.status === 'pending') {
+            if (canBookPayment(row.original.status)) {
                 cells.push(
                     h(
                         Button,
@@ -166,7 +187,7 @@ const columns: ColumnDef<OrderRow>[] = [
             );
         },
     },
-];
+]);
 </script>
 
 <template>
@@ -195,7 +216,7 @@ const columns: ColumnDef<OrderRow>[] = [
             :sorting="sorting"
             :pagination="pagination"
             items-label="orders"
-            empty-message="No orders yet — Commerce wakes up with the first paid registration."
+            :empty-message="emptyMessage"
             row-clickable
             @row-click="(row: OrderRow) => router.visit(showOrder(row.id))"
             @update:sorting="onSortingChange"

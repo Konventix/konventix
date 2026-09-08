@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Compliance\Providers;
 
+use Illuminate\Auth\Events\Login;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
+use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Compliance\Console\ApplyRetentionRulesCommand;
 use Konventix\Compliance\Console\SweepUnverifiedRequestsCommand;
 use Konventix\Compliance\Console\WatchSubjectRequestDeadlinesCommand;
@@ -19,18 +21,26 @@ use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\ComplianceGdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Compliance\Http\Middleware\EnsurePoliciesAccepted;
+use Konventix\Compliance\Legal\PolicyPublicLegalTexts;
 use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
+use Konventix\Compliance\Listeners\FlagOutstandingContractConsent;
 use Konventix\Compliance\Listeners\NotifySubjectOfRequestOutcome;
 use Konventix\Compliance\Listeners\PruneAuditTrail;
 use Konventix\Compliance\Listeners\RecordAuditableEvents;
+use Konventix\Compliance\Listeners\RecordCheckoutConsent;
 use Konventix\Compliance\Listeners\StartRetentionClock;
+use Konventix\Compliance\Support\CheckoutLegalTexts;
+use Konventix\Compliance\Support\OutstandingConsents;
 use Konventix\Compliance\Support\PolicyMarkdown;
 use Konventix\Event\Events\EventConcluded;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Slots\SlotRegistry;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -65,6 +75,16 @@ class ComplianceServiceProvider extends ModuleServiceProvider
     {
         $this->app->singleton(GdprHandlerRegistry::class);
         $this->app->singleton(PolicyMarkdown::class);
+
+        // Stateless: it holds two slugs and one statutory sentence, and
+        // resolves everything else per call.
+        $this->app->singleton(CheckoutLegalTexts::class);
+
+        // Platform declares the contract, Compliance answers it (#184,
+        // ADR-0004): the kernel may not import a `Policy`, so this is how
+        // code outside this module links to a published legal text. Replaces
+        // Platform's null default.
+        $this->app->singleton(PublicLegalTexts::class, PolicyPublicLegalTexts::class);
     }
 
     public function boot(): void
@@ -106,6 +126,19 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // module uses.
         Event::listen(EventConcluded::class, StartRetentionClock::class);
         Event::listen(RetentionPeriodElapsed::class, PruneAuditTrail::class);
+
+        // GitLab #205: the login gate's question is Compliance's, and the
+        // answer crosses to Identity as one session key and nothing else
+        // (ADR-0004) — see the listener. Laravel's own `Login` event is the
+        // one moment the password, two-factor and social ways in all pass
+        // through.
+        Event::listen(Login::class, FlagOutstandingContractConsent::class);
+
+        // A payer's declaration at a public checkout becomes Consent rows
+        // here (GitLab #2). Commerce emits the event and never touches this
+        // module's tables — events are the only contract between modules
+        // (ADR-0004), and the architecture test allows nothing else.
+        Event::listen(CheckoutConsentGiven::class, [RecordCheckoutConsent::class, 'handle']);
 
         // Telling the subject what happened to their request (Art. 12(3)).
         // Deletion is acknowledged when it *starts* — see the listener for
@@ -263,15 +296,30 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 'de' => 'Frist für einen Betroffenenantrag',
                 'en' => 'Data subject request deadline',
             ],
+            // An `@if` over `daysOverdue`, not a ternary with `abs()` in it
+            // (GitLab #9): every shipped default has to survive
+            // `TemplateOverrideGuard`, because the editor seeds the override
+            // textarea with exactly this text and an operator who adds a
+            // signature must be able to save it. Whitespace around every
+            // directive on purpose — a directive glued to a word is left as
+            // literal text by Blade (.ai/rules/app-modules-src.md).
             bodies: [
                 'de' => <<<'BLADE'
                     <p>Antrag {{ $requestId }} ({{ $requestType }}) — Frist {{ $deadline }}.</p>
-                    <p>{{ $daysLeft < 0 ? 'Überfällig seit '.abs($daysLeft).' Tag(en).' : 'Noch '.$daysLeft.' Tag(e).' }}</p>
+                    @if ($daysLeft < 0)
+                        <p>Überfällig seit {{ $daysOverdue }} Tag(en).</p>
+                    @else
+                        <p>Noch {{ $daysLeft }} Tag(e).</p>
+                    @endif
                     <p>{{ $openModules }} Modul(e) haben noch nicht geantwortet.</p>
                     BLADE,
                 'en' => <<<'BLADE'
                     <p>Request {{ $requestId }} ({{ $requestType }}) — deadline {{ $deadline }}.</p>
-                    <p>{{ $daysLeft < 0 ? 'Overdue by '.abs($daysLeft).' day(s).' : $daysLeft.' day(s) left.' }}</p>
+                    @if ($daysLeft < 0)
+                        <p>Overdue by {{ $daysOverdue }} day(s).</p>
+                    @else
+                        <p>{{ $daysLeft }} day(s) left.</p>
+                    @endif
                     <p>{{ $openModules }} module(s) have not answered yet.</p>
                     BLADE,
             ],
@@ -281,6 +329,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 'requestType' => 'export',
                 'deadline' => '28.08.2026',
                 'daysLeft' => 5,
+                'daysOverdue' => 0,
                 'openModules' => 2,
             ],
         ));
@@ -307,6 +356,68 @@ class ComplianceServiceProvider extends ModuleServiceProvider
             // start of the working day the deadline actually matters on.
             $schedule->command(WatchSubjectRequestDeadlinesCommand::class)->dailyAt('06:45');
         });
+    }
+
+    /**
+     * The consent control every public purchase path has to render before
+     * its order button (GitLab #2).
+     *
+     * A UI slot rather than a prop the purchasing module computes: Commerce
+     * may not read a policy row, and a legal control whose wording each
+     * checkout writes for itself is a wording that drifts. The contract of
+     * `checkout.consent` is that a contribution declares `required: true`
+     * when the payer must confirm it before the order is placed — that is
+     * all the rendering page needs to know about it.
+     *
+     * Since GitLab #205 the contribution carries a second fact:
+     * `outstandingUrl`, the page the payer has to settle an outstanding
+     * *contract* agreement on before this purchase may proceed — null when
+     * there is none, which is the normal case. It is a URL rather than a
+     * policy for the same reason `required` is a boolean: Commerce refuses
+     * the checkout without ever learning that a policy exists. Only
+     * `LawfulBasis::Contract` raises it (`OutstandingConsents::
+     * subjectHasOutstandingContract()`); a consent-based text is what the
+     * `require-consent` route gate is for and must not stand between a payer
+     * and an order they already owe.
+     *
+     * The closure is `static` deliberately — `SlotRegistry` is a singleton
+     * that outlives the request under Octane, and a closure capturing `$this`
+     * would pin this provider in memory with it.
+     */
+    protected function registerSlots(): void
+    {
+        $this->app->make(SlotRegistry::class)->add(
+            slot: 'checkout.consent',
+            module: 'compliance',
+            component: 'compliance/CheckoutConsent',
+            props: static function (): array {
+                $brandId = app(BrandContext::class)->id();
+                $texts = $brandId === null ? [] : app(CheckoutLegalTexts::class)->forBrand($brandId);
+
+                $subjectId = auth()->id();
+                $outstanding = $subjectId !== null
+                    && app(OutstandingConsents::class)->subjectHasOutstandingContract((string) $subjectId);
+
+                return [
+                    'outstandingUrl' => $outstanding ? route('policies.required', absolute: false) : null,
+                    // False on an instance that has published neither text:
+                    // the control renders nothing rather than asking someone
+                    // to agree to documents that do not exist, and the
+                    // checkout stays usable.
+                    'required' => $texts !== [],
+                    // Version ids stay on the server. The page needs a name
+                    // and a link; which version a consent binds is resolved
+                    // again when it is recorded, so a client cannot name one.
+                    'policies' => array_map(static fn (array $text): array => [
+                        'slug' => $text['slug'],
+                        'name' => $text['name'],
+                        'url' => $text['url'],
+                    ], $texts),
+                    'exemptionNotice' => CheckoutLegalTexts::EXEMPTION_NOTICE,
+                ];
+            },
+            order: 10,
+        );
     }
 
     /**

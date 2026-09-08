@@ -8,10 +8,13 @@ use Konventix\Commerce\Actions\RecordPaymentFailure;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Events\OrderLineSettled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\PaymentFailed;
 use Konventix\Commerce\Events\PaymentReceived;
+use Konventix\Commerce\Events\PaymentUnapplied;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 
 function paymentLifecycleOrder(OrderStatus $status = OrderStatus::Pending): Order
@@ -157,4 +160,141 @@ it('records a manual booking as a first-class payment', function (): void {
             && $event->externalReference === null,
     );
     Event::assertDispatched(OrderPaid::class);
+});
+
+/**
+ * ADR-0057 point 3: the money can come back by the pay link, the door POS
+ * or a bank transfer, and each of them ends in `OrderPaid` — this is the
+ * door-POS/bank-transfer leg, `RecordPaymentSuccess`'s sibling test above is
+ * the pay-link leg.
+ */
+it('books a manual payment on a payment_reversed order exactly like a pending one', function (): void {
+    $this->withBrand();
+    $order = paymentLifecycleOrder(OrderStatus::PaymentReversed);
+
+    Event::fake([PaymentReceived::class, OrderPaid::class]);
+
+    app(BookManualPayment::class)->handle($order);
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and($order->paid_at)->not->toBeNull();
+
+    Event::assertDispatched(OrderPaid::class, fn (OrderPaid $event): bool => $event->orderId === $order->id
+        && $event->settlementMethod === 'manual');
+});
+
+it('refuses a manual payment on a refunded order', function (): void {
+    $this->withBrand();
+    $order = paymentLifecycleOrder(OrderStatus::Refunded);
+
+    Event::fake([PaymentReceived::class, OrderPaid::class]);
+
+    app(BookManualPayment::class)->handle($order);
+})->throws(RuntimeException::class);
+
+it('settles a payment_reversed order exactly like a pending one', function (): void {
+    // ADR-0057 point 3: the money can come back by the pay link, the door
+    // POS or a bank transfer, and each of them ends in OrderPaid with
+    // nothing new to teach downstream.
+    $this->withBrand();
+    $order = paymentLifecycleOrder(OrderStatus::PaymentReversed);
+    $payment = paymentLifecyclePending($order);
+
+    Event::fake([PaymentReceived::class, OrderPaid::class, PaymentUnapplied::class]);
+
+    app(RecordPaymentSuccess::class)->handle($payment);
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid)
+        ->and($order->paid_at)->not->toBeNull();
+
+    Event::assertDispatched(OrderPaid::class, fn (OrderPaid $e): bool => $e->orderId === $order->id);
+    Event::assertNotDispatched(PaymentUnapplied::class);
+});
+
+it('re-emits the line events when a reversed cart order is paid again', function (): void {
+    $this->withBrand();
+
+    $order = Order::factory()->create([
+        'status' => OrderStatus::PaymentReversed,
+        'settles_type' => 'cart',
+        'total_gross' => '119.00',
+        'currency' => 'EUR',
+    ]);
+    OrderLine::factory()->create([
+        'order_id' => $order->id,
+        'settles_kind' => 'registration',
+        'settles_ref' => '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+    ]);
+
+    Event::fake([OrderLineSettled::class]);
+
+    app(RecordPaymentSuccess::class)->handle(paymentLifecyclePending($order));
+
+    Event::assertDispatchedTimes(OrderLineSettled::class, 1);
+});
+
+it('records a success for a cancelled order as unapplied money', function (): void {
+    // ADR-0057 point 9 / #6: the money moved, and a log line is not a
+    // domain record. What happens next is the operator's decision.
+    $this->withBrand();
+    $order = paymentLifecycleOrder(OrderStatus::Cancelled);
+    $payment = paymentLifecyclePending($order);
+
+    Event::fake([PaymentReceived::class, OrderPaid::class, PaymentUnapplied::class]);
+
+    app(RecordPaymentSuccess::class)->handle($payment);
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Cancelled);
+
+    Event::assertNotDispatched(OrderPaid::class);
+    Event::assertDispatched(
+        PaymentUnapplied::class,
+        fn (PaymentUnapplied $e): bool => $e->paymentId === $payment->id
+            && $e->orderId === $order->id
+            && $e->brandId === $order->brand_id
+            && $e->amount === '119.00'
+            && $e->currency === 'EUR'
+            && $e->provider === 'stripe'
+            && $e->settlementAccountId === null,
+    );
+});
+
+it('emits nothing new when a second payment lands on an already paid order', function (): void {
+    $this->withBrand();
+    $order = paymentLifecycleOrder(OrderStatus::Paid);
+
+    Event::fake([OrderPaid::class, PaymentUnapplied::class]);
+
+    app(RecordPaymentSuccess::class)->handle(paymentLifecyclePending($order));
+
+    // Duplicate money against a paid order is an operator refund case, not
+    // an unapplied payment: the order got what it was owed.
+    Event::assertNotDispatched(OrderPaid::class);
+    Event::assertNotDispatched(PaymentUnapplied::class);
+});
+
+it('finds every unapplied payment through the scope', function (): void {
+    $this->withBrand();
+
+    $cancelled = paymentLifecycleOrder(OrderStatus::Cancelled);
+    $unapplied = Payment::factory()->succeeded()->create([
+        'order_id' => $cancelled->id, 'amount' => '119.00', 'currency' => 'EUR',
+    ]);
+
+    // Paid order, succeeded payment: applied.
+    $paid = paymentLifecycleOrder(OrderStatus::Paid);
+    Payment::factory()->succeeded()->create(['order_id' => $paid->id]);
+
+    // Cancelled order, pending payment: no money ever moved.
+    Payment::factory()->create(['order_id' => $cancelled->id]);
+
+    // Refunded order, succeeded payment: an ordinary refund (ADR-0037).
+    // The money is already back with the payer, so it is not unapplied —
+    // fix round 1, finding 2.
+    $refunded = paymentLifecycleOrder(OrderStatus::Refunded);
+    Payment::factory()->succeeded()->create(['order_id' => $refunded->id]);
+
+    expect(Payment::withoutBrandScope()->unapplied()->pluck('id')->all())->toBe([$unapplied->id]);
 });

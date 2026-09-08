@@ -7,6 +7,7 @@ namespace Konventix\Compliance\Gdpr;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\DataSubjectRequest;
+use Konventix\Platform\Models\Scopes\BrandScope;
 
 /**
  * Compliance's contribution about its own rows — the module that orchestrates
@@ -42,7 +43,13 @@ final class ComplianceGdprHandler implements GdprHandler
         return [
             'consents' => Consent::withoutBrandScope()
                 ->where('subject_id', $subjectId)
-                ->with('policyVersion.policy')
+                // Escapes BrandScope on both hops: an operator-wide policy
+                // and its version carry no `brand_id` (#76), and a fan-out
+                // runs operator-wide anyway (ADR-0050).
+                ->with([
+                    'policyVersion' => fn ($query) => $query->withoutGlobalScope(BrandScope::class)
+                        ->with(['policy' => fn ($inner) => $inner->withoutGlobalScope(BrandScope::class)]),
+                ])
                 ->orderBy('granted_at')
                 ->get()
                 ->map(fn (Consent $consent): array => [

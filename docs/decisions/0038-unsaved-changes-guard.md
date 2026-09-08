@@ -36,8 +36,35 @@ The composable is the single implementation; pages must not hand-roll
   without leaving the page.
 - Hard exits (reload, tab close, external links) arm the native
   `beforeunload` prompt.
+- **A deliberate external redirect is exempt** — see below.
 - Listeners are removed on unmount; the dirty state is read through a getter
   at navigation time.
+
+### Deliberate external redirects
+
+Some submits *are* meant to leave: connecting a Stripe account posts to a
+controller that answers with `Inertia::location($onboardingUrl)`, and leaving
+for Stripe's hosted onboarding is the next step of the flow, not an accident.
+Inertia turns such a response into a real document navigation
+(`window.location.href = …`), which fires `beforeunload` — so the guard used
+to ask "Leave this page?" about the very click the operator made, and
+answering "Stay" stranded the onboarding.
+
+A page announces such a navigation with `allowNavigation()`, which the
+composable both exports and returns. It disarms the native prompt **page-wide**
+— all guards on the page, not only the calling one; the settlement console
+carries three, and a dirty field in any of them raised the same dialog — and
+stays disarmed until Inertia renders a page again.
+
+Server-driven redirects need no page code at all: `Inertia::location()` makes
+Inertia fire its `location` event synchronously right before the hard
+navigation, and every mounted guard listens for it. `allowNavigation()` is for
+a navigation the page performs itself (assigning `window.location`, posting a
+plain `<form>` to another origin), called immediately before it.
+
+Nothing else changes: the redirect that never happens — a rejected connect
+that comes back with validation errors — re-arms the guard on that render,
+with the typed values still in the form.
 
 ## Consequences
 
@@ -45,6 +72,8 @@ The composable is the single implementation; pages must not hand-roll
   them to an accidental navigation.
 - New edit forms adopt the pattern with one template block and one composable
   call; behavior and wording stay uniform.
+- A page that leaves on purpose no longer has to hand-roll around the guard,
+  and the exemption is stated once instead of per redirect site.
 - Browsers do not allow canceling `popstate`, so Inertia back/forward history
   visits cannot be intercepted — the `beforeunload` prompt is the only
   backstop there. This is a platform limit, not a gap to engineer around.

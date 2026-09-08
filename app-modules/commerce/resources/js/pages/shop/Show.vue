@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { login } from '@/routes';
 import { store as storeCartLine } from '@/routes/commerce/cart/lines';
+import { displayUnitAmount, taxNote } from '../../lib/purchaseTexts';
 
 /**
  * One shop product (ADR-0047, Task 8/11). The buy button posts straight to
@@ -44,6 +45,16 @@ const selectedVariant = computed<Variant | null>(
 );
 
 const quantity = ref(1);
+
+// PAngV (#3): what a variant costs is shown in the same net-or-gross terms
+// the product is priced in, and both amounts come from the server.
+function variantAmount(variant: Variant): string {
+    return displayUnitAmount({
+        unitAmountNet: variant.unitAmountNet,
+        unitAmountGross: variant.unitAmountGross,
+        priceDisplay: props.product.priceDisplay,
+    });
+}
 
 function addToCart(): void {
     if (selectedVariantId.value === null) {
@@ -91,9 +102,9 @@ function addToCart(): void {
             </p>
 
             <p class="text-lg font-medium text-text">
-                {{ props.product.unitAmountNet }} €
+                {{ displayUnitAmount(props.product) }} €
                 <span class="text-sm font-normal text-text-muted">
-                    excl. VAT
+                    {{ taxNote(props.product.priceDisplay) }}
                 </span>
             </p>
         </div>
@@ -120,7 +131,8 @@ function addToCart(): void {
                             — sold out
                         </template>
                         <template v-else>
-                            — {{ variant.unitAmountNet }} €
+                            — {{ variantAmount(variant) }} €
+                            {{ taxNote(props.product.priceDisplay) }}
                         </template>
                     </option>
                 </select>

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Event\Models\Event;
 use Konventix\Registration\Enums\RegistrationVisibility;
@@ -103,4 +104,87 @@ it('reports no price for a free type rather than a zero one', function (): void 
 
     $this->get('/events/'.$event->slug)
         ->assertInertia(fn (AssertableInertia $page) => expect(landingOffers($page)[0]['price'])->toBeNull());
+});
+
+/**
+ * #218 (#216 draft i): the landing page is where a sales window becomes
+ * visible. A type whose sale is over disappears — advertising a link that
+ * refuses the submission behind it is worse than saying nothing. A type
+ * whose sale has not started yet stays, announced rather than linked: that
+ * announcement is the countdown the landing page owes a visitor who arrives
+ * before the doors open.
+ */
+it('never advertises a type whose sale has ended', function (): void {
+    $this->withBrand();
+
+    $event = Event::factory()->published()->create();
+    RegistrationType::factory()->forEvent($event->getKey())
+        ->salesWindow(end: '2026-09-01 18:00:00')
+        ->create();
+
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00Z'));
+
+    $this->get('/events/'.$event->slug)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => expect(landingOffers($page))->toBe([]));
+});
+
+it('announces a type whose sale has not started yet instead of linking to it', function (): void {
+    $this->withBrand();
+
+    $event = Event::factory()->published()->create();
+    $type = RegistrationType::factory()->forEvent($event->getKey())
+        ->salesWindow(start: '2026-10-01 18:00:00')
+        ->create();
+
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00Z'));
+
+    $this->get('/events/'.$event->slug)
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page) use ($type): void {
+            $offers = landingOffers($page);
+
+            expect($offers)->toHaveCount(1)
+                ->and($offers[0]['name'])->toBe($type->name)
+                ->and($offers[0]['onSale'])->toBeFalse()
+                ->and($offers[0]['salesStart'])->toBe('2026-10-01T18:00:00+00:00');
+        });
+});
+
+it('offers a type inside its window as on sale', function (): void {
+    $this->withBrand();
+
+    $event = Event::factory()->published()->create();
+    RegistrationType::factory()->forEvent($event->getKey())
+        ->salesWindow(start: '2026-09-01 18:00:00', end: '2026-10-01 18:00:00')
+        ->create();
+
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00Z'));
+
+    $this->get('/events/'.$event->slug)
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            $offers = landingOffers($page);
+
+            expect($offers)->toHaveCount(1)
+                ->and($offers[0]['onSale'])->toBeTrue()
+                ->and($offers[0]['salesStart'])->toBe('2026-09-01T18:00:00+00:00');
+        });
+});
+
+it('offers a type that declares no window at all as on sale', function (): void {
+    $this->withBrand();
+
+    $event = Event::factory()->published()->create();
+    RegistrationType::factory()->forEvent($event->getKey())->create();
+
+    $this->get('/events/'.$event->slug)
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            $offers = landingOffers($page);
+
+            expect($offers)->toHaveCount(1)
+                ->and($offers[0]['onSale'])->toBeTrue()
+                ->and($offers[0]['salesStart'])->toBeNull();
+        });
 });

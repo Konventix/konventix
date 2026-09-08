@@ -16,9 +16,10 @@ requirements point at the same answer, which is that the domain model leads and
 the provider follows.
 
 The platform **never holds funds** (ADR-0007). Money flows directly from the
-participant to the organizer through the organizer's own connected PSP account.
-Anything else would make Konventix a payment service and trigger BaFin/ZAG
-licensing.
+participant to the operator running this instance, through that operator's own
+PSP account — Stripe's since ADR-0058, Mollie's and Unzer's through the brand's
+own key. Anything else would make Konventix a payment service and trigger
+BaFin/ZAG licensing.
 
 ## Owns
 
@@ -53,7 +54,11 @@ licensing.
   1) — the grace a payer gets to finish a hosted checkout page before the
   reservation and the pending order behind it are given up on. A cart is
   never both `open` and `checked_out` at once, so the one column serves
-  both windows rather than needing a second.
+  both windows rather than needing a second. A `registration`-kind line
+  also carries `sale_starts_at`/`sale_ends_at` — the sales window
+  snapshotted from the settlement request, kept for audit. Frozen at
+  creation; a later edit of the type's window does not reach it, and the
+  checkout deliberately does not enforce it (#218).
   `OpenCart::for(brandId, payerUserId)` finds a payer's open cart or opens
   one, `brand_id` set explicitly rather than from ambient context (a queue
   or admin caller has none) — the partial unique index
@@ -169,7 +174,11 @@ licensing.
   otherwise `IssueWaitingRoomTicket::handle()` reuses a still-known ticket
   (from the cookie, then from the user mapping) or mints a new one after
   the per-IP cap, sets the cookie on the response, and redirects to
-  `route('commerce.waiting-room.show')`.
+  `route('commerce.waiting-room.show')`. A signed-in user's ticket from
+  the user mapping is only ever reused when it is still known — admitted
+  and unexpired, or still queued; between an expired admission and the
+  mapping's own two-hour TTL it re-enqueues instead of handing back a
+  ticket that is neither queued nor admitted (#230).
   `AdmitFromWaitingRoom::handle(Brand, count)` pops up to `count` tickets
   off the head under `Cache::lock("waiting-room:{brand}", 10)` and stamps
   each one admitted until `now() + WaitingRoomSettings::forBrand()->
@@ -346,19 +355,86 @@ licensing.
   organizer marking a bank transfer as received is a normal, supported flow,
   not a workaround.
 - **Refunds and partial credit notes** as domain flows, with PSP calls as side
-  effects.
-- **Settlement adapters** behind a single contract, **account-scoped from day
-  one** (ADR-0007): each brand or operator connects its own Stripe, Mollie or
-  Unzer account, and every adapter call carries that account. ADR-0039 pins
-  the mechanics: hosted checkout only, settlement truth exclusively from
-  verified webhooks, per-brand credentials encrypted on the account row.
+  effects. Refund (whole order) is an operator action in the console:
+  `POST /admin/orders/{order}/refund`, capability `commerce.issue-refunds`,
+  reason from `RefundReason` plus a free-text note, both recorded in the
+  audit trail. Neither is printed on the credit note, which always says
+  "Grund: Erstattung". Partial refunds stay Action-only until #7 splits the
+  tax correctly. A whole-order refund releases the seat for both kinds of
+  order: a direct registration order through `OrderRefunded` with
+  `whole: true`, a cart order through one `OrderLineCancelled` per
+  registration-kind line with reason `order_refunded`. A partial refund
+  releases nothing (#73). The same path is reached from outside the
+  console: an external refund the operator issued in the PSP's own
+  dashboard (`ReversalKind::ExternalRefund`, `RecordPaymentReversal` ->
+  `RecordRefund`) cancels a cart order's registrations through
+  `OrderLineCancelled` (`order_refunded`) exactly as above, and — because
+  that path does not run `guardNotCheckedIn()` — without ADR-0037's
+  check-in guard, consistent with how a direct order's whole refund has
+  always been able to reach an already checked-in registration.
+- **`Settlement\PayLink`** answers where an unpaid order is paid: a
+  registration order's public checkout, every other order's own
+  `/pay/order/{order}` page (`CheckoutController::showOrder()`), which
+  authorizes on the order's buyer. The order confirmation, the
+  payment-failed mail and `MyOrderData` all read it. A retry there never
+  renews the reservation the first placement fixed. The page it points at
+  states the deadline and refuses past it; the link itself is
+  unconditional on purpose (#5).
+- **`Settlement\PaymentWindow`** — the one answer to how long an unpaid
+  order stays payable. A cart order's window is its checked-out cart's
+  `expires_at`; a direct registration order's is
+  `Cart::CHECKOUT_GRACE_MINUTES` from placement, and only where
+  `ExpireRegistrationOrders` would really take it (still pending, never
+  invoiced, brand offers a hosted checkout). Read by both pay pages, the
+  order confirmation, the payment-failed mail (`payBy`, nullable) and the
+  sweep itself, so no page can promise a deadline the sweep does not keep
+  (#131).
+- **Payment reversals and their reconciliation** (ADR-0057): the
+  `payment_reversals` row, `PaymentStatus::Reversed`,
+  `OrderStatus::PaymentReversed`, and `RecordPaymentReversal`, called from
+  Stripe's `charge.dispute.*`/`charge.refunded` webhooks and from Mollie's
+  and Unzer's fetch-back adapters. `commerce:reconcile-payments` — hourly
+  (#71). Asks each PSP what really happened to a `pending` payment between
+  15 minutes and 7 days old, and re-reads every settled Mollie/Unzer
+  payment of the last 90 days for chargebacks and dashboard refunds.
+  Corrections go through the same Actions the webhooks use and are logged
+  at warning with "found by reconciliation"; each one raises the
+  `payment-reconciled` operator notice. Pending *Unzer* payments are out of
+  scope until `UnzerApi` carries an order-id lookup — a Paypage id is not a
+  payment id. `commerce:cancel-unpaid-reversals` — daily at 07:05
+  (ADR-0057 point 4). Cancels every order whose final `return`/`dispute`
+  reversal passed its `repay_due_on` unpaid, issuing a credit note with
+  reason `cancellation` where an invoice exists. An order with a
+  checked-in admission is never cancelled: its invoice's `overdue_at` is
+  set to the missed deadline and the dunning ladder takes it from there.
+  The deadline itself is a per-brand setting,
+  `commerce_brand_settings.reversal_repayment_days` (1..60, default 7, set
+  beside the brand's settlement accounts). The orders console carries the
+  reversal surface of ADR-0057 point 8: a "Reversals & unapplied money"
+  view listing every order with an open or final reversal beside every
+  order holding a succeeded payment its status cannot take, and an order
+  page that shows every reversal row (withdrawn ones included), the
+  repayment deadline, and the unapplied-payment callout of ADR-0057
+  point 9. A withdrawn dispute is deliberately absent from the list: it
+  moved no money and is no operator task.
+- **Settlement adapters** behind a single contract, **account-scoped from
+  day one** (ADR-0007): each brand or operator connects its own Mollie or
+  Unzer account, and every adapter call carries that account. Stripe is the
+  exception since ADR-0058: the instance settles into **one** Stripe
+  account — the operator's own — and a brand's Stripe row is the flag that
+  says it sells through it. ADR-0039 pins the mechanics: hosted checkout
+  only, settlement truth exclusively from verified webhooks, per-brand
+  credentials encrypted on the account row, Stripe's own key operator-level
+  (`stripe_settings`) or from the environment.
 - **`SettlementAccount`** — one live account per provider per brand
-  (ADR-0046): a brand may connect Stripe for cards and Mollie for PayPal and
-  iDEAL at once, and the checkout page offers every account that is live,
-  connected, and — for Stripe — has an active `card_payments` capability.
-  The payer chooses which account settles their order; `settlement_method`
-  on the settlement events is always the provider, and the events also carry
-  the account id.
+  (ADR-0046): a brand may connect Stripe for cards and Mollie for PayPal
+  and iDEAL at once, and the checkout page offers every account that is
+  live, connected, and — for Stripe — backed by a Stripe secret key on this
+  instance (ADR-0058). A Stripe row additionally carries an optional
+  `statement_descriptor_suffix`, which names the brand on the payer's card
+  statement. The payer chooses which account settles their order;
+  `settlement_method` on the settlement events is always the provider, and
+  the events also carry the account id.
 - **Vouchers and discount codes**, their rules and their redemption records.
 - **Bookkeeping exports** for the tax advisor (ADR-0040): a DATEV
   Buchungsstapel plus a readable journal, one export per operator and month,
@@ -403,9 +479,14 @@ implemented and their payloads are the contract.
 | `OrderPartiallyPaid` (proposed) | A payment lands that does not cover the balance | `order_id`, `amount_paid`, `balance_due`, `currency`, `received_at` |
 | `PaymentReceived` | Any payment is recorded — a webhook-confirmed PSP payment or a manually booked bank transfer. Distinct from `OrderPaid`: this is about the money that arrived, that one about what it means for the order | `payment_id`, `order_id`, `brand_id`, `amount`, `currency`, `settlement_method`, `external_reference` (nullable — manual bookings have none), `received_at`, `settlement_account_id` (nullable — manual bookings have none) |
 | `PaymentFailed` | An adapter reports a failed or expired attempt (ADR-0039). The order stays pending — a new checkout may follow | `payment_id`, `order_id`, `brand_id`, `settlement_method`, `reason_code`, `failed_at`, `settlement_account_id` (nullable — manual bookings have none) |
-| `SettlementAccountConnected` | A brand finishes connecting its own PSP account (ADR-0007) — from this moment its orders settle through that provider | `settlement_account_id`, `brand_id`, `provider`, `connected_at` |
-| `OrderCancelled` (proposed) | An order is cancelled before or after settlement | `order_id`, `cancelled_by_user_id`, `reason_code`, `cancelled_at` |
-| `OrderRefunded` | Money went back to the payer. Distinct from `CreditNoteIssued`: that is the document, this is the money. An ADR-0036 transfer issues the first without the second, so a consumer counting refunds must listen here | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_refunded`, `currency`, `credit_note_id` (nullable — an uninvoiced order has no document), `reason_code`, `refunded_at` | implemented |
+| `SettlementAccountConnected` | A brand starts settling through a provider (ADR-0007) — for Mollie and Unzer that is the brand's own key arriving, for Stripe the flag that says this brand sells through the instance's own account (ADR-0058 point 3) | `settlement_account_id`, `brand_id`, `provider`, `connected_at` |
+| `OrderCancelled` (ADR-0057 point 4) | An order is cancelled before or after settlement. Two producers: `CancelOrderForUnpaidReversal` (`reason_code: 'reversal_unpaid'`), reached either from the daily `commerce:cancel-unpaid-reversals` sweep once `repay_due_on` has passed, or from an operator cancelling by hand before it; and `ExpireRegistrationOrders` (`reason_code: 'payment_window_expired'`, #131) — the `commerce:expire-registration-orders` sweep, hosted-population only (see `TODO.md`). **Registration consumes this** — it cancels the registration through `CancelRegistration`, releasing the quota (ADR-0057 point 5) | `order_id`, `brand_id`, `settles_type`, `settles_id`, `cancelled_by_user_id` (nullable — the sweep has none), `reason_code`, `credit_note_id` (nullable — an uninvoiced order has no document), `cancelled_at` |
+| `OrderLineCancelled` (ADR-0057 points 4 and 5) | One order line's sale was undone by the order's cancellation — the mirror of `OrderLineReversed`, emitted per `registration`-kind line alongside `OrderCancelled`, **only for an order whose `settles_type` is `cart`**. Two producers: `CancelOrderForUnpaidReversal` (`reversal_unpaid`) and `RecordRefund` (`order_refunded`, whole refunds of a cart order only, #73). Without it a cancelled or refunded cart order would leave its registration lines confirmed and their quota held: `OrderCancelled`/`OrderRefunded` alone cannot say which lines it undid, and Registration may not read the lines (ADR-0004). **Registration consumes this** (`CancelRegistrationOnOrderLineCancelled`) | `order_id`, `brand_id`, `kind`, `ref_id`, `order_request_key`, `reason_code`, `cancelled_by_user_id` (nullable), `cancelled_at` |
+| `OrderRefunded` | Money went back to the payer. Distinct from `CreditNoteIssued`: that is the document, this is the money. An ADR-0036 transfer issues the first without the second, so a consumer counting refunds must listen here | `order_id`, `brand_id`, `settles_type`, `settles_id`, `amount_refunded`, `currency`, `credit_note_id` (nullable — an uninvoiced order has no document), `reason_code`, `refunded_at`, `whole` (ADR-0057 point 5: the amount alone cannot say whether the whole order was refunded, and Registration cancels the registration only when it was) |
+| `PaymentReversed` (ADR-0057) | Money that had settled left again and the reversal is final — a `return` on arrival, a `dispute` on loss. Emitted once from `RecordPaymentReversal`; never for an open or withdrawn dispute. **Registration consumes this** to set `payment_status` back to `pending` while leaving `status` and the held quota alone (ADR-0057 point 5). **Admission never listens** — ADR-0057 point 6 | `reversal_id`, `payment_id`, `order_id`, `brand_id`, `settles_type`, `settles_id`, `kind`, `amount`, `currency`, `settlement_method`, `settlement_account_id` (nullable), `provider_reference`, `reason_code` (nullable — the provider's own string), `repay_due_on` (nullable), `reversed_at` |
+| `OrderLineReversed` (ADR-0057) | One order line's settlement was undone — the mirror of `OrderLineSettled`, emitted per `registration`-kind line alongside `PaymentReversed`, **only for an order whose `settles_type` is `cart`**, for the same reason `OrderLineSettled` exists. **Registration consumes this** (`RecordReversalOnOrderLineReversed`) | `order_id`, `brand_id`, `kind`, `ref_id`, `order_request_key`, `amount_gross`, `currency`, `reversed_at`, `settlement_account_id` (nullable) |
+| `PaymentReversalRecorded` (ADR-0057) | **Module-internal.** A `payment_reversals` row was created or moved — every reversal, every transition, including an opened dispute, a won one and a partial return, none of which crosses the module boundary. Carries the operator notice (ADR-0057 point 8), not a contract | `reversal_id`, `payment_id`, `order_id`, `brand_id`, `kind`, `status`, `amount`, `currency`, `provider`, `provider_reference`, `reason_code` (nullable), `occurred_at` |
+| `PaymentUnapplied` (ADR-0057 point 9, #6) | **Module-internal.** A PSP success arrived for an order the checkout-grace sweep had already cancelled: the money moved and the order cannot take it. What happens next is the operator's decision, which this event does not make. The data definition is `Payment.status = succeeded AND order.status = cancelled`, queried by `Payment::scopeUnapplied()` — a `refunded` order's payment also stays `succeeded`, but that money went back on purpose (ADR-0037) and is nothing to apply | `payment_id`, `order_id`, `brand_id`, `amount`, `currency`, `provider`, `settlement_account_id` (nullable), `received_at` |
 | `InvoiceIssued` | An invoice number is drawn from the brand's range and the invoice is finalized — immutable from this moment (ADR-0031) | `invoice_id`, `order_id`, `brand_id`, `invoice_number`, `issued_on`, `due_on`, `total_gross`, `currency` |
 | `InvoiceOverdue` | An issued invoice passes its due date with its order unpaid. Emitted **once per invoice**, not once per sweep — the sweep runs daily and re-emitting would make one unpaid invoice a daily notification about the same fact | `invoice_id`, `invoice_number`, `order_id`, `brand_id`, `total_gross`, `currency`, `due_on`, `days_overdue`, `detected_at` | implemented |
 | `DunningLevelRaised` | An overdue invoice reached the next days-overdue threshold. Commerce declares *that* a level was reached; Messaging decides what a level means to a recipient — the same split D-CNT-08 draws for announcements, which is why no mail is sent from here | `invoice_id`, `invoice_number`, `order_id`, `brand_id`, `level`, `days_overdue`, `raised_at`, `billing_name`, `billing_email` (nullable — the contact may have no account), `total_gross`, `currency`, `due_on` (billing scalars added for ADR-0041 point 8: Messaging's listener must not read this module's models) | implemented |
@@ -413,6 +494,7 @@ implemented and their payloads are the contract.
 | `VoucherRedeemed` (proposed) | A voucher is applied to an order | `voucher_id`, `order_id`, `discount_amount`, `currency`, `redeemed_at` |
 | `StockExhausted` | A `ProductVariant`'s `remaining()` reaches zero from a `consumeStock()` call — the transition into sold-out, not every purchase against an already-exhausted variant | `variant_id`, `product_id`, `brand_id`, `exhausted_at` |
 | `CartExpired` (ADR-0047) | The sweep moves an open cart past `expires_at` to `expired`, after every one of its lines has been released or announced | `cart_id`, `brand_id`, `payer_user_id`, `expired_at` |
+| `RegistrationLinePlacedInCart` (ADR-0047, #210) | `PlaceRegistrationLineInCart` took a registration's `instant` settlement into the registrant's cart instead of placing an order — on the placement that creates the line, never on the idempotent replay. **Registration consumes this** to store the hold's deadline on its own row, so its confirmation mail can name the cart and say how long the reservation lasts without reading `cart_lines` | `cart_id`, `brand_id`, `registration_id`, `request_key`, `hold_expires_at` |
 | `CartLineExpired` (ADR-0047) | The sweep expires a registration-kind cart line — a product line releases its stock silently instead. **Registration consumes this** to cancel the still-pending registration the line was holding | `cart_id`, `brand_id`, `kind`, `ref_id`, `request_key` (nullable), `expired_at` |
 | `CartLineRemoved` (ADR-0047) | A person removes a registration-kind cart line — a product line releases its stock silently instead. **Registration consumes this**, the same way it consumes `CartLineExpired` | `cart_id`, `brand_id`, `kind`, `ref_id`, `request_key` (nullable), `removed_at` |
 | `CartCheckedOut` (ADR-0047, Task 11) | `PlaceOrderFromCart` moves a cart from `open` to `checked_out` and names the `Order` it produced. Fired alongside `OrderPlaced`, inside the same transaction — nothing consumes it yet; it exists for "this cart is spoken for" without reading `Cart` | `cart_id`, `brand_id`, `payer_user_id`, `order_id`, `checked_out_at` |
@@ -469,6 +551,10 @@ the topic's own 30-minute coalescing window.
 `ProviderLabels` returns German labels ('Überweisung / manuell', 'Testzahlung') stored in
 `invoices.paid_via` and echoed by both locales of `commerce.invoice-paid` and by the PDF —
 deliberate for the DACH release, not a translation gap.
+
+`commerce.payment-failed`'s payload (`Data\PaymentFailedMailData`) carries `payBy` — the
+same `Settlement\PaymentWindow` deadline the retry page enforces, already formatted
+`d.m.Y H:i`, nullable for a bank-transfer brand's order (#131).
 
 ## Activation
 

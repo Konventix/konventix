@@ -4,21 +4,32 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Http\Controllers\Admin;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Actions\BookManualPayment;
+use Konventix\Commerce\Actions\CancelOrderForUnpaidReversal;
+use Konventix\Commerce\Actions\RefundOrder;
+use Konventix\Commerce\Data\OrderReversalData;
+use Konventix\Commerce\Data\RefundOrderData;
+use Konventix\Commerce\Data\UnappliedPaymentData;
 use Konventix\Commerce\Enums\Permission;
+use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
+use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\ConsoleSelection;
+use RuntimeException;
 
 /**
  * Operator console: orders and their invoices (ADR-0029). Route middleware
@@ -53,8 +64,19 @@ class OrderAdminController
         // registration, and the list carries no event column to filter on.
         $brand = $this->resolveSelectionFilter($request, 'brand', $selection->brandId());
 
+        // ADR-0057 point 8's "open reversals" list, and with it point 9's
+        // unapplied money: one view rather than two, because both are the
+        // same operator task — money the order and the bank disagree about.
+        // A filter, not a tab: this list already speaks in toolbar selects.
+        $view = $this->resolveFilters($request, ['view' => ['reversals']])['view'];
+
         $orders = Order::withoutBrandScope()
             ->when($brand !== null, fn ($query) => $query->forBrand($brand))
+            ->when($view === 'reversals', fn ($query) => $query->where(
+                fn ($inner) => $inner
+                    ->whereIn('id', $this->reversalQuery()->select('order_id'))
+                    ->orWhereIn('id', Payment::withoutBrandScope()->unapplied()->select('order_id')),
+            ))
             ->when($request->filled('search'), function ($query) use ($request): void {
                 $term = '%'.$request->string('search')->trim().'%';
 
@@ -69,17 +91,41 @@ class OrderAdminController
             ->paginate($perPage)
             ->withQueryString();
 
+        $orderIds = $orders->getCollection()->pluck('id');
+
         $invoices = Invoice::withoutBrandScope()
-            ->whereIn('order_id', $orders->getCollection()->pluck('id'))
+            ->whereIn('order_id', $orderIds)
             ->get()
             ->keyBy('order_id');
 
-        $providerByOrder = Payment::latestProviderByOrder($orders->getCollection()->pluck('id'));
+        $providerByOrder = Payment::latestProviderByOrder($orderIds);
+
+        // Read for every view, not only the reversals one: a reversed order
+        // has to name its deadline wherever it is listed (ADR-0057 point 3).
+        // Both escape BrandScope per query, not just on the parent
+        // (`.ai/rules/app-modules-src.md`), and both are keyed by order so
+        // the rows stay two queries rather than two per row.
+        $reversalsByOrder = $this->reversalQuery()
+            ->whereIn('order_id', $orderIds)
+            ->orderByDesc('occurred_at')
+            ->get()
+            ->groupBy('order_id');
+
+        $unappliedByOrder = Payment::withoutBrandScope()
+            ->unapplied()
+            ->whereIn('order_id', $orderIds)
+            ->orderByDesc('received_at')
+            ->get()
+            ->unique('order_id')
+            ->keyBy('order_id');
 
         return Inertia::render('admin/orders/Index', [
-            'orders' => $orders->through(function (Order $order) use ($invoices, $providerByOrder): array {
+            'orders' => $orders->through(function (Order $order) use ($invoices, $providerByOrder, $reversalsByOrder, $unappliedByOrder): array {
                 /** @var Invoice|null $invoice */
                 $invoice = $invoices->get($order->id);
+
+                /** @var Payment|null $unapplied */
+                $unapplied = $unappliedByOrder->get($order->id);
 
                 return [
                     'id' => $order->getKey(),
@@ -91,6 +137,13 @@ class OrderAdminController
                     'totalGross' => $order->total_gross,
                     'taxTreatment' => $order->tax_treatment->value,
                     'provider' => $providerByOrder[$order->id] ?? null,
+                    'reversals' => $reversalsByOrder->get($order->id, collect())
+                        ->map(fn (PaymentReversal $reversal): array => OrderReversalData::ofReversal($reversal)->toArray())
+                        ->values()
+                        ->all(),
+                    'unappliedPayment' => $unapplied === null
+                        ? null
+                        : UnappliedPaymentData::ofPayment($unapplied)->toArray(),
                     'paidAt' => $order->paid_at?->format('Y-m-d H:i'),
                     'createdAt' => $order->created_at?->format('Y-m-d H:i'),
                     'invoice' => $invoice === null ? null : [
@@ -102,7 +155,7 @@ class OrderAdminController
                 ];
             }),
             'brands' => $this->brandOptions(),
-            'filters' => $this->currentFilters($request, $sort, $perPage, ['brand' => $brand]),
+            'filters' => $this->currentFilters($request, $sort, $perPage, ['brand' => $brand, 'view' => $view]),
         ]);
     }
 
@@ -122,6 +175,16 @@ class OrderAdminController
         $invoice = Invoice::withoutBrandScope()->where('order_id', $model->getKey())->first();
 
         $provider = Payment::latestProviderByOrder([$model->getKey()])->get($model->getKey());
+
+        // ADR-0057 point 9 / #6: a succeeded payment on an order that is not
+        // paid. What to do about it is the operator's decision, so the page
+        // states the fact and offers no button.
+        /** @var Payment|null $unapplied */
+        $unapplied = Payment::withoutBrandScope()
+            ->unapplied()
+            ->where('order_id', $model->getKey())
+            ->orderByDesc('received_at')
+            ->first();
 
         return Inertia::render('admin/orders/Show', [
             'order' => [
@@ -186,6 +249,20 @@ class OrderAdminController
                 ])
                 ->values()
                 ->all(),
+            // ADR-0057 point 8. Every row the order has, withdrawn disputes
+            // included: the console is where an operator reconstructs what
+            // the provider did, and a won dispute is part of that story —
+            // unlike the index list, which shows only what is still owed.
+            'reversals' => PaymentReversal::withoutBrandScope()
+                ->where('order_id', $model->getKey())
+                ->orderByDesc('occurred_at')
+                ->get()
+                ->map(fn (PaymentReversal $reversal): array => OrderReversalData::ofReversal($reversal)->toArray())
+                ->values()
+                ->all(),
+            'unappliedPayment' => $unapplied === null
+                ? null
+                : UnappliedPaymentData::ofPayment($unapplied)->toArray(),
             'creditNotes' => CreditNote::withoutBrandScope()
                 ->where('order_id', $model->getKey())
                 ->orderByDesc('created_at')
@@ -205,6 +282,24 @@ class OrderAdminController
     }
 
     /**
+     * The reversals an operator still has to act on (ADR-0057 point 8): a
+     * dispute the provider has not decided, and every reversal that took
+     * the money for good. A withdrawn one moved no money and is no task,
+     * which is why the list is a status pair rather than "all rows".
+     *
+     * Escapes BrandScope on its own, per `.ai/rules/app-modules-src.md`:
+     * the admin host hardens the scope to nothing and a subquery is no
+     * exception.
+     *
+     * @return Builder<PaymentReversal>
+     */
+    private function reversalQuery(): Builder
+    {
+        return PaymentReversal::withoutBrandScope()
+            ->whereIn('status', [ReversalStatus::Open->value, ReversalStatus::Final->value]);
+    }
+
+    /**
      * Book a manual payment — an organizer marking a bank transfer as
      * received (SPEC.md "Owns"). Deliberately a separate capability from
      * order viewing (ADR-0013).
@@ -221,6 +316,112 @@ class OrderAdminController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Payment booked.')]);
 
         // Back to wherever the booking happened — index dialog or detail page.
+        return back();
+    }
+
+    /**
+     * The operator's manual "cancel now" for a reversed order whose payment
+     * never came back (ADR-0057 point 4): `commerce:cancel-unpaid-reversals`
+     * does the same thing automatically once `repay_due_on` passes, this
+     * lets the operator do it earlier. Same capability as booking a
+     * payment — both are treasury actions on a reversed order.
+     *
+     * `CancelOrderForUnpaidReversal` does not re-guard a checked-in
+     * admission the way the sweep does (its own docblock: "An operator who
+     * cancels by hand has already made that judgement", the same principle
+     * `RefundBlockedByCheckInException` states for the refund path —
+     * cancellation is never blocked, only the money flow). This controller
+     * adds no guard of its own; the Action's refusal — only a
+     * `payment_reversed` order can be cancelled this way — becomes a form
+     * error rather than a 500, the shape `CommentController::store` uses.
+     */
+    public function cancelReversed(string $order, Request $request, CancelOrderForUnpaidReversal $cancel): RedirectResponse
+    {
+        Gate::authorize(Permission::BookManualPayment->value);
+
+        /** @var Order $model */
+        $model = Order::withoutBrandScope()->findOrFail($order);
+
+        try {
+            $cancel->handle($model, (string) $request->user()->getAuthIdentifier());
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['order' => $e->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Order cancelled.')]);
+
+        return back();
+    }
+
+    /**
+     * Send the money back for the whole order (#73, ADR-0037). Until now
+     * `RefundOrder` was reachable only from tests and tinker; this is the
+     * console surface the issue's first open item asks for.
+     *
+     * Whole order, no amount: `RefundOrder` accepts a partial one, but a
+     * partial credit note still splits the tax like the full invoice (#7),
+     * so the button that exists is the one that produces a correct
+     * document. Transfers and seat release are the issue's other items.
+     *
+     * Its own capability, deliberately not `BookManualPayment`: taking
+     * money in and giving it back are different decisions (ADR-0013,
+     * SPEC.md "Capabilities").
+     *
+     * Every refusal the Action makes is a `RuntimeException` carrying the
+     * reason — the ADR-0037 check-in guard, "only a paid order can be
+     * refunded", and each adapter's "no refundable payment on this
+     * account". They become a form error rather than a 500, the shape
+     * `cancelReversed()` above uses: the operator is told what to do about
+     * it (check the admission out, book the payment first), which is the
+     * whole point of ADR-0037 refusing "explicitly and with a reason".
+     */
+    public function refund(
+        string $order,
+        RefundOrderData $data,
+        RefundOrder $refundOrder,
+        AuditRecorder $auditRecorder,
+    ): RedirectResponse {
+        Gate::authorize(Permission::IssueRefunds->value);
+
+        /** @var Order $model */
+        $model = Order::withoutBrandScope()->findOrFail($order);
+
+        try {
+            $refundOrder->handle(
+                order: $model,
+                reasonCode: $data->reasonCode->value,
+                reasonNote: $data->reasonNote,
+            );
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['order' => $e->getMessage()]);
+        }
+
+        // The explicit half of the audit trail (Round 6, D-BATCH), the same
+        // call `SettlementAccountAdminController::saveStripeSettings()`
+        // makes: `OrderRefunded` is no `AuditableEvent`, so nothing else
+        // would record *who* sent the full gross of an order back. #73's
+        // "jeder Vorgang erzeugt einen Audit-Eintrag" wants this for the
+        // whole flow; this is the refund's share of it.
+        //
+        // After the Action, never inside it: an audit write is not a
+        // business transaction and must not take part in a rollback
+        // (`AuditRecorder`'s own docblock). The reason and the note are
+        // recorded here in full — this row, not the credit note's document,
+        // is where an operator later reads why the money went back.
+        $auditRecorder->record(
+            action: 'commerce.order.refunded',
+            subjectId: $model->getKey(),
+            brandId: $model->brand_id,
+            context: [
+                'reason_code' => $data->reasonCode->value,
+                'reason_note' => $data->reasonNote,
+                'amount' => (string) $model->total_gross,
+                'currency' => $model->currency,
+            ],
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Order refunded.')]);
+
         return back();
     }
 }

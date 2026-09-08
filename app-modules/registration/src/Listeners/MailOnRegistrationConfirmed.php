@@ -20,6 +20,13 @@ use Konventix\Registration\Models\Registration;
  * re-reads the registration the same way the other four do: the mail names
  * the type, not a line-by-line grant breakdown that duplicates the "my
  * registrations" page.
+ *
+ * The re-read is also what makes `cartFields()` work (#210): with the shop
+ * on, Commerce has just taken this registration's `instant` settlement into
+ * the registrant's cart and `RecordCartHoldOnLinePlaced` has stamped the
+ * hold's deadline on the row — `ConfirmRegistration` requests the
+ * settlement before it announces the confirmation for exactly this reason.
+ * On every other path both fields are null and the mail reads as before.
  */
 final class MailOnRegistrationConfirmed
 {
@@ -39,8 +46,12 @@ final class MailOnRegistrationConfirmed
             return;
         }
 
+        $cart = $this->mailer->cartFields($registration);
+
         $this->mailer->send($registration, 'registration.confirmed', new RegistrationMailData(
             ...$this->mailer->commonFields($registration),
+            cartUrl: $cart['cartUrl'],
+            cartHoldExpiresAt: $cart['cartHoldExpiresAt'],
         ));
     }
 }

@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Database\Factories\PaymentFactory;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
@@ -77,6 +81,52 @@ class Payment extends Model
             ->where('provider', $provider)
             ->where('external_id', $externalId)
             ->first();
+    }
+
+    /**
+     * The row a reversal notification refers to (ADR-0057 point 7). Stripe
+     * signs a dispute or a refund against the *payment intent*, not the
+     * checkout session that started it, and `provider_transaction_id` is
+     * where that intent was recorded at settlement. Escapes BrandScope for
+     * the reason `forProviderPayment` does.
+     */
+    public static function forProviderTransaction(string $provider, string $transactionId): ?self
+    {
+        return self::withoutBrandScope()
+            ->where('provider', $provider)
+            ->where('provider_transaction_id', $transactionId)
+            ->first();
+    }
+
+    /**
+     * Money that arrived for an order that cannot take it (ADR-0057
+     * point 9, #6): the payment succeeded and its order is `cancelled` —
+     * a PSP success that landed after `ExpireCarts`' checkout-grace sweep
+     * had already called the order off.
+     *
+     * **Not every order that is not `paid`.** A `refunded` order's payment
+     * also stays `succeeded`, but that money went back to the payer on
+     * purpose (ADR-0037) and is nothing for an operator to apply; listing
+     * it beside genuine late money would bury the cases that need a
+     * decision. A `payment_reversed` order is a receivable, not unapplied
+     * money, and `pending` means the payment is not succeeded at all.
+     *
+     * `PaymentUnapplied` announces the moment and is emitted under exactly
+     * this condition; this scope finds every case, including the ones that
+     * predate the event.
+     *
+     * @param  Builder<Payment>  $query
+     * @return Builder<Payment>
+     */
+    public function scopeUnapplied(Builder $query): Builder
+    {
+        return $query
+            ->where('status', PaymentStatus::Succeeded)
+            ->whereExists(fn (QueryBuilder $orders): QueryBuilder => $orders
+                ->select(DB::raw('1'))
+                ->from('orders')
+                ->whereColumn('orders.id', 'payments.order_id')
+                ->where('orders.status', OrderStatus::Cancelled->value));
     }
 
     public function isSettled(): bool

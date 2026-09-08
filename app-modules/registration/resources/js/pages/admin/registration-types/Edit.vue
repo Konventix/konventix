@@ -36,11 +36,90 @@ type Props = {
     events: { id: string; name: string; brandId: string }[];
     quotas: { id: string; name: string; capacity: number; consumed: number }[];
     options: Record<string, string[]>;
+    eventPageUrl: string | null;
     registrations: number;
     termsFrozen: boolean;
+    appTimezone: string;
 };
 
 const props = defineProps<Props>();
+
+/**
+ * `datetime-local` wants `YYYY-MM-DDTHH:MM`; the backend sends and accepts a
+ * plain `Y-m-d H:i:s` datetime string (#202's round trip, the same pair the
+ * policy-version form uses). Converting in both directions here keeps the
+ * Data object free of a browser input's formatting quirk, and keeps the
+ * string an instant rather than shifting it through a Date object.
+ */
+function toLocalInput(value: string | null): string {
+    return value === null ? '' : value.replace(' ', 'T').slice(0, 16);
+}
+
+function toInstant(value: string): string | null {
+    return value === '' ? null : `${value.replace('T', ' ')}:00`;
+}
+
+/**
+ * The window is stored as an instant in the application's timezone, and the
+ * value typed here is sent verbatim — so the operator is typing that clock,
+ * not their own. Every browser labels a `datetime-local` control as local
+ * time and says nothing about which zone that is, so the form names the
+ * application's zone on each field and echoes the value back in the
+ * operator's own zone underneath. Without that, someone in Europe/Berlin
+ * types 18:00 and the landing page announces 20:00 to them.
+ *
+ * The arithmetic reads `props.appTimezone` rather than assuming UTC (fix
+ * round 2, review finding N3): `config('app.timezone')` is a config value,
+ * and the hint would otherwise lie the moment it changed. `zonedWallClock()`
+ * reads an instant's wall clock in a named zone as if it were UTC, which
+ * gives the zone's offset at that moment by subtraction — one iteration,
+ * which can be off by an hour for a time inside a DST transition. That is
+ * acceptable in a hint that only ever explains the value beside it.
+ */
+const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+function zonedWallClock(instant: number, timeZone: string): number {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        hour12: false,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    }).formatToParts(new Date(instant));
+
+    const at = (type: string): string =>
+        parts.find((part) => part.type === type)?.value ?? '00';
+    const hour = at('hour') === '24' ? '00' : at('hour');
+
+    return Date.parse(
+        `${at('year')}-${at('month')}-${at('day')}T${hour}:${at('minute')}:${at('second')}Z`,
+    );
+}
+
+function inBrowserTimezone(value: string): string {
+    if (value === '') {
+        return '';
+    }
+
+    const wallClock = Date.parse(`${value.replace(' ', 'T')}:00Z`);
+
+    if (Number.isNaN(wallClock)) {
+        return '';
+    }
+
+    const offset = wallClock - zonedWallClock(wallClock, props.appTimezone);
+
+    return new Date(wallClock + offset).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    });
+}
+
+const salesStartLocal = computed(() => inBrowserTimezone(form.salesStart));
+const salesEndLocal = computed(() => inBrowserTimezone(form.salesEnd));
 
 const form = useForm({
     eventId: props.type.eventId,
@@ -55,6 +134,8 @@ const form = useForm({
         ? { ...props.type.priceDeclaration }
         : null,
     quotaIds: [...props.type.quotaIds],
+    salesStart: toLocalInput(props.type.salesStart),
+    salesEnd: toLocalInput(props.type.salesEnd),
 });
 
 useUnsavedChanges(() => form.isDirty);
@@ -95,7 +176,11 @@ function toggleQuota(quotaId: string, checked: boolean): void {
 }
 
 function submit(): void {
-    form.put(updateType(props.type.id).url, { preserveScroll: true });
+    form.transform((data) => ({
+        ...data,
+        salesStart: toInstant(data.salesStart),
+        salesEnd: toInstant(data.salesEnd),
+    })).put(updateType(props.type.id).url, { preserveScroll: true });
 }
 </script>
 
@@ -181,6 +266,41 @@ function submit(): void {
                                     </option>
                                 </select>
                                 <InputError :message="form.errors.visibility" />
+                                <p class="text-sm text-text-muted">
+                                    <template
+                                        v-if="form.visibility === 'public'"
+                                        >This type is offered on the event's own
+                                        public page, never in the shop, and
+                                        appears there as soon as you
+                                        save.</template
+                                    >
+                                    <template
+                                        v-else-if="
+                                            form.visibility === 'invite_only'
+                                        "
+                                        >This type is not offered on the event's
+                                        public page. It is reachable by
+                                        invitation only — an invited person gets
+                                        their own link.</template
+                                    >
+                                    <template v-else
+                                        >This type is not offered on the event's
+                                        public page. It is reachable only by
+                                        someone who has the link.</template
+                                    >
+                                    <a
+                                        v-if="
+                                            props.eventPageUrl &&
+                                            form.visibility === 'public'
+                                        "
+                                        :href="props.eventPageUrl"
+                                        target="_blank"
+                                        rel="noopener"
+                                        class="text-accent hover:underline"
+                                    >
+                                        Open the event page
+                                    </a>
+                                </p>
                             </div>
 
                             <div class="grid gap-2">
@@ -409,6 +529,67 @@ function submit(): void {
                         </template>
 
                         <InputError :message="form.errors.priceDeclaration" />
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Sales window</CardTitle>
+                    </CardHeader>
+                    <CardContent class="flex flex-col gap-4">
+                        <p class="text-sm text-text-muted">
+                            When this type may be bought. Leave a field empty
+                            for no bound — the start is inclusive, the end is
+                            not.
+                        </p>
+
+                        <div class="grid gap-2">
+                            <Label for="type-sales-start">Sale starts</Label>
+                            <Input
+                                id="type-sales-start"
+                                v-model="form.salesStart"
+                                type="datetime-local"
+                                aria-describedby="type-sales-start-hint"
+                            />
+                            <p
+                                id="type-sales-start-hint"
+                                class="text-xs text-text-muted"
+                            >
+                                Entered in {{ props.appTimezone }}.
+                                <template v-if="salesStartLocal">
+                                    = {{ salesStartLocal }} in
+                                    {{ browserTimezone }}.
+                                </template>
+                                Before this, the landing page announces the type
+                                instead of linking to it.
+                            </p>
+                            <InputError :message="form.errors.salesStart" />
+                        </div>
+
+                        <div class="grid gap-2">
+                            <Label for="type-sales-end">Sale ends</Label>
+                            <Input
+                                id="type-sales-end"
+                                v-model="form.salesEnd"
+                                type="datetime-local"
+                                aria-describedby="type-sales-end-hint"
+                            />
+                            <p
+                                id="type-sales-end-hint"
+                                class="text-xs text-text-muted"
+                            >
+                                Entered in {{ props.appTimezone }}.
+                                <template v-if="salesEndLocal">
+                                    = {{ salesEndLocal }} in
+                                    {{ browserTimezone }}.
+                                </template>
+                                Must be after the start. After it, the type
+                                disappears from the landing page and a new
+                                submission is refused; a cart line already
+                                placed stays payable.
+                            </p>
+                            <InputError :message="form.errors.salesEnd" />
+                        </div>
                     </CardContent>
                 </Card>
 

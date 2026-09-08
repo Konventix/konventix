@@ -20,8 +20,10 @@ import {
     stripe as connectStripe,
     unzer as connectUnzer,
 } from '@/routes/admin/settlement-accounts';
+import CommerceBrandSettingsCard from '../../../components/admin/CommerceBrandSettingsCard.vue';
 import SettlementAccountCard from '../../../components/admin/SettlementAccountCard.vue';
 import type { SettlementAccount } from '../../../components/admin/SettlementAccountCard.vue';
+import StripeAccountCard from '../../../components/admin/StripeAccountCard.vue';
 
 /**
  * Where each brand's money goes (ADR-0007/ADR-0039/ADR-0046). A brand may
@@ -39,7 +41,9 @@ type Props = {
         name: string;
         accounts: SettlementAccount[];
         connectableProviders: Provider[];
+        commerceSettings: Konventix.Commerce.Data.CommerceBrandSettingsData;
     }[];
+    stripeSetup: Konventix.Commerce.Data.StripeSetupData;
 };
 
 const providerLabels: Record<Provider, string> = {
@@ -58,7 +62,8 @@ const form = useForm({
     // error had nowhere to land otherwise.
     brand_id: '',
     provider: 'stripe' as Provider,
-    contact_email: '',
+    checkout_label: '',
+    statement_descriptor_suffix: '',
     api_key: '',
     private_key: '',
 });
@@ -87,7 +92,8 @@ function submitConnect(): void {
     if (form.provider === 'stripe') {
         form.transform((data) => ({
             brand_id: brandId,
-            contact_email: data.contact_email,
+            checkout_label: data.checkout_label,
+            statement_descriptor_suffix: data.statement_descriptor_suffix,
         })).post(connectStripe().url, done);
     } else if (form.provider === 'mollie') {
         form.transform((data) => ({
@@ -113,12 +119,19 @@ function submitConnect(): void {
         />
 
         <p class="max-w-2xl text-sm text-text-muted">
-            Money flows directly from the participant into the organizer's own
+            Money flows directly from the participant into the operator's own
             provider account — the platform never holds funds. A brand may
             connect several providers at once; the payer picks which one settles
             their order at checkout. A brand with no connected account settles
             manually.
         </p>
+
+        <!--
+            ADR-0058: Stripe is one account for the whole instance, so its
+            keys are set once, above the per-brand list rather than inside a
+            brand's connect dialog.
+        -->
+        <StripeAccountCard :setup="props.stripeSetup" />
 
         <Card
             v-for="brand in props.brands"
@@ -141,6 +154,7 @@ function submitConnect(): void {
                     v-for="account in brand.accounts"
                     :key="account.id"
                     :account="account"
+                    :stripe-setup="props.stripeSetup"
                 />
 
                 <template v-if="brand.connectableProviders.length > 0">
@@ -149,10 +163,36 @@ function submitConnect(): void {
                             class="flex max-w-md flex-col gap-4"
                             @submit.prevent="submitConnect"
                         >
+                            <!--
+                                `brand_id` is set by `transform()` and never
+                                typed, so its error belongs to the form rather
+                                than to a field — announced, not silently
+                                attached to nothing.
+                            -->
+                            <p
+                                v-if="form.errors.brand_id"
+                                role="alert"
+                                class="rounded-md border border-danger p-3 text-sm font-medium text-danger"
+                            >
+                                {{ form.errors.brand_id }}
+                            </p>
+
                             <div class="flex flex-col gap-2">
                                 <Label for="provider">Provider</Label>
                                 <Select v-model="form.provider">
-                                    <SelectTrigger id="provider">
+                                    <SelectTrigger
+                                        id="provider"
+                                        :aria-invalid="
+                                            form.errors.provider
+                                                ? true
+                                                : undefined
+                                        "
+                                        :aria-describedby="
+                                            form.errors.provider
+                                                ? 'provider-error'
+                                                : undefined
+                                        "
+                                    >
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -165,29 +205,100 @@ function submitConnect(): void {
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
+                                <InputError
+                                    id="provider-error"
+                                    :message="form.errors.provider"
+                                />
                             </div>
 
-                            <div
-                                v-if="form.provider === 'stripe'"
-                                class="flex flex-col gap-2"
-                            >
-                                <Label for="contact_email"
-                                    >Contact email for the Stripe account</Label
-                                >
-                                <Input
-                                    id="contact_email"
-                                    v-model="form.contact_email"
-                                    type="email"
-                                    autocomplete="off"
-                                />
-                                <InputError
-                                    :message="form.errors.contact_email"
-                                />
-                                <p class="text-xs text-text-muted">
-                                    Connecting opens Stripe's hosted onboarding
-                                    for the organizer's own account.
+                            <!--
+                                ADR-0058 point 3: enabling Stripe for a
+                                brand asks for nothing Stripe has to
+                                confirm — only the words the payer sees.
+                            -->
+                            <template v-if="form.provider === 'stripe'">
+                                <p class="text-sm text-text-muted">
+                                    This brand will settle through the Stripe
+                                    account set above — no separate account, no
+                                    onboarding. Enable it and the button appears
+                                    at checkout as soon as a key is configured.
                                 </p>
-                            </div>
+
+                                <div class="flex flex-col gap-2">
+                                    <Label for="checkout_label"
+                                        >Checkout button label (optional)</Label
+                                    >
+                                    <Input
+                                        id="checkout_label"
+                                        v-model="form.checkout_label"
+                                        type="text"
+                                        autocomplete="off"
+                                        placeholder="Card, Apple Pay, Google Pay"
+                                        :aria-invalid="
+                                            form.errors.checkout_label
+                                                ? true
+                                                : undefined
+                                        "
+                                        :aria-describedby="
+                                            form.errors.checkout_label
+                                                ? 'checkout_label-error'
+                                                : undefined
+                                        "
+                                    />
+                                    <InputError
+                                        id="checkout_label-error"
+                                        :message="form.errors.checkout_label"
+                                    />
+                                </div>
+
+                                <div class="flex flex-col gap-2">
+                                    <Label for="statement_descriptor_suffix"
+                                        >Statement descriptor suffix
+                                        (optional)</Label
+                                    >
+                                    <Input
+                                        id="statement_descriptor_suffix"
+                                        v-model="
+                                            form.statement_descriptor_suffix
+                                        "
+                                        type="text"
+                                        maxlength="10"
+                                        autocomplete="off"
+                                        placeholder="SXLAN"
+                                        :aria-invalid="
+                                            form.errors
+                                                .statement_descriptor_suffix
+                                                ? true
+                                                : undefined
+                                        "
+                                        :aria-describedby="
+                                            form.errors
+                                                .statement_descriptor_suffix
+                                                ? 'statement_descriptor_suffix-error'
+                                                : undefined
+                                        "
+                                    />
+                                    <InputError
+                                        id="statement_descriptor_suffix-error"
+                                        :message="
+                                            form.errors
+                                                .statement_descriptor_suffix
+                                        "
+                                    />
+                                    <p class="text-xs text-text-muted">
+                                        What the payer reads on their card
+                                        statement, so it names this brand rather
+                                        than the operator. Stripe prepends the
+                                        account's own prefix and caps the two
+                                        together at 22 characters, refusing the
+                                        payment if they overflow — so ten
+                                        characters is what fits beside the
+                                        longest prefix Stripe allows. Shorten
+                                        the prefix in the Stripe dashboard if
+                                        you need more room here.
+                                    </p>
+                                </div>
+                            </template>
 
                             <div
                                 v-if="form.provider === 'mollie'"
@@ -199,8 +310,19 @@ function submitConnect(): void {
                                     v-model="form.api_key"
                                     type="password"
                                     autocomplete="off"
+                                    :aria-invalid="
+                                        form.errors.api_key ? true : undefined
+                                    "
+                                    :aria-describedby="
+                                        form.errors.api_key
+                                            ? 'api_key-error'
+                                            : undefined
+                                    "
                                 />
-                                <InputError :message="form.errors.api_key" />
+                                <InputError
+                                    id="api_key-error"
+                                    :message="form.errors.api_key"
+                                />
                             </div>
 
                             <div
@@ -215,20 +337,32 @@ function submitConnect(): void {
                                     v-model="form.private_key"
                                     type="password"
                                     autocomplete="off"
+                                    :aria-invalid="
+                                        form.errors.private_key
+                                            ? true
+                                            : undefined
+                                    "
+                                    :aria-describedby="
+                                        form.errors.private_key
+                                            ? 'private_key-error'
+                                            : undefined
+                                    "
                                 />
                                 <InputError
+                                    id="private_key-error"
                                     :message="form.errors.private_key"
                                 />
                             </div>
-
-                            <InputError :message="form.errors.brand_id" />
-                            <InputError :message="form.errors.provider" />
 
                             <div class="flex items-center gap-3">
                                 <Button
                                     type="submit"
                                     :disabled="form.processing"
-                                    >Connect</Button
+                                    >{{
+                                        form.provider === 'stripe'
+                                            ? 'Enable Stripe'
+                                            : 'Connect'
+                                    }}</Button
                                 >
                                 <Button
                                     type="button"
@@ -257,6 +391,16 @@ function submitConnect(): void {
                         Connect a provider
                     </Button>
                 </template>
+
+                <!--
+                    ADR-0057 point 4: the repayment window for money that
+                    left again through one of the accounts above.
+                -->
+                <hr class="border-border" />
+                <CommerceBrandSettingsCard
+                    :brand-id="brand.id"
+                    :settings="brand.commerceSettings"
+                />
             </CardContent>
         </Card>
     </div>

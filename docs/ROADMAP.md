@@ -140,7 +140,8 @@ interleave.
    ADR-0037 prerequisite), event-day validity, claim links (ADR-0032),
    `BadgeTemplate` + PDF rendering (D-ADM-05).
 6. Offline entrance client (ADR-0002 carve-out) — new work, not a port.
-7. Commerce completion: Stripe Connect Standard + Mollie adapters,
+7. Commerce completion: Stripe (this instance's own account, ADR-0058) +
+   Mollie adapters,
    `SettlementAccount`, public checkout for `instant`, dunning, refunds +
    credit notes (blocked-by-check-in per ADR-0037; credit notes also serve
    ADR-0036 transfer), bookkeeping export.
@@ -498,6 +499,9 @@ in the owning module's `TODO.md` when it lands.
     into a list, and the Stripe `card_payments.status` check Commerce's
     `TODO.md` owes becomes the rule for whether a method is *offered*, not
     only whether it is connected.
+    (Superseded for Stripe by ADR-0058/#215: with Connect removed there is
+    no `card_payments` capability to read — a Stripe row is offered when the
+    instance holds a Stripe secret key.)
     **Done** (ADR-0046).
 
 24. **The shop: products, a cart, and a door for the rush.** Commerce
@@ -559,6 +563,9 @@ in the owning module's `TODO.md` when it lands.
     full 1,000-VU profile; k6's own threshold keeps 1% for real
     infrastructure. The fix belongs to a later infrastructure task (more
     Octane workers behind a real load balancer, not a dev compose file).
+    **#218 done:** sales windows per registration type, refused at
+    submission and at the cart line. **#216 stays open:** arming the
+    waiting room from a sales window.
 
 25. **Profiles, and a page for them.** Identity for the account of
     record, Community for the page — which pulls Community forward from
@@ -682,7 +689,9 @@ Also deferred here by decision, not by omission:
 
 ## Standing constraints
 
-- BFSG accessibility: token contrast validation from the start (ADR-0008).
+- BFSG accessibility: token contrast validation from the start (ADR-0008);
+  the public flow targets WCAG 2.1 AA whether or not the operator is exempt
+  (ADR-0055).
   Enforced in two places: `UpdateBrandTheme` refuses a brand's save (it does
   not warn), and eslint's `konventix/no-palette-colors` refuses a raw palette
   utility in any Vue file — host or module.
@@ -711,6 +720,12 @@ so they are not rediscovered.
   filtering, announcement audience narrowing, suppression-list operator
   screens (the delivery log itself now has one, ADR-0048), provider bounce
   webhooks, a real-browser push pass. (Messaging's `TODO.md`.)
+- **The announcement fan-out ignores brand membership** (GitLab #25). ADR-0054
+  makes the membership the unit of every brand's audience; until #25 lands,
+  a deployment with more than one brand must not publish announcements to
+  `everyone` or `logged-in`. The auth surfaces that name the operator and
+  list its brands (#184) and the enumeration-safe registration (#18) are
+  Phase 2. (Identity's and Messaging's `TODO.md`.)
 - **`Data\OpeningPeriodData` carries no `#[TypeScript]` attribute**, so the
   venues form spells its shape out by hand and the two can drift. Add the
   attribute when the opening-times editor lands.

@@ -126,10 +126,12 @@ it('runs from the scheduled console command', function (): void {
 });
 
 it('refuses to invent an adapter for an unregistered provider', function (): void {
-    // Slice 7b registers Stripe and Mollie here; until then, asking for one
+    // Stripe, Mollie, Unzer and the manual sentinel are all registered
+    // (CommerceServiceProvider::registerSettlementAdapters) — 'paypal'
+    // names no adapter and never will from this test, so asking for it
     // must fail loudly rather than silently settle through something else.
-    expect(fn () => app(SettlementAdapterRegistry::class)->forProvider('stripe'))
-        ->toThrow(RuntimeException::class);
+    expect(fn () => app(SettlementAdapterRegistry::class)->forProvider('paypal'))
+        ->toThrow(RuntimeException::class, 'No settlement adapter is registered for provider [paypal]. Register one in a ServiceProvider before a brand can settle through it (ADR-0007).');
 });
 
 it('allows one live settlement account per provider per brand', function (): void {
@@ -143,4 +145,52 @@ it('allows one live settlement account per provider per brand', function (): voi
 
     expect(fn () => SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create())
         ->toThrow(QueryException::class);
+});
+
+/**
+ * ADR-0057 point 4: a reversed order's invoice is a receivable only once
+ * the deadline sweep hands it over. Until then the payer holds a mail that
+ * says the order stands until `repay_due_on`, and a Mahnung the next
+ * morning would contradict it — a PSP-paid invoice has `due_on = issued_on`
+ * (`IssueInvoice`, terms 0), so a chargeback six weeks later would
+ * otherwise arrive already at the top of the ladder.
+ */
+it('leaves a reversed order out of the dunning ladder until the sweep hands it over', function (): void {
+    $this->withBrand();
+
+    $invoice = dunningTestInvoice(daysOverdue: 30, status: OrderStatus::PaymentReversed);
+
+    Event::fake([InvoiceOverdue::class, DunningLevelRaised::class]);
+
+    expect(app(RaiseDunningLevel::class)->handle())->toBe(['overdue' => 0, 'raised' => 0])
+        ->and($invoice->fresh()->dunning_level)->toBe(0)
+        ->and($invoice->fresh()->overdue_at)->toBeNull();
+
+    Event::assertNotDispatched(InvoiceOverdue::class);
+    Event::assertNotDispatched(DunningLevelRaised::class);
+});
+
+it('climbs a handed-over reversal from the deadline it missed, not from the invoice date', function (): void {
+    $this->withBrand();
+
+    // Thirty days past `due_on`, but `CancelUnpaidReversals::handToDunning()`
+    // only wrote `overdue_at` eight days ago — the deadline the payer
+    // actually missed. Counting from `due_on` would be level 3 at once.
+    $invoice = dunningTestInvoice(daysOverdue: 30, status: OrderStatus::PaymentReversed);
+    $invoice->forceFill(['overdue_at' => now()->subDays(8)])->save();
+
+    Event::fake([InvoiceOverdue::class, DunningLevelRaised::class]);
+
+    expect(app(RaiseDunningLevel::class)->handle())->toBe(['overdue' => 0, 'raised' => 1])
+        ->and($invoice->fresh()->dunning_level)->toBe(1);
+
+    // `InvoiceOverdue` fires once per invoice off `overdue_at`, and the
+    // hand-off already set it: the fact is not new.
+    Event::assertNotDispatched(InvoiceOverdue::class);
+    Event::assertDispatched(
+        DunningLevelRaised::class,
+        fn (DunningLevelRaised $e): bool => $e->invoiceId === $invoice->id
+            && $e->level === 1
+            && $e->daysOverdue === 8,
+    );
 });

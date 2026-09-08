@@ -9,8 +9,14 @@ use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Events\CartLineExpired;
 use Konventix\Commerce\Events\CartLineRemoved;
 use Konventix\Commerce\Events\InvoiceIssued;
+use Konventix\Commerce\Events\OrderCancelled;
+use Konventix\Commerce\Events\OrderLineCancelled;
+use Konventix\Commerce\Events\OrderLineReversed;
 use Konventix\Commerce\Events\OrderLineSettled;
 use Konventix\Commerce\Events\OrderPaid;
+use Konventix\Commerce\Events\OrderRefunded;
+use Konventix\Commerce\Events\PaymentReversed;
+use Konventix\Commerce\Events\RegistrationLinePlacedInCart;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
@@ -36,6 +42,8 @@ use Konventix\Registration\Events\RegistrationRejected;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Gdpr\RegistrationGdprHandler;
 use Konventix\Registration\Listeners\CancelPendingRegistrationOnCartLineGone;
+use Konventix\Registration\Listeners\CancelRegistrationOnOrderLineCancelled;
+use Konventix\Registration\Listeners\CancelRegistrationOnOrderUndone;
 use Konventix\Registration\Listeners\MailOnRegistrationApproved;
 use Konventix\Registration\Listeners\MailOnRegistrationCancelled;
 use Konventix\Registration\Listeners\MailOnRegistrationConfirmed;
@@ -45,8 +53,11 @@ use Konventix\Registration\Listeners\MarkInvoicedOnInvoiceIssued;
 use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Listeners\ProjectRegistrant;
 use Konventix\Registration\Listeners\PromoteOnQuotaReleased;
+use Konventix\Registration\Listeners\RecordCartHoldOnLinePlaced;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderLineSettled;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
+use Konventix\Registration\Listeners\RecordReversalOnOrderLineReversed;
+use Konventix\Registration\Listeners\RecordReversalOnPaymentReversed;
 use Konventix\Registration\Models\RegistrationType;
 
 /**
@@ -101,6 +112,24 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // whose lines `OrderPaid` alone cannot tell apart.
         Event::listen(OrderLineSettled::class, RecordPaymentOnOrderLineSettled::class);
 
+        // ADR-0057 point 5: a settled payment that left again revives the
+        // receivable — `payment_status` back to pending — while the seat and
+        // its quota stay held until the repayment deadline. The per-line twin
+        // is a cart order's, exactly as with `OrderLineSettled`.
+        Event::listen(PaymentReversed::class, RecordReversalOnPaymentReversed::class);
+        Event::listen(OrderLineReversed::class, RecordReversalOnOrderLineReversed::class);
+
+        // ADR-0057 point 5: the order no longer stands at all — the deadline
+        // passed (`reversal_unpaid`) or the whole order was refunded — so the
+        // contractual act ends too, releasing the quota to the waitlist.
+        Event::listen(OrderCancelled::class, CancelRegistrationOnOrderUndone::class);
+        Event::listen(OrderRefunded::class, CancelRegistrationOnOrderUndone::class);
+
+        // The per-line twin, for a cart order the sweep cancelled: the
+        // order-level event cannot say which of its lines to cancel, exactly
+        // as `OrderPaid` cannot say which of them to confirm.
+        Event::listen(OrderLineCancelled::class, CancelRegistrationOnOrderLineCancelled::class);
+
         // D-REG-12: a freed quota unit promotes the oldest queued waitlist
         // entry — including units released by expired offers, which is what
         // makes the queue drain itself.
@@ -108,6 +137,11 @@ class RegistrationServiceProvider extends ModuleServiceProvider
 
         // ADR-0036: billing party freezes at first invoice.
         Event::listen(InvoiceIssued::class, MarkInvoicedOnInvoiceIssued::class);
+
+        // #210: the sibling on creation — a settlement that went into the
+        // cart instead of into an order, so the confirmation mail can name
+        // the cart and its hold without reading Commerce's tables.
+        Event::listen(RegistrationLinePlacedInCart::class, RecordCartHoldOnLinePlaced::class);
 
         // ADR-0047 point 3: a cart line that dies — expired or removed —
         // cancels the still-pending registration it was holding.
@@ -425,6 +459,9 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @else
                     <p>Ihre Anmeldung ({{ $registrationTypeName }}) ist bestätigt.</p>
                     @endif
+                    @isset($cartUrl)
+                    <p>Die Zahlung läuft über Ihren <a href="{{ $cartUrl }}">Warenkorb</a>. Ihr Platz ist dort bis {{ $cartHoldExpiresAt }} reserviert — danach wird die Reservierung freigegeben.</p>
+                    @endisset
                     <p>Alles Weitere (Einlass, Unterlagen) finden Sie auf Ihrer <a href="{{ $registrationUrl }}">Anmeldeseite</a>.</p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -438,6 +475,9 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     @else
                     <p>Your registration ({{ $registrationTypeName }}) is confirmed.</p>
                     @endif
+                    @isset($cartUrl)
+                    <p>Payment goes through your <a href="{{ $cartUrl }}">cart</a>. Your place is reserved there until {{ $cartHoldExpiresAt }} — after that the reservation is released.</p>
+                    @endisset
                     <p>Everything else (admission, documents) is on your <a href="{{ $registrationUrl }}">registration page</a>.</p>
                     BLADE,
             ],
@@ -447,6 +487,8 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 'eventName' => 'SXLan 2026',
                 'registrationTypeName' => 'Teilnehmer-Ticket',
                 'registrationUrl' => 'https://example.test/my/registrations/abc123',
+                'cartUrl' => 'https://example.test/cart',
+                'cartHoldExpiresAt' => '08.09.2026 00:30 UTC',
             ],
         ));
 
@@ -568,6 +610,13 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     // someone who does not hold one (D-COM-02).
                     ->where('event_id', $context['eventId'])
                     ->where('visibility', RegistrationVisibility::Public)
+                    // #218: a sale that is over drops off the page entirely —
+                    // linking to a form `SubmitRegistration` now refuses is
+                    // worse than saying nothing. A sale that has not started
+                    // stays, announced rather than linked, so the page can
+                    // carry the "sale starts" date a visitor came for. The
+                    // rule itself lives on the model, next to `isOnSale()`.
+                    ->saleNotOver()
                     ->orderBy('name')
                     ->get()
                     ->map(fn (RegistrationType $type): array => PublicOfferData::ofType($type)->toArray())

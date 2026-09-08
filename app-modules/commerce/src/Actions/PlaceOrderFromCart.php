@@ -39,6 +39,20 @@ use Konventix\Platform\Operators\OperatorSettings;
  * leaves a stray pending order behind — a later retry with a good account
  * still finds nothing to reuse, since no order was ever placed.
  *
+ * **The sales window is deliberately NOT re-checked here** (#218, fix round
+ * 1). A registration line is only ever placed while its sale is open
+ * (`PlaceRegistrationLineInCart`), and the registration it settles already
+ * exists and already holds its quota. Refusing the checkout of a line that
+ * was placed legitimately would leave the payer owing something they cannot
+ * pay — the same reasoning that leaves the resumed-order branch below
+ * unguarded — and it would fire on the helpful case too: an operator who
+ * extends `sales_end` for stragglers would see every cart placed before the
+ * edit refuse with a 409 nobody can explain, because the line's window is a
+ * snapshot no later edit reaches. The cart's own hold (twenty minutes, plus
+ * a sixty-minute checkout grace) is what bounds a line's life; `ExpireCarts`
+ * enforces it. The snapshot on the line stays for audit and reconciliation
+ * only — nothing renders it.
+ *
  * `TaxCalculator::calculate()` runs with no billing party at all
  * (`billingVatId`/`billingCountryCode` both null): a cart has no invoice
  * recipient the way an `invoice`-settled registration does, so this always

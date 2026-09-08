@@ -12,6 +12,7 @@ use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
+use Konventix\Admission\Listeners\RevokeAdmissionsOnRegistrationCancelled;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventReentryPolicyChanged;
@@ -19,6 +20,7 @@ use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Events\RegistrationAmended;
+use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Staffing\Events\AssignmentAccepted;
 
@@ -63,8 +65,8 @@ class AdmissionServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * `RegistrationConfirmed` is imported from Registration's `Events\`
-     * namespace — the one exempted case (ADR-0004); see
+     * `RegistrationConfirmed` and `RegistrationCancelled` are imported from
+     * Registration's `Events\` namespace — the exempted case (ADR-0004); see
      * `IssueAdmissionsOnRegistrationConfirmed`'s docblock and
      * `tests/RegistrationCommerceImportBoundaryTest.php`.
      */
@@ -80,6 +82,15 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(
             RegistrationAmended::class,
             IssueAdmissionsOnRegistrationAmended::class,
+        );
+
+        // ADR-0057 point 6: the contractual act ended, so the access rights it
+        // produced end with it. This is the only cancellation path into this
+        // module — there is deliberately no listener on `PaymentReversed`,
+        // because a door that evaluates money is ADR-0005's prohibition.
+        Event::listen(
+            RegistrationCancelled::class,
+            RevokeAdmissionsOnRegistrationCancelled::class,
         );
 
         // Admission's read model of the two Event facts the door must decide

@@ -17,8 +17,15 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * Deliberately narrower than `RegistrationFormData`: `confirmationGate` and
  * `termsDays` describe what happens *after* someone commits, and a landing
  * page that recites them is answering a question nobody has asked yet. What
- * survives is what decides a click — the name, the price, and whether a
- * reviewer stands between the form and a place at the event.
+ * survives is what decides a click — the name, the price, whether a
+ * reviewer stands between the form and a place at the event, and since #218
+ * whether it is on sale at all.
+ *
+ * `salesStart` is an ISO-8601 instant rather than a formatted date: the
+ * announcement reads in the visitor's own timezone, which only the browser
+ * knows (the slot renders server-side for a page anyone in the world may
+ * open). A type whose sale has *ended* never reaches this class — the slot
+ * drops it — so `onSale: false` always means "not yet".
  */
 #[TypeScript]
 final class PublicOfferData extends Data
@@ -29,6 +36,8 @@ final class PublicOfferData extends Data
         public readonly string $url,
         public readonly ?PriceDeclarationData $price,
         public readonly bool $requiresApproval,
+        public readonly bool $onSale = true,
+        public readonly ?string $salesStart = null,
     ) {}
 
     /**
@@ -52,6 +61,8 @@ final class PublicOfferData extends Data
             // actual tax treatment when it settles.
             price: $registrationType->price_declaration,
             requiresApproval: $registrationType->approval === RegistrationApproval::Required,
+            onSale: $registrationType->isOnSale(),
+            salesStart: $registrationType->sales_start?->toIso8601String(),
         );
     }
 }

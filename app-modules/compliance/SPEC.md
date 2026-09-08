@@ -16,13 +16,34 @@ what comes back (ADR-0004).
 
 ## Owns
 
-- **Policies and their versions**, per brand: terms of participation, privacy
-  policy, house rules, photo consent. Each version has an effective date,
-  published text, and a flag for whether agreement is required.
+- **Policies and their versions**, per brand *or per operator*: terms of
+  participation, privacy policy, house rules, photo consent, withdrawal
+  information. A policy with a null `brand_id` belongs to the operator and
+  every brand inherits it unless it publishes its own under the same slug
+  (#76, ADR-0016). Each version has an effective date, published text, and a
+  flag for whether agreement is required.
 - **Consent records**: subject, policy version, timestamp, the context the
   consent was captured in, and withdrawal. A subject is a ULID that may be a
   user or — for people who registered without an account — a subject key issued
   by Compliance.
+- **The login and checkout re-consent gate** (#205): a narrower question
+  than the `require-consent` route alias — `OutstandingConsents::
+  subjectHasOutstandingContract()` adds `lawful_basis = contract` to the
+  required-version query. A newly published contract version is asked for
+  once, at the next login or checkout, and the consent row written for
+  that version id silences both. A fresh registration and a remember-me
+  recall are **not** gated by this. The login gate's answer crosses to
+  Identity as one session key, `compliance.consent_redirect`, written by
+  `Listeners\FlagOutstandingContractConsent` on Laravel's `Login` event;
+  Identity reads the key by name and never imports Compliance (ADR-0004).
+  `konventix:install` seeds three operator-wide placeholder policies —
+  `terms`, `withdrawal` and `privacy` — and publishes each one. **None of
+  them requires consent**: a placeholder that binds nobody must never
+  raise this gate, since the install runs on every release and a
+  consent-requiring placeholder would redirect every existing account on
+  every brand to `policies.required`. Publishing the operator's real AGB
+  with `requires_consent` is what raises the gate, once, for a text that
+  deserves it (#91, #200).
 - **The data subject request workflow**: a request entity with a type (export,
   deletion, rectification), a state (received, in progress, fulfilled, refused),
   the statutory deadline, and the record of which modules have responded.
@@ -66,7 +87,7 @@ A row becomes binding when its event class lands; the rest stay proposals.
 
 | Event | Emitted when | Payload | Status |
 |---|---|---|---|
-| `PolicyPublished` | A policy version becomes effective | `policy_id`, `version_id`, `brand_id`, `slug`, `effective_at`, `requires_consent` | shipped |
+| `PolicyPublished` | A policy version becomes effective | `policy_id`, `version_id`, `brand_id` (null for an operator-wide text, #76), `slug`, `effective_at`, `requires_consent` | shipped |
 | `PolicyWithdrawn` | A policy version is superseded or withdrawn | `policy_id`, `version_id`, `brand_id` | proposed |
 | `ConsentGranted` | A subject agrees to a policy version | `consent_id`, `subject_id`, `policy_id`, `version_id`, `brand_id`, `granted_at` | shipped |
 | `ConsentWithdrawn` | A subject withdraws agreement | `consent_id`, `subject_id`, `policy_id`, `withdrawn_at` | shipped |

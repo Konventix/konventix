@@ -9,8 +9,6 @@ use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Actions\BookManualPayment;
 use Konventix\Commerce\Actions\ConnectSettlementAccount;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
-use Konventix\Commerce\Actions\RefreshSettlementAccountCapabilities;
-use Konventix\Commerce\Console\RefreshSettlementCapabilities;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\PaymentReceived;
@@ -24,6 +22,7 @@ use Konventix\Commerce\Settlement\Mollie\MollieSettlementAdapter;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
 use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
+use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 
 /**
@@ -31,43 +30,33 @@ use Konventix\Platform\Models\Brand;
  * offered to the payer; the slice-7 "single answer" rule is reversed here.
  *
  * Resolving `StripeSettlementAdapter` from the container wires a real
- * `StripeApi` unless one is faked (the platform key is unconfigured in
- * tests) — no call to the fake is exercised, only construction.
+ * `StripeApi` unless one is faked (the key is unconfigured in tests) — no
+ * call to the fake is exercised, only construction. Every call is made on
+ * this instance's own account, so none carries an account id (ADR-0058).
  */
 final class MultiProviderSettlementTestFakeStripe implements StripeApi
 {
-    /** @var list<string> */
-    public array $fetchedAccountIds = [];
-
-    /**
-     * @param  array{card_payments: string}  $capabilities  what `fetchAccount()` returns for every account.
-     */
-    public function __construct(
-        private readonly array $capabilities = ['card_payments' => 'unknown'],
-    ) {}
-
-    public function createCheckoutSession(array $params, string $stripeAccountId): StripeCheckoutSession
+    public function createCheckoutSession(array $params): StripeCheckoutSession
     {
         return new StripeCheckoutSession(id: 'cs_unused', url: 'https://stripe.test/unused');
     }
 
-    public function createRefund(array $params, string $stripeAccountId): void {}
+    public function createRefund(array $params): void {}
 
-    public function createConnectedAccount(string $displayName, string $contactEmail, string $country): string
+    /**
+     * Unused here: only `commerce:reconcile-payments` (#71) reads a session
+     * back, and this fake never drives it.
+     *
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId): array
     {
-        return 'acct_unused';
-    }
-
-    public function createOnboardingLink(string $stripeAccountId, string $returnUrl, string $refreshUrl): string
-    {
-        return 'https://stripe.test/unused';
-    }
-
-    public function fetchAccount(string $stripeAccountId): array
-    {
-        $this->fetchedAccountIds[] = $stripeAccountId;
-
-        return $this->capabilities;
+        return [
+            'status' => 'open',
+            'payment_status' => 'unpaid',
+            'payment_intent' => null,
+            'payment_intent_status' => null,
+        ];
     }
 }
 
@@ -102,7 +91,7 @@ final class MultiProviderSettlementTestFakeMollieApi implements MollieApi
 it('lets a brand keep one live account per provider', function (): void {
     $brand = $this->withBrand();
 
-    $stripe = app(ConnectSettlementAccount::class)->handle($brand->getKey(), SettlementAccount::PROVIDER_STRIPE, providerAccountId: 'acct_1');
+    $stripe = app(ConnectSettlementAccount::class)->handle($brand->getKey(), SettlementAccount::PROVIDER_STRIPE);
     $mollie = app(ConnectSettlementAccount::class)->handle($brand->getKey(), SettlementAccount::PROVIDER_MOLLIE, credentials: ['api_key' => 'test_x']);
 
     expect(SettlementAccount::liveAccountsFor($brand->getKey())->pluck('id')->all())->toBe([$stripe->id, $mollie->id]);
@@ -120,18 +109,33 @@ it('refuses a second live account of the same provider', function (): void {
         ->toThrow(QueryException::class);
 });
 
-it('offers a Stripe account only once card payments are active, and a key-based one once connected', function (): void {
+it('offers a Stripe row only while this instance can charge, and a key-based one once connected', function (): void {
+    // ADR-0058 point 3: a Stripe row means "this brand sells through Stripe"
+    // — there is no capability to wait for, only this instance's own pair.
     $this->withBrand();
+    config()->set('services.stripe.secret', '');
+    config()->set('services.stripe.webhook_secret', '');
 
-    $pending = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create(['capabilities' => ['card_payments' => 'pending']]);
-    $active = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->disconnected()->create(['capabilities' => ['card_payments' => 'active']]);
+    $stripe = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create();
+    $disconnected = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->disconnected()->create();
     $mollie = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
     $onboarding = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_UNZER)->create(['connected_at' => null]);
 
-    expect($pending->isOffered())->toBeFalse()
-        ->and($active->isOffered())->toBeFalse()   // disconnected
+    expect($stripe->isOffered())->toBeFalse()   // no key on this instance
         ->and($mollie->isOffered())->toBeTrue()
         ->and($onboarding->isOffered())->toBeFalse();
+
+    // The key alone still cannot settle anything: without a signing secret the
+    // webhook that is the only source of settlement truth cannot be verified
+    // (ADR-0039 point 2), so the button stays away.
+    config()->set('services.stripe.secret', 'sk_test_configured');
+
+    expect($stripe->isOffered())->toBeFalse();
+
+    config()->set('services.stripe.webhook_secret', 'whsec_configured');
+
+    expect($stripe->isOffered())->toBeTrue()
+        ->and($disconnected->isOffered())->toBeFalse();
 });
 
 it('labels an account for the checkout by the operator\'s words or the adapter\'s default', function (): void {
@@ -144,44 +148,6 @@ it('labels an account for the checkout by the operator\'s words or the adapter\'
 
     expect($stripe->checkoutLabel(app(StripeSettlementAdapter::class)))->toBe('Card, Apple Pay, Google Pay')
         ->and($mollie->checkoutLabel(app(MollieSettlementAdapter::class)))->toBe('PayPal oder Sofort');
-});
-
-it('refreshes a Stripe account\'s capabilities from the platform API and offers it once active', function (): void {
-    $this->withBrand();
-    $account = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create(['provider_account_id' => 'acct_42']);
-    app()->instance(StripeApi::class, new MultiProviderSettlementTestFakeStripe(['card_payments' => 'active']));
-
-    app(RefreshSettlementAccountCapabilities::class)->handle($account);
-
-    expect($account->refresh()->capabilities)->toBe(['card_payments' => 'active'])
-        ->and($account->capabilities_checked_at)->not->toBeNull()
-        ->and($account->isOffered())->toBeTrue();
-});
-
-it('runs the refresh for every live Stripe account from the scheduled command', function (): void {
-    $brandA = $this->withBrand();
-    $stripeA = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create(['provider_account_id' => 'acct_a']);
-
-    $brandB = $this->withBrand(Brand::factory()->create());
-    $stripeB = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create(['provider_account_id' => 'acct_b']);
-
-    $mollie = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
-
-    $fake = new MultiProviderSettlementTestFakeStripe(['card_payments' => 'active']);
-    app()->instance(StripeApi::class, $fake);
-
-    $this->artisan(RefreshSettlementCapabilities::class)->assertSuccessful();
-
-    expect($fake->fetchedAccountIds)->toContain('acct_a', 'acct_b')
-        ->and($stripeA->refresh()->capabilities)->toBe(['card_payments' => 'active'])
-        ->and($stripeA->capabilities_checked_at)->not->toBeNull()
-        ->and($stripeB->refresh()->capabilities)->toBe(['card_payments' => 'active'])
-        ->and($stripeB->capabilities_checked_at)->not->toBeNull()
-        ->and($mollie->refresh()->capabilities)->toBeNull()
-        ->and($mollie->capabilities_checked_at)->toBeNull();
-
-    // Brand context of the running command is irrelevant — both brands' accounts were reached.
-    expect($brandA->id)->not->toBe($brandB->id);
 });
 
 it('names the provider and the account on the settlement events', function (): void {
@@ -237,6 +203,9 @@ it('names the provider and the account on the settlement events', function (): v
 
 it('lists every offered hosted account on the checkout page with its label', function (): void {
     $this->withBrand();
+    // Both `/pay/registration/...` routes carry `auth` since #2 — a
+    // declaration at checkout needs a subject to record it against.
+    $this->actingAs(User::factory()->create());
     $registrationId = (string) Str::ulid();
 
     Order::factory()->create([
@@ -247,12 +216,14 @@ it('lists every offered hosted account on the checkout page with its label', fun
         'currency' => 'EUR',
     ]);
 
-    app()->instance(StripeApi::class, new MultiProviderSettlementTestFakeStripe(['card_payments' => 'active']));
+    config()->set('services.stripe.secret', 'sk_test_configured');
+    config()->set('services.stripe.webhook_secret', 'whsec_configured');
+    app()->instance(StripeApi::class, new MultiProviderSettlementTestFakeStripe);
 
     // Ordered before Mollie so it lands first on the page (liveAccountsFor
     // orders by connected_at).
     SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)
-        ->create(['capabilities' => ['card_payments' => 'active'], 'connected_at' => now()->subMinute()]);
+        ->create(['connected_at' => now()->subMinute()]);
     SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)
         ->create(['checkout_label' => 'PayPal oder Sofort', 'connected_at' => now()]);
     // Onboarding not finished (no connected_at) — never offered.
@@ -269,6 +240,9 @@ it('lists every offered hosted account on the checkout page with its label', fun
 
 it('starts the hosted checkout on the chosen account and records it on the payment', function (): void {
     $this->withBrand();
+    // Both `/pay/registration/...` routes carry `auth` since #2 — a
+    // declaration at checkout needs a subject to record it against.
+    $this->actingAs(User::factory()->create());
     $registrationId = (string) Str::ulid();
 
     $order = Order::factory()->create([
@@ -294,6 +268,9 @@ it('starts the hosted checkout on the chosen account and records it on the payme
 
 it('refuses an account that is not offered, not this brand\'s, or missing', function (): void {
     $brand = $this->withBrand();
+    // Both `/pay/registration/...` routes carry `auth` since #2 — a
+    // declaration at checkout needs a subject to record it against.
+    $this->actingAs(User::factory()->create());
     $registrationId = (string) Str::ulid();
 
     Order::factory()->create([
@@ -304,9 +281,12 @@ it('refuses an account that is not offered, not this brand\'s, or missing', func
         'currency' => 'EUR',
     ]);
 
-    // Stripe with pending card_payments: connected, but not offered yet.
+    // A Stripe row on an instance that holds no Stripe key: enabled for the
+    // brand, but nothing can be charged, so it is not offered (ADR-0058).
+    config()->set('services.stripe.secret', '');
+    config()->set('services.stripe.webhook_secret', '');
     $notOffered = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)
-        ->create(['capabilities' => ['card_payments' => 'pending']]);
+        ->create();
 
     // A live, offered account — but on another brand entirely.
     $this->withBrand(Brand::factory()->create());
@@ -331,6 +311,9 @@ it('refuses an account that is not offered, not this brand\'s, or missing', func
 
 it('refuses a second account once a payment succeeded', function (): void {
     $this->withBrand();
+    // Both `/pay/registration/...` routes carry `auth` since #2 — a
+    // declaration at checkout needs a subject to record it against.
+    $this->actingAs(User::factory()->create());
     $registrationId = (string) Str::ulid();
 
     $order = Order::factory()->create([
@@ -341,8 +324,9 @@ it('refuses a second account once a payment succeeded', function (): void {
         'currency' => 'EUR',
     ]);
 
-    $stripe = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)
-        ->create(['capabilities' => ['card_payments' => 'active']]);
+    config()->set('services.stripe.secret', 'sk_test_configured');
+    config()->set('services.stripe.webhook_secret', 'whsec_configured');
+    $stripe = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_STRIPE)->create();
     $mollie = SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
 
     Payment::factory()->succeeded()->create([

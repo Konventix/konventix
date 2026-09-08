@@ -85,6 +85,13 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
   module that sets it through the `registerCookies()` provider hook, so the
   cookie-settings dialog renders from that declaration and an undeclared
   cookie is a gap the dialog itself makes visible.
+- **`operatorPresence`**, a shared prop: the operator behind the resolved
+  brand — name, `legal_name` (the controller under Art. 13 DSGVO) and every
+  brand of that operator with a link to its primary domain. Brand hosts
+  only; null on the operator console (ADR-0029). Spread by the seven
+  Fortify views and `SocialAuthController::complete()`, not shared
+  globally — those pages pay the query, nothing else does (ADR-0054,
+  #184).
 
 ## Does not own
 

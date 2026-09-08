@@ -23,4 +23,15 @@ enum OrderStatus: string
      * ever having been paid, and a refunded one was definitely paid first.
      */
     case Refunded = 'refunded';
+
+    /**
+     * The order was paid and the money was taken back (ADR-0057 point 3):
+     * the sale stands and the amount is owed again. Deliberately not back
+     * to `Pending` — `Pending` is what the checkout-grace sweep cancels
+     * after sixty minutes (`ExpireCarts`) and what "never paid" means on
+     * every screen. `RecordPaymentSuccess` settles an order in this state
+     * exactly as it settles a pending one, so the money can come back by
+     * the pay link, the door POS or a bank transfer.
+     */
+    case PaymentReversed = 'payment_reversed';
 }

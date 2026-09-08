@@ -5,14 +5,10 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Commerce\Actions\Concerns\GuardsCheckedInAdmissions;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
-use Konventix\Commerce\Events\OrderRefunded;
-use Konventix\Commerce\Exceptions\RefundBlockedByCheckInException;
-use Konventix\Commerce\Models\CheckedInAdmission;
-use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
-use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
@@ -32,6 +28,10 @@ use RuntimeException;
  *
  * Cancellation is deliberately not blocked here — only the money flow.
  *
+ * The guards and the provider call are what this Action *is*; the credit
+ * note, the status and `OrderRefunded` live in `RecordRefund`, which the
+ * `external_refund` reversal path reaches without them (ADR-0057 point 1).
+ *
  * ADR-0037 accepts a known gap: an offline device reconciles late (ADR-0033),
  * so a refund executed inside that sync window can slip past a check-in that
  * has happened but not yet arrived. That is a risk the ADR takes knowingly
@@ -39,8 +39,13 @@ use RuntimeException;
  */
 final class RefundOrder
 {
+    // ADR-0057 point 4 gave the same question a second caller (the
+    // unpaid-reversal sweep), which skips rather than refuses — the trait
+    // owns the definition, this class keeps the refusal.
+    use GuardsCheckedInAdmissions;
+
     public function __construct(
-        private readonly IssueCreditNote $issueCreditNote,
+        private readonly RecordRefund $recordRefund,
         private readonly SettlementAdapterRegistry $registry,
     ) {}
 
@@ -62,36 +67,16 @@ final class RefundOrder
             // treat a second refund of the same payment as already done.
             $this->refundThroughProvider($order, $amount);
 
-            // An order paid at checkout was never invoiced, so there is no
-            // document to correct (ADR-0031) — the money still goes back, it
-            // simply produces no paperwork.
-            $creditNote = Invoice::withoutBrandScope()
-                ->where('brand_id', $order->brand_id)
-                ->where('order_id', $order->id)
-                ->exists()
-                    ? $this->issueCreditNote->handle(
-                        order: $order,
-                        reasonCode: IssueCreditNote::REASON_REFUND,
-                        reasonNote: $reasonNote,
-                        totalGross: $amount,
-                    )
-                    : null;
-
-            $order->forceFill(['status' => OrderStatus::Refunded])->save();
-
-            event(new OrderRefunded(
-                orderId: $order->id,
-                brandId: $order->brand_id,
-                settlesType: $order->settles_type,
-                settlesId: $order->settles_id,
-                amountRefunded: $amount ?? (string) $order->total_gross,
-                currency: $order->currency,
-                creditNoteId: $creditNote?->id,
+            // Everything after the money is the refund's domain leg, shared
+            // with the reversal path (ADR-0057 point 1): a refund the
+            // operator made in the provider's own dashboard has already
+            // moved the money and reaches `RecordRefund` directly.
+            return $this->recordRefund->handle(
+                order: $order,
                 reasonCode: $reasonCode,
-                refundedAt: now()->toIso8601String(),
-            ));
-
-            return $order->refresh();
+                reasonNote: $reasonNote,
+                amount: $amount,
+            );
         });
     }
 
@@ -128,41 +113,6 @@ final class RefundOrder
                 $order->id,
                 $order->status->value,
             ));
-        }
-    }
-
-    /**
-     * Only registrations can be checked in. A direct registration order has
-     * one to check; a cart order (ADR-0047) may hold several — every
-     * `settles_kind: 'registration'` line names one, and any single
-     * checked-in admission among them blocks the whole order the same way,
-     * since a cart refund is whole-order (SPEC.md). An order settling
-     * neither shape has no admissions and therefore nothing to block it.
-     */
-    private function guardNotCheckedIn(Order $order): void
-    {
-        if ($order->settles_type === 'registration') {
-            if (CheckedInAdmission::registrationHasCheckIn($order->brand_id, $order->settles_id)) {
-                throw RefundBlockedByCheckInException::forRegistration($order->settles_id);
-            }
-
-            return;
-        }
-
-        if ($order->settles_type !== 'cart') {
-            return;
-        }
-
-        $registrationIds = OrderLine::withoutBrandScope()
-            ->where('order_id', $order->id)
-            ->where('settles_kind', 'registration')
-            ->whereNotNull('settles_ref')
-            ->pluck('settles_ref');
-
-        foreach ($registrationIds as $registrationId) {
-            if (CheckedInAdmission::registrationHasCheckIn($order->brand_id, $registrationId)) {
-                throw RefundBlockedByCheckInException::forRegistration($registrationId);
-            }
         }
     }
 }

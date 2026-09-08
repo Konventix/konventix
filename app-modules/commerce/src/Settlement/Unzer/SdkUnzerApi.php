@@ -9,6 +9,7 @@ use RuntimeException;
 use UnzerSDK\Constants\TransactionTypes;
 use UnzerSDK\Constants\WebhookEvents;
 use UnzerSDK\Resources\EmbeddedResources\Paypage\Urls;
+use UnzerSDK\Resources\Payment as UnzerPayment;
 use UnzerSDK\Resources\V2\Paypage;
 use UnzerSDK\Unzer;
 
@@ -57,7 +58,42 @@ final class SdkUnzerApi implements UnzerApi
             id: $payment->getId() ?? $paymentId,
             state: $payment->getStateName(),
             orderId: $payment->getOrderId(),
+            chargebacks: $this->chargebacks($payment),
         );
+    }
+
+    /**
+     * The payment's chargeback transactions (SDK v4.0: `getChargebacks()`
+     * returns `Chargeback[]`, each an `AbstractTransactionType` with an id,
+     * a float amount and a date). The transaction id is what keys the
+     * reversal row, so a repeated notification for the same chargeback
+     * converges (ADR-0057 point 7).
+     *
+     * @return list<array{id: string, amount: string, currency: string, date: ?string}>
+     */
+    private function chargebacks(UnzerPayment $payment): array
+    {
+        $chargebacks = [];
+
+        foreach ($payment->getChargebacks() as $chargeback) {
+            $id = $chargeback->getId();
+
+            if ($id === null) {
+                continue;
+            }
+
+            $chargebacks[] = [
+                'id' => $id,
+                // Unzer bills in floats; the domain is decimal strings
+                // (ADR-0030), and a chargeback is always two decimals for
+                // the currencies MinorUnits accepts.
+                'amount' => number_format($chargeback->getAmount() ?? 0.0, 2, '.', ''),
+                'currency' => $chargeback->getCurrency(),
+                'date' => $chargeback->getDate(),
+            ];
+        }
+
+        return $chargebacks;
     }
 
     public function refundPayment(string $paymentId, float $amount, string $privateKey): void

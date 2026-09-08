@@ -1,7 +1,14 @@
 import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
+import type { VNode } from 'vue';
 import { h } from 'vue';
 import { show as showOrder } from '@/routes/admin/orders';
+import type { OrderReversal, UnappliedPayment } from './reversals';
+import {
+    orderStatusLabel,
+    repaymentDeadline,
+    reversalKindLabel,
+} from './reversals';
 
 export type OrderRow = {
     id: string;
@@ -13,6 +20,8 @@ export type OrderRow = {
     totalGross: string;
     taxTreatment: string;
     provider: string | null;
+    reversals: OrderReversal[];
+    unappliedPayment: UnappliedPayment | null;
     paidAt: string | null;
     createdAt: string | null;
     invoice: {
@@ -27,6 +36,13 @@ const statusClasses: Record<string, string> = {
     pending: 'bg-warning/15 text-warning',
     paid: 'bg-success/15 text-success',
     cancelled: 'bg-danger/15 text-danger',
+    payment_reversed: 'bg-danger/15 text-danger',
+};
+
+const reversalStatusClasses: Record<string, string> = {
+    open: 'bg-warning/15 text-warning',
+    final: 'bg-danger/15 text-danger',
+    withdrawn: 'bg-success/15 text-success',
 };
 
 const treatmentLabels: Record<string, string> = {
@@ -79,14 +95,30 @@ export const columns: ColumnDef<OrderRow>[] = [
         enableSorting: true,
         cell: ({ row }) => {
             const status = row.getValue<string>('status');
+            const deadline = repaymentDeadline(row.original.reversals);
 
-            return h(
+            const badge = h(
                 'span',
                 {
                     class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses[status] ?? 'bg-subtle text-text-muted'}`,
                 },
-                status,
+                orderStatusLabel(status),
             );
+
+            if (status !== 'payment_reversed' || deadline === null) {
+                return badge;
+            }
+
+            // The sale stands and the amount is owed again (ADR-0057
+            // point 3); the status word alone does not say until when.
+            return h('span', { class: 'flex flex-wrap items-baseline gap-1' }, [
+                badge,
+                h(
+                    'span',
+                    { class: 'text-xs text-text-muted' },
+                    `— owed again until ${deadline}`,
+                ),
+            ]);
         },
     },
     {
@@ -145,3 +177,88 @@ export const columns: ColumnDef<OrderRow>[] = [
             ),
     },
 ];
+
+/**
+ * The reversals view's own column (ADR-0057 point 8): what the provider
+ * took back and why, and money that arrived for an order that cannot take
+ * it. Only that view renders it — on the ordinary list every cell would be
+ * empty, and the status column already carries the reversed orders.
+ */
+export const reversalColumn: ColumnDef<OrderRow> = {
+    id: 'reversal',
+    header: 'Reversal',
+    enableSorting: false,
+    cell: ({ row }) => {
+        const entries: VNode[] = row.original.reversals.map((reversal) =>
+            h('div', { class: 'flex flex-col gap-0.5' }, [
+                h('div', { class: 'flex flex-wrap items-baseline gap-2' }, [
+                    h(
+                        'span',
+                        {
+                            class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${reversalStatusClasses[reversal.status] ?? 'bg-subtle text-text-muted'}`,
+                        },
+                        `${reversalKindLabel(reversal.kind)} · ${reversal.status}`,
+                    ),
+                    h(
+                        'span',
+                        { class: 'tabular-nums' },
+                        `${reversal.amount} ${reversal.currency}`,
+                    ),
+                ]),
+                h(
+                    'span',
+                    { class: 'font-mono text-xs text-text-muted' },
+                    reversal.providerReference,
+                ),
+                reversal.reasonCode
+                    ? h(
+                          'span',
+                          { class: 'text-xs text-text-muted' },
+                          reversal.reasonCode,
+                      )
+                    : null,
+                reversal.repayDueOn
+                    ? h(
+                          'span',
+                          { class: 'text-xs text-text-muted' },
+                          `owed again until ${reversal.repayDueOn}`,
+                      )
+                    : null,
+            ]),
+        );
+
+        const unapplied = row.original.unappliedPayment;
+
+        if (unapplied) {
+            entries.push(
+                h('div', { class: 'flex flex-col gap-0.5' }, [
+                    h('div', { class: 'flex flex-wrap items-baseline gap-2' }, [
+                        h(
+                            'span',
+                            {
+                                class: 'inline-flex rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning',
+                            },
+                            'Unapplied payment',
+                        ),
+                        h(
+                            'span',
+                            { class: 'tabular-nums' },
+                            `${unapplied.amount} ${unapplied.currency}`,
+                        ),
+                    ]),
+                    h(
+                        'span',
+                        { class: 'text-xs text-text-muted' },
+                        `${unapplied.provider} · received ${unapplied.receivedAt ?? 'unknown'}`,
+                    ),
+                ]),
+            );
+        }
+
+        if (entries.length === 0) {
+            return h('span', { class: 'text-text-muted' }, '—');
+        }
+
+        return h('div', { class: 'flex flex-col gap-2' }, entries);
+    },
+};

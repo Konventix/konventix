@@ -34,3 +34,7 @@ frankenphp
 frankenphp-worker.php
 /data
 .claude/settings.local.json
+
+# Stripe CLI state: compose.yaml points XDG_CONFIG_HOME at the app's own
+# config/ inside the container, so `stripe listen` drops a telemetry id here.
+/config/stripe/

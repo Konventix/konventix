@@ -8,11 +8,15 @@ use Konventix\Commerce\Actions\ConnectSettlementAccount;
 use Konventix\Commerce\Events\SettlementAccountConnected;
 use Konventix\Commerce\Exceptions\BrandAlreadyHasLiveProviderException;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Models\StripeSettings;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
+use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
+use Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaymentSnapshot;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaypageSnapshot;
+use Konventix\Compliance\Models\AuditLogEntry;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -22,40 +26,41 @@ use Spatie\Permission\PermissionRegistrar;
 
 /**
  * ADR-0029/ADR-0039: the settlement-account console — connecting where a
- * brand's money goes. Stripe and Unzer SDK calls are faked at their seams.
+ * brand's money goes. The Unzer SDK call is faked at its seam; Stripe is
+ * faked only to prove it is never called at all, because enabling Stripe
+ * for a brand is a local flag since ADR-0058 — no account is created, no
+ * onboarding is started, nothing leaves the process.
  */
 final class SettlementAdminTestFakeStripe implements StripeApi
 {
-    /** @var list<array{displayName: string, contactEmail: string, country: string}> */
-    public array $accounts = [];
+    /** @var list<string> */
+    public array $calls = [];
 
-    /** @var list<array{accountId: string, returnUrl: string, refreshUrl: string}> */
-    public array $links = [];
-
-    public function createCheckoutSession(array $params, string $stripeAccountId): StripeCheckoutSession
+    public function createCheckoutSession(array $params): StripeCheckoutSession
     {
+        $this->calls[] = 'createCheckoutSession';
+
         return new StripeCheckoutSession(id: 'cs_x', url: 'https://stripe.test/x');
     }
 
-    public function createRefund(array $params, string $stripeAccountId): void {}
-
-    public function createConnectedAccount(string $displayName, string $contactEmail, string $country): string
+    public function createRefund(array $params): void
     {
-        $this->accounts[] = ['displayName' => $displayName, 'contactEmail' => $contactEmail, 'country' => $country];
-
-        return 'acct_new_1';
+        $this->calls[] = 'createRefund';
     }
 
-    public function createOnboardingLink(string $stripeAccountId, string $returnUrl, string $refreshUrl): string
+    /**
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId): array
     {
-        $this->links[] = ['accountId' => $stripeAccountId, 'returnUrl' => $returnUrl, 'refreshUrl' => $refreshUrl];
+        $this->calls[] = 'fetchCheckoutSession';
 
-        return 'https://connect.stripe.test/onboarding/'.$stripeAccountId;
-    }
-
-    public function fetchAccount(string $stripeAccountId): array
-    {
-        return ['card_payments' => 'unknown'];
+        return [
+            'status' => 'open',
+            'payment_status' => 'unpaid',
+            'payment_intent' => null,
+            'payment_intent_status' => null,
+        ];
     }
 }
 
@@ -144,7 +149,6 @@ it('lists a brand\'s live accounts with offered flags and remaining connectable 
             ->has('brands', 1)
             ->has('brands.0.accounts', 2)
             ->where('brands.0.accounts.0.provider', 'mollie')
-            ->where('brands.0.accounts.0.pendingOnboarding', false)
             ->where('brands.0.accounts.0.offered', true)
             ->where('brands.0.accounts.1.provider', 'unzer')
             ->where('brands.0.connectableProviders', ['stripe']));
@@ -166,6 +170,203 @@ it('still offers the remaining providers once one is connected', function (): vo
             ->where('brands.0.connectableProviders', ['stripe', 'unzer']));
 });
 
+/*
+ * The instance's own Stripe account card (ADR-0058 point 2, #215).
+ * Everything an operator needs is a page prop, because they meet the
+ * console before they meet the docs: the endpoint URL for *this* instance,
+ * the seven events it must be subscribed to, which key is installed and
+ * where it came from — never a key's value.
+ */
+it('tells the operator the webhook endpoint and the events it must listen to', function (): void {
+    [$admin] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', 'sk_test_abcd');
+    config()->set('services.stripe.webhook_secret', 'whsec_x');
+
+    $this->actingAs($admin)
+        ->get('http://admin.settlement.test/admin/settlement-accounts')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            // The endpoint is host-agnostic (`routes/api/` carries no domain),
+            // so `route()` answers with whichever host the console renders on —
+            // here the operator admin host, which is a host of the instance
+            // exactly like a brand host is.
+            ->where('stripeSetup.webhookUrl', 'http://admin.settlement.test/api/commerce/webhooks/stripe')
+            ->where('stripeSetup.events', StripeWebhookEvents::ALL)
+            ->has('stripeSetup.events', 7)
+            ->where('stripeSetup.configured', true)
+            ->where('stripeSetup.webhookSecretSet', true)
+            ->where('stripeSetup.source', 'environment')
+            ->where('stripeSetup.mode', 'test')
+            ->where('stripeSetup.lastFour', 'abcd')
+            ->where('stripeSetup.secretGroupHint', fn (string $hint): bool => str_contains($hint, 'STRIPE_SECRET')
+                && str_contains($hint, 'STRIPE_WEBHOOK_SECRET')
+                && str_contains($hint, 'secrets.payments')));
+});
+
+it('reports the credentials as missing when either one is blank', function (string $secret, string $webhookSecret, bool $configured, bool $secretSet, bool $webhookSet): void {
+    [$admin] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', $secret);
+    config()->set('services.stripe.webhook_secret', $webhookSecret);
+
+    $this->actingAs($admin)
+        ->get('http://admin.settlement.test/admin/settlement-accounts')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            // `configured` is the pair — half of it cannot charge anything
+            // (ADR-0039 point 2) — while the two halves report themselves.
+            ->where('stripeSetup.configured', $configured)
+            ->where('stripeSetup.secretKeySet', $secretSet)
+            ->where('stripeSetup.webhookSecretSet', $webhookSet)
+            // Never the values themselves — the prop says whether, not what.
+            ->where('stripeSetup.webhookUrl', 'http://admin.settlement.test/api/commerce/webhooks/stripe'));
+})->with([
+    'neither set' => ['', '', false, false, false],
+    'no secret key' => ['', 'whsec_x', false, false, true],
+    'no signing secret' => ['sk_test_x', '', false, true, false],
+    'both set' => ['sk_test_x', 'whsec_x', true, true, true],
+]);
+
+it('saves this instance\'s Stripe keys from the console, encrypted, and prefers them over the environment', function (): void {
+    [$admin] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', 'sk_test_environment_9999');
+    config()->set('services.stripe.webhook_secret', 'whsec_environment');
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => 'sk_test_console_1234',
+            'webhookSecret' => 'whsec_console',
+            'publishableKey' => 'pk_test_console',
+        ])
+        ->assertRedirect('http://admin.settlement.test/admin/settlement-accounts');
+
+    $settings = StripeSettings::query()->sole();
+
+    expect($settings->secret_key)->toBe('sk_test_console_1234')
+        ->and($settings->webhook_secret)->toBe('whsec_console')
+        ->and(app(StripeCredentials::class)->secret())->toBe('sk_test_console_1234');
+
+    // The console reads back which key is installed, never the key.
+    $this->actingAs($admin)
+        ->get('http://admin.settlement.test/admin/settlement-accounts')
+        ->assertOk()
+        ->assertDontSee('sk_test_console_1234')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('stripeSetup.source', 'database')
+            ->where('stripeSetup.mode', 'test')
+            ->where('stripeSetup.lastFour', '1234')
+            ->where('stripeSetup.publishableKeySet', true));
+});
+
+it('refuses keys that are not the Stripe shapes they claim to be', function (array $payload, string $field): void {
+    [$admin] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', $payload)
+        ->assertSessionHasErrors($field);
+
+    expect(StripeSettings::query()->count())->toBe(0);
+})->with([
+    'a publishable key in the secret field' => [
+        ['secretKey' => 'pk_test_nope', 'webhookSecret' => 'whsec_x', 'publishableKey' => null],
+        'secretKey',
+    ],
+    'an endpoint id instead of its signing secret' => [
+        ['secretKey' => 'sk_test_x', 'webhookSecret' => 'we_1234', 'publishableKey' => null],
+        'webhookSecret',
+    ],
+    'a secret key in the publishable field' => [
+        ['secretKey' => 'sk_test_x', 'webhookSecret' => 'whsec_x', 'publishableKey' => 'sk_test_x'],
+        'publishableKey',
+    ],
+]);
+
+it('never flashes a Stripe key back into the session when the form is rejected', function (): void {
+    // A rejected form flashes the whole request body into `_old_input` so the
+    // page can repopulate — and `config/session.php` leaves `SESSION_ENCRYPT`
+    // off, so a good `sk_live_` beside a mistyped signing secret would sit in
+    // the session store as cleartext. `dontFlash` in `bootstrap/app.php` is
+    // the only thing between the two.
+    [$admin] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => 'sk_live_never_flash_me_9999',
+            'webhookSecret' => 'we_not_a_signing_secret',
+            'publishableKey' => 'pk_live_never_flash_me_9999',
+        ])
+        ->assertSessionHasErrors('webhookSecret');
+
+    $session = json_encode(session()->all());
+
+    expect($session)->not->toContain('sk_live_never_flash_me_9999')
+        ->and($session)->not->toContain('pk_live_never_flash_me_9999')
+        ->and(session()->getOldInput('secretKey'))->toBeNull()
+        ->and(session()->getOldInput('publishableKey'))->toBeNull();
+});
+
+it('never flashes a brand PSP key back into the session either', function (string $provider, string $field, string $value): void {
+    // Mollie's and Unzer's keys predate this branch and ride the same
+    // channel; one `dontFlash` list covers all four credentials.
+    [$admin] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/'.$provider, [
+            'brand_id' => 'not-a-ulid',
+            $field => $value,
+        ])
+        ->assertSessionHasErrors('brand_id');
+
+    expect(json_encode(session()->all()))->not->toContain($value)
+        ->and(session()->getOldInput($field))->toBeNull();
+})->with([
+    'mollie' => ['mollie', 'api_key', 'live_mollie_never_flash_me'],
+    'unzer' => ['unzer', 'private_key', 's-priv-never-flash-me'],
+]);
+
+it('clears the console keys so the environment applies again', function (): void {
+    [$admin] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', 'sk_test_environment_9999');
+    config()->set('services.stripe.webhook_secret', 'whsec_environment');
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => 'sk_test_console_1234',
+            'webhookSecret' => 'whsec_console',
+            'publishableKey' => null,
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->delete('http://admin.settlement.test/admin/settlement-accounts/stripe/settings')
+        ->assertRedirect('http://admin.settlement.test/admin/settlement-accounts');
+
+    expect(StripeSettings::query()->count())->toBe(0)
+        ->and(app(StripeCredentials::class)->secret())->toBe('sk_test_environment_9999')
+        ->and(app(StripeCredentials::class)->source())->toBe('environment');
+});
+
+it('403s an admin without the manage capability on the Stripe keys', function (): void {
+    [$admin] = settlementAdminOperator(['platform.access-admin']);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => 'sk_test_console_1234',
+            'webhookSecret' => 'whsec_console',
+            'publishableKey' => null,
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($admin)
+        ->delete('http://admin.settlement.test/admin/settlement-accounts/stripe/settings')
+        ->assertForbidden();
+
+    expect(StripeSettings::query()->count())->toBe(0);
+});
+
 it('saves a custom checkout label', function (): void {
     [$admin, $brand] = settlementAdminOperator();
 
@@ -182,6 +383,105 @@ it('saves a custom checkout label', function (): void {
         ->assertRedirect();
 
     expect($account->refresh()->checkout_label)->toBe('Pay by card');
+});
+
+it('corrects a Stripe statement descriptor suffix in place', function (): void {
+    // A typo in what the payer reads on their card statement used to cost a
+    // disconnect and a re-enable, because `connectStripe()` refuses a second
+    // live Stripe row — while the checkout label beside it edited in place.
+    [$admin, $brand] = settlementAdminOperator();
+
+    $account = SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'statement_descriptor_suffix' => 'SXLNA',
+    ]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+            'statementDescriptorSuffix' => 'SXLAN',
+        ])
+        ->assertRedirect();
+
+    expect($account->refresh()->statement_descriptor_suffix)->toBe('SXLAN')
+        ->and($account->checkout_label)->toBe('Pay by card');
+
+    // And clearing it is a legitimate choice: no suffix means Stripe uses the
+    // account's own descriptor, which is what a brand-less row had before.
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+            'statementDescriptorSuffix' => null,
+        ])
+        ->assertRedirect();
+
+    expect($account->refresh()->statement_descriptor_suffix)->toBeNull();
+});
+
+it('leaves the statement descriptor alone when the form does not send it', function (): void {
+    // The checkout label and the descriptor are edited by the same form, but
+    // an omitted key is not a cleared value: a caller that only knows about
+    // the label — an older client, a partial update — must not silently wipe
+    // what the payer reads on their card statement. Explicit null clears; a
+    // missing key changes nothing.
+    [$admin, $brand] = settlementAdminOperator();
+
+    $account = SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'statement_descriptor_suffix' => 'SXLAN',
+    ]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+        ])
+        ->assertRedirect();
+
+    expect($account->refresh()->statement_descriptor_suffix)->toBe('SXLAN')
+        ->and($account->checkout_label)->toBe('Pay by card');
+});
+
+it('holds an edited statement descriptor suffix to the same budget the enable form uses', function (): void {
+    [$admin, $brand] = settlementAdminOperator();
+
+    $account = SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'statement_descriptor_suffix' => 'SXLAN',
+    ]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+            'statementDescriptorSuffix' => 'SXLAN EVENT',
+        ])
+        ->assertSessionHasErrors('statementDescriptorSuffix');
+
+    expect($account->refresh()->statement_descriptor_suffix)->toBe('SXLAN');
+});
+
+it('leaves a non-Stripe account\'s statement descriptor alone', function (): void {
+    // The column exists on every row; only Stripe reads it. A hand-made POST
+    // must not park a dead value on a Mollie account.
+    [$admin, $brand] = settlementAdminOperator();
+
+    $account = SettlementAccount::factory()->create([
+        'brand_id' => $brand->id,
+        'provider' => SettlementAccount::PROVIDER_MOLLIE,
+        'credentials' => ['api_key' => 'k'],
+    ]);
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/'.$account->id.'/label', [
+            'checkoutLabel' => 'Pay by card',
+            'statementDescriptorSuffix' => 'SXLAN',
+        ])
+        ->assertRedirect();
+
+    expect($account->refresh()->statement_descriptor_suffix)->toBeNull()
+        ->and($account->checkout_label)->toBe('Pay by card');
 });
 
 it('connects Mollie in one step and emits the contract event', function (): void {
@@ -229,7 +529,11 @@ it('connects Unzer and registers this deployment as the account webhook', functi
         ->and($unzer->webhooks[0]['privateKey'])->toBe('s-priv-1234567890');
 });
 
-it('starts Stripe onboarding with an unconnected row and redirects to Stripe', function (): void {
+it('enables Stripe for a brand without calling Stripe at all', function (): void {
+    // ADR-0058 point 3: a Stripe row means "this brand sells through this
+    // instance's Stripe account", nothing more — an ordinary POST with a
+    // redirect back, no account creation, no hosted onboarding, no
+    // external redirect.
     [$admin, $brand] = settlementAdminOperator();
 
     $stripe = new SettlementAdminTestFakeStripe;
@@ -237,56 +541,184 @@ it('starts Stripe onboarding with an unconnected row and redirects to Stripe', f
 
     Event::fake([SettlementAccountConnected::class]);
 
-    $response = $this->actingAs($admin)
+    $this->actingAs($admin)
         ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
             'brand_id' => $brand->id,
-            'contact_email' => 'orga@example.test',
-        ]);
-
-    // Inertia::location: a plain request gets a real redirect to Stripe's
-    // hosted onboarding (SPA requests would get 409 + X-Inertia-Location).
-    $response->assertRedirect('https://connect.stripe.test/onboarding/acct_new_1');
+            'checkout_label' => 'Karte, Apple Pay',
+            'statement_descriptor_suffix' => 'SXLAN',
+        ])
+        ->assertRedirect('http://admin.settlement.test/admin/settlement-accounts');
 
     $account = SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->sole();
 
-    expect($account->provider)->toBe('stripe')
-        ->and($account->provider_account_id)->toBe('acct_new_1')
-        ->and($account->connected_at)->toBeNull();
+    expect($stripe->calls)->toBe([])
+        ->and($account->provider)->toBe('stripe')
+        ->and($account->provider_account_id)->toBeNull()
+        ->and($account->capabilities)->toBeNull()
+        ->and($account->checkout_label)->toBe('Karte, Apple Pay')
+        ->and($account->statement_descriptor_suffix)->toBe('SXLAN')
+        ->and($account->connected_at)->not->toBeNull();
 
-    // Not connected until the organizer returns from onboarding.
-    Event::assertNotDispatched(SettlementAccountConnected::class);
-
-    expect($stripe->links[0]['returnUrl'])->toContain('/admin/settlement-accounts/stripe/return/'.$account->id);
+    Event::assertDispatched(
+        SettlementAccountConnected::class,
+        fn (SettlementAccountConnected $e): bool => $e->brandId === $brand->id && $e->provider === 'stripe',
+    );
 });
 
-it('marks the Stripe account connected on return, once', function (): void {
+it('announces enabling Stripe on the channel the layout actually renders', function (): void {
+    // `flash.toast` is what `flashToast.ts` listens to and what
+    // `HandleInertiaRequests` shares; a plain `->with('success', …)` reaches
+    // nothing, and the operator sees no confirmation at all.
     [$admin, $brand] = settlementAdminOperator();
-
-    $account = SettlementAccount::factory()->create([
-        'brand_id' => $brand->id,
-        'provider' => SettlementAccount::PROVIDER_STRIPE,
-        'provider_account_id' => 'acct_new_1',
-        'connected_at' => null,
-    ]);
-
-    // The return also refreshes capabilities (a best-effort first read).
     app()->instance(StripeApi::class, new SettlementAdminTestFakeStripe);
 
-    Event::fake([SettlementAccountConnected::class]);
-
     $this->actingAs($admin)
-        ->get('http://admin.settlement.test/admin/settlement-accounts/stripe/return/'.$account->id)
-        ->assertRedirect();
-    $this->actingAs($admin)
-        ->get('http://admin.settlement.test/admin/settlement-accounts/stripe/return/'.$account->id)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', ['brand_id' => $brand->id])
         ->assertRedirect();
 
-    expect($account->refresh()->connected_at)->not->toBeNull()
-        ->and($account->capabilities)->toBe(['card_payments' => 'unknown'])
-        ->and($account->capabilities_checked_at)->not->toBeNull();
-
-    Event::assertDispatchedTimes(SettlementAccountConnected::class, 1);
+    expect(session('inertia.flash_data'))->toHaveKey('toast')
+        ->and(session('inertia.flash_data')['toast']['type'])->toBe('success');
 });
+
+it('records who set and who cleared this instance\'s Stripe keys, and never what they were', function (): void {
+    // A live-key rotation is exactly the privileged action with no domain
+    // event that `AuditRecorder` exists for (Round 6, D-BATCH) — a stronger
+    // candidate for the trail than the CSV export that uses it today.
+    [$admin] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => 'sk_live_audited_wxyz',
+            'webhookSecret' => 'whsec_audited',
+            'publishableKey' => null,
+        ])
+        ->assertRedirect();
+
+    $saved = AuditLogEntry::query()->where('action', 'commerce.stripe-settings.saved')->sole();
+
+    expect($saved->actor_user_id)->toBe((string) $admin->getKey())
+        ->and(json_encode($saved->context))->not->toContain('sk_live_audited_wxyz')
+        ->and(json_encode($saved->context))->not->toContain('whsec_audited')
+        // What is worth knowing without knowing the key: which key is now
+        // installed, and whether it moves real money.
+        ->and($saved->context['mode'])->toBe('live')
+        ->and($saved->context['last_four'])->toBe('wxyz');
+
+    $this->actingAs($admin)
+        ->delete('http://admin.settlement.test/admin/settlement-accounts/stripe/settings')
+        ->assertRedirect();
+
+    expect(AuditLogEntry::query()->where('action', 'commerce.stripe-settings.cleared')->sole()->actor_user_id)
+        ->toBe((string) $admin->getKey());
+});
+
+it('refuses a statement descriptor suffix Stripe would reject', function (string $suffix): void {
+    // Stripe caps the whole statement descriptor at 22 characters, account
+    // prefix included, and refuses the characters below — checked at save
+    // time rather than discovered as a rejected Checkout Session. The prefix
+    // is unreadable from here (ADR-0058 removed `fetchAccount()` with
+    // Connect), so the budget is the worst legal case: a 10-character prefix
+    // plus its separator leaves 11, and the rule keeps 10.
+    [$admin, $brand] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
+            'brand_id' => $brand->id,
+            'statement_descriptor_suffix' => $suffix,
+        ])
+        ->assertSessionHasErrors('statement_descriptor_suffix');
+
+    expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->count())->toBe(0);
+})->with([
+    'longer than 22 characters' => ['SXLAN LAN PARTY EVENTS!'],
+    'longer than the account prefix leaves room for' => ['SXLAN EVENT'],
+    'characters Stripe forbids' => ['SX<LAN>'],
+    'no latin character at all' => ['1234'],
+]);
+
+it('accepts a suffix that fits beside the longest prefix Stripe allows', function (): void {
+    // Ten characters is the budget, not an arbitrary shortening: it is what
+    // survives a 10-character account prefix and its separator inside
+    // Stripe's 22-character cap (ADR-0058 point 3).
+    [$admin, $brand] = settlementAdminOperator();
+    app()->instance(StripeApi::class, new SettlementAdminTestFakeStripe);
+
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
+            'brand_id' => $brand->id,
+            'statement_descriptor_suffix' => 'SXLAN EVNT',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->sole()->statement_descriptor_suffix)
+        ->toBe('SXLAN EVNT');
+});
+
+it('enables Stripe with no key configured, but does not offer it at checkout', function (): void {
+    // ADR-0058 point 3: `isOffered()` for Stripe is "live, and this instance
+    // can charge" — the enablement flag says nothing about whether it can.
+    // Charging takes the pair: a key with no signing secret would take money
+    // through a webhook nothing can verify (ADR-0039 point 2).
+    [$admin, $brand] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', '');
+    config()->set('services.stripe.webhook_secret', '');
+
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', ['brand_id' => $brand->id])
+        ->assertRedirect();
+
+    $account = SettlementAccount::withoutBrandScope()->where('brand_id', $brand->id)->sole();
+
+    expect($account->isOffered())->toBeFalse();
+
+    // The key alone is still not enough.
+    config()->set('services.stripe.secret', 'sk_test_configured');
+
+    expect($account->refresh()->isOffered())->toBeFalse();
+
+    config()->set('services.stripe.webhook_secret', 'whsec_configured');
+
+    expect($account->refresh()->isOffered())->toBeTrue();
+});
+
+it('tells the console which half of the pair is missing', function (): void {
+    [$admin] = settlementAdminOperator();
+
+    config()->set('services.stripe.secret', 'sk_test_abcd');
+    config()->set('services.stripe.webhook_secret', '');
+
+    $this->actingAs($admin)
+        ->get('http://admin.settlement.test/admin/settlement-accounts')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            // `configured` is the pair; the two halves are reported apart so
+            // the card can name the one that is missing rather than claim the
+            // key is absent when it is not.
+            ->where('stripeSetup.configured', false)
+            ->where('stripeSetup.secretKeySet', true)
+            ->where('stripeSetup.webhookSecretSet', false)
+            ->where('stripeSetup.lastFour', 'abcd'));
+});
+
+it('accepts a restricted key from the console', function (string $secret, string $mode): void {
+    // The Stripe CLI's login mints restricted keys, and an operator should be
+    // able to paste one rather than go find a full secret key.
+    [$admin] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => $secret,
+            'webhookSecret' => 'whsec_console',
+            'publishableKey' => null,
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(StripeSettings::query()->sole()->secret_key)->toBe($secret)
+        ->and(app(StripeCredentials::class)->mode())->toBe($mode);
+})->with([
+    'a restricted sandbox key' => ['rk_test_restricted_1234', 'test'],
+    'a restricted live key' => ['rk_live_restricted_wxyz', 'live'],
+]);
 
 it('returns a validation error when connecting a second live account of the same provider over HTTP', function (): void {
     [$admin, $brand] = settlementAdminOperator();
@@ -336,7 +768,6 @@ it('refuses a second live account of the same provider', function (): void {
     $this->actingAs($admin)
         ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', [
             'brand_id' => $brand->id,
-            'contact_email' => 'orga@example.test',
         ])
         ->assertRedirect();
 

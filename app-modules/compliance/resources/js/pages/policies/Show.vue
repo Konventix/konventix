@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
+import { formatDateTime } from '@/lib/datetime';
 
 /**
  * One policy's currently published text, on the brand's own domain.
@@ -15,7 +16,17 @@ type Props = {
     policy: {
         name: string;
         slug: string;
+        /**
+         * 'operator' when this is the operator's own text, inherited by
+         * every brand that has not published its own (GitLab #76).
+         */
+        scope: 'operator' | 'brand';
         version: string;
+        /**
+         * An ISO 8601 instant with its offset, not a calendar day: a
+         * version dated 00:30 in Berlin is 22:30Z the day before, and this
+         * page used to print the day before for everyone (B5).
+         */
         effectiveAt: string | null;
         requiresConsent: boolean;
         html: string;
@@ -23,12 +34,6 @@ type Props = {
 };
 
 const props = defineProps<Props>();
-
-const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'long' });
-
-function formatDate(value: string | null): string {
-    return value ? dateFormat.format(new Date(value)) : '';
-}
 </script>
 
 <template>
@@ -43,7 +48,15 @@ function formatDate(value: string | null): string {
                 Version {{ props.policy.version }}
                 <template v-if="props.policy.effectiveAt">
                     · in effect since
-                    {{ formatDate(props.policy.effectiveAt) }}
+                    <time :datetime="props.policy.effectiveAt">{{
+                        formatDateTime(props.policy.effectiveAt, {
+                            dateStyle: 'long',
+                            timeStyle: undefined,
+                        })
+                    }}</time>
+                </template>
+                <template v-if="props.policy.scope === 'operator'">
+                    · published by the operator for all of its brands
                 </template>
             </p>
         </header>

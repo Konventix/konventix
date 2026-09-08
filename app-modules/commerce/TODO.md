@@ -13,15 +13,59 @@
 - [ ] B2C invoices above 250 € need a postal address (§14 UStG vs §33
       UStDV): a way for the operator or payer to complete the billing
       address on a cart order.
-- [ ] A cart order whose payment failed has no re-pay link (the grace sweep
-      cancels it after 60 min; the payer re-shops).
-- [ ] A PSP success arriving for an order already cancelled by
-      `ExpireCarts`' checkout-grace sweep (Task 11 fix round 1) is refused
-      by `RecordPaymentSuccess::settleOrder()` — logged as a warning, not
-      silently dropped, but the money still moved on the provider's side
-      with no domain record of it. A refund path for that late payment is
-      owed: today an operator would have to notice the log and refund by
-      hand through the provider's own dashboard.
+- [x] A cart order whose payment failed has no re-pay link (the grace sweep
+      cancels it after 60 min; the payer re-shops). Fixed: order-scoped
+      re-pay at `GET`/`POST /pay/order/{order}` (`CheckoutController::
+      showOrder()`/`startOrder()`), authorized on the order's buyer, reached
+      from the order confirmation and the payment-failed mail (#5).
+- [x] A PSP success arriving for an order already cancelled by
+      `ExpireCarts`' checkout-grace sweep is a domain record, not a log
+      line: `RecordPaymentSuccess` emits `PaymentUnapplied` and
+      `Payment::scopeUnapplied()` finds every such row (ADR-0057 point 9,
+      #6). Refunding it is still the operator's own decision — through the
+      payment's own account, `RefundOrder`'s provider leg without a credit
+      note, since a cancelled cart order has no document to correct.
+- [x] Rückbuchungen und Disputes are modelled (ADR-0057, #166): the
+      `payment_reversals` row, `PaymentStatus::Reversed`,
+      `OrderStatus::PaymentReversed`, and all three adapters —
+      Stripe's `charge.dispute.*` and `charge.refunded`, Mollie's
+      chargeback and refund lists, Unzer's `chargeback` state, which is no
+      longer a code comment.
+- [x] A whole-order refund of a cart order cancels nothing on the
+      registration side. Fixed without a new event: a whole refund of a
+      cart order now emits one existing `OrderLineCancelled` per
+      registration-kind line, reason `order_refunded` — the same event and
+      producer pattern `CancelOrderForUnpaidReversal` already used, just a
+      new value of the reason field (#73, whole-branch review finding 3).
+- [x] `SendCreditNoteMail` names a cancellation credit note
+      Stornierung/Cancellation rather than Erstattung/Refund (ADR-0057
+      point 4): its own arm in the reason map and its own sentence in the
+      `commerce.credit-note-issued` template.
+- [ ] `commerce:reconcile-payments` skips *pending* Unzer payments (#71): a
+      pending payment's `external_id` is the Paypage id and
+      `UnzerApi::fetchPayment()` needs a payment id, which only exists from
+      settlement onward. Add `fetchPaymentByOrderId` to `UnzerApi` /
+      `SdkUnzerApi` (our `Payment` ULID is the Unzer `orderId`) and drop the
+      provider filter on the pending pass.
+- [ ] The `payment-reconciled` operator notice fires per corrected payment
+      *and* per newly found reversal (#71), reusing the same kind because
+      the underlying fact is identical ("the notification path lost
+      something"). Revisit with its own kind if that turns out to be noisy.
+- [ ] `CommerceGdprHandler` exports no `payment_reversals` rows (#166): a
+      reversal carries a provider reference and a bank reason code tied to
+      a payer, and the export should include it.
+- [ ] The repayment-window form lives on the settlement-accounts console
+      rather than on the brand edit page, because the brand page's only
+      module extension point (`BrandFeature::settingsComponent`) renders
+      solely for a per-brand feature that is switched on. If per-brand
+      module settings belong on the brand page, Platform needs an ungated
+      settings slot there.
+- [ ] `commerce:probe-invoice-numbering`'s `--timeout` option takes no
+      validation (#74): a zero, negative or non-numeric value is not
+      rejected explicitly before being handed to the child process.
+- [ ] `DrawInvoiceNumber` and `DrawCreditNoteNumber` each carry their own
+      private `environmentMarker()` method (#74) — the same
+      non-production-prefix logic duplicated rather than shared.
 - [ ] Bookkeeping export follow-ups (ADR-0040 accepts all of these):
       deviating fiscal years are unsupported (WJ-Beginn is hardcoded to
       January 1); no per-customer debtor master export (collective debtor
@@ -36,10 +80,14 @@
       amendment delta, only the newest is reachable. Fine while amendments
       require a confirmed (settled) registration; revisit with per-order
       pay links if that changes.
-- [ ] Local-dev webhooks: Mollie/Unzer webhook URLs are built from
-      `app.url`, which providers cannot reach from a WSL dev stack — needs
-      a tunnel for end-to-end manual testing. Stripe can replay via
-      `stripe listen --forward-to`.
+- [x] Local-dev webhooks (Stripe): `contrib/stripe-listen.sh` wraps
+      `stripe listen --forward-to` against `POST /api/commerce/webhooks/stripe`,
+      restricted to the events the app handles (#69). See README, "Stripe
+      webhooks in local development".
+- [ ] Local-dev webhooks (Mollie/Unzer): webhook URLs are still built from
+      `app.url`, which these providers cannot reach from a WSL dev stack —
+      still needs an inbound tunnel (ngrok/cloudflared, neither installed on
+      the reference dev host) for end-to-end manual testing.
 - [ ] `konventix:seed` never issues a refund, so `admin.credit-notes.document`
       (Task 3) is skipped by name in `DryRunTest` rather than walked — a real
       gap, not a "not a screen" skip. Have the seed refund one paid order per
@@ -47,8 +95,12 @@
 - [ ] Partial credit notes. `IssueCreditNote` accepts a `$totalGross`
       override, but the tax split is still the invoice's — a genuine partial
       needs its own line-level calculation through `TaxCalculator`.
-- [ ] Cancellation as a domain flow (distinct from refund, which is built):
-      `OrderCancelled` is still proposed.
+- [x] Cancellation as a domain flow (distinct from refund, which was
+      already built): `OrderCancelled` now has a producer,
+      `CancelOrderForUnpaidReversal` (ADR-0057 point 4) — reached from the
+      daily `commerce:cancel-unpaid-reversals` sweep once `repay_due_on`
+      has passed, or from an operator cancelling by hand before it — and
+      its per-line counterpart `OrderLineCancelled` for a cart order.
 - [ ] Vouchers.
 - [ ] GoBD retention lifecycle for the `invoices` disk: the archive must
       survive brand deletion, operator changes, and storage migrations for
@@ -86,10 +138,111 @@
       `<livewire:.../>` line, with the ongoing cost of keeping that
       published copy in step with Pulse's own default on every upgrade.
 - [ ] Refunding a cart order leaves its product lines' stock_consumed raised on purpose (SPEC, Cart) — if operators keep raising capacity by hand after refunds, give RefundOrder an explicit "return to shelf" option per product line.
-- [ ] The shop renders a product's net amount even when price_display is gross — honest only because it is captioned "excl. VAT". A real gross display needs ShopProductData to carry a server-computed unitAmountGross from TaxCalculator (no billing party, so ADR-0030's domestic-standard treatment), the way the cart page already computes its totals.
+- [x] The shop renders a product's net amount even when price_display is gross. Fixed (PAngV): `ShopProductData.unitAmountGross`, `ShopVariantData.unitAmountGross` and `CartLineData.unitAmountGross` are all computed server-side through `TaxCalculator` (#3). The order button reads "Order with obligation to pay" and the delivery statement is shown on the cart and pay pages (#75) — still open: a separate confirmation step in the cart is a product decision, not built here.
+- [ ] `/my/orders` shows no deadline beside a pay link, for a cart order or a
+      registration order — the only surface `Settlement\PaymentWindow`
+      does not reach (`MyOrderData`).
+- [ ] Print the refund reason and note on the credit note document. Both are
+      recorded on the audit trail and on the refund record today; the
+      credit note itself always says "Grund: Erstattung" (#73).
+- [ ] `OrderAdminController::refund()` catches `RuntimeException`, which is
+      every reasoned refusal the settlement adapters make; an SDK transport
+      failure (`\Stripe\Exception\ApiErrorException`,
+      `\Mollie\Api\Exceptions\ApiException`) still reaches the operator as a
+      500. Wrap SDK failures in a Commerce exception inside `Settlement/**`
+      and the console gets a sentence instead of an error page.
+- [ ] #231 — the cart sweep can cancel an order whose hosted-checkout
+      session may already be paid at the PSP, without asking first — a
+      money-risk gap distinct from #131's payment-window sweep.
+- [ ] #233 — `cart_lines` deadlock risk: an FK `KEY SHARE` → `NO KEY UPDATE`
+      lock escalation on `carts` at four sites, plus two unordered
+      multi-row lock sites. Filed, code untouched.
+- [ ] #234 — gross/net mismatch on the event landing page: the Registration
+      card cannot show the gross amount without a new cross-module tax
+      contract (ADR-0004 forbids importing `Commerce\Tax\*`). Filed, needs
+      a design decision, not a fix.
 - [ ] PlaceRegistrationLineInCart's read-then-insert can lose a race to cart_lines_request_key_unique and throw a QueryException out of a listener, the same shape PlaceOrderFromSettlementRequest carries. The 2026-08-27 rush never surfaced it (0 × 5xx across 754 arrivals), so this stays a converge-on-conflict cleanup — catch the violation and re-read the line the winner created, as OpenCart::for() already does.
 
 ## Done
+
+- [x] Slice 24 (ADR-0058, #215) — Stripe Connect removed: one Stripe account
+      per instance, its secret and webhook signing secret resolved
+      row-before-environment by `Settlement\Stripe\StripeCredentials`
+      (encrypted `stripe_settings` row per operator, set in the console's
+      "Stripe account" card, or `STRIPE_SECRET`/`STRIPE_WEBHOOK_SECRET` from
+      the environment). No connected accounts, no `Stripe-Account` header,
+      no onboarding, no capability sweep. A brand's Stripe row is the
+      enablement flag and carries `checkout_label` and the new
+      `statement_descriptor_suffix` (≤10 characters: Stripe caps the account
+      prefix and the suffix together at 22 and refuses the charge if they
+      overflow, and the prefix cannot be read back since Connect went, so the
+      rule keeps what survives the longest legal prefix — and the adapter
+      retries once without the suffix if Stripe refuses it anyway, rather than
+      500ing a payer); every Checkout Session and PaymentIntent carries
+      `konventix_brand_id`, `konventix_brand_name` and
+      `konventix_operator_id`. #161 closed as superseded, #198 and #199
+      obsolete.
+
+- [x] ADR-0057, the reversal deadline sweep and the operator/payer surface.
+      The PSP webhook routes carry a rate limiter (#71): the named limiter
+      `commerce-webhooks` in `CommerceServiceProvider`, 120/min per IP,
+      applied to the `commerce/webhooks` group in `routes/api/commerce.php`.
+      Generous on purpose — Mollie and Unzer answer every request with a
+      provider call (ADR-0039), so this is a ceiling on abuse, never a
+      shaper of real PSP traffic. `tests/WebhookThrottleTest.php`.
+
+      A regular reconciliation against the provider reports what the
+      webhooks missed (#71, ADR-0057 point 7):
+      `commerce:reconcile-payments`, hourly. Pending payments older than 15
+      minutes and younger than 7 days are re-asked (Stripe through the new
+      `StripeApi::fetchCheckoutSession`, Mollie through `fetchPayment`);
+      settled Mollie/Unzer payments of the last 90 days are re-read for
+      chargebacks and dashboard refunds. Every correction logs at warning
+      with the ids and raises the `payment-reconciled` operator notice.
+      `tests/PaymentReconciliationTest.php`.
+
+      The repayment deadline and its sweep (ADR-0057 point 4): the per-brand
+      window (`commerce_brand_settings.reversal_repayment_days`, 1..60,
+      default 7, set beside the brand's settlement accounts) feeding
+      `RepaymentWindow`, and `commerce:cancel-unpaid-reversals` cancelling
+      the order through `CancelOrderForUnpaidReversal` — credit note with
+      reason `cancellation`, `OrderCancelled`/`OrderLineCancelled` with
+      reason `reversal_unpaid`. An order whose admission was already used
+      keeps its seat and becomes an open receivable instead.
+      `tests/UnpaidReversalSweepTest.php`, `tests/CommerceBrandSettingsTest.php`.
+
+      Operator and payer both see a reversal (ADR-0057 point 8): the
+      `commerce.operations-notice` kinds `payment-reversed`,
+      `dispute-opened`, `payment-unapplied` and `payment-reconciled`, and
+      the payer mail `commerce.payment-reversed` — amount, the provider's
+      reason in plain words (a map from SEPA return codes and Stripe
+      dispute reasons; unknown codes get a neutral sentence, and none of
+      them accuses), the deadline and the pay link. A cart order, which
+      cannot be repaid online yet, gets `commerce.payment-reversed-manual`
+      instead: the same facts without a link, naming the account page and
+      the transfer or door payment the organizer can book.
+      `tests/PaymentReversalMailsTest.php`.
+
+      The orders console shows the reversals (ADR-0057 point 8, #166): a
+      "Reversals & unapplied money" view over every order with an open or
+      final reversal and every order holding a payment its status cannot
+      take, and an order detail page that lists the reversal rows, names
+      the repayment deadline and calls out an unapplied payment (ADR-0057
+      point 9, #6). The operator can act on it too: cancel a reversed order
+      by hand before the sweep would, and book a bank transfer or a door
+      payment on it.
+
+- [x] Non-production invoice/credit-note numbers carry an environment
+      marker (#74, ADR-0053): `DrawInvoiceNumber` and `DrawCreditNoteNumber`
+      prepend the environment name as a leading segment off production
+      (`STAGING-SXLAN-2026-00042`, `LOCAL-GS-SXLAN-2026-00042`) — the
+      counter itself is untouched, only the rendering differs.
+- [x] The invoice number range's concurrency is proven under real
+      processes, not asserted: `commerce:probe-invoice-numbering`
+      `{brand} {--workers=4} {--draws=25}` starts real child processes,
+      each drawing numbers through `DrawInvoiceNumber` in its own
+      transaction, and checks every worker exited 0, every drawn number is
+      distinct, the counter ran 1..N with no gap (#74).
 
 - [x] ADR-0048 (mail-and-receipts tranche): a paid order gets its Rechnung
       the moment it is paid, a refund leaves a Gutschrift behind, and the
@@ -506,10 +659,11 @@
       settles their order. `SettlementAccount::liveAccountsFor()`,
       `isOffered()` and `checkoutLabel()` are the seam the checkout page
       offers accounts through; an account is offered only once it's live,
-      connected, and — for Stripe — its `card_payments` capability reads
-      `active`, closing the go-live readiness gap this TODO used to carry
-      as an open item. `RefreshSettlementAccountCapabilities` keeps that
-      capability current on return from onboarding and on a daily sweep.
+      connected, and — for Stripe — backed by a Stripe secret key on this
+      instance. (ADR-0058 has since removed Stripe Connect: the capability
+      check, `RefreshSettlementAccountCapabilities` and the daily sweep are
+      gone with it, and a Stripe row is an enablement flag on the one
+      account the instance holds.)
       The settlement-account console is a list per brand now, not "the
       account": every live account with its offered state, an inline form
       to give it its own `checkout_label`, and the connect form limited to
@@ -553,10 +707,19 @@
       because the download is a separate request Commerce could not
       authorize on its own.
 
-- [ ] The confirmation mail still does not carry the pay link. The account
-      page does now (see Done), but a payer who never comes back to the site
-      has nothing to click — and `instant` settlement is exactly the case
-      where they might not.
+- [x] The confirmation mail still does not carry the pay link. Fixed:
+      `Settlement\PayLink` now feeds the order confirmation mail too, plus
+      the payment-failed mail and `MyOrderData` (#5).
+- [x] Sales window per registration type: columns, admin form, landing-page
+      filter, refusal at submission and at the cart line (#218).
+- [x] #131 Registration orders expire past their payment window:
+      `commerce:expire-registration-orders` cancels a pending
+      `settles_type = registration` order past
+      `Cart::CHECKOUT_GRACE_MINUTES` with `OrderCancelled` reason
+      `payment_window_expired` — hosted population only, so a brand
+      settling by bank transfer only is never touched by it. The window
+      and the deadline shown on the pay page and in the payment-failed
+      mail now share one predicate, `Settlement\PaymentWindow`.
 
 - [x] The standalone "my orders/invoices" list, now that the payer read
       model exists (ADR-0044). `GET /my/orders` (`commerce.mine.index`)

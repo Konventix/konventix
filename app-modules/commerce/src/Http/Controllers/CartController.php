@@ -24,6 +24,7 @@ use Konventix\Commerce\Data\CartLineQuantityData;
 use Konventix\Commerce\Data\CheckoutAccountData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Exceptions\CartCheckoutRefusedException;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
 use Konventix\Commerce\Models\Cart;
@@ -31,6 +32,7 @@ use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\CheckoutConsentSlots;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Tax\TaxCalculator;
@@ -54,12 +56,27 @@ final class CartController
         private readonly TaxCalculator $taxCalculator,
         private readonly OperatorSettings $operatorSettings,
         private readonly SettlementAdapterRegistry $registry,
+        private readonly CheckoutConsentSlots $consentSlots,
     ) {}
 
-    public function show(Request $request, BrandContext $brandContext): Response
+    public function show(Request $request, BrandContext $brandContext): Response|RedirectResponse
     {
         $brand = $brandContext->current();
         abort_if($brand === null, 404);
+
+        // GitLab #205, review 6 finding 5: a republished contract text is
+        // settled before the form is shown, not after the payer has picked
+        // an account and ticked the box. Loop-free — `policies.required`
+        // carries no gate of its own — and the intent it remembers brings
+        // them straight back here.
+        $consentSlots = $this->consentSlots->contributions();
+        $outstandingUrl = $this->consentSlots->outstandingUrl($consentSlots);
+
+        if ($outstandingUrl !== null) {
+            $request->session()->put('url.intended', route('commerce.cart.show', absolute: false));
+
+            return redirect()->to($outstandingUrl);
+        }
 
         $cart = $this->openCartFor($request);
         $lines = $cart?->lines()->get() ?? new Collection;
@@ -96,6 +113,12 @@ final class CartController
         })->all());
 
         return Inertia::render('cart/Show', [
+            // Compliance's consent control (GitLab #2). Commerce may not read
+            // a policy row, so the module that owns the legal texts computes
+            // its own props here through Platform's slot registry (ADR-0003
+            // enforcement point 3), exactly as Registration contributes to
+            // Event's landing page.
+            'consentSlots' => $consentSlots,
             'cart' => CartData::ofCart(
                 $cart,
                 $lineData,
@@ -167,9 +190,33 @@ final class CartController
 
     public function checkout(Request $request): SymfonyResponse
     {
-        $validated = $request->validate([
-            'account' => ['required', 'ulid'],
-        ]);
+        $consentSlots = $this->consentSlots->contributions();
+
+        // GitLab #205: the page gate above is the one a payer normally
+        // meets; this is the one that holds when the version was published
+        // between the render and the submit. Checked before validation so
+        // the payer is not first told to tick a box on a page they are
+        // about to be sent away from. The intent is the cart page,
+        // deliberately, not this POST: agreeing has to land them back where
+        // they were, and a consent screen may not replay a purchase.
+        $outstandingUrl = $this->consentSlots->outstandingUrl($consentSlots);
+
+        if ($outstandingUrl !== null) {
+            $request->session()->put('url.intended', route('commerce.cart.show', absolute: false));
+
+            return redirect()->to($outstandingUrl);
+        }
+
+        // "Zahlungspflichtig bestellen" concludes the contract, so the
+        // declaration is a field of this request, not a courtesy on the page
+        // (GitLab #2). `accepted` is what puts the error on `accept_terms`
+        // for the control that raised it (ADR-0055). Demanded only where
+        // there is something to declare: an instance with no published texts
+        // renders no control, and a checkout that insisted on one anyway
+        // could never be completed.
+        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
+            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
+            : ['account' => ['required', 'ulid']]);
 
         $cart = $this->cartForCheckout($request);
 
@@ -193,6 +240,19 @@ final class CartController
             (string) $request->user()->email,
         );
 
+        // Recorded before the order is placed: the declaration is what
+        // authorizes it, and an adapter failure a moment later must not lose
+        // the record that it was made. Compliance decides which documents
+        // and which version — Commerce never writes a consent row (ADR-0004).
+        if ($this->consentSlots->declarationRequired($consentSlots)) {
+            event(new CheckoutConsentGiven(
+                brandId: $cart->brand_id,
+                subjectId: (string) $request->user()->getAuthIdentifier(),
+                captureContext: 'checkout',
+                acceptedAt: now()->toIso8601String(),
+            ));
+        }
+
         // Only the Action's own guards (cart state, account offered) are
         // caught here — a real adapter failure past that point must reach
         // the payer the way `CheckoutController::start()` lets it, not
@@ -211,6 +271,14 @@ final class CartController
      * The payer's own open cart, or null — the cart page's empty state
      * when there is none. Never a bare `Cart::find()`: another payer's
      * cart, on this same brand, must never resolve here.
+     *
+     * Open only. A cart already `checked_out` is not shown here even while
+     * its hold is alive (review 6 finding 1): this page's quantity and
+     * remove controls resolve through `cartLineFor()`, which needs an open
+     * cart, and rendering a state whose own controls 404 is worse than
+     * rendering the empty state. Re-paying such an order is order-scoped
+     * instead — `CheckoutController::showOrder()` and `/pay/order/{order}`
+     * (#5).
      */
     private function openCartFor(Request $request): ?Cart
     {

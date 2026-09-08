@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
 use Konventix\Compliance\Database\Factories\PolicyVersionFactory;
 use Konventix\Compliance\Enums\LawfulBasis;
 use Konventix\Compliance\Enums\PolicyVersionState;
+use Konventix\Compliance\Models\Concerns\MayBeOperatorWide;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
@@ -23,8 +24,14 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * save — that Action is what guarantees at most one Published version is
  * ever effective per policy.
  *
+ * `brand_id` follows the policy's own scope and may therefore be null: an
+ * operator-wide policy (GitLab #76) that nobody may write a version for is
+ * not a policy. Every read path that wants the inherited text escapes
+ * `BrandScope` deliberately (ADR-0010) — `Policy::currentVersion()` and
+ * `Support\OutstandingConsents` are the two that matter.
+ *
  * @property string $id
- * @property string $brand_id
+ * @property string|null $brand_id
  * @property string $policy_id
  * @property string $version
  * @property string $content
@@ -41,7 +48,16 @@ class PolicyVersion extends Model
     use BelongsToBrand;
 
     /** @use HasFactory<PolicyVersionFactory> */
-    use HasFactory, HasUlids;
+    use HasFactory, HasUlids, MayBeOperatorWide;
+
+    /**
+     * Overrides `BelongsToBrand`'s boot hook so a version of an
+     * operator-wide policy keeps its null `brand_id` (see MayBeOperatorWide).
+     */
+    public static function bootBelongsToBrand(): void
+    {
+        static::bootOperatorWideBrandScope();
+    }
 
     protected $fillable = [
         'version',

@@ -1,0 +1,265 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
+use Konventix\Commerce\Enums\CartStatus;
+use Konventix\Commerce\Enums\OrderStatus;
+use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Models\Cart;
+use Konventix\Commerce\Models\CartLine;
+use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
+use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\Stripe\StripeApi;
+use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
+use Konventix\Compliance\Enums\LawfulBasis;
+use Konventix\Compliance\Models\Policy;
+use Konventix\Compliance\Models\PolicyVersion;
+use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
+
+/**
+ * `/pay/order/{order}` — the order-addressed way back to a payment that
+ * failed (GitLab #5, review 6 findings 1, 2 and 4).
+ *
+ * Order-scoped rather than cart-scoped: `OpenCart::for()` opens a second
+ * cart the moment the payer adds one more product, so "the newest cart" is
+ * not the one the mail was about. Naming the order cannot be ambiguous, and
+ * it keeps the cart page — whose line controls need an open cart — out of
+ * this entirely.
+ *
+ * The reservation is the first placement's. Arriving here, or paying from
+ * here, never renews it: `ExpireCarts` owns when it ends (ADR-0047 point 4)
+ * and this path never calls `PlaceOrderFromCart`'s reuse branch.
+ *
+ * Helper names prefixed `orderRepay*` — Pest helpers are process-global
+ * (.ai/rules/tests.md).
+ */
+final class OrderRepayTestFakeStripe implements StripeApi
+{
+    /** @var list<array<string, mixed>> */
+    public array $sessions = [];
+
+    public function createCheckoutSession(array $params): StripeCheckoutSession
+    {
+        $this->sessions[] = $params;
+
+        return new StripeCheckoutSession(id: 'cs_repay_'.count($this->sessions), url: 'https://checkout.stripe.test/repay-'.count($this->sessions));
+    }
+
+    public function createRefund(array $params): void {}
+
+    /**
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId): array
+    {
+        return ['status' => 'open', 'payment_status' => 'unpaid', 'payment_intent' => null, 'payment_intent_status' => null];
+    }
+}
+
+function orderRepayBrand(): Brand
+{
+    $brand = test()->withBrand();
+    $brand->operator()->associate(Operator::factory()->create())->save();
+    test()->activateFeature('commerce:shop', $brand);
+
+    return $brand;
+}
+
+function orderRepayAccount(): SettlementAccount
+{
+    config()->set('services.stripe.secret', 'sk_test_repay');
+    config()->set('services.stripe.webhook_secret', 'whsec_repay');
+
+    $account = SettlementAccount::factory()->create(['provider' => SettlementAccount::PROVIDER_STRIPE]);
+
+    app()->instance(StripeApi::class, new OrderRepayTestFakeStripe);
+
+    return $account;
+}
+
+/**
+ * A cart order whose hosted checkout failed: order pending, one payment row
+ * in `failed`, the cart `checked_out` and still holding.
+ *
+ * @return array{0: Order, 1: Cart}
+ */
+function orderRepayFailedCartOrder(User $payer, bool $held = true): array
+{
+    $order = Order::factory()->create([
+        'settles_type' => 'cart',
+        'payer_user_id' => $payer->getKey(),
+        'status' => OrderStatus::Pending,
+        'total_net' => '30.00',
+        'total_tax' => '5.70',
+        'total_gross' => '35.70',
+        'currency' => 'EUR',
+    ]);
+    OrderLine::factory()->forOrder($order)->create(['label' => 'Con Shirt', 'quantity' => 1, 'line_gross' => '35.70']);
+
+    $cart = Cart::factory()->create([
+        'payer_user_id' => $payer->getKey(),
+        'status' => CartStatus::CheckedOut,
+        'checked_out_order_id' => $order->getKey(),
+        'expires_at' => $held ? now()->addMinutes(30) : now()->subMinute(),
+    ]);
+    CartLine::factory()->forCart($cart)->create(['label' => 'Con Shirt', 'quantity' => 1, 'unit_amount_net' => '30.00']);
+
+    Payment::factory()->create(['order_id' => $order->getKey(), 'status' => PaymentStatus::Failed]);
+
+    return [$order->fresh(), $cart->fresh()];
+}
+
+it('shows the order, its hold and the failed attempt to the buyer', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order, $cart] = orderRepayFailedCartOrder($payer);
+    orderRepayAccount();
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('pay/Order')
+            ->where('order.id', $order->getKey())
+            ->where('order.totalGross', '35.70')
+            ->has('order.lines', 1)
+            ->where('order.lines.0.label', 'Con Shirt')
+            ->where('paymentStatus', 'failed')
+            ->where('payable', true)
+            ->where('refusalReason', null)
+            ->where('holdUntil', $cart->expires_at->toIso8601String())
+            ->has('accounts', 1));
+});
+
+it('404s the page for anyone but the order\'s own buyer', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order] = orderRepayFailedCartOrder($payer);
+
+    // The id travels in mails and browser history, so knowing it authorizes
+    // nothing — unlike the registration pay page, which is addressed by an
+    // unguessable ULID the registrant's own flow carries.
+    test()->actingAs(User::factory()->create())
+        ->get('/pay/order/'.$order->getKey())
+        ->assertNotFound();
+});
+
+it('404s an order that does not exist, and asks a guest to sign in', function (): void {
+    orderRepayBrand();
+    $missing = (string) Str::ulid();
+
+    test()->get('/pay/order/'.$missing)->assertRedirect('/login');
+
+    test()->actingAs(User::factory()->create())
+        ->get('/pay/order/'.$missing)
+        ->assertNotFound();
+});
+
+it('pays the same order again, writing one more payment row and no second order', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order] = orderRepayFailedCartOrder($payer);
+    $account = orderRepayAccount();
+
+    test()->actingAs($payer)
+        ->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->getKey()])
+        ->assertRedirect('https://checkout.stripe.test/repay-1');
+
+    expect(Order::query()->count())->toBe(1)
+        ->and(Payment::withoutBrandScope()->where('order_id', $order->getKey())->count())->toBe(2)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Pending);
+});
+
+/**
+ * Review 6 finding 3: before this page existed the retry ran through
+ * `PlaceOrderFromCart`'s reuse branch, which pushes `expires_at` another
+ * `CHECKOUT_GRACE_MINUTES` out on every attempt — so a payer re-posting the
+ * checkout every 59 minutes could hold stock and registration lines
+ * indefinitely and `ExpireCarts` would never sweep the cart. The
+ * order-scoped path never touches the cart at all.
+ */
+it('never renews the reservation the first placement fixed', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order, $cart] = orderRepayFailedCartOrder($payer);
+    $account = orderRepayAccount();
+    $deadline = $cart->expires_at;
+
+    test()->actingAs($payer)->get('/pay/order/'.$order->getKey())->assertOk();
+
+    test()->actingAs($payer)
+        ->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->getKey()])
+        ->assertRedirect('https://checkout.stripe.test/repay-1');
+
+    expect($cart->fresh()->expires_at->toIso8601String())->toBe($deadline->toIso8601String())
+        ->and($cart->fresh()->status)->toBe(CartStatus::CheckedOut);
+});
+
+it('refuses to take money once the reservation has run out, and says so on the page', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order] = orderRepayFailedCartOrder($payer, held: false);
+    $account = orderRepayAccount();
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payable', false)
+            ->where('refusalReason', 'The reservation for this order has run out.'));
+
+    test()->actingAs($payer)
+        ->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->getKey()])
+        ->assertRedirect()
+        ->assertSessionHasErrors('account');
+
+    expect(Payment::withoutBrandScope()->where('order_id', $order->getKey())->count())->toBe(1);
+});
+
+it('refuses an order that is already settled or no longer awaiting payment', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order] = orderRepayFailedCartOrder($payer);
+    $account = orderRepayAccount();
+
+    Payment::factory()->create(['order_id' => $order->getKey(), 'status' => PaymentStatus::Succeeded]);
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payable', false)
+            ->where('refusalReason', 'This order is already settled.'));
+
+    $order->forceFill(['status' => OrderStatus::Cancelled])->save();
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('refusalReason', 'This order is no longer awaiting payment.'));
+});
+
+it('sends the payer to the consent screen before the form when a contract text is outstanding', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order] = orderRepayFailedCartOrder($payer);
+    orderRepayAccount();
+
+    PolicyVersion::factory()->for(Policy::factory()->operatorWide()->terms())->operatorWide()->published()->create([
+        'version' => 'terms-v1',
+        'requires_consent' => true,
+        'lawful_basis' => LawfulBasis::Contract,
+    ]);
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertRedirect(route('policies.required', absolute: false))
+        ->assertSessionHas('url.intended', '/pay/order/'.$order->getKey());
+});

@@ -43,6 +43,11 @@ final class UpdateRegistrationType
                 'grants' => $data->grants,
                 'price_declaration' => $data->priceDeclaration,
                 'terms_days' => $data->termsDays,
+                // Not a frozen axis (#218): closing a sale early or extending
+                // it by a day is an operational decision — it reinterprets
+                // nobody's existing registration the way the terms would.
+                'sales_start' => $data->salesStart,
+                'sales_end' => $data->salesEnd,
             ])->save();
 
             $this->syncQuotas($type, $data->quotaIds);

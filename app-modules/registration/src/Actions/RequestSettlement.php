@@ -25,6 +25,18 @@ use RuntimeException;
  * cleanly. An amendment passes its own ULID instead so Commerce treats it as
  * a separate order rather than a replay (ADR-0036).
  *
+ * `$enforcesSalesWindow` decides whether the type's sales window travels with
+ * the request (#218, fix round 1). It is true for exactly one caller: a fresh
+ * registration submitted by someone buying now, which is the only request
+ * Commerce may refuse on window grounds. It is false — and both scalars go
+ * out null, "not window-bound" — for a waitlist conversion (the spot was
+ * promised and its quota held at offer time, D-REG-12), for a confirmation
+ * after approval (the organizer let a straggler in on purpose) and for a
+ * priced amendment (ADR-0036: the registration already exists and already
+ * holds its quota). Registration is the authority on who may register;
+ * Commerce enforces the window only for a fresh sale, and only where a payer
+ * can still act on the refusal.
+ *
  * `$lines` defaults to the type's price declaration. An amendment overrides
  * it with the delta's own lines: the added grants are priced independently of
  * what the type costs — crew that comes with an exhibitor package is free,
@@ -40,6 +52,7 @@ final class RequestSettlement
         RegistrationType $registrationType,
         ?string $requestKey = null,
         ?array $lines = null,
+        bool $enforcesSalesWindow = false,
     ): void {
         $price = $registrationType->price_declaration;
 
@@ -81,6 +94,12 @@ final class RequestSettlement
             termsDays: $registrationType->terms_days,
             requestedAt: now()->toIso8601String(),
             requestKey: $requestKey ?? $registration->id,
+            // #218: Commerce enforces the same window and may not read this
+            // module's table to learn it (ADR-0004). Null means "not
+            // window-bound" — see this class's docblock for which requests
+            // are exempt and why.
+            saleStartsAt: $enforcesSalesWindow ? $registrationType->sales_start?->toIso8601String() : null,
+            saleEndsAt: $enforcesSalesWindow ? $registrationType->sales_end?->toIso8601String() : null,
         ));
     }
 }

@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
+use Konventix\Compliance\Database\Seeders\OperatorLegalTextsSeeder;
 use Konventix\Identity\Models\User;
 use Konventix\Identity\Profile\UsernameGenerator;
 use Konventix\Platform\Models\Brand;
@@ -159,6 +160,16 @@ class InstallCommand extends Command
         if ($brandName !== '') {
             $this->ensureBrand($operator, $brandName, $brandDomain);
         }
+
+        // The operator-wide AGB and Widerrufsbelehrung the checkout resolves
+        // (#200, #76). Only `konventix:seed` ran this before, and a real
+        // deployment never runs the demo seed — so a fresh instance could
+        // sell without the consent control ever appearing, silently. The
+        // seeder is idempotent per slug, so re-running the install leaves an
+        // operator's own replacement alone; the placeholders say in their
+        // own text that they bind nobody and must be replaced.
+        app(OperatorLegalTextsSeeder::class)->run();
+        $this->info('Checkout legal texts: placeholders in place — replace them under Policies before selling.');
 
         $this->info('Install complete.');
 

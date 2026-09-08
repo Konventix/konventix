@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Observability\CorrelationId;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Konventix\Commerce\Health\WaitingRoomCheck;
@@ -77,7 +81,26 @@ class ObservabilityServiceProvider extends ServiceProvider
      */
     private function scrubTelescopeEntries(): void
     {
-        Telescope::hideRequestParameters(['_token', 'password', 'password_confirmation', 'current_password']);
+        // The credential fields the settlement console posts are named here
+        // one by one: Stripe's pair and optional publishable key for this
+        // instance (ADR-0058 point 2), and Mollie's and Unzer's per-brand keys
+        // (ADR-0039 point 4). Telescope is `require-dev`, so production never
+        // sees these entries — but staging is exactly where an operator pastes
+        // a live key, which is the case the console's own warning is about.
+        Telescope::hideRequestParameters([
+            '_token',
+            'password',
+            'password_confirmation',
+            'current_password',
+            'secretKey',
+            'secret_key',
+            'webhookSecret',
+            'webhook_secret',
+            'publishableKey',
+            'publishable_key',
+            'api_key',
+            'private_key',
+        ]);
 
         Telescope::hideRequestHeaders(['cookie', 'x-csrf-token', 'x-xsrf-token', 'authorization']);
     }
@@ -89,6 +112,38 @@ class ObservabilityServiceProvider extends ServiceProvider
         $this->authorizeTelescope();
         $this->registerHealthChecks();
         $this->scheduleHousekeeping();
+        $this->correlateJobsAndCommands();
+    }
+
+    /**
+     * The half of ADR-0056 that is not a request. A request gets its ID from
+     * `AssignCorrelationId`; everything else that writes log lines starts
+     * here.
+     *
+     * A queued job normally inherits the ID of the request that dispatched
+     * it — the framework carries `Context` in the payload and restores it on
+     * `JobProcessing`, flushing whatever the worker held before. That
+     * restore runs first (the context provider is a framework provider and
+     * boots before this one), so `addIf` here sees the inherited ID and
+     * keeps it, and only a job that inherited none — dispatched by the
+     * scheduler, by a command, by another such job — mints its own.
+     * `CorrelationIdTest` pins that order with two orphan jobs whose IDs
+     * must differ.
+     *
+     * `CommandStarting` covers the rest: every artisan run, which under
+     * `schedule:run` means every scheduled task, since each runs in a
+     * process of its own. `addIf` again, so a command called from inside a
+     * request or a job stays in that unit of work.
+     */
+    private function correlateJobsAndCommands(): void
+    {
+        Event::listen(JobProcessing::class, function (): void {
+            CorrelationId::ensure();
+        });
+
+        Event::listen(CommandStarting::class, function (): void {
+            CorrelationId::ensure();
+        });
     }
 
     /**
@@ -145,20 +200,23 @@ class ObservabilityServiceProvider extends ServiceProvider
      * the Horizon process alone leaves it permanently blank, which reads as
      * "Horizon is broken" rather than "nobody scheduled the snapshot".
      *
-     * `telescope:prune` and Pulse's trim keep two stores of personal data from
-     * growing without bound. Telescope holds request bodies and Pulse holds
-     * user ids, and neither is covered by Compliance's retention rules
-     * (D-CPL-01 names the delivery log and the audit trail). Until they are,
-     * these windows are the only thing bounding them — deliberately shorter
-     * than anything Compliance governs, because nothing here is evidence of
-     * anything.
+     * `telescope:prune` keeps one of two stores of personal data from growing
+     * without bound; Pulse holds the other (user ids) and trims itself, via
+     * `ingest.trim.lottery` and `storage.trim.keep` in `config/pulse.php`,
+     * with nothing to schedule here. Neither store is covered by Compliance's
+     * retention rules (D-CPL-01 names the delivery log and the audit trail).
+     * Until it is, these windows are the only thing bounding them —
+     * deliberately shorter than anything Compliance governs, because nothing
+     * here is evidence of anything.
      */
     private function scheduleHousekeeping(): void
     {
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command('horizon:snapshot')->everyFiveMinutes();
 
-            $schedule->command('pulse:trim')->hourly();
+            // Pulse trims itself: `ingest.trim.lottery` runs a chance of it
+            // on every ingest, and `storage.trim.keep` bounds what survives.
+            // There is no `pulse:trim` artisan command to schedule here.
 
             if (class_exists(Telescope::class)) {
                 $schedule->command('telescope:prune --hours=48')->daily();

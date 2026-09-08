@@ -1,0 +1,47 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Konventix\Commerce\Data;
+
+use Spatie\LaravelData\Attributes\Validation\Max;
+use Spatie\LaravelData\Attributes\Validation\Nullable;
+use Spatie\LaravelData\Attributes\Validation\Regex;
+use Spatie\LaravelData\Attributes\Validation\Required;
+use Spatie\LaravelData\Attributes\Validation\StartsWith;
+use Spatie\LaravelData\Attributes\Validation\StringType;
+use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
+
+/**
+ * The Stripe account this instance settles into, as an operator types it
+ * into the console (ADR-0058 point 2, #215).
+ *
+ * The prefixes are validated because Stripe's own key shapes are the only
+ * early warning there is: a publishable key pasted into the secret field,
+ * or an endpoint's id instead of its signing secret, would otherwise fail
+ * at the first real payment rather than at the form. The publishable key is
+ * optional and unused — hosted Checkout renders no card field on any
+ * Konventix page (ADR-0039 point 1) — and is kept only for completeness.
+ *
+ * Both `sk_` and `rk_` are accepted for the secret key: a restricted key is
+ * what `stripe login` mints, and it charges the same account the same way.
+ * Which calls it may make is scoped at Stripe and deliberately not mirrored
+ * here — a key missing a scope fails at that call with Stripe's own message,
+ * which is a better explanation than any guess this form could make at save
+ * time, and one this application already surfaces where it happens.
+ */
+#[TypeScript]
+final class SaveStripeSettingsData extends Data
+{
+    public function __construct(
+        #[Required, StringType, Max(255), Regex('/^(sk|rk)_(test|live)_.+$/')]
+        public readonly string $secretKey,
+
+        #[Required, StringType, Max(255), StartsWith('whsec_')]
+        public readonly string $webhookSecret,
+
+        #[Nullable, StringType, Max(255), Regex('/^pk_(test|live)_.+$/')]
+        public readonly ?string $publishableKey,
+    ) {}
+}

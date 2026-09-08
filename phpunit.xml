@@ -60,6 +60,14 @@
         <!-- ArrayWaitingRoomStore, not Redis (ADR-0047 point 5) — a test
              process needs no real queue infrastructure. -->
         <env name="WAITING_ROOM_STORE" value="array"/>
+        <!-- The suite must never depend on the developer's own .env carrying
+             (or not carrying) a live key: StripeApi's container binding
+             throws when this is empty (CommerceServiceProvider), and every
+             test that needs a Stripe webhook secret sets it explicitly via
+             config() rather than relying on this default — see
+             StripeWebhookTest and WebhookThrottleTest. -->
+        <env name="STRIPE_SECRET" value=""/>
+        <env name="STRIPE_WEBHOOK_SECRET" value=""/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="DEBUGBAR_ENABLED" value="false"/>

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Konventix\Compliance\Actions;
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Events\PolicyPublished;
+use Konventix\Compliance\Exceptions\PolicyVersionNeedsEffectiveDateException;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
 
@@ -17,8 +19,10 @@ use Konventix\Compliance\Models\PolicyVersion;
  * published version is ever effective per policy (TODO.md "Next").
  *
  * `effectiveAt` defaults to the version's own `effective_at` if it was set
- * ahead of publication, falling back to now() so a version can never publish
- * without an effective date.
+ * ahead of publication; with neither, this refuses. The silent `now()` it used
+ * to fall back to published texts nobody had dated — `effective_at` equal to
+ * `published_at` to the second — and from when a text binds is a statement
+ * someone makes, not one the system infers (GitLab #203).
  *
  * Every read here escapes `BrandScope` explicitly: publishing happens from
  * the operator console, where the scope hardens to zero rows (ADR-0029). A
@@ -30,6 +34,18 @@ final class PublishPolicyVersion
 {
     public function __invoke(PolicyVersion $version, ?CarbonInterface $effectiveAt = null): PolicyVersion
     {
+        // Normalised to UTC because `policy_versions.effective_at` is a
+        // zone-less column and Eloquent writes a Carbon in whatever zone the
+        // instance carries: an argument still holding the operator's `+02:00`
+        // would be stored as its local digits and read back two hours wrong.
+        $effectiveAt = ($effectiveAt ?? $version->effective_at) === null
+            ? null
+            : CarbonImmutable::instance($effectiveAt ?? $version->effective_at)->utc();
+
+        if ($effectiveAt === null) {
+            throw PolicyVersionNeedsEffectiveDateException::for($version);
+        }
+
         return DB::transaction(function () use ($version, $effectiveAt): PolicyVersion {
             PolicyVersion::withoutBrandScope()
                 ->where('policy_id', $version->policy_id)
@@ -39,7 +55,7 @@ final class PublishPolicyVersion
 
             $version->forceFill([
                 'state' => PolicyVersionState::Published,
-                'effective_at' => $effectiveAt ?? $version->effective_at ?? now(),
+                'effective_at' => $effectiveAt,
                 'published_at' => now(),
             ])->save();
 

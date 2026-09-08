@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
+import OperatorPresenceNotice from '@/components/OperatorPresenceNotice.vue';
 import {
     Card,
     CardContent,
@@ -42,6 +43,8 @@ defineProps<{
                         <slot />
                     </CardContent>
                 </Card>
+
+                <OperatorPresenceNotice />
             </div>
         </div>
     </div>

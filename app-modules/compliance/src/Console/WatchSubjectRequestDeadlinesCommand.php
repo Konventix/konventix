@@ -87,7 +87,10 @@ final class WatchSubjectRequestDeadlinesCommand extends Command
             $sendMessage->handle(new SendMessageRequest(
                 recipientId: null,
                 templateKey: self::TEMPLATE_KEY,
-                payload: new DeadlineWarningMailData(
+                // `ofDeadline`, not `new`: the payload class derives
+                // `daysOverdue` so the template can branch without an
+                // expression the override guard has to refuse (#9).
+                payload: DeadlineWarningMailData::ofDeadline(
                     requestId: $request->getKey(),
                     requestType: $request->type->value,
                     deadline: $request->deadline_at->format('d.m.Y'),

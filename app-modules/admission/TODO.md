@@ -29,10 +29,14 @@
 - [ ] Token delivery: `IssueAdmissionToken` mints KVX1 tokens but nothing
       renders one into a QR or mails it to a holder yet — that lands with
       badges (5b) and the claim flow (5c).
-- [ ] Emit `TicketTokenIssued` / `AdmissionRevoked` and append revocations to
-      the delta feed. The feed's `revoked` kind is defined and served but
-      nothing writes it yet: revocation has no Action of its own, so today
-      only `checked_in` entries appear.
+- [x] `AdmissionRevoked` is emitted and revocations reach the delta feed
+      (ADR-0057 point 6): on `RegistrationCancelled`,
+      `Actions\RevokeAdmissionsForRegistration` moves each of the
+      registration's non-checked-in admissions to `AdmissionState::Revoked`,
+      emits one `AdmissionRevoked` per admission, and appends a
+      `KIND_REVOKED` entry to the entrance delta feed so offline doors
+      (ADR-0033) stop admitting them — a checked-in admission is kept.
+      `TicketTokenIssued` still has no producer.
 - [ ] Deliver claim links through Messaging: `IssueAdmissionClaimLink` mints
       the link and `urlFor()` builds the signed URL, but nothing emails it —
       an organizer has to copy it out by hand. Needs an `admission.claim-link`
@@ -49,8 +53,7 @@
       (`GET /admin/admissions/{admission}/badge`) does exist.
 - [ ] Batch badge printing: one admission per request today, which is wrong
       for a check-in desk handing out a group booking's badges at once.
-- [ ] Holder assignment and reassignment for group and B2B bookings; revocation
-      driven by `RegistrationCancelled`.
+- [ ] Holder assignment and reassignment for group and B2B bookings.
 - [ ] Holder read model from Identity events, and the GDPR handler in
       `src/Gdpr/` — check-in logs are attendance data and need an explicit
       retention answer with Compliance.

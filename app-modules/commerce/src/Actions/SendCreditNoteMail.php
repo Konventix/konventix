@@ -90,13 +90,28 @@ final class SendCreditNoteMail
         ));
     }
 
+    /**
+     * Cancellation (ADR-0057 point 4: the deadline sweep's credit note, for
+     * an order whose reversed payment went unpaid) is neither a refund nor
+     * a transfer — the receivable was written off, nothing was paid back —
+     * so it gets its own word rather than falling into the "anything else"
+     * default `reasonLabelDe`/`En` used to be.
+     */
     private function reasonLabelDe(string $reasonCode): string
     {
-        return $reasonCode === IssueCreditNote::REASON_TRANSFER ? 'Umbuchung' : 'Erstattung';
+        return match ($reasonCode) {
+            IssueCreditNote::REASON_TRANSFER => 'Umbuchung',
+            IssueCreditNote::REASON_CANCELLATION => 'Stornierung',
+            default => 'Erstattung',
+        };
     }
 
     private function reasonLabelEn(string $reasonCode): string
     {
-        return $reasonCode === IssueCreditNote::REASON_TRANSFER ? 'Transfer' : 'Refund';
+        return match ($reasonCode) {
+            IssueCreditNote::REASON_TRANSFER => 'Transfer',
+            IssueCreditNote::REASON_CANCELLATION => 'Cancellation',
+            default => 'Refund',
+        };
     }
 }

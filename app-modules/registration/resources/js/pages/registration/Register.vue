@@ -57,6 +57,21 @@ const needsBillingAddress = props.settlement === 'invoice';
                     class="space-y-6"
                     v-slot="{ errors, processing }"
                 >
+                    <!--
+                        #218: a refusal that belongs to no single input — the
+                        type's sale has not opened, or has closed since this
+                        page was loaded. It leads the form and announces
+                        itself, because nothing the visitor could retype
+                        would fix it (ADR-0055).
+                    -->
+                    <div
+                        v-if="errors.registrationType"
+                        role="alert"
+                        class="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-text"
+                    >
+                        {{ errors.registrationType }}
+                    </div>
+
                     <div class="grid gap-2">
                         <Label for="organizationName"
                             >Organization (optional)</Label

@@ -2,6 +2,7 @@
 import { Head, Link } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import { show as showProduct } from '@/routes/commerce/shop';
+import { displayUnitAmount, taxNote } from '../../lib/purchaseTexts';
 
 /**
  * The brand's public shop listing (ADR-0047, Task 8) — every published
@@ -65,9 +66,9 @@ const props = defineProps<{
                     </p>
 
                     <span class="mt-auto text-sm font-medium text-text">
-                        {{ product.unitAmountNet }} €
+                        {{ displayUnitAmount(product) }} €
                         <span class="font-normal text-text-muted">
-                            excl. VAT
+                            {{ taxNote(product.priceDisplay) }}
                         </span>
                     </span>
                 </Link>

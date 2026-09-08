@@ -24,9 +24,18 @@ which account settles an order.**
   operator-editable `checkout_label` or the adapter's default. The PSP's
   hosted page chooses the actual method (ADR-0039 stays: no card fields, no
   method vocabulary on our side).
-- An account is *offered* only when it is live, connected, and — for Stripe
-  — its `card_payments` capability is active, refreshed on return from
-  onboarding and daily.
+- An account is *offered* only when it is live and connected. Until
+  ADR-0058 a Stripe account additionally had to report an active
+  `card_payments` capability, refreshed on return from onboarding and
+  daily; with Connect gone a Stripe row **is** the enablement flag — "this
+  brand sells through this instance's Stripe account" — and it is offered
+  when the instance can actually charge: the Stripe secret key *and* the
+  webhook signing secret, since a checkout with no verifiable webhook would
+  take money and never settle it (ADR-0039 point 2, ADR-0058 point 3 as
+  amended 2026-09-08). It carries
+  no account of its own to pick between; what distinguishes one brand's
+  Stripe payments from another's is metadata on the session and the intent,
+  plus the brand's own `checkout_label` and `statement_descriptor_suffix`.
 - **One account per order**: the `Payment` row names the account; once a
   payment has succeeded no other account can be started against that order.
   Refunds go back through the account that took the payment, which is what

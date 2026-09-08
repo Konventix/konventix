@@ -156,6 +156,42 @@ set it. Everything in the file therefore starts on `sail up`. If you want a serv
 again, the sail-native way is a second compose file plus `SAIL_FILES=compose.extra.yaml`, not
 a profile.
 
+### Stripe webhooks in local development
+
+Webhooks are the only source of settlement truth (ADR-0039), so a manual purchase walkthrough
+against a real PSP has to receive them — but Mollie's and Unzer's webhook URLs are built from
+`app.url`, which those providers cannot reach from a WSL dev stack (no inbound tunnel is
+installed here; that's `app-modules/commerce/TODO.md`'s "Local-dev webhooks" line, and
+Mollie/Unzer stay out of scope). Stripe doesn't have that problem: `stripe listen` opens an
+*outbound* connection to Stripe and replays events over it, so nothing needs to reach in.
+
+```bash
+stripe login                    # once per host
+./contrib/stripe-listen.sh      # forwards to POST /api/commerce/webhooks/stripe
+```
+
+The script fails early with a clear message if the Stripe CLI is missing or not logged in,
+reads `APP_PORT` from `.env` (falling back to compose's default of 80), and restricts events
+to the ones `StripeWebhookController` handles or is built to handle next: checkout completion
+and its async/expiry siblings, disputes, and refunds. They all fire on the instance's own
+Stripe account — Konventix settles into one Stripe account per instance and uses no connected
+accounts (ADR-0058) — so a plain `--forward-to` tunnel sees everything a purchase walkthrough
+tests. Run `./contrib/stripe-listen.sh --secret` to print only the webhook signing secret —
+for pasting into `STRIPE_WEBHOOK_SECRET` without starting a listener. Sail/Octane reads `.env`
+live in dev, but a cached config does not follow along; run `sail artisan config:clear` if
+`STRIPE_WEBHOOK_SECRET` was already cached.
+
+The keys themselves are this instance's Stripe account, not a platform pair: `STRIPE_SECRET`
+and `STRIPE_WEBHOOK_SECRET` from the environment, or — winning over them, per value — the
+pair an operator enters under **Settlement accounts → Stripe account** in the console, stored
+`APP_KEY`-encrypted. That precedence is the trap this script walks into: if you have used
+that card, the `whsec_` the tunnel prints belongs in the console too, not only in `.env`, or
+every forwarded event comes back as a 400 signature failure while `.env` looks right.
+**Clear keys** on the same card deletes the row and hands the environment back. A deployed instance has no tunnel and needs a real webhook endpoint
+instead (created *without* "Listen to events on connected accounts"); where both values come
+from in the Stripe dashboard, and why each environment carries its own signing secret, is
+[Stripe credentials per environment](docs/helm-chart-requirements.md#stripe-credentials-per-environment).
+
 ### Load testing the rush
 
 The rush from ADR-0047 point 6 — 1,000 arrivals against the seeded "Rush" brand, each one

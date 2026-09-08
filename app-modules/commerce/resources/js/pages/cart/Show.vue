@@ -5,12 +5,18 @@ import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { checkout as checkoutCart } from '@/routes/commerce/cart';
 import {
     destroy as destroyLine,
     update as updateLine,
 } from '@/routes/commerce/cart/lines';
 import { index as shopIndex } from '@/routes/commerce/shop';
+import {
+    ORDER_WITH_OBLIGATION_TO_PAY,
+    fulfilmentNote,
+    taxNote,
+} from '../../lib/purchaseTexts';
 
 /**
  * The person-owned cart (ADR-0047, Task 11): line list with quantity
@@ -20,17 +26,37 @@ import { index as shopIndex } from '@/routes/commerce/shop';
  *
  * No dirty guard (ADR-0038): every change here — quantity, remove, add —
  * is its own immediate request with no draft state a navigation could lose.
+ *
+ * The consent control before the order button is not this page's to write
+ * (GitLab #2): Compliance contributes it to the `checkout.consent` slot and
+ * this page renders whatever comes back, exactly as Event's landing page
+ * renders Registration's offers. A contribution that declares itself
+ * `required` must be confirmed before checkout — that is the whole of what
+ * Commerce knows about it.
  */
 type CartLine = Konventix.Commerce.Data.CartLineData;
 type Cart = Konventix.Commerce.Data.CartData;
+type SlotContribution = {
+    module: string;
+    component: string;
+    props: Record<string, unknown>;
+};
 
 const props = defineProps<{
     cart: Cart;
+    consentSlots: SlotContribution[];
 }>();
 
 const page = usePage();
 const accountError = computed(() => page.props.errors.account);
 const quantityError = computed(() => page.props.errors.quantity);
+const consentError = computed(() => page.props.errors.accept_terms);
+
+const acceptTerms = ref(false);
+const consentRequired = computed(() =>
+    props.consentSlots.some((slot) => slot.props.required === true),
+);
+const canCheckout = computed(() => !consentRequired.value || acceptTerms.value);
 
 // Only the line currently being changed disables its own controls, so the
 // rest of the cart stays usable while one request is in flight.
@@ -65,7 +91,7 @@ function checkout(accountId: string): void {
     startingAccount.value = accountId;
     router.post(
         checkoutCart().url,
-        { account: accountId },
+        { account: accountId, accept_terms: acceptTerms.value },
         { onFinish: () => (startingAccount.value = null) },
     );
 }
@@ -119,7 +145,8 @@ const expiresInMinutes = computed<number | null>(() => {
                             line.label
                         }}</span>
                         <span class="text-sm text-text-muted">
-                            {{ line.unitAmountNet }} € each
+                            {{ line.unitAmountGross }} {{ cart.currency }} each
+                            {{ taxNote('gross') }}
                         </span>
                     </div>
 
@@ -201,9 +228,32 @@ const expiresInMinutes = computed<number | null>(() => {
                     class="flex items-center justify-between font-semibold text-text"
                 >
                     <span>Total</span>
-                    <span>{{ cart.totalGross }} {{ cart.currency }}</span>
+                    <span>
+                        {{ cart.totalGross }} {{ cart.currency }}
+                        <span class="font-normal text-text-muted">
+                            {{ taxNote('gross') }}
+                        </span>
+                    </span>
                 </div>
             </div>
+
+            <!--
+                #75: how and when what was bought arrives has to be stated
+                before the order is placed, not only in the confirmation.
+            -->
+            <p class="text-sm text-text-muted">
+                {{ fulfilmentNote(cart.accounts.length > 0) }}
+            </p>
+
+            <template v-for="slot in props.consentSlots" :key="slot.component">
+                <component
+                    :is="resolveRegisteredComponent(slot.component)"
+                    v-if="resolveRegisteredComponent(slot.component)"
+                    v-model="acceptTerms"
+                    v-bind="slot.props"
+                    :error="consentError"
+                />
+            </template>
 
             <div
                 v-if="cart.accounts.length > 0"
@@ -212,20 +262,23 @@ const expiresInMinutes = computed<number | null>(() => {
                 <Button
                     v-for="account in cart.accounts"
                     :key="account.id"
-                    :disabled="startingAccount === account.id"
+                    :disabled="startingAccount === account.id || !canCheckout"
                     @click="checkout(account.id)"
                 >
                     <CreditCard class="size-4" />
-                    Pay — {{ account.label }}
+                    {{ ORDER_WITH_OBLIGATION_TO_PAY }} — {{ account.label }}
                 </Button>
+
+                <p
+                    v-if="!canCheckout"
+                    role="status"
+                    class="text-sm text-text-muted"
+                >
+                    Confirm the documents above to place your order.
+                </p>
 
                 <InputError :message="accountError" />
             </div>
-
-            <p v-else class="text-sm text-text-muted">
-                This organizer settles by bank transfer — payment details arrive
-                with your confirmation.
-            </p>
         </template>
     </div>
 </template>

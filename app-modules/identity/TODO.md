@@ -103,7 +103,14 @@ person behind it. The value here is in what is left out.
       Fortify's stock `RegisteredUserController`/`RegisterResponse` — it
       cannot auto-login on a duplicate — which is a bigger change than this
       PR's scope. The same gap already existed for password reset before this
-      PR and is unchanged here.
+      PR and is unchanged here. **GitLab #18, Phase 2** (ADR-0054 §6): the
+      "check your inbox" mail also names the operator and the brand the
+      account was first used on — it is where a person with two brands
+      learns they have one account.
+- [ ] "Leave brand B, keep the account" has no path (ADR-0054 consequences):
+      deletion spans the operator (ADR-0050), and nothing removes a single
+      membership with its brand-scoped rows. Not a go-live concern; design
+      it when a person asks for it.
 - [ ] The session list on the Security page has no way to scope to "this
       brand's sessions" — the `sessions` table carries no `brand_id` column
       (Laravel's own table), so `Queries\ActiveSessionsQuery` lists every

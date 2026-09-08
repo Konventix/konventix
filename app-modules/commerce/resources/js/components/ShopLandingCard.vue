@@ -2,6 +2,7 @@
 import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
 import { show as showProduct } from '@/routes/commerce/shop';
+import { displayUnitAmount, taxNote } from '../lib/purchaseTexts';
 
 /**
  * Commerce's contribution to Event's `event.landing` slot (ADR-0047,
@@ -51,7 +52,8 @@ const props = defineProps<{
                     <span
                         class="shrink-0 text-sm whitespace-nowrap text-text-muted"
                     >
-                        {{ product.unitAmountNet }} € excl. VAT
+                        {{ displayUnitAmount(product) }} €
+                        {{ taxNote(product.priceDisplay) }}
                     </span>
 
                     <ArrowRight class="size-4 shrink-0 text-text-muted" />

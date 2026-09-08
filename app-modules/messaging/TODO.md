@@ -6,17 +6,15 @@
 
 ## Next
 
-- [ ] `TemplateOverrideGuard`'s allow-list is deliberately narrower than
+- [x] `TemplateOverrideGuard`'s allow-list is deliberately narrower than
       Blade itself: an echo that is anything more than `{{ $field }}` or
       `{{ $field ?? 'literal' }}` is refused, so a shipped default using a
       richer expression cannot be pasted into an override even though the
-      default renders it fine. As of ADR-0048 the only default still in
-      that state is `compliance.deadline-warning`'s
-      `{{ $daysLeft < 0 ? … }}` (both locales) — the tranche's own
-      templates were rewritten to guard-legal `@if`/`@else` blocks instead.
-      Moving that logic into the payload Data class, or into an `@if`
-      block, is the fix per template; widening the guard to admit
-      arbitrary PHP expressions is exactly what it exists to refuse.
+      default renders it fine. `compliance.deadline-warning`'s
+      `{{ $daysLeft < 0 ? … }}` (both locales) was the only default still
+      in that state; it is now a guard-legal `@if`/`@else` block instead,
+      and `TemplateRegistryTest`'s `$allowedExceptions` no longer carries
+      it (#9).
 - [ ] `UserAnonymized` is still unconsumed by the recipient read model — it
       lands with Identity's GDPR handler.
 - [ ] Suppression-list operator screen: `AddSuppression`/`LiftSuppression`
@@ -63,7 +61,10 @@
       currently reach every known account, operator-wide — Messaging's
       recipient read model has no notion of brand membership. Needs an
       Identity contract signal (brand first-seen / membership) before the
-      fan-out can respect the brand boundary of the announcement.
+      fan-out can respect the brand boundary of the announcement. **GitLab
+      #25.** ADR-0054 §3 makes "audiences follow the membership" the rule and
+      this fan-out the known exception: a deployment with more than one
+      brand must not publish to `everyone` or `logged-in` until it closes.
 
 - [ ] Push end-to-end against a real browser: the channel, worker and
       subscription flow are tested on fakes; a manual pass against Chrome and

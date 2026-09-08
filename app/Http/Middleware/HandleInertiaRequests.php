@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Observability\CorrelationId;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Konventix\Commerce\Cart\CartSummary;
@@ -138,6 +139,12 @@ class HandleInertiaRequests extends Middleware
             // null on production, and the shell renders nothing then. The
             // decision is the server's, never the component's.
             'environment' => app(DeploymentEnvironment::class)->ribbon(),
+            // This response's correlation ID (ADR-0056), the same value as
+            // its `X-Request-ID` header: what a report from the browser
+            // (#88) quotes so that the log lines behind it can be found.
+            // Shared rather than rendered into the root template, because
+            // an Inertia visit replaces the props and not the document.
+            'correlationId' => CorrelationId::current(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             // The topbar's cart badge (ADR-0047, Task 11). The query itself
             // lives behind Commerce's own `CartSummary` service — the host

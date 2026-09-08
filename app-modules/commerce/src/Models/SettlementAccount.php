@@ -12,11 +12,16 @@ use Illuminate\Support\Carbon;
 use Konventix\Commerce\Database\Factories\SettlementAccountFactory;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapter;
+use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
  * A brand's connected settlement account (ADR-0007): whose PSP account money
- * for this brand's orders flows into.
+ * for this brand's orders flows into. For Mollie and Unzer that is the
+ * brand's own key on this row; for Stripe the row is only the flag that
+ * says this brand sells through the one Stripe account the instance holds
+ * (ADR-0058 point 3), plus the words the payer sees — `checkout_label` on
+ * the button and `statement_descriptor_suffix` on their card statement.
  *
  * The platform never holds funds, so this is not a wallet — it is the
  * identity an adapter acts on behalf of. `SettlementAdapter::markOrderPaid()`
@@ -32,6 +37,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $provider
  * @property string|null $label
  * @property string|null $checkout_label
+ * @property string|null $statement_descriptor_suffix
  * @property string|null $provider_account_id
  * @property array<string, string>|null $credentials
  * @property array<string, mixed>|null $capabilities
@@ -57,7 +63,7 @@ class SettlementAccount extends Model
     /** A brand that deliberately settles nothing through the platform. */
     public const string PROVIDER_NULL = 'null';
 
-    /** Stripe, direct charges on the organizer's connected account (ADR-0039). */
+    /** Stripe, on this instance's own account (ADR-0058). */
     public const string PROVIDER_STRIPE = 'stripe';
 
     /** Mollie, against the organizer's own API key (ADR-0039). */
@@ -66,10 +72,31 @@ class SettlementAccount extends Model
     /** Unzer, against the organizer's own private key (ADR-0039). */
     public const string PROVIDER_UNZER = 'unzer';
 
+    /**
+     * How much of Stripe's statement descriptor a brand may claim.
+     *
+     * Stripe caps the account's own prefix plus this suffix at 22 characters
+     * together and refuses the charge if they overflow; the prefix cannot be
+     * read back since `fetchAccount()` went with Connect (ADR-0058), so the
+     * budget is the worst legal case — a 10-character prefix and its
+     * separator leave 11, and this keeps 10.
+     *
+     * Both the enable form and the in-place edit validate against these two
+     * constants so the two rules cannot drift apart.
+     */
+    public const int STATEMENT_DESCRIPTOR_SUFFIX_MAX = 10;
+
+    /**
+     * The characters Stripe refuses outright (`<`, `>`, `\`, `"`, `'`), plus
+     * its requirement of at least one latin letter.
+     */
+    public const string STATEMENT_DESCRIPTOR_SUFFIX_PATTERN = '/^[^<>\\\\"\']*[A-Za-z][^<>\\\\"\']*$/';
+
     protected $fillable = [
         'provider',
         'label',
         'checkout_label',
+        'statement_descriptor_suffix',
         'provider_account_id',
         'credentials',
         'capabilities',
@@ -106,9 +133,17 @@ class SettlementAccount extends Model
     }
 
     /**
-     * Live, connected, and — for Stripe — allowed to take cards: a freshly
-     * onboarded Stripe account is connected but not yet active, and
-     * offering it would fail at Stripe rather than on our page.
+     * Live, connected, and — for Stripe — chargeable at all.
+     *
+     * A Stripe row is the brand's enablement flag since ADR-0058 point 3:
+     * there is no connected account and no capability to wait for, so the
+     * only extra question is whether this instance can charge — which takes
+     * the secret key *and* the webhook signing secret. Without the key the
+     * button would fail at Stripe rather than on our page; without the
+     * signing secret it would succeed at Stripe and never settle, because the
+     * webhook is the only source of settlement truth (ADR-0039 point 2). Resolved from the container at call time rather
+     * than injected: this is a model, and the answer changes the moment an
+     * operator saves a key.
      */
     public function isOffered(): bool
     {
@@ -117,7 +152,7 @@ class SettlementAccount extends Model
         }
 
         if ($this->provider === self::PROVIDER_STRIPE) {
-            return ($this->capabilities['card_payments'] ?? null) === 'active';
+            return app(StripeCredentials::class)->configured();
         }
 
         return true;
@@ -139,8 +174,9 @@ class SettlementAccount extends Model
     {
         return [
             // Structured per provider (ADR-0039): {'api_key': …} for Mollie,
-            // {'private_key': …} for Unzer; Stripe stores no secret at all —
-            // the connected account id plus the platform key is sufficient.
+            // {'private_key': …} for Unzer; Stripe stores no secret here at
+            // all — the instance's own key is operator-level, in
+            // `StripeSettings` or the environment (ADR-0058 point 2).
             'credentials' => 'encrypted:array',
             'capabilities' => 'array',
             'capabilities_checked_at' => 'datetime',

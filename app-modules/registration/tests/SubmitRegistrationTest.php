@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Konventix\Registration\Actions\SubmitRegistration;
 use Konventix\Registration\Data\SubmitRegistrationData;
 use Konventix\Registration\Enums\ConfirmationGate;
@@ -18,6 +20,7 @@ use Konventix\Registration\Exceptions\QuotaExhaustedException;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
+use Konventix\Registration\Models\WaitlistEntry;
 
 function submitRegistrationAction(): SubmitRegistration
 {
@@ -186,4 +189,79 @@ it('confirms an on_submit registration regardless of settlement, requesting sett
         ->and($registration->payment_status)->toBe(PaymentStatus::Pending);
     Event::assertDispatched(RegistrationConfirmed::class);
     Event::assertDispatchedTimes(RegistrationSettlementRequested::class, 1);
+});
+
+/**
+ * #218 (#216 draft i): the server-side window check, independent of the
+ * waiting room and of whatever the landing page happened to render. The
+ * landing page already hides a closed type, but a bookmarked URL, a stale
+ * tab or a direct POST reaches this Action anyway — and #216 is explicit
+ * that the room shapes the queue and is never the access control.
+ */
+it('refuses a submission before the sale starts, as a form error', function (): void {
+    $this->withBrand();
+
+    $type = RegistrationType::factory()->salesWindow(start: '2026-10-01 18:00:00')->create();
+
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00Z'));
+
+    expect(fn () => submitRegistrationAction()->handle($type, (string) Str::ulid(), emptySubmission()))
+        ->toThrow(ValidationException::class);
+
+    expect(Registration::withoutBrandScope()->where('registration_type_id', $type->id)->exists())->toBeFalse();
+});
+
+it('refuses a submission after the sale has ended, as a form error', function (): void {
+    $this->withBrand();
+
+    $type = RegistrationType::factory()->salesWindow(end: '2026-09-01 18:00:00')->create();
+
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00Z'));
+
+    try {
+        submitRegistrationAction()->handle($type, (string) Str::ulid(), emptySubmission());
+        $this->fail('The submission was accepted after the sale ended.');
+    } catch (ValidationException $exception) {
+        expect($exception->errors())->toHaveKey('registrationType');
+    }
+});
+
+it('accepts a submission inside the sales window', function (): void {
+    $this->withBrand();
+
+    $type = RegistrationType::factory()
+        ->salesWindow(start: '2026-09-01 18:00:00', end: '2026-10-01 18:00:00')
+        ->create();
+
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00Z'));
+
+    $registration = submitRegistrationAction()->handle($type, (string) Str::ulid(), emptySubmission());
+
+    expect($registration->status)->toBe(RegistrationStatus::Confirmed);
+});
+
+it('lets a waitlist conversion through a window that has since closed', function (): void {
+    // A held spot was promised at offer time; the queue draining after the
+    // sale ended is the point of the queue (D-REG-12).
+    $this->withBrand();
+
+    $type = RegistrationType::factory()->salesWindow(end: '2026-09-01 18:00:00')->create();
+    $quota = Quota::factory()->create(['capacity' => 1]);
+    $type->quotas()->attach($quota);
+
+    $entry = WaitlistEntry::factory()->create([
+        'registration_type_id' => $type->id,
+        'event_id' => $type->event_id,
+    ]);
+
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00Z'));
+
+    $registration = submitRegistrationAction()->handle(
+        $type,
+        (string) Str::ulid(),
+        emptySubmission(),
+        fromWaitlist: $entry,
+    );
+
+    expect($registration->registration_type_id)->toBe($type->id);
 });

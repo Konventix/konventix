@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Models\Order;
@@ -11,54 +12,103 @@ use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
 use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
+use Konventix\Platform\Models\Brand;
+use Stripe\Exception\InvalidRequestException;
 
 /**
  * The adapter's decisions against a fake of the `StripeApi` seam
- * (ADR-0039) — no SDK call leaves the process.
+ * (ADR-0039) — no SDK call leaves the process. Every call is made on this
+ * instance's own Stripe account, so no call carries an account id
+ * (ADR-0058).
  */
 final class StripeAdapterTestFakeApi implements StripeApi
 {
-    /** @var list<array{params: array<string, mixed>, account: string}> */
+    /** @var list<array<string, mixed>> */
     public array $sessions = [];
 
-    /** @var list<array{params: array<string, mixed>, account: string}> */
+    /** @var list<array<string, mixed>> */
     public array $refunds = [];
 
-    public function createCheckoutSession(array $params, string $stripeAccountId): StripeCheckoutSession
+    public function createCheckoutSession(array $params): StripeCheckoutSession
     {
-        $this->sessions[] = ['params' => $params, 'account' => $stripeAccountId];
+        $this->sessions[] = $params;
 
         return new StripeCheckoutSession(id: 'cs_test_fake', url: 'https://checkout.stripe.test/pay/cs_test_fake');
     }
 
-    public function createRefund(array $params, string $stripeAccountId): void
+    public function createRefund(array $params): void
     {
-        $this->refunds[] = ['params' => $params, 'account' => $stripeAccountId];
+        $this->refunds[] = $params;
     }
 
-    public function createConnectedAccount(string $displayName, string $contactEmail, string $country): string
+    /**
+     * Unused here: only `commerce:reconcile-payments` (#71) reads a session
+     * back, and this fake never drives it.
+     *
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId): array
     {
-        return 'acct_unused';
-    }
-
-    public function createOnboardingLink(string $stripeAccountId, string $returnUrl, string $refreshUrl): string
-    {
-        return 'https://stripe.test/unused';
-    }
-
-    public function fetchAccount(string $stripeAccountId): array
-    {
-        return ['card_payments' => 'unknown'];
+        return [
+            'status' => 'open',
+            'payment_status' => 'unpaid',
+            'payment_intent' => null,
+            'payment_intent_status' => null,
+        ];
     }
 }
 
-function stripeAdapterTestSetup(): array
+/**
+ * Refuses the first session the way Stripe refuses an over-long combined
+ * statement descriptor, and accepts whatever comes next.
+ */
+final class StripeAdapterTestRefusesDescriptorApi implements StripeApi
 {
-    test()->withBrand();
+    /** @var list<array<string, mixed>> */
+    public array $sessions = [];
+
+    public string $stripeParam = 'payment_intent_data[statement_descriptor_suffix]';
+
+    public string $message = 'The combined length of your statement descriptor and suffix must be at most 22 characters.';
+
+    public function createCheckoutSession(array $params): StripeCheckoutSession
+    {
+        $this->sessions[] = $params;
+
+        if (count($this->sessions) === 1) {
+            throw InvalidRequestException::factory(
+                message: $this->message,
+                httpStatus: 400,
+                stripeParam: $this->stripeParam,
+            );
+        }
+
+        return new StripeCheckoutSession(id: 'cs_test_fake', url: 'https://checkout.stripe.test/pay/cs_test_fake');
+    }
+
+    public function createRefund(array $params): void {}
+
+    /**
+     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     */
+    public function fetchCheckoutSession(string $sessionId): array
+    {
+        return [
+            'status' => 'open',
+            'payment_status' => 'unpaid',
+            'payment_intent' => null,
+            'payment_intent_status' => null,
+        ];
+    }
+}
+
+function stripeAdapterTestSetup(?Brand $brand = null): array
+{
+    $brand ??= test()->withBrand();
 
     $account = SettlementAccount::factory()->create([
         'provider' => SettlementAccount::PROVIDER_STRIPE,
-        'provider_account_id' => 'acct_test_123',
+        'statement_descriptor_suffix' => 'SXLAN',
     ]);
 
     $order = Order::factory()->create([
@@ -83,11 +133,12 @@ function stripeAdapterTestSetup(): array
     $fake = new StripeAdapterTestFakeApi;
     app()->instance(StripeApi::class, $fake);
 
-    return [$account, $order, $fake];
+    return [$account, $order, $fake, $brand];
 }
 
 it('starts a hosted checkout with a pending payment and the snapshotted line amounts', function (): void {
-    [$account, $order, $fake] = stripeAdapterTestSetup();
+    $brand = $this->withBrand();
+    [$account, $order, $fake] = stripeAdapterTestSetup($brand);
 
     $redirect = app(StripeSettlementAdapter::class)->startCheckout(
         $account,
@@ -104,11 +155,9 @@ it('starts a hosted checkout with a pending payment and the snapshotted line amo
         ->and($payment->amount)->toBe('154.70');
 
     expect($fake->sessions)->toHaveCount(1);
-    ['params' => $params, 'account' => $stripeAccount] = $fake->sessions[0];
+    $params = $fake->sessions[0];
 
-    // Direct charge on the organizer's own account (ADR-0007/ADR-0039).
-    expect($stripeAccount)->toBe('acct_test_123')
-        ->and($params['mode'])->toBe('payment')
+    expect($params['mode'])->toBe('payment')
         ->and($params['client_reference_id'])->toBe($payment->id)
         // Tax is computed by the domain, per line, half-up (ADR-0030):
         // Stripe gets finished gross amounts and is never asked to tax.
@@ -121,13 +170,96 @@ it('starts a hosted checkout with a pending payment and the snapshotted line amo
         ->and($params)->not->toHaveKey('payment_method_types');
 });
 
+it('names the brand and the operator on the session and on the payment intent', function (): void {
+    // ADR-0058 point 4: one account, many brands — the split is metadata,
+    // carried onto the intent so it survives onto the charge, the balance
+    // transaction and every Stripe export.
+    $brand = $this->withBrand();
+    [$account, $order, $fake] = stripeAdapterTestSetup($brand);
+
+    app(StripeSettlementAdapter::class)->startCheckout($account, $order, 'https://brand.test/return');
+
+    $params = $fake->sessions[0];
+    $payment = Payment::withoutBrandScope()->where('order_id', $order->id)->sole();
+
+    $expected = [
+        'konventix_payment_id' => $payment->id,
+        'konventix_order_id' => $order->id,
+        'konventix_brand_id' => $brand->id,
+        'konventix_brand_name' => $brand->name,
+        'konventix_operator_id' => $brand->operator_id,
+    ];
+
+    expect($params['metadata'])->toBe($expected)
+        ->and($params['payment_intent_data']['metadata'])->toBe($expected)
+        // What the payer reads on their card statement names the brand.
+        ->and($params['payment_intent_data']['statement_descriptor_suffix'])->toBe('SXLAN')
+        // Plain words for the Stripe rows that show no metadata.
+        ->and($params['payment_intent_data']['description'])->toContain($brand->name);
+});
+
+it('sends no statement descriptor suffix when the brand set none', function (): void {
+    $brand = $this->withBrand();
+    [$account, $order, $fake] = stripeAdapterTestSetup($brand);
+
+    $account->forceFill(['statement_descriptor_suffix' => null])->save();
+
+    app(StripeSettlementAdapter::class)->startCheckout($account, $order, 'https://brand.test/return');
+
+    expect($fake->sessions[0]['payment_intent_data'])->not->toHaveKey('statement_descriptor_suffix');
+});
+
+it('starts the checkout anyway when Stripe refuses the statement descriptor', function (): void {
+    // The suffix is cosmetic; the payment is not. If Stripe refuses the
+    // combined descriptor — its account prefix is unreadable from here since
+    // ADR-0058 removed `fetchAccount()`, so the save-time rule can only be
+    // conservative — the payer must still reach a payment page rather than a
+    // 500, with the descriptor falling back to the account's own default.
+    $brand = $this->withBrand();
+    [$account, $order] = stripeAdapterTestSetup($brand);
+
+    $fake = new StripeAdapterTestRefusesDescriptorApi;
+    app()->instance(StripeApi::class, $fake);
+
+    Log::spy();
+
+    $redirect = app(StripeSettlementAdapter::class)->startCheckout($account, $order, 'https://brand.test/return');
+
+    expect($redirect->url)->toBe('https://checkout.stripe.test/pay/cs_test_fake')
+        ->and($fake->sessions)->toHaveCount(2)
+        ->and($fake->sessions[0]['payment_intent_data'])->toHaveKey('statement_descriptor_suffix')
+        ->and($fake->sessions[1]['payment_intent_data'])->not->toHaveKey('statement_descriptor_suffix')
+        // Everything else about the retry is the first attempt unchanged.
+        ->and($fake->sessions[1]['metadata'])->toBe($fake->sessions[0]['metadata'])
+        ->and($fake->sessions[1]['client_reference_id'])->toBe($fake->sessions[0]['client_reference_id']);
+
+    Log::shouldHaveReceived('warning')->once();
+
+    expect(Payment::withoutBrandScope()->findOrFail($redirect->paymentId)->external_id)->toBe('cs_test_fake');
+});
+
+it('lets any other Stripe rejection surface instead of retrying blindly', function (): void {
+    $brand = $this->withBrand();
+    [$account, $order] = stripeAdapterTestSetup($brand);
+
+    $fake = new StripeAdapterTestRefusesDescriptorApi;
+    $fake->stripeParam = 'line_items';
+    $fake->message = 'No such price.';
+    app()->instance(StripeApi::class, $fake);
+
+    expect(fn () => app(StripeSettlementAdapter::class)->startCheckout($account, $order, 'https://brand.test/return'))
+        ->toThrow(InvalidRequestException::class);
+
+    expect($fake->sessions)->toHaveCount(1);
+});
+
 it('refuses to start a checkout on a non-Stripe account', function (): void {
     [, $order] = stripeAdapterTestSetup();
 
     $manual = SettlementAccount::factory()->disconnected()->create();
 
     expect(fn () => app(StripeSettlementAdapter::class)->startCheckout($manual, $order, 'https://brand.test/return'))
-        ->toThrow(RuntimeException::class, 'not a connected Stripe account');
+        ->toThrow(RuntimeException::class, 'is not a Stripe account');
 });
 
 it('refunds against the payment intent recorded by the webhook', function (): void {
@@ -145,10 +277,10 @@ it('refunds against the payment intent recorded by the webhook', function (): vo
 
     app(StripeSettlementAdapter::class)->refund($account->id, $order, '154.70', 'EUR');
 
+    // Direct on this instance's own account (ADR-0058): no account id.
     expect($fake->refunds)->toHaveCount(1)
-        ->and($fake->refunds[0]['account'])->toBe('acct_test_123')
-        ->and($fake->refunds[0]['params']['payment_intent'])->toBe('pi_test_789')
-        ->and($fake->refunds[0]['params']['amount'])->toBe(15470);
+        ->and($fake->refunds[0]['payment_intent'])->toBe('pi_test_789')
+        ->and($fake->refunds[0]['amount'])->toBe(15470);
 });
 
 it('refuses to refund without a recorded payment intent', function (): void {

@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Konventix\Messaging\Digests;
 
 use Carbon\CarbonImmutable;
+use Konventix\Messaging\Actions\ResolveBrandTimezone;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Enums\MessageStatus;
-use Konventix\Messaging\Models\BrandMailSettings;
 use Konventix\Messaging\Models\MessageRecord;
 use Konventix\Messaging\Models\Recipient;
 use Konventix\Messaging\Topics\Topic;
@@ -106,10 +106,6 @@ final class HoldPolicy
             return $recipient->timezone;
         }
 
-        return BrandMailSettings::withoutBrandScope()
-            ->where('brand_id', $brandId)
-            ->first()
-            ->timezone
-            ?? (string) config('app.timezone');
+        return app(ResolveBrandTimezone::class)->handle($brandId);
     }
 }

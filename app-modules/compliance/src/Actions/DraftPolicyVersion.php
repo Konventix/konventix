@@ -44,7 +44,7 @@ final class DraftPolicyVersion
                 'requires_consent' => $data->requiresConsent,
                 'lawful_basis' => $data->lawfulBasis,
                 'state' => PolicyVersionState::Draft,
-                'effective_at' => $data->effectiveAt,
+                'effective_at' => $data->effectiveAtInstant(),
             ]);
 
             $version->forceFill([

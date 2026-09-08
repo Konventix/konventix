@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Plus } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { formatDateTime, withZoneName } from '@/lib/datetime';
 import {
     edit as editPolicy,
     index as policiesIndex,
@@ -34,6 +35,7 @@ import {
     store as storeVersion,
     update as updateVersion,
 } from '@/routes/admin/policy-versions';
+import { toInstant, versionFormValues } from './versionForm';
 
 /**
  * One policy: its identity on the left, its versions on the right.
@@ -57,9 +59,18 @@ type VersionRow = {
 type Props = {
     policy: Konventix.Compliance.Data.PolicyData & {
         id: string;
+        /** 'operator' when every brand inherits this text (GitLab #76). */
+        scope: 'operator' | 'brand';
         brandName: string;
         slugFrozen: boolean;
     };
+    /**
+     * The role this policy's slug plays at checkout, null where it plays
+     * none (#200) — and the whole catalogue, so the editor can say what
+     * the alternative is.
+     */
+    checkoutRole: Konventix.Compliance.Data.CheckoutLegalTextRoleData | null;
+    checkoutRoles: Konventix.Compliance.Data.CheckoutLegalTextRoleData[];
     versions: VersionRow[];
     selected:
         | (Konventix.Compliance.Data.PolicyVersionData & {
@@ -78,22 +89,27 @@ const policyForm = useForm({
     slug: props.policy.slug,
 });
 
-/**
- * `datetime-local` wants `YYYY-MM-DDTHH:MM`; the backend sends and accepts a
- * plain datetime string. Converting in both directions here keeps the Data
- * object free of a browser input's formatting quirk.
- */
-function toLocalInput(value: string | null): string {
-    return value === null ? '' : value.replace(' ', 'T').slice(0, 16);
-}
+const versionForm = useForm(versionFormValues(props.selected));
 
-const versionForm = useForm({
-    version: props.selected?.version ?? '',
-    content: props.selected?.content ?? '',
-    requiresConsent: props.selected?.requiresConsent ?? true,
-    lawfulBasis: props.selected?.lawfulBasis ?? 'consent',
-    effectiveAt: toLocalInput(props.selected?.effectiveAt ?? null),
-});
+/**
+ * Inertia reuses this component across a redirect that renders the same page,
+ * so `setup()` — and with it `useForm`'s initial values — runs once for the
+ * whole session. Creating a draft redirects to the new draft's editor, and
+ * without this the form still held the *previous* version's label and wrote it
+ * onto the new row: a violation of `policy_versions(policy_id, version)`, a
+ * 500, and the draft standing anyway.
+ *
+ * Only the identity of the selection is watched. Re-seeding on every prop
+ * change would throw away edits the operator has not saved yet.
+ */
+watch(
+    () => props.selected?.id ?? null,
+    () => {
+        versionForm.defaults(versionFormValues(props.selected));
+        versionForm.reset();
+        versionForm.clearErrors();
+    },
+);
 
 useUnsavedChanges(() => policyForm.isDirty || versionForm.isDirty);
 
@@ -134,7 +150,7 @@ function saveVersion(): void {
     versionForm
         .transform((data) => ({
             ...data,
-            effectiveAt: data.effectiveAt === '' ? null : data.effectiveAt,
+            effectiveAt: toInstant(data.effectiveAt),
         }))
         .put(updateVersion(props.selected.id).url, { preserveScroll: true });
 }
@@ -143,7 +159,7 @@ function createDraft(): void {
     draftForm
         .transform((data) => ({
             ...data,
-            effectiveAt: data.effectiveAt === '' ? null : data.effectiveAt,
+            effectiveAt: toInstant(data.effectiveAt),
         }))
         .post(storeVersion(props.policy.id).url, {
             onSuccess: () => {
@@ -153,6 +169,11 @@ function createDraft(): void {
         });
 }
 
+/**
+ * Publishing takes the date *stored* on the draft, never the unsaved field:
+ * publishing already takes the stored text, and sending an edited date with it
+ * published a version under a date that was never saved anywhere.
+ */
 function publish(): void {
     if (props.selected === null) {
         return;
@@ -160,10 +181,7 @@ function publish(): void {
 
     router.post(
         publishVersion(props.selected.id).url,
-        {
-            effectiveAt:
-                versionForm.effectiveAt === '' ? null : versionForm.effectiveAt,
-        },
+        { effectiveAt: props.selected.effectiveAt },
         { preserveScroll: true },
     );
 }
@@ -183,7 +201,11 @@ function openVersion(id: string): void {
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="props.policy.name"
-            :description="`${props.policy.slug} · ${props.policy.brandName}`"
+            :description="
+                props.policy.scope === 'operator'
+                    ? `${props.policy.slug} · ${props.policy.brandName} — every brand inherits this text unless it publishes its own`
+                    : `${props.policy.slug} · ${props.policy.brandName}`
+            "
         >
             <Button variant="outline" as-child>
                 <Link :href="policiesIndex().url">
@@ -405,6 +427,31 @@ function openVersion(id: string): void {
                                     Frozen: a version has been published, and
                                     consent records resolve through this URL.
                                 </p>
+                                <!--
+                                    #200: the slug is what the checkout looks
+                                    for, so the editor says which role this
+                                    one plays — or that it plays none.
+                                -->
+                                <p
+                                    v-if="props.checkoutRole"
+                                    class="text-xs text-text-muted"
+                                >
+                                    <span class="font-medium text-text">
+                                        Checkout role:
+                                        {{ props.checkoutRole.name }}
+                                    </span>
+                                    {{ props.checkoutRole.description }}
+                                </p>
+                                <p v-else class="text-xs text-text-muted">
+                                    The checkout never asks for this text — it
+                                    resolves only
+                                    <code>{{
+                                        props.checkoutRoles
+                                            .map((role) => role.slug)
+                                            .join(', ')
+                                    }}</code
+                                    >.
+                                </p>
                                 <InputError :message="policyForm.errors.slug" />
                             </div>
                             <div class="flex items-center gap-3">
@@ -455,8 +502,18 @@ function openVersion(id: string): void {
                                 </span>
                             </span>
                             <span class="text-xs text-text-muted">
-                                {{ version.effectiveAt ?? 'no date' }} ·
-                                {{ version.consents }} agreement{{
+                                <time
+                                    v-if="version.effectiveAt"
+                                    :datetime="version.effectiveAt"
+                                    >{{
+                                        formatDateTime(
+                                            version.effectiveAt,
+                                            withZoneName,
+                                        )
+                                    }}</time
+                                >
+                                <template v-else>no date</template>
+                                · {{ version.consents }} agreement{{
                                     version.consents === 1 ? '' : 's'
                                 }}
                             </span>
@@ -587,9 +644,41 @@ function openVersion(id: string): void {
                             Publishing supersedes the current published version
                             and, for a required policy, asks everyone to agree
                             again. Save the draft first — publishing takes the
-                            stored text.
+                            stored text and the stored date.
                         </p>
-                        <Button @click="publish">Publish this version</Button>
+                        <p
+                            v-if="props.selected?.effectiveAt"
+                            class="text-sm text-text-muted"
+                        >
+                            Effective from
+                            <time
+                                class="font-medium text-text"
+                                :datetime="props.selected.effectiveAt ?? ''"
+                                >{{
+                                    formatDateTime(
+                                        props.selected.effectiveAt,
+                                        withZoneName,
+                                    )
+                                }}</time
+                            >
+                            — until then the text is not served under its public
+                            URL.
+                        </p>
+                        <p
+                            v-else
+                            class="rounded-md bg-warning/10 p-3 text-sm text-warning"
+                            role="status"
+                        >
+                            This draft has no effective date. Set
+                            <strong>Effective from</strong> and save the draft —
+                            a published text has to say from when it binds.
+                        </p>
+                        <Button
+                            :disabled="!props.selected?.effectiveAt"
+                            @click="publish"
+                        >
+                            Publish this version
+                        </Button>
                     </CardContent>
                 </Card>
             </div>

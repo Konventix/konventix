@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Models;
 
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -43,6 +45,8 @@ use Spatie\LaravelData\Support\EloquentCasts\DataCollectionEloquentCast;
  * @property DataCollection<int, GrantData> $grants
  * @property PriceDeclarationData|null $price_declaration
  * @property int $terms_days
+ * @property Carbon|null $sales_start
+ * @property Carbon|null $sales_end
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -76,7 +80,52 @@ class RegistrationType extends Model
         'grants',
         'price_declaration',
         'terms_days',
+        'sales_start',
+        'sales_end',
     ];
+
+    /**
+     * Whether this type may be bought at `$now` (#218, #216 draft i).
+     *
+     * Both bounds are nullable and null means "no bound", so a type that
+     * declares neither is always on sale — which is how every type behaved
+     * before the window existed. The start is inclusive and the end is
+     * exclusive: a window advertised as "18:00 to 18:00" opens on the tick
+     * and closes on the tick, with no second of overlap between two
+     * consecutive windows.
+     *
+     * The bounds are instants, so this comparison needs no timezone: see the
+     * migration's docblock for why a sales window is not an ADR-0027
+     * wall-clock time.
+     */
+    public function isOnSale(?CarbonInterface $now = null): bool
+    {
+        $now ??= now();
+
+        if ($this->sales_start !== null && $now->lessThan($this->sales_start)) {
+            return false;
+        }
+
+        return $this->sales_end === null || $now->lessThan($this->sales_end);
+    }
+
+    /**
+     * The SQL half of the same window rule, kept beside `isOnSale()` so the
+     * two cannot drift (fix round 1, review finding 4): this module has one
+     * window predicate, in two forms, and the landing slot uses this one
+     * because it filters in the database.
+     *
+     * Only the end is filtered. A sale that is over disappears from the
+     * landing page; a sale still ahead stays, announced rather than linked,
+     * and `isOnSale()` on the row is what tells the two apart (#218).
+     *
+     * @param  Builder<RegistrationType>  $query
+     * @return Builder<RegistrationType>
+     */
+    public function scopeSaleNotOver(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $inner) => $inner->whereNull('sales_end')->orWhere('sales_end', '>', now()));
+    }
 
     /**
      * @return BelongsToMany<Quota, $this>
@@ -109,6 +158,8 @@ class RegistrationType extends Model
             // at all" (settlement: free), never a zero price.
             'price_declaration' => PriceDeclarationData::class,
             'terms_days' => 'integer',
+            'sales_start' => 'datetime',
+            'sales_end' => 'datetime',
         ];
     }
 

@@ -16,9 +16,11 @@ use Konventix\Registration\Data\RegistrationFormData;
 use Konventix\Registration\Data\SubmitRegistrationData;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\RegistrationSettlement;
+use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Exceptions\QuotaExhaustedException;
 use Konventix\Registration\Models\InvitationToken;
+use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
 use Laravel\Pennant\Feature;
 
@@ -61,7 +63,7 @@ final class RegistrationController
         $registrantUserId = (string) auth()->id();
 
         try {
-            $action->handle($type, $registrantUserId, $data, invitationToken: $invite);
+            $registration = $action->handle($type, $registrantUserId, $data, invitationToken: $invite);
         } catch (QuotaExhaustedException) {
             // D-REG-12: an exhausted quota queues the whole submission
             // instead of failing it.
@@ -74,17 +76,11 @@ final class RegistrationController
 
         // ADR-0047 point 3: with the shop feature on, an instant settlement
         // just landed in the registrant's cart instead of an order — send
-        // them there to check out. `commerce.cart.show` is Task 11's own
-        // route; Route::has() reads false until that task registers it, so
-        // this branch is inert (and this module imports nothing from
-        // Commerce to reach it) until then. `SubmitRegistration` only emits
-        // `RegistrationSettlementRequested` at submission for an
-        // `on_payment` gate (every other gate requests settlement at
-        // confirmation instead), so a cart line only ever exists to redirect
-        // to when the gate agrees.
+        // them there to check out. `commerce.cart.show` is Commerce's own
+        // route; Route::has() keeps this module free of any import from it.
         if (
             $type->settlement === RegistrationSettlement::Instant
-            && $type->confirmation_gate === ConfirmationGate::OnPayment
+            && $this->settlementReachedTheCart($type, $registration)
             && ($brand = $brandContext->current()) !== null
             && Feature::for($brand)->active('commerce:shop')
             && Route::has('commerce.cart.show')
@@ -97,6 +93,46 @@ final class RegistrationController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Registration submitted.')]);
 
         return to_route('registration.show', ['event_ulid' => $event_ulid, 'type' => $type]);
+    }
+
+    /**
+     * Whether this submission has already put the registration's money
+     * where it is paid — the cart (ADR-0047 point 3) — and the registrant
+     * can therefore be taken straight there.
+     *
+     * The confirmation gate (ADR-0005) does not decide *whether* the cart is
+     * the payment place: `CreateOrderOnSettlementRequested` routes every
+     * `instant` settlement into the cart while `commerce:shop` is on,
+     * whatever the gate. It decides *when* the settlement request goes out,
+     * and so whether a cart line exists yet at the moment this response is
+     * written. Per gate, for `settlement: instant`:
+     *
+     * - `on_payment` — `SubmitRegistration` emits the settlement request at
+     *   submission (nothing can confirm before the money is payable), so the
+     *   line exists: payable now, redirect to the cart.
+     * - `on_submit` with `approval: none` — `SubmitRegistration` confirms in
+     *   the same transaction and `ConfirmRegistration` emits the request, so
+     *   the line exists too: payable now, redirect to the cart. This is the
+     *   case the operator hit on dev — the line was created and nothing ever
+     *   said so (#210).
+     * - `on_submit` with `approval: required` — approval is a precondition,
+     *   nothing confirms yet, no request went out and no line exists: stay
+     *   on the registration page.
+     * - `on_approval` — the request goes out when an organizer approves and
+     *   `ConfirmRegistration` runs, which is not now: stay on the
+     *   registration page. The registrant reaches the cart from
+     *   `registration.mine.show` once the line exists (Commerce's
+     *   `registration.mine.show` slot renders it).
+     *
+     * Expressed as the state the two emission points leave behind rather
+     * than as a second copy of their gate arithmetic: a confirmed
+     * registration has been through `ConfirmRegistration`, and an
+     * `on_payment` one was served by `SubmitRegistration` itself.
+     */
+    private function settlementReachedTheCart(RegistrationType $type, Registration $registration): bool
+    {
+        return $type->confirmation_gate === ConfirmationGate::OnPayment
+            || $registration->status === RegistrationStatus::Confirmed;
     }
 
     /**
