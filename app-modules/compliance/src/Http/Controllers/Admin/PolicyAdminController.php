@@ -46,7 +46,7 @@ class PolicyAdminController
 {
     use HasDataTableQuery;
 
-    public function index(Request $request): Response
+    public function index(Request $request, CheckoutLegalTexts $checkoutLegalTexts): Response
     {
         Gate::authorize(Permission::ViewPolicies->value);
 
@@ -122,7 +122,7 @@ class PolicyAdminController
             ),
             'checkoutGaps' => array_map(
                 fn (CheckoutLegalTextGapData $gap): array => $gap->toArray(),
-                $this->checkoutGaps($brands),
+                $this->checkoutGaps($brands, $checkoutLegalTexts),
             ),
             'filters' => $this->currentFilters($request, $sort, $perPage),
         ]);
@@ -130,36 +130,33 @@ class PolicyAdminController
 
     /**
      * Every brand the checkout resolves no text for, asked through
-     * `CheckoutLegalTexts::forBrand()` itself rather than through a query
-     * written a second time here: the console must report what the checkout
-     * actually sees, including the shadowing rule that makes an unpublished
-     * brand policy hide a published operator one.
+     * `CheckoutLegalTexts` itself rather than through a query written a
+     * second time here: the console must report what the checkout actually
+     * sees, including the shadowing rule that makes an unpublished brand
+     * policy hide a published operator one.
+     *
+     * Two queries for every brand rather than four per brand (fix round 1) —
+     * this page pages, sorts and searches, and the gap list is recomputed on
+     * each of those.
      *
      * @param  Collection<int, Brand>  $brands
      * @return list<CheckoutLegalTextGapData>
      */
-    private function checkoutGaps(Collection $brands): array
+    private function checkoutGaps(Collection $brands, CheckoutLegalTexts $checkoutLegalTexts): array
     {
-        $texts = app(CheckoutLegalTexts::class);
+        /** @var list<string> $brandIds */
+        $brandIds = array_values($brands->map(fn (Brand $brand): string => (string) $brand->getKey())->all());
 
-        $gaps = [];
+        $missing = $checkoutLegalTexts->missingSlugsForBrands($brandIds);
 
-        foreach ($brands as $brand) {
-            $resolved = array_column($texts->forBrand((string) $brand->getKey()), 'slug');
-            $missing = array_values(array_diff(CheckoutLegalTexts::SLUGS, $resolved));
-
-            if ($missing === []) {
-                continue;
-            }
-
-            $gaps[] = new CheckoutLegalTextGapData(
+        return array_values($brands
+            ->filter(fn (Brand $brand): bool => isset($missing[$brand->getKey()]))
+            ->map(fn (Brand $brand): CheckoutLegalTextGapData => new CheckoutLegalTextGapData(
                 brandId: (string) $brand->getKey(),
                 brandName: $brand->name,
-                missingSlugs: $missing,
-            );
-        }
-
-        return $gaps;
+                missingSlugs: $missing[$brand->getKey()],
+            ))
+            ->all());
     }
 
     public function store(Request $request, CreatePolicy $createPolicy): RedirectResponse

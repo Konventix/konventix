@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Compliance\Data\CheckoutLegalTextRoleData;
 use Konventix\Compliance\Models\Policy;
@@ -133,4 +135,35 @@ it('tells the editor which checkout role the policy it is showing plays', functi
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('checkoutRole', null));
+});
+
+it('resolves every brand\'s gaps in the same number of queries, however many brands there are', function (): void {
+    [, $admin] = complianceOperator();
+
+    $countPolicyQueries = function () use ($admin): int {
+        $count = 0;
+
+        DB::listen(function (QueryExecuted $query) use (&$count): void {
+            if (str_contains($query->sql, 'policies') || str_contains($query->sql, 'policy_versions')) {
+                $count++;
+            }
+        });
+
+        test()->actingAs($admin)->get('http://admin.compliance.test/admin/policies')->assertOk();
+
+        // Each call gets its own counter and its own listener, so this is
+        // that request's cost alone.
+        return $count;
+    };
+
+    Brand::factory()->count(2)->create();
+    $withTwoBrands = $countPolicyQueries();
+
+    Brand::factory()->count(8)->create();
+    $withTenBrands = $countPolicyQueries();
+
+    // The property: the cost of the page does not grow with the number of
+    // brands. `forBrand()` per brand made it four queries each.
+    expect($withTenBrands)->toBe($withTwoBrands)
+        ->and($withTwoBrands)->toBeLessThan(10);
 });
