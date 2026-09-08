@@ -114,7 +114,7 @@ function consentGateCart(Brand $brand, string $payerUserId): Cart
     return $cart->fresh();
 }
 
-function consentGateRegistrationOrder(): string
+function consentGateRegistrationOrder(string $payerUserId): string
 {
     $registrationId = (string) Str::ulid();
 
@@ -122,6 +122,9 @@ function consentGateRegistrationOrder(): string
         'status' => OrderStatus::Pending,
         'settles_type' => 'registration',
         'settles_id' => $registrationId,
+        // GitLab #185: the pay page serves the order's own payer only, so
+        // the order the gate is exercised on has to name them.
+        'payer_user_id' => $payerUserId,
         'total_gross' => '119.00',
         'currency' => 'EUR',
     ]);
@@ -170,7 +173,7 @@ it('sends a payment start with an outstanding contract text to the consent scree
     consentGateBrand();
     consentGateLegalTexts();
     $user = User::factory()->create();
-    $registrationId = consentGateRegistrationOrder();
+    $registrationId = consentGateRegistrationOrder($user->getKey());
     $account = consentGateAccount();
 
     test()->actingAs($user)
@@ -186,7 +189,7 @@ it('lets a payment start through once the contract text is agreed', function ():
     consentGateBrand();
     $terms = consentGateLegalTexts();
     $user = User::factory()->create();
-    $registrationId = consentGateRegistrationOrder();
+    $registrationId = consentGateRegistrationOrder($user->getKey());
     $account = consentGateAccount();
 
     Consent::factory()->for($terms, 'policyVersion')->create(['subject_id' => $user->getKey()]);
@@ -266,7 +269,7 @@ it('sends the payer to the consent screen before the registration pay form is sh
     consentGateBrand();
     consentGateLegalTexts();
     $user = User::factory()->create();
-    $registrationId = consentGateRegistrationOrder();
+    $registrationId = consentGateRegistrationOrder($user->getKey());
     consentGateAccount();
 
     test()->actingAs($user)

@@ -35,9 +35,13 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
  * Checkout for `instant` settlement (ADR-0039), addressed by the
  * registration the order settles — the one identifier the payer's flow
  * already carries, and the only coupling Registration needs (a ULID, never
- * a model, ADR-0006). Knowing the unguessable ULID authorizes viewing the
- * order summary, mirroring the waitlist-offer pattern; the page shows
- * lines and totals, never billing data.
+ * a model, ADR-0006).
+ *
+ * The ULID addresses the order; it does not authorize it (GitLab #185).
+ * It travels in mails, browser history and forwarded links, and the page
+ * names an amount, a payment status and — since ADR-0057 — the reason
+ * somebody's money was taken back. The order's own payer, or 404, exactly
+ * as `showOrder()` has answered on `/pay/order/{order}` since GitLab #5.
  *
  * Behind `auth` since #2 — the page takes the payer's declaration on the
  * AGB and the Widerrufsbelehrung, and a Consent record needs a subject. See
@@ -77,6 +81,10 @@ class CheckoutController
         if ($order === null) {
             return $this->cartHandoff($registration);
         }
+
+        // GitLab #185, before anything of this order is read out: the ULID
+        // is an address, not a key.
+        $this->abortUnlessPayer($request, $order);
 
         $consentSlots = $this->consentSlots->contributions();
         $redirect = $this->consentRedirect(
@@ -146,6 +154,11 @@ class CheckoutController
         if ($order === null) {
             return $this->cartHandoff($registration);
         }
+
+        // GitLab #185, before the consent gate and before validation: a
+        // stranger may not start a payment on this order, and must not learn
+        // from the answer whether it exists.
+        $this->abortUnlessPayer($request, $order);
 
         $consentSlots = $this->consentSlots->contributions();
 
@@ -414,9 +427,36 @@ class CheckoutController
         $model = Order::query()->with('lines')->whereKey($order)->first();
 
         abort_if($model === null, 404);
-        abort_unless($model->payer_user_id === (string) $request->user()->getAuthIdentifier(), 404);
+        $this->abortUnlessPayer($request, $model);
 
         return $model;
+    }
+
+    /**
+     * Everyone but this order's own payer is refused here (GitLab #185) —
+     * the single rule both addressed pairs apply, so the registration page
+     * and the order page cannot drift apart on who may pay.
+     *
+     * 404 rather than 403, matching `MyCreditNoteDocumentController`: a
+     * stranger learns nothing about whether the id exists, and the payer
+     * whose session expired meets `auth`'s login redirect long before this.
+     *
+     * A null `payer_user_id` refuses everyone. That is an order booked by
+     * hand (`BookManualPayment`) or one placed before ADR-0044 named the
+     * payer: nobody paid for it online and nobody is going to, so there is
+     * no person this page could belong to.
+     *
+     * The order was read under the brand scope (ADR-0010) — this runs on
+     * the brand host — so another brand's order is already gone before the
+     * payer is compared at all.
+     */
+    private function abortUnlessPayer(Request $request, Order $order): void
+    {
+        abort_unless(
+            $order->payer_user_id !== null
+                && $order->payer_user_id === (string) $request->user()->getAuthIdentifier(),
+            404,
+        );
     }
 
     /**
