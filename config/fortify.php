@@ -118,6 +118,12 @@ return [
 
     'limiters' => [
         'login' => 'login',
+        // Without this key Fortify reads null, `array_filter()`s the
+        // middleware away, and POST /two-factor-challenge arrives with no
+        // throttle at all — the six-digit code and the recovery codes could
+        // be tried without limit by anyone already holding valid credentials
+        // (#253). The named limiter is defined in IdentityServiceProvider.
+        'two-factor' => 'two-factor',
     ],
 
     /*

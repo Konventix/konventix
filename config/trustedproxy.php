@@ -31,6 +31,19 @@ return [
     | only where the application is genuinely unreachable except through the
     | proxy.
     |
+    | On Kubernetes this default is a development default and nothing more
+    | (#258). A cluster's pod CIDR falls inside 10.0.0.0/8, so leaving it in
+    | place trusts every pod in the cluster, not only the ingress controller —
+    | any neighbour can then forge `X-Forwarded-Host` and choose the brand, and
+    | `X-Forwarded-Proto` and choose whether the request counts as secure. Such
+    | a deployment sets `TRUSTED_PROXIES` to the ingress controller's own
+    | address range; the chart passes it through as `app.trustedProxies`.
+    |
+    | What no longer hangs on this: the session cookie's `Secure` flag. It used
+    | to be derived from `isSecure()`, and therefore from a header an untrusted
+    | neighbour could write — `config/session.php` now decides it from the
+    | environment instead.
+    |
     */
 
     'proxies' => env('TRUSTED_PROXIES', '127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'),

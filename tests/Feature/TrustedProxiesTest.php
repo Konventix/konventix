@@ -154,3 +154,44 @@ it('ships a default trusted list that is not a blanket wildcard', function (): v
         ->and(config('trustedproxy.proxies'))->not->toBe('*')
         ->and(config('trustedproxy.proxies'))->toContain('10.0.0.0/8');
 });
+
+/**
+ * #258 / audit N2: `config/session.php` used to leave `secure` at null, which
+ * makes Symfony derive the flag from `$request->isSecure()` — and `isSecure()`
+ * is `X-Forwarded-Proto` from whoever the proxy list happens to trust. On a
+ * Kubernetes cluster whose pod CIDR falls inside 10.0.0.0/8 that is every pod,
+ * so the one flag that keeps a session cookie off the wire hung on a header a
+ * neighbour could write. It must be a deployment's decision, not a request's.
+ */
+it('keeps the session cookie secure even on a request that looks like plaintext', function (): void {
+    config(['session.secure' => true]);
+
+    $this->withBrand();
+
+    $cookie = collect($this->get('http://localhost/')->assertOk()->headers->getCookies())
+        ->first(fn ($cookie): bool => $cookie->getName() === config('session.cookie'));
+
+    expect($cookie)->not->toBeNull()
+        ->and($cookie->isSecure())->toBeTrue();
+});
+
+it('defaults the secure flag on for every environment that is not local development', function (): void {
+    $original = $_SERVER['APP_ENV'] ?? null;
+
+    try {
+        foreach (['production' => true, 'staging' => true, 'local' => false, 'testing' => false] as $environment => $expected) {
+            $_SERVER['APP_ENV'] = $_ENV['APP_ENV'] = $environment;
+            putenv('APP_ENV='.$environment);
+
+            // Re-read the shipped file rather than the loaded config: the
+            // default is the thing under test, and the suite runs with
+            // APP_ENV=testing baked in by phpunit.xml.
+            $session = require base_path('config/session.php');
+
+            expect($session['secure'])->toBe($expected, "APP_ENV={$environment}");
+        }
+    } finally {
+        $_SERVER['APP_ENV'] = $_ENV['APP_ENV'] = $original ?? 'testing';
+        putenv('APP_ENV='.($original ?? 'testing'));
+    }
+});

@@ -138,3 +138,28 @@ it('records usages idempotently and refuses to delete a referenced item', functi
 
     expect(MediaItem::withoutBrandScope()->whereKey($item->id)->exists())->toBeFalse();
 });
+
+/**
+ * #252: an SVG is a script container, and the delivery route is deliberately
+ * unauthenticated and served from the brand's own origin — so an upload that
+ * lands there is stored XSS against every brand host and the admin host. No
+ * feature of this application needs SVG in the library (brand logos, favicons
+ * and page images are all raster), so the upload is refused outright rather
+ * than sanitized.
+ */
+it('refuses an svg upload into the media library', function (): void {
+    [, $admin] = mediaOperator();
+    Storage::fake('media');
+
+    $brand = $this->withBrand();
+
+    $this->actingAs($admin)
+        ->post('http://admin.media.test/admin/media', [
+            'brand_id' => $brand->id,
+            'file' => UploadedFile::fake()->create('logo.svg', 4, 'image/svg+xml'),
+            'alt_text' => 'Brand logo',
+        ])
+        ->assertSessionHasErrors('file');
+
+    expect(MediaItem::withoutBrandScope()->count())->toBe(0);
+});
