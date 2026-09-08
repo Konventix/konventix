@@ -107,7 +107,9 @@ person behind it. The value here is in what is left out.
       PR and is unchanged here. **GitLab #18, Phase 2** (ADR-0054 §6): the
       "check your inbox" mail also names the operator and the brand the
       account was first used on — it is where a person with two brands
-      learns they have one account.
+      learns they have one account. The sign-up page half of this point is
+      done (#241, `OperatorPresenceNotice`); the mail half and
+      enumeration-safe registration are what remains open here.
 - [ ] "Leave brand B, keep the account" has no path (ADR-0054 consequences):
       deletion spans the operator (ADR-0050), and nothing removes a single
       membership with its brand-scoped rows. Not a go-live concern; design

@@ -92,6 +92,12 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
   Fortify views and `SocialAuthController::complete()`, not shared
   globally — those pages pay the query, nothing else does (ADR-0054,
   #184).
+- **The operator's date and time convention.** `date_format`/`time_format`
+  on `operators` (#242), read by `Operators\OperatorDateTimeFormat` on the
+  server — every mail and document that prints a human-facing date goes
+  through it — and by `resources/js/lib/datetime.ts` in the browser via the
+  shared `dateTimeFormat` prop, so an invoice, a dunning mail and a console
+  table never disagree about how a date is written.
 
 ## Does not own
 

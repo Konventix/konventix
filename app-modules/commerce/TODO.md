@@ -167,6 +167,10 @@
       contract (ADR-0004 forbids importing `Commerce\Tax\*`). Filed, needs
       a design decision, not a fix.
 - [ ] PlaceRegistrationLineInCart's read-then-insert can lose a race to cart_lines_request_key_unique and throw a QueryException out of a listener, the same shape PlaceOrderFromSettlementRequest carries. The 2026-08-27 rush never surfaced it (0 × 5xx across 754 arrivals), so this stays a converge-on-conflict cleanup — catch the violation and re-read the line the winner created, as OpenCart::for() already does.
+- [ ] The reversal mail still sends a cart order the neutral interim text
+      rather than a pay link, though the link works since #186 — see
+      `SendPaymentReversedMailOnPaymentReversed::send()` (#186 criterion 3,
+      needs an owner).
 
 ## Done
 

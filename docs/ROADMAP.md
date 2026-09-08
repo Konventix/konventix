@@ -586,8 +586,9 @@ in the owning module's `TODO.md` when it lands.
     a decision for the ADR, and the second shape is defensible (a person
     may want a different face at a LAN than at a trade fair). And the
     shared `auth.user` prop still serializes the whole model; it becomes
-    the four-field shape Identity's SPEC promised — ULID, display name,
-    avatar URL, locale — before an avatar reaches the topbar. The public
+    the shape Identity's SPEC promised — ULID, display name, avatar URL,
+    locale, and `timezone` since #243 — before an avatar reaches the
+    topbar. The public
     profile page is Community's (`u/{username}`, LanCore's `u/Show`),
     visible to signed-in members of the brand only, showing the read model
     Community's SPEC already describes plus what the person chose to show,
@@ -599,7 +600,7 @@ in the owning module's `TODO.md` when it lands.
     slice tail): the profile-of-record fields on `User`, avatar and banner
     per brand membership, Community's profile read models, `u/{username}`
     with its wall on slice 22's reactions and comments, three visibilities
-    with the attended-event read model, the four-field `auth.user` prop in
+    with the attended-event read model, the shared `auth.user` prop in
     `HandleInertiaRequests`, and both modules' GDPR handlers exercised by
     `GdprSweepTest`.
 
