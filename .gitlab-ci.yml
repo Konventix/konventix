@@ -739,6 +739,19 @@ build:image:
         docker exec smoke curl -sf http://localhost:8000/up && ok=1 && break
         sleep 3
       done
+    # #254: the runtime image loads docker/php.ini as 99-production.ini. The
+    # container build is the only place that can prove the COPY landed and the
+    # directives took effect — a unit test can pin the file's contents, not
+    # what PHP does with them. `php -i` prints "local => master"; both halves
+    # have to read the same, or something later in the image overrode it.
+    - |
+      docker exec smoke php -i > php-i.txt
+      grep -qE '^display_errors => Off => Off$' php-i.txt || { echo "display_errors is not Off in the runtime image" >&2; docker stop smoke; exit 1; }
+      grep -qE '^log_errors => On => On$' php-i.txt || { echo "log_errors is not On in the runtime image" >&2; docker stop smoke; exit 1; }
+      grep -qE '^expose_php => Off => Off$' php-i.txt || { echo "expose_php is not Off in the runtime image" >&2; docker stop smoke; exit 1; }
+      grep -qE '^memory_limit => 512M => 512M$' php-i.txt || { echo "memory_limit is not 512M in the runtime image" >&2; docker stop smoke; exit 1; }
+      grep -qE '^opcache.validate_timestamps => Off => Off$' php-i.txt || { echo "opcache.validate_timestamps is not off in the runtime image" >&2; docker stop smoke; exit 1; }
+      grep -qE '^opcache.enable_cli => Off => Off$' php-i.txt || { echo "opcache.enable_cli is on, which makes validate_timestamps=0 unsafe for the entrypoint's cache calls" >&2; docker stop smoke; exit 1; }
     # ADR-0049 §5: the bundle must carry no baked websocket endpoint, or every
     # deployment talks to the developer's laptop. `resolveReverbEndpoint` is
     # called with `{host: …, port: …, scheme: …}` filled from VITE_REVERB_*;

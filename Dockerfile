@@ -107,6 +107,13 @@ RUN apt-get update \
     && apt-get purge -y libcap2-bin && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
+# The base image activates no php.ini at all (#254), so without this the
+# runtime runs on PHP's compiled-in defaults: errors into the response body,
+# nothing logged, the version in every header, 128M per worker and opcache
+# revalidating immutable code. Runtime stage only — `toolchain` is the
+# published CI image and keeps taking .gitlab-ci.yml's own 99-ci.ini.
+COPY docker/php.ini /usr/local/etc/php/conf.d/99-production.ini
+
 RUN useradd --create-home --uid 1000 konventix
 
 COPY --from=build --chown=konventix:konventix /var/www/html /var/www/html
