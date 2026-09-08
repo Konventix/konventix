@@ -258,3 +258,50 @@ it('still serves a raster image inline', function (): void {
 
     expect($response->headers->get('Content-Disposition'))->toStartWith('inline');
 });
+
+/**
+ * Review finding 4 on #252. The attachment treatment above exists only on the
+ * path through this application. A disk marked `public_direct` is read
+ * straight off the web server — the `public/storage` symlink locally, a public
+ * bucket in object storage — so neither `MediaFileController` nor the
+ * `SecurityHeaders` middleware (#251) is in that request at all.
+ *
+ * Uploads are refused everywhere, so this can only concern a library that
+ * already holds an SVG. What the test pins is the boundary and the shape a
+ * deployment gets by default: the object-storage disk, which is what the chart
+ * uses, is NOT public_direct unless an operator says so.
+ */
+it('serves a public_direct disk without the application, where the svg handling cannot reach', function (): void {
+    $this->withBrand();
+    Storage::fake('media');
+
+    $item = MediaItem::factory()->create([
+        'disk' => 'media',
+        'path' => 'brand/logo.svg',
+        'mime_type' => 'image/svg+xml',
+    ]);
+
+    expect(config('filesystems.disks.media.public_direct'))->toBeTrue()
+        ->and(app(MediaLibrary::class)->urlFor($item->getKey()))
+        ->not->toBe(route('platform.media.show', ['media' => $item->getKey()]));
+
+    // The deployment-facing disk defaults the other way, so a cluster install
+    // goes through the controller unless an operator opts out in writing. Read
+    // out of the shipped file rather than the loaded config, which carries
+    // whatever the developer's own .env says.
+    $original = $_SERVER['AWS_MEDIA_PUBLIC_DIRECT'] ?? null;
+
+    try {
+        unset($_SERVER['AWS_MEDIA_PUBLIC_DIRECT'], $_ENV['AWS_MEDIA_PUBLIC_DIRECT']);
+        putenv('AWS_MEDIA_PUBLIC_DIRECT');
+
+        $filesystems = require base_path('config/filesystems.php');
+
+        expect($filesystems['disks']['media_s3']['public_direct'])->toBeFalse();
+    } finally {
+        if ($original !== null) {
+            $_SERVER['AWS_MEDIA_PUBLIC_DIRECT'] = $_ENV['AWS_MEDIA_PUBLIC_DIRECT'] = $original;
+            putenv('AWS_MEDIA_PUBLIC_DIRECT='.$original);
+        }
+    }
+});

@@ -52,6 +52,19 @@ configuration.
    publishes a release. The GitHub workflow is left in place and still names
    GHCR; it fires only on a push to the archived remote.*
 
+   *Amended 2026-09-08 (#255): the GitHub workflow is deleted. It had no
+   `needs` on the test workflow and none of the scanners, so it was a second
+   publishing path around every bar `scan:gate` holds up, for an image no
+   consumer pulls — the chart pins `registry.sxcs.de/konventix/konventix`.
+   GitLab is the only path to a published image.*
+
+   *Amended 2026-09-08 (#254): the runtime stage copies `docker/php.ini` to
+   `/usr/local/etc/php/conf.d/99-production.ini`. The base image activates
+   neither of its own, so without it the artifact ran on PHP's compiled-in
+   defaults — `display_errors=STDOUT`, `log_errors=Off`, `expose_php=On`,
+   `memory_limit=128M`, `opcache.validate_timestamps=On`. The `toolchain`
+   stage is deliberately not covered, so CI keeps its own `99-ci.ini`.*
+
 2. **Laravel's caches are built at container start, never at image
    build.** `config:cache` freezes the environment it sees, and the
    environment differs per deployment — so an entrypoint runs

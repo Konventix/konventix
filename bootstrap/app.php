@@ -46,12 +46,19 @@ return Application::configure(basePath: dirname(__DIR__))
         // and the router's own 404s are requests too.
         $middleware->prepend(AssignCorrelationId::class);
 
-        // Security headers on every response, for the same reason the
+        // Security headers on every PHP response, for the same reason the
         // correlation ID is global (#251): the surfaces that need them most —
         // the unauthenticated media route (#252), the PSP webhooks, the
-        // health endpoints — are the ones outside the `web` group. Appended
-        // rather than prepended so it wraps the router and still stamps a
-        // response an inner middleware short-circuits.
+        // health endpoints — are the ones outside the `web` group.
+        //
+        // Appended, not prepended, and the ordering is load-bearing:
+        // `TrustProxies` sits in the global stack below and has to run FIRST,
+        // or `$request->isSecure()` reads the raw connection instead of
+        // `X-Forwarded-Proto` and HSTS never goes out behind the ingress. The
+        // price of appending is that a response produced before this
+        // middleware — `ValidatePostSize`'s 413, a `TrustProxies` failure —
+        // carries no headers; a rendered exception does, because the router's
+        // pipeline renders inside it.
         $middleware->append(SecurityHeaders::class);
 
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'cookie_preferences']);

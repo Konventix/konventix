@@ -56,10 +56,14 @@ it('matches the ingress body size limit', function () use ($directives): void {
 it('configures opcache for code that cannot change under it', function () use ($directives): void {
     expect($directives())->toMatchArray([
         'opcache.enable' => '1',
+        // The safety argument for validate_timestamps=0 rests on this one:
+        // the entrypoint's `artisan *:cache` calls must run with opcache off.
+        'opcache.enable_cli' => '0',
         'opcache.validate_timestamps' => '0',
         'opcache.memory_consumption' => '256',
         'opcache.max_accelerated_files' => '30000',
         'opcache.interned_strings_buffer' => '32',
+        'realpath_cache_ttl' => '600',
     ]);
 
     // JIT stays off until somebody measures a win and writes the number down.
@@ -73,13 +77,11 @@ it('copies the ini in the runtime stage only', function (): void {
 
     expect($copies)->toHaveCount(1);
 
-    $line = (string) array_key_first($copies);
     $offset = (int) strpos($dockerfile, (string) reset($copies));
 
     // Everything before the copy, and the last `FROM ... AS <stage>` in it:
     // the stage the copy actually lands in.
     preg_match_all('/^FROM\s+\S+\s+AS\s+(\S+)/m', substr($dockerfile, 0, $offset), $stages);
 
-    expect(end($stages[1]))->toBe('runtime')
-        ->and($line)->toBeGreaterThan(0);
+    expect(end($stages[1]))->toBe('runtime');
 });

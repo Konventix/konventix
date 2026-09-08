@@ -17,6 +17,12 @@ use Symfony\Component\HttpFoundation\Response;
  * controller is not the application's — a change of ingress class takes it
  * away silently, and nothing in this repository notices (audit N1).
  *
+ * The boundary is PHP: everything the web server answers by itself —
+ * `public/` with the Vite bundle in it, and `public/storage/*` for a
+ * `public_direct` media disk (#252) — never enters this pipeline and carries
+ * none of these headers. Closing that needs a Caddyfile the repository does
+ * not have yet, and is its own piece of work.
+ *
  * What is deliberately NOT here is a `script-src`. `resources/views/app.blade.php`
  * renders two inline blocks — the appearance probe that runs before the CSS
  * loads, and the brand token `<style>` — and Vite serves its dev client from a
