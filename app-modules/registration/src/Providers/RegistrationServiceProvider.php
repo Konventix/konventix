@@ -595,6 +595,12 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                     // someone who does not hold one (D-COM-02).
                     ->where('event_id', $context['eventId'])
                     ->where('visibility', RegistrationVisibility::Public)
+                    // #218: a sale that is over drops off the page entirely —
+                    // linking to a form `SubmitRegistration` now refuses is
+                    // worse than saying nothing. A sale that has not started
+                    // stays, announced rather than linked, so the page can
+                    // carry the "sale starts" date a visitor came for.
+                    ->where(fn ($query) => $query->whereNull('sales_end')->orWhere('sales_end', '>', now()))
                     ->orderBy('name')
                     ->get()
                     ->map(fn (RegistrationType $type): array => PublicOfferData::ofType($type)->toArray())
