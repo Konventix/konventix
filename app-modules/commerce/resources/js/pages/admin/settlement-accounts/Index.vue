@@ -162,10 +162,36 @@ function submitConnect(): void {
                             class="flex max-w-md flex-col gap-4"
                             @submit.prevent="submitConnect"
                         >
+                            <!--
+                                `brand_id` is set by `transform()` and never
+                                typed, so its error belongs to the form rather
+                                than to a field — announced, not silently
+                                attached to nothing.
+                            -->
+                            <p
+                                v-if="form.errors.brand_id"
+                                role="alert"
+                                class="rounded-md border border-danger p-3 text-sm font-medium text-danger"
+                            >
+                                {{ form.errors.brand_id }}
+                            </p>
+
                             <div class="flex flex-col gap-2">
                                 <Label for="provider">Provider</Label>
                                 <Select v-model="form.provider">
-                                    <SelectTrigger id="provider">
+                                    <SelectTrigger
+                                        id="provider"
+                                        :aria-invalid="
+                                            form.errors.provider
+                                                ? true
+                                                : undefined
+                                        "
+                                        :aria-describedby="
+                                            form.errors.provider
+                                                ? 'provider-error'
+                                                : undefined
+                                        "
+                                    >
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -178,6 +204,10 @@ function submitConnect(): void {
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
+                                <InputError
+                                    id="provider-error"
+                                    :message="form.errors.provider"
+                                />
                             </div>
 
                             <!--
@@ -203,8 +233,19 @@ function submitConnect(): void {
                                         type="text"
                                         autocomplete="off"
                                         placeholder="Card, Apple Pay, Google Pay"
+                                        :aria-invalid="
+                                            form.errors.checkout_label
+                                                ? true
+                                                : undefined
+                                        "
+                                        :aria-describedby="
+                                            form.errors.checkout_label
+                                                ? 'checkout_label-error'
+                                                : undefined
+                                        "
                                     />
                                     <InputError
+                                        id="checkout_label-error"
                                         :message="form.errors.checkout_label"
                                     />
                                 </div>
@@ -268,8 +309,19 @@ function submitConnect(): void {
                                     v-model="form.api_key"
                                     type="password"
                                     autocomplete="off"
+                                    :aria-invalid="
+                                        form.errors.api_key ? true : undefined
+                                    "
+                                    :aria-describedby="
+                                        form.errors.api_key
+                                            ? 'api_key-error'
+                                            : undefined
+                                    "
                                 />
-                                <InputError :message="form.errors.api_key" />
+                                <InputError
+                                    id="api_key-error"
+                                    :message="form.errors.api_key"
+                                />
                             </div>
 
                             <div
@@ -284,14 +336,22 @@ function submitConnect(): void {
                                     v-model="form.private_key"
                                     type="password"
                                     autocomplete="off"
+                                    :aria-invalid="
+                                        form.errors.private_key
+                                            ? true
+                                            : undefined
+                                    "
+                                    :aria-describedby="
+                                        form.errors.private_key
+                                            ? 'private_key-error'
+                                            : undefined
+                                    "
                                 />
                                 <InputError
+                                    id="private_key-error"
                                     :message="form.errors.private_key"
                                 />
                             </div>
-
-                            <InputError :message="form.errors.brand_id" />
-                            <InputError :message="form.errors.provider" />
 
                             <div class="flex items-center gap-3">
                                 <Button
