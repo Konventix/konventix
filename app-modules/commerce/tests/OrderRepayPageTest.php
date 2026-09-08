@@ -343,3 +343,49 @@ it('names the day a reversed cart order is owed back by', function (): void {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('repayDueOn', now()->addDays(6)->toDateString()));
 });
+
+/**
+ * Review finding 4, ruled: a reversed order is payable until the day it was
+ * owed back by, and not one day longer. Before this the page kept offering
+ * the button until `commerce:cancel-unpaid-reversals` next ran — a window of
+ * up to a day in which the payer was invited to settle money the brand had
+ * already stopped asking for.
+ *
+ * Whole days, matching the sweep's own comparison: the deadline's own day is
+ * still payable, the day after is not.
+ */
+it('stops taking a reversed order the day after the money was owed back', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order] = orderRepayFailedCartOrder($payer, held: false);
+    $account = orderRepayAccount();
+
+    $payment = Payment::factory()->create(['order_id' => $order->getKey(), 'status' => PaymentStatus::Reversed]);
+    $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
+    $reversal = PaymentReversal::factory()->create([
+        'payment_id' => $payment->getKey(),
+        'order_id' => $order->getKey(),
+        'status' => ReversalStatus::Final,
+        'occurred_at' => now()->subDays(8),
+        'repay_due_on' => now()->toDateString(),
+    ]);
+
+    // On the day itself: still payable.
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('payable', true));
+
+    $reversal->forceFill(['repay_due_on' => now()->subDay()->toDateString()])->save();
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('payable', false)
+            ->where('refusalReason', 'The deadline to put this payment back was '.now()->subDay()->toDateString().'.'));
+
+    test()->actingAs($payer)
+        ->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->getKey()])
+        ->assertRedirect()
+        ->assertSessionHasErrors('account');
+});

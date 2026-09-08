@@ -57,6 +57,45 @@ export function formatDateTime(
 }
 
 /**
+ * A calendar date — `2026-09-14` — as the reader's own wording, and
+ * deliberately *not* through `formatDateTime()` (#186/#197 review finding 5).
+ *
+ * A repayment deadline, an invoice's due date or an issue date is a day, not
+ * an instant: `repay_due_on` is written as `startOfDay()->addDays(n)` and
+ * stored in a `date` column, so there is no time in it to convert. Handing
+ * `2026-09-14` to `new Date()` parses it as UTC midnight, and a reader west
+ * of Greenwich would then be told the deadline is the 13th — a day earlier
+ * than the sweep that enforces it.
+ *
+ * So the parts are read off the string and handed to a *local* `Date`, which
+ * has the same calendar date in every zone there is. A value that is not a
+ * plain date falls through to `formatDateTime()`, which handles instants and
+ * passes anything unparseable through unchanged.
+ */
+export function formatCalendarDate(
+    value: string | null | undefined,
+    options: Intl.DateTimeFormatOptions = { dateStyle: 'long' },
+): string {
+    if (value === null || value === undefined || value === '') {
+        return '';
+    }
+
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+    if (parts === null) {
+        return formatDateTime(value, options);
+    }
+
+    const date = new Date(
+        Number(parts[1]),
+        Number(parts[2]) - 1,
+        Number(parts[3]),
+    );
+
+    return formatter({ ...options, timeStyle: undefined }).format(date);
+}
+
+/**
  * The option set for a timestamp that has to say which zone it is in — a
  * legal effective date, read by an operator in Berlin and a colleague in
  * Lisbon, is one instant and two wall clocks, with nothing on screen to

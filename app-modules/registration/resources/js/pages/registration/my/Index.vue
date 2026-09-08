@@ -76,9 +76,8 @@ const paymentTone: Record<string, string> = {
             v-else-if="props.registrations.length === 0"
             class="text-sm text-text-muted"
         >
-            Everything you registered for was cancelled. Show all registrations
-            to see
-            {{ props.cancelledCount === 1 ? 'it' : 'them' }}.
+            Everything you registered for was cancelled — the toggle below
+            brings {{ props.cancelledCount === 1 ? 'it' : 'them' }} back.
         </p>
 
         <ul v-else class="flex flex-col gap-3">

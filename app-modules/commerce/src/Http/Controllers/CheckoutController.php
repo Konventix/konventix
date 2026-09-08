@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Http\Controllers;
 
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
@@ -498,9 +499,11 @@ class CheckoutController
 
     /**
      * Why this order cannot be paid right now, in the payer's own words, or
-     * null when it can. Three refusals and no others: the order is no
-     * longer owed, a payment already succeeded, or the reservation the
-     * first placement fixed has run out.
+     * null when it can. Four refusals and no others: the order is no longer
+     * owed, a payment already succeeded, the reservation the first placement
+     * fixed has run out, or a deadline has — the cart hold for a pending
+     * cart order, the repayment day for a reversed one (ADR-0057 point 4),
+     * the payment window for a direct registration order.
      *
      * `$paymentSucceeded`, when the caller already knows the answer (`start()`
      * asks the same question again for its own hard 409), skips the repeat
@@ -534,6 +537,20 @@ class CheckoutController
             && $order->settles_type === 'cart'
             && ($hold === null || $hold->isPast())) {
             return __('The reservation for this order has run out.');
+        }
+
+        // ADR-0057 point 4: a reversed order is owed back by a day, and
+        // `commerce:cancel-unpaid-reversals` cancels it once that day has
+        // gone. The page refuses from the same moment the sweep would act —
+        // the sweep compares whole days — rather than offering a button for
+        // money the brand has already stopped asking for, for however long
+        // it is until the daily run.
+        if ($order->status === OrderStatus::PaymentReversed) {
+            $repayDueOn = $this->payLink->repayDueOnFor($order);
+
+            if ($repayDueOn !== null && CarbonImmutable::parse($repayDueOn)->startOfDay()->isBefore(now()->startOfDay())) {
+                return __('The deadline to put this payment back was :date.', ['date' => $repayDueOn]);
+            }
         }
 
         // #131, whole-branch review finding 2: a *direct* registration

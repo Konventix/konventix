@@ -11,6 +11,7 @@ import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatCalendarDate } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { start as startCheckout } from '@/routes/commerce/pay';
 import {
@@ -171,7 +172,10 @@ const lastAttemptFailed = computed(
             <RotateCcw class="size-5" />
             <span>
                 Payment reversed — owed again<template v-if="props.repayDueOn">
-                    until {{ props.repayDueOn }}</template
+                    until
+                    <time :datetime="props.repayDueOn">{{
+                        formatCalendarDate(props.repayDueOn)
+                    }}</time></template
                 >.
             </span>
         </div>
