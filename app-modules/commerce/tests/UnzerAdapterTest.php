@@ -9,6 +9,7 @@ use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\PaymentReversed;
+use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
@@ -17,6 +18,7 @@ use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaymentSnapshot;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaypageSnapshot;
 use Konventix\Commerce\Settlement\Unzer\UnzerSettlementAdapter;
+use UnzerSDK\Exceptions\UnzerApiException;
 
 /**
  * Unzer adapter + account-level fetch-back webhook (ADR-0039) against a
@@ -70,8 +72,17 @@ final class UnzerAdapterTestFakeApi implements UnzerApi
         );
     }
 
+    public bool $refuseRefund = false;
+
     public function refundPayment(string $paymentId, float $amount, string $privateKey): void
     {
+        if ($this->refuseRefund) {
+            throw new UnzerApiException(
+                merchantMessage: 'The charge has already been cancelled in full.',
+                clientMessage: 'Your payment could not be cancelled.',
+            );
+        }
+
         $this->refunds[] = ['paymentId' => $paymentId, 'amount' => $amount, 'privateKey' => $privateKey];
     }
 
@@ -217,6 +228,31 @@ it('refunds through the brand key against the recorded Unzer payment', function 
         ->and($fake->refunds[0]['paymentId'])->toBe('s-pay-9')
         ->and($fake->refunds[0]['amount'])->toBe(119.00)
         ->and($fake->refunds[0]['privateKey'])->toBe('s-priv-fake');
+});
+
+/**
+ * #236 fix round 1, review finding 5: `UnzerSDK\Exceptions\UnzerApiException`
+ * extends `Exception`, so a cancellation Unzer refuses used to reach the
+ * console as a 500. The merchant message is the one written for an operator;
+ * the client message is for the payer and never leaves the adapter.
+ */
+it('translates a refusal from the Unzer SDK into a provider refusal (#236)', function (): void {
+    [$account, $order, $fake] = unzerAdapterTestSetup();
+
+    Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_UNZER,
+        'settlement_account_id' => $account->id,
+        'external_id' => 'ppg_fake_1',
+        'provider_transaction_id' => 's-pay-9',
+        'amount' => '119.00',
+        'currency' => 'EUR',
+    ]);
+
+    $fake->refuseRefund = true;
+
+    expect(fn () => app(UnzerSettlementAdapter::class)->refund($account->id, $order, '119.00', 'EUR'))
+        ->toThrow(ProviderRefusedRefundException::class, 'already been cancelled in full');
 });
 
 /**

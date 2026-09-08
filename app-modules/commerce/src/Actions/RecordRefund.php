@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
+use Konventix\Commerce\Jobs\RelayRefundEvents;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
@@ -40,6 +41,26 @@ use Konventix\Commerce\Models\OrderLine;
  *
  * Escapes BrandScope explicitly (ADR-0010): the reversal caller runs on the
  * stateless api surface, where no brand is resolved from the host.
+ *
+ * **The events leave after the commit, never inside it (#236).** The money
+ * has already moved by the time this Action runs — `RefundOrder` calls the
+ * provider first — so the credit note, the `refunded` status and the
+ * provider's own act have to survive whatever a consumer does with them. On
+ * dev they did not: `CancelRegistrationOnOrderLineCancelled` threw inside the
+ * console's refund request, the rollback took the credit note and the status
+ * with it, and the order sat at `paid` with 11.90 EUR already back on the
+ * card.
+ *
+ * The guarantee is made here rather than in each caller, because it has to
+ * hold for **every** caller (fix round 1, review finding 1): dispatching
+ * merely after this Action's own `DB::transaction()` still ran the consumers
+ * inside `RecordPaymentReversal`'s outer transaction, so the webhook path —
+ * the one where no brand is ever resolved — kept the old defect. The events
+ * go to `RelayRefundEvents` with `->afterCommit()`, which registers on the
+ * same `db.transactions` manager `DB::afterCommit()` uses: it fires when the
+ * **outermost** applicable transaction commits, and immediately when there is
+ * none. That the relay is a queued job is the other half — see its docblock,
+ * and `SPEC.md`'s refund section for the window that remains.
  */
 final class RecordRefund
 {
@@ -91,7 +112,10 @@ final class RecordRefund
 
             $refundedAt = now()->toIso8601String();
 
-            event(new OrderRefunded(
+            /** @var list<object> $events */
+            $events = [];
+
+            $events[] = new OrderRefunded(
                 orderId: $order->id,
                 brandId: $order->brand_id,
                 settlesType: $order->settles_type,
@@ -106,11 +130,18 @@ final class RecordRefund
                 // guarded numeric because a caller may pass any string;
                 // bccomp itself requires numeric-string.
                 whole: $whole,
-            ));
+            );
 
             if ($whole) {
-                $this->emitOrderLineCancelled($order, $refundedAt);
+                $events = [...$events, ...$this->orderLineCancelledEvents($order, $refundedAt)];
             }
+
+            // Queued from inside the transaction but pushed only once the
+            // outermost one commits (#236): `->afterCommit()` hands the push
+            // to `db.transactions`, which also drops it if that transaction
+            // rolls back — so an announcement can never outlive a refund that
+            // was not recorded, and a consumer can never unrecord one.
+            RelayRefundEvents::dispatch($order->id, $events)->afterCommit();
 
             return $order->refresh();
         });
@@ -118,18 +149,21 @@ final class RecordRefund
 
     /**
      * The registration lines a wholly refunded cart order gives back, one
-     * event each — `CancelOrderForUnpaidReversal::emitOrderLineCancelled()`'s
+     * event each, built but not dispatched — the caller sends them after the
+     * commit (#236). `CancelOrderForUnpaidReversal::emitOrderLineCancelled()`'s
      * twin, down to the `position` ordering and the registration-kind filter.
      *
      * A direct registration order is skipped: `OrderRefunded` already names
      * the one thing it settles, and emitting both would cancel it twice.
      * `cancelledByUserId` is null because `OrderRefunded` carries no actor
      * either — the two paths must write the same audit row.
+     *
+     * @return list<OrderLineCancelled>
      */
-    private function emitOrderLineCancelled(Order $order, string $refundedAt): void
+    private function orderLineCancelledEvents(Order $order, string $refundedAt): array
     {
         if ($order->settles_type !== self::SETTLES_CART) {
-            return;
+            return [];
         }
 
         $lines = OrderLine::withoutBrandScope()
@@ -139,12 +173,14 @@ final class RecordRefund
             ->orderBy('position')
             ->get();
 
+        $events = [];
+
         foreach ($lines as $line) {
             if ($line->settles_kind === null || $line->settles_ref === null) {
                 continue;
             }
 
-            event(new OrderLineCancelled(
+            $events[] = new OrderLineCancelled(
                 orderId: $order->id,
                 brandId: $order->brand_id,
                 kind: $line->settles_kind,
@@ -153,7 +189,9 @@ final class RecordRefund
                 reasonCode: self::REASON_ORDER_REFUNDED,
                 cancelledByUserId: null,
                 cancelledAt: $refundedAt,
-            ));
+            );
         }
+
+        return $events;
     }
 }

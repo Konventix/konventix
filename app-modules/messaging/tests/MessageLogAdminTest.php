@@ -87,6 +87,37 @@ it('lists only the selected brand\'s rows and filters by status', function (): v
             ->where('messages.data.0.recipientEmail', 'failed@example.test'));
 });
 
+/**
+ * #238: the log printed the timestamp the server had formatted, which is
+ * UTC. A system timestamp reaches the browser as an ISO-8601 instant and the
+ * page renders it in the reader's own zone (`formatDateTime()`, #208) — the
+ * same correction the orders list needed.
+ */
+it('sends the log timestamps as ISO instants rather than preformatted UTC (#238)', function (): void {
+    [, $admin] = messageLogOperator();
+    $brand = Brand::factory()->create(['slug' => 'ml-instants']);
+
+    $record = messageLogOf($brand, [
+        'status' => MessageStatus::Sent,
+        'sent_at' => now()->subMinutes(5),
+    ]);
+
+    $iso = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/';
+
+    $this->actingAs($admin)
+        ->get('http://admin.messages.test/admin/messages?brand='.$brand->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('messages.data.0.queuedAt', fn (string $at): bool => (bool) preg_match($iso, $at))
+            ->where('messages.data.0.sentAt', fn (string $at): bool => (bool) preg_match($iso, $at)));
+
+    $this->actingAs($admin)
+        ->get('http://admin.messages.test/admin/messages/'.$record->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('message.queuedAt', fn (string $at): bool => (bool) preg_match($iso, $at)));
+});
+
 it('searches the log by recipient email', function (): void {
     [, $admin] = messageLogOperator();
     $brand = Brand::factory()->create(['slug' => 'ml-search']);

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { formatDateTime, withZoneName } from './datetime';
+import {
+    formatDateTime,
+    toInstant,
+    toLocalDateTimeInput,
+    withZoneName,
+} from './datetime';
 
 describe('formatDateTime', () => {
     it('shows a UTC instant in the reader’s own zone', () => {
@@ -86,5 +91,60 @@ describe('withZoneName', () => {
         // page supplies the word where a word belongs.
         expect(formatDateTime(null, withZoneName)).toBe('');
         expect(formatDateTime('', withZoneName)).toBe('');
+    });
+});
+
+/**
+ * The `datetime-local` round trip (#237, the rule #202 established for a
+ * policy version's effective date). What it exists for: the control hands
+ * back a bare wall clock with no zone, the server read it in
+ * `config('app.timezone')` (UTC), and a registration type an operator in
+ * Berlin meant to go on sale at 10:17 went on sale at 12:17 on their clock.
+ *
+ * The assertions hold in whatever zone the test host runs in: what they pin
+ * is that a wall clock and its instant describe the same moment.
+ */
+describe('toInstant', () => {
+    it('resolves the typed wall clock against the reader’s own zone', () => {
+        expect(toInstant('2026-09-08T10:17')).toBe(
+            new Date(2026, 8, 8, 10, 17).toISOString(),
+        );
+    });
+
+    it('has no instant for an empty field', () => {
+        expect(toInstant('')).toBeNull();
+    });
+
+    it('has no instant for a value that is not a date', () => {
+        expect(toInstant('whenever')).toBeNull();
+    });
+});
+
+describe('toLocalDateTimeInput', () => {
+    // A tautology of the two helpers on its own — it pins that they are each
+    // other's inverse, nothing more. The offset case below is the one
+    // carrying the weight (review nit 10).
+    it('puts a stored instant back as the wall clock that produced it', () => {
+        expect(toLocalDateTimeInput(toInstant('2026-09-08T10:17'))).toBe(
+            '2026-09-08T10:17',
+        );
+    });
+
+    it('reads the offset the server sends rather than the digits', () => {
+        // 08:17 UTC is 10:17 in Berlin. Whichever zone the reader is in, the
+        // field has to show *their* wall clock for that one instant — the
+        // digits alone are what #237 shipped and what was wrong about it.
+        const instant = new Date('2026-09-08T08:17:00Z');
+        const field = toLocalDateTimeInput('2026-09-08T08:17:00+00:00');
+
+        expect(field).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+        expect(new Date(field).getTime()).toBe(instant.getTime());
+    });
+
+    it('leaves the field empty for a bound that is not set', () => {
+        expect(toLocalDateTimeInput(null)).toBe('');
+        expect(toLocalDateTimeInput(undefined)).toBe('');
+        expect(toLocalDateTimeInput('')).toBe('');
+        expect(toLocalDateTimeInput('not a date')).toBe('');
     });
 });

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Data\WaitlistOfferMailData;
 use Konventix\Registration\Enums\WaitlistState;
 use Konventix\Registration\Events\WaitlistOfferMade;
@@ -40,10 +41,24 @@ final class PromoteFromWaitlist
     {
         $offered = DB::transaction(function () use ($quotaId, $brandId): ?WaitlistEntry {
             /** @var WaitlistEntry|null $entry */
+            // Every level of the nested `whereHas` escapes BrandScope
+            // separately (#236 fix round 1): a relation query re-applies the
+            // scope on the *related* model, and the admin host hardens it to
+            // `WHERE 1=0` (ADR-0029, `.ai/rules/app-modules-src.md`). Written
+            // as `registrationType.quotas` it read zero rows for a seat an
+            // operator's refund had just freed, and the Action returned
+            // early without a word.
             $entry = WaitlistEntry::withoutBrandScope()
                 ->where('brand_id', $brandId)
                 ->where('state', WaitlistState::Queued)
-                ->whereHas('registrationType.quotas', fn ($query) => $query->whereKey($quotaId))
+                ->whereHas(
+                    'registrationType',
+                    fn ($query) => $query->withoutGlobalScope(BrandScope::class)
+                        ->whereHas(
+                            'quotas',
+                            fn ($inner) => $inner->withoutGlobalScope(BrandScope::class)->whereKey($quotaId),
+                        ),
+                )
                 ->orderBy('queued_at')
                 ->lockForUpdate()
                 ->first();
@@ -54,8 +69,12 @@ final class PromoteFromWaitlist
 
             // Hold: consume ALL the type's quotas, all-or-nothing — if any
             // is still exhausted the entry stays queued for the next release.
+            // The `quotas()` relation escapes BrandScope on its own query for
+            // the reason above: escaping it on the type alone would have held
+            // *zero* quotas here, passed the capacity check vacuously and
+            // promoted an entry without consuming anything (#236).
             $quotas = $entry->registrationType()->withoutGlobalScopes()->firstOrFail()
-                ->quotas()->lockForUpdate()->get();
+                ->quotas()->withoutGlobalScope(BrandScope::class)->lockForUpdate()->get();
 
             foreach ($quotas as $quota) {
                 /** @var Quota $quota */

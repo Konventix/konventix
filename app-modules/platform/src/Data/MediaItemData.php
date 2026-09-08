@@ -46,7 +46,8 @@ final class MediaItemData extends Data
             usageCount: $item->usages_count
                 ?? MediaUsage::withoutBrandScope()->where('media_item_id', $item->getKey())->count(),
             variantsPending: $item->variants_generated_at === null,
-            uploadedAt: $item->created_at?->format('Y-m-d H:i'),
+            // An ISO instant (#238), rendered in the reader's own zone.
+            uploadedAt: $item->created_at?->toIso8601String(),
         );
     }
 }

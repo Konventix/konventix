@@ -77,3 +77,66 @@ export const withZoneName: Intl.DateTimeFormatOptions = {
     minute: '2-digit',
     timeZoneName: 'short',
 };
+
+/**
+ * The `datetime-local` round trip.
+ *
+ * A `datetime-local` control speaks wall clock and nothing else: it hands
+ * back `YYYY-MM-DDTHH:MM` with no zone attached. A server that reads that
+ * string in `config('app.timezone')` is guessing whose clock it was, and on
+ * a UTC deployment it guesses wrong for every operator who is not on it —
+ * #202 for a policy version's effective date, #237 for a registration type's
+ * sales window, where an operator in Berlin typed 10:17 and the landing page
+ * announced 12:17. The browser is the only party that knows the zone, so the
+ * resolution happens here, on the way out and on the way back.
+ *
+ * These two belong beside `formatDateTime()` for the same reason it exists:
+ * an instant is stored, a wall clock is shown, and the conversion between
+ * them is the browser's job — one implementation of it, not one per form.
+ */
+
+/**
+ * The stored instant as the reader's own wall clock, in the format
+ * `datetime-local` accepts. An unparsable or absent value leaves the field
+ * empty rather than showing `Invalid Date`.
+ */
+export function toLocalDateTimeInput(value: string | null | undefined): string {
+    if (value === null || value === undefined || value === '') {
+        return '';
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    const pad = (part: number): string => String(part).padStart(2, '0');
+
+    return (
+        `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+        `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+    );
+}
+
+/**
+ * The typed wall clock as an absolute instant, which is the only form the
+ * server can store without guessing whose clock it was.
+ */
+export function toInstant(value: string): string | null {
+    if (value === '') {
+        return null;
+    }
+
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/**
+ * The zone the reader's browser is in, for a hint that has to name it —
+ * "Times in your timezone (Europe/Berlin)". Resolved once: it cannot change
+ * without a reload.
+ */
+export const browserTimezone: string =
+    Intl.DateTimeFormat().resolvedOptions().timeZone;

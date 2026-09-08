@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Registration\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Registration\Actions\Concerns\LoadsRegistrationType;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Enums\RegistrationApproval;
@@ -34,6 +35,11 @@ use Konventix\Registration\Models\Registration;
  */
 final class RecordOrderPaidForRegistration
 {
+    // The manual "book payment" button in the console fires `OrderPaid` from
+    // the admin host, where the `registrationType` relation would read null
+    // (#236) — the same trap the refund path hit.
+    use LoadsRegistrationType;
+
     public function __construct(
         private readonly ConfirmRegistration $confirmRegistration,
     ) {}
@@ -71,8 +77,7 @@ final class RecordOrderPaidForRegistration
                 changedAt: now()->toIso8601String(),
             ));
 
-            $registration->loadMissing('registrationType');
-            $registrationType = $registration->registrationType;
+            $registrationType = $this->registrationTypeOf($registration);
 
             $approvalSatisfied = $registrationType->approval === RegistrationApproval::None
                 || $registration->status === RegistrationStatus::Approved;

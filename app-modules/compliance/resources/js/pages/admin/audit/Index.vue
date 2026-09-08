@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import type { DataTableFilters } from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
+import { formatDateTime } from '@/lib/datetime';
 import { index as auditIndex } from '@/routes/admin/audit';
 
 /**
@@ -89,7 +90,11 @@ const columns: ColumnDef<AuditRow>[] = [
         header: 'When',
         enableSorting: true,
         cell: ({ row }) =>
-            h('span', { class: 'whitespace-nowrap' }, row.original.occurredAt),
+            h(
+                'span',
+                { class: 'whitespace-nowrap' },
+                formatDateTime(row.original.occurredAt),
+            ),
     },
     {
         accessorKey: 'action',

@@ -74,6 +74,9 @@ function checkoutPageOrder(bool $stripeConnected = true): array
         'status' => OrderStatus::Pending,
         'settles_type' => 'registration',
         'settles_id' => $registrationId,
+        // The signed-in payer owes this order (ADR-0044). Since GitLab #185
+        // that is also what authorizes the page: knowing the ULID is not.
+        'payer_user_id' => $payer->getKey(),
         'total_gross' => '119.00',
         'currency' => 'EUR',
     ]);
@@ -165,12 +168,13 @@ it('sends an unknown registration back to its own page with the reason', functio
 
 it('pays the latest order when an amendment added a second one', function (): void {
     // ADR-0036: a registration maps to N orders; the payable one is newest.
-    [$registrationId] = checkoutPageOrder();
+    [$registrationId, , , $payer] = checkoutPageOrder();
 
     $delta = Order::factory()->create([
         'status' => OrderStatus::Pending,
         'settles_type' => 'registration',
         'settles_id' => $registrationId,
+        'payer_user_id' => $payer->getKey(),
         'total_gross' => '35.70',
         'currency' => 'EUR',
         'created_at' => now()->addMinute(),

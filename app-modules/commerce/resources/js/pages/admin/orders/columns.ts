@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { VNode } from 'vue';
 import { h } from 'vue';
+import { formatDateTime } from '@/lib/datetime';
 import { show as showOrder } from '@/routes/admin/orders';
 import type { OrderReversal, UnappliedPayment } from './reversals';
 import {
@@ -160,7 +161,7 @@ export const columns: ColumnDef<OrderRow>[] = [
                 'span',
                 { class: 'text-text-muted' },
                 row.original.paidAt !== null
-                    ? `paid ${row.original.paidAt}`
+                    ? `paid ${formatDateTime(row.original.paidAt)}`
                     : (row.original.invoice?.dueOn ?? '—'),
             ),
     },
@@ -169,11 +170,14 @@ export const columns: ColumnDef<OrderRow>[] = [
         accessorFn: (row) => row.createdAt,
         header: 'Placed',
         enableSorting: true,
+        // #238: the raw server string was UTC, so a reader in Berlin saw two
+        // hours too little. `formatDateTime()` is the shared answer (#208) —
+        // the instant arrives as ISO 8601 and the browser owns the zone.
         cell: ({ row }) =>
             h(
                 'span',
                 { class: 'text-text-muted' },
-                row.original.createdAt ?? '—',
+                formatDateTime(row.original.createdAt) || '—',
             ),
     },
 ];
@@ -249,7 +253,7 @@ export const reversalColumn: ColumnDef<OrderRow> = {
                     h(
                         'span',
                         { class: 'text-xs text-text-muted' },
-                        `${unapplied.provider} · received ${unapplied.receivedAt ?? 'unknown'}`,
+                        `${unapplied.provider} · received ${formatDateTime(unapplied.receivedAt) || 'unknown'}`,
                     ),
                 ]),
             );

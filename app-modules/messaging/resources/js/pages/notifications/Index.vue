@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Check, Settings } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/datetime';
 import { edit as notificationSettings } from '@/routes/notification-preferences';
 import {
     index as notificationsIndex,
@@ -56,15 +57,6 @@ function goToPage(page: number): void {
 /** Notification bodies are stored as HTML; the list shows plain text. */
 function plainBody(body: string): string {
     return body.replace(/<[^>]*>/g, '');
-}
-
-function formatDate(value: string | null): string {
-    return value === null
-        ? ''
-        : new Date(value).toLocaleString(undefined, {
-              dateStyle: 'medium',
-              timeStyle: 'short',
-          });
 }
 </script>
 
@@ -128,7 +120,7 @@ function formatDate(value: string | null): string {
                         {{ plainBody(notification.body) }}
                     </p>
                     <p class="text-xs text-text-muted">
-                        {{ formatDate(notification.createdAt) }}
+                        {{ formatDateTime(notification.createdAt) }}
                     </p>
                 </div>
                 <Button

@@ -27,7 +27,9 @@ final class MessageResendRowData extends Data
     {
         return new self(
             id: $record->getKey(),
-            queuedAt: $record->queued_at->format('Y-m-d H:i'),
+            // ISO instants (#238): the console renders them in the reader's
+            // own zone through `formatDateTime()` (#208), never in UTC.
+            queuedAt: $record->queued_at->toIso8601String(),
             status: $record->status,
         );
     }
