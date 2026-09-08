@@ -44,13 +44,14 @@ return [
     | budget: a provider that cannot be asked about a payment at all answers
     | locally and for free.
     |
-    | **All three are floored at one.** A zero budget is not "stop probing",
+    | **A zero in any of the three falls back to the default here.** A zero
+    | budget is not "stop probing",
     | it is "leave every order unasked", and an unasked order reaches no
     | release valve — so a zero would stop the sweeps cancelling anything at
     | all, silently and for ever. A zero grace puts the deadline at the
     | payment window's own end, which is past by construction, so the valve
     | would fire on the first run. A non-numeric value casts to zero through
-    | `env()` and lands in the same place, which is why the floor is in the
+    | `env()` and lands in the same place, which is why the fallback is in the
     | code and not only in this comment. Probing cannot be switched off from
     | here.
     |

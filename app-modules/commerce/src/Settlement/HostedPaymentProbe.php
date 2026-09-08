@@ -67,12 +67,17 @@ final class HostedPaymentProbe
      * budget the run stops asking and leaves those orders to the next one —
      * they keep their seats for another quarter of an hour, which is the
      * cheap half of this trade.
+     *
+     * Floored at one like the two graces (review NEW-1): the floor was
+     * applied to them and not to this, so a zero — or any non-numeric env
+     * value, which `(int) env()` casts to zero — left every order `Unprobed`,
+     * which reaches no release valve, and both sweeps stopped cancelling
+     * anything at all. Silently, permanently, and with three comments
+     * claiming it could not happen.
      */
     public function startRun(): void
     {
-        $budget = config('commerce.sweeps.probe_budget');
-
-        $this->budget = is_int($budget) && $budget >= 0 ? $budget : 50;
+        $this->budget = $this->configuredOrDefault('commerce.sweeps.probe_budget', 50);
     }
 
     /**
@@ -120,8 +125,8 @@ final class HostedPaymentProbe
         }
 
         $deadline = match ($state) {
-            HostedPaymentState::Unreachable => $windowEndsAt->copy()->addHours($this->atLeastOne('commerce.sweeps.unknown_payment_grace_hours', 24)),
-            HostedPaymentState::InFlight => $windowEndsAt->copy()->addDays($this->atLeastOne('commerce.sweeps.in_flight_grace_days', 14)),
+            HostedPaymentState::Unreachable => $windowEndsAt->copy()->addHours($this->configuredOrDefault('commerce.sweeps.unknown_payment_grace_hours', 24)),
+            HostedPaymentState::InFlight => $windowEndsAt->copy()->addDays($this->configuredOrDefault('commerce.sweeps.in_flight_grace_days', 14)),
             default => null,
         };
 
@@ -146,21 +151,24 @@ final class HostedPaymentProbe
     }
 
     /**
-     * A sweep knob's value, floored at one (finding 7).
+     * A sweep knob's value: the configured one where it is a positive
+     * integer, the documented default otherwise (finding 7, review NEW-8).
      *
      * Zero is a plausible reading of "turn this off" and is the value a
-     * non-numeric env var casts to, and both zeroes are traps: a zero budget
-     * makes every order `Unprobed`, which reaches no valve, so the sweeps
-     * stop cancelling anything at all — silently, for ever. A zero grace
-     * puts the deadline at the window's own end, so the valve fires on the
-     * first run. Neither is a setting anyone means; probing is not
-     * switchable off from here.
+     * non-numeric env var casts to, and every zero here is a trap: a zero
+     * budget leaves every order unasked, which reaches no valve, so the
+     * sweeps stop cancelling anything at all; a zero grace puts the deadline
+     * at the payment window's own end, which is past by construction, so the
+     * valve fires on the first run. Neither is a setting anyone means, so a
+     * zero falls back to the default rather than being clamped to one — the
+     * `max(1, …)` this used to carry could never fire, since both defaults
+     * are already above it, and it read as a floor the code did not have.
      */
-    private function atLeastOne(string $key, int $fallback): int
+    private function configuredOrDefault(string $key, int $fallback): int
     {
         $value = config($key);
 
-        return max(1, is_int($value) && $value > 0 ? $value : $fallback);
+        return is_int($value) && $value > 0 ? $value : $fallback;
     }
 
     /**

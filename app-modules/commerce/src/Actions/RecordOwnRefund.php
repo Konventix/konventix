@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Actions;
 
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Konventix\Commerce\Actions\Concerns\LocksMoneyRowsInOneOrder;
 use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\Order;
@@ -48,12 +49,23 @@ use RuntimeException;
  */
 final class RecordOwnRefund
 {
+    use LocksMoneyRowsInOneOrder;
+
     public function handle(
         Order $order,
         Payment $payment,
         string $amount,
         string $providerReference,
     ): PaymentReversal {
+        // Order, then payment, then the reversal row
+        // (`LocksMoneyRowsInOneOrder`, review NEW-5). `RecordRefund` and
+        // `RefundOrder`'s unapplied path both hold the order lock by the time
+        // they reach this, and re-taking a row this transaction already holds
+        // costs nothing — saying it here is what keeps the sequence one rule
+        // rather than four call sites that happen to agree.
+        $this->lockOrder($order->getKey());
+        $this->lockPayment($payment->id);
+
         $existing = PaymentReversal::forProviderReference($payment->provider, $providerReference);
 
         if ($existing !== null) {

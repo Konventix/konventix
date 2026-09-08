@@ -225,9 +225,20 @@ ADR-0048); the bookkeeping export books documents, never payments
    the order was sold to undo, and Registration would cancel a
    registration the sweep already cancelled), and the order stays
    `cancelled`. What is written is the money's own record: the reversal row
-   with the provider's reference, and the payment leaving `succeeded`,
-   which takes it off the console's unapplied list and refuses a second
-   press.
+   **where the provider gave a reference**, and the payment leaving
+   `succeeded`, which takes it off the console's unapplied list and refuses
+   a second press.
+
+   `manual` gives none — the organizer wires the money back outside the
+   platform — and no row is written for it. `payment_reversals.provider_reference`
+   stays NOT NULL deliberately: the unique `(provider, provider_reference)`
+   key is this table's whole convergence mechanism, and Postgres treats
+   NULLs as distinct, so a nullable column would admit unlimited unkeyed
+   rows past the guarantee for exactly the rows that have no key. The record
+   for a `manual` refund is the `commerce.order.refunded` audit entry, which
+   carries the reason, the amount, the currency and `unapplied: true`. That
+   entry is written by the console, so a future caller that is not the
+   console owes an equivalent of its own.
 
 ### Alternatives considered
 

@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Konventix\Commerce\Actions\Concerns\LocksMoneyRowsInOneOrder;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
@@ -66,6 +67,8 @@ use Konventix\Commerce\Models\Payment;
  */
 final class RecordRefund
 {
+    use LocksMoneyRowsInOneOrder;
+
     /**
      * The order-level reason the per-line cancellation carries — the refund's
      * counterpart of `CancelOrderForUnpaidReversal::REASON_REVERSAL_UNPAID`,
@@ -105,7 +108,8 @@ final class RecordRefund
         ?string $providerReference = null,
     ): Order {
         return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount, $payment, $providerReference): Order {
-            // **The order row is the claim** (blocker 1). Everything below
+            // **The order row is the claim** (blocker 1), and it is the
+            // first lock every money path takes (`LocksMoneyRowsInOneOrder`). Everything below
             // writes paperwork that cannot be taken back — a credit note is
             // immutable (ADR-0031/0048) and the bookkeeping export books it
             // (ADR-0040) — so the decision to write it has to serialize
@@ -121,7 +125,7 @@ final class RecordRefund
             // controller that fetched it outside any transaction, and the
             // provider call happened before this (#236 keeps the money leg
             // first on purpose).
-            $locked = Order::withoutBrandScope()->whereKey($order->getKey())->lockForUpdate()->first();
+            $locked = $this->lockOrder((string) $order->getKey());
 
             if ($locked === null || $locked->status !== OrderStatus::Paid) {
                 Log::warning('The refund\'s domain leg was already recorded by whoever got the order first; nothing further written (blocker 1).', [

@@ -537,6 +537,26 @@ it('stops asking once the run has spent its probe budget (#231)', function (): v
         ->and($second->fresh()->status)->toBe(OrderStatus::Pending);
 });
 
+it('keeps sweeping when the probe budget is configured to zero (#231)', function (): void {
+    // A zero is a plausible reading of "turn probing off", and any
+    // non-numeric env value casts to one. It used to leave every order
+    // unasked — a state that reaches no release valve — so both sweeps
+    // stopped cancelling anything at all, silently and permanently (review
+    // NEW-1). A zero now means the default.
+    config([
+        'commerce.sweeps.probe_budget' => 0,
+        'commerce.sweeps.unknown_payment_grace_hours' => 24,
+    ]);
+
+    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::NotPaid);
+    CartSweepTestAdapter::$asked = 0;
+
+    expect(app(ExpireCarts::class)->handle())->toBe(1)
+        ->and(CartSweepTestAdapter::$asked)->toBe(1)
+        ->and($order->fresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($cart->fresh()->status)->toBe(CartStatus::Expired);
+});
+
 it('cancels an order the PSP has never been able to answer for once the hold runs out (#231)', function (): void {
     // The release valve: a provider that stays silent must not hold a seat,
     // a quota and stock for the length of an outage. Money that did move
@@ -595,22 +615,29 @@ it('holds an order the PSP says is still travelling far past the unreachable gra
 });
 
 it('never cancels an order this run did not ask the PSP about (#231)', function (): void {
-    // The budget manufactures no verdict: an order past position 50 in a
-    // run's candidate list is not an order the provider failed to answer
-    // for, and cancelling it would release a seat with no question asked at
-    // all — during an outage, which is exactly when the budget runs out.
+    // The budget manufactures no verdict: an order past the run's last probe
+    // is not an order the provider failed to answer for, and cancelling it
+    // would release a seat with no question asked at all — during an outage,
+    // which is exactly when the budget runs out.
     config([
-        'commerce.sweeps.probe_budget' => 0,
+        'commerce.sweeps.probe_budget' => 1,
         'commerce.sweeps.unknown_payment_grace_hours' => 24,
     ]);
 
-    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::NotPaid);
+    // The first candidate spends the run's only question…
+    [, $probed] = cartSweepTestOpenHostedCheckout(HostedPaymentState::NotPaid, 'cs_sweep_probed');
 
+    // …so this one, old enough for the valve, is never asked about.
+    [$cart, $order] = cartSweepTestOpenHostedCheckout(HostedPaymentState::NotPaid, 'cs_sweep_unprobed');
     $cart->forceFill(['expires_at' => now()->subDays(5)])->save();
+
     CartSweepTestAdapter::$asked = 0;
 
-    expect(app(ExpireCarts::class)->handle())->toBe(0)
-        ->and(CartSweepTestAdapter::$asked)->toBe(0)
+    $expiredCount = app(ExpireCarts::class)->handle();
+
+    expect(CartSweepTestAdapter::$asked)->toBe(1)
+        ->and($probed->fresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($expiredCount)->toBe(1)
         ->and($order->fresh()->status)->toBe(OrderStatus::Pending)
         ->and($cart->fresh()->status)->toBe(CartStatus::CheckedOut);
 });

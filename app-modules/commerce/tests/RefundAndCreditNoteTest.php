@@ -833,6 +833,73 @@ it('refuses a second unapplied refund that reaches the payment while the first i
         ->and(PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
 });
 
+it('takes the order lock before the payment lock on both money paths (#247, review NEW-5)', function (): void {
+    // The console refund locks the order and then writes the reversal row;
+    // the provider's notification used to lock the *payment* first and reach
+    // the order last. Opposite orders on the same three rows is a deadlock
+    // cycle: Postgres kills one of them with SQLSTATE 40P01, which is not a
+    // unique violation, so the convergence catch does not see it and the
+    // operator gets a 500 for a refund whose money did leave. One order for
+    // every path — order, then payment — is the whole fix, and it is what
+    // this pins.
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'spy',
+        'amount' => $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, app(RefundTestSpyAdapter::class));
+
+    /** @var list<string> $locks */
+    $locks = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$locks): void {
+        if (! str_contains($query->sql, 'for update')) {
+            return;
+        }
+
+        foreach (['orders', 'payments', 'payment_reversals'] as $table) {
+            if (str_contains($query->sql, sprintf('from "%s"', $table))) {
+                $locks[] = $table;
+
+                return;
+            }
+        }
+    });
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    // Re-locking a row this transaction already holds is free and happens
+    // (`RecordOwnRefund` says the sequence again rather than trusting its
+    // caller), so what matters is the order the tables are *first* reached in.
+    expect(array_slice(array_values(array_unique($locks)), 0, 2))->toBe(['orders', 'payments']);
+
+    $locks = [];
+
+    app(RecordPaymentReversal::class)->handle(
+        payment: $payment->fresh(),
+        kind: ReversalKind::Return,
+        status: ReversalStatus::Final,
+        amount: (string) $payment->amount,
+        currency: $payment->currency,
+        providerReference: 'chb_lock_order_1',
+        reasonCode: null,
+        feeAmount: null,
+        occurredAt: now(),
+    );
+
+    // The same two, in the same order, from the other side.
+    expect(array_slice(array_values(array_unique($locks)), 0, 2))->toBe(['orders', 'payments']);
+});
+
 it('records no reversal row for a refund no provider gave a reference to (#247)', function (): void {
     // `manual` wires the money back outside the platform: there is no
     // reference, and a row whose `provider_reference` is invented would

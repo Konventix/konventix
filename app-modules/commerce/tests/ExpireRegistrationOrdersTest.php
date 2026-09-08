@@ -173,29 +173,31 @@ it('leaves a registration order standing while the PSP cannot say (#231)', funct
 });
 
 it('never cancels a registration order this run did not ask the PSP about (#231)', function (): void {
-    // The same guarantee as the cart sweep, tested on the sweep that
-    // releases registration quota (fix round 2, review NEW-5): out of
-    // budget is not a verdict.
+    // The same guarantee as the cart sweep, on the sweep that releases
+    // registration quota (review NEW-5 of round 2): out of budget is not a
+    // verdict.
     $this->withBrand();
     expiryTestHostedAccount();
 
     config([
-        'commerce.sweeps.probe_budget' => 0,
+        'commerce.sweeps.probe_budget' => 1,
         'commerce.sweeps.unknown_payment_grace_hours' => 24,
     ]);
 
-    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::NotPaid);
-    $order->forceFill(['created_at' => now()->subDays(5)])->save();
-    RegistrationSweepTestAdapter::$asked = 0;
+    // The first candidate spends the run's only question…
+    $probed = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::NotPaid, 'tr_sweep_probed');
 
-    Event::fake([OrderCancelled::class]);
+    // …so this one is never asked about, however old it is.
+    $unprobed = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::NotPaid, 'tr_sweep_unprobed');
+    $unprobed->forceFill(['created_at' => now()->subDays(5)])->save();
+
+    RegistrationSweepTestAdapter::$asked = 0;
 
     $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
 
-    expect($order->refresh()->status)->toBe(OrderStatus::Pending)
-        ->and(RegistrationSweepTestAdapter::$asked)->toBe(0);
-
-    Event::assertNotDispatched(OrderCancelled::class);
+    expect(RegistrationSweepTestAdapter::$asked)->toBe(1)
+        ->and($probed->refresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and($unprobed->refresh()->status)->toBe(OrderStatus::Pending);
 });
 
 it('holds a registration order the PSP says is still travelling past the unreachable grace (#231)', function (): void {

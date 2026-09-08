@@ -8,6 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Konventix\Commerce\Actions\Concerns\LocksMoneyRowsInOneOrder;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
@@ -50,6 +51,8 @@ use Konventix\Commerce\Settlement\RepaymentWindow;
  */
 final class RecordPaymentReversal
 {
+    use LocksMoneyRowsInOneOrder;
+
     public function __construct(
         private readonly RepaymentWindow $window,
         private readonly RecordRefund $recordRefund,
@@ -77,6 +80,13 @@ final class RecordPaymentReversal
             $feeAmount,
             $occurredAt,
         ): PaymentReversal {
+            // Order first, then payment — the one lock order the whole money
+            // path follows (`LocksMoneyRowsInOneOrder`, review NEW-5). The
+            // console's refund takes the order lock before it inserts the
+            // reversal row this method also writes, so taking the payment
+            // first here made the two a deadlock cycle.
+            $this->lockOrder($payment->order_id);
+
             $locked = Payment::withoutBrandScope()
                 ->whereKey($payment->id)
                 ->lockForUpdate()

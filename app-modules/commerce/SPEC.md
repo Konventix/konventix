@@ -396,7 +396,21 @@ BaFin/ZAG licensing.
   `RefundOrder`'s provider leg without a document — no credit note, no
   `OrderRefunded`, the order stays `cancelled`. The payment is locked for the
   provider call and leaves `succeeded` in the same transaction, which takes
-  it off the unapplied list and refuses a second press.
+  it off the unapplied list and refuses a second press. A reversal row is
+  written **where the provider gave a reference**; `manual` gives none and
+  writes none, and the `commerce.order.refunded` audit entry
+  (`unapplied: true`, `provider_reference: null`) is the record there.
+  `provider_reference` stays NOT NULL on purpose: the unique
+  `(provider, provider_reference)` key is what makes two writers of one
+  refund converge, and NULLs are distinct in Postgres, so a nullable column
+  would drop the guarantee for exactly the rows that cannot key.
+
+  **One lock order for every money path**: the order row, then the payment,
+  then the reversal row (`Actions\Concerns\LocksMoneyRowsInOneOrder`). The
+  console's refund and the provider's own notification reach the same three
+  rows from opposite sides, and taking them in opposite orders is a deadlock
+  Postgres resolves by killing one — with SQLSTATE 40P01, which is not a
+  unique violation and which the convergence catch therefore never sees.
 
   **The record commits before the announcement, and the announcement is a
   queued job** (#236). The provider is called first, then the credit note,

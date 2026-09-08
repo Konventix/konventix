@@ -17,7 +17,6 @@ use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
-use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\MinorUnits;
 use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
@@ -313,15 +312,21 @@ class StripeWebhookController
      * the one the operator made in Stripe's own dashboard instead (ADR-0057
      * point 1).
      *
-     * The order still being `paid` is *usually* that condition — but not
-     * reliably, and the docblock that used to claim it was (blocker 1): the
+     * The order still being `paid` is *usually* that condition, and the
+     * docblock here used to claim it always was (blocker 1). It is not: the
      * provider call comes first on purpose (#236), so between it and
      * `RecordRefund`'s commit our own refund is a Stripe fact with no
-     * Konventix record and an order that still reads `paid`. Two things
-     * close that window: the `refund`-kind row `RefundOrder` writes, checked
-     * below before the charge-id fallback, and the order lock `RecordRefund`
-     * takes, which serializes the paperwork whichever of the two gets there
-     * first.
+     * Konventix record and an order that still reads `paid`.
+     *
+     * **What closes that window is the order lock**, and only that (review
+     * NEW-2). `RecordRefund` takes it before it writes anything and holds it
+     * until the credit note, the status and the reversal row commit
+     * together, so this handler either sees none of them — and is then the
+     * one that does the work, converging on the reversal row's unique key —
+     * or sees all of them and returns on the status guard below. A guard
+     * that looked for the `refund` row while the order still read `paid` sat
+     * here for a wave and could not fire: under READ COMMITTED the row and
+     * the status become visible in the same instant.
      */
     private function chargeRefunded(StripeEvent $event, RecordPaymentReversal $recordReversal): JsonResponse
     {
@@ -362,26 +367,6 @@ class StripeWebhookController
             // rather than lost. `StripeReversalCatchUp` knows about
             // this fallback and skips a refund whose charge already carries a
             // row, so the later sweep does not add a second one.
-            // Unless we made this refund ourselves (blocker 1): `RefundOrder`
-            // records it under the `re_…` Stripe returned, and keying the
-            // same money on the charge here would write a second row for it
-            // — the one case where the two paths cannot converge on the
-            // unique key. The order-status guard above catches it once that
-            // refund has committed; this catches it while it is still in
-            // flight, which is exactly when this event arrives.
-            if (PaymentReversal::withoutBrandScope()
-                ->where('payment_id', $payment->id)
-                ->where('kind', ReversalKind::Refund)
-                ->exists()) {
-                Log::info('Stripe announced a refund this deployment made itself; already recorded under its own reference (#247).', [
-                    'payment_id' => $payment->id,
-                    'order_id' => $payment->order_id,
-                    'charge' => $charge->id ?? null,
-                ]);
-
-                return response()->json(['received' => true]);
-            }
-
             $reference = $charge->id ?? null;
         }
 

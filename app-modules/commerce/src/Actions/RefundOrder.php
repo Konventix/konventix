@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Konventix\Commerce\Actions\Concerns\GuardsCheckedInAdmissions;
+use Konventix\Commerce\Actions\Concerns\LocksMoneyRowsInOneOrder;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
@@ -66,6 +67,7 @@ final class RefundOrder
     // unpaid-reversal sweep), which skips rather than refuses — the trait
     // owns the definition, this class keeps the refusal.
     use GuardsCheckedInAdmissions;
+    use LocksMoneyRowsInOneOrder;
 
     public function __construct(
         private readonly RecordRefund $recordRefund,
@@ -232,7 +234,12 @@ final class RefundOrder
     private function refundUnapplied(Order $order, Payment $unapplied, ?string $amount): Order
     {
         return DB::transaction(function () use ($order, $unapplied, $amount): Order {
-            $locked = Payment::withoutBrandScope()->whereKey($unapplied->id)->lockForUpdate()->first();
+            // Order first, then payment (`LocksMoneyRowsInOneOrder`, review
+            // NEW-5): this path writes a reversal row too, and the webhook
+            // reaches the same three rows from the other side.
+            $this->lockOrder((string) $order->getKey());
+
+            $locked = $this->lockPayment($unapplied->id);
 
             if ($locked === null || $locked->status !== PaymentStatus::Succeeded) {
                 throw new RuntimeException(sprintf(
