@@ -21,11 +21,33 @@ function stripeCredentialsRow(array $attributes = []): StripeSettings
 {
     $operator = Operator::factory()->create();
 
-    $settings = StripeSettings::forOperator((string) $operator->getKey());
-    $settings->fill($attributes)->save();
-
-    return $settings;
+    // Through the factory, so the `newFactory()`/`$model` wiring every module
+    // model needs (.ai/rules/models.md) is actually exercised — the failure
+    // that rule exists to catch shows up here or nowhere.
+    return StripeSettings::factory()->create([
+        'operator_id' => (string) $operator->getKey(),
+        ...$attributes,
+    ]);
 }
+
+it('hands back a defaulted unsaved row for an operator that has never saved one', function (): void {
+    // ADR-0058 point 2: the console form works before anybody has saved
+    // anything, the same way `BookkeepingSettings` does.
+    $operator = Operator::factory()->create();
+
+    $fresh = StripeSettings::forOperator((string) $operator->getKey());
+
+    expect($fresh->exists)->toBeFalse()
+        ->and($fresh->operator_id)->toBe((string) $operator->getKey())
+        ->and($fresh->secret_key)->toBeNull();
+
+    $saved = StripeSettings::factory()->create([
+        'operator_id' => (string) $operator->getKey(),
+        'secret_key' => 'sk_test_saved_1234',
+    ]);
+
+    expect(StripeSettings::forOperator((string) $operator->getKey())->getKey())->toBe($saved->getKey());
+});
 
 it('reads the environment when no settings row exists', function (): void {
     config()->set('services.stripe.secret', 'sk_test_environment_abcd');

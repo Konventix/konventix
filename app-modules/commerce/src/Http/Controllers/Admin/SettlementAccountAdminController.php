@@ -23,6 +23,7 @@ use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Models\StripeSettings;
 use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
+use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\OperatorContext;
 
@@ -40,6 +41,10 @@ use Konventix\Platform\Operators\OperatorContext;
  * endpoint on the account, because Unzer notifies per account, not per
  * payment. The instance's own Stripe keys are set once, in this console's
  * Stripe card, not per brand (`saveStripeSettings()`).
+ *
+ * Every confirmation here goes out as `Inertia::flash('toast', …)`, because
+ * that is the only channel the layout renders (`resources/js/lib/flashToast.ts`);
+ * a `->with('success', …)` reaches nothing and reads like it worked.
  */
 class SettlementAccountAdminController
 {
@@ -165,9 +170,9 @@ class SettlementAccountAdminController
             return back()->withErrors(['provider' => __('This brand already has a live :provider account.', ['provider' => 'Stripe'])]);
         }
 
-        return redirect()
-            ->route('admin.settlement-accounts.index')
-            ->with('success', 'Stripe enabled for this brand.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Stripe enabled for this brand.')]);
+
+        return redirect()->route('admin.settlement-accounts.index');
     }
 
     /**
@@ -179,7 +184,7 @@ class SettlementAccountAdminController
      * the pair, and leaving a stale webhook secret beside a new key would
      * verify tomorrow's events against yesterday's endpoint.
      */
-    public function saveStripeSettings(SaveStripeSettingsData $data, OperatorContext $operator): RedirectResponse
+    public function saveStripeSettings(SaveStripeSettingsData $data, AuditRecorder $auditRecorder, OperatorContext $operator): RedirectResponse
     {
         Gate::authorize(Permission::ManageSettlementAccount->value);
 
@@ -189,6 +194,22 @@ class SettlementAccountAdminController
                 'secret_key' => $data->secretKey,
                 'webhook_secret' => $data->webhookSecret,
                 'publishable_key' => $data->publishableKey,
+            ],
+        );
+
+        // The explicit half of the audit trail (Round 6, D-BATCH): installing
+        // the key every payment on this instance is made with changes no
+        // domain state anybody subscribes to, and is the strongest candidate
+        // in the console for a record of who did it and when. Never the values
+        // — the same "whether, never what" the page props follow, so this
+        // carries only what the console already shows an operator.
+        $auditRecorder->record(
+            action: 'commerce.stripe-settings.saved',
+            subjectId: (string) $operator->id(),
+            context: [
+                'mode' => StripeCredentials::modeOf($data->secretKey),
+                'last_four' => substr($data->secretKey, -4),
+                'publishable_key_set' => $data->publishableKey !== null,
             ],
         );
 
@@ -203,11 +224,19 @@ class SettlementAccountAdminController
      * row is gone — which is exactly the fallback half of ADR-0058
      * point 2, and why clearing is safe to offer.
      */
-    public function clearStripeSettings(OperatorContext $operator): RedirectResponse
+    public function clearStripeSettings(AuditRecorder $auditRecorder, OperatorContext $operator): RedirectResponse
     {
         Gate::authorize(Permission::ManageSettlementAccount->value);
 
         StripeSettings::query()->where('operator_id', $operator->id())->delete();
+
+        // Recorded even when there was nothing to delete: an attempt to take
+        // this instance's keys out is worth the same line in the trail as
+        // putting them in.
+        $auditRecorder->record(
+            action: 'commerce.stripe-settings.cleared',
+            subjectId: (string) $operator->id(),
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Stripe keys cleared — the environment applies again.')]);
 
@@ -234,9 +263,9 @@ class SettlementAccountAdminController
             return back()->withErrors(['provider' => __('This brand already has a live :provider account.', ['provider' => 'Mollie'])]);
         }
 
-        return redirect()
-            ->route('admin.settlement-accounts.index')
-            ->with('success', 'Mollie account connected.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Mollie account connected.')]);
+
+        return redirect()->route('admin.settlement-accounts.index');
     }
 
     public function connectUnzer(Request $request, UnzerApi $unzer, ConnectSettlementAccount $connect): RedirectResponse
@@ -266,9 +295,9 @@ class SettlementAccountAdminController
             $data['private_key'],
         );
 
-        return redirect()
-            ->route('admin.settlement-accounts.index')
-            ->with('success', 'Unzer account connected and webhook registered.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Unzer account connected and webhook registered.')]);
+
+        return redirect()->route('admin.settlement-accounts.index');
     }
 
     public function disconnect(string $account, DisconnectSettlementAccount $disconnect): RedirectResponse
@@ -277,9 +306,9 @@ class SettlementAccountAdminController
 
         $disconnect->handle(SettlementAccount::withoutBrandScope()->findOrFail($account));
 
-        return redirect()
-            ->route('admin.settlement-accounts.index')
-            ->with('success', 'Account disconnected — the brand settles manually until a new one is connected.');
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Account disconnected — the brand settles manually until a new one is connected.')]);
+
+        return redirect()->route('admin.settlement-accounts.index');
     }
 
     public function updateLabel(string $account, UpdateSettlementAccountLabelData $data, UpdateSettlementAccountLabel $update): RedirectResponse

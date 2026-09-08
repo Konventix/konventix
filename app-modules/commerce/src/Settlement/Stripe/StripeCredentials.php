@@ -133,8 +133,15 @@ final class StripeCredentials
      */
     public function mode(): ?string
     {
-        $secret = $this->secret();
+        return self::modeOf($this->secret());
+    }
 
+    /**
+     * The same reading for a key that has not been stored yet — what the audit
+     * trail records about a rotation without recording the key.
+     */
+    public static function modeOf(?string $secret): ?string
+    {
         return match (true) {
             $secret === null => null,
             str_contains($secret, '_live_') => 'live',

@@ -16,6 +16,7 @@ use Konventix\Commerce\Settlement\Stripe\StripeWebhookEvents;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaymentSnapshot;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaypageSnapshot;
+use Konventix\Compliance\Models\AuditLogEntry;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -534,6 +535,53 @@ it('enables Stripe for a brand without calling Stripe at all', function (): void
         SettlementAccountConnected::class,
         fn (SettlementAccountConnected $e): bool => $e->brandId === $brand->id && $e->provider === 'stripe',
     );
+});
+
+it('announces enabling Stripe on the channel the layout actually renders', function (): void {
+    // `flash.toast` is what `flashToast.ts` listens to and what
+    // `HandleInertiaRequests` shares; a plain `->with('success', …)` reaches
+    // nothing, and the operator sees no confirmation at all.
+    [$admin, $brand] = settlementAdminOperator();
+    app()->instance(StripeApi::class, new SettlementAdminTestFakeStripe);
+
+    $this->actingAs($admin)
+        ->post('http://admin.settlement.test/admin/settlement-accounts/stripe', ['brand_id' => $brand->id])
+        ->assertRedirect();
+
+    expect(session('inertia.flash_data'))->toHaveKey('toast')
+        ->and(session('inertia.flash_data')['toast']['type'])->toBe('success');
+});
+
+it('records who set and who cleared this instance\'s Stripe keys, and never what they were', function (): void {
+    // A live-key rotation is exactly the privileged action with no domain
+    // event that `AuditRecorder` exists for (Round 6, D-BATCH) — a stronger
+    // candidate for the trail than the CSV export that uses it today.
+    [$admin] = settlementAdminOperator();
+
+    $this->actingAs($admin)
+        ->put('http://admin.settlement.test/admin/settlement-accounts/stripe/settings', [
+            'secretKey' => 'sk_live_audited_wxyz',
+            'webhookSecret' => 'whsec_audited',
+            'publishableKey' => null,
+        ])
+        ->assertRedirect();
+
+    $saved = AuditLogEntry::query()->where('action', 'commerce.stripe-settings.saved')->sole();
+
+    expect($saved->actor_user_id)->toBe((string) $admin->getKey())
+        ->and(json_encode($saved->context))->not->toContain('sk_live_audited_wxyz')
+        ->and(json_encode($saved->context))->not->toContain('whsec_audited')
+        // What is worth knowing without knowing the key: which key is now
+        // installed, and whether it moves real money.
+        ->and($saved->context['mode'])->toBe('live')
+        ->and($saved->context['last_four'])->toBe('wxyz');
+
+    $this->actingAs($admin)
+        ->delete('http://admin.settlement.test/admin/settlement-accounts/stripe/settings')
+        ->assertRedirect();
+
+    expect(AuditLogEntry::query()->where('action', 'commerce.stripe-settings.cleared')->sole()->actor_user_id)
+        ->toBe((string) $admin->getKey());
 });
 
 it('refuses a statement descriptor suffix Stripe would reject', function (string $suffix): void {
