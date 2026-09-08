@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Middleware\AssignCorrelationId;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\VerifyHealthSecret;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
@@ -44,6 +45,14 @@ return Application::configure(basePath: dirname(__DIR__))
         // (ADR-0056). Global rather than `web`: health probes, PSP webhooks
         // and the router's own 404s are requests too.
         $middleware->prepend(AssignCorrelationId::class);
+
+        // Security headers on every response, for the same reason the
+        // correlation ID is global (#251): the surfaces that need them most —
+        // the unauthenticated media route (#252), the PSP webhooks, the
+        // health endpoints — are the ones outside the `web` group. Appended
+        // rather than prepended so it wraps the router and still stamps a
+        // response an inner middleware short-circuits.
+        $middleware->append(SecurityHeaders::class);
 
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state', 'cookie_preferences']);
 
