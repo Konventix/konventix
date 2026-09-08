@@ -2,11 +2,18 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
 use Konventix\Compliance\Enums\DataSubjectRequestType;
 use Konventix\Compliance\Models\DataSubjectRequestVerification;
 
 it('stores only a hash of the token', function (): void {
     $brand = $this->withBrand();
+
+    // Frozen, because the 24-hour window is asserted exactly: `created_at`
+    // is stamped when the row is written and `expires_at` is computed from
+    // `now()`, so the fraction of a second the insert takes is enough to turn
+    // Carbon 3's float `diffInHours()` into -23.9997.
+    $this->travelTo(Carbon::parse('2026-09-08 12:00:00', 'UTC'));
 
     [$row, $plain] = DataSubjectRequestVerification::issue(
         'someone@example.de',
