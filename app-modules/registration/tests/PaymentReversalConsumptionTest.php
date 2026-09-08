@@ -14,17 +14,21 @@ use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Operators\OperatorContext;
+use Konventix\Registration\Actions\JoinWaitlist;
 use Konventix\Registration\Actions\SubmitRegistration;
 use Konventix\Registration\Data\SubmitRegistrationData;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Enums\RegistrationStatus;
+use Konventix\Registration\Enums\WaitlistState;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationPaymentStatusChanged;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registration;
+use Konventix\Registration\Models\RegistrationAmendment;
 use Konventix\Registration\Models\RegistrationType;
+use Konventix\Registration\Models\WaitlistEntry;
 
 /**
  * ADR-0057 points 5: a reversal revives the receivable without touching the
@@ -402,6 +406,15 @@ it('cancels a cart line\'s registration and releases its quota with no brand in 
     $quota = Quota::factory()->withCapacity(5)->create();
     $registration = reversalPaidRegistration($quota);
 
+    // An amendment too, so `ReleasesQuotas::amendedUnits()` — the other half
+    // of the trait — is exercised without a brand as well (fix round 1,
+    // review nit 10): two admissions added, so three units are held and all
+    // three have to come back.
+    RegistrationAmendment::factory()->create(['registration_id' => $registration->id]);
+    $quota->fresh()->consume(2);
+
+    expect($quota->fresh()->consumed)->toBe(3);
+
     // The console request: an operator, no brand.
     app(BrandContext::class)->forget();
     app(OperatorContext::class)->set($brand->operator);
@@ -413,6 +426,43 @@ it('cancels a cart line\'s registration and releases its quota with no brand in 
     expect($reloaded->status)->toBe(RegistrationStatus::Cancelled)
         ->and($reloaded->reason_code)->toBe('order_refunded')
         ->and(Quota::withoutBrandScope()->whereKey($quota->id)->sole()->consumed)->toBe(0);
+});
+
+/**
+ * #236 fix round 1, review finding 2: releasing the quota is only half the
+ * point of cancelling the registration — the seat has to be offered on. The
+ * chain is `releaseQuotas()` -> `QuotaReleased` -> `PromoteOnQuotaReleased`
+ * (synchronous) -> `PromoteFromWaitlist`, and that Action read its quotas
+ * through the `quotas()` relation, which re-applies BrandScope on the
+ * *related* model. On the admin host it therefore found no entry at all: an
+ * operator's refund freed a seat and nobody was ever told.
+ */
+it('offers a seat freed by a console refund to the waitlist, with no brand in context (#236)', function (): void {
+    $brand = reversalOperator($this->withBrand());
+
+    $quota = Quota::factory()->withCapacity(1)->create();
+    $registration = reversalPaidRegistration($quota);
+
+    $type = RegistrationType::withoutBrandScope()
+        ->whereKey($registration->registration_type_id)
+        ->sole();
+
+    $waiting = app(JoinWaitlist::class)->handle($type, (string) Str::ulid(), reversalSubmission());
+
+    expect($waiting->state)->toBe(WaitlistState::Queued)
+        ->and($quota->fresh()->consumed)->toBe(1);
+
+    // The console request: an operator, no brand.
+    app(BrandContext::class)->forget();
+    app(OperatorContext::class)->set($brand->operator);
+
+    event(reversalOrderLineCancelledEvent($registration, reasonCode: 'order_refunded'));
+
+    // The seat went straight back out on offer, and the promotion took the
+    // unit the cancellation had just released.
+    expect(WaitlistEntry::withoutBrandScope()->whereKey($waiting->id)->sole()->state)
+        ->toBe(WaitlistState::Offered)
+        ->and(Quota::withoutBrandScope()->whereKey($quota->id)->sole()->consumed)->toBe(1);
 });
 
 it('ignores an OrderLineCancelled whose reason this module was not told to act on', function (): void {
