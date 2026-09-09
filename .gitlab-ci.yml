@@ -377,6 +377,26 @@ verify:lint:
       - resources/js/actions
       - resources/js/wayfinder
 
+verify:observability:
+  stage: verify
+  image:
+    name: victoriametrics/vmalert-tool:v1.150.0
+    entrypoint: [""]
+  # Tier 1, same as verify:lint: seconds of work, no toolchain. The rule file
+  # is the source the chart vendors; a rule that does not fire in the unit
+  # test does not ship. The image's own entrypoint runs the vmalert-tool-prod
+  # binary directly, which would swallow the render step, so it is cleared
+  # here and the binary is called by its full path instead.
+  rules: *tier-reviewed
+  needs: []
+  script:
+    - sh contrib/observability/render.sh konventix konventix rendered-rules
+    - /vmalert-tool-prod unittest --files=rendered-rules/konventix.rules.test.yaml
+  artifacts:
+    when: always
+    expire_in: 1 day
+    paths: [rendered-rules/]
+
 ########## analyse ##########
 
 analyse:php:
