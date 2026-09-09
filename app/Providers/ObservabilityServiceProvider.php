@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Observability\CorrelationId;
+use App\Observability\MetricCatalog;
+use App\Observability\Metrics;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
@@ -86,6 +88,12 @@ class ObservabilityServiceProvider extends ServiceProvider
      */
     private function bindMetricsRegistry(): void
     {
+        $this->app->singleton(MetricCatalog::class);
+        $this->app->singleton(Metrics::class, fn (): Metrics => new Metrics(
+            $this->app->make(MetricCatalog::class),
+            fn (): CollectorRegistry => $this->app->make(CollectorRegistry::class),
+        ));
+
         $this->app->scoped(CollectorRegistry::class, function (): CollectorRegistry {
             return new CollectorRegistry($this->metricsStorage(), false);
         });
