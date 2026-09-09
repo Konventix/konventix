@@ -755,6 +755,7 @@ build:image:
       grep -qE '^memory_limit => 512M => 512M$' php-i.txt || { echo "memory_limit is not 512M in the runtime image" >&2; docker stop smoke; exit 1; }
       grep -qE '^opcache.validate_timestamps => Off => Off$' php-i.txt || { echo "opcache.validate_timestamps is not off in the runtime image" >&2; docker stop smoke; exit 1; }
       grep -qE '^opcache.enable_cli => Off => Off$' php-i.txt || { echo "opcache.enable_cli is on, which makes validate_timestamps=0 unsafe for the entrypoint's cache calls" >&2; docker stop smoke; exit 1; }
+      grep -qE '^zend.assertions => -1 => -1$' php-i.txt || { echo "zend.assertions is not -1 in the runtime image" >&2; docker stop smoke; exit 1; }
     # ADR-0049 §5: the bundle must carry no baked websocket endpoint, or every
     # deployment talks to the developer's laptop. `resolveReverbEndpoint` is
     # called with `{host: …, port: …, scheme: …}` filled from VITE_REVERB_*;
