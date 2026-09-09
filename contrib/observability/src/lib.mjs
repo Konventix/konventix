@@ -86,6 +86,7 @@ export function logs(title, targets, { w = 24, h = 12, description } = {}) {
 export function thresholds(...steps) {
     // thresholds('green', [10, 'orange'], [50, 'red'])
     const [base, ...rest] = steps;
+
     return { mode: 'absolute', steps: [{ color: base, value: null }, ...rest.map(([value, color]) => ({ color, value }))] };
 }
 
@@ -95,6 +96,7 @@ function greenOnly() {
 
 function panel(type, title, targets, w, h, body) {
     const refIds = 'ABCDEFGHIJKLMNOP';
+
     return {
         type,
         title,
@@ -108,22 +110,27 @@ function layout(rows) {
     const out = [];
     let id = 1;
     let y = 0;
+
     for (const r of rows) {
         out.push({ id: id++, type: 'row', title: r.title, collapsed: false, gridPos: { x: 0, y, w: 24, h: 1 }, panels: [] });
         y += 1;
         let x = 0;
         let lineHeight = 0;
+
         for (const p of r.panels) {
             if (x + p.gridPos.w > 24) {
                 x = 0;
                 y += lineHeight;
                 lineHeight = 0;
             }
+
             out.push({ ...p, id: id++, gridPos: { ...p.gridPos, x, y } });
             x += p.gridPos.w;
             lineHeight = Math.max(lineHeight, p.gridPos.h);
         }
+
         y += lineHeight;
     }
+
     return out;
 }

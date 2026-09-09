@@ -18,11 +18,13 @@ for (const name of sources) {
     const file = join(out, `${model.uid}.json`);
     const json = JSON.stringify(model, null, 2) + '\n';
     let current = null;
+
     try {
         current = readFileSync(file, 'utf8');
     } catch {
         // first build
     }
+
     if (check) {
         if (current !== json) {
             console.error(`${file} is out of date; run npm run observability:build`);
