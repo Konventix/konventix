@@ -36,14 +36,6 @@ use Konventix\Platform\Operators\OperatorSettings;
  * Helper names prefixed `paidInvoice*` — Pest helpers are process-global
  * (.ai/rules/tests.md).
  */
-function paidInvoiceBrand(): Brand
-{
-    $brand = test()->withBrand();
-    $brand->operator()->associate(Operator::factory()->create())->save();
-
-    return $brand;
-}
-
 function paidInvoiceBillingParty(?string $name = 'Erika Musterfrau', ?string $email = 'erika@musterfrau.example'): BillingPartyData
 {
     return BillingPartyData::ofAccount((string) $name, (string) $email);

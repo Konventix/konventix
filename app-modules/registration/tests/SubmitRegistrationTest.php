@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Konventix\Registration\Actions\SubmitRegistration;
-use Konventix\Registration\Data\SubmitRegistrationData;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Enums\RegistrationSettlement;
@@ -25,15 +24,6 @@ use Konventix\Registration\Models\WaitlistEntry;
 function submitRegistrationAction(): SubmitRegistration
 {
     return app(SubmitRegistration::class);
-}
-
-function emptySubmission(): SubmitRegistrationData
-{
-    return new SubmitRegistrationData(
-        organizationName: null,
-        billingRecipientName: null,
-        billingEmail: null,
-    );
 }
 
 it('submits and immediately confirms an on_submit / free registration, emitting both events', function (): void {

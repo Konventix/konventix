@@ -268,7 +268,9 @@ to what the change can have broken, and formatting is nobody's decision (#64):
   bootstrap. Even then, push and let the merge request pipeline run it; run
   `vendor/bin/sail composer test` yourself only when you need the answer
   before pushing, such as a migration or a `TestCase` change every module's
-  tests go through. It takes about twelve minutes and runs to the end:
+  tests go through. It runs `--parallel`, one worker per core with its own
+  database (#140, `.ai/rules/tests.md`) — about two minutes on eight cores
+  where the single-process suite took twelve — and runs to the end:
   `composer.json` sets `config.process-timeout` to `0`, because Composer's
   own 300-second default killed the run before the suite finished and the
   failure read like a test failure (#193). Everything else — the whole Pest

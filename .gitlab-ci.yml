@@ -419,8 +419,8 @@ test:php:
   # Tier 1, and the critical path of every merge request. It deliberately does
   # not wait for verify:lint: `npm run build:ssr` runs wayfinder itself, so
   # starting at pipeline time and generating its own copy beats idling for four
-  # minutes to inherit one. That trade is worth re-measuring once #140 cuts the
-  # suite itself — the shorter the suite, the more the wait would dominate.
+  # minutes to inherit one. Worth re-measuring now that #140 has cut the suite
+  # itself: the shorter the suite, the more the wait would dominate.
   rules: *tier-reviewed
   needs: [prepare:toolchain]
   # The suite runs against PostgreSQL, not SQLite: phpunit.xml overrides
@@ -430,6 +430,13 @@ test:php:
   services:
     - name: postgres:17
       alias: postgres
+      # `--parallel` below runs one `migrate:fresh` per worker at the same
+      # time, and dropping ~120 tables in a single transaction needs more lock
+      # slots than Postgres's default of 64 per transaction leaves for eight
+      # of them: 81 tests died with "out of shared memory … increase
+      # max_locks_per_transaction" before this. compose.yaml sets the same on
+      # the dev stack's pgsql.
+      command: ["postgres", "-c", "max_locks_per_transaction=512"]
     - name: redis:7-alpine
       alias: redis
   variables:
@@ -464,7 +471,14 @@ test:php:
     # what makes the first suite request deterministic.
     - nohup php artisan inertia:start-ssr > ssr.log 2>&1 &
     - sleep 3
-    - php artisan test
+    # One worker per detected core — paratest's default, so the count follows
+    # the runner instead of a number written here (#140). Laravel gives every
+    # worker its own database, testing_test_1…n, created and migrated beside
+    # `testing`; nothing in the suite shares state across workers (the invoice
+    # disk is faked per worker, the numbering probe hands its child the
+    # resolved database name, the Redis test keys by ULID). Before: 581s of
+    # suite on one core in pipeline 1609, 2265 tests.
+    - php artisan test --parallel
   artifacts:
     when: always
     expire_in: 1 week
