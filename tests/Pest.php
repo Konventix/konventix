@@ -22,6 +22,24 @@ pest()->extend(TestCase::class)
 
 /*
 |--------------------------------------------------------------------------
+| Shared helpers
+|--------------------------------------------------------------------------
+|
+| A helper that more than one test file calls lives in that module's
+| tests/Helpers.php and is loaded here, once per process. Under `--parallel`
+| each worker loads only the test files it was handed, so a function declared
+| inside FooTest.php does not exist in the worker that runs BarTest.php — it
+| only ever worked because a single process loaded every file in order
+| (.ai/rules/tests.md). Names stay process-global across every module.
+|
+*/
+
+foreach (glob(__DIR__.'/../app-modules/*/tests/Helpers.php') ?: [] as $helpers) {
+    require_once $helpers;
+}
+
+/*
+|--------------------------------------------------------------------------
 | Expectations
 |--------------------------------------------------------------------------
 |

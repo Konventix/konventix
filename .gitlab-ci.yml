@@ -419,8 +419,8 @@ test:php:
   # Tier 1, and the critical path of every merge request. It deliberately does
   # not wait for verify:lint: `npm run build:ssr` runs wayfinder itself, so
   # starting at pipeline time and generating its own copy beats idling for four
-  # minutes to inherit one. That trade is worth re-measuring once #140 cuts the
-  # suite itself — the shorter the suite, the more the wait would dominate.
+  # minutes to inherit one. Worth re-measuring now that #140 has cut the suite
+  # itself: the shorter the suite, the more the wait would dominate.
   rules: *tier-reviewed
   needs: [prepare:toolchain]
   # The suite runs against PostgreSQL, not SQLite: phpunit.xml overrides
@@ -430,6 +430,13 @@ test:php:
   services:
     - name: postgres:17
       alias: postgres
+      # `--parallel` below runs one `migrate:fresh` per worker at the same
+      # time, and dropping ~120 tables in a single transaction needs more lock
+      # slots than Postgres's default of 64 per transaction leaves for eight
+      # of them: 81 tests died with "out of shared memory … increase
+      # max_locks_per_transaction" before this. compose.yaml sets the same on
+      # the dev stack's pgsql.
+      command: ["postgres", "-c", "max_locks_per_transaction=512"]
     - name: redis:7-alpine
       alias: redis
   variables:
@@ -464,7 +471,27 @@ test:php:
     # what makes the first suite request deterministic.
     - nohup php artisan inertia:start-ssr > ssr.log 2>&1 &
     - sleep 3
-    - php artisan test
+    # Laravel gives every worker its own database, testing_test_1…n, created
+    # and migrated beside `testing`; nothing in the suite shares state across
+    # workers (the invoice disk is faked per worker, the numbering probe hands
+    # its child the resolved database name, the Redis test keys by ULID).
+    # Before: 581s of suite on one core in pipeline 1609, 2265 tests.
+    #
+    # Six workers, not one per core. Paratest hands out whole *files*, so the
+    # suite can never finish before its slowest file, and
+    # tests/Feature/SeedDemoDataCommandTest.php alone takes 92s of the 538s
+    # the 269 files add up to (#262). Measured on an idle 24-core machine:
+    # 4 workers 91s, 8 workers 91s, 12 workers 92s, 16 workers 84s, 24
+    # workers 97s. Everything from four upwards is the same number, because
+    # from there the rest of the suite already hides behind that one file.
+    # Six leaves a little headroom and stops a 16-core runner from spawning
+    # sixteen workers, and sixteen Postgres databases, for nothing — the
+    # runners are shared, and a job that grabs every core slows the jobs
+    # beside it. Raise this when #262 lowers the floor, not before.
+    - |
+      procs=$(nproc)
+      [ "$procs" -gt 6 ] && procs=6
+      php artisan test --parallel --processes="$procs"
   artifacts:
     when: always
     expire_in: 1 week
@@ -639,25 +666,56 @@ scan:gate:
         exit "$status"
       fi
 
-      # Code and dependency findings block at High and above. Lower severities
-      # are reported in the merge request's security widget and triaged there —
-      # a base image's steady drip of Low CVEs must not be able to stop every
-      # merge in the repository. That reporting is the only waiver either gate
-      # has; there is no allowlist file. The container report is judged the same
-      # way in `scan:gate:image`, on the release tier only and at Critical
-      # rather than High (#256's criterion, and its OS packages are not ours to
-      # fix); it cannot be read here, because build:image needs this job.
-      for report in gl-sast-report.json gl-dependency-scanning-report.json; do
-        require "$report" || continue
-        n=$(jq '[.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")] | length' "$report")
-        total=$(jq '[.vulnerabilities[]] | length' "$report")
-        echo "$report: $n of $total finding(s) at High or above"
+      # Code findings block at High and above. Lower severities are reported in
+      # the merge request's security widget and triaged there — a steady drip of
+      # Low findings must not be able to stop every merge in the repository.
+      # There is no notion of a fix in a SAST finding, so nothing here is
+      # exempt: the code is ours, and the fix is the change.
+      if require gl-sast-report.json; then
+        n=$(jq '[.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")] | length' gl-sast-report.json)
+        total=$(jq '[.vulnerabilities[]] | length' gl-sast-report.json)
+        echo "gl-sast-report.json: $n of $total finding(s) at High or above"
         if [ "$n" -gt 0 ]; then
           jq -r '.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")
-                 | "  [\(.severity)] \(.location.file // "-"):\(.location.start_line // 0)  \(.name)"' "$report"
+                 | "  [\(.severity)] \(.location.file // "-"):\(.location.start_line // 0)  \(.name)"' \
+            gl-sast-report.json
           status=1
         fi
-      done
+      fi
+
+      # Dependency findings block at High and above **when a fix exists**, and
+      # are informational when none does (#256, pipeline 1674). A finding whose
+      # analyzer offers no remediation cannot be acted on by merging anything:
+      # blocking on it stops every merge in the repository until a third party
+      # ships a release, which is not a security decision but a hostage
+      # situation. `solution` is the field that carries the remediation
+      # ("Upgrade to versions 3.3.18, 5.1.6 or above."); empty or absent means
+      # no fixed version was known when the report was written. The same rule
+      # is applied to the container report in `scan:gate:image`, on the release
+      # tier only and at Critical rather than High (#256's criterion, and those
+      # OS packages are not ours to fix); it cannot be read here, because
+      # build:image needs this job. Move the rule in both gates or in neither.
+      if require gl-dependency-scanning-report.json; then
+        total=$(jq '[.vulnerabilities[]] | length' gl-dependency-scanning-report.json)
+        blocking=$(jq '[.vulnerabilities[] | select((.severity == "Critical" or .severity == "High") and ((.solution // "") != ""))] | length' gl-dependency-scanning-report.json)
+        unfixed=$(jq '[.vulnerabilities[] | select((.severity == "Critical" or .severity == "High") and ((.solution // "") == ""))] | length' gl-dependency-scanning-report.json)
+        echo "gl-dependency-scanning-report.json: $blocking with a fix, $unfixed without, at High or above; $total finding(s) in total"
+
+        if [ "$unfixed" -gt 0 ]; then
+          echo "  unfixed, not blocking (no fixed version in the report):"
+          jq -r '.vulnerabilities[] | select((.severity == "Critical" or .severity == "High") and ((.solution // "") == ""))
+                 | "    [\(.severity)] \(.location.dependency.package.name // "-") \(.location.dependency.version // "")  \(([.identifiers[]? | select(.type == "cve") | .value] | first) // "-")  \(.name // "-")"' \
+            gl-dependency-scanning-report.json
+        fi
+
+        if [ "$blocking" -gt 0 ]; then
+          echo "  blocking (a fixed version exists):"
+          jq -r '.vulnerabilities[] | select((.severity == "Critical" or .severity == "High") and ((.solution // "") != ""))
+                 | "    [\(.severity)] \(.location.dependency.package.name // "-") \(.location.dependency.version // "")  \(([.identifiers[]? | select(.type == "cve") | .value] | first) // "-")  \(.name // "-")\n      \(.solution)"' \
+            gl-dependency-scanning-report.json
+          status=1
+        fi
+      fi
 
       exit "$status"
 
@@ -845,6 +903,15 @@ container_scanning:
 # everything under its own bar, and the only one either gate has: there is no
 # allowlist file in this repository, and neither gate may grow one alone.
 #
+# And a Critical only blocks when it can be acted on. Pipeline 1674 (v0.5.4)
+# was stopped by seventeen Criticals in libsqlite3-0, libxml2, linux-libc-dev,
+# perl and zlib1g, every one of them with an empty `solution`: Debian has no
+# fixed package. Nothing that could be merged would have made that gate green,
+# so it was not a decision, it was a hostage situation. A finding without a
+# fixed version in the report is printed as informational; a Critical with one
+# blocks. Same rule in `scan:gate` for the dependency report — move it in both
+# or in neither.
+#
 # Release tier only. On develop, main and a dev tag the container scan stays
 # advisory, which is what the base image's CVE schedule demands; a candidate or
 # release tag is the ref that reaches a cluster, and there a critical OS CVE
@@ -872,25 +939,42 @@ scan:gate:image:
         exit 1
       fi
 
+      # This report carries no `name`; the CVE id lives in `identifiers` and the
+      # package in `location.dependency`. Printing `.name` is what put a column
+      # of `null` in pipeline 1674's log.
       total=$(jq '[.vulnerabilities[]] | length' gl-container-scanning-report.json)
       high=$(jq '[.vulnerabilities[] | select(.severity == "High")] | length' gl-container-scanning-report.json)
       critical=$(jq '[.vulnerabilities[] | select(.severity == "Critical")] | length' gl-container-scanning-report.json)
-      echo "gl-container-scanning-report.json: $critical Critical, $high High, $total finding(s) in total"
+      blocking=$(jq '[.vulnerabilities[] | select(.severity == "Critical" and ((.solution // "") != ""))] | length' gl-container-scanning-report.json)
+      unfixed=$(jq '[.vulnerabilities[] | select(.severity == "Critical" and ((.solution // "") == ""))] | length' gl-container-scanning-report.json)
+      echo "gl-container-scanning-report.json: $critical Critical ($blocking with a fix, $unfixed without), $high High, $total finding(s) in total"
 
       # Reported, never blocking: an unfixed Debian High must not be able to
       # stop a release, but it must not go unseen either.
       if [ "$high" -gt 0 ]; then
         jq -r '.vulnerabilities[] | select(.severity == "High")
-               | "  [High] \(.location.dependency.package.name // "-")  \(.name)"' \
+               | "  [High] \(.location.dependency.package.name // "-") \(.location.dependency.version // "")  \(([.identifiers[]? | select(.type == "cve") | .value] | first) // "-")"' \
           gl-container-scanning-report.json
       fi
 
-      if [ "$critical" -gt 0 ]; then
-        jq -r '.vulnerabilities[] | select(.severity == "Critical")
-               | "  [Critical] \(.location.dependency.package.name // "-")  \(.name)"' \
+      # The base image's own CVE schedule, which no merge in this repository can
+      # answer. Listed in full so the release note is written from the log
+      # rather than from memory (#256).
+      if [ "$unfixed" -gt 0 ]; then
+        echo "  unfixed, not blocking (no fixed version in the report):"
+        jq -r '.vulnerabilities[] | select(.severity == "Critical" and ((.solution // "") == ""))
+               | "    [Critical] \(.location.dependency.package.name // "-") \(.location.dependency.version // "")  \(([.identifiers[]? | select(.type == "cve") | .value] | first) // "-")"' \
           gl-container-scanning-report.json
-        echo "A Critical finding blocks the promotion. Rebuild on a fixed base image, or" >&2
-        echo "  argue the exception on #256 and move the bar in both gates, never in one." >&2
+      fi
+
+      if [ "$blocking" -gt 0 ]; then
+        echo "  blocking (a fixed version exists):"
+        jq -r '.vulnerabilities[] | select(.severity == "Critical" and ((.solution // "") != ""))
+               | "    [Critical] \(.location.dependency.package.name // "-") \(.location.dependency.version // "")  \(([.identifiers[]? | select(.type == "cve") | .value] | first) // "-")\n      \(.solution)"' \
+          gl-container-scanning-report.json
+        echo "A Critical finding with a fixed version blocks the promotion. Rebuild on the" >&2
+        echo "  updated base image, or argue the exception on #256 and move the rule in both" >&2
+        echo "  gates, never in one." >&2
         status=1
       fi
 

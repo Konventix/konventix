@@ -119,7 +119,7 @@
             "@php artisan config:clear --ansi",
             "@lint:check",
             "@types:check",
-            "@php artisan test --compact"
+            "@php artisan test --parallel --compact"
         ],
         "verify": [
             "Composer\\Config::disableProcessTimeout",
@@ -143,7 +143,7 @@
             "@php artisan config:clear --ansi",
             "@lint:check",
             "@types:check",
-            "@php artisan test"
+            "@php artisan test --parallel"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",

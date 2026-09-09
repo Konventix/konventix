@@ -178,6 +178,11 @@ services:
 
     pgsql:
         image: 'postgres:18-alpine'
+        # `php artisan test --parallel` drops and recreates every table in one
+        # transaction per worker, eight workers at once; the default 64 lock
+        # slots per transaction run out ("out of shared memory"). The CI
+        # service in .gitlab-ci.yml carries the same setting.
+        command: ['postgres', '-c', 'max_locks_per_transaction=512']
         ports:
             - '${FORWARD_DB_PORT:-5432}:5432'
         environment:

@@ -12,7 +12,6 @@ use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\PlaceOrderFromCart;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
 use Konventix\Commerce\Actions\SendInvoiceMail;
-use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Documents\InvoiceDocumentRenderer;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
@@ -30,8 +29,6 @@ use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Commerce\Models\SettlementAccount;
-use Konventix\Commerce\Settlement\Stripe\StripeApi;
-use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
@@ -49,51 +46,6 @@ use Konventix\Platform\Models\Operator;
  * Helper names prefixed `cartCheckout*` — Pest helpers are process-global
  * (.ai/rules/tests.md).
  */
-final class CartCheckoutTestFakeStripe implements StripeApi
-{
-    /** @var list<array<string, mixed>> */
-    public array $sessions = [];
-
-    public function createCheckoutSession(array $params): StripeCheckoutSession
-    {
-        $this->sessions[] = $params;
-
-        return new StripeCheckoutSession(id: 'cs_cart_'.count($this->sessions), url: 'https://checkout.stripe.test/cart-session');
-    }
-
-    /**
-     * Nothing took this payment's money back (#235). Every fake here answers
-     * the empty pair unless its own test says otherwise.
-     *
-     * @return array{disputes: list<array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}>, refunds: list<array{id: string, amount: int, currency: string, reason: ?string, charge: ?string, created: ?int}>}
-     */
-    public function fetchPaymentIntentReversals(string $paymentIntentId): array
-    {
-        return ['disputes' => [], 'refunds' => []];
-    }
-
-    public function createRefund(array $params): string
-    {
-        return 're_test_fake';
-    }
-
-    /**
-     * Unused here: only `commerce:reconcile-payments` (#71) reads a session
-     * back, and this fake never drives it.
-     *
-     * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
-     */
-    public function fetchCheckoutSession(string $sessionId): array
-    {
-        return [
-            'status' => 'open',
-            'payment_status' => 'unpaid',
-            'payment_intent' => null,
-            'payment_intent_status' => null,
-        ];
-    }
-}
-
 function cartCheckoutBrand(): Brand
 {
     $brand = test()->withBrand();
@@ -110,33 +62,6 @@ function cartCheckoutVariant(int $capacity = 10): ProductVariant
     $product = Product::factory()->published()->create(['unit_amount_net' => '10.00']);
 
     return ProductVariant::factory()->for($product, 'product')->withCapacity($capacity)->create();
-}
-
-function cartCheckoutAccount(): SettlementAccount
-{
-    // A Stripe row is the brand's enablement flag; what makes it offered is
-    // this instance holding a chargeable Stripe account — the secret key and
-    // the signing secret both (ADR-0058 point 3, ADR-0039 point 2).
-    config()->set('services.stripe.secret', 'sk_test_cart');
-    config()->set('services.stripe.webhook_secret', 'whsec_cart');
-
-    $account = SettlementAccount::factory()->create([
-        'provider' => SettlementAccount::PROVIDER_STRIPE,
-    ]);
-
-    app()->instance(StripeApi::class, new CartCheckoutTestFakeStripe);
-
-    return $account;
-}
-
-/**
- * The billing party `CartController::checkout()` builds from the payer's own
- * account (ADR-0048) — `PlaceOrderFromCart::handle()` needs one for every
- * checkout, direct-Action calls included.
- */
-function cartCheckoutBillingParty(User $user): BillingPartyData
-{
-    return BillingPartyData::ofAccount($user->name, $user->email);
 }
 
 /**
