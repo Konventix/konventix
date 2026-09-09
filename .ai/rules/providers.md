@@ -37,3 +37,14 @@ worker forever; every later request reads that same stale brand. Resolve the sco
 call time instead — `app(BrandContext::class)->current()` inside the method that needs it, never
 stored on `$this` — the pattern `BlockRegistry::resolveActive()` established first. Reproduce the
 bug in a test with `app()->forgetScopedInstances()` between two simulated requests.
+
+## `getByName()` in an `$app->booted()` callback answers null
+A provider that wants to add middleware to a route another package registered
+(Fortify's `register.store`, `password.email`, `password.update` — #253) has to do
+it in `$this->app->booted()`, because provider boot order is not ours. But
+`Route::getRoutes()->getByName()` there returns null for a route that is very much
+registered: `RouteServiceProvider` refreshes the collection's name lookup in a
+`booted` callback of its own, and one registered from a module provider's `boot()`
+runs first. Walk `Route::getRoutes()->getRoutes()` and match on `getName()` instead.
+`route:cache` boots the application before it serialises the collection, so
+middleware added this way is cached too.

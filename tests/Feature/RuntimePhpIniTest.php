@@ -70,6 +70,20 @@ it('configures opcache for code that cannot change under it', function () use ($
     expect($directives())->not->toHaveKey('opcache.jit_buffer_size');
 });
 
+/**
+ * `php.ini-production` ships `zend.assertions = -1`; PHP's compiled-in default
+ * is `1`, which both compiles assertion code into every opcode array and
+ * executes it. An image whose code is baked at build time can never gain an
+ * `assert()` a developer meant only for a development box, and the runtime
+ * pays for the check on every request. `-1` compiles them out entirely — it is
+ * the one value that cannot be re-enabled at runtime, which is the point.
+ */
+it('compiles assertions out of the runtime image', function () use ($directives): void {
+    expect($directives())->toMatchArray([
+        'zend.assertions' => '-1',
+    ]);
+});
+
 it('copies the ini in the runtime stage only', function (): void {
     $dockerfile = (string) file_get_contents(base_path('Dockerfile'));
 

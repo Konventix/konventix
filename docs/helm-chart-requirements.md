@@ -330,8 +330,26 @@ runs only in `scheduler`.
   on-demand-TLS proxy using `/caddy/ask` — decision D3.
 - The proxy must forward `Host` unmodified and set `X-Forwarded-Proto`,
   `X-Forwarded-Host`, `X-Forwarded-For`; `TRUSTED_PROXIES` is set explicitly
-  from values (pod/ingress CIDRs, or `*` when a NetworkPolicy makes the web
-  Service reachable only from the ingress controller).
+  from values (`app.trustedProxies`), never left on the application's RFC 1918
+  default — a pod CIDR falls inside `10.0.0.0/8`, so that default trusts every
+  pod in the cluster to say which brand a request is for and which host signed
+  URLs are built against (#258).
+- **The value is the cluster's pod network, and it is not sufficient on its
+  own.** On the dev cluster (RKE2) that network is `10.42.0.0/16` — each node
+  carries a `/24` out of it (`kubectl get nodes -o
+  jsonpath='{.items[*].spec.podCIDR}'`, 2026-09-09) — and the ingress
+  controller's own pods sit inside it on addresses that change with every
+  reschedule (`10.42.4.155`, `10.42.2.191` the same day). There is therefore no
+  ingress-only CIDR to name, and narrowing further by address is not possible.
+  What makes the ingress the sole caller is a NetworkPolicy in front of the web
+  Service: konventix-helm draft !10 adds the `networkPolicy` option with an
+  `ingressControllerNamespaceSelector`, and the two belong together — the CIDR
+  decides who is *believed*, the NetworkPolicy decides who can *ask*.
+- `SESSION_SECURE_COOKIE` belongs in the ConfigMap set to `"true"` (chart knob
+  `session.secureCookie`). The application defaults it to on for every `APP_ENV`
+  but `local` and `testing`, so a deployment inherits the right value today;
+  writing it down keeps the flag a deployment's decision rather than something
+  re-derived from a forwarded header (#258).
 - Websocket path (B2) on every host → `reverb` Service; long idle timeouts
   (`proxy-read-timeout` ≥ 3600 s).
 - Upload size: media accepts 10 MB → `proxy-body-size` ≥ 12m.
@@ -358,7 +376,7 @@ Sessions and cache live in Redis; nothing else is stateful in a pod.
 `APP_NAME APP_ENV=production APP_DEBUG=false APP_URL APP_VERSION APP_LOCALE
 ENVIRONMENT_RIBBON ENVIRONMENT_RIBBON_LABEL ENVIRONMENT_RIBBON_COLOR
 APP_FALLBACK_LOCALE LOG_CHANNEL=stderr LOG_LEVEL LOG_STDERR_FORMATTER
-TRUSTED_PROXIES APP_MAINTENANCE_DRIVER=cache APP_MAINTENANCE_STORE=redis
+TRUSTED_PROXIES SESSION_SECURE_COOKIE APP_MAINTENANCE_DRIVER=cache APP_MAINTENANCE_STORE=redis
 OCTANE_SERVER=frankenphp DB_CONNECTION=pgsql DB_SSLMODE AUTO_MIGRATE
 SESSION_DRIVER=redis SESSION_LIFETIME CACHE_STORE=redis QUEUE_CONNECTION=redis
 PULSE_INGEST_DRIVER=redis PENNANT_STORE=database REDIS_CLIENT=phpredis

@@ -49,7 +49,24 @@ return [
     |
     */
 
-    'encrypt' => env('SESSION_ENCRYPT', false),
+    /*
+     * On by default (#259, audit N3). The driver is Redis, so the payload is
+     * at rest in a service whose read access is a different blast radius from
+     * the application's own: whoever can read that database reads sessions.
+     *
+     * The mitigation this replaces was `bootstrap/app.php` extending
+     * `dontFlash()` with `secretKey`, `webhookSecret`, `publishableKey`,
+     * `api_key` and `private_key`, because `_old_input` would otherwise carry
+     * a brand's PSP credentials into the store. That list is still right and
+     * still there, but it only works while somebody remembers to extend it
+     * with the next credential-shaped field name; encryption does not.
+     *
+     * Consequence at the switch: every existing session becomes unreadable and
+     * every signed-in person is logged out once, at the deployment that first
+     * ships this. Nothing else changes — the cost is one AES pass per request
+     * on a payload measured in kilobytes.
+     */
+    'encrypt' => env('SESSION_ENCRYPT', true),
 
     /*
     |--------------------------------------------------------------------------

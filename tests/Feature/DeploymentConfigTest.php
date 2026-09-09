@@ -101,3 +101,33 @@ test('the reverb publish url follows REVERB_SERVER_PATH', function (?string $pat
     'prefix with trailing slash' => ['/ws/', 'http://reverb:8080/ws/apps/1/events'],
     'prefix without leading slash' => ['ws', 'http://reverb:8080/ws/apps/1/events'],
 ]);
+
+/**
+ * #259 / audit N3: the session payload lives in Redis, and it is not innocuous
+ * — `bootstrap/app.php` extends `dontFlash()` with `secretKey`, `webhookSecret`,
+ * `publishableKey`, `api_key` and `private_key` precisely because `_old_input`
+ * would otherwise carry a brand's PSP credentials into it. That mitigation only
+ * works while the list stays complete; encryption does not depend on anybody
+ * remembering to extend a list.
+ *
+ * The default is read out of the shipped file rather than the loaded config,
+ * because the developer's own `.env` carries a value and the question here is
+ * what a deployment gets when it says nothing.
+ */
+it('encrypts the session payload by default', function (): void {
+    $original = $_SERVER['SESSION_ENCRYPT'] ?? null;
+
+    try {
+        unset($_SERVER['SESSION_ENCRYPT'], $_ENV['SESSION_ENCRYPT']);
+        putenv('SESSION_ENCRYPT');
+
+        $session = require base_path('config/session.php');
+
+        expect($session['encrypt'])->toBeTrue();
+    } finally {
+        if ($original !== null) {
+            $_SERVER['SESSION_ENCRYPT'] = $_ENV['SESSION_ENCRYPT'] = $original;
+            putenv('SESSION_ENCRYPT='.$original);
+        }
+    }
+});

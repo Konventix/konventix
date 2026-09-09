@@ -17,7 +17,6 @@ use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Commerce\Models\SettlementAccount;
-use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Actions\UpdateBrandMailSettings;
 use Konventix\Messaging\Data\MailSettingsData;
@@ -38,27 +37,6 @@ use Konventix\Platform\Operators\OperatorSettings;
  * and the shop manager told about a sold-out variant or a payment that did
  * not go through, on the `commerce.operations` topic.
  */
-function orderMailsRecipient(string $brandId, ?string $locale = null): User
-{
-    $user = User::factory()->create();
-
-    // Messaging's recipient read model has no factory of its own — rows
-    // exist only through `ProjectRecipient`'s projection, so a test that
-    // needs `SendMessage` to resolve an address emits the Identity event
-    // instead (`Recipient`'s own docblock).
-    event(new UserRegistered(
-        userId: $user->id,
-        brandId: $brandId,
-        email: $user->email,
-        displayName: $user->name,
-        username: $user->username,
-        locale: $locale ?? $user->locale,
-        registeredAt: now()->toIso8601String(),
-    ));
-
-    return $user;
-}
-
 function orderMailsOperator(string $brandId, array $permissions = ['commerce.manage-products'], string $roleName = 'Shop Manager', ?string $locale = null): User
 {
     foreach ($permissions as $name) {

@@ -3,21 +3,25 @@
 #
 #   docs/ branch, with or without MR  ~1 min   the docs-only guard, secrets
 #   feature branch, no merge request  ~2 min   format, phpstan, vitest, secrets
-#   merge request                    ~16 min   + eslint, vue-tsc, the Pest suite,
+#   merge request                     ~8 min   + eslint, vue-tsc, the Pest suite,
 #                                              semgrep, dependency scanning
-#   develop, main, dev tag           ~26 min   + the image, built, pushed and
-#   (v0.4.5-dev)                               container-scanned; a tag names it
-#   candidate and release tag        ~40 min   + the cross-file SAST
-#   (v0.4.5-rc.1, v0.4.5)
+#   develop, main, dev tag           ~16 min   + the image, built beside all of
+#   (v0.4.5-dev)                               that, published after it, then
+#                                              container-scanned; a tag names it
+#   candidate and release tag        ~40 min   + the cross-file SAST, which the
+#   (v0.4.5-rc.1, v0.4.5)                      publication then waits for
 #
-# The shape follows from one measurement: gitlab-advanced-sast takes 24 minutes
-# and cannot go faster — three of its passes are uncapped cross-file analyses of
-# a single rule each, so cores do not help. Leaving it on the merge request loop
-# made every review wait 40 minutes for a scan nobody was reading yet. It runs
-# on the tags that reach an instance other people use — a candidate or a
-# release — and nowhere else. Not on a push to main: the release tag lands on
-# the same commit a moment later, and v0.4.4 showed what two copies of the scan
-# do to each other on shared runners (22 minutes on main, 67 on the tag).
+# The shape follows from one measurement: gitlab-advanced-sast took 24 minutes
+# when this was written and 50 on v0.5.3, and no amount of cores changes the
+# floor — its slowest rule group is one uncapped cross-file pass. Leaving it on
+# the merge request loop made every review wait 40 minutes for a scan nobody
+# was reading yet. It runs on the tags that reach an instance other people use
+# — a candidate or a release — and nowhere else. Not on a push to main: the
+# release tag lands on the same commit a moment later, and v0.4.4 showed what
+# two copies of the scan do to each other on shared runners (22 minutes on
+# main, 67 on the tag). What the job itself can do about its length is written
+# at the job: balanced rule groups from a shared metrics cache, and a taint
+# cache the release tag inherits from its candidate.
 #
 # develop is the integration branch and the default: feature branches merge into
 # it, and it merges into main for a release.
@@ -34,8 +38,11 @@
 # no SAST, no secret detection, no dependency or container scanning, and it
 # fired on exactly the refs this pipeline guards — so every bar `scan:gate`
 # holds up was one push to the archived GitHub remote away from being walked
-# around. Here `build:image` needs the analysis, test and scan jobs, and
-# nothing reaches the registry without them.
+# around. Here that bar is `publish:image`: it needs the analysis, test and
+# scan jobs, and it is the only job that writes a tag anything can deploy.
+# `build:image` runs beside them instead of behind them (#261) — it builds and
+# smoke-tests, and parks the result on a path nothing pulls from, so a red test
+# still means no deployable tag was ever written.
 #
 # Ordering is a DAG, not a ladder: `needs:` is what decides what waits for what,
 # so the stage list below is the story the pipeline graph tells, not the order
@@ -60,6 +67,7 @@ stages:
   - test
   - scan
   - build
+  - publish
   - release
 
 workflow:
@@ -142,6 +150,12 @@ variables:
   # then steps aside for (the template excludes them from semgrep's paths when
   # this is on). Ultimate is licensed here; use the better analyzer.
   GITLAB_ADVANCED_SAST_ENABLED: "true"
+  # Setting this replaces the template's default (`spec, test, tests, tmp`), so
+  # the default is repeated. What is added is not application code: the
+  # documentation and agent rules, the verification scripts, the module
+  # stubs, storage, the dev seeders, and the generated TypeScript types —
+  # every one of them walked by both SAST analyzers before this.
+  SAST_EXCLUDED_PATHS: "spec, test, tests, tmp, docs, .ai, .claude, contrib, stubs, storage, database/seeders, resources/js/types/generated.d.ts"
 
   # The CI image is the Dockerfile's `toolchain` stage. Bump the tag when that
   # stage changes in a way the published image must reflect immediately —
@@ -153,6 +167,16 @@ variables:
   # ADR-0049 §1: immutable tags only. A moving `main` tag would make "which
   # image is running" unanswerable — a push to main is found by its sha.
   IMAGE_SHA_TAG: sha-$CI_COMMIT_SHORT_SHA
+
+  # Where a built image waits for the rest of the pipeline to finish (#261).
+  # `build:image` no longer runs behind the tests, so its output exists before
+  # anything has proven the commit; it goes here, and `publish:image` copies it
+  # onto $CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG once every gate is green. Nothing
+  # deploys from this path — the chart pins `registry.sxcs.de/konventix/konventix`
+  # itself (ADR-0049 §2), and a tag under it only ever appears after the gate.
+  # The tag here is per commit, not per branch: two pipelines on develop at
+  # once would otherwise promote each other's image.
+  UNVERIFIED_IMAGE: $CI_REGISTRY_IMAGE/unverified
 
 .docker:
   image: docker:29.1.4-cli
@@ -173,6 +197,18 @@ variables:
     # daemon so the smoke test boots the very image that gets pushed.
     - docker buildx create --driver docker-container --name konventix --use
         || docker buildx use konventix
+
+# Naming an image that already exists is a registry operation, not a build:
+# `docker buildx imagetools` speaks to the registry directly and `docker login`
+# stores its credentials client-side, so neither needs a daemon. The two
+# promote jobs take this instead of `.docker` and skip starting a dind service
+# and a builder they would never use. Verified against docker:29.1.4-cli with
+# no DOCKER_HOST set: `imagetools inspect` answers, `login` fails on
+# credentials rather than on a missing daemon.
+.registry:
+  image: docker:29.1.4-cli
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
 
 .cache-pull: &cache-pull
   - key:
@@ -440,8 +476,8 @@ test:php:
   # Tier 1, and the critical path of every merge request. It deliberately does
   # not wait for verify:lint: `npm run build:ssr` runs wayfinder itself, so
   # starting at pipeline time and generating its own copy beats idling for four
-  # minutes to inherit one. That trade is worth re-measuring once #140 cuts the
-  # suite itself — the shorter the suite, the more the wait would dominate.
+  # minutes to inherit one. Worth re-measuring now that #140 has cut the suite
+  # itself: the shorter the suite, the more the wait would dominate.
   rules: *tier-reviewed
   needs: [prepare:toolchain]
   # The suite runs against PostgreSQL, not SQLite: phpunit.xml overrides
@@ -451,6 +487,13 @@ test:php:
   services:
     - name: postgres:17
       alias: postgres
+      # `--parallel` below runs one `migrate:fresh` per worker at the same
+      # time, and dropping ~120 tables in a single transaction needs more lock
+      # slots than Postgres's default of 64 per transaction leaves for eight
+      # of them: 81 tests died with "out of shared memory … increase
+      # max_locks_per_transaction" before this. compose.yaml sets the same on
+      # the dev stack's pgsql.
+      command: ["postgres", "-c", "max_locks_per_transaction=512"]
     - name: redis:7-alpine
       alias: redis
   variables:
@@ -485,7 +528,27 @@ test:php:
     # what makes the first suite request deterministic.
     - nohup php artisan inertia:start-ssr > ssr.log 2>&1 &
     - sleep 3
-    - php artisan test
+    # Laravel gives every worker its own database, testing_test_1…n, created
+    # and migrated beside `testing`; nothing in the suite shares state across
+    # workers (the invoice disk is faked per worker, the numbering probe hands
+    # its child the resolved database name, the Redis test keys by ULID).
+    # Before: 581s of suite on one core in pipeline 1609, 2265 tests.
+    #
+    # Six workers, not one per core. Paratest hands out whole *files*, so the
+    # suite can never finish before its slowest file, and
+    # tests/Feature/SeedDemoDataCommandTest.php alone takes 92s of the 538s
+    # the 269 files add up to (#262). Measured on an idle 24-core machine:
+    # 4 workers 91s, 8 workers 91s, 12 workers 92s, 16 workers 84s, 24
+    # workers 97s. Everything from four upwards is the same number, because
+    # from there the rest of the suite already hides behind that one file.
+    # Six leaves a little headroom and stops a 16-core runner from spawning
+    # sixteen workers, and sixteen Postgres databases, for nothing — the
+    # runners are shared, and a job that grabs every core slows the jobs
+    # beside it. Raise this when #262 lowers the floor, not before.
+    - |
+      procs=$(nproc)
+      [ "$procs" -gt 6 ] && procs=6
+      php artisan test --parallel --processes="$procs"
   artifacts:
     when: always
     expire_in: 1 week
@@ -534,6 +597,19 @@ gitlab-advanced-sast:
   rules: *tier-release
   needs: []
   allow_failure: false
+  # The template keys the chunking metrics (`scan_metrics.csv`) by ref, with the
+  # default branch as fallback — and develop never runs this job, so every tag
+  # started from nothing and the analyzer logged "falling back to random
+  # chunking". Pipeline 9683 (v0.5.3) shows what that costs: six groups of
+  # ~445 rules each, three finishing in 8-10 minutes and three in 47-50, the
+  # job as long as its slowest group. One key for every run lets each tag
+  # inherit the metrics of the last and balance the groups; the sum of the
+  # six groups' wall time was 172 minutes, which balanced over six cores is
+  # under 30. The first tag after this change still seeds the cache.
+  cache:
+    key: scan-metrics-advanced-sast
+    paths:
+      - scan_metrics.csv
   variables:
     # The analyzer's own log: "Detected 8 cores but using 3; set --multi-core
     # or MAX_UNVERIFIED_CORES for more". On three cores a full cross-file scan
@@ -542,6 +618,16 @@ gitlab-advanced-sast:
     # the other jobs sharing the host.
     SAST_SCANNER_ALLOWED_CLI_OPTS: "--multi-core 6"
     MAX_UNVERIFIED_CORES: "6"
+    # Incremental scanning: the analyzer keeps its taint signatures in
+    # `ts-cache.sqlite.gz` (the template already lists it as an artifact) and
+    # looks back through previous commits for a successful pipeline that
+    # carries one, reusing the signatures of unchanged files. A release tag is
+    # the same commit as its candidate, so it should find the candidate's
+    # cache and reanalyse nothing. Unmeasured until the next candidate and
+    # release pair: the job log says "ts-cache.sqlite.gz: no matching files"
+    # while this is off, and how far back it looks is the analyzer's default
+    # (three days) — a candidate that ages past that pays the full scan again.
+    GITLAB_ADV_SAST_INCR_SCAN: "true"
 
 semgrep-sast:
   stage: scan
@@ -660,21 +746,56 @@ scan:gate:
         exit "$status"
       fi
 
-      # Code and dependency findings block at High and above. Lower severities
-      # are reported in the merge request's security widget and triaged there —
-      # a base image's steady drip of Low CVEs must not be able to stop every
-      # merge in the repository.
-      for report in gl-sast-report.json gl-dependency-scanning-report.json; do
-        require "$report" || continue
-        n=$(jq '[.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")] | length' "$report")
-        total=$(jq '[.vulnerabilities[]] | length' "$report")
-        echo "$report: $n of $total finding(s) at High or above"
+      # Code findings block at High and above. Lower severities are reported in
+      # the merge request's security widget and triaged there — a steady drip of
+      # Low findings must not be able to stop every merge in the repository.
+      # There is no notion of a fix in a SAST finding, so nothing here is
+      # exempt: the code is ours, and the fix is the change.
+      if require gl-sast-report.json; then
+        n=$(jq '[.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")] | length' gl-sast-report.json)
+        total=$(jq '[.vulnerabilities[]] | length' gl-sast-report.json)
+        echo "gl-sast-report.json: $n of $total finding(s) at High or above"
         if [ "$n" -gt 0 ]; then
           jq -r '.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")
-                 | "  [\(.severity)] \(.location.file // "-"):\(.location.start_line // 0)  \(.name)"' "$report"
+                 | "  [\(.severity)] \(.location.file // "-"):\(.location.start_line // 0)  \(.name)"' \
+            gl-sast-report.json
           status=1
         fi
-      done
+      fi
+
+      # Dependency findings block at High and above **when a fix exists**, and
+      # are informational when none does (#256, pipeline 1674). A finding whose
+      # analyzer offers no remediation cannot be acted on by merging anything:
+      # blocking on it stops every merge in the repository until a third party
+      # ships a release, which is not a security decision but a hostage
+      # situation. `solution` is the field that carries the remediation
+      # ("Upgrade to versions 3.3.18, 5.1.6 or above."); empty or absent means
+      # no fixed version was known when the report was written. The same rule
+      # is applied to the container report in `scan:gate:image`, on the release
+      # tier only and at Critical rather than High (#256's criterion, and those
+      # OS packages are not ours to fix); it cannot be read here, because
+      # build:image needs this job. Move the rule in both gates or in neither.
+      if require gl-dependency-scanning-report.json; then
+        total=$(jq '[.vulnerabilities[]] | length' gl-dependency-scanning-report.json)
+        blocking=$(jq '[.vulnerabilities[] | select((.severity == "Critical" or .severity == "High") and ((.solution // "") != ""))] | length' gl-dependency-scanning-report.json)
+        unfixed=$(jq '[.vulnerabilities[] | select((.severity == "Critical" or .severity == "High") and ((.solution // "") == ""))] | length' gl-dependency-scanning-report.json)
+        echo "gl-dependency-scanning-report.json: $blocking with a fix, $unfixed without, at High or above; $total finding(s) in total"
+
+        if [ "$unfixed" -gt 0 ]; then
+          echo "  unfixed, not blocking (no fixed version in the report):"
+          jq -r '.vulnerabilities[] | select((.severity == "Critical" or .severity == "High") and ((.solution // "") == ""))
+                 | "    [\(.severity)] \(.location.dependency.package.name // "-") \(.location.dependency.version // "")  \(([.identifiers[]? | select(.type == "cve") | .value] | first) // "-")  \(.name // "-")"' \
+            gl-dependency-scanning-report.json
+        fi
+
+        if [ "$blocking" -gt 0 ]; then
+          echo "  blocking (a fixed version exists):"
+          jq -r '.vulnerabilities[] | select((.severity == "Critical" or .severity == "High") and ((.solution // "") != ""))
+                 | "    [\(.severity)] \(.location.dependency.package.name // "-") \(.location.dependency.version // "")  \(([.identifiers[]? | select(.type == "cve") | .value] | first) // "-")  \(.name // "-")\n      \(.solution)"' \
+            gl-dependency-scanning-report.json
+          status=1
+        fi
+      fi
 
       exit "$status"
 
@@ -710,18 +831,31 @@ build:image:
         - docker/**/*
         - composer.lock
         - package-lock.json
-  needs:
-    - verify:format
-    - verify:lint
-    - analyse:php
-    - analyse:js
-    - test:php
-    - test:js
-    - scan:gate
+        # A change to this file can rewrite the build job itself, which is
+        # exactly the change most likely to break it — and the one nothing
+        # else in a merge request pipeline would catch, because the shapes
+        # that publish an image are develop's and a tag's, not a review's.
+        - .gitlab-ci.yml
+  # Nothing here comes from the rest of the pipeline: the Dockerfile builds
+  # from the source tree and generates its own routes and bundle inside. The
+  # `needs:` list this job used to carry — verify, analyse, test, scan:gate —
+  # was not a data dependency, it was the gate that kept an unproven image out
+  # of the registry, and it put the two longest jobs in the pipeline in series:
+  # ~400s of Pest suite and then ~830s of build on every push to develop.
+  #
+  # The gate is now `publish:image`, which is the job that gives the image a
+  # name something can deploy. This one starts with the pipeline and pushes
+  # only to $UNVERIFIED_IMAGE, so a red test still means no deployable tag was
+  # ever written — the image is simply left where nothing pulls from. What the
+  # change costs is a runner slot held on suspicion, and the runners are the
+  # scarce resource here; on develop and on tags the verification has already
+  # passed on the merge request, so the build is very rarely thrown away.
+  needs: []
   script:
-    # Built once, into dind's daemon, under the tag that will be pushed: the
-    # image the smoke test boots is byte-for-byte the image that reaches the
-    # registry.
+    # Built once, into dind's daemon, under the staging name: the image the
+    # smoke test boots is the one `publish:image` promotes, so what reaches a
+    # deployment is what was proven here rather than a second build of the
+    # same source.
     - |
       # Only a pipeline that publishes the image writes the cache. `mode=max`
       # uploads every intermediate layer and cost minutes of the first run's
@@ -731,10 +865,14 @@ build:image:
       if [ -n "${PUBLISH_IMAGE:-}" ]; then
         cache_to="--cache-to type=registry,ref=$CI_REGISTRY_IMAGE/cache:build,mode=max"
       fi
+      # Built and smoked under the staging name, never under the deployable
+      # one: $CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG is what a deployment pulls
+      # (ADR-0049 §1) and only `publish:image` may write it, so that name does
+      # not exist in this job even locally.
       # shellcheck disable=SC2086
       docker buildx build \
         --load \
-        --tag "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG" \
+        --tag "$UNVERIFIED_IMAGE:$IMAGE_SHA_TAG" \
         --build-arg "APP_VERSION=${CI_COMMIT_TAG:-$CI_COMMIT_SHA}" \
         --build-arg "SENTRY_RELEASE=$CI_COMMIT_SHA" \
         --cache-from "type=registry,ref=$CI_REGISTRY_IMAGE/cache:build" \
@@ -757,7 +895,7 @@ build:image:
         -e CACHE_STORE=redis -e QUEUE_CONNECTION=redis \
         -e REVERB_APP_ID= -e REVERB_APP_KEY= -e REVERB_APP_SECRET= \
         -e INERTIA_SSR_ENABLED=false -e AUTO_MIGRATE=false -e LOG_CHANNEL=stderr \
-        "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+        "$UNVERIFIED_IMAGE:$IMAGE_SHA_TAG"
       ok=
       for i in $(seq 1 20); do
         docker exec smoke curl -sf http://localhost:8000/up && ok=1 && break
@@ -776,6 +914,22 @@ build:image:
       grep -qE '^memory_limit => 512M => 512M$' php-i.txt || { echo "memory_limit is not 512M in the runtime image" >&2; docker stop smoke; exit 1; }
       grep -qE '^opcache.validate_timestamps => Off => Off$' php-i.txt || { echo "opcache.validate_timestamps is not off in the runtime image" >&2; docker stop smoke; exit 1; }
       grep -qE '^opcache.enable_cli => Off => Off$' php-i.txt || { echo "opcache.enable_cli is on, which makes validate_timestamps=0 unsafe for the entrypoint's cache calls" >&2; docker stop smoke; exit 1; }
+      grep -qE '^zend.assertions => -1 => -1$' php-i.txt || { echo "zend.assertions is not -1 in the runtime image" >&2; docker stop smoke; exit 1; }
+    # #257: root owns the artifact and the runtime user owns only the two
+    # directories it has to write. The Dockerfile test pins the text of the
+    # COPY lines; only the running container can show the result — a base image
+    # that changes the WORKDIR's ownership, an `--chown` reinstated through a
+    # build arg, or a source directory whose own mode keeps the runtime user out
+    # (the `config/stripe` boot failure) are all invisible to a grep of the
+    # Dockerfile. These run as the image's USER, uid 1000.
+    - |
+      docker exec smoke sh -c 'test ! -w /var/www/html/artisan' || { echo "the runtime user can write /var/www/html/artisan" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test ! -w /var/www/html' || { echo "the runtime user can create files next to the application" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test "$(stat -c %U /var/www/html/config)" = root' || { echo "/var/www/html/config is not root-owned" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test -r /var/www/html/config/app.php' || { echo "the runtime user cannot read /var/www/html/config" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test -w /var/www/html/storage' || { echo "/var/www/html/storage is not writable by the runtime user" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test "$(stat -c %U /var/www/html/storage)" = konventix' || { echo "/var/www/html/storage is not owned by the runtime user" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test -w /var/www/html/bootstrap/cache' || { echo "/var/www/html/bootstrap/cache is not writable by the runtime user" >&2; docker stop smoke; exit 1; }
     # ADR-0049 §5: the bundle must carry no baked websocket endpoint, or every
     # deployment talks to the developer's laptop. `resolveReverbEndpoint` is
     # called with `{host: …, port: …, scheme: …}` filled from VITE_REVERB_*;
@@ -795,38 +949,234 @@ build:image:
       test "$ok" = "1"
     - |
       if [ -n "${PUBLISH_IMAGE:-}" ]; then
-        docker push "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+        # Parked, not published. `publish:image` names this same manifest a
+        # second time once the gate is green, so what ships is the image the
+        # smoke test just booted rather than a second build of the source.
+        docker push "$UNVERIFIED_IMAGE:$IMAGE_SHA_TAG"
       else
-        echo "merge request pipeline: image built and smoked, deliberately not published."
+        echo "merge request pipeline: image built and smoked, deliberately neither parked nor published."
       fi
 
 container_scanning:
-  stage: build
+  stage: publish
+  # The published tag, so what is scanned is what a deployment can pull — and
+  # after `publish:image`, which deletes the staging tag it promoted from.
   needs:
-    - job: build:image
+    - job: publish:image
   variables:
     CS_IMAGE: $CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG
-  # Only where build:image published something to scan. A merge request's image
-  # never leaves the runner, so there is nothing in the registry yet.
+  # Only where an image was actually published. A merge request's image is
+  # built and smoked and goes no further, so there is nothing to scan.
   rules: *tier-published
-  # Not in scan:gate: the base image's OS packages produce findings on their own
-  # schedule, and a Debian CVE published overnight must not block every merge.
-  # It reports into the security dashboard, where it is triaged.
+  # The analyzer itself never fails a pipeline — the same division of labour as
+  # the other four scanners: a report full of CVEs is a successful job, and a
+  # gate job is what goes red. On develop, main and a dev tag nothing reads this
+  # report and the base image's steady drip of Debian CVEs blocks nothing; on a
+  # release tag `scan:gate:image` reads it and blocks the promotion (#256).
   allow_failure: true
+  # The template lists the report only under artifacts:reports, and a
+  # report-type artifact cannot be downloaded by a later job — the same trap
+  # that left dependency scanning unchecked for a whole run. Re-declaring
+  # artifacts replaces the key wholesale, so the reports are repeated here or
+  # the security dashboard loses them.
+  artifacts:
+    access: developer
+    reports:
+      container_scanning: gl-container-scanning-report.json
+      cyclonedx: ['**/gl-sbom-*.cdx.json']
+    paths:
+      - gl-container-scanning-report.json
+      - '**/gl-sbom-*.cdx.json'
+
+# The second half of scan:gate, and a separate job only because it cannot be
+# the same one: `build:image` has `needs: [scan:gate]`, and container scanning
+# needs the image build, so folding the container report into scan:gate would
+# close a cycle. The missing-report rule and the jq are scan:gate's, verbatim.
+#
+# The bar is **Critical**, which is what #256's criterion asks for, and it is
+# one notch above scan:gate's High for a reason worth writing down: scan:gate
+# judges code and dependencies this repository owns and can fix, while this
+# report is dominated by the Debian package set of
+# `dunglas/frankenphp:1-php8.5-bookworm`, which the analyzer reports including
+# CVEs Debian has not fixed. A stable base image with zero High findings is the
+# exception; blocking there would mean the only way to cut a release is to edit
+# this file on the release branch. High findings are printed here and triaged in
+# the merge request's security widget — the same waiver scan:gate uses for
+# everything under its own bar, and the only one either gate has: there is no
+# allowlist file in this repository, and neither gate may grow one alone.
+#
+# And a Critical only blocks when it can be acted on. Pipeline 1674 (v0.5.4)
+# was stopped by seventeen Criticals in libsqlite3-0, libxml2, linux-libc-dev,
+# perl and zlib1g, every one of them with an empty `solution`: Debian has no
+# fixed package. Nothing that could be merged would have made that gate green,
+# so it was not a decision, it was a hostage situation. A finding without a
+# fixed version in the report is printed as informational; a Critical with one
+# blocks. Same rule in `scan:gate` for the dependency report — move it in both
+# or in neither.
+#
+# Release tier only. On develop, main and a dev tag the container scan stays
+# advisory, which is what the base image's CVE schedule demands; a candidate or
+# release tag is the ref that reaches a cluster, and there a critical OS CVE
+# stops the promotion instead of being triaged after it.
+scan:gate:image:
+  # Follows `container_scanning`, which #261 moved behind `publish:image` so
+  # it scans the tag that exists rather than one that might not; a job cannot
+  # need another from a later stage, so this moves with it.
+  stage: publish
+  image: alpine:3.22
+  rules: *tier-release
+  needs:
+    - job: container_scanning
+      artifacts: true
+  before_script:
+    - apk add --no-cache jq
+  script:
+    - |
+      set -eu
+      status=0
+
+      # A scanner that cannot hand over its findings is indistinguishable from
+      # one that found nothing, so it counts as the worse of the two.
+      if [ ! -f gl-container-scanning-report.json ]; then
+        echo "MISSING: gl-container-scanning-report.json — no scanner handed this over." >&2
+        echo "  Check that container_scanning ran and lists the file under artifacts:paths;" >&2
+        echo "  a report declared only under artifacts:reports cannot be downloaded." >&2
+        exit 1
+      fi
+
+      # This report carries no `name`; the CVE id lives in `identifiers` and the
+      # package in `location.dependency`. Printing `.name` is what put a column
+      # of `null` in pipeline 1674's log.
+      total=$(jq '[.vulnerabilities[]] | length' gl-container-scanning-report.json)
+      high=$(jq '[.vulnerabilities[] | select(.severity == "High")] | length' gl-container-scanning-report.json)
+      critical=$(jq '[.vulnerabilities[] | select(.severity == "Critical")] | length' gl-container-scanning-report.json)
+      blocking=$(jq '[.vulnerabilities[] | select(.severity == "Critical" and ((.solution // "") != ""))] | length' gl-container-scanning-report.json)
+      unfixed=$(jq '[.vulnerabilities[] | select(.severity == "Critical" and ((.solution // "") == ""))] | length' gl-container-scanning-report.json)
+      echo "gl-container-scanning-report.json: $critical Critical ($blocking with a fix, $unfixed without), $high High, $total finding(s) in total"
+
+      # Reported, never blocking: an unfixed Debian High must not be able to
+      # stop a release, but it must not go unseen either.
+      if [ "$high" -gt 0 ]; then
+        jq -r '.vulnerabilities[] | select(.severity == "High")
+               | "  [High] \(.location.dependency.package.name // "-") \(.location.dependency.version // "")  \(([.identifiers[]? | select(.type == "cve") | .value] | first) // "-")"' \
+          gl-container-scanning-report.json
+      fi
+
+      # The base image's own CVE schedule, which no merge in this repository can
+      # answer. Listed in full so the release note is written from the log
+      # rather than from memory (#256).
+      if [ "$unfixed" -gt 0 ]; then
+        echo "  unfixed, not blocking (no fixed version in the report):"
+        jq -r '.vulnerabilities[] | select(.severity == "Critical" and ((.solution // "") == ""))
+               | "    [Critical] \(.location.dependency.package.name // "-") \(.location.dependency.version // "")  \(([.identifiers[]? | select(.type == "cve") | .value] | first) // "-")"' \
+          gl-container-scanning-report.json
+      fi
+
+      if [ "$blocking" -gt 0 ]; then
+        echo "  blocking (a fixed version exists):"
+        jq -r '.vulnerabilities[] | select(.severity == "Critical" and ((.solution // "") != ""))
+               | "    [Critical] \(.location.dependency.package.name // "-") \(.location.dependency.version // "")  \(([.identifiers[]? | select(.type == "cve") | .value] | first) // "-")\n      \(.solution)"' \
+          gl-container-scanning-report.json
+        echo "A Critical finding with a fixed version blocks the promotion. Rebuild on the" >&2
+        echo "  updated base image, or argue the exception on #256 and move the rule in both" >&2
+        echo "  gates, never in one." >&2
+        status=1
+      fi
+
+      exit "$status"
+
+########## publish ##########
+#
+# The gate. Everything above proves the commit; this is the job that turns that
+# proof into a name a deployment can pull, and it carries the `needs:` list
+# `build:image` used to (#261). It copies a manifest and nothing else, so the
+# whole gate costs seconds rather than repeating a fourteen-minute build.
+#
+# On a candidate or release tag it also waits for the cross-file SAST through
+# `scan:gate`, which is the point: the tags that reach an instance other people
+# use are the ones that pay for the slow scan before they exist.
+
+publish:image:
+  stage: publish
+  extends: .registry
+  # Wherever an image is published — develop onwards. A merge request builds
+  # and smokes its image and parks nothing, so there is nothing here to promote.
+  rules: *tier-published
+  needs:
+    - verify:format
+    - verify:lint
+    - analyse:php
+    - analyse:js
+    - test:php
+    - test:js
+    - scan:gate
+    - build:image
+  script:
+    # A manifest copy, not a rebuild: the promoted tag points at the manifest
+    # `build:image` smoked, same config and same layers, which is what makes
+    # "the image that was tested is the image that ships" true rather than
+    # approximately true. Not the same *top-level* digest, though — see
+    # `release:image` below, which has always worked this way.
+    - docker buildx imagetools create
+        --tag "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+        "$UNVERIFIED_IMAGE:$IMAGE_SHA_TAG"
+    - docker buildx imagetools inspect "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+    # The staging tag has done its job. Deleting it keeps `unverified` from
+    # growing one tag per published commit; the blobs are shared with the tag
+    # just created, so this frees names, not storage. Best effort throughout —
+    # the image is already published by this point, and a tidy-up must not be
+    # able to turn that into a failed pipeline. The job token may delete tags
+    # in its own project's registry, and nowhere else.
+    - |
+      if apk add --no-cache curl jq > /dev/null 2>&1; then
+        repo_id=$(curl -sf --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/registry/repositories?per_page=100" \
+          | jq -r '.[] | select(.name == "unverified") | .id')
+      fi
+      if [ -n "${repo_id:-}" ]; then
+        curl -s -X DELETE --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/registry/repositories/$repo_id/tags/$IMAGE_SHA_TAG" \
+          -o /dev/null -w 'delete unverified:%{http_code}\n' || true
+      else
+        echo "could not resolve the unverified repository; leaving $IMAGE_SHA_TAG in place."
+      fi
 
 ########## release ##########
 
 release:image:
   stage: release
-  extends: .docker
-  needs: [build:image]
+  # A second manifest copy, from the tag `publish:image` created, so the
+  # release names the image that was built and smoked rather than a rebuild
+  # of the same source. Both names exist only after the gate.
+  extends: .registry
+  needs:
+    - job: publish:image
+    # The promotion waits for the container scan's verdict rather than racing
+    # it (#256): before that, `needs: [build:image]` meant a release tag was
+    # promoted under a DAG without container_scanning having been looked at.
+    # The other half of that sentence — that the sha tag was pushed before any
+    # of this — is what #261 removed: `publish:image` writes it, after every
+    # gate. Optional because `scan:gate:image` is release-tier: on a dev tag
+    # it does not exist, and that tier is deliberately left exactly as it was.
+    - job: scan:gate:image
+      artifacts: false
+      optional: true
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    # `imagetools create` copies the manifest, so the released tag and the sha
-    # tag are the same digest — the release is the image that was smoked, named
-    # a second time. This is the tag the chart pins (#82): Chart.yaml's
-    # appVersion is "0.4.0", not "v0.4.0".
+    # `imagetools create` names an existing manifest a second time — the
+    # release is the image that was built and smoked, not a rebuild of it.
+    #
+    # It does not preserve the top-level digest, and the comment here used to
+    # say it did. A single-platform manifest gets wrapped in an OCI index on
+    # the way, so the semver tag is an index around the same manifest: in the
+    # registry today `0.5.3` is sha256:4afb57ac… while `sha-33ce3925` is
+    # sha256:c263ef9c…, and the API reports no config revision or size for the
+    # semver tag at all, which is what an index looks like. The layers and the
+    # config are one object either way, so what runs is identical; only a
+    # consumer pinning the *tag's* digest would see two names. Nothing here
+    # does — the chart pins the tag (#82): Chart.yaml's appVersion is "0.4.0",
+    # not "v0.4.0".
     - docker buildx imagetools create
         --tag "$CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}"
         "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
