@@ -4,7 +4,7 @@
 
 **Goal:** Konventix exposes a token-protected `/metrics` endpoint with a shared Redis-backed registry, writes structured logs with context and per-unit summary records, and carries its Grafana dashboards and vmalert rules as tested source in `contrib/observability/`.
 
-**Architecture:** `spatie/laravel-prometheus` provides the endpoint, the gauge API and the Horizon and queue collectors; `App\Observability\Metrics` wraps the underlying promphp registry for counters and histograms so every role increments the same series. Domain recorders live in the owning module as listeners on that module's events; the host composes the endpoint, HTTP, queue, health and log metrics. Dashboards are generated from small JS sources into committed JSON; rules are plain Prometheus rule YAML with two tokens the chart substitutes.
+**Architecture:** `spatie/laravel-prometheus` provides the endpoint, the gauge API and the Horizon and queue collectors; `Konventix\Platform\Observability\Metrics` wraps the underlying promphp registry for counters and histograms so every role increments the same series. Domain recorders live in the owning module as listeners on that module's events; the host composes the endpoint, HTTP, queue, health and log metrics. Dashboards are generated from small JS sources into committed JSON; rules are plain Prometheus rule YAML with two tokens the chart substitutes.
 
 **Tech Stack:** Laravel 13 (PHP 8.5, Octane/FrankenPHP), spatie/laravel-prometheus ^1.7, promphp/prometheus_client_php (RedisNg storage on phpredis), Monolog JsonFormatter, Pest 5, Node 22 for the dashboard generator, vmalert-tool v1.150.0 for rule unit tests.
 
@@ -147,7 +147,7 @@ use Spatie\Prometheus\Actions\RenderCollectorsAction;
 /*
  * spatie/laravel-prometheus, plus this application's own keys at the end.
  * The package renders gauges at scrape time; counters and histograms go
- * through App\Observability\Metrics and the shared Redis-backed registry
+ * through Konventix\Platform\Observability\Metrics and the shared Redis-backed registry
  * bound in ObservabilityServiceProvider (ADR-0059).
  */
 return [
@@ -347,11 +347,11 @@ git commit -m "The application answers /metrics behind the health secret, as hea
 
 declare(strict_types=1);
 
-use App\Observability\MetricCatalog;
-use App\Observability\MetricDefinition;
-use App\Observability\MetricKind;
-use App\Observability\Metrics;
-use App\Observability\UnknownMetric;
+use Konventix\Platform\Observability\MetricCatalog;
+use Konventix\Platform\Observability\MetricDefinition;
+use Konventix\Platform\Observability\MetricKind;
+use Konventix\Platform\Observability\Metrics;
+use Konventix\Platform\Observability\UnknownMetric;
 use Prometheus\CollectorRegistry;
 use Prometheus\RenderTextFormat;
 
@@ -415,7 +415,7 @@ it('refuses a duplicate catalogue entry and a name with the namespace baked in',
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `flock ~/git/konventix/konventix-poc/.superpowers/sdd/2026-09-08-night-plan/sail.lock vendor/bin/sail artisan test --compact --filter=MetricsRegistryTest`
-Expected: FAIL, class `App\Observability\MetricCatalog` not found.
+Expected: FAIL, class `Konventix\Platform\Observability\MetricCatalog` not found.
 
 - [ ] **Step 3: Write the catalogue types**
 
@@ -664,7 +664,7 @@ In `ObservabilityServiceProvider::bindMetricsRegistry()` add before the scoped b
         ));
 ```
 
-with `use App\Observability\MetricCatalog; use App\Observability\Metrics;`.
+with `use Konventix\Platform\Observability\MetricCatalog; use Konventix\Platform\Observability\Metrics;`.
 
 - [ ] **Step 6: Run the test to verify it passes**
 
@@ -781,7 +781,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
-use App\Observability\Metrics;
+use Konventix\Platform\Observability\Metrics;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -882,7 +882,7 @@ and add `use App\Http\Middleware\RecordHttpMetrics;`.
         );
 ```
 
-with `use App\Observability\MetricDefinition; use App\Observability\MetricKind;`.
+with `use Konventix\Platform\Observability\MetricDefinition; use Konventix\Platform\Observability\MetricKind;`.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -917,7 +917,7 @@ git commit -m "Every request is counted by method, status and route, and the sal
 
 declare(strict_types=1);
 
-use App\Observability\MetricCatalog;
+use Konventix\Platform\Observability\MetricCatalog;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -1428,8 +1428,8 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Metrics;
 
-use App\Observability\MetricDefinition;
-use App\Observability\MetricKind;
+use Konventix\Platform\Observability\MetricDefinition;
+use Konventix\Platform\Observability\MetricKind;
 
 /**
  * Commerce's entries in the metric catalogue (ADR-0059). Counters are
@@ -1590,7 +1590,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Listeners\Metrics;
 
-use App\Observability\Metrics;
+use Konventix\Platform\Observability\Metrics;
 use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderPlaced;
@@ -1631,7 +1631,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Listeners\Metrics;
 
-use App\Observability\Metrics;
+use Konventix\Platform\Observability\Metrics;
 use Konventix\Commerce\Events\PaymentFailed;
 use Konventix\Commerce\Events\PaymentReceived;
 use Konventix\Commerce\Events\PaymentReversalRecorded;
@@ -1665,7 +1665,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Listeners\Metrics;
 
-use App\Observability\Metrics;
+use Konventix\Platform\Observability\Metrics;
 use Konventix\Commerce\Events\CartExpired;
 use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Platform\Brands\BrandSlugs;
@@ -1688,7 +1688,7 @@ final class RecordCartMetrics
             app(Metrics::class)->increment('waiting_room_admissions_total', ['brand' => BrandSlugs::of($this->brandId)], (float) $admitted);
 ```
 
-with `use App\Observability\Metrics; use Konventix\Platform\Brands\BrandSlugs;`.
+with `use Konventix\Platform\Observability\Metrics; use Konventix\Platform\Brands\BrandSlugs;`.
 
 - [ ] **Step 6: Register in the provider and note the TODO**
 
@@ -1715,7 +1715,7 @@ Add:
     }
 ```
 
-Imports: `App\Observability\MetricCatalog`, `Konventix\Commerce\Metrics\CommerceMetrics`, `Konventix\Commerce\Metrics\CommerceGauges`, `Spatie\Prometheus\Facades\Prometheus`, the three listeners, and any of the events not yet imported.
+Imports: `Konventix\Platform\Observability\MetricCatalog`, `Konventix\Commerce\Metrics\CommerceMetrics`, `Konventix\Commerce\Metrics\CommerceGauges`, `Spatie\Prometheus\Facades\Prometheus`, the three listeners, and any of the events not yet imported.
 
 `app-modules/commerce/TODO.md`: under the completed section add `- [x] Metrics for orders, payments, carts, stock and the waiting room in \`src/Metrics\` and \`src/Listeners/Metrics\` (ADR-0059, #173).` Under backlog add `- [ ] Reverb connection and broadcast metrics once Reverb offers a hook (#173).`
 
@@ -1828,7 +1828,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Http\Middleware;
 
-use App\Observability\Metrics;
+use Konventix\Platform\Observability\Metrics;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -1961,8 +1961,8 @@ declare(strict_types=1);
 
 namespace Konventix\Messaging\Metrics;
 
-use App\Observability\MetricDefinition;
-use App\Observability\MetricKind;
+use Konventix\Platform\Observability\MetricDefinition;
+use Konventix\Platform\Observability\MetricKind;
 
 final class MessagingMetrics
 {
@@ -1985,7 +1985,7 @@ declare(strict_types=1);
 
 namespace Konventix\Messaging\Listeners\Metrics;
 
-use App\Observability\Metrics;
+use Konventix\Platform\Observability\Metrics;
 use Konventix\Messaging\Events\MessageDelivered;
 use Konventix\Messaging\Events\MessageFailed;
 use Konventix\Messaging\Events\MessageSuppressed;
@@ -3421,8 +3421,8 @@ git commit -m "Three Grafana dashboards are generated from readable sources, che
 
 declare(strict_types=1);
 
-use App\Observability\MetricCatalog;
-use App\Observability\MetricDefinition;
+use Konventix\Platform\Observability\MetricCatalog;
+use Konventix\Platform\Observability\MetricDefinition;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -3613,7 +3613,7 @@ was approved on 2026-09-09.
    single static target, so replicas never duplicate a series. Per-pod
    resource numbers come from cAdvisor.
 2. **spatie/laravel-prometheus for the endpoint and gauges,
-   `App\Observability\Metrics` for counters and histograms.** The package's
+   `Konventix\Platform\Observability\Metrics` for counters and histograms.** The package's
    counters are per-process and re-increment on every render; they are not
    used. The catalogue (`MetricCatalog`) is the list of what the application
    emits, and `Metrics` refuses a name that is not on it.
@@ -3838,6 +3838,7 @@ visitors see errors; pulse unavailable means only the dashboard is stale.
 ---
 paths:
   - 'app/Observability/**'
+  - 'app-modules/platform/src/Observability/**'
   - 'app/Providers/ObservabilityServiceProvider.php'
   - 'app-modules/*/src/Metrics/**'
   - 'app-modules/*/src/Listeners/Metrics/**'
@@ -3854,7 +3855,7 @@ paths:
 ADR-0059. "Operational state" is anything an operator would ask about on the sale day: a queue, an external call, a count that should move, a heartbeat. Add the catalogue entry in the owning module's `src/Metrics/<Module>Metrics.php` (host: `ObservabilityServiceProvider::registerHostMetrics`), record it with a listener in `src/Listeners/Metrics/` on the module's own event, put a panel in `contrib/observability/src/{sale,platform,logs}.mjs` and run `npm run observability:build`, and add a rule to `contrib/observability/alerts/konventix.rules.yaml` with a unit test in `alerts/tests/`. `ObservabilityCoverageTest` fails when a declared metric is on no dashboard or a dashboard names an undeclared one.
 
 ## Gauges through the Spatie facade, counters and histograms through Metrics, never Prometheus::addCounter
-The package's counters live in one process and re-increment on every render; `App\Observability\Metrics` writes atomically into the shared Redis registry from any role. A gauge is a closure evaluated at scrape time (`Prometheus::addGauge(...)->value(fn () => ...)`), outside any brand context — query with `withoutBrandScope()` and group by brand yourself.
+The package's counters live in one process and re-increment on every render; `Konventix\Platform\Observability\Metrics` writes atomically into the shared Redis registry from any role. A gauge is a closure evaluated at scrape time (`Prometheus::addGauge(...)->value(fn () => ...)`), outside any brand context — query with `withoutBrandScope()` and group by brand yourself.
 
 ## Labels are bounded sets: brand slug, provider, queue, route name, outcome. Never ids, amounts per person, free text
 Cardinality is series in Redis and a write per event. Route names on the duration histogram come from the allowlist in `config/prometheus.php`; everything else is `other`.
@@ -3945,7 +3946,7 @@ git push -u origin observability-2026-09-09
 glab mr create --target-branch develop --title "Observability: /metrics, structured logs, dashboards and alert rules (#173, #111, #96, #168)" --description "$(cat <<'MR'
 Implements docs/superpowers/specs/2026-09-09-observability-design.md (ADR-0059).
 
-- `/metrics` behind the health secret (header or bearer), one Redis-backed registry for every role, spatie/laravel-prometheus for gauges and the Horizon and queue collectors, `App\Observability\Metrics` for counters and histograms, a metric catalogue.
+- `/metrics` behind the health secret (header or bearer), one Redis-backed registry for every role, spatie/laravel-prometheus for gauges and the Horizon and queue collectors, `Konventix\Platform\Observability\Metrics` for counters and histograms, a metric catalogue.
 - Commerce, messaging and host metrics per the spec; HTTP histogram with a route allowlist.
 - Structured logs: release, route/job/command, brand, user ULID on every record; `http.request`, `queue.job`, `schedule.task` summary records; stack traces; a quiet `schedule:work`.
 - `contrib/observability/`: three generated dashboards, sixteen alert rules with vmalert-tool unit tests, CI jobs `verify:observability` and `observability:check`.

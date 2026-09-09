@@ -361,7 +361,17 @@ locally.
 - The metrics endpoint reuses `HEALTH_ENDPOINT_SECRET`. One diagnostics secret, no new
   OpenBao entry.
 
-## 13. Out of scope
+## 13. Amendment 2026-09-09 (during implementation)
+
+`tests/Unit/ArchitectureTest` forbids any `App\` import inside `app-modules/`
+(ADR-0003: modules know nothing about the host). The metric primitives
+`MetricKind`, `MetricDefinition`, `MetricCatalog`, `Metrics` and `UnknownMetric`
+therefore live in the Platform module as `Konventix\Platform\Observability\*`
+(`app-modules/platform/src/Observability/`), not in `app/Observability/`. The
+host still binds the registry, composes the endpoint and keeps `CorrelationId`
+and `RequestContext`. Sections 4.1, 4.2 and 10 read with that substitution.
+
+## 14. Out of scope
 
 Reverb metrics, SSR metrics, Pulse retention tuning, Plausible (#90), external
 monitoring (#148, #157 are operator tasks; this work supplies what #157 verifies),
