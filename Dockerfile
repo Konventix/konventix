@@ -58,6 +58,32 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
     && node --version && npm --version
 
+########## manifests: only the files the installers resolve from ##########
+#
+# `composer.json` declares one path repository, `app-modules/*` with
+# `symlink: true`, so `composer install` has to read all nineteen modules'
+# `composer.json` — and nothing else of them. Copying the whole tree first is
+# what tied the install to every source change (#141): one line in a Vue file
+# invalidated `COPY . .` and dragged `composer install` and `npm ci` with it.
+#
+# This stage reduces the tree to those nineteen manifests. BuildKit keys the
+# next stage's `COPY --from` on the *content* of what it copies, so a change
+# anywhere else in a module leaves the install layers cached, while adding a
+# module or moving a dependency still busts them, which is exactly right.
+#
+# busybox `cp` has no `--parents`, hence the loop.
+FROM alpine:3.22 AS manifests
+
+COPY app-modules /src/app-modules
+RUN set -eu; \
+    for dir in /src/app-modules/*/; do \
+      [ -f "$dir/composer.json" ] || continue; \
+      target="/manifests/app-modules/$(basename "$dir")"; \
+      mkdir -p "$target"; \
+      cp "$dir/composer.json" "$target/composer.json"; \
+    done; \
+    ls /manifests/app-modules | wc -l
+
 ########## build: composer, wayfinder, vite ##########
 FROM toolchain AS build
 
@@ -93,28 +119,54 @@ ENV DB_HOST=127.0.0.1 \
     SESSION_DRIVER=array \
     QUEUE_CONNECTION=sync
 
+# Dependencies before source, so that editing a Vue file does not reinstall
+# them (#141). Both installers resolve from lockfiles alone: composer from the
+# root pair plus the module manifests above, npm from its own pair — package.json
+# declares no install or prepare script, so `npm ci` needs nothing else.
+#
+# `--no-scripts --no-autoloader` because both would need the source that is not
+# here yet: composer's `post-autoload-dump` runs `package:discover`, which boots
+# the application. The autoloader is generated below, once the tree is complete,
+# and that dump is what finally runs the discovery.
+COPY composer.json composer.lock ./
+COPY --from=manifests /manifests/app-modules ./app-modules
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist \
+      --no-interaction --no-progress
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
 COPY . .
 
-# --no-dev: Telescope and all dev tooling are absent from the artifact.
-RUN composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+# The classmap over the finished tree. Still `--no-scripts`: the discovery that
+# `post-autoload-dump` would run boots the application and reads a `.env` that
+# does not exist yet — and that `.env` cannot be made first, because
+# `key:generate` is itself an artisan call and needs this autoloader. So the
+# three steps that used to be one `composer install` are spelled out in the
+# order their dependencies actually allow.
+RUN composer dump-autoload --no-dev --optimize --no-scripts --no-interaction
+
+# A throwaway environment: the artisan calls below boot the application, which
+# needs a key. Nothing of this .env reaches the image.
+#
+# .env.example carries the dev websocket endpoint (localhost:8080). Vite bakes
+# any VITE_* it can see into the bundle, so strip them: with none present the
+# client falls back to deriving host, port and scheme from the page it was
+# served by (ADR-0049 §5), which is what every deployment needs.
+RUN cp .env.example .env \
+ && sed -i '/^VITE_REVERB_/d' .env \
+ && php artisan key:generate
+
+# What `post-autoload-dump` would have done, now that both the tree and the
+# environment are in place: this is what writes the `bootstrap/cache` the
+# runtime stage carries as `/opt/bootstrap-cache`.
+RUN php artisan package:discover
 
 # octane:start copies this stub into public/ at startup unless it already
 # exists — a copy that can never succeed on the chart's read-only root
 # filesystem, so it ships in the image (first deploy test, finding 4).
 RUN cp vendor/laravel/octane/src/Commands/stubs/frankenphp-worker.php \
       public/frankenphp-worker.php
-
-# A throwaway environment: wayfinder:generate (run by the Vite plugin) boots
-# the application, which needs a key. Nothing of this .env reaches the image.
-RUN cp .env.example .env && php artisan key:generate
-
-# .env.example carries the dev websocket endpoint (localhost:8080). Vite bakes
-# any VITE_* it can see into the bundle, so strip them: with none present the
-# client falls back to deriving host, port and scheme from the page it was
-# served by (ADR-0049 §5), which is what every deployment needs.
-RUN sed -i '/^VITE_REVERB_/d' .env
-
-RUN npm ci
 
 # build + SSR bundle; wayfinder + the Bunny fonts plugin run inside (network
 # needed — an accepted non-hermetic step, ADR-0049 consequences).
