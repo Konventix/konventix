@@ -1132,10 +1132,28 @@ publish:image:
     # "the image that was tested is the image that ships" true rather than
     # approximately true. Not the same *top-level* digest, though — see
     # `release:image` below, which has always worked this way.
-    - docker buildx imagetools create
-        --tag "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
-        "$UNVERIFIED_IMAGE:$IMAGE_SHA_TAG"
-    - docker buildx imagetools inspect "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+    #
+    # Two pipelines reach this job for the same $IMAGE_SHA_TAG: a release tag
+    # and the push to main sit on one commit, and both are publishing tiers.
+    # They start together, so which one promotes first is a race — and the
+    # loser used to die on `unverified:sha-…: not found`, because the winner
+    # deleted the staging tag as tidy-up below. That is what took v0.5.6 down
+    # (pipeline 1717): the image was published, `release:image` was skipped
+    # behind the failure, and the release had no semver name.
+    #
+    # The image the loser wants is already there, put there by a run of this
+    # same gated job on the same commit, so the honest answer is to say so and
+    # stop rather than to build a second opinion of one commit. `release:image`
+    # then copies the semver name from the sha tag either way.
+    - |
+      if docker buildx imagetools inspect "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG" > /dev/null 2>&1; then
+        echo "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG is already published — an earlier pipeline on this commit promoted it. Nothing to do."
+      else
+        docker buildx imagetools create \
+          --tag "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG" \
+          "$UNVERIFIED_IMAGE:$IMAGE_SHA_TAG"
+      fi
+      docker buildx imagetools inspect "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
     # The staging tag has done its job. Deleting it keeps `unverified` from
     # growing one tag per published commit; the blobs are shared with the tag
     # just created, so this frees names, not storage. Best effort throughout —
@@ -1155,6 +1173,8 @@ publish:image:
       else
         echo "could not resolve the unverified repository; leaving $IMAGE_SHA_TAG in place."
       fi
+      # A 404 here is the ordinary case for the second pipeline on a commit:
+      # the first one already deleted it. Hence the best-effort shape above.
 
 ########## release ##########
 
