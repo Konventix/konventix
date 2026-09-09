@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use GuzzleHttp\Psr7\Utils;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -220,6 +221,9 @@ it('refuses a host that merely ends in the allowlisted name', function (): void 
  * (`MembershipImageController::storeAvatar()`); a body arriving over HTTP has
  * no `max:` rule in front of it, so the ceiling has to be restated here or the
  * two paths disagree about what an avatar may weigh.
+ *
+ * This is the backstop half: no `Content-Length` is declared, so the ceiling is
+ * enforced by the byte counter in the streamed read.
  */
 it('refuses an avatar body larger than the upload path would accept', function (): void {
     $this->withBrand();
@@ -243,4 +247,88 @@ it('refuses an avatar body larger than the upload path would accept', function (
         ->assertInvalid(['steam']);
 
     expect($membership->refresh()->avatar_media_id)->toBeNull();
+});
+
+/**
+ * The header half: a body that announces itself as too large is refused before
+ * it is fetched at all. The body here is a perfectly good PNG — small enough
+ * that every other check passes — so the only thing that can reject it is the
+ * declared length.
+ */
+it('refuses an avatar whose declared length is over the ceiling, without reading it', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    $membership = BrandMembership::factory()->create(['user_id' => $user->getKey()]);
+    $user->socialIdentities()->create([
+        'provider' => 'steam',
+        'provider_user_id' => '76561198012345678',
+        'nickname' => 'ada',
+        'avatar_url' => 'https://avatars.steamstatic.com/claims_to_be_huge_full.jpg',
+        'linked_at' => now(),
+    ]);
+    Storage::fake('media');
+
+    Http::fake([
+        '*' => Http::response(steamAvatarPngBytes(), 200, [
+            'Content-Type' => 'image/png',
+            'Content-Length' => (string) (5120 * 1024 + 1),
+        ]),
+    ]);
+
+    $this->actingAs($user)
+        ->post('/settings/profile/avatar/steam')
+        ->assertInvalid(['steam']);
+
+    expect($membership->refresh()->avatar_media_id)->toBeNull();
+});
+
+/**
+ * The point of the ceiling, and the part a `strlen($response->body())` check
+ * could never give: an allowlisted host that answers with an unbounded body
+ * must not be able to spend the Octane worker's whole `memory_limit` before the
+ * size is even looked at — a worker is long-lived, so that failure outlives the
+ * request that caused it.
+ *
+ * The fake body is a `PumpStream` with no end: it produces whatever is asked of
+ * it and never reports EOF, so the only thing that can stop the read is the
+ * byte counter. The counter of what the stream was actually asked to produce is
+ * the assertion — it has to stay near the ceiling rather than run away.
+ */
+it('never reads more than the ceiling from an endless body', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    $membership = BrandMembership::factory()->create(['user_id' => $user->getKey()]);
+    $user->socialIdentities()->create([
+        'provider' => 'steam',
+        'provider_user_id' => '76561198012345678',
+        'nickname' => 'ada',
+        'avatar_url' => 'https://avatars.steamstatic.com/endless_full.jpg',
+        'linked_at' => now(),
+    ]);
+    Storage::fake('media');
+
+    $produced = 0;
+
+    Http::fake([
+        '*' => Http::response(
+            Utils::streamFor(function (int $length) use (&$produced): string {
+                $produced += $length;
+
+                return str_repeat('a', $length);
+            }),
+            200,
+            ['Content-Type' => 'image/jpeg'],
+        ),
+    ]);
+
+    $this->actingAs($user)
+        ->post('/settings/profile/avatar/steam')
+        ->assertInvalid(['steam']);
+
+    expect($membership->refresh()->avatar_media_id)->toBeNull();
+
+    // The ceiling is 5120 KB; the read stops within one chunk of it. Anything
+    // materially larger means the body was being buffered rather than counted.
+    expect($produced)->toBeGreaterThan(5120 * 1024)
+        ->and($produced)->toBeLessThan(6 * 1024 * 1024);
 });

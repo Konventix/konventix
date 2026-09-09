@@ -10,6 +10,7 @@ use Illuminate\Validation\ValidationException;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Actions\StoreMediaUpload;
 use Konventix\Platform\Brands\BrandContext;
+use Psr\Http\Message\StreamInterface;
 use Throwable;
 
 /**
@@ -34,6 +35,14 @@ final class CopySteamAvatar
      * differ between the two ways into the same media library.
      */
     private const MAX_AVATAR_BYTES = 5120 * 1024;
+
+    /**
+     * How much of the response is held at a time. The point of the streamed
+     * read is that nothing bigger than this ever exists in the worker, so the
+     * ceiling above costs the ceiling and not whatever the far end chose to
+     * send.
+     */
+    private const CHUNK_BYTES = 64 * 1024;
 
     public function __construct(
         private readonly UpdateMembershipImage $images,
@@ -61,48 +70,116 @@ final class CopySteamAvatar
         try {
             // No redirect following: an allowlisted first hop that answers 302
             // would otherwise walk the fetch straight off the allowlist.
-            $response = Http::timeout(10)->withoutRedirecting()->get($identity->avatar_url);
+            //
+            // `stream => true` is what makes the size ceiling below mean
+            // anything. Without it the client materialises the whole body
+            // before a single check can run, and an allowlisted host answering
+            // with an unbounded response costs a long-lived Octane worker its
+            // entire memory_limit — a failure that outlives the one request.
+            // With it, only the headers have arrived at this point and the body
+            // is read a chunk at a time.
+            $response = Http::timeout(10)
+                ->withoutRedirecting()
+                ->withOptions(['stream' => true])
+                ->get($identity->avatar_url);
         } catch (Throwable) {
             throw ValidationException::withMessages(['steam' => __('The Steam avatar could not be fetched.')]);
         }
 
         $mime = $response->header('Content-Type');
-        $body = $response->body();
+        $declaredLength = $response->header('Content-Length');
 
+        // Judged before anything is read: a body that announces itself as too
+        // large is refused without being fetched at all.
         if (! $response->successful()
             || ! in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)
-            || strlen($body) > self::MAX_AVATAR_BYTES) {
+            || ($declaredLength !== '' && (int) $declaredLength > self::MAX_AVATAR_BYTES)) {
             throw ValidationException::withMessages(['steam' => __('The Steam avatar could not be fetched.')]);
         }
 
         $extension = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif', 'image/webp' => 'webp'][$mime];
         $path = tempnam(sys_get_temp_dir(), 'steam-avatar');
 
+        if ($path === false) {
+            throw ValidationException::withMessages(['steam' => __('The Steam avatar could not be fetched.')]);
+        }
+
         try {
-            file_put_contents($path, $body);
+            // The backstop for a chunked response, or one that lies about its
+            // length: the counter stops at the ceiling whatever the header said.
+            if (! $this->streamToFile($response->toPsrResponse()->getBody(), $path)) {
+                throw ValidationException::withMessages(['steam' => __('The Steam avatar could not be fetched.')]);
+            }
 
-            $file = new UploadedFile($path, 'steam-avatar.'.$extension, $mime, null, true);
+            try {
+                $file = new UploadedFile($path, 'steam-avatar.'.$extension, $mime, null, true);
 
-            $item = $this->uploads->handle(
-                brandId: app(BrandContext::class)->currentOrFail()->getKey(),
-                file: $file,
-                altText: null,
-                uploadedByUserId: $user->getKey(),
-            );
+                $item = $this->uploads->handle(
+                    brandId: app(BrandContext::class)->currentOrFail()->getKey(),
+                    file: $file,
+                    altText: null,
+                    uploadedByUserId: $user->getKey(),
+                );
 
-            $this->images->pointAt($user, 'avatar', $item->getKey());
-        } catch (ValidationException $e) {
-            // Every failure of this flow surfaces keyed 'steam' — the user
-            // clicked a Steam button, not a file input, so an error keyed
-            // 'file' (e.g. UpdateMembershipImage::membershipFor()'s
-            // no-membership rejection) would point Profile.vue's error
-            // rendering at the wrong field. UpdateMembershipImage itself
-            // stays 'file'-keyed for the upload flows that legitimately use
-            // it; this remaps only at the Steam entry point.
-            throw ValidationException::withMessages(['steam' => collect($e->errors())->flatten()->implode(' ')]);
+                $this->images->pointAt($user, 'avatar', $item->getKey());
+            } catch (ValidationException $e) {
+                // Every failure of this flow surfaces keyed 'steam' — the user
+                // clicked a Steam button, not a file input, so an error keyed
+                // 'file' (e.g. UpdateMembershipImage::membershipFor()'s
+                // no-membership rejection) would point Profile.vue's error
+                // rendering at the wrong field. UpdateMembershipImage itself
+                // stays 'file'-keyed for the upload flows that legitimately use
+                // it; this remaps only at the Steam entry point.
+                throw ValidationException::withMessages(['steam' => collect($e->errors())->flatten()->implode(' ')]);
+            }
         } finally {
             @unlink($path);
         }
+    }
+
+    /**
+     * Copies the response body into `$path`, reading at most
+     * {@see self::CHUNK_BYTES} at a time and giving up the moment more than
+     * {@see self::MAX_AVATAR_BYTES} has arrived — so the worker never holds
+     * more than the ceiling, whatever the far end intended to send.
+     *
+     * Answers false when the body was over the ceiling (or could not be
+     * written), in which case the partial file is thrown away by the caller.
+     */
+    private function streamToFile(StreamInterface $body, string $path): bool
+    {
+        $handle = fopen($path, 'wb');
+
+        if ($handle === false) {
+            return false;
+        }
+
+        $written = 0;
+
+        try {
+            while (! $body->eof()) {
+                $chunk = $body->read(self::CHUNK_BYTES);
+
+                if ($chunk === '') {
+                    break;
+                }
+
+                $written += strlen($chunk);
+
+                if ($written > self::MAX_AVATAR_BYTES) {
+                    return false;
+                }
+
+                if (fwrite($handle, $chunk) === false) {
+                    return false;
+                }
+            }
+        } finally {
+            fclose($handle);
+            $body->close();
+        }
+
+        return $written > 0;
     }
 
     /**
