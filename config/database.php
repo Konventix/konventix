@@ -212,6 +212,31 @@ return [
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
         ],
 
+        // The Prometheus metrics registry (ObservabilityServiceProvider,
+        // ADR-0059). promphp's RedisNg storage adapter keys everything
+        // under its own 'konventix:metrics:' prefix and strips that back
+        // off with ltrim() when it collects — a character-mask trim, not a
+        // substring one, so it cannot cope with phpredis's own OPT_PREFIX
+        // (the 'options.prefix' every other connection above inherits) on
+        // top of it: the two prefixes collide and collection reads back
+        // garbage or nothing. This connection carries none. Laravel's
+        // PhpRedisConnector applies a connection-level 'prefix' last, after
+        // the shared 'options.prefix', so setting it to '' here means no
+        // OPT_PREFIX at all, regardless of REDIS_PREFIX.
+        'metrics' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_DB', '0'),
+            'max_retries' => env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+            'options' => ['prefix' => ''],
+        ],
+
     ],
 
 ];

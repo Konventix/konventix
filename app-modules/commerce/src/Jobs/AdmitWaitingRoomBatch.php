@@ -11,7 +11,9 @@ use Illuminate\Foundation\Queue\Queueable;
 use Konventix\Commerce\Models\WaitingRoomSettings;
 use Konventix\Commerce\WaitingRoom\AdmitFromWaitingRoom;
 use Konventix\Commerce\WaitingRoom\WaitingRoomStore;
+use Konventix\Platform\Brands\BrandSlugs;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Observability\Metrics;
 use Laravel\Pennant\Feature;
 use Laravel\Pulse\Facades\Pulse;
 
@@ -76,6 +78,8 @@ final class AdmitWaitingRoomBatch implements ShouldBeUnique, ShouldQueue
 
         if ($admitted > 0) {
             Pulse::record('waiting_room_admitted', $this->brandId, $admitted)->sum();
+
+            app(Metrics::class)->increment('waiting_room_admissions_total', ['brand' => BrandSlugs::of($this->brandId)], (float) $admitted);
         }
     }
 }

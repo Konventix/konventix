@@ -13,6 +13,9 @@ resolved by domain at request time — this is NOT multi-tenancy.
    in code. If an ADR blocks you, say so instead of working around it.
 4. When working on a module, read its `SPEC.md` first and update its `TODO.md`
    in the same PR (check off what you completed, add follow-ups you discovered).
+5. A feature with operational state adds a metric, a dashboard panel and, where
+   it can fail silently, an alert (ADR-0059, `.ai/rules/observability.md`).
+   `ObservabilityCoverageTest` checks the first two.
 
 ## Hard rules (violations are architecture bugs, not style issues)
 

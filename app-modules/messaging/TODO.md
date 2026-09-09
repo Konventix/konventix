@@ -195,6 +195,7 @@
       the page's Inertia visit. The bell gained a per-item mark-read control
       and a link to the page; there is deliberately no dismiss/archive
       concept and no schema change behind it.
+- [x] Delivery outcomes as the `messages_total` metric (ADR-0059, #173).
 - [x] Mail-settings console (`/admin/mail-settings`, gated by
       `ManageSenderIdentity`): per-brand sender identity, quiet-hours
       timezone (ADR-0041) and optional own SMTP transport (ADR-0028) —

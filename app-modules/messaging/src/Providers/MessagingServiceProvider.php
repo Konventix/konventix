@@ -24,11 +24,16 @@ use Konventix\Messaging\Contracts\MessageChannel;
 use Konventix\Messaging\Contracts\PushSender;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Enums\Permission;
+use Konventix\Messaging\Events\MessageDelivered;
+use Konventix\Messaging\Events\MessageFailed;
+use Konventix\Messaging\Events\MessageSuppressed;
 use Konventix\Messaging\Gdpr\MessagingGdprHandler;
+use Konventix\Messaging\Listeners\Metrics\RecordMessageMetrics;
 use Konventix\Messaging\Listeners\ProjectRecipient;
 use Konventix\Messaging\Listeners\PruneDeliveryLog;
 use Konventix\Messaging\Listeners\SendAnnouncementNotifications;
 use Konventix\Messaging\Listeners\SendDunningNotice;
+use Konventix\Messaging\Metrics\MessagingMetrics;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Messaging\Topics\Topic;
@@ -36,6 +41,7 @@ use Konventix\Messaging\Topics\TopicRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Observability\MetricCatalog;
 use RuntimeException;
 
 /**
@@ -58,6 +64,13 @@ class MessagingServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'messaging';
+    }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->registerMetrics();
     }
 
     protected function registerBindings(): void
@@ -180,6 +193,9 @@ class MessagingServiceProvider extends ModuleServiceProvider
         // Compliance publishes the delivery log's retention period
         // (D-CPL-01); Messaging is the module that deletes its own rows.
         Event::listen(RetentionPeriodElapsed::class, PruneDeliveryLog::class);
+
+        // ADR-0059: Messaging's own metrics, from its own events.
+        Event::listen([MessageDelivered::class, MessageFailed::class, MessageSuppressed::class], RecordMessageMetrics::class);
     }
 
     /**
@@ -343,6 +359,15 @@ class MessagingServiceProvider extends ModuleServiceProvider
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command(FlushHeldMessagesCommand::class)->everyMinute();
         });
+    }
+
+    /**
+     * Messaging's metrics (ADR-0059): catalogue entries here, listeners
+     * below.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...MessagingMetrics::definitions());
     }
 
     /**

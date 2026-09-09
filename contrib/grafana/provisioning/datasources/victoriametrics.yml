@@ -1,0 +1,16 @@
+# Same local Prometheus, under the uid the cluster's VictoriaMetrics
+# datasource carries, so contrib/observability/dashboards render on sail
+# without edits (ADR-0059). Not the default: the k6 dashboard keeps that.
+apiVersion: 1
+
+datasources:
+    - name: VictoriaMetrics (local)
+      uid: VictoriaMetrics
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: false
+      editable: false
+      jsonData:
+          timeInterval: 15s
+          httpMethod: POST

@@ -1,0 +1,261 @@
+# vmalert-tool unittest fixtures. Run: contrib/observability/render.sh konventix konventix /tmp/rules
+#   && docker run --rm -v /tmp/rules:/rules victoriametrics/vmalert-tool:v1.150.0 unittest --files=/rules/konventix.rules.test.yaml
+rule_files:
+  - konventix.rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'up{job="konventix"}'
+        values: '1 1 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 3m
+        groupname: konventix.app
+        alertname: KonventixMetricsDown
+        exp_alerts: []
+      - eval_time: 8m
+        groupname: konventix.app
+        alertname: KonventixMetricsDown
+        exp_alerts:
+          - exp_labels: {job: konventix, severity: critical, team: konventix}
+            exp_annotations:
+              summary: "Konventix metrics endpoint is not answering"
+              runbook: "docs/operations.md#konventixmetricsdown"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_health_check_status{job="konventix", check="Horizon"}'
+        values: '2x10'
+      - series: 'konventix_health_check_status{job="konventix", check="UsedDiskSpace"}'
+        values: '2x20'
+    alert_rule_test:
+      - eval_time: 6m
+        groupname: konventix.app
+        alertname: KonventixHealthCheckCritical
+        exp_alerts:
+          - exp_labels: {job: konventix, check: Horizon, severity: critical, team: konventix}
+            exp_annotations:
+              summary: "Health check Horizon is failing"
+              runbook: "docs/operations.md#konventixhealthcheckcritical"
+      - eval_time: 6m
+        groupname: konventix.app
+        alertname: KonventixHealthCheckFailed
+        exp_alerts: []
+      - eval_time: 16m
+        groupname: konventix.app
+        alertname: KonventixHealthCheckFailed
+        exp_alerts:
+          - exp_labels: {job: konventix, check: UsedDiskSpace, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Health check UsedDiskSpace is failing"
+              runbook: "docs/operations.md#konventixhealthcheckfailed"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_queue_jobs_failed_total{job="konventix", queue="messaging", job_class="SendQueuedMessage"}'
+        values: '0 0 0 1 1 1'
+    alert_rule_test:
+      - eval_time: 4m
+        groupname: konventix.app
+        alertname: KonventixQueueJobsFailing
+        exp_alerts:
+          - exp_labels: {job: konventix, queue: messaging, job_class: SendQueuedMessage, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "SendQueuedMessage failed on queue messaging"
+              runbook: "docs/operations.md#konventixqueuejobsfailing"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_queue_oldest_pending_job_age{job="konventix", connection="redis", queue="messaging"}'
+        values: '65x15'
+    alert_rule_test:
+      - eval_time: 12m
+        groupname: konventix.app
+        alertname: KonventixQueueBacklog
+        exp_alerts:
+          - exp_labels: {job: konventix, connection: redis, queue: messaging, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Queue messaging has waited over a minute for 10 minutes"
+              runbook: "docs/operations.md#konventixqueuebacklog"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_waiting_room_depth{job="konventix", brand="sxlan"}'
+        values: '5x10'
+      - series: 'konventix_waiting_room_last_admission_timestamp_seconds{job="konventix", brand="sxlan"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        groupname: konventix.app
+        alertname: KonventixWaitingRoomStuck
+        exp_alerts:
+          - exp_labels: {job: konventix, brand: sxlan, severity: critical, team: konventix}
+            exp_annotations:
+              summary: "Waiting room for sxlan is not admitting"
+              runbook: "docs/operations.md#konventixwaitingroomstuck"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_payments_pending{job="konventix", brand="sxlan"}'
+        values: '3x30'
+      - series: 'konventix_payment_webhook_last_received_timestamp_seconds{job="konventix", provider="stripe"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: konventix.app
+        alertname: KonventixWebhookSilence
+        exp_alerts:
+          - exp_labels: {job: konventix, provider: stripe, severity: critical, team: konventix}
+            exp_annotations:
+              summary: "No stripe webhook for 15 minutes while payments are pending"
+              runbook: "docs/operations.md#konventixwebhooksilence"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_payments_total{job="konventix", brand="sxlan", provider="stripe", outcome="failed"}'
+        values: '0+1x30'
+      - series: 'konventix_payments_total{job="konventix", brand="sxlan", provider="stripe", outcome="received"}'
+        values: '0+1x30'
+    alert_rule_test:
+      - eval_time: 25m
+        groupname: konventix.app
+        alertname: KonventixPaymentFailureRate
+        exp_alerts:
+          - exp_labels: {provider: stripe, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Over 30% of stripe payments failed in 10 minutes"
+              runbook: "docs/operations.md#konventixpaymentfailurerate"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_http_requests_total{job="konventix", method="GET", status="500", route="home"}'
+        values: '0+5x20'
+      - series: 'konventix_http_requests_total{job="konventix", method="GET", status="200", route="home"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 12m
+        groupname: konventix.app
+        alertname: KonventixHttp5xxRate
+        exp_alerts:
+          - exp_labels: {severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Over 5% of requests answered 5xx"
+              runbook: "docs/operations.md#konventixhttp5xxrate"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="0.05"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="0.1"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="0.25"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="0.5"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="1"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="2.5"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="5"}'
+        values: '0+10x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="10"}'
+        values: '0+10x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="+Inf"}'
+        values: '0+10x30'
+    alert_rule_test:
+      - eval_time: 25m
+        groupname: konventix.app
+        alertname: KonventixCheckoutSlow
+        exp_alerts:
+          - exp_labels: {severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Checkout p95 above 3 seconds"
+              runbook: "docs/operations.md#konventixcheckoutslow"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_log_records_total{job="konventix", level="error"}'
+        values: '0 0 0 1 1 1'
+    alert_rule_test:
+      - eval_time: 4m
+        groupname: konventix.app
+        alertname: KonventixErrorsLogged
+        exp_alerts:
+          - exp_labels: {job: konventix, level: error, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "The application logged error records"
+              runbook: "docs/operations.md#konventixerrorslogged"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_schedule_last_heartbeat_timestamp_seconds{job="konventix"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 12m
+        groupname: konventix.app
+        alertname: KonventixScheduleStale
+        exp_alerts:
+          - exp_labels: {job: konventix, severity: critical, team: konventix}
+            exp_annotations:
+              summary: "The scheduler has not ticked for 5 minutes"
+              runbook: "docs/operations.md#konventixschedulestale"
+
+  - interval: 1m
+    input_series:
+      - series: 'cnpg_collector_last_available_backup_timestamp{namespace="konventix", pod="konventix-db-1"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 45m
+        groupname: konventix.platform
+        alertname: KonventixDatabaseBackupMissing
+        exp_alerts:
+          - exp_labels: {severity: critical, team: konventix}
+            exp_annotations:
+              summary: "No database backup completed in 26 hours"
+              runbook: "docs/operations.md#konventixdatabasebackupmissing"
+
+  - interval: 1m
+    input_series:
+      - series: 'cnpg_pg_stat_archiver_last_failed_time{namespace="konventix", pod="konventix-db-1"}'
+        values: '100x25'
+      - series: 'cnpg_pg_stat_archiver_last_archived_time{namespace="konventix", pod="konventix-db-1"}'
+        values: '50x25'
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: konventix.platform
+        alertname: KonventixWalArchivingFailing
+        exp_alerts:
+          - exp_labels: {namespace: konventix, pod: konventix-db-1, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "WAL archiving is failing on konventix-db-1"
+              runbook: "docs/operations.md#konventixwalarchivingfailing"
+
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="konventix", pod="konventix-web-abc123"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 35m
+        groupname: konventix.platform
+        alertname: KonventixPodsRestarting
+        exp_alerts:
+          - exp_labels: {namespace: konventix, pod: konventix-web-abc123, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "konventix-web-abc123 restarted more than 3 times in 30 minutes"
+              runbook: "docs/operations.md#konventixpodsrestarting"
+
+  - interval: 1m
+    input_series:
+      - series: 'kube_deployment_status_replicas_unavailable{namespace="konventix", deployment="konventix-web"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 15m
+        groupname: konventix.platform
+        alertname: KonventixRoleUnavailable
+        exp_alerts:
+          - exp_labels: {namespace: konventix, deployment: konventix-web, severity: critical, team: konventix}
+            exp_annotations:
+              summary: "konventix-web has unavailable replicas"
+              runbook: "docs/operations.md#konventixroleunavailable"
