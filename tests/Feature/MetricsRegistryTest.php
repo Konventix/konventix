@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Exceptions;
 use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Observability\MetricDefinition;
 use Konventix\Platform\Observability\MetricKind;
@@ -9,6 +10,7 @@ use Konventix\Platform\Observability\Metrics;
 use Konventix\Platform\Observability\UnknownMetric;
 use Prometheus\CollectorRegistry;
 use Prometheus\RenderTextFormat;
+use Prometheus\Storage\Adapter;
 
 /**
  * Counters and histograms are event-time writes into the shared registry;
@@ -64,4 +66,47 @@ it('refuses a duplicate catalogue entry and a name with the namespace baked in',
         ->toThrow(InvalidArgumentException::class, 'probe_total')
         ->and(fn () => new MetricDefinition('konventix_x_total', MetricKind::Counter, 'Prefixed.'))
         ->toThrow(InvalidArgumentException::class, 'konventix_');
+});
+
+it('reports a registry storage failure instead of raising it into the caller', function (): void {
+    Exceptions::fake();
+
+    $brokenAdapter = new class implements Adapter
+    {
+        public function collect(): array
+        {
+            return [];
+        }
+
+        public function updateSummary(array $data): void
+        {
+            throw new RuntimeException('storage is down');
+        }
+
+        public function updateHistogram(array $data): void
+        {
+            throw new RuntimeException('storage is down');
+        }
+
+        public function updateGauge(array $data): void
+        {
+            throw new RuntimeException('storage is down');
+        }
+
+        public function updateCounter(array $data): void
+        {
+            throw new RuntimeException('storage is down');
+        }
+
+        public function wipeStorage(): void
+        {
+            throw new RuntimeException('storage is down');
+        }
+    };
+
+    app()->instance(CollectorRegistry::class, new CollectorRegistry($brokenAdapter, false));
+
+    app(Metrics::class)->increment('probe_total', ['colour' => 'red', 'size' => 'L']);
+
+    Exceptions::assertReported(RuntimeException::class);
 });
