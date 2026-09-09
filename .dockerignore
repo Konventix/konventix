@@ -6,7 +6,7 @@
 node_modules
 vendor
 frankenphp
-data/caddy
+data
 config/caddy/autosave.json
 # Stripe CLI state on a developer's machine (#257); it is not configuration
 # this application reads, and it arrives as a 0700 directory the runtime user
@@ -19,6 +19,11 @@ storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
 storage/framework/testing/*
+# 174 MB of Inertia devtools cache on a developer's machine (#257). It never
+# existed in CI's fresh clone, so it never showed up in a pipeline-built image —
+# but a local `docker build` shipped it, and `chown -R … storage` then copied
+# every byte of it up into a second layer.
+storage/inertia-devtools
 bootstrap/cache/*.php
 public/build
 public/storage
