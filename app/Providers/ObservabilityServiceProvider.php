@@ -5,10 +5,6 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Observability\CorrelationId;
-use App\Observability\MetricCatalog;
-use App\Observability\MetricDefinition;
-use App\Observability\MetricKind;
-use App\Observability\Metrics;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
@@ -23,6 +19,10 @@ use Illuminate\Support\ServiceProvider;
 use Konventix\Commerce\Health\WaitingRoomCheck;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Enums\Permission;
+use Konventix\Platform\Observability\MetricCatalog;
+use Konventix\Platform\Observability\MetricDefinition;
+use Konventix\Platform\Observability\MetricKind;
+use Konventix\Platform\Observability\Metrics;
 use Laravel\Horizon\Horizon;
 use Laravel\Telescope\Telescope;
 use Laravel\Telescope\TelescopeServiceProvider;
@@ -111,6 +111,11 @@ class ObservabilityServiceProvider extends ServiceProvider
      * means Valkey ACL credentials come from config/database.php like
      * everywhere else. Scoped, like the package's binding, so Octane hands
      * every request a fresh adapter over the connection it currently holds.
+     *
+     * `MetricCatalog` and `Metrics` themselves live in `Konventix\Platform\
+     * Observability` (ADR-0003) so any module can record its own numbers
+     * without importing the host; the host still binds the singletons here
+     * and composes the `/metrics` endpoint.
      */
     private function bindMetricsRegistry(): void
     {

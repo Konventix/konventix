@@ -8,8 +8,8 @@ use Spatie\Prometheus\Actions\RenderCollectorsAction;
 /*
  * spatie/laravel-prometheus, plus this application's own keys at the end.
  * The package renders gauges at scrape time; counters and histograms go
- * through App\Observability\Metrics and the shared Redis-backed registry
- * bound in ObservabilityServiceProvider (ADR-0059).
+ * through Konventix\Platform\Observability\Metrics and the shared
+ * Redis-backed registry bound in ObservabilityServiceProvider (ADR-0059).
  */
 return [
     'enabled' => true,

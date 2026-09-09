@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-use App\Observability\MetricCatalog;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
+use Konventix\Platform\Observability\MetricCatalog;
 use Prometheus\CollectorRegistry;
 use Prometheus\RenderTextFormat;
 use Spatie\Health\Enums\Status;

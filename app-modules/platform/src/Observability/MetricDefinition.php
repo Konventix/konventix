@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Observability;
+namespace Konventix\Platform\Observability;
 
 use InvalidArgumentException;
 

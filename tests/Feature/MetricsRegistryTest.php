@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use App\Observability\MetricCatalog;
-use App\Observability\MetricDefinition;
-use App\Observability\MetricKind;
-use App\Observability\Metrics;
-use App\Observability\UnknownMetric;
+use Konventix\Platform\Observability\MetricCatalog;
+use Konventix\Platform\Observability\MetricDefinition;
+use Konventix\Platform\Observability\MetricKind;
+use Konventix\Platform\Observability\Metrics;
+use Konventix\Platform\Observability\UnknownMetric;
 use Prometheus\CollectorRegistry;
 use Prometheus\RenderTextFormat;
 
