@@ -336,10 +336,12 @@ runs only in `scheduler`.
   (`proxy-read-timeout` ≥ 3600 s).
 - Upload size: media accepts 10 MB → `proxy-body-size` ≥ 12m.
 - Internal Services: `web:8000`, `reverb:8080`, `ssr:13714`.
-- `/up` and `/health-json` are not exposed publicly by default; a
-  `ServiceMonitor` is not possible — there is **no Prometheus/OpenTelemetry
-  endpoint** in the application (Pulse and Horizon are UI-only). Worth a
-  future item.
+- `/up` and `/health-json` are not exposed publicly by default. `/metrics`
+  (ADR-0059) answers the same secret as a bearer token and is scraped by
+  the chart's `VMScrapeConfig` against `web:8000` as one static target; the
+  NetworkPolicy must admit the monitoring namespace to port 8000.
+  Dashboards and rules ship from `contrib/observability/` as
+  `GrafanaDashboard` and `VMRule` CRs, gated by `monitoring.enabled`.
 
 ### Volumes
 

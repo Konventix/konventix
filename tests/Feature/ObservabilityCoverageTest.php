@@ -148,7 +148,7 @@ it('has a runbook section in docs/operations.md for every alert', function (): v
         foreach ($group['rules'] as $rule) {
             $runbook = $rule['annotations']['runbook'] ?? '';
             $anchor = substr($runbook, strlen('docs/operations.md#'));
-            expect($operations)->toContain('### '.$anchor, $rule['alert']);
+            expect($operations)->toContain('### '.$anchor);
         }
     }
 });
