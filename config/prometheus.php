@@ -48,6 +48,11 @@ return [
     // adapter cannot see through when it collects (ADR-0059).
     'redis_connection' => 'metrics',
 
+    // RedisNg::setPrefix() namespaces every key it writes; the Redis-path
+    // test overrides this to its own prefix so its wipeStorage() call
+    // clears only the keys it wrote, never a running instance's metrics.
+    'redis_prefix' => 'konventix:metrics:',
+
     'http' => [
         /*
          * Routes that get their own `route` label on the request duration

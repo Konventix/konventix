@@ -147,7 +147,7 @@ class ObservabilityServiceProvider extends ServiceProvider
             return new InMemory;
         }
 
-        RedisNg::setPrefix('konventix:metrics:');
+        RedisNg::setPrefix((string) config('prometheus.redis_prefix', 'konventix:metrics:'));
 
         /** @var \Redis $client */
         $client = Redis::connection((string) config('prometheus.redis_connection', 'default'))->client();
