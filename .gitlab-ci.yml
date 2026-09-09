@@ -207,6 +207,21 @@ variables:
 # credentials rather than on a missing daemon.
 .registry:
   image: docker:29.1.4-cli
+  variables:
+    # The runners do not all agree on this. `DOCKER_HOST=tcp://docker:2375`
+    # comes from the runner's own environment on some of them, left over from
+    # the dind setup `.docker` needs — and beside a job with no dind service
+    # the name `docker` resolves through the search domain to a public address
+    # that never answers. `docker login` honours DOCKER_HOST even though the
+    # login itself is client-side, so it hangs and dies on
+    # `dial tcp 194.94.76.76:2375: i/o timeout`.
+    #
+    # It is a coin flip, not a clean failure: the same job succeeded in 15s on
+    # vm-gitlab-runner-3-alpha (pipeline 1689) and failed on
+    # ct-gitlab-runner-1-bravo (pipeline 1702). Emptying it here makes the CLI
+    # take its client-side path on every runner, which is what these jobs
+    # wanted all along — they talk to the registry, never to a daemon.
+    DOCKER_HOST: ""
   before_script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
 
