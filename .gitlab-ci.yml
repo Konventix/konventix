@@ -370,6 +370,7 @@ verify:lint:
     # and handed to the jobs downstream; this is the four minutes.
     - php artisan wayfinder:generate --with-form
     - npm run lint:check
+    - npm run observability:check
   artifacts:
     expire_in: 1 day
     paths:
