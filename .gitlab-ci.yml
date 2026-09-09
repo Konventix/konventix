@@ -10,14 +10,17 @@
 #   candidate and release tag        ~40 min   + the cross-file SAST
 #   (v0.4.5-rc.1, v0.4.5)
 #
-# The shape follows from one measurement: gitlab-advanced-sast takes 24 minutes
-# and cannot go faster — three of its passes are uncapped cross-file analyses of
-# a single rule each, so cores do not help. Leaving it on the merge request loop
-# made every review wait 40 minutes for a scan nobody was reading yet. It runs
-# on the tags that reach an instance other people use — a candidate or a
-# release — and nowhere else. Not on a push to main: the release tag lands on
-# the same commit a moment later, and v0.4.4 showed what two copies of the scan
-# do to each other on shared runners (22 minutes on main, 67 on the tag).
+# The shape follows from one measurement: gitlab-advanced-sast took 24 minutes
+# when this was written and 50 on v0.5.3, and no amount of cores changes the
+# floor — its slowest rule group is one uncapped cross-file pass. Leaving it on
+# the merge request loop made every review wait 40 minutes for a scan nobody
+# was reading yet. It runs on the tags that reach an instance other people use
+# — a candidate or a release — and nowhere else. Not on a push to main: the
+# release tag lands on the same commit a moment later, and v0.4.4 showed what
+# two copies of the scan do to each other on shared runners (22 minutes on
+# main, 67 on the tag). What the job itself can do about its length is written
+# at the job: balanced rule groups from a shared metrics cache, and a taint
+# cache the release tag inherits from its candidate.
 #
 # develop is the integration branch and the default: feature branches merge into
 # it, and it merges into main for a release.
@@ -142,6 +145,12 @@ variables:
   # then steps aside for (the template excludes them from semgrep's paths when
   # this is on). Ultimate is licensed here; use the better analyzer.
   GITLAB_ADVANCED_SAST_ENABLED: "true"
+  # Setting this replaces the template's default (`spec, test, tests, tmp`), so
+  # the default is repeated. What is added is not application code: the
+  # documentation and agent rules, the verification scripts, the module
+  # stubs, storage, the dev seeders, and the generated TypeScript types —
+  # every one of them walked by both SAST analyzers before this.
+  SAST_EXCLUDED_PATHS: "spec, test, tests, tmp, docs, .ai, .claude, contrib, stubs, storage, database/seeders, resources/js/types/generated.d.ts"
 
   # The CI image is the Dockerfile's `toolchain` stage. Bump the tag when that
   # stage changes in a way the published image must reflect immediately —
@@ -540,6 +549,19 @@ gitlab-advanced-sast:
   rules: *tier-release
   needs: []
   allow_failure: false
+  # The template keys the chunking metrics (`scan_metrics.csv`) by ref, with the
+  # default branch as fallback — and develop never runs this job, so every tag
+  # started from nothing and the analyzer logged "falling back to random
+  # chunking". Pipeline 9683 (v0.5.3) shows what that costs: six groups of
+  # ~445 rules each, three finishing in 8-10 minutes and three in 47-50, the
+  # job as long as its slowest group. One key for every run lets each tag
+  # inherit the metrics of the last and balance the groups; the sum of the
+  # six groups' wall time was 172 minutes, which balanced over six cores is
+  # under 30. The first tag after this change still seeds the cache.
+  cache:
+    key: scan-metrics-advanced-sast
+    paths:
+      - scan_metrics.csv
   variables:
     # The analyzer's own log: "Detected 8 cores but using 3; set --multi-core
     # or MAX_UNVERIFIED_CORES for more". On three cores a full cross-file scan
@@ -548,6 +570,16 @@ gitlab-advanced-sast:
     # the other jobs sharing the host.
     SAST_SCANNER_ALLOWED_CLI_OPTS: "--multi-core 6"
     MAX_UNVERIFIED_CORES: "6"
+    # Incremental scanning: the analyzer keeps its taint signatures in
+    # `ts-cache.sqlite.gz` (the template already lists it as an artifact) and
+    # looks back through previous commits for a successful pipeline that
+    # carries one, reusing the signatures of unchanged files. A release tag is
+    # the same commit as its candidate, so it should find the candidate's
+    # cache and reanalyse nothing. Unmeasured until the next candidate and
+    # release pair: the job log says "ts-cache.sqlite.gz: no matching files"
+    # while this is off, and how far back it looks is the analyzer's default
+    # (three days) — a candidate that ages past that pays the full scan again.
+    GITLAB_ADV_SAST_INCR_SCAN: "true"
 
 semgrep-sast:
   stage: scan
