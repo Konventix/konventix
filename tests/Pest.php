@@ -34,7 +34,10 @@ pest()->extend(TestCase::class)
 |
 */
 
-foreach (glob(__DIR__.'/../app-modules/*/tests/Helpers.php') ?: [] as $helpers) {
+foreach ([
+    ...(glob(__DIR__.'/Helpers.php') ?: []),
+    ...(glob(__DIR__.'/../app-modules/*/tests/Helpers.php') ?: []),
+] as $helpers) {
     require_once $helpers;
 }
 
