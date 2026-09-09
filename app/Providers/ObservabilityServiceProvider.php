@@ -5,15 +5,24 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Observability\CorrelationId;
+use App\Observability\RequestContext;
+use Illuminate\Auth\Events\Authenticated;
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Console\Events\ScheduledTaskFailed;
+use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Queue\Job;
+use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Http\Request;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Routing\Events\RouteMatched;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\ServiceProvider;
 use Konventix\Commerce\Health\WaitingRoomCheck;
@@ -192,6 +201,7 @@ class ObservabilityServiceProvider extends ServiceProvider
         $this->recordQueueAndLogMetrics();
         $this->scheduleHousekeeping();
         $this->correlateJobsAndCommands();
+        $this->writeSummaryRecords();
     }
 
     /**
@@ -358,34 +368,95 @@ class ObservabilityServiceProvider extends ServiceProvider
     }
 
     /**
-     * The half of ADR-0056 that is not a request. A request gets its ID from
-     * `AssignCorrelationId`; everything else that writes log lines starts
-     * here.
-     *
-     * A queued job normally inherits the ID of the request that dispatched
-     * it — the framework carries `Context` in the payload and restores it on
-     * `JobProcessing`, flushing whatever the worker held before. That
-     * restore runs first (the context provider is a framework provider and
-     * boots before this one), so `addIf` here sees the inherited ID and
-     * keeps it, and only a job that inherited none — dispatched by the
-     * scheduler, by a command, by another such job — mints its own.
-     * `CorrelationIdTest` pins that order with two orphan jobs whose IDs
-     * must differ.
-     *
-     * `CommandStarting` covers the rest: every artisan run, which under
-     * `schedule:run` means every scheduled task, since each runs in a
-     * process of its own. `addIf` again, so a command called from inside a
-     * request or a job stays in that unit of work.
+     * The half of ADR-0056 that is not a request, plus the fields ADR-0059
+     * adds. Order on JobProcessing: the framework restores the dispatching
+     * request's Context first (the context provider boots before this one),
+     * so `addIf` keeps an inherited correlation id and `forJob` overwrites
+     * the inherited route with the job class.
      */
     private function correlateJobsAndCommands(): void
     {
-        Event::listen(JobProcessing::class, function (): void {
-            CorrelationId::ensure();
+        Event::listen(RouteMatched::class, function (RouteMatched $event): void {
+            RequestContext::forRoute($event->route->getName());
         });
 
-        Event::listen(CommandStarting::class, function (): void {
-            CorrelationId::ensure();
+        Event::listen(Authenticated::class, function (Authenticated $event): void {
+            RequestContext::forUser((string) $event->user->getAuthIdentifier());
         });
+
+        Event::listen(JobProcessing::class, function (JobProcessing $event): void {
+            CorrelationId::ensure();
+            RequestContext::forJob($event->job->resolveName(), self::jobQueueName($event->job));
+            Context::addHidden('job_started_at', microtime(true));
+        });
+
+        Event::listen(CommandStarting::class, function (CommandStarting $event): void {
+            CorrelationId::ensure();
+            RequestContext::forCommand((string) $event->command);
+        });
+    }
+
+    /**
+     * One record per unit of work (ADR-0059): what the ingress access line
+     * knows about a request, but with the route name, the brand and the
+     * user, and the same for every job and every scheduled task. Requests
+     * at info, finished tasks at debug (production logs at info and never
+     * sees them), failures at error.
+     */
+    private function writeSummaryRecords(): void
+    {
+        Event::listen(RequestHandled::class, function (RequestHandled $event): void {
+            if (in_array($event->request->path(), RequestContext::SKIPPED_PATHS, true)) {
+                return;
+            }
+
+            $startedAt = (float) $event->request->server('REQUEST_TIME_FLOAT', microtime(true));
+
+            Log::info('http.request', [
+                'method' => $event->request->method(),
+                'route' => $event->request->route()?->getName(),
+                'status' => $event->response->getStatusCode(),
+                'duration_ms' => round((microtime(true) - $startedAt) * 1000, 1),
+            ]);
+        });
+
+        Event::listen(JobProcessed::class, function (JobProcessed $event): void {
+            Log::info('queue.job', $this->jobSummary($event->job, 'processed'));
+        });
+
+        Event::listen(JobFailed::class, function (JobFailed $event): void {
+            Log::error('queue.job', $this->jobSummary($event->job, 'failed') + ['exception' => $event->exception]);
+        });
+
+        Event::listen(ScheduledTaskFinished::class, function (ScheduledTaskFinished $event): void {
+            Log::debug('schedule.task', [
+                'command' => $event->task->getSummaryForDisplay(),
+                'exit_code' => $event->task->exitCode,
+                'duration_ms' => round($event->runtime * 1000, 1),
+            ]);
+        });
+
+        Event::listen(ScheduledTaskFailed::class, function (ScheduledTaskFailed $event): void {
+            Log::error('schedule.task', [
+                'command' => $event->task->getSummaryForDisplay(),
+                'exit_code' => $event->task->exitCode,
+                'exception' => $event->exception,
+            ]);
+        });
+    }
+
+    /** @return array<string, mixed> */
+    private function jobSummary(Job $job, string $outcome): array
+    {
+        $startedAt = Context::getHidden('job_started_at');
+
+        return [
+            'job' => $job->resolveName(),
+            'queue' => self::jobQueueName($job),
+            'outcome' => $outcome,
+            'attempts' => $job->attempts(),
+            'duration_ms' => is_float($startedAt) ? round((microtime(true) - $startedAt) * 1000, 1) : null,
+        ];
     }
 
     /**

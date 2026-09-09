@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Middleware\AssignCorrelationId;
+use App\Http\Middleware\AssignRequestContext;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RecordHttpMetrics;
@@ -91,6 +92,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleAppearance::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+            AssignRequestContext::class,
         ]);
 
         // Admin routes 404 on brand hosts BEFORE auth gets to redirect —
