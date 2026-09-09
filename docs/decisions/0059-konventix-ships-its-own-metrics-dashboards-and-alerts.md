@@ -21,7 +21,7 @@ was approved on 2026-09-09.
 
 1. **One registry, one target.** Counters and histograms are written at
    event time by whichever role saw the event, into promphp's RedisNg
-   storage on the application's Redis connection; gauges are computed at
+   storage on a dedicated Redis connection (point 12); gauges are computed at
    scrape time by closures. Any web pod renders the whole registry at
    `/metrics`; the chart scrapes the web Service once per interval as a
    single static target, so replicas never duplicate a series. Per-pod

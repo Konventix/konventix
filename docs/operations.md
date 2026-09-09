@@ -39,6 +39,22 @@ date, alert names and recipient under the alert's section when done.
 - KonventixDatabaseBackupMissing fires on its own on an instance that never
   completed a backup.
 
+The other ten — KonventixMetricsDown, KonventixHealthCheckFailed,
+KonventixQueueJobsFailing, KonventixWaitingRoomStuck, KonventixWebhookSilence,
+KonventixPaymentFailureRate, KonventixHttp5xxRate, KonventixCheckoutSlow,
+KonventixWalArchivingFailing and KonventixPodsRestarting — are not triggered
+by hand for #168; each has a `vmalert-tool` unit test in
+`contrib/observability/alerts/tests/konventix.rules.test.yaml` that shapes an
+input series so the rule's expression fires and asserts the labels vmalert
+reports, which is the acceptance in place of a live trigger. Two of those ten
+need more than the unit test to prove the *metric*, not just the rule, is
+honest: KonventixWebhookSilence and KonventixPaymentFailureRate are proven by
+running a sandbox payment flow — a Stripe test-mode webhook withheld, and a
+run of declined test cards. KonventixWalArchivingFailing and
+KonventixPodsRestarting are platform-side, sourced from CNPG's and kubelet's
+own exporters rather than anything this application emits, so they are
+observed when they occur in the cluster rather than provoked.
+
 ## Alerts
 
 ### KonventixMetricsDown
@@ -47,7 +63,10 @@ The scraper got no answer from `/metrics` for five minutes. Either every
 web pod is down (KonventixRoleUnavailable fires too) or the secret the
 scraper presents no longer matches `HEALTH_ENDPOINT_SECRET`. Check
 `kubectl -n konventix get pods`, then the vmagent log for `konventix`:
-401 means the secret, connection refused means the NetworkPolicy.
+404 means a wrong or missing secret — `VerifyHealthSecret` answers a
+missing route on purpose rather than confirming the endpoint exists to a
+caller who cannot open it (ADR-0029) — connection refused or a timeout
+means the NetworkPolicy.
 
 ### KonventixHealthCheckCritical
 
