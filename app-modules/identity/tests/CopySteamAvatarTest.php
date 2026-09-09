@@ -5,11 +5,16 @@ declare(strict_types=1);
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
+use Konventix\Identity\Actions\CopySteamAvatar;
+use Konventix\Identity\Actions\UpdateMembershipImage;
 use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Actions\StoreMediaUpload;
 use Konventix\Platform\Models\MediaUsage;
 
 /**
@@ -331,4 +336,139 @@ it('never reads more than the ceiling from an endless body', function (): void {
     // materially larger means the body was being buffered rather than counted.
     expect($produced)->toBeGreaterThan(5120 * 1024)
         ->and($produced)->toBeLessThan(6 * 1024 * 1024);
+});
+
+/**
+ * #259 / N1: `Http::timeout()` stopped meaning what it meant the moment
+ * `stream => true` was added. Without the stream option the request goes
+ * through Guzzle's cURL handler, where `timeout` is `CURLOPT_TIMEOUT` — a cap
+ * on the whole transfer. With it, `StreamHandler` maps `timeout` onto the PHP
+ * stream context's idle timeout, which every arriving byte re-arms;
+ * `read_timeout` is the option that actually reaches `stream_set_timeout()`.
+ * Both have to be on the request, or a host that trickles is unbounded.
+ */
+it('bounds each read as well as the request', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    BrandMembership::factory()->create(['user_id' => $user->getKey()]);
+    $user->socialIdentities()->create([
+        'provider' => 'steam',
+        'provider_user_id' => '76561198012345678',
+        'nickname' => 'ada',
+        'avatar_url' => 'https://avatars.steamstatic.com/abc_full.jpg',
+        'linked_at' => now(),
+    ]);
+    Storage::fake('media');
+
+    $options = null;
+
+    Event::fake([BrandMembershipProfileUpdated::class]);
+
+    Http::fake(function ($request, array $sent) use (&$options) {
+        $options = $sent;
+
+        return Http::response(steamAvatarPngBytes(), 200, ['Content-Type' => 'image/png']);
+    });
+
+    $this->actingAs($user)
+        ->post('/settings/profile/avatar/steam')
+        ->assertRedirect();
+
+    expect($options)->toBeArray()
+        ->and($options['stream'] ?? null)->toBeTrue()
+        ->and($options['timeout'] ?? null)->toBe(10.0)
+        ->and($options['read_timeout'] ?? null)->toBe(10.0);
+});
+
+/**
+ * #259 / N1, the other half: a body that arrives just inside every idle window
+ * satisfies `read_timeout` for as long as it likes, so the sum of the reads is
+ * bounded too. The stream here is endless and slow, and the only thing that can
+ * stop it is the deadline — the size ceiling is 80 chunks away.
+ *
+ * The action is built directly with a short bound rather than waiting out the
+ * production one; that constructor argument exists for exactly this.
+ */
+it('gives up when the download passes its deadline', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    BrandMembership::factory()->create(['user_id' => $user->getKey()]);
+    $user->socialIdentities()->create([
+        'provider' => 'steam',
+        'provider_user_id' => '76561198012345678',
+        'nickname' => 'ada',
+        'avatar_url' => 'https://avatars.steamstatic.com/slow_full.jpg',
+        'linked_at' => now(),
+    ]);
+
+    $reads = 0;
+
+    Http::fake([
+        '*' => Http::response(
+            Utils::streamFor(function (int $length) use (&$reads): string {
+                $reads++;
+                usleep(20_000);
+
+                return str_repeat('a', $length);
+            }),
+            200,
+            ['Content-Type' => 'image/jpeg'],
+        ),
+    ]);
+
+    $action = new CopySteamAvatar(
+        app(UpdateMembershipImage::class),
+        app(StoreMediaUpload::class),
+        0.05,
+    );
+
+    expect(function () use ($action, $user): void {
+        $action->handle($user);
+    })->toThrow(ValidationException::class);
+
+    // Three 20 ms reads at most fit inside 50 ms; the ceiling would have taken
+    // eighty. Anything near that means the deadline is not being consulted.
+    expect($reads)->toBeGreaterThan(0)->and($reads)->toBeLessThan(10);
+});
+
+/**
+ * #259 / N2: with the body no longer arriving inside `get()`, a connection
+ * reset partway through surfaces as a RuntimeException out of `Stream::read()`,
+ * outside the `catch (Throwable)` that used to cover the whole transfer. It is
+ * the same failure as a refused fetch and gets the same answer — the membership
+ * is untouched, the message is keyed 'steam', and the user sees a validation
+ * error rather than a 500.
+ */
+it('treats a failure part-way through the download as a failed fetch', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    $membership = BrandMembership::factory()->create(['user_id' => $user->getKey()]);
+    $user->socialIdentities()->create([
+        'provider' => 'steam',
+        'provider_user_id' => '76561198012345678',
+        'nickname' => 'ada',
+        'avatar_url' => 'https://avatars.steamstatic.com/reset_full.jpg',
+        'linked_at' => now(),
+    ]);
+    Storage::fake('media');
+    Log::spy();
+
+    Http::fake([
+        '*' => Http::response(
+            Utils::streamFor(function (int $length): string {
+                throw new RuntimeException('Connection reset by peer');
+            }),
+            200,
+            ['Content-Type' => 'image/jpeg'],
+        ),
+    ]);
+
+    $this->actingAs($user)
+        ->post('/settings/profile/avatar/steam')
+        ->assertInvalid(['steam']);
+
+    expect($membership->refresh()->avatar_media_id)->toBeNull();
+
+    Log::shouldHaveReceived('warning')
+        ->withArgs(fn (...$arguments): bool => str_contains((string) ($arguments[0] ?? ''), 'mid-stream'));
 });

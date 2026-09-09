@@ -6,6 +6,7 @@ namespace Konventix\Identity\Actions;
 
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Actions\StoreMediaUpload;
@@ -44,9 +45,27 @@ final class CopySteamAvatar
      */
     private const CHUNK_BYTES = 64 * 1024;
 
+    /**
+     * The whole fetch, connect through last byte. `Http::timeout()` used to
+     * mean exactly that: without `stream => true` the request goes through
+     * Guzzle's cURL handler, where `timeout` is `CURLOPT_TIMEOUT`, a cap on the
+     * entire transfer. With `stream => true` it goes through `StreamHandler`
+     * instead, where `timeout` becomes the PHP stream context's idle timeout —
+     * re-armed by every byte received, so a host answering one byte every nine
+     * seconds is never cut off. `read_timeout` (the option `StreamHandler`
+     * keys `stream_set_timeout()` off) bounds each read, and the deadline
+     * carried through {@see self::streamToFile()} bounds the sum of them.
+     */
+    private const FETCH_TIMEOUT_SECONDS = 10.0;
+
     public function __construct(
         private readonly UpdateMembershipImage $images,
         private readonly StoreMediaUpload $uploads,
+        /**
+         * Overridable so a test can watch the deadline fire without sleeping
+         * for the production bound. Nothing in the application passes it.
+         */
+        private readonly float $timeoutSeconds = self::FETCH_TIMEOUT_SECONDS,
     ) {}
 
     public function handle(User $user): void
@@ -67,6 +86,10 @@ final class CopySteamAvatar
             throw ValidationException::withMessages(['steam' => __('The Steam avatar could not be fetched.')]);
         }
 
+        // The clock starts before the request, not after it: the bound is on the
+        // whole fetch, and the headers are part of it.
+        $deadline = hrtime(true) + (int) round($this->timeoutSeconds * 1_000_000_000);
+
         try {
             // No redirect following: an allowlisted first hop that answers 302
             // would otherwise walk the fetch straight off the allowlist.
@@ -77,15 +100,21 @@ final class CopySteamAvatar
             // with an unbounded response costs a long-lived Octane worker its
             // entire memory_limit — a failure that outlives the one request.
             // With it, only the headers have arrived at this point and the body
-            // is read a chunk at a time.
-            $response = Http::timeout(10)
+            // is read a chunk at a time. `read_timeout` comes with it: see
+            // self::FETCH_TIMEOUT_SECONDS for why `timeout` alone stops meaning
+            // what it meant the moment the handler changes.
+            $response = Http::timeout($this->timeoutSeconds)
                 ->withoutRedirecting()
-                ->withOptions(['stream' => true])
+                ->withOptions([
+                    'stream' => true,
+                    'read_timeout' => $this->timeoutSeconds,
+                ])
                 ->get($identity->avatar_url);
         } catch (Throwable) {
             throw ValidationException::withMessages(['steam' => __('The Steam avatar could not be fetched.')]);
         }
 
+        $body = $response->toPsrResponse()->getBody();
         $mime = $response->header('Content-Type');
         $declaredLength = $response->header('Content-Length');
 
@@ -94,6 +123,11 @@ final class CopySteamAvatar
         if (! $response->successful()
             || ! in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)
             || ($declaredLength !== '' && (int) $declaredLength > self::MAX_AVATAR_BYTES)) {
+            // `stream => true` means this is a live socket, not a string that
+            // has already arrived. Closed here rather than left to the
+            // destructor, on every path that gives up before reading.
+            $body->close();
+
             throw ValidationException::withMessages(['steam' => __('The Steam avatar could not be fetched.')]);
         }
 
@@ -101,13 +135,33 @@ final class CopySteamAvatar
         $path = tempnam(sys_get_temp_dir(), 'steam-avatar');
 
         if ($path === false) {
+            $body->close();
+
             throw ValidationException::withMessages(['steam' => __('The Steam avatar could not be fetched.')]);
         }
 
         try {
             // The backstop for a chunked response, or one that lies about its
             // length: the counter stops at the ceiling whatever the header said.
-            if (! $this->streamToFile($response->toPsrResponse()->getBody(), $path)) {
+            //
+            // With the body no longer arriving inside `get()`, a connection
+            // reset mid-transfer surfaces here as a RuntimeException out of
+            // `Stream::read()` — where before it was a TransferException caught
+            // above. It is the same failure and gets the same answer: no avatar
+            // change, a warning in the log, and the 'steam'-keyed message the
+            // rest of this method produces. Not a 500.
+            try {
+                $copied = $this->streamToFile($body, $path, $deadline);
+            } catch (Throwable $e) {
+                Log::warning('The Steam avatar download failed mid-stream.', [
+                    'user_id' => $user->getKey(),
+                    'exception' => $e->getMessage(),
+                ]);
+
+                $copied = false;
+            }
+
+            if (! $copied) {
                 throw ValidationException::withMessages(['steam' => __('The Steam avatar could not be fetched.')]);
             }
 
@@ -141,16 +195,22 @@ final class CopySteamAvatar
      * Copies the response body into `$path`, reading at most
      * {@see self::CHUNK_BYTES} at a time and giving up the moment more than
      * {@see self::MAX_AVATAR_BYTES} has arrived — so the worker never holds
-     * more than the ceiling, whatever the far end intended to send.
+     * more than the ceiling, whatever the far end intended to send — or the
+     * moment `$deadline` (an `hrtime(true)` reading) passes, so a body that
+     * trickles in just inside every idle window cannot hold the worker either.
      *
-     * Answers false when the body was over the ceiling (or could not be
-     * written), in which case the partial file is thrown away by the caller.
+     * Answers false when the body was over the ceiling, took too long, or could
+     * not be written, in which case the partial file is thrown away by the
+     * caller. The handle and the response stream are closed on every exit,
+     * including the one an exception takes.
      */
-    private function streamToFile(StreamInterface $body, string $path): bool
+    private function streamToFile(StreamInterface $body, string $path, int $deadline): bool
     {
         $handle = fopen($path, 'wb');
 
         if ($handle === false) {
+            $body->close();
+
             return false;
         }
 
@@ -158,6 +218,15 @@ final class CopySteamAvatar
 
         try {
             while (! $body->eof()) {
+                if (hrtime(true) > $deadline) {
+                    Log::warning('The Steam avatar download passed its deadline.', [
+                        'bytes' => $written,
+                        'seconds' => $this->timeoutSeconds,
+                    ]);
+
+                    return false;
+                }
+
                 $chunk = $body->read(self::CHUNK_BYTES);
 
                 if ($chunk === '') {
