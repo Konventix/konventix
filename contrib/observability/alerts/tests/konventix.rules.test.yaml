@@ -93,9 +93,9 @@ tests:
         groupname: konventix.app
         alertname: KonventixWebhookSilence
         exp_alerts:
-          - exp_labels: {severity: critical, team: konventix}
+          - exp_labels: {job: konventix, provider: stripe, severity: critical, team: konventix}
             exp_annotations:
-              summary: "No  webhook for 15 minutes while payments are pending"
+              summary: "No stripe webhook for 15 minutes while payments are pending"
               runbook: "docs/operations.md#konventixwebhooksilence"
 
   - interval: 1m

@@ -57,9 +57,9 @@ groups:
 
       - alert: KonventixWebhookSilence
         expr: |
-          (sum(konventix_payments_pending{job="__RELEASE__"}) > 0)
-          and on ()
           (time() - konventix_payment_webhook_last_received_timestamp_seconds{job="__RELEASE__"}) > 900
+          and on ()
+          (sum(konventix_payments_pending{job="__RELEASE__"}) > 0)
         for: 15m
         labels: {severity: critical, team: konventix}
         annotations:
