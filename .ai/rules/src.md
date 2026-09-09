@@ -24,3 +24,11 @@ Trap: never `use` another module's Eloquent model. Reference foreign entities by
 you need foreign display data, keep a read model in your own module, populated by listening
 to the owning module's events (ADR-0004). Events are the only public contract between
 modules, and their payloads carry IDs and scalars, never models.
+
+## Response headers that must reach the webhooks go on the global stack
+`SecurityHeaders` (#251) is appended in `bootstrap/app.php` with
+`$middleware->append()`, not `$middleware->web()`. The surfaces that need `nosniff`
+and the framing policy most are the ones outside the `web` group:
+`GET /media/{media}` (unauthenticated, brand origin), the three PSP webhooks under
+`api/`, `/up` and `/health-json`. HSTS is the one header gated on
+`$request->isSecure()`, so local HTTP development is unaffected.
