@@ -3,12 +3,13 @@
 #
 #   docs/ branch, with or without MR  ~1 min   the docs-only guard, secrets
 #   feature branch, no merge request  ~2 min   format, phpstan, vitest, secrets
-#   merge request                    ~16 min   + eslint, vue-tsc, the Pest suite,
+#   merge request                     ~8 min   + eslint, vue-tsc, the Pest suite,
 #                                              semgrep, dependency scanning
-#   develop, main, dev tag           ~26 min   + the image, built, pushed and
-#   (v0.4.5-dev)                               container-scanned; a tag names it
-#   candidate and release tag        ~40 min   + the cross-file SAST
-#   (v0.4.5-rc.1, v0.4.5)
+#   develop, main, dev tag           ~16 min   + the image, built beside all of
+#   (v0.4.5-dev)                               that, published after it, then
+#                                              container-scanned; a tag names it
+#   candidate and release tag        ~40 min   + the cross-file SAST, which the
+#   (v0.4.5-rc.1, v0.4.5)                      publication then waits for
 #
 # The shape follows from one measurement: gitlab-advanced-sast took 24 minutes
 # when this was written and 50 on v0.5.3, and no amount of cores changes the
@@ -37,8 +38,11 @@
 # no SAST, no secret detection, no dependency or container scanning, and it
 # fired on exactly the refs this pipeline guards — so every bar `scan:gate`
 # holds up was one push to the archived GitHub remote away from being walked
-# around. Here `build:image` needs the analysis, test and scan jobs, and
-# nothing reaches the registry without them.
+# around. Here that bar is `publish:image`: it needs the analysis, test and
+# scan jobs, and it is the only job that writes a tag anything can deploy.
+# `build:image` runs beside them instead of behind them (#261) — it builds and
+# smoke-tests, and parks the result on a path nothing pulls from, so a red test
+# still means no deployable tag was ever written.
 #
 # Ordering is a DAG, not a ladder: `needs:` is what decides what waits for what,
 # so the stage list below is the story the pipeline graph tells, not the order
@@ -63,6 +67,7 @@ stages:
   - test
   - scan
   - build
+  - publish
   - release
 
 workflow:
@@ -163,6 +168,16 @@ variables:
   # image is running" unanswerable — a push to main is found by its sha.
   IMAGE_SHA_TAG: sha-$CI_COMMIT_SHORT_SHA
 
+  # Where a built image waits for the rest of the pipeline to finish (#261).
+  # `build:image` no longer runs behind the tests, so its output exists before
+  # anything has proven the commit; it goes here, and `publish:image` copies it
+  # onto $CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG once every gate is green. Nothing
+  # deploys from this path — the chart pins `registry.sxcs.de/konventix/konventix`
+  # itself (ADR-0049 §2), and a tag under it only ever appears after the gate.
+  # The tag here is per commit, not per branch: two pipelines on develop at
+  # once would otherwise promote each other's image.
+  UNVERIFIED_IMAGE: $CI_REGISTRY_IMAGE/unverified
+
 .docker:
   image: docker:29.1.4-cli
   services:
@@ -182,6 +197,18 @@ variables:
     # daemon so the smoke test boots the very image that gets pushed.
     - docker buildx create --driver docker-container --name konventix --use
         || docker buildx use konventix
+
+# Naming an image that already exists is a registry operation, not a build:
+# `docker buildx imagetools` speaks to the registry directly and `docker login`
+# stores its credentials client-side, so neither needs a daemon. The two
+# promote jobs take this instead of `.docker` and skip starting a dind service
+# and a builder they would never use. Verified against docker:29.1.4-cli with
+# no DOCKER_HOST set: `imagetools inspect` answers, `login` fails on
+# credentials rather than on a missing daemon.
+.registry:
+  image: docker:29.1.4-cli
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
 
 .cache-pull: &cache-pull
   - key:
@@ -783,18 +810,31 @@ build:image:
         - docker/**/*
         - composer.lock
         - package-lock.json
-  needs:
-    - verify:format
-    - verify:lint
-    - analyse:php
-    - analyse:js
-    - test:php
-    - test:js
-    - scan:gate
+        # A change to this file can rewrite the build job itself, which is
+        # exactly the change most likely to break it — and the one nothing
+        # else in a merge request pipeline would catch, because the shapes
+        # that publish an image are develop's and a tag's, not a review's.
+        - .gitlab-ci.yml
+  # Nothing here comes from the rest of the pipeline: the Dockerfile builds
+  # from the source tree and generates its own routes and bundle inside. The
+  # `needs:` list this job used to carry — verify, analyse, test, scan:gate —
+  # was not a data dependency, it was the gate that kept an unproven image out
+  # of the registry, and it put the two longest jobs in the pipeline in series:
+  # ~400s of Pest suite and then ~830s of build on every push to develop.
+  #
+  # The gate is now `publish:image`, which is the job that gives the image a
+  # name something can deploy. This one starts with the pipeline and pushes
+  # only to $UNVERIFIED_IMAGE, so a red test still means no deployable tag was
+  # ever written — the image is simply left where nothing pulls from. What the
+  # change costs is a runner slot held on suspicion, and the runners are the
+  # scarce resource here; on develop and on tags the verification has already
+  # passed on the merge request, so the build is very rarely thrown away.
+  needs: []
   script:
-    # Built once, into dind's daemon, under the tag that will be pushed: the
-    # image the smoke test boots is byte-for-byte the image that reaches the
-    # registry.
+    # Built once, into dind's daemon, under the staging name: the image the
+    # smoke test boots is the one `publish:image` promotes, so what reaches a
+    # deployment is what was proven here rather than a second build of the
+    # same source.
     - |
       # Only a pipeline that publishes the image writes the cache. `mode=max`
       # uploads every intermediate layer and cost minutes of the first run's
@@ -804,10 +844,14 @@ build:image:
       if [ -n "${PUBLISH_IMAGE:-}" ]; then
         cache_to="--cache-to type=registry,ref=$CI_REGISTRY_IMAGE/cache:build,mode=max"
       fi
+      # Built and smoked under the staging name, never under the deployable
+      # one: $CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG is what a deployment pulls
+      # (ADR-0049 §1) and only `publish:image` may write it, so that name does
+      # not exist in this job even locally.
       # shellcheck disable=SC2086
       docker buildx build \
         --load \
-        --tag "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG" \
+        --tag "$UNVERIFIED_IMAGE:$IMAGE_SHA_TAG" \
         --build-arg "APP_VERSION=${CI_COMMIT_TAG:-$CI_COMMIT_SHA}" \
         --build-arg "SENTRY_RELEASE=$CI_COMMIT_SHA" \
         --cache-from "type=registry,ref=$CI_REGISTRY_IMAGE/cache:build" \
@@ -830,7 +874,7 @@ build:image:
         -e CACHE_STORE=redis -e QUEUE_CONNECTION=redis \
         -e REVERB_APP_ID= -e REVERB_APP_KEY= -e REVERB_APP_SECRET= \
         -e INERTIA_SSR_ENABLED=false -e AUTO_MIGRATE=false -e LOG_CHANNEL=stderr \
-        "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+        "$UNVERIFIED_IMAGE:$IMAGE_SHA_TAG"
       ok=
       for i in $(seq 1 20); do
         docker exec smoke curl -sf http://localhost:8000/up && ok=1 && break
@@ -884,19 +928,24 @@ build:image:
       test "$ok" = "1"
     - |
       if [ -n "${PUBLISH_IMAGE:-}" ]; then
-        docker push "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+        # Parked, not published. `publish:image` names this same manifest a
+        # second time once the gate is green, so what ships is the image the
+        # smoke test just booted rather than a second build of the source.
+        docker push "$UNVERIFIED_IMAGE:$IMAGE_SHA_TAG"
       else
-        echo "merge request pipeline: image built and smoked, deliberately not published."
+        echo "merge request pipeline: image built and smoked, deliberately neither parked nor published."
       fi
 
 container_scanning:
-  stage: build
+  stage: publish
+  # The published tag, so what is scanned is what a deployment can pull — and
+  # after `publish:image`, which deletes the staging tag it promoted from.
   needs:
-    - job: build:image
+    - job: publish:image
   variables:
     CS_IMAGE: $CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG
-  # Only where build:image published something to scan. A merge request's image
-  # never leaves the runner, so there is nothing in the registry yet.
+  # Only where an image was actually published. A merge request's image is
+  # built and smoked and goes no further, so there is nothing to scan.
   rules: *tier-published
   # The analyzer itself never fails a pipeline — the same division of labour as
   # the other four scanners: a report full of CVEs is a successful job, and a
@@ -949,7 +998,10 @@ container_scanning:
 # release tag is the ref that reaches a cluster, and there a critical OS CVE
 # stops the promotion instead of being triaged after it.
 scan:gate:image:
-  stage: build
+  # Follows `container_scanning`, which #261 moved behind `publish:image` so
+  # it scans the tag that exists rather than one that might not; a job cannot
+  # need another from a later stage, so this moves with it.
+  stage: publish
   image: alpine:3.22
   rules: *tier-release
   needs:
@@ -1012,29 +1064,98 @@ scan:gate:image:
 
       exit "$status"
 
+########## publish ##########
+#
+# The gate. Everything above proves the commit; this is the job that turns that
+# proof into a name a deployment can pull, and it carries the `needs:` list
+# `build:image` used to (#261). It copies a manifest and nothing else, so the
+# whole gate costs seconds rather than repeating a fourteen-minute build.
+#
+# On a candidate or release tag it also waits for the cross-file SAST through
+# `scan:gate`, which is the point: the tags that reach an instance other people
+# use are the ones that pay for the slow scan before they exist.
+
+publish:image:
+  stage: publish
+  extends: .registry
+  # Wherever an image is published — develop onwards. A merge request builds
+  # and smokes its image and parks nothing, so there is nothing here to promote.
+  rules: *tier-published
+  needs:
+    - verify:format
+    - verify:lint
+    - analyse:php
+    - analyse:js
+    - test:php
+    - test:js
+    - scan:gate
+    - build:image
+  script:
+    # A manifest copy, not a rebuild: the promoted tag points at the manifest
+    # `build:image` smoked, same config and same layers, which is what makes
+    # "the image that was tested is the image that ships" true rather than
+    # approximately true. Not the same *top-level* digest, though — see
+    # `release:image` below, which has always worked this way.
+    - docker buildx imagetools create
+        --tag "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+        "$UNVERIFIED_IMAGE:$IMAGE_SHA_TAG"
+    - docker buildx imagetools inspect "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
+    # The staging tag has done its job. Deleting it keeps `unverified` from
+    # growing one tag per published commit; the blobs are shared with the tag
+    # just created, so this frees names, not storage. Best effort throughout —
+    # the image is already published by this point, and a tidy-up must not be
+    # able to turn that into a failed pipeline. The job token may delete tags
+    # in its own project's registry, and nowhere else.
+    - |
+      if apk add --no-cache curl jq > /dev/null 2>&1; then
+        repo_id=$(curl -sf --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/registry/repositories?per_page=100" \
+          | jq -r '.[] | select(.name == "unverified") | .id')
+      fi
+      if [ -n "${repo_id:-}" ]; then
+        curl -s -X DELETE --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/registry/repositories/$repo_id/tags/$IMAGE_SHA_TAG" \
+          -o /dev/null -w 'delete unverified:%{http_code}\n' || true
+      else
+        echo "could not resolve the unverified repository; leaving $IMAGE_SHA_TAG in place."
+      fi
+
 ########## release ##########
 
 release:image:
   stage: release
-  extends: .docker
+  # A second manifest copy, from the tag `publish:image` created, so the
+  # release names the image that was built and smoked rather than a rebuild
+  # of the same source. Both names exist only after the gate.
+  extends: .registry
   needs:
-    - job: build:image
+    - job: publish:image
     # The promotion waits for the container scan's verdict rather than racing
-    # it (#256): before this, `needs: [build:image]` meant a release tag was
-    # promoted under a DAG without container_scanning having been looked at,
-    # and `build:image` had already pushed the sha tag besides. Optional
-    # because `scan:gate:image` is release-tier: on a dev tag it does not
-    # exist, and that tier is deliberately left exactly as it was.
+    # it (#256): before that, `needs: [build:image]` meant a release tag was
+    # promoted under a DAG without container_scanning having been looked at.
+    # The other half of that sentence — that the sha tag was pushed before any
+    # of this — is what #261 removed: `publish:image` writes it, after every
+    # gate. Optional because `scan:gate:image` is release-tier: on a dev tag
+    # it does not exist, and that tier is deliberately left exactly as it was.
     - job: scan:gate:image
       artifacts: false
       optional: true
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    # `imagetools create` copies the manifest, so the released tag and the sha
-    # tag are the same digest — the release is the image that was smoked, named
-    # a second time. This is the tag the chart pins (#82): Chart.yaml's
-    # appVersion is "0.4.0", not "v0.4.0".
+    # `imagetools create` names an existing manifest a second time — the
+    # release is the image that was built and smoked, not a rebuild of it.
+    #
+    # It does not preserve the top-level digest, and the comment here used to
+    # say it did. A single-platform manifest gets wrapped in an OCI index on
+    # the way, so the semver tag is an index around the same manifest: in the
+    # registry today `0.5.3` is sha256:4afb57ac… while `sha-33ce3925` is
+    # sha256:c263ef9c…, and the API reports no config revision or size for the
+    # semver tag at all, which is what an index looks like. The layers and the
+    # config are one object either way, so what runs is identical; only a
+    # consumer pinning the *tag's* digest would see two names. Nothing here
+    # does — the chart pins the tag (#82): Chart.yaml's appVersion is "0.4.0",
+    # not "v0.4.0".
     - docker buildx imagetools create
         --tag "$CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}"
         "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"
