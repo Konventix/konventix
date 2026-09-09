@@ -13,8 +13,8 @@ use Konventix\Identity\Actions\UpdateMembershipImage;
 use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
-use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Actions\StoreMediaUpload;
+use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\MediaUsage;
 
 /**
