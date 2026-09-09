@@ -642,9 +642,11 @@ scan:gate:
       # Code and dependency findings block at High and above. Lower severities
       # are reported in the merge request's security widget and triaged there —
       # a base image's steady drip of Low CVEs must not be able to stop every
-      # merge in the repository. The container report is judged by the same
-      # rule in `scan:gate:image`, on the release tier only; it cannot be read
-      # here, because build:image needs this job.
+      # merge in the repository. That reporting is the only waiver either gate
+      # has; there is no allowlist file. The container report is judged the same
+      # way in `scan:gate:image`, on the release tier only and at Critical
+      # rather than High (#256's criterion, and its OS packages are not ours to
+      # fix); it cannot be read here, because build:image needs this job.
       for report in gl-sast-report.json gl-dependency-scanning-report.json; do
         require "$report" || continue
         n=$(jq '[.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")] | length' "$report")
@@ -829,9 +831,19 @@ container_scanning:
 # The second half of scan:gate, and a separate job only because it cannot be
 # the same one: `build:image` has `needs: [scan:gate]`, and container scanning
 # needs the image build, so folding the container report into scan:gate would
-# close a cycle. Everything else is deliberately identical to scan:gate — the
-# same missing-report rule, the same Critical-and-High selection, the same jq —
-# because "which findings block a release" should not have two answers (#256).
+# close a cycle. The missing-report rule and the jq are scan:gate's, verbatim.
+#
+# The bar is **Critical**, which is what #256's criterion asks for, and it is
+# one notch above scan:gate's High for a reason worth writing down: scan:gate
+# judges code and dependencies this repository owns and can fix, while this
+# report is dominated by the Debian package set of
+# `dunglas/frankenphp:1-php8.5-bookworm`, which the analyzer reports including
+# CVEs Debian has not fixed. A stable base image with zero High findings is the
+# exception; blocking there would mean the only way to cut a release is to edit
+# this file on the release branch. High findings are printed here and triaged in
+# the merge request's security widget — the same waiver scan:gate uses for
+# everything under its own bar, and the only one either gate has: there is no
+# allowlist file in this repository, and neither gate may grow one alone.
 #
 # Release tier only. On develop, main and a dev tag the container scan stays
 # advisory, which is what the base image's CVE schedule demands; a candidate or
@@ -860,13 +872,25 @@ scan:gate:image:
         exit 1
       fi
 
-      n=$(jq '[.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")] | length' gl-container-scanning-report.json)
       total=$(jq '[.vulnerabilities[]] | length' gl-container-scanning-report.json)
-      echo "gl-container-scanning-report.json: $n of $total finding(s) at High or above"
-      if [ "$n" -gt 0 ]; then
-        jq -r '.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")
-               | "  [\(.severity)] \(.location.dependency.package.name // "-")  \(.name)"' \
+      high=$(jq '[.vulnerabilities[] | select(.severity == "High")] | length' gl-container-scanning-report.json)
+      critical=$(jq '[.vulnerabilities[] | select(.severity == "Critical")] | length' gl-container-scanning-report.json)
+      echo "gl-container-scanning-report.json: $critical Critical, $high High, $total finding(s) in total"
+
+      # Reported, never blocking: an unfixed Debian High must not be able to
+      # stop a release, but it must not go unseen either.
+      if [ "$high" -gt 0 ]; then
+        jq -r '.vulnerabilities[] | select(.severity == "High")
+               | "  [High] \(.location.dependency.package.name // "-")  \(.name)"' \
           gl-container-scanning-report.json
+      fi
+
+      if [ "$critical" -gt 0 ]; then
+        jq -r '.vulnerabilities[] | select(.severity == "Critical")
+               | "  [Critical] \(.location.dependency.package.name // "-")  \(.name)"' \
+          gl-container-scanning-report.json
+        echo "A Critical finding blocks the promotion. Rebuild on a fixed base image, or" >&2
+        echo "  argue the exception on #256 and move the bar in both gates, never in one." >&2
         status=1
       fi
 
