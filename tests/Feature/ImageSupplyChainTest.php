@@ -74,32 +74,60 @@ it('gates the release on the container scan', function (): void {
 
 /**
  * The bar is Critical, which is #256's criterion and one notch above
- * `scan:gate`'s High. The report is mostly the base image's Debian package set,
- * reported including CVEs Debian has not fixed; blocking at High would mean the
- * only way past `libssl3` is editing `.gitlab-ci.yml` on the release branch.
- * High is printed instead — the same "below the bar is triaged in the security
- * widget" waiver `scan:gate` uses, and the only waiver either gate has.
+ * `scan:gate`'s High — and a Critical only blocks when something can be done
+ * about it. Pipeline 1674 (v0.5.4) was stopped by seventeen Criticals in the
+ * base image's Debian packages, every one of them with an empty `solution`:
+ * no fixed version exists, so no merge in this repository could have made the
+ * gate green. A finding without a fix is now printed as informational; a
+ * Critical with one blocks. High stays informational either way.
  *
  * `CS_SEVERITY_THRESHOLD` stays unset on purpose: it would make the analyzer
  * the job that fails, and the house rule is that analyzers are green with
  * findings and a gate goes red.
  */
-it('blocks the promotion at Critical and reports High without failing', function (): void {
+it('blocks the promotion only on a Critical that has a fix', function (): void {
     $ci = (string) file_get_contents(base_path('.gitlab-ci.yml'));
 
     $gate = substr($ci, (int) strpos($ci, 'scan:gate:image:'));
     $gate = substr($gate, 0, (int) strpos($gate, 'release:image:'));
 
-    expect($gate)->toContain('select(.severity == "Critical")')
+    expect($gate)->toContain('select(.severity == "Critical" and ((.solution // "") != ""))')
+        ->and($gate)->toContain('select(.severity == "Critical" and ((.solution // "") == ""))')
         ->and($gate)->toContain('select(.severity == "High")')
-        // Counted separately, and only the Critical branch sets the exit status.
-        ->and($gate)->toMatch('/critical=\$\(jq/')
-        ->and($gate)->toMatch('/if \[ "\$critical" -gt 0 \]; then(?:.*\n)*?\s+status=1/')
+        // Counted separately, and only the branch with a fix sets the exit
+        // status. The unfixed ones are printed under their own heading.
+        ->and($gate)->toMatch('/blocking=\$\(jq/')
+        ->and($gate)->toMatch('/unfixed=\$\(jq/')
+        ->and($gate)->toContain('unfixed, not blocking')
+        ->and($gate)->toMatch('/if \[ "\$blocking" -gt 0 \]; then(?:.*\n)*?\s+status=1/')
+        ->and($gate)->not->toMatch('/if \[ "\$unfixed" -gt 0 \]; then(?:(?!fi)[\s\S])*status=1/')
         ->and($gate)->not->toMatch('/if \[ "\$high" -gt 0 \]; then(?:(?!fi)[\s\S])*status=1/')
         ->and($gate)->not->toContain('CS_SEVERITY_THRESHOLD');
 
-    // The other gate is unmoved: code and dependencies still block at High.
-    expect($ci)->toContain('select(.severity == "Critical" or .severity == "High")');
+    // The container report carries no `name`; printing it is what put a column
+    // of `null` in pipeline 1674's log. The CVE id comes out of `identifiers`.
+    expect($gate)->toContain('select(.type == "cve")')
+        ->and($gate)->not->toContain('\(.name)');
+});
+
+/**
+ * The same rule, in the other gate: a dependency finding at High or above
+ * blocks when the analyzer names a fixed version and is informational when it
+ * does not. SAST is left alone — a code finding has no fix to wait for, the
+ * fix is the change. #256 says the rule moves in both gates or in neither.
+ */
+it('applies the same unfixed rule to the dependency report and leaves sast alone', function (): void {
+    $ci = (string) file_get_contents(base_path('.gitlab-ci.yml'));
+
+    $gate = substr($ci, (int) strpos($ci, 'scan:gate:'));
+    $gate = substr($gate, 0, (int) strpos($gate, 'build:image:'));
+
+    expect($gate)->toContain('select((.severity == "Critical" or .severity == "High") and ((.solution // "") != ""))')
+        ->and($gate)->toContain('select((.severity == "Critical" or .severity == "High") and ((.solution // "") == ""))')
+        ->and($gate)->toContain('unfixed, not blocking')
+        // SAST keeps the plain severity selection and its own report name.
+        ->and($gate)->toContain('select(.severity == "Critical" or .severity == "High")')
+        ->and($gate)->toContain('gl-sast-report.json');
 });
 
 it('makes the release promotion wait for that gate', function (): void {
