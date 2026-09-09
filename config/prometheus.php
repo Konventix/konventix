@@ -42,7 +42,11 @@ return [
      * which is what the test suite and a one-off artisan run want.
      */
     'storage' => env('PROMETHEUS_STORAGE', 'redis'),
-    'redis_connection' => 'default',
+
+    // The dedicated `metrics` connection (config/database.php), not
+    // `default`: it carries no phpredis OPT_PREFIX, which promphp's RedisNg
+    // adapter cannot see through when it collects (ADR-0059).
+    'redis_connection' => 'metrics',
 
     'http' => [
         /*
