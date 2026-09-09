@@ -6,6 +6,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Context;
 use Konventix\Platform\Observability\Metrics;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
@@ -29,6 +30,10 @@ final class RecordHttpMetrics
     public function handle(Request $request, Closure $next): Response
     {
         $startedAt = microtime(true);
+        // The same start point the http.request summary record in
+        // ObservabilityServiceProvider reads (ADR-0059), so the histogram
+        // and the summary's duration_ms measure from one place.
+        Context::addHidden('request_started_at', $startedAt);
 
         $response = $next($request);
 

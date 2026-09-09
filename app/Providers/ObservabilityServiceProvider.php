@@ -10,6 +10,8 @@ use Illuminate\Auth\Events\Authenticated;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
+use Illuminate\Console\Events\ScheduledTaskStarting;
+use Illuminate\Console\Scheduling\Event as ScheduledEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Foundation\Http\Events\RequestHandled;
@@ -406,42 +408,52 @@ class ObservabilityServiceProvider extends ServiceProvider
     private function writeSummaryRecords(): void
     {
         Event::listen(RequestHandled::class, function (RequestHandled $event): void {
-            if (in_array($event->request->path(), RequestContext::SKIPPED_PATHS, true)) {
-                return;
-            }
+            $this->quietly(function () use ($event): void {
+                if (in_array($event->request->path(), RequestContext::SKIPPED_PATHS, true)) {
+                    return;
+                }
 
-            $startedAt = (float) $event->request->server('REQUEST_TIME_FLOAT', microtime(true));
+                // The same start point RecordHttpMetrics timed its histogram
+                // from (ADR-0059): `Context::addHidden` there is set before
+                // routing or rendering runs. REQUEST_TIME_FLOAT is a
+                // fallback only, for the case that middleware never ran
+                // (a request the router itself turned away before it).
+                $hiddenStartedAt = Context::getHidden('request_started_at');
+                $startedAt = is_float($hiddenStartedAt)
+                    ? $hiddenStartedAt
+                    : (float) $event->request->server('REQUEST_TIME_FLOAT', microtime(true));
 
-            Log::info('http.request', [
-                'method' => $event->request->method(),
-                'route' => $event->request->route()?->getName(),
-                'status' => $event->response->getStatusCode(),
-                'duration_ms' => round((microtime(true) - $startedAt) * 1000, 1),
-            ]);
+                Log::info('http.request', [
+                    'method' => $event->request->method(),
+                    'route' => $event->request->route()?->getName(),
+                    'status' => $event->response->getStatusCode(),
+                    'duration_ms' => round((microtime(true) - $startedAt) * 1000, 1),
+                ]);
+            });
         });
 
         Event::listen(JobProcessed::class, function (JobProcessed $event): void {
-            Log::info('queue.job', $this->jobSummary($event->job, 'processed'));
+            $this->quietly(fn () => Log::info('queue.job', $this->jobSummary($event->job, 'processed')));
         });
 
         Event::listen(JobFailed::class, function (JobFailed $event): void {
-            Log::error('queue.job', $this->jobSummary($event->job, 'failed') + ['exception' => $event->exception]);
+            $this->quietly(fn () => Log::error('queue.job', $this->jobSummary($event->job, 'failed') + ['exception' => $event->exception]));
+        });
+
+        // ScheduledTaskFailed carries no runtime, so the summary's duration
+        // for either outcome comes from a start time stamped here — one
+        // measurement, shared by both listeners below via
+        // scheduleTaskSummary().
+        Event::listen(ScheduledTaskStarting::class, function (): void {
+            Context::addHidden('schedule_task_started_at', microtime(true));
         });
 
         Event::listen(ScheduledTaskFinished::class, function (ScheduledTaskFinished $event): void {
-            Log::debug('schedule.task', [
-                'command' => $event->task->getSummaryForDisplay(),
-                'exit_code' => $event->task->exitCode,
-                'duration_ms' => round($event->runtime * 1000, 1),
-            ]);
+            $this->quietly(fn () => Log::debug('schedule.task', $this->scheduleTaskSummary($event->task)));
         });
 
         Event::listen(ScheduledTaskFailed::class, function (ScheduledTaskFailed $event): void {
-            Log::error('schedule.task', [
-                'command' => $event->task->getSummaryForDisplay(),
-                'exit_code' => $event->task->exitCode,
-                'exception' => $event->exception,
-            ]);
+            $this->quietly(fn () => Log::error('schedule.task', $this->scheduleTaskSummary($event->task) + ['exception' => $event->exception]));
         });
     }
 
@@ -455,6 +467,18 @@ class ObservabilityServiceProvider extends ServiceProvider
             'queue' => self::jobQueueName($job),
             'outcome' => $outcome,
             'attempts' => $job->attempts(),
+            'duration_ms' => is_float($startedAt) ? round((microtime(true) - $startedAt) * 1000, 1) : null,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function scheduleTaskSummary(ScheduledEvent $task): array
+    {
+        $startedAt = Context::getHidden('schedule_task_started_at');
+
+        return [
+            'command' => $task->getSummaryForDisplay(),
+            'exit_code' => $task->exitCode,
             'duration_ms' => is_float($startedAt) ? round((microtime(true) - $startedAt) * 1000, 1) : null,
         ];
     }

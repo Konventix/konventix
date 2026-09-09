@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 use App\Observability\RequestContext;
 use Illuminate\Console\Command;
+use Illuminate\Console\Events\ScheduledTaskFailed;
+use Illuminate\Console\Events\ScheduledTaskStarting;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel as ConsoleKernel;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -103,7 +106,10 @@ it('writes one http.request summary record with method, route, status and durati
         ->and($summary[0]->context['method'])->toBe('GET')
         ->and($summary[0]->context['route'])->toBe('structured.probe')
         ->and($summary[0]->context['status'])->toBe(200)
-        ->and($summary[0]->context['duration_ms'])->toBeFloat();
+        ->and($summary[0]->context['duration_ms'])->toBeFloat()
+        // Below the request's own boot, not a stale REQUEST_TIME_FLOAT the
+        // fallback would leave behind (ADR-0059's ruling on measurement).
+        ->and($summary[0]->context['duration_ms'])->toBeLessThan(5000.0);
 });
 
 it('writes no summary record for the diagnostics endpoints', function (): void {
@@ -167,4 +173,19 @@ it('configures the stderr channel to include stack traces', function (): void {
     $json = $formatter->format(new LogRecord(now()->toDateTimeImmutable(), 'test', Level::Error, 'boom', ['exception' => new RuntimeException('boom')]));
 
     expect($json)->toContain('"trace"');
+});
+
+it('reports a failed scheduled task with its command, exit code and duration', function (): void {
+    $handler = structuredLogHandler();
+    $task = app(Schedule::class)->command('inspire');
+
+    event(new ScheduledTaskStarting($task));
+    event(new ScheduledTaskFailed($task, new RuntimeException('scheduled probe boom')));
+
+    $record = structuredRecords($handler, 'schedule.task')[0];
+
+    expect($record->level->getName())->toBe('ERROR')
+        ->and($record->context['command'])->toBeString()
+        ->and($record->context)->toHaveKey('exit_code')
+        ->and($record->context['duration_ms'])->toBeFloat();
 });
