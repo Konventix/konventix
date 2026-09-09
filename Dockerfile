@@ -61,6 +61,38 @@ RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 ########## build: composer, wayfinder, vite ##########
 FROM toolchain AS build
 
+# Every `php artisan` in this stage boots the framework — key:generate,
+# storage:link, and wayfinder:generate, which the Vite plugin shells out to.
+# `.env.example`, copied in below, points DB_HOST at `pgsql` and REDIS_HOST at
+# `redis` and puts the cache, session and queue stores on redis. Inside a
+# build there are no such hosts, so every one of those boots stalls on name
+# resolution before giving up.
+#
+# That is the largest single cost in the image build, and the build says so
+# itself: `[PLUGIN_TIMINGS] … @laravel/vite-plugin-wayfinder buildStart (97%,
+# 214.5s, 1 call)`. `build:ssr` runs Vite twice, so `npm run build:ssr` took
+# 449s of a 776s build (pipeline 1689). Timed directly on the same command in
+# the same image: 116s with the compose hostnames, 1s with the five values
+# below.
+#
+# It is the fix .gitlab-ci.yml already applies to its service-less jobs
+# (`.offline-services`, `.ai/rules/ci.md`): a loopback address refuses at once
+# instead of timing out, and the stores never leave memory. Nothing in this
+# stage runs application code that needs a database or a cache — composer,
+# wayfinder and Vite read files.
+#
+# None of it reaches the artifact. The runtime stage is a separate `FROM`;
+# `.env` is deleted at the end of this stage; the only thing carried forward,
+# `/opt/bootstrap-cache`, holds package discovery, which does not vary with
+# these; and Vite bakes only `VITE_*`. Laravel's Dotenv is immutable, so a real
+# environment variable wins over the `.env` copied in below — which is what
+# makes setting them here enough.
+ENV DB_HOST=127.0.0.1 \
+    REDIS_HOST=127.0.0.1 \
+    CACHE_STORE=array \
+    SESSION_DRIVER=array \
+    QUEUE_CONNECTION=sync
+
 COPY . .
 
 # --no-dev: Telescope and all dev tooling are absent from the artifact.
