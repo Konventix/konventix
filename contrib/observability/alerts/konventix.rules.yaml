@@ -49,7 +49,7 @@ groups:
         expr: |
           konventix_waiting_room_depth{job="__RELEASE__"} > 0
           and on (brand) (time() - konventix_waiting_room_last_admission_timestamp_seconds{job="__RELEASE__"}) > 180
-        for: 3m
+        for: 1m
         labels: {severity: critical, team: konventix}
         annotations:
           summary: "Waiting room for {{ $labels.brand }} is not admitting"
@@ -60,7 +60,7 @@ groups:
           (time() - konventix_payment_webhook_last_received_timestamp_seconds{job="__RELEASE__"}) > 900
           and on ()
           (sum(konventix_payments_pending{job="__RELEASE__"}) > 0)
-        for: 15m
+        for: 1m
         labels: {severity: critical, team: konventix}
         annotations:
           summary: "No {{ $labels.provider }} webhook for 15 minutes while payments are pending"
@@ -110,7 +110,7 @@ groups:
 
       - alert: KonventixScheduleStale
         expr: (time() - konventix_schedule_last_heartbeat_timestamp_seconds{job="__RELEASE__"}) > 300
-        for: 5m
+        for: 1m
         labels: {severity: critical, team: konventix}
         annotations:
           summary: "The scheduler has not ticked for 5 minutes"
