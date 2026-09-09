@@ -49,3 +49,35 @@ it('publishes the image from no workflow but the gitlab pipeline', function (): 
     // Named rather than asserted one file at a time, so the failure says which.
     expect($offenders)->toBe([]);
 });
+
+/**
+ * #256: the container scan could never block a release. `allow_failure: true`
+ * meant a report full of CVEs was a green job, and `release:image` carried
+ * `needs: [build:image]` — under a DAG the release tag was promoted without
+ * the scan's result having been looked at at all.
+ *
+ * The fix mirrors what the other four scanners already have: the analyzer
+ * stays advisory and a gate job goes red. It cannot be `scan:gate` itself,
+ * because `build:image` needs that job and container scanning needs the image
+ * — so it is a sibling on the release tier, with the same rule.
+ */
+it('gates the release on the container scan at the same severity as every other scanner', function (): void {
+    $ci = (string) file_get_contents(base_path('.gitlab-ci.yml'));
+
+    expect($ci)->toContain('scan:gate:image:')
+        // Release tier: a dev tag stays advisory, a candidate or release tag
+        // does not.
+        ->and($ci)->toMatch('/scan:gate:image:.*\n(?:.*\n)*?\s+rules: \*tier-release\b/')
+        // The report has to be downloadable, or the gate reads nothing.
+        ->and($ci)->toContain('- gl-container-scanning-report.json')
+        // Critical and High, exactly as scan:gate judges code and dependencies.
+        ->and(substr_count($ci, 'select(.severity == "Critical" or .severity == "High")'))->toBeGreaterThan(1);
+});
+
+it('makes the release promotion wait for that gate', function (): void {
+    $ci = (string) file_get_contents(base_path('.gitlab-ci.yml'));
+
+    $release = substr($ci, (int) strpos($ci, 'release:image:'));
+
+    expect($release)->toMatch('/needs:(?:.*\n)*?\s+- job: scan:gate:image/');
+});

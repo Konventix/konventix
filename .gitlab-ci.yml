@@ -642,7 +642,9 @@ scan:gate:
       # Code and dependency findings block at High and above. Lower severities
       # are reported in the merge request's security widget and triaged there —
       # a base image's steady drip of Low CVEs must not be able to stop every
-      # merge in the repository.
+      # merge in the repository. The container report is judged by the same
+      # rule in `scan:gate:image`, on the release tier only; it cannot be read
+      # here, because build:image needs this job.
       for report in gl-sast-report.json gl-dependency-scanning-report.json; do
         require "$report" || continue
         n=$(jq '[.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")] | length' "$report")
@@ -789,17 +791,88 @@ container_scanning:
   # Only where build:image published something to scan. A merge request's image
   # never leaves the runner, so there is nothing in the registry yet.
   rules: *tier-published
-  # Not in scan:gate: the base image's OS packages produce findings on their own
-  # schedule, and a Debian CVE published overnight must not block every merge.
-  # It reports into the security dashboard, where it is triaged.
+  # The analyzer itself never fails a pipeline — the same division of labour as
+  # the other four scanners: a report full of CVEs is a successful job, and a
+  # gate job is what goes red. On develop, main and a dev tag nothing reads this
+  # report and the base image's steady drip of Debian CVEs blocks nothing; on a
+  # release tag `scan:gate:image` reads it and blocks the promotion (#256).
   allow_failure: true
+  # The template lists the report only under artifacts:reports, and a
+  # report-type artifact cannot be downloaded by a later job — the same trap
+  # that left dependency scanning unchecked for a whole run. Re-declaring
+  # artifacts replaces the key wholesale, so the reports are repeated here or
+  # the security dashboard loses them.
+  artifacts:
+    access: developer
+    reports:
+      container_scanning: gl-container-scanning-report.json
+      cyclonedx: ['**/gl-sbom-*.cdx.json']
+    paths:
+      - gl-container-scanning-report.json
+      - '**/gl-sbom-*.cdx.json'
+
+# The second half of scan:gate, and a separate job only because it cannot be
+# the same one: `build:image` has `needs: [scan:gate]`, and container scanning
+# needs the image build, so folding the container report into scan:gate would
+# close a cycle. Everything else is deliberately identical to scan:gate — the
+# same missing-report rule, the same Critical-and-High selection, the same jq —
+# because "which findings block a release" should not have two answers (#256).
+#
+# Release tier only. On develop, main and a dev tag the container scan stays
+# advisory, which is what the base image's CVE schedule demands; a candidate or
+# release tag is the ref that reaches a cluster, and there a critical OS CVE
+# stops the promotion instead of being triaged after it.
+scan:gate:image:
+  stage: build
+  image: alpine:3.22
+  rules: *tier-release
+  needs:
+    - job: container_scanning
+      artifacts: true
+  before_script:
+    - apk add --no-cache jq
+  script:
+    - |
+      set -eu
+      status=0
+
+      # A scanner that cannot hand over its findings is indistinguishable from
+      # one that found nothing, so it counts as the worse of the two.
+      if [ ! -f gl-container-scanning-report.json ]; then
+        echo "MISSING: gl-container-scanning-report.json — no scanner handed this over." >&2
+        echo "  Check that container_scanning ran and lists the file under artifacts:paths;" >&2
+        echo "  a report declared only under artifacts:reports cannot be downloaded." >&2
+        exit 1
+      fi
+
+      n=$(jq '[.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")] | length' gl-container-scanning-report.json)
+      total=$(jq '[.vulnerabilities[]] | length' gl-container-scanning-report.json)
+      echo "gl-container-scanning-report.json: $n of $total finding(s) at High or above"
+      if [ "$n" -gt 0 ]; then
+        jq -r '.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")
+               | "  [\(.severity)] \(.location.dependency.package.name // "-")  \(.name)"' \
+          gl-container-scanning-report.json
+        status=1
+      fi
+
+      exit "$status"
 
 ########## release ##########
 
 release:image:
   stage: release
   extends: .docker
-  needs: [build:image]
+  needs:
+    - job: build:image
+    # The promotion waits for the container scan's verdict rather than racing
+    # it (#256): before this, `needs: [build:image]` meant a release tag was
+    # promoted under a DAG without container_scanning having been looked at,
+    # and `build:image` had already pushed the sha tag besides. Optional
+    # because `scan:gate:image` is release-tier: on a dev tag it does not
+    # exist, and that tier is deliberately left exactly as it was.
+    - job: scan:gate:image
+      artifacts: false
+      optional: true
   rules:
     - if: $CI_COMMIT_TAG
   script:
