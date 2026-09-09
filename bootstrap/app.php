@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Middleware\AssignCorrelationId;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RecordHttpMetrics;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\VerifyHealthSecret;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
@@ -40,11 +41,9 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Every request gets its correlation ID before anything else runs,
-        // so the very first log line of a request already carries it
-        // (ADR-0056). Global rather than `web`: health probes, PSP webhooks
-        // and the router's own 404s are requests too.
-        $middleware->prepend(AssignCorrelationId::class);
+        // Order matters: the correlation ID first, so the metrics middleware
+        // and everything after it log under it (ADR-0056, ADR-0059).
+        $middleware->prepend([AssignCorrelationId::class, RecordHttpMetrics::class]);
 
         // Security headers on every PHP response, for the same reason the
         // correlation ID is global (#251): the surfaces that need them most —

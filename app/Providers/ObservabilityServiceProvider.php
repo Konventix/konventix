@@ -6,6 +6,8 @@ namespace App\Providers;
 
 use App\Observability\CorrelationId;
 use App\Observability\MetricCatalog;
+use App\Observability\MetricDefinition;
+use App\Observability\MetricKind;
 use App\Observability\Metrics;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
@@ -168,6 +170,12 @@ class ObservabilityServiceProvider extends ServiceProvider
      */
     private function registerHostMetrics(): void
     {
+        $this->app->make(MetricCatalog::class)->register(
+            new MetricDefinition('http_requests_total', MetricKind::Counter, 'Requests handled, by method, response status and route name.', ['method', 'status', 'route']),
+            new MetricDefinition('http_request_duration_seconds', MetricKind::Histogram, 'Request duration as seen by the application, for the allowlisted routes and `other`.', ['route'], (array) config('prometheus.http.buckets')),
+            new MetricDefinition('build_info', MetricKind::Gauge, 'Always 1; the version label is the deployed image tag.', ['version']),
+        );
+
         Prometheus::addGauge('Build info')
             ->name('build_info')
             ->label('version')
