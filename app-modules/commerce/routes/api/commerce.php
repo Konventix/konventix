@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use Konventix\Commerce\Http\Controllers\Api\MollieWebhookController;
 use Konventix\Commerce\Http\Controllers\Api\StripeWebhookController;
 use Konventix\Commerce\Http\Controllers\Api\UnzerWebhookController;
+use Konventix\Commerce\Http\Middleware\RecordWebhookMetrics;
 
 /*
  * Commerce's stateless machine surface (ADR-0039): PSP webhooks. No
@@ -26,7 +27,7 @@ use Konventix\Commerce\Http\Controllers\Api\UnzerWebhookController;
  * organizer's quota rather than merely noise in the log.
  */
 Route::prefix('commerce/webhooks')
-    ->middleware('throttle:commerce-webhooks')
+    ->middleware(['throttle:commerce-webhooks', RecordWebhookMetrics::class])
     ->name('api.commerce.webhooks.')
     ->group(function (): void {
         Route::post('stripe', StripeWebhookController::class)->name('stripe');
