@@ -112,6 +112,12 @@ return [
                 'stream' => 'php://stderr',
             ],
             'formatter' => env('LOG_STDERR_FORMATTER'),
+            // Both formatters Laravel offers here take this constructor
+            // argument. Without it an exception record is class, message,
+            // file and line — enough to count, not enough to fix (ADR-0059).
+            'formatter_with' => [
+                'includeStacktraces' => true,
+            ],
             'processors' => [PsrLogMessageProcessor::class],
         ],
 

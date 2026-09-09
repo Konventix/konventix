@@ -275,6 +275,7 @@ services:
         volumes:
             - './contrib/grafana/provisioning:/etc/grafana/provisioning:ro'
             - './contrib/grafana/dashboards:/var/lib/grafana/dashboards:ro'
+            - './contrib/observability/dashboards:/var/lib/grafana/dashboards-konventix:ro'
             - 'prod-grafana:/var/lib/grafana'
         networks:
             - konventix

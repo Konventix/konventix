@@ -1,0 +1,153 @@
+# Konventix alert rules (ADR-0059). Source of truth; the Helm chart vendors
+# a copy and substitutes __RELEASE__ (Helm release name) and __NAMESPACE__.
+# Severity is warning or critical: the platform's Alertmanager blackholes
+# info. Every rule carries team=konventix so a route can pick them up.
+# Runbook anchors point into docs/operations.md.
+groups:
+  - name: konventix.app
+    rules:
+      - alert: KonventixMetricsDown
+        expr: up{job="__RELEASE__"} == 0
+        for: 5m
+        labels: {severity: critical, team: konventix}
+        annotations:
+          summary: "Konventix metrics endpoint is not answering"
+          runbook: "docs/operations.md#konventixmetricsdown"
+
+      - alert: KonventixHealthCheckCritical
+        expr: konventix_health_check_status{job="__RELEASE__", check=~"Database|Redis|Horizon|Schedule|WaitingRoom"} >= 2
+        for: 5m
+        labels: {severity: critical, team: konventix}
+        annotations:
+          summary: "Health check {{ $labels.check }} is failing"
+          runbook: "docs/operations.md#konventixhealthcheckcritical"
+
+      - alert: KonventixHealthCheckFailed
+        expr: konventix_health_check_status{job="__RELEASE__", check!~"Database|Redis|Horizon|Schedule|WaitingRoom"} >= 2
+        for: 15m
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "Health check {{ $labels.check }} is failing"
+          runbook: "docs/operations.md#konventixhealthcheckfailed"
+
+      - alert: KonventixQueueJobsFailing
+        expr: increase(konventix_queue_jobs_failed_total{job="__RELEASE__"}[5m]) > 0
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "{{ $labels.job_class }} failed on queue {{ $labels.queue }}"
+          runbook: "docs/operations.md#konventixqueuejobsfailing"
+
+      - alert: KonventixQueueBacklog
+        expr: konventix_queue_oldest_pending_job_age{job="__RELEASE__"} > 60
+        for: 10m
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "Queue {{ $labels.queue }} has waited over a minute for 10 minutes"
+          runbook: "docs/operations.md#konventixqueuebacklog"
+
+      - alert: KonventixWaitingRoomStuck
+        expr: |
+          konventix_waiting_room_depth{job="__RELEASE__"} > 0
+          and on (brand) (time() - konventix_waiting_room_last_admission_timestamp_seconds{job="__RELEASE__"}) > 180
+        for: 1m
+        labels: {severity: critical, team: konventix}
+        annotations:
+          summary: "Waiting room for {{ $labels.brand }} is not admitting"
+          runbook: "docs/operations.md#konventixwaitingroomstuck"
+
+      - alert: KonventixWebhookSilence
+        expr: |
+          (time() - konventix_payment_webhook_last_received_timestamp_seconds{job="__RELEASE__"}) > 900
+          and on ()
+          (sum(konventix_payments_pending{job="__RELEASE__"}) > 0)
+        for: 1m
+        labels: {severity: critical, team: konventix}
+        annotations:
+          summary: "No {{ $labels.provider }} webhook for 15 minutes while payments are pending"
+          runbook: "docs/operations.md#konventixwebhooksilence"
+
+      - alert: KonventixPaymentFailureRate
+        expr: |
+          sum by (provider) (increase(konventix_payments_total{job="__RELEASE__", outcome="failed"}[10m]))
+          /
+          sum by (provider) (increase(konventix_payments_total{job="__RELEASE__", outcome=~"failed|received"}[10m]))
+          > 0.3
+          and sum by (provider) (increase(konventix_payments_total{job="__RELEASE__", outcome=~"failed|received"}[10m])) >= 10
+        for: 10m
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "Over 30% of {{ $labels.provider }} payments failed in 10 minutes"
+          runbook: "docs/operations.md#konventixpaymentfailurerate"
+
+      - alert: KonventixHttp5xxRate
+        expr: |
+          sum(increase(konventix_http_requests_total{job="__RELEASE__", status=~"5.."}[5m]))
+          /
+          sum(increase(konventix_http_requests_total{job="__RELEASE__"}[5m]))
+          > 0.05
+          and sum(increase(konventix_http_requests_total{job="__RELEASE__"}[5m])) >= 20
+        for: 5m
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "Over 5% of requests answered 5xx"
+          runbook: "docs/operations.md#konventixhttp5xxrate"
+
+      - alert: KonventixCheckoutSlow
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(konventix_http_request_duration_seconds_bucket{job="__RELEASE__", route="commerce.cart.checkout"}[10m]))) > 3
+        for: 10m
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "Checkout p95 above 3 seconds"
+          runbook: "docs/operations.md#konventixcheckoutslow"
+
+      - alert: KonventixErrorsLogged
+        expr: increase(konventix_log_records_total{job="__RELEASE__", level=~"error|critical|alert|emergency"}[5m]) > 0
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "The application logged {{ $labels.level }} records"
+          runbook: "docs/operations.md#konventixerrorslogged"
+
+      - alert: KonventixScheduleStale
+        expr: (time() - konventix_schedule_last_heartbeat_timestamp_seconds{job="__RELEASE__"}) > 300
+        for: 1m
+        labels: {severity: critical, team: konventix}
+        annotations:
+          summary: "The scheduler has not ticked for 5 minutes"
+          runbook: "docs/operations.md#konventixschedulestale"
+
+  - name: konventix.platform
+    rules:
+      - alert: KonventixDatabaseBackupMissing
+        expr: |
+          (time() - max(cnpg_collector_last_available_backup_timestamp{namespace="__NAMESPACE__", pod=~"__RELEASE__-db-.*"})) > 26 * 3600
+        for: 30m
+        labels: {severity: critical, team: konventix}
+        annotations:
+          summary: "No database backup completed in 26 hours"
+          runbook: "docs/operations.md#konventixdatabasebackupmissing"
+
+      - alert: KonventixWalArchivingFailing
+        expr: |
+          cnpg_pg_stat_archiver_last_failed_time{namespace="__NAMESPACE__", pod=~"__RELEASE__-db-.*"}
+          > cnpg_pg_stat_archiver_last_archived_time{namespace="__NAMESPACE__", pod=~"__RELEASE__-db-.*"}
+        for: 15m
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "WAL archiving is failing on {{ $labels.pod }}"
+          runbook: "docs/operations.md#konventixwalarchivingfailing"
+
+      - alert: KonventixPodsRestarting
+        expr: increase(kube_pod_container_status_restarts_total{namespace="__NAMESPACE__", pod=~"__RELEASE__-.*"}[30m]) > 3
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "{{ $labels.pod }} restarted more than 3 times in 30 minutes"
+          runbook: "docs/operations.md#konventixpodsrestarting"
+
+      - alert: KonventixRoleUnavailable
+        expr: kube_deployment_status_replicas_unavailable{namespace="__NAMESPACE__", deployment=~"__RELEASE__-.*"} > 0
+        for: 10m
+        labels: {severity: critical, team: konventix}
+        annotations:
+          summary: "{{ $labels.deployment }} has unavailable replicas"
+          runbook: "docs/operations.md#konventixroleunavailable"

@@ -1,0 +1,510 @@
+{
+  "uid": "konventix-logs",
+  "title": "Konventix Logs",
+  "description": "Errors, request records and one correlation id end to end, from VictoriaLogs. No local backend on sail. Source: konventix-poc contrib/observability (ADR-0059).",
+  "tags": [
+    "konventix",
+    "logs"
+  ],
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "templating": {
+    "list": [
+      {
+        "type": "textbox",
+        "name": "namespace",
+        "label": "Namespace",
+        "query": "konventix",
+        "current": {
+          "text": "konventix",
+          "value": "konventix"
+        },
+        "options": [
+          {
+            "text": "konventix",
+            "value": "konventix",
+            "selected": true
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "type": "textbox",
+        "name": "release",
+        "label": "Helm release",
+        "query": "konventix",
+        "current": {
+          "text": "konventix",
+          "value": "konventix"
+        },
+        "options": [
+          {
+            "text": "konventix",
+            "value": "konventix",
+            "selected": true
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "type": "textbox",
+        "name": "correlation_id",
+        "label": "Correlation id",
+        "query": "paste-an-id",
+        "current": {
+          "text": "paste-an-id",
+          "value": "paste-an-id"
+        },
+        "options": [
+          {
+            "text": "paste-an-id",
+            "value": "paste-an-id",
+            "selected": true
+          }
+        ],
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Errors",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Error records by exception class",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "expr": "kubernetes.pod_namespace:$namespace AND \"kubernetes.pod_labels.app.kubernetes.io/instance\":$release AND level_name:ERROR | stats by (context.exception.class) count() as errors",
+          "queryType": "statsRange"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 2
+    },
+    {
+      "type": "timeseries",
+      "title": "Warning and error records by container",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "expr": "kubernetes.pod_namespace:$namespace AND \"kubernetes.pod_labels.app.kubernetes.io/instance\":$release AND level_name:in(WARNING, ERROR, CRITICAL, ALERT, EMERGENCY) | stats by (kubernetes.container_name) count() as records",
+          "queryType": "statsRange"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 3
+    },
+    {
+      "type": "logs",
+      "title": "Latest error records",
+      "gridPos": {
+        "w": 24,
+        "h": 12,
+        "x": 0,
+        "y": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "expr": "kubernetes.pod_namespace:$namespace AND \"kubernetes.pod_labels.app.kubernetes.io/instance\":$release AND level_name:in(ERROR, CRITICAL, ALERT, EMERGENCY) | sort by (_time) desc | limit 100",
+          "queryType": "instant"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "id": 4
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Requests",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by status",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 0,
+        "y": 22
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "expr": "kubernetes.pod_namespace:$namespace AND \"kubernetes.pod_labels.app.kubernetes.io/instance\":$release AND _msg:\"http.request\" | stats by (context.status) count() as requests",
+          "queryType": "statsRange"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Request duration p50 and p95 by route",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 12,
+        "y": 22
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "expr": "kubernetes.pod_namespace:$namespace AND \"kubernetes.pod_labels.app.kubernetes.io/instance\":$release AND _msg:\"http.request\" | stats by (context.route) quantile(0.5, context.duration_ms) as p50",
+          "queryType": "statsRange"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "expr": "kubernetes.pod_namespace:$namespace AND \"kubernetes.pod_labels.app.kubernetes.io/instance\":$release AND _msg:\"http.request\" | stats by (context.route) quantile(0.95, context.duration_ms) as p95",
+          "queryType": "statsRange"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "Failed jobs by class",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 0,
+        "y": 30
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "expr": "kubernetes.pod_namespace:$namespace AND \"kubernetes.pod_labels.app.kubernetes.io/instance\":$release AND _msg:\"queue.job\" AND context.outcome:failed | stats by (context.job) count() as failed",
+          "queryType": "statsRange"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 8
+    },
+    {
+      "type": "timeseries",
+      "title": "Failed scheduled tasks",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 12,
+        "y": 30
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "expr": "kubernetes.pod_namespace:$namespace AND \"kubernetes.pod_labels.app.kubernetes.io/instance\":$release AND _msg:\"schedule.task\" AND level_name:ERROR | stats by (context.command) count() as failed",
+          "queryType": "statsRange"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 9
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "One correlation id",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "logs",
+      "title": "Ingress access line, request record, every record of the request and its jobs",
+      "gridPos": {
+        "w": 24,
+        "h": 12,
+        "x": 0,
+        "y": 39
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "VictoriaLogs"
+          },
+          "expr": "(kubernetes.pod_namespace:$namespace AND \"kubernetes.pod_labels.app.kubernetes.io/instance\":$release AND extra.correlation_id:\"$correlation_id\") OR (kubernetes.pod_namespace:ingress-public AND kubernetes.container_name:controller AND _msg:~\"$correlation_id\") | sort by (_time) | limit 500",
+          "queryType": "instant"
+        }
+      ],
+      "description": "Nothing shows until you replace the default correlation id above with a real one: paste the X-Request-ID a user quotes, or the \"Reference\" from an error page.",
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "id": 11
+    }
+  ]
+}

@@ -68,6 +68,13 @@
              StripeWebhookTest and WebhookThrottleTest. -->
         <env name="STRIPE_SECRET" value=""/>
         <env name="STRIPE_WEBHOOK_SECRET" value=""/>
+        <!-- .env.example ships a real value (#173) so a fresh developer's
+             local /metrics works out of the box; HealthAndBackupTest asserts
+             the endpoint is unregistered with no secret configured, so the
+             suite needs its own empty override the same way the two Stripe
+             secrets above do. -->
+        <env name="HEALTH_ENDPOINT_SECRET" value=""/>
+        <env name="PROMETHEUS_STORAGE" value="memory"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="DEBUGBAR_ENABLED" value="false"/>

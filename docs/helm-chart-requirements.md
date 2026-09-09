@@ -354,10 +354,12 @@ runs only in `scheduler`.
   (`proxy-read-timeout` ≥ 3600 s).
 - Upload size: media accepts 10 MB → `proxy-body-size` ≥ 12m.
 - Internal Services: `web:8000`, `reverb:8080`, `ssr:13714`.
-- `/up` and `/health-json` are not exposed publicly by default; a
-  `ServiceMonitor` is not possible — there is **no Prometheus/OpenTelemetry
-  endpoint** in the application (Pulse and Horizon are UI-only). Worth a
-  future item.
+- `/up` and `/health-json` are not exposed publicly by default. `/metrics`
+  (ADR-0059) answers the same secret as a bearer token and is scraped by
+  the chart's `VMScrapeConfig` against `web:8000` as one static target; the
+  NetworkPolicy must admit the monitoring namespace to port 8000.
+  Dashboards and rules ship from `contrib/observability/` as
+  `GrafanaDashboard` and `VMRule` CRs, gated by `monitoring.enabled`.
 
 ### Volumes
 
@@ -489,7 +491,7 @@ brand without a second account.
 | Service | Requirement |
 | --- | --- |
 | PostgreSQL | CloudNativePG `Cluster`; **PostgreSQL ≥ 15** (`UNIQUE NULLS NOT DISTINCT`); the app role owns the database so it can `CREATE EXTENSION btree_gist` (trusted extension, needed for ADR-0020 exclusion constraints); if a CNPG `Pooler` is used, session mode or transaction mode with `max_prepared_statements > 0` (PDO pgsql uses server-side prepared statements) |
-| Redis | 7+, **standalone endpoint** (B6), `noeviction`, AOF, AUTH; sized for sessions + cache + queue + waiting room |
+| Redis | 7+, **standalone endpoint** (B6), `noeviction`, AOF, AUTH; sized for sessions + cache + queue + waiting room; the ACL user this application connects as needs `+@scripting` (promphp's registry, `config/prometheus.php` → `metrics` connection, writes through `EVAL`) and a key pattern covering `konventix:metrics:*` — that connection carries no `OPT_PREFIX`, so the app's own key-prefix pattern does not cover it |
 | Object storage | S3-compatible (Hetzner Object Storage, Garage): public bucket for media (anonymous read; `AWS_MEDIA_PUBLIC_DIRECT=true` only when verified), private bucket for invoices + exports (Object Lock/versioning where the provider offers it, ADR-0043 point 8), a **separate** backup destination if spatie backups stay on |
 | SMTP | operator fallback relay (`MAIL_*`) |
 | OpenBao + ESO | KV v2 mount, a `ClusterSecretStore`/`SecretStore` with the `vault` provider, Kubernetes auth for the chart's ServiceAccount or a token |

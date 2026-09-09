@@ -64,6 +64,7 @@
         "spatie/laravel-data": "^4.23",
         "spatie/laravel-health": "^1.40",
         "spatie/laravel-permission": "^8.3",
+        "spatie/laravel-prometheus": "^1.7",
         "spatie/laravel-typescript-transformer": "^3.3",
         "stripe/stripe-php": "^21.2",
         "unzerdev/php-sdk": "^4.0"

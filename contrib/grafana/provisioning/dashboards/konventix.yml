@@ -15,3 +15,14 @@ providers:
       options:
           path: /var/lib/grafana/dashboards
           foldersFromFilesStructure: false
+
+    - name: konventix-observability
+      orgId: 1
+      folder: Konventix
+      type: file
+      disableDeletion: false
+      allowUiUpdates: true
+      updateIntervalSeconds: 10
+      options:
+          path: /var/lib/grafana/dashboards-konventix
+          foldersFromFilesStructure: false

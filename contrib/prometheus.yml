@@ -1,11 +1,25 @@
-# Prometheus for the k6 load test (see the `prometheus` service in
-# compose.yaml). It scrapes nothing: k6 *pushes* into it over remote write,
-# which is why the compose command carries --web.enable-remote-write-receiver.
-# The empty scrape_configs is deliberate — this is a sink for one test run,
-# not application monitoring (that is Pulse's job, and Pulse has its own
-# dashboard and its own ingest drain).
+# Two jobs live here: k6 *pushes* into this Prometheus over remote write
+# (the compose command carries --web.enable-remote-write-receiver), and this
+# file also scrapes the application's own /metrics endpoint. The two
+# dashboards under contrib/observability read the scraped series through the
+# `VictoriaMetrics` datasource uid — the same uid the cluster's real
+# VictoriaMetrics datasource carries, so they render unchanged on sail.
 global:
     scrape_interval: 15s
     evaluation_interval: 15s
 
-scrape_configs: []
+scrape_configs:
+    # The application's own endpoint (ADR-0059). The bearer value is
+    # HEALTH_ENDPOINT_SECRET from .env.example; change both together.
+    #
+    # Both compose.yaml (laravel.test:80) and compose.prod-local.yaml
+    # (web:8000) mount this same file, so both targets sit in one job.
+    # Whichever stack is not running leaves its target down; Prometheus
+    # tolerates a down target, it just never becomes `up`.
+    - job_name: konventix
+      scrape_interval: 15s
+      metrics_path: /metrics
+      authorization:
+          credentials: local-health-secret
+      static_configs:
+          - targets: ['laravel.test:80', 'web:8000']
