@@ -12,6 +12,9 @@ use App\Observability\Metrics;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
+use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -27,6 +30,7 @@ use Prometheus\CollectorRegistry;
 use Prometheus\Storage\Adapter;
 use Prometheus\Storage\InMemory;
 use Prometheus\Storage\RedisNg;
+use ReflectionProperty;
 use Spatie\Health\Checks\Checks\CacheCheck;
 use Spatie\Health\Checks\Checks\DatabaseCheck;
 use Spatie\Health\Checks\Checks\DebugModeCheck;
@@ -34,8 +38,25 @@ use Spatie\Health\Checks\Checks\HorizonCheck;
 use Spatie\Health\Checks\Checks\RedisCheck;
 use Spatie\Health\Checks\Checks\ScheduleCheck;
 use Spatie\Health\Checks\Checks\UsedDiskSpaceCheck;
+use Spatie\Health\Enums\Status;
 use Spatie\Health\Facades\Health;
+use Spatie\Health\ResultStores\ResultStore;
+use Spatie\Health\ResultStores\StoredCheckResults\StoredCheckResult;
+use Spatie\Prometheus\Collectors\Horizon\CurrentMasterSupervisorCollector;
+use Spatie\Prometheus\Collectors\Horizon\CurrentProcessesPerQueueCollector;
+use Spatie\Prometheus\Collectors\Horizon\CurrentWorkloadCollector;
+use Spatie\Prometheus\Collectors\Horizon\FailedJobsPerHourCollector;
+use Spatie\Prometheus\Collectors\Horizon\FailedRecentJobsCollector;
+use Spatie\Prometheus\Collectors\Horizon\HorizonStatusCollector;
+use Spatie\Prometheus\Collectors\Horizon\JobsPerMinuteCollector;
+use Spatie\Prometheus\Collectors\Horizon\RecentJobsCollector;
+use Spatie\Prometheus\Collectors\Queue\QueueDelayedJobsCollector;
+use Spatie\Prometheus\Collectors\Queue\QueueOldestPendingJobCollector;
+use Spatie\Prometheus\Collectors\Queue\QueuePendingJobsCollector;
+use Spatie\Prometheus\Collectors\Queue\QueueReservedJobsCollector;
+use Spatie\Prometheus\Collectors\Queue\QueueSizeCollector;
 use Spatie\Prometheus\Facades\Prometheus;
+use Throwable;
 
 /**
  * Wiring for the operations dashboards — Pulse, Horizon and, in development,
@@ -62,6 +83,9 @@ use Spatie\Prometheus\Facades\Prometheus;
  */
 class ObservabilityServiceProvider extends ServiceProvider
 {
+    /** The queues config/horizon.php gives a supervisor (HorizonQueueCoverageTest). */
+    public const array QUEUES = ['default', 'waiting-room', 'messaging'];
+
     public function register(): void
     {
         $this->bindMetricsRegistry();
@@ -160,6 +184,7 @@ class ObservabilityServiceProvider extends ServiceProvider
         $this->authorizeTelescope();
         $this->registerHealthChecks();
         $this->registerHostMetrics();
+        $this->recordQueueAndLogMetrics();
         $this->scheduleHousekeeping();
         $this->correlateJobsAndCommands();
     }
@@ -170,17 +195,161 @@ class ObservabilityServiceProvider extends ServiceProvider
      */
     private function registerHostMetrics(): void
     {
-        $this->app->make(MetricCatalog::class)->register(
+        $catalog = $this->app->make(MetricCatalog::class);
+
+        $catalog->register(
             new MetricDefinition('http_requests_total', MetricKind::Counter, 'Requests handled, by method, response status and route name.', ['method', 'status', 'route']),
             new MetricDefinition('http_request_duration_seconds', MetricKind::Histogram, 'Request duration as seen by the application, for the allowlisted routes and `other`.', ['route'], (array) config('prometheus.http.buckets')),
             new MetricDefinition('build_info', MetricKind::Gauge, 'Always 1; the version label is the deployed image tag.', ['version']),
+            new MetricDefinition('queue_jobs_processed_total', MetricKind::Counter, 'Jobs that finished without throwing, per queue.', ['queue']),
+            new MetricDefinition('queue_jobs_failed_total', MetricKind::Counter, 'Jobs that exhausted their attempts, per queue and job class.', ['queue', 'job_class']),
+            new MetricDefinition('log_records_total', MetricKind::Counter, 'Log records of warning and above, per level.', ['level']),
+            new MetricDefinition('health_check_status', MetricKind::Gauge, 'Latest stored Spatie Health result per check: 0 ok, 1 warning, 2 failed, 3 crashed, 4 skipped.', ['check']),
+            new MetricDefinition('schedule_last_heartbeat_timestamp_seconds', MetricKind::Gauge, 'When health:schedule-check-heartbeat last ran.'),
         );
+
+        // The package's collectors, declared here so the catalogue is complete.
+        foreach (['horizon_status', 'horizon_master_supervisors', 'horizon_jobs_per_minute', 'horizon_recent_jobs', 'horizon_failed_recent_jobs', 'horizon_failed_jobs_per_hour'] as $name) {
+            $catalog->register(new MetricDefinition($name, MetricKind::Gauge, 'Horizon, via spatie/laravel-prometheus.'));
+        }
+        foreach (['horizon_current_workload', 'horizon_current_processes'] as $name) {
+            $catalog->register(new MetricDefinition($name, MetricKind::Gauge, 'Horizon, via spatie/laravel-prometheus.', ['queue']));
+        }
+        foreach (['queue_size', 'queue_pending_jobs', 'queue_reserved_jobs', 'queue_delayed_jobs', 'queue_oldest_pending_job_age'] as $name) {
+            $catalog->register(new MetricDefinition($name, MetricKind::Gauge, 'Queue, via spatie/laravel-prometheus.', ['connection', 'queue']));
+        }
 
         Prometheus::addGauge('Build info')
             ->name('build_info')
             ->label('version')
             ->helpText('Always 1; the version label is the deployed image tag.')
             ->value(fn (): array => [[1, [(string) config('app.version')]]]);
+
+        Prometheus::addGauge('Health check status')
+            ->name('health_check_status')
+            ->label('check')
+            ->helpText('Latest stored Spatie Health result per check: 0 ok, 1 warning, 2 failed, 3 crashed, 4 skipped.')
+            ->value(function (): array {
+                $results = app(ResultStore::class)->latestResults();
+
+                if ($results === null) {
+                    return [];
+                }
+
+                return $results->storedCheckResults
+                    ->map(fn (StoredCheckResult $result): array => [self::healthStatusValue($result->status), [$result->name]])
+                    ->values()
+                    ->all();
+            });
+
+        Prometheus::addGauge('Schedule heartbeat')
+            ->name('schedule_last_heartbeat_timestamp_seconds')
+            ->helpText('When health:schedule-check-heartbeat last ran.')
+            ->value(function (): array {
+                $check = ScheduleCheck::new();
+                $at = cache()->store($check->getCacheStoreName())->get($check->getCacheKey());
+
+                return is_numeric($at) ? [[(float) $at, []]] : [];
+            });
+
+        Prometheus::registerCollectorClasses([
+            HorizonStatusCollector::class,
+            CurrentMasterSupervisorCollector::class,
+            CurrentWorkloadCollector::class,
+            CurrentProcessesPerQueueCollector::class,
+            JobsPerMinuteCollector::class,
+            RecentJobsCollector::class,
+            FailedRecentJobsCollector::class,
+            FailedJobsPerHourCollector::class,
+        ]);
+
+        Prometheus::registerCollectorClasses([
+            QueueSizeCollector::class,
+            QueuePendingJobsCollector::class,
+            QueueReservedJobsCollector::class,
+            QueueDelayedJobsCollector::class,
+            QueueOldestPendingJobCollector::class,
+        ], ['redis', self::QUEUES]);
+    }
+
+    private static function healthStatusValue(string $status): int
+    {
+        return match ($status) {
+            Status::ok()->value => 0,
+            Status::warning()->value => 1,
+            Status::failed()->value => 2,
+            Status::crashed()->value => 3,
+            default => 4,
+        };
+    }
+
+    /**
+     * `Job::getQueue()` is trustworthy on every real driver, but `SyncJob`
+     * — the driver `phpunit.xml` and a plain `php artisan queue:work`-less
+     * dev box both use — hardcodes it to the literal string `sync`
+     * regardless of `onQueue()`. The queue the job actually asked for is
+     * still on the protected `queue` property the constructor set, so read
+     * that instead of trusting the accessor.
+     */
+    private static function jobQueueName(object $job): string
+    {
+        if (property_exists($job, 'queue')) {
+            $queue = (new ReflectionProperty($job, 'queue'))->getValue($job);
+
+            if (is_string($queue) && $queue !== '') {
+                return $queue;
+            }
+        }
+
+        return 'default';
+    }
+
+    /**
+     * Event-time counters the host owns. The log listener guards against
+     * itself: a Redis failure while counting a record would log an error,
+     * which would count a record.
+     */
+    private function recordQueueAndLogMetrics(): void
+    {
+        Event::listen(JobProcessed::class, function (JobProcessed $event): void {
+            $this->quietly(fn () => app(Metrics::class)->increment('queue_jobs_processed_total', [
+                'queue' => self::jobQueueName($event->job),
+            ]));
+        });
+
+        Event::listen(JobFailed::class, function (JobFailed $event): void {
+            $this->quietly(fn () => app(Metrics::class)->increment('queue_jobs_failed_total', [
+                'queue' => self::jobQueueName($event->job),
+                'job_class' => class_basename($event->job->resolveName()),
+            ]));
+        });
+
+        Event::listen(MessageLogged::class, function (MessageLogged $event): void {
+            static $counting = false;
+
+            if ($counting || ! in_array($event->level, ['warning', 'error', 'critical', 'alert', 'emergency'], true)) {
+                return;
+            }
+
+            $counting = true;
+
+            try {
+                app(Metrics::class)->increment('log_records_total', ['level' => $event->level]);
+            } catch (Throwable) {
+                // Deliberately silent: reporting would log, and logging would count.
+            } finally {
+                $counting = false;
+            }
+        });
+    }
+
+    private function quietly(callable $record): void
+    {
+        try {
+            $record();
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     /**
