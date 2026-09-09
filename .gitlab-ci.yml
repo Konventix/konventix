@@ -471,14 +471,27 @@ test:php:
     # what makes the first suite request deterministic.
     - nohup php artisan inertia:start-ssr > ssr.log 2>&1 &
     - sleep 3
-    # One worker per detected core — paratest's default, so the count follows
-    # the runner instead of a number written here (#140). Laravel gives every
-    # worker its own database, testing_test_1…n, created and migrated beside
-    # `testing`; nothing in the suite shares state across workers (the invoice
-    # disk is faked per worker, the numbering probe hands its child the
-    # resolved database name, the Redis test keys by ULID). Before: 581s of
-    # suite on one core in pipeline 1609, 2265 tests.
-    - php artisan test --parallel
+    # Laravel gives every worker its own database, testing_test_1…n, created
+    # and migrated beside `testing`; nothing in the suite shares state across
+    # workers (the invoice disk is faked per worker, the numbering probe hands
+    # its child the resolved database name, the Redis test keys by ULID).
+    # Before: 581s of suite on one core in pipeline 1609, 2265 tests.
+    #
+    # Six workers, not one per core. Paratest hands out whole *files*, so the
+    # suite can never finish before its slowest file, and
+    # tests/Feature/SeedDemoDataCommandTest.php alone takes 92s of the 538s
+    # the 269 files add up to (#262). Measured on an idle 24-core machine:
+    # 4 workers 91s, 8 workers 91s, 12 workers 92s, 16 workers 84s, 24
+    # workers 97s. Everything from four upwards is the same number, because
+    # from there the rest of the suite already hides behind that one file.
+    # Six leaves a little headroom and stops a 16-core runner from spawning
+    # sixteen workers, and sixteen Postgres databases, for nothing — the
+    # runners are shared, and a job that grabs every core slows the jobs
+    # beside it. Raise this when #262 lowers the floor, not before.
+    - |
+      procs=$(nproc)
+      [ "$procs" -gt 6 ] && procs=6
+      php artisan test --parallel --processes="$procs"
   artifacts:
     when: always
     expire_in: 1 week
