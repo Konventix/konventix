@@ -92,6 +92,15 @@ RUN php artisan storage:link \
     && rm .env \
     && rm -rf node_modules \
     && cp -r bootstrap/cache /opt/bootstrap-cache
+# The tree's file modes come from whoever checked the sources out: the
+# GitLab runner does so with a permissive umask and hands the build a tree
+# whose every file is group- and world-writable, while a developer's
+# checkout is not. The runtime stage copies these modes verbatim and only
+# ever adds read bits, so its "root-owned, read-only for the runtime user"
+# contract (#257) held on a laptop and failed in CI. Stripping the write bits
+# here, still inside the build stage, costs nothing in the runtime image: the
+# COPY --from that follows carries the corrected modes and adds no layer.
+RUN find /var/www/html /opt/bootstrap-cache ! -type l \( -perm /g+w -o -perm /o+w \) -exec chmod go-w {} +
 
 ########## runtime ##########
 FROM base AS runtime
