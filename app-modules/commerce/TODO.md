@@ -171,9 +171,12 @@
       rather than a pay link, though the link works since #186 — see
       `SendPaymentReversedMailOnPaymentReversed::send()` (#186 criterion 3,
       needs an owner).
+- [ ] Reverb connection and broadcast metrics once Reverb offers a hook (#173).
 
 ## Done
 
+- [x] Metrics for orders, payments, carts, stock and the waiting room in
+      `src/Metrics` and `src/Listeners/Metrics` (ADR-0059, #173).
 - [x] Slice 24 (ADR-0058, #215) — Stripe Connect removed: one Stripe account
       per instance, its secret and webhook signing secret resolved
       row-before-environment by `Settlement\Stripe\StripeCredentials`

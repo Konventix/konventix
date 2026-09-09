@@ -25,9 +25,12 @@ use Konventix\Commerce\Data\ShopProductData;
 use Konventix\Commerce\Data\WaitingRoomSettingsData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\Permission;
+use Konventix\Commerce\Events\CartExpired;
+use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderPlaced;
 use Konventix\Commerce\Events\PaymentFailed;
+use Konventix\Commerce\Events\PaymentReceived;
 use Konventix\Commerce\Events\PaymentReversalRecorded;
 use Konventix\Commerce\Events\PaymentReversed;
 use Konventix\Commerce\Events\PaymentUnapplied;
@@ -35,6 +38,9 @@ use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Commerce\Gdpr\CommerceGdprHandler;
 use Konventix\Commerce\Listeners\CreateOrderOnSettlementRequested;
 use Konventix\Commerce\Listeners\IssueInvoiceOnOrderPaid;
+use Konventix\Commerce\Listeners\Metrics\RecordCartMetrics;
+use Konventix\Commerce\Listeners\Metrics\RecordOrderMetrics;
+use Konventix\Commerce\Listeners\Metrics\RecordPaymentMetrics;
 use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentFailed;
 use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentReversalRecorded;
 use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentUnapplied;
@@ -43,6 +49,8 @@ use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
 use Konventix\Commerce\Listeners\SendOrderConfirmationOnOrderPlaced;
 use Konventix\Commerce\Listeners\SendPaymentFailedMailOnPaymentFailed;
 use Konventix\Commerce\Listeners\SendPaymentReversedMailOnPaymentReversed;
+use Konventix\Commerce\Metrics\CommerceGauges;
+use Konventix\Commerce\Metrics\CommerceMetrics;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Invoice;
@@ -87,6 +95,7 @@ use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Operators\OperatorSettings;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
@@ -94,6 +103,7 @@ use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Konventix\Platform\WaitingRoom\WaitingRoomGate;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
 use Laravel\Pennant\Feature;
+use Spatie\Prometheus\Facades\Prometheus;
 use Stripe\StripeClient;
 
 /**
@@ -148,6 +158,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
     {
         parent::boot();
 
+        $this->registerMetrics();
         $this->configureRateLimiting();
     }
 
@@ -171,6 +182,17 @@ class CommerceServiceProvider extends ModuleServiceProvider
     private function configureRateLimiting(): void
     {
         RateLimiter::for('commerce-webhooks', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip() ?? 'unknown'));
+    }
+
+    /**
+     * Commerce's metrics (ADR-0059): catalogue entries here, listeners
+     * above, gauges in CommerceGauges. The host never learns these names.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...CommerceMetrics::definitions());
+
+        Prometheus::registerCollectorClasses([CommerceGauges::class]);
     }
 
     /**
@@ -273,6 +295,11 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // ADR-0057 point 9 / #6: money for an order the grace sweep already
         // cancelled. Operators only — what happens next is their decision.
         Event::listen(PaymentUnapplied::class, NotifyOperatorsOnPaymentUnapplied::class);
+
+        // ADR-0059: Commerce's own metrics, from its own events.
+        Event::listen([OrderPlaced::class, OrderPaid::class, OrderCancelled::class], RecordOrderMetrics::class);
+        Event::listen([PaymentReceived::class, PaymentFailed::class, PaymentReversalRecorded::class], RecordPaymentMetrics::class);
+        Event::listen([CartExpired::class, StockExhausted::class], RecordCartMetrics::class);
     }
 
     /**

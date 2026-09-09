@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Storage;
 use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Brands\BrandSlugs;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Modules\ModuleGate;
 use Laravel\Fortify\Features;
@@ -29,6 +30,9 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // A slug cached by one test must never leak into the next.
+        BrandSlugs::forget();
 
         // GenerateInvoiceDocument/GenerateCreditNoteDocument dispatch
         // afterCommit() from inside a DB::transaction() that is itself
