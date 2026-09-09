@@ -81,6 +81,7 @@ function dryRunSkippedRoutes(): array
         // Monitoring, not a screen: outside the `web` group so it answers on
         // any host, and gated on a shared secret rather than a session.
         'health.json' => 'monitoring endpoint behind a shared secret',
+        'prometheus.default' => 'monitoring endpoint behind a shared secret',
 
         // Reached from an emailed link and nowhere else: both carry a
         // one-time credential in the URL that seeded data cannot produce.

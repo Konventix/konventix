@@ -17,6 +17,9 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * `hash_equals` rather than `===` — the comparison is against a secret, and a
  * timing-distinguishable one is a secret that can be guessed a byte at a time.
+ *
+ * Since ADR-0059 the same secret also opens `/metrics`, as header or as bearer
+ * token.
  */
 class VerifyHealthSecret
 {
@@ -25,8 +28,26 @@ class VerifyHealthSecret
         $expected = (string) config('health.endpoint_secret', '');
 
         abort_if($expected === '', 404);
-        abort_unless(hash_equals($expected, (string) $request->header('X-Health-Secret')), 404);
+        abort_unless($this->presented($request, $expected), 404);
 
         return $next($request);
+    }
+
+    /**
+     * The health header is what an operator's monitor sends; the bearer form
+     * is what vmagent sends for `/metrics` (ADR-0059). Both compare with
+     * `hash_equals` for the same reason as before.
+     */
+    private function presented(Request $request, string $expected): bool
+    {
+        $header = (string) $request->header('X-Health-Secret');
+
+        if ($header !== '' && hash_equals($expected, $header)) {
+            return true;
+        }
+
+        $bearer = (string) $request->bearerToken();
+
+        return $bearer !== '' && hash_equals($expected, $bearer);
     }
 }

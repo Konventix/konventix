@@ -68,6 +68,7 @@
              StripeWebhookTest and WebhookThrottleTest. -->
         <env name="STRIPE_SECRET" value=""/>
         <env name="STRIPE_WEBHOOK_SECRET" value=""/>
+        <env name="PROMETHEUS_STORAGE" value="memory"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="DEBUGBAR_ENABLED" value="false"/>

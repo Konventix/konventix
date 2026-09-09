@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\ServiceProvider;
 use Konventix\Commerce\Health\WaitingRoomCheck;
 use Konventix\Identity\Models\User;
@@ -18,6 +19,10 @@ use Konventix\Platform\Enums\Permission;
 use Laravel\Horizon\Horizon;
 use Laravel\Telescope\Telescope;
 use Laravel\Telescope\TelescopeServiceProvider;
+use Prometheus\CollectorRegistry;
+use Prometheus\Storage\Adapter;
+use Prometheus\Storage\InMemory;
+use Prometheus\Storage\RedisNg;
 use Spatie\Health\Checks\Checks\CacheCheck;
 use Spatie\Health\Checks\Checks\DatabaseCheck;
 use Spatie\Health\Checks\Checks\DebugModeCheck;
@@ -26,6 +31,7 @@ use Spatie\Health\Checks\Checks\RedisCheck;
 use Spatie\Health\Checks\Checks\ScheduleCheck;
 use Spatie\Health\Checks\Checks\UsedDiskSpaceCheck;
 use Spatie\Health\Facades\Health;
+use Spatie\Prometheus\Facades\Prometheus;
 
 /**
  * Wiring for the operations dashboards — Pulse, Horizon and, in development,
@@ -54,6 +60,8 @@ class ObservabilityServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->bindMetricsRegistry();
+
         // Telescope is a `require-dev` package and excluded from package
         // discovery, so production never sees it: `composer install --no-dev`
         // leaves the class absent and this returns early. Registered by hand
@@ -65,6 +73,36 @@ class ObservabilityServiceProvider extends ServiceProvider
         $this->app->register(TelescopeServiceProvider::class);
 
         $this->scrubTelescopeEntries();
+    }
+
+    /**
+     * One registry for every role (ADR-0059). The package binds its own,
+     * cache-backed adapter, which does a whole-blob read-modify-write and
+     * loses increments between processes; promphp's RedisNg adapter does
+     * atomic updates in Lua, and reusing the framework's phpredis client
+     * means Valkey ACL credentials come from config/database.php like
+     * everywhere else. Scoped, like the package's binding, so Octane hands
+     * every request a fresh adapter over the connection it currently holds.
+     */
+    private function bindMetricsRegistry(): void
+    {
+        $this->app->scoped(CollectorRegistry::class, function (): CollectorRegistry {
+            return new CollectorRegistry($this->metricsStorage(), false);
+        });
+    }
+
+    private function metricsStorage(): Adapter
+    {
+        if (config('prometheus.storage') !== 'redis') {
+            return new InMemory;
+        }
+
+        RedisNg::setPrefix('konventix:metrics:');
+
+        /** @var \Redis $client */
+        $client = Redis::connection((string) config('prometheus.redis_connection', 'default'))->client();
+
+        return RedisNg::fromExistingConnection($client);
     }
 
     /**
@@ -111,8 +149,22 @@ class ObservabilityServiceProvider extends ServiceProvider
         $this->authorizeHorizon();
         $this->authorizeTelescope();
         $this->registerHealthChecks();
+        $this->registerHostMetrics();
         $this->scheduleHousekeeping();
         $this->correlateJobsAndCommands();
+    }
+
+    /**
+     * The gauges the host itself answers for. Domain gauges live in the
+     * owning module's collector (Commerce: `CommerceGauges`).
+     */
+    private function registerHostMetrics(): void
+    {
+        Prometheus::addGauge('Build info')
+            ->name('build_info')
+            ->label('version')
+            ->helpText('Always 1; the version label is the deployed image tag.')
+            ->value(fn (): array => [[1, [(string) config('app.version')]]]);
     }
 
     /**
