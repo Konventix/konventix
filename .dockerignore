@@ -30,7 +30,6 @@ public/storage
 bootstrap/ssr
 resources/js/routes
 resources/js/actions
-tests/Load/results
 docs
 .superpowers
 .ai
@@ -38,3 +37,28 @@ boost.json
 CLAUDE.md
 CLAUDE_extra.md
 compose.yaml
+
+# The rest of #257's list. `COPY . .` put every one of these into the release
+# artifact; none of them is read at runtime, and the first two carry dev
+# credentials that a secret scanner will keep finding for as long as they ship:
+# contrib/garage.toml's rpc_secret and admin_token, contrib/prod-local.env's
+# DB_PASSWORD, compose.prod-local.yaml's POSTGRES_PASSWORD and
+# KONVENTIX_ADMIN_PASSWORD. Nothing here is served over HTTP — Caddy's root is
+# `public/` — so this is disclosure to whoever can read the image, not a
+# reachable hole.
+#
+# `database/` deliberately stays in: the migrate role runs the migrations out of
+# the image. `stubs/` goes: config/app-modules.php names those paths, but only
+# `make:module` ever opens one, and that is a development command.
+contrib
+compose.prod-local.yaml
+tests
+phpunit.xml
+.gitlab-ci.yml
+.claude
+.mcp.json
+stubs
+pint.json
+phpstan.neon
+eslint.config.js
+vitest.config.ts

@@ -758,6 +758,21 @@ build:image:
       grep -qE '^opcache.validate_timestamps => Off => Off$' php-i.txt || { echo "opcache.validate_timestamps is not off in the runtime image" >&2; docker stop smoke; exit 1; }
       grep -qE '^opcache.enable_cli => Off => Off$' php-i.txt || { echo "opcache.enable_cli is on, which makes validate_timestamps=0 unsafe for the entrypoint's cache calls" >&2; docker stop smoke; exit 1; }
       grep -qE '^zend.assertions => -1 => -1$' php-i.txt || { echo "zend.assertions is not -1 in the runtime image" >&2; docker stop smoke; exit 1; }
+    # #257: root owns the artifact and the runtime user owns only the two
+    # directories it has to write. The Dockerfile test pins the text of the
+    # COPY lines; only the running container can show the result — a base image
+    # that changes the WORKDIR's ownership, an `--chown` reinstated through a
+    # build arg, or a source directory whose own mode keeps the runtime user out
+    # (the `config/stripe` boot failure) are all invisible to a grep of the
+    # Dockerfile. These run as the image's USER, uid 1000.
+    - |
+      docker exec smoke sh -c 'test ! -w /var/www/html/artisan' || { echo "the runtime user can write /var/www/html/artisan" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test ! -w /var/www/html' || { echo "the runtime user can create files next to the application" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test "$(stat -c %U /var/www/html/config)" = root' || { echo "/var/www/html/config is not root-owned" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test -r /var/www/html/config/app.php' || { echo "the runtime user cannot read /var/www/html/config" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test -w /var/www/html/storage' || { echo "/var/www/html/storage is not writable by the runtime user" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test "$(stat -c %U /var/www/html/storage)" = konventix' || { echo "/var/www/html/storage is not owned by the runtime user" >&2; docker stop smoke; exit 1; }
+      docker exec smoke sh -c 'test -w /var/www/html/bootstrap/cache' || { echo "/var/www/html/bootstrap/cache is not writable by the runtime user" >&2; docker stop smoke; exit 1; }
     # ADR-0049 §5: the bundle must carry no baked websocket endpoint, or every
     # deployment talks to the developer's laptop. `resolveReverbEndpoint` is
     # called with `{host: …, port: …, scheme: …}` filled from VITE_REVERB_*;

@@ -143,11 +143,25 @@ RUN useradd --create-home --uid 1000 konventix
 # Root owns the artifact; the runtime user owns only what has to be written
 # (#257). Before this, every PHP file, `docker/entrypoint.sh` — the ENTRYPOINT —
 # and the `/opt/bootstrap-cache` seed the entrypoint copies from belonged to the
-# UID the server runs as: any write primitive in the application was code
-# execution, and on a consumer without a read-only root filesystem
+# UID the server runs as: a write primitive anywhere in the application tree was
+# code execution, and on a consumer without a read-only root filesystem
 # (compose.prod-local.yaml, the CI smoke step) it was persistence past the next
 # boot as well. The chart's `readOnlyRootFilesystem` is a mitigation in another
 # repository; this one lives with the artifact.
+#
+# What this does *not* close, stated plainly: `public/storage` is a symlink into
+# `storage/app/public`, which stays writable by design, and Octane's Caddyfile
+# stub serves `public/` with `php_server` + `resolve_root_symlink` — its own
+# comment says the option is there "for the `public/storage/` directory". So a
+# `.php` written into the media tree (the `local` media disk with
+# `public_direct`, which `ci/values-local-disk.yaml` deploys) is still executed
+# by the web server. Closing that needs `docker/Caddyfile` — #257's still-open
+# criterion — with a matcher that refuses PHP under `/storage`
+# (`@storagephp path_regexp ^/storage/.*\.php$` → `respond 404`) placed before
+# `php_server`. Until that file exists, the honest claim for this block is "the
+# application tree is no longer writable", not "a write is no longer execution".
+# `storage:link` must stay in the build stage either way: the local-disk
+# deployment mode needs it.
 #
 # `storage` and `bootstrap/cache` are the whole of what is written at runtime:
 # the entrypoint's `artisan config:cache` / `route:cache` / `view:cache` /
