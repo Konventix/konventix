@@ -8,6 +8,10 @@ vendor
 frankenphp
 data/caddy
 config/caddy/autosave.json
+# Stripe CLI state on a developer's machine (#257); it is not configuration
+# this application reads, and it arrives as a 0700 directory the runtime user
+# cannot enter.
+config/stripe
 storage/app/*
 !storage/app/.gitignore
 storage/logs/*

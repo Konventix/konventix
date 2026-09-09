@@ -140,14 +140,57 @@ COPY docker/php.ini /usr/local/etc/php/conf.d/99-production.ini
 
 RUN useradd --create-home --uid 1000 konventix
 
-COPY --from=build --chown=konventix:konventix /var/www/html /var/www/html
-COPY --from=build --chown=konventix:konventix /opt/bootstrap-cache /opt/bootstrap-cache
+# Root owns the artifact; the runtime user owns only what has to be written
+# (#257). Before this, every PHP file, `docker/entrypoint.sh` — the ENTRYPOINT —
+# and the `/opt/bootstrap-cache` seed the entrypoint copies from belonged to the
+# UID the server runs as: any write primitive in the application was code
+# execution, and on a consumer without a read-only root filesystem
+# (compose.prod-local.yaml, the CI smoke step) it was persistence past the next
+# boot as well. The chart's `readOnlyRootFilesystem` is a mitigation in another
+# repository; this one lives with the artifact.
+#
+# `storage` and `bootstrap/cache` are the whole of what is written at runtime:
+# the entrypoint's `artisan config:cache` / `route:cache` / `view:cache` /
+# `event:cache` write into them, and both are mounts in the deployment anyway.
+# Nothing else is: `public/frankenphp-worker.php` already ships (Octane's
+# `ensureFrankenPhpWorkerIsInstalled()` only copies its stub when the file is
+# absent), Octane reads the Caddyfile out of `vendor/`, and Caddy's own state
+# goes to the XDG paths pointed at /tmp above.
+COPY --from=build --chown=root:root /var/www/html /var/www/html
+COPY --from=build --chown=root:root /opt/bootstrap-cache /opt/bootstrap-cache
 
-RUN chmod +x docker/entrypoint.sh
+#
+# The base image leaves the WORKDIR itself at `www-data:www-data 1777`, which
+# would let the runtime user drop new files beside the application even with
+# every file in it root-owned. Nothing serves from there (Caddy's root is
+# `public/`, itself root-owned) but it costs one chmod to close.
+#
+# The `find` is the price of dropping `--chown`: with the tree owned by the
+# user that copied it, a source directory's own mode never mattered; root-owned,
+# it does. A developer's Stripe CLI leaves `config/stripe` at 0700, and the
+# image built fine and then died at boot on
+# `RecursiveDirectoryIterator(/var/www/html/config/stripe): Permission denied`.
+# Normalising the few offending entries costs a metadata-only layer; a blanket
+# `chmod -R` would copy every file up and roughly double the image.
+RUN chmod +x docker/entrypoint.sh \
+    && chmod 755 /var/www/html \
+    && find /var/www/html \( \( -type d ! -perm -o+rx \) -o \( -type f ! -perm -o+r \) \) -exec chmod o+rX {} + \
+    && chown -R konventix:konventix storage bootstrap/cache
 
 USER konventix
 
 EXPOSE 8000
+
+# The base image ships `curl -f http://localhost:2019/metrics` — Caddy's admin
+# API, a listener this image should not be exposing at all (#257) and one that
+# says nothing about whether the application answers. `/up` is what the chart's
+# web liveness probe asks for, so a `docker run` or Compose consumer now gets
+# the same answer Kubernetes does; Kubernetes itself ignores HEALTHCHECK and
+# keeps using the probe. The roles that serve no HTTP (horizon, scheduler,
+# pulse, migrate) report unhealthy under Compose — as they already did, since
+# nothing listened on 2019 there either.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8000/up || exit 1
 
 ENTRYPOINT ["/var/www/html/docker/entrypoint.sh"]
 CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
