@@ -35,7 +35,7 @@ it('copies the steam avatar into the brand library and points the membership at 
         'provider' => 'steam',
         'provider_user_id' => '76561198012345678',
         'nickname' => 'ada',
-        'avatar_url' => 'https://steamcdn.example.com/avatar.png',
+        'avatar_url' => 'https://avatars.akamai.steamstatic.com/abc_full.jpg',
         'linked_at' => now(),
     ]);
     Storage::fake('media');
@@ -118,7 +118,7 @@ it('rejects the copy when the upstream avatar fetch 404s and leaves the membersh
         'provider' => 'steam',
         'provider_user_id' => '76561198012345678',
         'nickname' => 'ada',
-        'avatar_url' => 'https://steamcdn.example.com/missing.png',
+        'avatar_url' => 'https://avatars.steamstatic.com/missing_full.jpg',
         'linked_at' => now(),
     ]);
     Storage::fake('media');
@@ -141,7 +141,7 @@ it('rejects the copy when the user has no membership on the current brand', func
         'provider' => 'steam',
         'provider_user_id' => '76561198012345678',
         'nickname' => 'ada',
-        'avatar_url' => 'https://steamcdn.example.com/avatar.png',
+        'avatar_url' => 'https://avatars.akamai.steamstatic.com/abc_full.jpg',
         'linked_at' => now(),
     ]);
     Storage::fake('media');
@@ -157,4 +157,90 @@ it('rejects the copy when the user has no membership on the current brand', func
     $this->actingAs($user)
         ->post('/settings/profile/avatar/steam')
         ->assertInvalid(['steam']);
+});
+
+/**
+ * #259 / audit N6: the fetch went out to whatever `avatar_url` said, with
+ * redirects followed and no host check. Steam's Web API is the only writer of
+ * that column today, so this is defence in depth rather than a live hole — but
+ * it is a server-side request an authenticated user triggers on demand, and the
+ * column is a plain string in a table a future import path could also write.
+ */
+it('refuses to fetch an avatar url that is not on a steam cdn host', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    $membership = BrandMembership::factory()->create(['user_id' => $user->getKey()]);
+    $user->socialIdentities()->create([
+        'provider' => 'steam',
+        'provider_user_id' => '76561198012345678',
+        'nickname' => 'ada',
+        // The cloud metadata service: the canonical SSRF target, and one that
+        // answers a plain GET.
+        'avatar_url' => 'http://169.254.169.254/latest/meta-data/iam/security-credentials/',
+        'linked_at' => now(),
+    ]);
+    Storage::fake('media');
+
+    Http::fake();
+
+    $this->actingAs($user)
+        ->post('/settings/profile/avatar/steam')
+        ->assertInvalid(['steam']);
+
+    // The point of the criterion: not "the response was rejected", but that no
+    // request left the process at all.
+    Http::assertNothingSent();
+    expect($membership->refresh()->avatar_media_id)->toBeNull();
+});
+
+it('refuses a host that merely ends in the allowlisted name', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    BrandMembership::factory()->create(['user_id' => $user->getKey()]);
+    $user->socialIdentities()->create([
+        'provider' => 'steam',
+        'provider_user_id' => '76561198012345678',
+        'nickname' => 'ada',
+        'avatar_url' => 'https://avatars.steamstatic.com.attacker.example/full.jpg',
+        'linked_at' => now(),
+    ]);
+    Storage::fake('media');
+
+    Http::fake();
+
+    $this->actingAs($user)
+        ->post('/settings/profile/avatar/steam')
+        ->assertInvalid(['steam']);
+
+    Http::assertNothingSent();
+});
+
+/**
+ * The neighbouring upload path caps an avatar at 5120 KB
+ * (`MembershipImageController::storeAvatar()`); a body arriving over HTTP has
+ * no `max:` rule in front of it, so the ceiling has to be restated here or the
+ * two paths disagree about what an avatar may weigh.
+ */
+it('refuses an avatar body larger than the upload path would accept', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+    $membership = BrandMembership::factory()->create(['user_id' => $user->getKey()]);
+    $user->socialIdentities()->create([
+        'provider' => 'steam',
+        'provider_user_id' => '76561198012345678',
+        'nickname' => 'ada',
+        'avatar_url' => 'https://avatars.steamstatic.com/huge_full.jpg',
+        'linked_at' => now(),
+    ]);
+    Storage::fake('media');
+
+    Http::fake([
+        '*' => Http::response(str_repeat('a', 5120 * 1024 + 1), 200, ['Content-Type' => 'image/jpeg']),
+    ]);
+
+    $this->actingAs($user)
+        ->post('/settings/profile/avatar/steam')
+        ->assertInvalid(['steam']);
+
+    expect($membership->refresh()->avatar_media_id)->toBeNull();
 });
