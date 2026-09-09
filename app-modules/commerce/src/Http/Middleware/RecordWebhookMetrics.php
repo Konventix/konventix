@@ -44,16 +44,18 @@ final class RecordWebhookMetrics
             default => 'error',
         };
 
-        try {
-            $metrics = app(Metrics::class);
-            $metrics->increment('payment_webhooks_total', ['provider' => $provider, 'outcome' => $outcome]);
-            $metrics->observe('payment_webhook_duration_seconds', $seconds, ['provider' => $provider]);
+        $metrics = app(Metrics::class);
+        $metrics->increment('payment_webhooks_total', ['provider' => $provider, 'outcome' => $outcome]);
+        $metrics->observe('payment_webhook_duration_seconds', $seconds, ['provider' => $provider]);
 
-            if ($outcome === 'accepted') {
+        if ($outcome === 'accepted') {
+            try {
+                // Best-effort stamp: Metrics already contains its own storage failures,
+                // this cache write gets the same treatment rather than breaking the request.
                 Cache::forever(CommerceMetrics::webhookReceivedKey($provider), now()->getTimestamp());
+            } catch (Throwable $e) {
+                report($e);
             }
-        } catch (Throwable $e) {
-            report($e);
         }
     }
 }

@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Context;
 use Konventix\Platform\Observability\Metrics;
 use Symfony\Component\HttpFoundation\Response;
-use Throwable;
 
 /**
  * Request rate, error rate and latency as the application sees them
@@ -20,8 +19,9 @@ use Throwable;
  * rendered still counts under its status. The two diagnostics endpoints and
  * `/up` are left out: a scrape every thirty seconds is not traffic.
  *
- * Recording must never break a request. A Redis hiccup here is reported and
- * swallowed; the request already did its work.
+ * Recording must never break a request: `Metrics` itself reports and
+ * swallows a storage failure, so this middleware carries no try/catch of
+ * its own (.ai/rules/observability.md).
  */
 final class RecordHttpMetrics
 {
@@ -69,20 +69,16 @@ final class RecordHttpMetrics
             return;
         }
 
-        try {
-            $metrics = app(Metrics::class);
+        $metrics = app(Metrics::class);
 
-            $metrics->increment('http_requests_total', [
-                'method' => $request->method(),
-                'status' => (string) $status,
-                'route' => $name ?? 'unnamed',
-            ]);
+        $metrics->increment('http_requests_total', [
+            'method' => $request->method(),
+            'status' => (string) $status,
+            'route' => $name ?? 'unnamed',
+        ]);
 
-            $metrics->observe('http_request_duration_seconds', $seconds, [
-                'route' => self::histogramRoute($name),
-            ]);
-        } catch (Throwable $e) {
-            report($e);
-        }
+        $metrics->observe('http_request_duration_seconds', $seconds, [
+            'route' => self::histogramRoute($name),
+        ]);
     }
 }
