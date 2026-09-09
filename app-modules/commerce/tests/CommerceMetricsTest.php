@@ -15,6 +15,7 @@ use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Commerce\Jobs\AdmitWaitingRoomBatch;
 use Konventix\Commerce\Metrics\CommerceMetrics;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\WaitingRoom\AdmitFromWaitingRoom;
 use Konventix\Commerce\WaitingRoom\WaitingRoomStore;
 use Konventix\Platform\Models\Brand;
@@ -115,6 +116,11 @@ it('reports waiting room depth, admissions and the last admission per brand', fu
 });
 
 it('seeds the webhook last-received timestamp once and keeps a real one', function (): void {
+    config()->set('services.stripe.secret', 'sk_test_configured');
+    config()->set('services.stripe.webhook_secret', 'whsec_configured');
+    $this->withBrand();
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
+
     $first = commerceMetricsScrape();
 
     preg_match('/konventix_payment_webhook_last_received_timestamp_seconds\{provider="stripe"\} (\d+)/', $first, $m);
@@ -129,4 +135,22 @@ it('seeds the webhook last-received timestamp once and keeps a real one', functi
     expect($second)
         ->toContain('konventix_payment_webhook_last_received_timestamp_seconds{provider="stripe"} 1800000000')
         ->toContain('konventix_payment_webhook_last_received_timestamp_seconds{provider="mollie"} '.$seeded);
+});
+
+it('emits no webhook silence series at all when no provider is configured', function (): void {
+    $this->withBrand();
+
+    expect(commerceMetricsScrape())->not->toContain('konventix_payment_webhook_last_received_timestamp_seconds');
+});
+
+it('emits only the mollie row once a mollie settlement account exists', function (): void {
+    $this->withBrand();
+    SettlementAccount::factory()->provider(SettlementAccount::PROVIDER_MOLLIE)->create();
+
+    $scrape = commerceMetricsScrape();
+
+    expect($scrape)
+        ->toContain('konventix_payment_webhook_last_received_timestamp_seconds{provider="mollie"}')
+        ->not->toContain('konventix_payment_webhook_last_received_timestamp_seconds{provider="stripe"}')
+        ->not->toContain('konventix_payment_webhook_last_received_timestamp_seconds{provider="unzer"}');
 });

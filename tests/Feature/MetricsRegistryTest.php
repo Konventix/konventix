@@ -110,3 +110,54 @@ it('reports a registry storage failure instead of raising it into the caller', f
 
     Exceptions::assertReported(RuntimeException::class);
 });
+
+it('throttles storage-failure reporting to once per process per 60 seconds', function (): void {
+    Metrics::forgetReportThrottle();
+    Exceptions::fake();
+
+    $brokenAdapter = new class implements Adapter
+    {
+        public function collect(): array
+        {
+            return [];
+        }
+
+        public function updateSummary(array $data): void
+        {
+            throw new RuntimeException('storage is down');
+        }
+
+        public function updateHistogram(array $data): void
+        {
+            throw new RuntimeException('storage is down');
+        }
+
+        public function updateGauge(array $data): void
+        {
+            throw new RuntimeException('storage is down');
+        }
+
+        public function updateCounter(array $data): void
+        {
+            throw new RuntimeException('storage is down');
+        }
+
+        public function wipeStorage(): void
+        {
+            throw new RuntimeException('storage is down');
+        }
+    };
+
+    app()->instance(CollectorRegistry::class, new CollectorRegistry($brokenAdapter, false));
+
+    app(Metrics::class)->increment('probe_total', ['colour' => 'red', 'size' => 'L']);
+    app(Metrics::class)->increment('probe_total', ['colour' => 'red', 'size' => 'L']);
+
+    Exceptions::assertReportedCount(1);
+
+    Metrics::forgetReportThrottle();
+
+    app(Metrics::class)->increment('probe_total', ['colour' => 'red', 'size' => 'L']);
+
+    Exceptions::assertReportedCount(2);
+});

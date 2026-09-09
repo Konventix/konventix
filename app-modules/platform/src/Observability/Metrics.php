@@ -33,6 +33,14 @@ use Throwable;
 final class Metrics
 {
     /**
+     * When the last storage-failure `report()` fired, process-wide. Static
+     * on purpose: Octane keeps this class scoped per request, but the point
+     * of the throttle is a ceiling per *process*, across every request the
+     * worker handles while Redis is down.
+     */
+    private static ?float $lastReportedAt = null;
+
+    /**
      * The registry is scoped (Octane rebuilds it per request) while this
      * service is a singleton, so it is resolved on every call, never pinned.
      *
@@ -75,14 +83,36 @@ final class Metrics
      * raised: the catalogue lookup and label validation above still throw
      * on a programmer error, but a storage failure belongs to observability,
      * not to whatever this call was counting.
+     *
+     * Reporting itself is throttled to once per process per 60 seconds: a
+     * Redis outage under Octane would otherwise turn every increment or
+     * observe on every request into its own Sentry event and its own
+     * KonventixErrorsLogged sample — an error storm the outage itself
+     * produces. The rest of the failures in that window are swallowed
+     * silently; the throttle only limits reporting, the write is still
+     * attempted (and still fails) every time.
      */
     private function write(Closure $write): void
     {
         try {
             $write();
         } catch (Throwable $e) {
-            report($e);
+            $now = microtime(true);
+
+            if (self::$lastReportedAt === null || $now - self::$lastReportedAt >= 60.0) {
+                self::$lastReportedAt = $now;
+                report($e);
+            }
         }
+    }
+
+    /**
+     * Test-only reset of the report throttle, so a test does not have to
+     * wait 60 real seconds to prove the throttle resets.
+     */
+    public static function forgetReportThrottle(): void
+    {
+        self::$lastReportedAt = null;
     }
 
     private function expect(string $name, MetricKind $kind): MetricDefinition

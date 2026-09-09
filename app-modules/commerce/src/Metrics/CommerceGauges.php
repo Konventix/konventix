@@ -7,6 +7,8 @@ namespace Konventix\Commerce\Metrics;
 use Illuminate\Support\Facades\Cache;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Settlement\Stripe\StripeCredentials;
 use Konventix\Commerce\WaitingRoom\WaitingRoomStore;
 use Konventix\Platform\Models\Brand;
 use Laravel\Pennant\Feature;
@@ -23,6 +25,18 @@ use Spatie\Prometheus\Facades\Prometheus;
  * been heard from since the deploy reports the moment of the first scrape
  * (`Cache::add`, set once, never overwritten). Without that seed a fresh
  * deploy with pending payments would trip KonventixWebhookSilence at once.
+ *
+ * Only a *configured* provider gets a row. `CommerceMetrics::WEBHOOK_PROVIDERS`
+ * is the universe every alert and dashboard is written against, but on dev
+ * (and on any instance that only takes one PSP) only Stripe exists — a row
+ * for `mollie`/`unzer` would seed a timestamp for a provider that will never
+ * send a webhook, and once any payment sits pending long enough that seeded
+ * age alone trips KonventixWebhookSilence forever. Stripe is
+ * instance-level, so "configured" is `StripeCredentials::configured()`
+ * (ADR-0058); Mollie and Unzer are per-brand, so "configured" is "at least
+ * one `SettlementAccount` row exists for that provider" — not whether it is
+ * live or connected, since even a disconnected row means the provider was
+ * wired up and could still receive a late webhook.
  */
 final class CommerceGauges implements Collector
 {
@@ -74,12 +88,35 @@ final class CommerceGauges implements Collector
 
                 $rows = [];
 
-                foreach (CommerceMetrics::WEBHOOK_PROVIDERS as $provider) {
+                foreach ($this->configuredWebhookProviders() as $provider) {
                     $rows[] = [(float) (Cache::get(CommerceMetrics::webhookReceivedKey($provider)) ?? $seededAt), [$provider]];
                 }
 
                 return $rows;
             });
+    }
+
+    /**
+     * The subset of `CommerceMetrics::WEBHOOK_PROVIDERS` this instance
+     * actually has wired up, so a provider nobody configured never gets a
+     * silence alert.
+     *
+     * @return list<string>
+     */
+    private function configuredWebhookProviders(): array
+    {
+        $configuredAccountProviders = SettlementAccount::withoutBrandScope()
+            ->whereIn('provider', CommerceMetrics::WEBHOOK_PROVIDERS)
+            ->distinct()
+            ->pluck('provider')
+            ->all();
+
+        return array_values(array_filter(
+            CommerceMetrics::WEBHOOK_PROVIDERS,
+            fn (string $provider): bool => $provider === 'stripe'
+                ? app(StripeCredentials::class)->configured()
+                : in_array($provider, $configuredAccountProviders, true),
+        ));
     }
 
     /**

@@ -1,7 +1,7 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Substitutes the chart tokens in the rule file for a local vmalert-tool run.
 # Usage: contrib/observability/render.sh [release] [namespace] <outdir>
-set -euo pipefail
+set -eu
 
 release="${1:-konventix}"
 namespace="${2:-konventix}"

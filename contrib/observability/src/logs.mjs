@@ -13,7 +13,7 @@ export default dashboard({
     variables: [
         textbox('namespace', 'konventix', 'Namespace'),
         textbox('release', 'konventix', 'Helm release'),
-        textbox('correlation_id', '', 'Correlation id'),
+        textbox('correlation_id', 'paste-an-id', 'Correlation id'),
     ],
     rows: [
         row('Errors', [
@@ -33,7 +33,7 @@ export default dashboard({
         row('One correlation id', [
             logs('Ingress access line, request record, every record of the request and its jobs', [
                 logsql(`(${app} AND extra.correlation_id:"$correlation_id") OR (${ingress} AND _msg:~"$correlation_id") | sort by (_time) | limit 500`, 'instant'),
-            ], { description: 'Paste the X-Request-ID a user quotes, or the "Reference" from an error page.' }),
+            ], { description: 'Nothing shows until you replace the default correlation id above with a real one: paste the X-Request-ID a user quotes, or the "Reference" from an error page.' }),
         ]),
     ],
 });

@@ -302,8 +302,8 @@ class ObservabilityServiceProvider extends ServiceProvider
 
     /**
      * `Job::getQueue()` is trustworthy on every real driver, but `SyncJob`
-     * — the driver `phpunit.xml` and a plain `php artisan queue:work`-less
-     * dev box both use — hardcodes it to the literal string `sync`
+     * — the driver the test suite runs on (`phpunit.xml` sets
+     * `QUEUE_CONNECTION=sync`) — hardcodes it to the literal string `sync`
      * regardless of `onQueue()`. The queue the job actually asked for is
      * still on the protected `queue` property the constructor set, so read
      * that instead of trusting the accessor.
@@ -348,15 +348,13 @@ class ObservabilityServiceProvider extends ServiceProvider
                 return;
             }
 
+            // `Metrics::increment()` already contains a storage failure
+            // (reports it, throttled, rather than throwing). The guard is
+            // for what reporting that failure would itself log: without it,
+            // that record would re-enter this listener and count itself.
             $counting = true;
-
-            try {
-                app(Metrics::class)->increment('log_records_total', ['level' => $event->level]);
-            } catch (Throwable) {
-                // Deliberately silent: reporting would log, and logging would count.
-            } finally {
-                $counting = false;
-            }
+            app(Metrics::class)->increment('log_records_total', ['level' => $event->level]);
+            $counting = false;
         });
     }
 

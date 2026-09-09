@@ -58,15 +58,15 @@
         "type": "textbox",
         "name": "correlation_id",
         "label": "Correlation id",
-        "query": "",
+        "query": "paste-an-id",
         "current": {
-          "text": "",
-          "value": ""
+          "text": "paste-an-id",
+          "value": "paste-an-id"
         },
         "options": [
           {
-            "text": "",
-            "value": "",
+            "text": "paste-an-id",
+            "value": "paste-an-id",
             "selected": true
           }
         ],
@@ -495,7 +495,7 @@
           "queryType": "instant"
         }
       ],
-      "description": "Paste the X-Request-ID a user quotes, or the \"Reference\" from an error page.",
+      "description": "Nothing shows until you replace the default correlation id above with a real one: paste the X-Request-ID a user quotes, or the \"Reference\" from an error page.",
       "options": {
         "showTime": true,
         "wrapLogMessage": true,

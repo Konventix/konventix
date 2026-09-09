@@ -68,6 +68,20 @@ tests:
 
   - interval: 1m
     input_series:
+      - series: 'konventix_queue_oldest_pending_job_age{job="konventix", connection="redis", queue="messaging"}'
+        values: '65x15'
+    alert_rule_test:
+      - eval_time: 12m
+        groupname: konventix.app
+        alertname: KonventixQueueBacklog
+        exp_alerts:
+          - exp_labels: {job: konventix, connection: redis, queue: messaging, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Queue messaging has waited over a minute for 10 minutes"
+              runbook: "docs/operations.md#konventixqueuebacklog"
+
+  - interval: 1m
+    input_series:
       - series: 'konventix_waiting_room_depth{job="konventix", brand="sxlan"}'
         values: '5x10'
       - series: 'konventix_waiting_room_last_admission_timestamp_seconds{job="konventix", brand="sxlan"}'
@@ -132,6 +146,50 @@ tests:
 
   - interval: 1m
     input_series:
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="0.05"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="0.1"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="0.25"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="0.5"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="1"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="2.5"}'
+        values: '0x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="5"}'
+        values: '0+10x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="10"}'
+        values: '0+10x30'
+      - series: 'konventix_http_request_duration_seconds_bucket{job="konventix", route="commerce.cart.checkout", le="+Inf"}'
+        values: '0+10x30'
+    alert_rule_test:
+      - eval_time: 25m
+        groupname: konventix.app
+        alertname: KonventixCheckoutSlow
+        exp_alerts:
+          - exp_labels: {severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Checkout p95 above 3 seconds"
+              runbook: "docs/operations.md#konventixcheckoutslow"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_log_records_total{job="konventix", level="error"}'
+        values: '0 0 0 1 1 1'
+    alert_rule_test:
+      - eval_time: 4m
+        groupname: konventix.app
+        alertname: KonventixErrorsLogged
+        exp_alerts:
+          - exp_labels: {job: konventix, level: error, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "The application logged error records"
+              runbook: "docs/operations.md#konventixerrorslogged"
+
+  - interval: 1m
+    input_series:
       - series: 'konventix_schedule_last_heartbeat_timestamp_seconds{job="konventix"}'
         values: '0x20'
     alert_rule_test:
@@ -157,6 +215,36 @@ tests:
             exp_annotations:
               summary: "No database backup completed in 26 hours"
               runbook: "docs/operations.md#konventixdatabasebackupmissing"
+
+  - interval: 1m
+    input_series:
+      - series: 'cnpg_pg_stat_archiver_last_failed_time{namespace="konventix", pod="konventix-db-1"}'
+        values: '100x25'
+      - series: 'cnpg_pg_stat_archiver_last_archived_time{namespace="konventix", pod="konventix-db-1"}'
+        values: '50x25'
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: konventix.platform
+        alertname: KonventixWalArchivingFailing
+        exp_alerts:
+          - exp_labels: {namespace: konventix, pod: konventix-db-1, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "WAL archiving is failing on konventix-db-1"
+              runbook: "docs/operations.md#konventixwalarchivingfailing"
+
+  - interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="konventix", pod="konventix-web-abc123"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 35m
+        groupname: konventix.platform
+        alertname: KonventixPodsRestarting
+        exp_alerts:
+          - exp_labels: {namespace: konventix, pod: konventix-web-abc123, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "konventix-web-abc123 restarted more than 3 times in 30 minutes"
+              runbook: "docs/operations.md#konventixpodsrestarting"
 
   - interval: 1m
     input_series:
