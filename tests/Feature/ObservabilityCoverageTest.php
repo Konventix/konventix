@@ -25,8 +25,19 @@ function observabilityDashboards(): array
 function observabilityRules(): array
 {
     $file = base_path('contrib/observability/alerts/konventix.rules.yaml');
+    $groups = Yaml::parseFile($file)['groups'];
+    expect($groups)->not->toBe([]);
 
-    return Yaml::parseFile($file)['groups'];
+    $hasRules = false;
+    foreach ($groups as $group) {
+        if (! empty($group['rules'])) {
+            $hasRules = true;
+            break;
+        }
+    }
+    expect($hasRules)->toBe(true);
+
+    return $groups;
 }
 
 /** @return list<string> */
@@ -73,6 +84,8 @@ it('references only declared metrics from dashboards and rules', function (): vo
 });
 
 it('shows every declared metric on at least one dashboard', function (): void {
+    expect(app(MetricCatalog::class)->all())->not->toBe([]);
+
     $onDashboards = [];
 
     foreach (observabilityDashboards() as $dashboard) {
@@ -98,7 +111,7 @@ it('labels every alert with the team and a deliverable severity', function (): v
             expect($rule['labels']['team'] ?? null)->toBe('konventix', $rule['alert'])
                 ->and($rule['labels']['severity'] ?? null)->toBeIn(['warning', 'critical'], $rule['alert'])
                 ->and($rule['annotations']['summary'] ?? '')->not->toBe('', $rule['alert'])
-                ->and($rule['annotations']['runbook'] ?? '')->toStartWith('docs/operations.md#', $rule['alert']);
+                ->and($rule['annotations']['runbook'] ?? '')->toBe('docs/operations.md#'.strtolower($rule['alert']), $rule['alert']);
         }
     }
 });
@@ -123,6 +136,7 @@ it('renders no metric the catalogue does not declare', function (): void {
 
     $scrape = $this->withHeader('Authorization', 'Bearer metrics-test-secret')->get('/metrics')->assertOk()->getContent();
     preg_match_all('/^# TYPE konventix_([a-z0-9_]+) /m', $scrape, $m);
+    expect($m[1])->not->toBe([]);
 
     expect(array_values(array_diff($m[1], $declared)))->toBe([]);
 });
@@ -132,7 +146,9 @@ it('has a runbook section in docs/operations.md for every alert', function (): v
 
     foreach (observabilityRules() as $group) {
         foreach ($group['rules'] as $rule) {
-            expect($operations)->toContain('### '.strtolower($rule['alert']), $rule['alert']);
+            $runbook = $rule['annotations']['runbook'] ?? '';
+            $anchor = substr($runbook, strlen('docs/operations.md#'));
+            expect($operations)->toContain('### '.$anchor, $rule['alert']);
         }
     }
 });
