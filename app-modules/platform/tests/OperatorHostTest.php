@@ -5,46 +5,13 @@ declare(strict_types=1);
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
-use Konventix\Platform\Models\Permission as PermissionModel;
-use Konventix\Platform\Models\Role;
 use Konventix\Platform\Models\StaticPage;
-use Spatie\Permission\PermissionRegistrar;
 
 /**
  * ADR-0029: the admin console exists only on the operator's admin host; on
  * brand hosts it is a 404, not a login redirect — its existence is nobody's
  * business there.
  */
-function operatorWithAdmin(): array
-{
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.op.test'])->save();
-
-    $registrar = app(PermissionRegistrar::class);
-    $registrar->setPermissionsTeamId($operator->getKey());
-
-    foreach (['platform.access-admin', 'platform.view-brands', 'platform.manage-brands'] as $name) {
-        PermissionModel::query()->firstOrCreate([
-            'name' => $name,
-            'guard_name' => 'web',
-        ]);
-    }
-
-    $role = Role::query()->create([
-        'name' => 'Operator Admin',
-        'guard_name' => 'web',
-        'brand_id' => $operator->getKey(),
-    ]);
-    $role->givePermissionTo(PermissionModel::query()->pluck('name')->all());
-
-    $admin = User::factory()->create();
-    $admin->assignRole($role);
-
-    $registrar->setPermissionsTeamId(null);
-
-    return [$operator, $admin];
-}
-
 it('404s admin routes on a brand host', function (): void {
     operatorWithAdmin();
 

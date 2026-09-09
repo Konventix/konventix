@@ -138,22 +138,6 @@ function regMailsNotPushed(string $templateKey): void
     );
 }
 
-function regMailsRender(string $templateKey, RegistrationMailData $payload, string $locale = 'de'): string
-{
-    $message = new SendMessageData(
-        messageId: (string) Str::ulid(),
-        brandId: (string) Str::ulid(),
-        recipientId: (string) Str::ulid(),
-        recipientEmail: 'registrant@example.test',
-        recipientLocale: $locale,
-        templateKey: $templateKey,
-        payload: $payload,
-        channel: Channel::Mail->value,
-    );
-
-    return app(TemplateRenderer::class)->render($message)->body;
-}
-
 it('sends only registration.confirmed, not registration.submitted, when a free type auto-confirms at submission', function (): void {
     $brand = $this->withBrand();
     $registrant = regMailsRecipient($brand->id);

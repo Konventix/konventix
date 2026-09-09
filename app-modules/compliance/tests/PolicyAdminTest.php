@@ -9,11 +9,7 @@ use Konventix\Compliance\Events\PolicyPublished;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
-use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Operator;
-use Konventix\Platform\Models\Permission as PermissionModel;
-use Konventix\Platform\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
 
 /**
  * ADR-0029: Compliance's operator-console surface — the policy list, the
@@ -22,38 +18,6 @@ use Spatie\Permission\PermissionRegistrar;
  * Helper name prefixed with the module: Pest helpers are process-global
  * across every module's test files (.ai/rules/tests.md).
  */
-function complianceOperator(array $permissions = [
-    'platform.access-admin',
-    'compliance.view-policies',
-    'compliance.manage-policies',
-    'compliance.publish-policy',
-]): array
-{
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.compliance.test'])->save();
-
-    $registrar = app(PermissionRegistrar::class);
-    $registrar->setPermissionsTeamId($operator->getKey());
-
-    foreach ($permissions as $name) {
-        PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
-    }
-
-    $role = Role::query()->create([
-        'name' => 'Operator Admin',
-        'guard_name' => 'web',
-        'brand_id' => $operator->getKey(),
-    ]);
-    $role->givePermissionTo($permissions);
-
-    $admin = User::factory()->create();
-    $admin->assignRole($role);
-
-    $registrar->setPermissionsTeamId(null);
-
-    return [$operator, $admin];
-}
-
 it('404s the policy console on a brand host', function (): void {
     complianceOperator();
 

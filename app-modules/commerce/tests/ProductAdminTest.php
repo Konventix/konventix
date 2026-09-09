@@ -47,15 +47,6 @@ function productsOperator(array $permissions = ['platform.access-admin', 'commer
     return [$operator, $admin];
 }
 
-function productOf(Brand $brand, array $attributes = []): Product
-{
-    $product = Product::factory()->make($attributes);
-    $product->brand_id = $brand->getKey();
-    $product->save();
-
-    return $product;
-}
-
 /**
  * @return array<string, mixed>
  */
