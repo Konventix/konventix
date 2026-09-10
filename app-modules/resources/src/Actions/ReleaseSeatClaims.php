@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Resources\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Events\SeatClaimReleased;
 use Konventix\Resources\Models\ResourceClaim;
@@ -26,6 +27,13 @@ use Konventix\Resources\Models\ResourceClaim;
  * `RegistrationCancelled` carries no brand id, so the lookup is by
  * registration id `withoutBrandScope()` — a registration ULID is unique
  * across brands.
+ *
+ * `SeatClaimReleased` is dispatched after the outermost commit, never
+ * inside the transaction, for the same reason `CreateSeatClaims` defers
+ * `SeatClaimCreated`: this Action's own transaction is a savepoint nested
+ * inside whatever transaction wraps `RegistrationCancelled`/`Rejected`.
+ * Whatever brand is ambient right now is captured and restored around the
+ * deferred dispatch, exactly as `HoldResourceBooking` does.
  */
 final class ReleaseSeatClaims
 {
@@ -50,13 +58,27 @@ final class ReleaseSeatClaims
             foreach ($claims as $claim) {
                 $claim->forceFill(['state' => ClaimState::Released])->save();
 
-                event(new SeatClaimReleased(
+                $event = new SeatClaimReleased(
                     claimId: $claim->id,
                     registrationId: $claim->registration_id,
                     eventId: $claim->event_id,
                     brandId: $claim->brand_id,
                     reason: $reason,
-                ));
+                );
+
+                $brand = app(BrandContext::class)->current();
+
+                DB::afterCommit(static function () use ($event, $brand): void {
+                    if ($brand === null) {
+                        event($event);
+
+                        return;
+                    }
+
+                    app(BrandContext::class)->withBrand($brand, static function () use ($event): void {
+                        event($event);
+                    });
+                });
 
                 $released[] = $claim;
             }

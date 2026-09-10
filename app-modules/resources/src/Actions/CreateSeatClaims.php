@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Resources\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\SeatingMode;
 use Konventix\Resources\Events\SeatClaimCreated;
@@ -27,6 +28,15 @@ use Konventix\Resources\Models\ResourceClaim;
  *
  * `brand_id` comes from the payload, not ambient context (ADR-0010): the
  * confirmation may arrive from a webhook or the scheduler with no brand.
+ *
+ * `SeatClaimCreated` is dispatched after the outermost commit, never inside
+ * the transaction (the same rule Task 16 gave the booking events): this
+ * Action's own transaction is a savepoint nested inside
+ * `RegistrationConfirmed`'s/`RegistrationAmended`'s wrapping one, so a later
+ * listener's failure must not leave the event dispatched for a claim the
+ * rollback then undoes. Whatever brand is ambient right now is captured and
+ * restored around the deferred dispatch, exactly as `HoldResourceBooking`
+ * does.
  *
  * @phpstan-type Grant array{kind: string, role: string, quantity: int, resource_type_id: string|null, resource_type_ids?: list<string>|null, seating_mode?: string|null}
  */
@@ -86,12 +96,26 @@ final class CreateSeatClaims
                 ]);
                 $claim->forceFill(['brand_id' => $brandId])->save();
 
-                event(new SeatClaimCreated(
+                $event = new SeatClaimCreated(
                     claimId: $claim->id,
                     registrationId: $registrationId,
                     eventId: $eventId,
                     brandId: $brandId,
-                ));
+                );
+
+                $brand = app(BrandContext::class)->current();
+
+                DB::afterCommit(static function () use ($event, $brand): void {
+                    if ($brand === null) {
+                        event($event);
+
+                        return;
+                    }
+
+                    app(BrandContext::class)->withBrand($brand, static function () use ($event): void {
+                        event($event);
+                    });
+                });
 
                 $created[] = $claim;
             }
