@@ -27,7 +27,7 @@ not cosmetic — they force generic data models instead of relabeled LAN concept
 | Konventix | Absorbs | Notes |
 |---|---|---|
 | **Staffing** | OrgaTeam | Differentiator: teams, shifts, shift roles, assignments, staffer read-model |
-| **Resources** | Seating | Seat becomes one resource type with a **time dimension**; rooms, devices, booth space are future types |
+| **Resources** | Seating | Seat becomes one resource type with a **time dimension**; rooms, devices, booth space are future types. Since ADR-0060 the hall plan, the seat picker and seat claims are surfaces of this module: a place is a unit-mode resource, a category is a resource type, and the plan document is a typed JSON column projected into `resources` |
 | **Competition** | Competition, CompetitionSchedule | Match results state stays here |
 | **GameOps** | Orchestration, Games | The explicitly LAN-specific plugin; proves the plugin architecture. See ADR-0006 companion notes in `docs/decisions/` |
 | **Agenda** | Program | |
