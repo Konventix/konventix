@@ -9,6 +9,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Permissions\PermissionHolders;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
@@ -16,6 +17,10 @@ use Konventix\Resources\Enums\Permission;
 use Konventix\Resources\Events\SeatClaimPlaced;
 use Konventix\Resources\Exceptions\ResourceUnavailableException;
 use Konventix\Resources\Models\Resource;
+// Aliased: an unqualified "Resource" in a docblock generic collides with
+// PHP's `resource` pseudo-type and pint's docblock fixer silently lowercases
+// it (the same trap fixed in tests/Helpers.php).
+use Konventix\Resources\Models\Resource as BookableResource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceEventWindow;
@@ -51,8 +56,14 @@ use Konventix\Resources\Models\ResourceEventWindow;
  * User model — ADR-0004); `operator` with a null user id is the trusted CLI
  * path (`resources:assign-place`), recorded in the design's §13.
  *
- * `SeatClaimPlaced` is dispatched after the transaction returned. The
- * booking Actions dispatch their own events inside it, as they always have.
+ * `SeatClaimPlaced` is deferred to the outermost commit via `DB::afterCommit()`,
+ * the same mechanism `CreateSeatClaims`, `HoldResourceBooking`,
+ * `ConfirmResourceBooking` and `ReleaseResourceBooking` use (design §6.1 step
+ * 7): this Action is the outermost transaction at every call site today, but
+ * nothing enforces that, and a future caller that wraps it must not see the
+ * claim announced placed for a pick its own rollback then undoes. Whatever
+ * brand is ambient right now is captured and restored around the deferred
+ * dispatch, exactly as those Actions do.
  */
 final class AssignPlacesToRegistration
 {
@@ -151,16 +162,35 @@ final class AssignPlacesToRegistration
             // Refresh the caller's instance so it reads what was written.
             $claim->setRawAttributes($locked->getAttributes(), true);
 
+            $event = new SeatClaimPlaced(
+                claimId: $locked->id,
+                registrationId: $locked->registration_id,
+                eventId: $locked->event_id,
+                brandId: $locked->brand_id,
+                placeIds: $placeIds,
+            );
+
+            // Deferred to the outermost commit (design §6.1 step 7): see the
+            // class docblock. Whatever brand is ambient right now is
+            // captured and restored around the deferred dispatch, because by
+            // the time it runs a wrapping caller's own withBrand() block has
+            // already put the previous brand back (see ReleaseResourceBooking).
+            $brand = app(BrandContext::class)->current();
+
+            DB::afterCommit(static function () use ($event, $brand): void {
+                if ($brand === null) {
+                    event($event);
+
+                    return;
+                }
+
+                app(BrandContext::class)->withBrand($brand, static function () use ($event): void {
+                    event($event);
+                });
+            });
+
             return $created;
         });
-
-        event(new SeatClaimPlaced(
-            claimId: $claim->id,
-            registrationId: $claim->registration_id,
-            eventId: $claim->event_id,
-            brandId: $claim->brand_id,
-            placeIds: $placeIds,
-        ));
 
         return $bookings;
     }
@@ -220,7 +250,7 @@ final class AssignPlacesToRegistration
      * the caller reports the first missing one by ref.
      *
      * @param  list<string>  $placeIds
-     * @return array<string, resource>
+     * @return array<string, BookableResource>
      */
     private function eligiblePlaces(ResourceClaim $claim, array $placeIds): array
     {
