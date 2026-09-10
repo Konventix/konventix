@@ -29,6 +29,10 @@ use Konventix\Platform\Models\StaticPage;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
+use Konventix\Resources\Enums\ClaimState;
+use Konventix\Resources\Models\Plan;
+use Konventix\Resources\Models\ResourceClaim;
+use Konventix\Resources\Models\ResourceType;
 use Laravel\Pennant\Feature;
 
 /**
@@ -253,6 +257,29 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
 
         return $own === null ? null : ['registration' => $own];
     }
+
+    // The seat picker and its availability poll both authorize on the
+    // claim's registrant (`FindSeatClaimForRegistrant`) and 404 for anyone
+    // else — the ownership rule working exactly as designed, the same shape
+    // as `registration.mine.show` above. It is correct behaviour, not a
+    // screen this walk can skip past: `DemoResourcesSeeder::seedSeatClaims()`
+    // gives every confirmed registrant a genuine, unplaced claim for exactly
+    // this reason, so the walking member's own registration resolves here.
+    if (($name === 'resources.seating.pick' || $name === 'resources.seating.availability') && $member !== null) {
+        $claim = ResourceClaim::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->where('registrant_user_id', $member->getKey())
+            ->where('state', '!=', ClaimState::Released)
+            ->orderByDesc('created_at')
+            ->first();
+
+        $registration = $claim === null ? null : Registration::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->whereKey($claim->registration_id)
+            ->first();
+
+        return $registration === null ? null : ['registration' => $registration];
+    }
     $eventQuery = fn () => Event::withoutBrandScope()->where('brand_id', $brand->getKey());
 
     // The public form takes both halves of one pair: the type must belong to
@@ -346,6 +373,13 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
                 ->where('brand_id', $brand->getKey())
                 ->first(),
             $parameter === 'admission' => Admission::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
+            // The console's plan screens (`admin.plans.edit`/`.download`/
+            // `.occupancy`): `DemoResourcesSeeder::seedPlan()` gives every
+            // event one, empty but real, so they are genuinely reachable.
+            $parameter === 'plan' => Plan::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
+            // The console's category screen (`admin.resource-types.edit`) —
+            // `DemoResourcesSeeder::seedCatalogue()` already seeds these.
+            $parameter === 'resourceType' => ResourceType::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             // Always null — konventix:seed sends no mail, so no brand ever
             // has a MessageRecord — which is exactly why the route this
             // parameter belongs to is also listed in dryRunSkippedRoutes().

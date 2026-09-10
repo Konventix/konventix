@@ -35,7 +35,7 @@ use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\Operator;
-use Konventix\Resources\Models\ResourceType;
+use Konventix\Resources\Models\Plan;
 
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\info;
@@ -446,7 +446,14 @@ class SeedDemoDataCommand extends Command
         // Before registrations: a confirmed exhibitor's booth claim fails
         // soft when the resource type does not exist yet, and the exhibitor
         // would silently end up with no booth.
-        $boothType = $this->inBrand($brand, fn (): ResourceType => $this->resources->seedCatalogue($event, $archetype));
+        $catalogue = $this->inBrand($brand, fn (): array => $this->resources->seedCatalogue($event, $archetype));
+        $boothType = $catalogue[$archetype->claimedResourceTypeName()];
+
+        // The console's plan screens (`admin.plans.edit`/`.download`/
+        // `.occupancy`) otherwise have nothing seeded to open — independent
+        // of the catalogue and the registrations below, so it can be seeded
+        // as soon as the event's window exists.
+        $this->inBrand($brand, fn (): Plan => $this->resources->seedPlan($event));
 
         $confirmed = $this->inBrand($brand, fn (): Collection => $this->registrations->handle(
             $event,
@@ -474,6 +481,13 @@ class SeedDemoDataCommand extends Command
             $confirmed->pluck('id'),
             $archetype,
         ));
+
+        // Last: Commerce's own priced type (above) confirms its registrants
+        // after this event's plain catalogue does, so a genuine seat claim
+        // for every confirmed registrant — not only one registration type's
+        // — needs the full picture rather than the `$confirmed` snapshot
+        // taken before Commerce ran.
+        $this->inBrand($brand, fn () => $this->resources->seedSeatClaims($event, $archetype));
     }
 
     /**
