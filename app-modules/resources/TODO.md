@@ -42,6 +42,8 @@
 
 ## Done
 
+- [x] Seating Task 21: `ReservePlaceForOperator` / `ReleaseOperatorReservation` (holder `operator`, reason `operator_released`, occupied places refused by the constraint).
+
 - [x] Seating Task 20: `ExportPlan` (canonical JSON), `ImportPlan` (through `SavePlan`, source import, category remap), `resources:plan-import`/`resources:plan-export`, committed example document with 10 × 16 places.
 
 - [x] Seating Task 19: `PublishPlan`/`UnpublishPlan` set `published_at`, re-derive `is_published` on the projection and emit after the commit.
