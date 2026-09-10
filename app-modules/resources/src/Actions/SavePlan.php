@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Konventix\Resources\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Resources\Data\PlanConflictData;
 use Konventix\Resources\Data\PlanConflictResolutionData;
 use Konventix\Resources\Data\PlanDocumentData;
@@ -14,6 +16,7 @@ use Konventix\Resources\Data\PlanSaveResultData;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\PlanVersionSource;
+use Konventix\Resources\Events\PlaceSupplyChanged;
 use Konventix\Resources\Events\PlanSaved;
 use Konventix\Resources\Events\PlanSaveRefused;
 use Konventix\Resources\Exceptions\PlanConflictException;
@@ -47,7 +50,8 @@ use Konventix\Resources\Plans\PlanWarnings;
  *    `unplaced`), projection upserted in batches with `brand_id` from the
  *    plan, removed places soft-deleted, version row written, `version++`,
  *    versions beyond fifty pruned;
- * 7. after the commit: `PlanSaved` and the deferred booking events.
+ * 7. after the commit: `PlanSaved`, `PlaceSupplyChanged` for every place
+ *    whose `blocked` flag flipped, and the deferred booking events.
  *
  * Steps 3 and 4 run once before any lock so a refused save costs nothing,
  * and again inside the transaction because a place can be booked between
@@ -147,15 +151,45 @@ final class SavePlan
             $this->pruneVersions($plan, $version);
 
             $changed = $diff->changedPlaceIds();
+            $supplyChanges = $this->blockedTransitions($diff);
 
-            DB::afterCommit(static function () use ($plan, $version, $changed): void {
-                event(new PlanSaved(
-                    planId: $plan->id,
-                    eventId: $plan->event_id,
-                    brandId: $plan->brand_id,
-                    version: $version,
-                    changedPlaceIds: $changed,
-                ));
+            // Deferred to the outermost commit (design §6.1 step 7), and
+            // whatever brand is ambient right now is captured and restored
+            // around the deferred dispatch alone — a save on the admin host
+            // usually has none, but the idiom is the one `ReleaseResourceBooking`
+            // already established and is copied rather than reinvented here.
+            $brand = app(BrandContext::class)->current();
+
+            DB::afterCommit(function () use ($plan, $version, $changed, $supplyChanges, $brand): void {
+                $dispatch = function () use ($plan, $version, $changed, $supplyChanges): void {
+                    event(new PlanSaved(
+                        planId: $plan->id,
+                        eventId: $plan->event_id,
+                        brandId: $plan->brand_id,
+                        version: $version,
+                        changedPlaceIds: $changed,
+                    ));
+
+                    foreach ($supplyChanges as $change) {
+                        event(new PlaceSupplyChanged(
+                            changeId: (string) Str::ulid(),
+                            brandId: $plan->brand_id,
+                            eventId: $plan->event_id,
+                            resourceTypeId: $change['resourceTypeId'],
+                            reason: $change['reason'],
+                            direction: $change['direction'],
+                            places: $change['places'],
+                        ));
+                    }
+                };
+
+                if ($brand === null) {
+                    $dispatch();
+
+                    return;
+                }
+
+                app(BrandContext::class)->withBrand($brand, $dispatch);
             });
 
             return ['version' => $version, 'changed' => $changed];
@@ -354,6 +388,57 @@ final class SavePlan
                 'accessible', 'blocked', 'neighbors', 'origin_id', 'is_published', 'deleted_at', 'updated_at',
             ]);
         }
+    }
+
+    /**
+     * `PlaceSupplyChanged` inputs, design §12b/#282: only an *existing*
+     * place whose `blocked` value actually flips counts — a place added
+     * already blocked was never part of the bookable count a quota was
+     * sized against, and a removed place is out of scope for this event
+     * (deletion/restoration are not among the reasons it carries). Grouped
+     * by the row's (new) category so one save touching several places
+     * across several categories, or both directions at once, emits one
+     * event per category per direction rather than one per place.
+     *
+     * @return list<array{resourceTypeId: string, reason: string, direction: string, places: int}>
+     */
+    private function blockedTransitions(PlanDiffResult $diff): array
+    {
+        $blocked = [];
+        $unblocked = [];
+
+        foreach ($diff->changed as $id => $fields) {
+            if (! in_array('blocked', $fields, true)) {
+                continue;
+            }
+
+            $was = (bool) $diff->current[$id]->blocked;
+            $is = (bool) $diff->rows[$id]['blocked'];
+
+            if ($was === $is) {
+                continue;
+            }
+
+            $resourceTypeId = $diff->rows[$id]['resource_type_id'];
+
+            if ($is) {
+                $blocked[$resourceTypeId] = ($blocked[$resourceTypeId] ?? 0) + 1;
+            } else {
+                $unblocked[$resourceTypeId] = ($unblocked[$resourceTypeId] ?? 0) + 1;
+            }
+        }
+
+        $changes = [];
+
+        foreach ($blocked as $resourceTypeId => $places) {
+            $changes[] = ['resourceTypeId' => $resourceTypeId, 'reason' => 'blocked', 'direction' => 'consumed', 'places' => $places];
+        }
+
+        foreach ($unblocked as $resourceTypeId => $places) {
+            $changes[] = ['resourceTypeId' => $resourceTypeId, 'reason' => 'unblocked', 'direction' => 'released', 'places' => $places];
+        }
+
+        return $changes;
     }
 
     private function writeVersion(Plan $plan, PlanDocumentData $document, int $version, PlanVersionSource $source, ?string $actorUserId): void

@@ -50,6 +50,7 @@ use Konventix\Resources\Metrics\ResourcesMetrics;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceClaim;
+use Konventix\Resources\Models\ResourceEventWindow;
 use Konventix\Resources\Models\ResourceType;
 use Spatie\Prometheus\Facades\Prometheus;
 
@@ -220,6 +221,42 @@ class ResourcesServiceProvider extends ModuleServiceProvider
                         ->map(fn (ResourceType $type): array => [
                             ...CategoryData::fromModel($type)->toArray(),
                             'bookablePlaces' => (int) ($placeCounts[$type->getKey()] ?? 0),
+                        ])
+                        ->all(),
+                ];
+            },
+            order: 10,
+        );
+
+        // Design §12b/#282: the quota form's category select. A quota is
+        // brand-owned but not event-owned (SPEC.md "Owns" — Quota may be
+        // referenced by types across more than one event), so this lists
+        // every category of the brand rather than one event's — resolved
+        // with the quota's own brand in context the same way
+        // `QuotaAdminController` resolves the seating-fields slot above,
+        // and carrying `eventName` because two categories of the same
+        // brand's different events may share a name. No component actually
+        // renders this contribution's `component` field; only its `props`
+        // feed the console's own native select, the same way the
+        // `bookablePlaces` figure above rides beside `CategoryData` without
+        // being part of it.
+        $slots->add(
+            slot: 'registration.quota-form.categories',
+            module: 'resources',
+            component: 'resources/CategoryOptions',
+            props: static function (): array {
+                $types = ResourceType::query()->orderBy('name')->get(['id', 'name', 'event_id']);
+
+                $eventNames = ResourceEventWindow::query()
+                    ->whereIn('event_id', $types->pluck('event_id')->unique())
+                    ->pluck('name', 'event_id');
+
+                return [
+                    'categories' => $types
+                        ->map(fn (ResourceType $type): array => [
+                            'id' => $type->id,
+                            'name' => $type->name,
+                            'eventName' => $eventNames[$type->event_id] ?? null,
                         ])
                         ->all(),
                 ];

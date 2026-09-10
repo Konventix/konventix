@@ -7,7 +7,10 @@ namespace Konventix\Resources\Actions;
 use Illuminate\Database\DeadlockException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Konventix\Platform\Brands\BrandContext;
+use Konventix\Resources\Events\PlaceSupplyChanged;
 use Konventix\Resources\Exceptions\ResourceUnavailableException;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
@@ -36,6 +39,10 @@ use Konventix\Resources\Models\ResourceType;
  * operator reserving a seat someone else is buying at that instant gets the
  * same clean refusal `ResourceUnavailableException` already gives for the
  * sequential case — never an uncaught crash.
+ *
+ * A successful reservation also consumes one unit of the category's
+ * Registration quota, exactly as a sale would (design §12b/#282):
+ * `PlaceSupplyChanged` fires with `reason: reserved`, `direction: consumed`.
  *
  * `Permission::BookOnBehalf` is checked by the console controller.
  */
@@ -70,7 +77,36 @@ final class ReservePlaceForOperator
                     quantity: 1,
                 );
 
-                return $this->confirm->handle($booking);
+                $confirmed = $this->confirm->handle($booking);
+
+                // Idiom copied from `ReleaseResourceBooking`: whatever brand
+                // is ambient now is captured and restored around the
+                // deferred dispatch alone, since a console request usually
+                // has none.
+                $brand = app(BrandContext::class)->current();
+                $event = new PlaceSupplyChanged(
+                    changeId: (string) Str::ulid(),
+                    brandId: $place->brand_id,
+                    eventId: $type->event_id,
+                    resourceTypeId: $type->id,
+                    reason: 'reserved',
+                    direction: 'consumed',
+                    places: 1,
+                );
+
+                DB::afterCommit(static function () use ($event, $brand): void {
+                    if ($brand === null) {
+                        event($event);
+
+                        return;
+                    }
+
+                    app(BrandContext::class)->withBrand($brand, static function () use ($event): void {
+                        event($event);
+                    });
+                });
+
+                return $confirmed;
             } catch (DeadlockException) {
                 throw ResourceUnavailableException::alreadyBooked($place->id);
             } catch (QueryException $exception) {

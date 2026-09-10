@@ -35,10 +35,15 @@ a plan; a **Kategorie** (category) is a `ResourceType`; a seat booking is a
   `is_published` is derived from the plan on every save. Plan-less resources
   (booths, devices) keep the manual flag. `Resource::scopeBookable()`
   (published, not blocked) is the count an operator sizes a seat category's
-  Registration quota against (#282): a blocked or unpublished place is not
-  sellable and does not consume a unit of that ceiling. The ceiling itself
-  is a Registration grant, not a Resources concept — Resources has no quota
-  of its own to enforce.
+  Registration quota against (#282). The ceiling itself is a Registration
+  `Quota`, not a Resources concept — Resources has no quota of its own to
+  enforce — but blocking a place or reserving it for the organisation
+  *moves* that ceiling's ledger exactly as a sale would: `PlaceSupplyChanged`
+  carries the category and how many places changed in which direction, and
+  Registration consumes or releases the linked quota's unit from it.
+  Unblocking or releasing already drains the waitlist through the existing
+  `QuotaReleased` path, so a freed seat is offered to the queue with no
+  further work here.
 - **Plan and plan versions** — `resource_plans` holds one hall plan per
   event and name: dimensions in millimetres, optional raster background,
   display unit, snap step, a `version` incremented per save, `published_at`,
@@ -112,6 +117,7 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 | `SeatClaimCreated` | A confirmed registration with a `seating` grant may pick | `claimId`, `registrationId`, `eventId`, `brandId` |
 | `SeatClaimPlaced` | The registrant's places are confirmed | `claimId`, `registrationId`, `eventId`, `brandId`, `placeIds` |
 | `SeatClaimReleased` | The claim ended with its registration | `claimId`, `registrationId`, `eventId`, `brandId` |
+| `PlaceSupplyChanged` | A category's bookable supply moves for a reason that is not a sale (design §12b, #282): a place blocked/unblocked, reserved for or released from the organisation, or a whole plan published/unpublished — emitted from `SavePlan`'s projection, `PublishPlan`, `UnpublishPlan`, `ReservePlaceForOperator` and `ReleaseOperatorReservation`, the only places that change these states | `changeId`, `brandId`, `eventId`, `resourceTypeId`, `reason` (`blocked`\|`unblocked`\|`reserved`\|`released`\|`published`\|`unpublished`), `direction` (`consumed`\|`released`), `places` |
 
 Admission's SPEC once referred to `ResourceBookingCreated`; the settled name is
 `ResourceBookingConfirmed` — a hold is provisional and must never reach a badge.
@@ -154,8 +160,10 @@ read model of people — a holder is a ULID plus a holder type.
   Ownership of the claim authorises (`registrant_user_id === auth()->id()`);
   no capability is needed. Only published plans reach the picker.
 - **Slots**: `registration.mine.show` → `SeatSummarySlot`;
-  `registration.type-editor.seating-fields` → `SeatingGrantFields`; both with
-  `module: 'resources'` and no feature.
+  `registration.type-editor.seating-fields` → `SeatingGrantFields`;
+  `registration.quota-form.categories` (design §12b, #282) → props only, the
+  quota console's own category select reads them and renders no foreign
+  component; all three carry `module: 'resources'` and no feature.
 - **Commands**: `resources:expire-holds` (every minute), `resources:plan-import`,
   `resources:plan-export`, `resources:assign-place`.
 
