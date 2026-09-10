@@ -417,6 +417,7 @@ Deviations found during implementation are appended here with date, reason and t
 - 2026-09-10, Task 11: three sub-shapes the design writes inline are named Data classes so they reach `generated.d.ts` (ADR-0009): `PlanConflictBookingData` (the `bookings` entry of `PlanConflictData`), `PlanOccupancyPlaceData` (the map value of `PlanOccupancyData`), `PlanDiffSummaryData` (the "diff summary" of `PlanValidationData`, as counts `added`, `changed`, `removed`). `PlanSaveResultData` is `{ version, changedPlaceIds, warnings }`; `PlanWarningData` is `{ code: overlap|outside_zone, placeIds, message }`.
 - 2026-09-10, Task 11: `PlanInvariants` lives in `src/Plans/` (a topic directory beside the flat ones, the `competition/src/Brackets` and `commerce/src/Cart` precedent) and takes the plan's category ids as an argument, so it stays pure PHP; its violations are keyed `document.elements.<index>.<field>` already.
 - 2026-09-10, Task 23: a type (and an amendment) carries at most one seating grant. `resource_claims` is unique per `(registration_id, amendment_id)`, so a second grant on the same occasion could never become a claim; several categories are one grant with several `resourceTypeIds`. Enforced in `GuardsSeatingGrants`.
+- 2026-09-10, Task 26: an `operator` actor with a null `actorUserId` is the trusted CLI path (`resources:assign-place`) and skips the `BookOnBehalf` check; with a user id the check runs through Platform's `PermissionHolders` (no User import in Resources).
 
 ## 14. Out of scope (one tracking issue, "Nach Event")
 

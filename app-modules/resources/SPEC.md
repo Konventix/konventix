@@ -58,6 +58,9 @@ its assumptions.
   `assign`), how many places, and whether it is `unplaced`, `placed` or
   `released`. One per confirmation occasion `(registration_id, amendment_id)`.
   A claim that has not been placed is its own row, never a fake booking.
+  Placing a claim (`Actions\AssignPlacesToRegistration`) is hold plus confirm
+  per place in one transaction with the claim row locked; the exclusion
+  constraint decides races, and a lost race is a `placeIds` validation error.
 
 ## Does not own
 

@@ -6,18 +6,13 @@
 
 ## Next
 
-- [ ] Seating S3: `AssignPlacesToRegistration` on top of `SavePlan`'s projection — it reads `resources.is_published`, `blocked`, `deleted_at` and `plan_id`, and releases with reason `repicked`; the booking events already defer to the outermost commit (Task 16).
 - [ ] Seating S4/S7: the console maps `PlanStaleException` (409) and `PlanConflictException` (422) through their own `render()`; `PlanAdminController@update` needs only `Gate::authorize` and `SavePlan`, `@validate` only `ValidatePlan`, `@reserve`/`@unreserve` only the two operator Actions behind `Permission::BookOnBehalf`.
 - [ ] Seating S6: `RecordPlanMetrics` listens on `PlanSaved` for `resource_plan_saves_total{outcome=saved}`; the `conflict`, `invalid` and `stale` outcomes are counted where the exceptions are caught (the controller), not in the Actions.
 - [ ] Seating (design `docs/superpowers/specs/2026-09-10-seating-design.md`,
-      ADR-0060): S1 shipped the schema, enums, Data classes, `PlanInvariants`,
-      models and factories. Still open in order: the save pipeline and
-      projection (`SavePlan`, `ValidatePlan`, `PlanDiff`, `PlanConflicts`,
-      `PlanWarnings`, publish, import, export), claims and picking
-      (`AssignPlacesToRegistration`, the confirmation and release listeners),
-      the console (categories, plans, occupancy, reservations), the picker on
-      the brand host, observability and the editor. Nothing writes
-      `resources` from a document yet.
+      ADR-0060): the save pipeline and projection, claims and picking are
+      done. Still open in order: the console (categories, plans, occupancy,
+      reservations), the picker on the brand host, observability and the
+      editor.
 - [ ] Seating MR note: S1 changed `app-modules/resources/database/migrations`
       (six additive migrations), so the reviewer expects the one full-suite
       run of Task 58 in the pipeline.
@@ -40,6 +35,13 @@
       winner for N parallel picks.
 
 ## Done
+
+- [x] `Actions\AssignPlacesToRegistration` (seating design §7.3, #S3): the
+      one pick path — claim locked `FOR UPDATE`, sorted distinct place ids,
+      eligibility over the projection joined to published plans, old
+      bookings released `repicked`, hold plus confirm per place, `23P01`
+      and `40P01` translated to a `placeIds` error, `SeatClaimPlaced` after
+      commit; registrant and operator actors.
 
 - [x] Seat claims (seating design §7.2, #S3): `Actions\CreateSeatClaims` on
       `RegistrationConfirmed` / `RegistrationAmended` (one `resource_claims`
