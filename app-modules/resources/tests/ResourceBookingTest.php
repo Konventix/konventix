@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Resources\Actions\ConfirmResourceBooking;
@@ -290,11 +291,24 @@ it('names the event, the type, the registration and the label on every booking e
 });
 
 it('records the claim, the amendment and an explicit label on the booking row', function (): void {
-    $this->withBrand();
+    $brand = $this->withBrand();
 
     $resource = bookingTestUnitResource();
     $claimId = (string) Str::ulid();
     $amendmentId = (string) Str::ulid();
+
+    // resource_bookings.claim_id carries a foreign key onto resource_claims
+    // as of Task 10; a real claim row is not a model concern yet (that
+    // arrives with Konventix\Resources\Models\ResourceClaim in Task 12), so
+    // this inserts the row directly.
+    DB::table('resource_claims')->insert([
+        'id' => $claimId,
+        'brand_id' => $brand->id,
+        'event_id' => (string) Str::ulid(),
+        'registration_id' => (string) Str::ulid(),
+        'resource_type_ids' => json_encode([$resource->resource_type_id]),
+        'seating_mode' => 'assign',
+    ]);
 
     $booking = app(HoldResourceBooking::class)->handle(
         resource: $resource,

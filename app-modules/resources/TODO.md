@@ -26,6 +26,19 @@
 
 ## Done
 
+- [x] Seating Task 10 — the seating schema: `resource_plans`,
+      `resource_plan_versions` and `resource_claims`; `resource_types`
+      gains `description`, `token`, `symbol`, `sort_order`, `default_shape`;
+      `resources` becomes the projection of a plan (`plan_id`, `ref`,
+      `zone_id`, `group_id`, `accessible`, `blocked`, `neighbors`,
+      `origin_id`, `SoftDeletes`) with the partial `resources_plan_ref_unique`
+      index (`WHERE deleted_at IS NULL`) that Blueprint cannot express;
+      `resource_bookings.claim_id` (added in Task 3) gets its FK and
+      `(claim_id, state)` index here, without re-adding the column. The ten
+      enums the document and the claims speak in
+      (`CategoryToken`…`PlanWarningCode`), each `#[TypeScript]`. Model casts
+      for the new JSON columns arrive with the models in Task 12.
+
 - [x] Seating Task 7 — `resources:expire-holds` (`Actions\ExpireResourceHolds`)
       every minute: lapsed clocked holds become `expired` with the
       booking's brand in context, the last run is kept under

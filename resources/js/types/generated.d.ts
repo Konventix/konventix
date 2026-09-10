@@ -1134,12 +1134,36 @@ declare namespace Konventix {
             export type BookingState =
                 'held' | 'confirmed' | 'released' | 'cancelled' | 'expired';
             export type CapacityMode = 'unit' | 'quantity';
+            export type CategoryToken =
+                | 'chart-1'
+                | 'chart-2'
+                | 'chart-3'
+                | 'chart-4'
+                | 'chart-5'
+                | 'accent'
+                | 'success'
+                | 'warning'
+                | 'danger';
+            export type ClaimState = 'unplaced' | 'placed' | 'released';
+            export type ConflictReason =
+                'deleted' | 'category_changed' | 'blocked';
+            export type ElementKind =
+                'zone' | 'group' | 'place' | 'fixture' | 'annotation';
+            export type FixtureType =
+                'table' | 'counter' | 'stage' | 'wall' | 'pillar' | 'custom';
+            export type LayoutKind = 'linear' | 'grid';
             export type Permission =
                 | 'resources.view-resources'
                 | 'resources.manage-resource-types'
                 | 'resources.manage-resources'
                 | 'resources.book-on-behalf'
                 | 'resources.release-bookings';
+            export type PlaceState =
+                'free' | 'mine' | 'held' | 'booked' | 'unavailable';
+            export type PlanVersionSource = 'editor' | 'import' | 'copy';
+            export type PlanWarningCode = 'overlap' | 'outside_zone';
+            export type SeatingMode = 'pick' | 'assign';
+            export type ShapeKind = 'point' | 'rect' | 'ellipse' | 'polygon';
         }
     }
     namespace Staffing {
