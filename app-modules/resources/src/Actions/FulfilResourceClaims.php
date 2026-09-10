@@ -107,14 +107,23 @@ final class FulfilResourceClaims
             return [];
         }
 
+        // Ordered in the database, not loaded whole and sorted in PHP — a
+        // dozen booths and a 160-place hall must cost the same query. Plan,
+        // zone and group group the candidates the way the plan itself
+        // groups them; the trailing digit run of the ref (falling back to
+        // the label) gives natural order within a group — "A-2" before
+        // "A-10" — for the row+number pattern design §5 uses throughout.
         $candidates = Resource::withoutBrandScope()
             ->where('brand_id', $brandId)
             ->where('resource_type_id', $type->id)
             ->bookable()
-            ->get()
-            ->sort(fn (Resource $a, Resource $b): int => [$a->plan_id ?? '', $a->zone_id ?? '', $a->group_id ?? ''] <=> [$b->plan_id ?? '', $b->zone_id ?? '', $b->group_id ?? '']
-                ?: strnatcasecmp($a->ref ?? $a->label, $b->ref ?? $b->label))
-            ->values();
+            ->orderByRaw('plan_id ASC NULLS FIRST')
+            ->orderByRaw('zone_id ASC NULLS FIRST')
+            ->orderByRaw('group_id ASC NULLS FIRST')
+            ->orderByRaw("regexp_replace(COALESCE(ref, label), '[0-9]+$', '') ASC")
+            ->orderByRaw("(substring(COALESCE(ref, label) from '[0-9]+$'))::bigint ASC NULLS FIRST")
+            ->orderByRaw('COALESCE(ref, label) ASC')
+            ->get();
 
         $wanted = max(1, $grant['quantity']);
 
