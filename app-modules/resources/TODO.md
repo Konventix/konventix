@@ -44,6 +44,32 @@
 
 ## Done
 
+- [x] Seating Task 43 (#277): `ResourcesMetrics` catalogue
+      (`resource_bookings_total{brand,outcome}`, `resource_plan_saves_total{brand,outcome}`
+      — filled in Task 44 —, `resource_seat_claims_unplaced{brand,event}`,
+      `resource_hold_sweep_last_run_timestamp_seconds`) and `ResourcesGauges`,
+      registered from `ResourcesServiceProvider::registerMetrics()` (a new
+      `boot()` override, following `CommerceServiceProvider`). A new event
+      `ResourceBookingRefused` and its listener `RecordBookingMetrics` count
+      held/confirmed/released/expired/refused bookings; `AssignPlacesToRegistration`
+      dispatches it for every race-shaped catch (exclusion violation,
+      `DeadlockException` and the rare direct `QueryException`), but only
+      after its own `DB::transaction()` has fully unwound — a private
+      `assign()` now does the transactional work and reports the refusal
+      reason back to `handle()` by reference, because dispatching the event
+      *inside* the transaction, while Postgres still has it in an aborted
+      state after a real deadlock or exclusion violation, breaks the very
+      next statement with `25P02`, including the metrics listener's
+      own brand-slug lookup. `resources:probe-seat-race`'s real child
+      processes caught this; a single-process Pest transaction could not
+      have. The unplaced-claims gauge carries `event` as well as `brand`
+      (2026-09-10 batch amendment, ahead of design §12b's quota decision:
+      an operator needs to know which event is short, and a claim unplaced
+      once the picker is open is a business signal, not a queue depth) —
+      resolved from this module's own `resource_event_windows` projection,
+      never Event's models (ADR-0004); an unprojected or slug-less event
+      labels `unknown`. `ObservabilityCoverageTest` still fails "on no
+      dashboard" for all four names until Task 45.
 - [x] Seating Task 40 (#276): `/my/registrations/{registration}/seat`
       renders every published plan of the event as an SVG scene (fixed
       viewBox, one world transform, rAF pan, cursor-anchored zoom, pinch)

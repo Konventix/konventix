@@ -12,6 +12,7 @@ use Konventix\Event\Events\EventRescheduled;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Events\RegistrationAmended;
@@ -29,15 +30,23 @@ use Konventix\Resources\Data\SeatSummaryData;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\Permission;
+use Konventix\Resources\Events\ResourceBookingConfirmed;
+use Konventix\Resources\Events\ResourceBookingHeld;
+use Konventix\Resources\Events\ResourceBookingRefused;
+use Konventix\Resources\Events\ResourceBookingReleased;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationAmended;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
+use Konventix\Resources\Listeners\Metrics\RecordBookingMetrics;
 use Konventix\Resources\Listeners\ProjectEventWindow;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationCancelled;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationRejected;
+use Konventix\Resources\Metrics\ResourcesGauges;
+use Konventix\Resources\Metrics\ResourcesMetrics;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceType;
+use Spatie\Prometheus\Facades\Prometheus;
 
 /**
  * Resources is Pennant-gated: a brand that books nothing switches it off and
@@ -58,6 +67,30 @@ class ResourcesServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'resources';
+    }
+
+    /**
+     * `parent::boot()` first — routes, listeners, slots, schedule and the
+     * GDPR handler come from the base class hooks; the metric catalogue is
+     * the one thing the base class has no hook for (ADR-0059).
+     */
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->registerMetrics();
+    }
+
+    /**
+     * Resources' metrics (ADR-0059): catalogue entries here, recorders in
+     * registerListeners(), gauges in ResourcesGauges. The host never learns
+     * these names.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...ResourcesMetrics::definitions());
+
+        Prometheus::registerCollectorClasses([ResourcesGauges::class]);
     }
 
     /**
@@ -239,6 +272,12 @@ class ResourcesServiceProvider extends ModuleServiceProvider
         Event::listen(EventCreated::class, [ProjectEventWindow::class, 'handleCreated']);
         Event::listen(EventRescheduled::class, [ProjectEventWindow::class, 'handleRescheduled']);
         Event::listen(EventDetailsUpdated::class, [ProjectEventWindow::class, 'handleDetailsUpdated']);
+
+        // ADR-0059: Resources' own metrics, from its own events.
+        Event::listen(
+            [ResourceBookingHeld::class, ResourceBookingConfirmed::class, ResourceBookingReleased::class, ResourceBookingRefused::class],
+            RecordBookingMetrics::class,
+        );
     }
 
     /**

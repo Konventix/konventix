@@ -38,6 +38,8 @@ use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceEventWindow;
 use Konventix\Resources\Models\ResourceType;
+use Prometheus\CollectorRegistry;
+use Prometheus\RenderTextFormat;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -841,4 +843,24 @@ function seatingBooking(
     $booking->forceFill(['claim_id' => $claim?->getKey(), 'label' => $place->label])->save();
 
     return $booking;
+}
+
+/**
+ * The registry as the test process sees it (`PROMETHEUS_STORAGE=memory` in
+ * phpunit.xml): counters written by the listeners, without an HTTP round
+ * trip. Gauges are only evaluated on a real scrape — see the next helper.
+ */
+function seatingMetricsRendered(): string
+{
+    return (new RenderTextFormat)->render(app(CollectorRegistry::class)->getMetricFamilySamples());
+}
+
+/**
+ * A real `/metrics` scrape behind the health secret, so gauge closures run.
+ */
+function seatingMetricsScrape(): string
+{
+    config()->set('health.endpoint_secret', 'metrics-test-secret');
+
+    return test()->withHeader('Authorization', 'Bearer metrics-test-secret')->get('/metrics')->assertOk()->getContent();
 }

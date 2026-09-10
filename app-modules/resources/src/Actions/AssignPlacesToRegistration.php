@@ -15,6 +15,7 @@ use Konventix\Platform\Permissions\PermissionHolders;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\Permission;
+use Konventix\Resources\Events\ResourceBookingRefused;
 use Konventix\Resources\Events\SeatClaimPlaced;
 use Konventix\Resources\Exceptions\ResourceUnavailableException;
 use Konventix\Resources\Models\Resource;
@@ -72,6 +73,14 @@ use Konventix\Resources\Models\ResourceEventWindow;
  * claim announced placed for a pick its own rollback then undoes. Whatever
  * brand is ambient right now is captured and restored around the deferred
  * dispatch, exactly as those Actions do.
+ *
+ * A refused pick is reported as `ResourceBookingRefused` so
+ * `resource_bookings_total{outcome="refused"}` moves (ADR-0059) — but only
+ * once `handle()`'s own try/catch has the exception back from `assign()`,
+ * never from inside its transaction: a real deadlock or exclusion
+ * violation leaves Postgres refusing every statement, the metrics
+ * listener's brand-slug lookup included, until the rollback that unwinding
+ * the transaction performs actually completes.
  */
 final class AssignPlacesToRegistration
 {
@@ -101,7 +110,40 @@ final class AssignPlacesToRegistration
         $placeIds = array_values(array_unique($placeIds));
         sort($placeIds);
 
-        $bookings = DB::transaction(function () use ($claim, $placeIds): array {
+        // Set by a race-shaped catch below, read once the transaction has
+        // fully unwound (see the try/catch this method closes with): a real
+        // deadlock or exclusion violation leaves Postgres refusing every
+        // statement — including a metrics listener's own query — until the
+        // rollback below completes, which `resources:probe-seat-race`'s
+        // real process contention proved and a single-process Pest
+        // transaction cannot.
+        $raceRefusalReason = null;
+
+        try {
+            $bookings = $this->assign($claim, $placeIds, $raceRefusalReason);
+        } catch (ValidationException $e) {
+            if ($raceRefusalReason !== null) {
+                event(new ResourceBookingRefused(
+                    brandId: $claim->brand_id,
+                    eventId: $claim->event_id,
+                    registrationId: $claim->registration_id,
+                    reason: $raceRefusalReason,
+                ));
+            }
+
+            throw $e;
+        }
+
+        return $bookings;
+    }
+
+    /**
+     * @param  list<string>  $placeIds
+     * @return list<ResourceBooking>
+     */
+    private function assign(ResourceClaim $claim, array $placeIds, ?string &$raceRefusalReason): array
+    {
+        return DB::transaction(function () use ($claim, $placeIds, &$raceRefusalReason): array {
             $locked = ResourceClaim::withoutBrandScope()
                 ->whereKey($claim->getKey())
                 ->lockForUpdate()
@@ -155,6 +197,8 @@ final class AssignPlacesToRegistration
 
                     $created[] = $this->confirm->handle($booking);
                 } catch (ResourceUnavailableException) {
+                    $raceRefusalReason = 'unavailable';
+
                     throw $this->taken($place);
                 } catch (DeadlockException) {
                     // A deadlock inside HoldResourceBooking's own nested
@@ -163,9 +207,13 @@ final class AssignPlacesToRegistration
                     // rather than the QueryException isRaceFailure() reads
                     // (see the class docblock). Always a race — hold then
                     // confirm never deadlocks with itself.
+                    $raceRefusalReason = 'deadlock';
+
                     throw $this->taken($place);
                 } catch (QueryException $exception) {
                     if (self::isRaceFailure($exception)) {
+                        $raceRefusalReason = (string) $exception->getCode() === '40P01' ? 'deadlock' : 'unavailable';
+
                         throw $this->taken($place);
                     }
 
@@ -207,8 +255,6 @@ final class AssignPlacesToRegistration
 
             return $created;
         });
-
-        return $bookings;
     }
 
     /**
