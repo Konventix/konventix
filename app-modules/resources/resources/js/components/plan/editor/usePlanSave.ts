@@ -164,6 +164,12 @@ export function usePlanSave(
                     );
                 },
                 onHttpException: (response) => {
+                    // A stale version (or any other exception) after a
+                    // conflict resend leaves the dialog's list stale too —
+                    // those conflicts may no longer be the ones that exist.
+                    // Close it so the operator sees one truthful state
+                    // instead of an old list under a new message.
+                    saveConflicts.value = [];
                     fail(exceptionMessage(response.status, response.data));
                 },
                 onNetworkError: () => {
