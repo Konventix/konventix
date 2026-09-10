@@ -112,3 +112,63 @@ it('sets the brand context from the booking while releasing, so downstream liste
     expect($seen)->toBe([$brand->id, $brand->id])
         ->and(app(BrandContext::class)->current())->toBeNull();
 });
+
+/**
+ * The two cases below build a booking directly with `ResourceBooking::factory()`
+ * rather than through `seatingHold()`, which deliberately sets `holder_type`,
+ * `holder_id` and `registration_id` to the same registration id and so can
+ * never tell the Action's two lookup branches apart. Each case isolates one
+ * branch of the `where('registration_id', ...)->orWhere(holder_type/holder_id)`
+ * match so a regression in either survives none of the other tests above.
+ */
+it('releases a booking matched only by the registration_id column, whose holder is not the registration', function (): void {
+    $brand = test()->withBrand();
+    $eventId = (string) Str::ulid();
+    $window = seatingProjectWindow($eventId, $brand->id);
+    $type = seatingUnitType($eventId);
+    $registrationId = (string) Str::ulid();
+
+    $booking = ResourceBooking::factory()->create([
+        'resource_id' => seatingPublishedResource($type, 'B-01')->id,
+        'holder_type' => 'admission',
+        'holder_id' => (string) Str::ulid(),
+        'registration_id' => $registrationId,
+        'starts_at' => $window->starts_at,
+        'ends_at' => $window->ends_at,
+        'state' => BookingState::Confirmed,
+    ]);
+
+    Event::fake([ResourceBookingReleased::class]);
+
+    seatingCancelRegistration($registrationId);
+
+    expect($booking->fresh()->state)->toBe(BookingState::Cancelled);
+
+    Event::assertDispatchedTimes(ResourceBookingReleased::class, 1);
+});
+
+it('releases a booking matched only by the registration holder, with no registration_id column set', function (): void {
+    $brand = test()->withBrand();
+    $eventId = (string) Str::ulid();
+    $window = seatingProjectWindow($eventId, $brand->id);
+    $type = seatingUnitType($eventId);
+    $registrationId = (string) Str::ulid();
+
+    $booking = ResourceBooking::factory()->create([
+        'resource_id' => seatingPublishedResource($type, 'B-02')->id,
+        'holder_type' => ResourceBooking::HOLDER_REGISTRATION,
+        'holder_id' => $registrationId,
+        'registration_id' => null,
+        'starts_at' => $window->starts_at,
+        'ends_at' => $window->ends_at,
+        'state' => BookingState::Confirmed,
+    ]);
+
+    Event::fake([ResourceBookingReleased::class]);
+
+    seatingCancelRegistration($registrationId);
+
+    expect($booking->fresh()->state)->toBe(BookingState::Cancelled);
+
+    Event::assertDispatchedTimes(ResourceBookingReleased::class, 1);
+});
