@@ -181,9 +181,13 @@ class ResourcesServiceProvider extends ModuleServiceProvider
      * hands over a registration id it has already checked belongs to the
      * reader; this closure answers with the claim's state, its place refs
      * and — 2026-09-10 batch amendment, ahead of §12b/#282's quota
-     * mechanism — the same `HasFreePlaceForClaim` read the picker uses, so
-     * a claim whose categories have nothing free reads identically on both
-     * pages. Reads nothing of Registration's (ADR-0004).
+     * mechanism — `HasFreePlaceForClaim`'s read of whether the claim's
+     * categories currently have anything free. The picker does not read
+     * this Action (corrected 2026-09-10, fix-wave item 2, #278): it derives
+     * its own "nothing free" banner live from polled availability instead,
+     * so the two surfaces answer over different row sets and are not
+     * guaranteed to agree — see `HasFreePlaceForClaim`'s docblock. Reads
+     * nothing of Registration's (ADR-0004).
      */
     protected function registerSlots(): void
     {

@@ -481,6 +481,29 @@ Deviations found during implementation are appended here with date, reason and t
   claim. A single frontend constant, `NO_FREE_PLACES_MESSAGE` in
   `components/plan/labels.ts`, is what both `Pick.vue` and
   `SeatSummarySlot.vue` render, so the wording itself cannot drift either.
+- 2026-09-10, review fix ahead of the fix wave that corrects this
+  amendment (#278): the entry above no longer describes what shipped.
+  `SeatPickerData.noFreePlaces` was removed — a boolean computed once at
+  render time went stale the moment a held place expired or was released
+  while the registrant sat on the page, so `Pick.vue` instead derives its
+  banner live from the polled `availability` map through
+  `categoriesHaveFreePlace()` (`components/plan/eligibility.ts`) on every
+  15 s tick. `HasFreePlaceForClaim` now backs only
+  `SeatSummaryData.noFreePlaces` ("Meine Registrierung", which has no live
+  poll to derive from); `NO_FREE_PLACES_MESSAGE` is still the one constant
+  both surfaces render, so the wording still cannot drift, but the two
+  answers are no longer computed from one shared read — they answer over
+  different row sets (this Action counts every bookable resource of the
+  claim's categories including a plan-less one; the picker's derivation
+  only ever sees resources placed on a published plan of the claim's
+  event) and can, in principle, disagree.
+- 2026-09-10, fix wave item 2 (#278): three places still described the
+  amendment above as shipped after the review fix superseded it —
+  `HasFreePlaceForClaim`'s own docblock, `ResourcesServiceProvider`'s
+  `registration.mine.show` slot docblock, and a test comment in
+  `RegistrationMineSeatSlotTest` — corrected in the same commit as this
+  entry. `SeatPickController`'s docblock already described the review fix
+  correctly and needed no change.
 
 ## 14. Out of scope (one tracking issue, "Nach Event")
 

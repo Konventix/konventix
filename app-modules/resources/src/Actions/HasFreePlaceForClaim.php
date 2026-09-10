@@ -17,17 +17,35 @@ use Konventix\Resources\Models\ResourceClaim;
  * has nothing free must read as its own explicit state, the way a sold-out
  * ticket type does, never as a red validation message on a field. The full
  * quota mechanism that would stop the *sale* itself is separate work
- * (§12b, issue #282); until it exists, this is the one read both surfaces
- * that need the answer share — `SeatPickerData.noFreePlaces` (the picker)
- * and `SeatSummaryData.noFreePlaces` ("Meine Registrierung") — so the two
- * pages never say something different about the same claim.
+ * (§12b, issue #282).
  *
- * Two reads, no relation magic, mirroring `ComputePlanAvailability`'s own
- * shape: the claim's bookable places (published, unblocked —
- * `Resource::scopeBookable()`; soft-deleted rows already excluded by the
- * model's default query), then which of those carry an occupying booking.
- * Brand-scoped through `BelongsToBrand`: both call sites run on the brand
- * host under the registrant's own session, never in the console.
+ * This backs only `SeatSummaryData.noFreePlaces` ("Meine Registrierung"),
+ * which has no live poll to derive an answer from. It is **not** the read
+ * the picker uses (corrected 2026-09-10, fix-wave item 2, #278; the design
+ * document's §13 amendment describing a shared read is stale for the same
+ * reason): `SeatPickerData` dropped its own `noFreePlaces` field during an
+ * earlier review fix, and `Pick.vue` derives its "nothing free" banner
+ * live from the polled availability map instead, through
+ * `categoriesHaveFreePlace()` (`components/plan/eligibility.ts`) — see
+ * `SeatPickController`'s docblock, which already says so correctly.
+ *
+ * The two surfaces genuinely can disagree, because they answer over
+ * different row sets: this Action counts every *bookable* resource of the
+ * claim's categories regardless of whether it sits on a plan at all, while
+ * `categoriesHaveFreePlace()` only ever sees resources placed on a
+ * *published plan of the claim's event*, because that is all
+ * `ComputePlanAvailability` and the plan document it walks ever contain. A
+ * seat category is expected to be entirely plan-placed, so nothing exposes
+ * this today, but nothing enforces that expectation either — this is
+ * recorded honestly rather than papered over as one shared source of
+ * truth.
+ *
+ * Two reads, no relation magic: the claim's bookable places (published,
+ * unblocked — `Resource::scopeBookable()`; soft-deleted rows already
+ * excluded by the model's default query), then which of those carry an
+ * occupying booking. Brand-scoped through `BelongsToBrand`: its one call
+ * site runs on the brand host under the registrant's own session, never in
+ * the console.
  */
 final class HasFreePlaceForClaim
 {
