@@ -74,6 +74,7 @@ it('flips confirmed true by registrationId on RegistrationConfirmed', function (
         registrationTypeId: (string) Str::ulid(),
         eventId: $eventId,
         brandId: $brand->getKey(),
+        registrantUserId: (string) Str::ulid(),
         confirmedAt: now()->toIso8601String(),
         grants: [],
     ));

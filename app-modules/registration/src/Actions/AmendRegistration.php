@@ -93,15 +93,8 @@ final class AmendRegistration
                 registrationTypeId: $registrationType->id,
                 eventId: $registration->event_id,
                 brandId: $registration->brand_id,
-                grants: array_map(
-                    fn (GrantData $grant): array => [
-                        'kind' => $grant->kind->value,
-                        'role' => $grant->role,
-                        'quantity' => $grant->quantity,
-                        'resource_type_id' => $grant->resourceTypeId,
-                    ],
-                    $grants,
-                ),
+                registrantUserId: $registration->registrant_user_id,
+                grants: array_map(fn (GrantData $grant): array => $grant->toEventPayload(), $grants),
                 amendedAt: $amendment->amended_at->toIso8601String(),
             ));
 

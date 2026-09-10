@@ -125,6 +125,7 @@ function communityPageConfirmParticipation(string $brandId, string $eventId, str
         registrationTypeId: (string) Str::ulid(),
         eventId: $eventId,
         brandId: $brandId,
+        registrantUserId: $userId,
         confirmedAt: now()->toIso8601String(),
         grants: [],
     ));

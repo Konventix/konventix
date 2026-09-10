@@ -119,15 +119,15 @@ function seatingPublishedResource(ResourceType $type, string $label): Resource
 }
 
 /**
- * @return array{kind: string, role: string, quantity: int, resource_type_id: string|null}
+ * @return array{kind: string, role: string, quantity: int, resource_type_id: string|null, resource_type_ids: list<string>|null, seating_mode: string|null}
  */
 function seatingClaimGrant(string $resourceTypeId, int $quantity = 1): array
 {
-    return ['kind' => 'resource_claim', 'role' => 'booth', 'quantity' => $quantity, 'resource_type_id' => $resourceTypeId];
+    return ['kind' => 'resource_claim', 'role' => 'booth', 'quantity' => $quantity, 'resource_type_id' => $resourceTypeId, 'resource_type_ids' => null, 'seating_mode' => null];
 }
 
 /**
- * @param  list<array{kind: string, role: string, quantity: int, resource_type_id: string|null}>  $grants
+ * @param  list<array{kind: string, role: string, quantity: int, resource_type_id: string|null, resource_type_ids: list<string>|null, seating_mode: string|null}>  $grants
  * @return string the registration id
  */
 function seatingConfirmRegistration(string $eventId, string $brandId, array $grants, ?string $registrationId = null): string
@@ -139,6 +139,7 @@ function seatingConfirmRegistration(string $eventId, string $brandId, array $gra
         registrationTypeId: (string) Str::ulid(),
         eventId: $eventId,
         brandId: $brandId,
+        registrantUserId: (string) Str::ulid(),
         confirmedAt: now()->toIso8601String(),
         grants: $grants,
     ));
@@ -147,7 +148,7 @@ function seatingConfirmRegistration(string $eventId, string $brandId, array $gra
 }
 
 /**
- * @param  list<array{kind: string, role: string, quantity: int, resource_type_id: string|null}>  $grants
+ * @param  list<array{kind: string, role: string, quantity: int, resource_type_id: string|null, resource_type_ids: list<string>|null, seating_mode: string|null}>  $grants
  * @return string the amendment id
  */
 function seatingAmendRegistration(string $eventId, string $brandId, array $grants, string $registrationId, ?string $amendmentId = null): string
@@ -160,6 +161,7 @@ function seatingAmendRegistration(string $eventId, string $brandId, array $grant
         registrationTypeId: (string) Str::ulid(),
         eventId: $eventId,
         brandId: $brandId,
+        registrantUserId: (string) Str::ulid(),
         grants: $grants,
         amendedAt: now()->toIso8601String(),
     ));

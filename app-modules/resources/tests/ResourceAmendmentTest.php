@@ -22,7 +22,7 @@ it('fulfils a resource_claim grant added by an amendment and records the amendme
     seatingPublishedResource($type, 'B-01');
 
     $registrationId = seatingConfirmRegistration($eventId, $brand->id, [
-        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 1, 'resource_type_id' => null],
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 1, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
     ]);
 
     expect(ResourceBooking::query()->count())->toBe(0);

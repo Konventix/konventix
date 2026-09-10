@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Konventix\Registration\Actions\AmendRegistration;
+use Konventix\Registration\Actions\ConfirmRegistration;
 use Konventix\Registration\Actions\CreateRegistrationType;
 use Konventix\Registration\Data\GrantData;
 use Konventix\Registration\Data\RegistrationTypeData;
@@ -14,6 +16,8 @@ use Konventix\Registration\Enums\RegistrationApproval;
 use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Enums\SeatingMode;
+use Konventix\Registration\Events\RegistrationAmended;
+use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
 
@@ -170,4 +174,77 @@ it('guards an amendment with the same seating rules', function (): void {
     ));
 
     expect($errors)->toHaveKey('grants');
+});
+
+it('projects the categories, the mode and the registrant into RegistrationConfirmed', function (): void {
+    $this->withBrand();
+    $categoryId = (string) Str::ulid();
+    $registrantId = (string) Str::ulid();
+
+    $type = RegistrationType::factory()->withGrants([
+        new GrantData(kind: GrantKind::Admission, role: 'visitor', quantity: 1),
+        new GrantData(kind: GrantKind::Seating, role: 'seat', quantity: 2, resourceTypeIds: [$categoryId], seatingMode: SeatingMode::Pick),
+    ])->create();
+    $registration = Registration::factory()->create([
+        'registration_type_id' => $type->id,
+        'event_id' => $type->event_id,
+        'registrant_user_id' => $registrantId,
+    ]);
+
+    Event::fake([RegistrationConfirmed::class]);
+
+    app(ConfirmRegistration::class)->handle($registration);
+
+    Event::assertDispatched(RegistrationConfirmed::class, function (RegistrationConfirmed $event) use ($registrantId, $categoryId): bool {
+        expect($event->registrantUserId)->toBe($registrantId)
+            ->and($event->grants)->toBe([
+                [
+                    'kind' => 'admission',
+                    'role' => 'visitor',
+                    'quantity' => 1,
+                    'resource_type_id' => null,
+                    'resource_type_ids' => null,
+                    'seating_mode' => null,
+                ],
+                [
+                    'kind' => 'seating',
+                    'role' => 'seat',
+                    'quantity' => 2,
+                    'resource_type_id' => null,
+                    'resource_type_ids' => [$categoryId],
+                    'seating_mode' => 'pick',
+                ],
+            ]);
+
+        return true;
+    });
+});
+
+it('projects the same shape and the registrant into RegistrationAmended', function (): void {
+    $this->withBrand();
+    $categoryId = (string) Str::ulid();
+    $registrantId = (string) Str::ulid();
+
+    $registration = Registration::factory()->confirmed()->create(['registrant_user_id' => $registrantId]);
+
+    Event::fake([RegistrationAmended::class]);
+
+    $amendment = app(AmendRegistration::class)->handle(
+        registration: $registration,
+        grants: [new GrantData(kind: GrantKind::Seating, role: 'seat', quantity: 1, resourceTypeIds: [$categoryId], seatingMode: SeatingMode::Assign)],
+    );
+
+    Event::assertDispatched(
+        RegistrationAmended::class,
+        fn (RegistrationAmended $event): bool => $event->amendmentId === $amendment->id
+            && $event->registrantUserId === $registrantId
+            && $event->grants === [[
+                'kind' => 'seating',
+                'role' => 'seat',
+                'quantity' => 1,
+                'resource_type_id' => null,
+                'resource_type_ids' => [$categoryId],
+                'seating_mode' => 'assign',
+            ]],
+    );
 });

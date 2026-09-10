@@ -45,6 +45,7 @@ function claimTestConfirm(string $eventId, string $brandId, array $grants, ?stri
         registrationTypeId: (string) Str::ulid(),
         eventId: $eventId,
         brandId: $brandId,
+        registrantUserId: (string) Str::ulid(),
         confirmedAt: now()->toIso8601String(),
         grants: $grants,
     ));
@@ -54,7 +55,7 @@ function claimTestConfirm(string $eventId, string $brandId, array $grants, ?stri
 
 function claimTestGrant(string $resourceTypeId, int $quantity = 1): array
 {
-    return ['kind' => 'resource_claim', 'role' => 'booth', 'quantity' => $quantity, 'resource_type_id' => $resourceTypeId];
+    return ['kind' => 'resource_claim', 'role' => 'booth', 'quantity' => $quantity, 'resource_type_id' => $resourceTypeId, 'resource_type_ids' => null, 'seating_mode' => null];
 }
 
 it('projects the event window from Event contract events', function (): void {
@@ -108,7 +109,7 @@ it('ignores admission grants, which are Admission business', function (): void {
     claimTestWindow($eventId, $brand->id);
 
     claimTestConfirm($eventId, $brand->id, [
-        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 2, 'resource_type_id' => null],
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 2, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
     ]);
 
     expect(ResourceBooking::query()->count())->toBe(0);

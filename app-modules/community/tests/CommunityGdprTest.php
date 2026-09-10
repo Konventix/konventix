@@ -92,6 +92,7 @@ function communityGdprMakeParticipation(string $brandId, string $userId, bool $c
             registrationTypeId: (string) Str::ulid(),
             eventId: $eventId,
             brandId: $brandId,
+            registrantUserId: $userId,
             confirmedAt: now()->toIso8601String(),
             grants: [],
         ));

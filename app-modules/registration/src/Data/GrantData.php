@@ -71,4 +71,27 @@ final class GrantData extends Data
             'resourceTypeIds.*' => ['ulid'],
         ];
     }
+
+    /**
+     * The scalar shape `RegistrationConfirmed` and `RegistrationAmended`
+     * carry (SPEC.md "Public contract"). Consumers key on the strings, never
+     * on this class (ADR-0004), so the keys here are the contract.
+     *
+     * Not a `from*` name on purpose (.ai/rules/data.md).
+     *
+     * @return array{kind: string, role: string, quantity: int, resource_type_id: string|null, resource_type_ids: list<string>|null, seating_mode: string|null}
+     */
+    public function toEventPayload(): array
+    {
+        return [
+            'kind' => $this->kind->value,
+            'role' => $this->role,
+            'quantity' => $this->quantity,
+            'resource_type_id' => $this->resourceTypeId,
+            // Already a list<string>|null (the constructor's own PHPDoc and
+            // validation), so no re-indexing is needed here.
+            'resource_type_ids' => $this->resourceTypeIds,
+            'seating_mode' => $this->seatingMode?->value,
+        ];
+    }
 }

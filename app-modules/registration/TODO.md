@@ -65,6 +65,20 @@
 
 ## Done
 
+- [x] Payload projection for seating (seating design §7.1, #S3):
+      `GrantData::toEventPayload()` is the one place that turns a grant into
+      the scalar shape `RegistrationConfirmed` and `RegistrationAmended`
+      carry — `resource_type_ids` and `seating_mode` ride alongside the
+      existing `resource_type_id`, null on every kind but `seating`. Both
+      events also gain `registrantUserId`, read straight off
+      `Registration::$registrant_user_id` (required, never nullable):
+      personal data reaching Resources for the first time, there only so the
+      seating module can authorise the person picking their own seat and
+      answer a data-subject request later — nothing else rides on it. Purely
+      additive: every existing consumer (Admission, Community, Competition,
+      Resources' own `resource_claim` fulfilment) still reads the same keys
+      it always did. SPEC.md's contract table updated in the same commit.
+
 - [x] Seating grant (seating design §7.1, #S3): `GrantKind::Seating`,
       `Enums\SeatingMode`, `GrantData::resourceTypeIds` / `seatingMode`,
       `Actions\Concerns\GuardsSeatingGrants` on type create/update and on
