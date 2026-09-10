@@ -6,8 +6,6 @@
 
 ## Next
 
-- [ ] `ReleaseBookingsOnRegistrationCancelled` and
-      `ReleaseBookingsOnRegistrationRejected` (Seating Task 6).
 - [ ] `resources:expire-holds` every minute, with the last-run heartbeat the
       S6 gauge reads (Seating Task 7).
 - [ ] Seating, per `docs/superpowers/specs/2026-09-10-seating-design.md`:
@@ -29,6 +27,12 @@
       winner for N parallel picks.
 
 ## Done
+
+- [x] Seating Task 6 — `ReleaseBookingsOnRegistrationCancelled` and
+      `ReleaseBookingsOnRegistrationRejected` release every active booking
+      of the registration through `ReleaseBookingsForRegistration`, ungated,
+      with the booking's own brand in context while releasing. #105 closed
+      on the Resources side.
 
 - [x] Seating Task 5 — `FulfilResourceClaims` is idempotent per
       `(registration_id, amendment_id)`, books `n` separate unit resources
