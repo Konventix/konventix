@@ -11,7 +11,6 @@ use Inertia\Response;
 use Konventix\Resources\Actions\AssignPlacesToRegistration;
 use Konventix\Resources\Actions\ComputePlanAvailability;
 use Konventix\Resources\Actions\FindSeatClaimForRegistrant;
-use Konventix\Resources\Actions\HasFreePlaceForClaim;
 use Konventix\Resources\Data\CategoryData;
 use Konventix\Resources\Data\PickPlacesData;
 use Konventix\Resources\Data\PlanViewData;
@@ -36,6 +35,11 @@ use Konventix\Resources\Models\ResourceType;
  * render and the ineligible ones say why (design §7.4). Only published
  * plans are sent; availability still names places on unpublished plans as
  * `unavailable` so the map and the plan list cannot disagree.
+ *
+ * No `noFreePlaces` flag on `SeatPickerData` (2026-09-10 review fix): the
+ * page already polls `availability` every 15 s, so `Pick.vue` derives
+ * "nothing free" from that live map itself rather than from a boolean
+ * this method could only compute once, at the moment of the request.
  */
 final class SeatPickController
 {
@@ -44,7 +48,6 @@ final class SeatPickController
         string $registration,
         FindSeatClaimForRegistrant $claims,
         ComputePlanAvailability $availability,
-        HasFreePlaceForClaim $hasFreePlace,
     ): Response {
         $claim = $claims->handle($registration, (string) $request->user()->getAuthIdentifier());
         abort_if($claim === null, 404);
@@ -79,7 +82,6 @@ final class SeatPickController
             plans: $plans,
             availability: $availability->handle($claim),
             currentPlaceIds: $currentPlaceIds,
-            noFreePlaces: ! $hasFreePlace->handle($claim),
         );
 
         return Inertia::render('seating/Pick', $data->toArray());

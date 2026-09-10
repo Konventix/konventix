@@ -123,6 +123,32 @@ export function reconcileSelection(
     return { selected: selected.filter((id) => !lost.includes(id)), lost };
 }
 
+/**
+ * Whether any place of one of the claim's categories is pickable right
+ * now — free, or already the registrant's own. Pure so `Pick.vue` can run
+ * it against the polled availability map on every 15 s tick, not only the
+ * page's initial props (2026-09-10 review fix): a `noFreePlaces` flag
+ * computed once at render time went stale the moment a held place
+ * expired or was released while the person sat on the page, so the
+ * picker's own map and its "nothing is free" banner could disagree with
+ * each other. Mirrors the server's `HasFreePlaceForClaim`, which stays
+ * the source of truth for the registrant's account page — that page has
+ * no live poll to derive from.
+ */
+export function categoriesHaveFreePlace(
+    placeElements: { id: string; resourceTypeId: string | null }[],
+    availability: Record<string, PlaceState>,
+    claimTypeIds: string[],
+): boolean {
+    return placeElements.some(
+        (element) =>
+            element.resourceTypeId !== null &&
+            claimTypeIds.includes(element.resourceTypeId) &&
+            (availability[element.id] === 'free' ||
+                availability[element.id] === 'mine'),
+    );
+}
+
 /** Laravel keys an array-field error on the field or on `field.index`; the page shows the first. */
 export function firstPlaceIdsError(
     errors: Record<string, string>,

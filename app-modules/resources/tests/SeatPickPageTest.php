@@ -140,8 +140,7 @@ it('renders the picker with SeatPickerData for the claim owner', function (): vo
             ->has('plans.0.document.elements', 4)
             ->where('availability.places.'.$scene['places'][0]->getKey(), 'mine')
             ->where('availability.places.'.$scene['places'][1]->getKey(), 'free')
-            ->where('currentPlaceIds', [$scene['places'][0]->getKey()])
-            ->where('noFreePlaces', false));
+            ->where('currentPlaceIds', [$scene['places'][0]->getKey()]));
 });
 
 it('leaves unpublished plans out of the page', function (): void {
@@ -271,35 +270,4 @@ it('refuses an empty pick before touching the Action', function (): void {
         ->from('/my/registrations/'.$scene['registrationId'].'/seat')
         ->post('/my/registrations/'.$scene['registrationId'].'/seat', ['placeIds' => []])
         ->assertSessionHasErrors('placeIds');
-});
-
-/**
- * The batch's own addition (2026-09-10, ahead of design §12b/#282's quota
- * mechanism): a category with nothing free is its own explicit page state,
- * never a bare validation error the person only meets after trying to pick.
- * `HasFreePlaceForClaim` is the one read `SeatPickController` and
- * `ResourcesServiceProvider`'s `registration.mine.show` slot both call, so
- * this and `RegistrationMineSeatSlotTest`'s matching test can never drift
- * apart on what "sold out" means for the same claim.
- */
-it('flags the page when nothing is free in the claim\'s categories', function (): void {
-    $brand = $this->withBrand();
-    $this->activateModule('resources', $brand);
-    $scene = seatPickScene($brand, places: 1);
-    seatingBooking($scene['places'][0], $scene['window'], (string) Str::ulid());
-
-    $this->actingAs($scene['user'])
-        ->get('/my/registrations/'.$scene['registrationId'].'/seat')
-        ->assertInertia(fn (AssertableInertia $page) => $page->where('noFreePlaces', true));
-});
-
-it('does not flag the page while a place in the claim\'s categories is still free', function (): void {
-    $brand = $this->withBrand();
-    $this->activateModule('resources', $brand);
-    $scene = seatPickScene($brand, places: 2);
-    seatingBooking($scene['places'][0], $scene['window'], (string) Str::ulid());
-
-    $this->actingAs($scene['user'])
-        ->get('/my/registrations/'.$scene['registrationId'].'/seat')
-        ->assertInertia(fn (AssertableInertia $page) => $page->where('noFreePlaces', false));
 });

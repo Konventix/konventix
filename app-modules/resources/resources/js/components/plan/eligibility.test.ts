@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    categoriesHaveFreePlace,
     firstPlaceIdsError,
     hintFor,
     isSelectable,
@@ -100,6 +101,46 @@ describe('reconcileSelection', () => {
         expect(
             reconcileSelection(['a', 'b'], { a: 'mine', b: 'free' }),
         ).toEqual({ selected: ['a', 'b'], lost: [] });
+    });
+});
+
+describe('categoriesHaveFreePlace', () => {
+    const places = [
+        { id: 'a', resourceTypeId: 'seat' },
+        { id: 'b', resourceTypeId: 'seat' },
+        { id: 'c', resourceTypeId: 'vip' },
+    ];
+
+    it('is true when a place of an eligible category is free', () => {
+        expect(
+            categoriesHaveFreePlace(
+                places,
+                { a: 'booked', b: 'free', c: 'free' },
+                ['seat'],
+            ),
+        ).toBe(true);
+    });
+
+    it("is true when a place of an eligible category is the registrant's own", () => {
+        expect(
+            categoriesHaveFreePlace(places, { a: 'mine', b: 'booked' }, [
+                'seat',
+            ]),
+        ).toBe(true);
+    });
+
+    it('is false once every place of the eligible categories is taken, even if another category is free', () => {
+        expect(
+            categoriesHaveFreePlace(
+                places,
+                { a: 'booked', b: 'held', c: 'free' },
+                ['seat'],
+            ),
+        ).toBe(false);
+    });
+
+    it('is false with no places at all', () => {
+        expect(categoriesHaveFreePlace([], {}, ['seat'])).toBe(false);
     });
 });
 

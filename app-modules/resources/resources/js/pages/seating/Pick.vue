@@ -11,6 +11,7 @@ import { show as showRegistration } from '@/routes/registration/mine';
 import CategoryLegend from '../../components/plan/CategoryLegend.vue';
 import type { Reason } from '../../components/plan/eligibility';
 import {
+    categoriesHaveFreePlace,
     firstPlaceIdsError,
     hintFor,
     reconcileSelection,
@@ -38,10 +39,12 @@ import SelectionHints from '../../components/plan/SelectionHints.vue';
  * meanwhile leaves the selection with a spoken hint, so the submit does
  * not fail on something the person could not know.
  *
- * `noFreePlaces` (2026-09-10 batch amendment) is its own banner, not a
- * validation message: a claim with nothing free in its categories still
- * shows the plan — polling might free something up — but says so plainly
- * up front, worded identically to `SeatSummarySlot.vue`'s.
+ * The "nothing free" banner (`soldOut`, 2026-09-10 review fix) is derived
+ * from that same polled `availability` map (`categoriesHaveFreePlace`),
+ * not a flag computed once at render — that stayed "sold out" after a
+ * held place actually freed up. `SeatSummarySlot.vue` has no poll of its
+ * own and keeps reading the server's `SeatSummaryData.noFreePlaces`; both
+ * render the same `NO_FREE_PLACES_MESSAGE` so the wording cannot drift.
  */
 // A bare `type Props = Konventix.Resources.Data.SeatPickerData;` fails the
 // SFC compiler's macro type resolver ("Unresolvable type reference"); every
@@ -54,7 +57,6 @@ type Props = {
     plans: Konventix.Resources.Data.PlanViewData[];
     availability: Konventix.Resources.Data.PlanAvailabilityData;
     currentPlaceIds: string[];
-    noFreePlaces: boolean;
 };
 type Availability = Konventix.Resources.Data.PlanAvailabilityData;
 type PlaceState = Konventix.Resources.Enums.PlaceState;
@@ -72,8 +74,22 @@ const availability = ref<Record<string, PlaceState>>({
 const selected = ref<string[]>([...props.currentPlaceIds]);
 const hint = ref<string | null>(null);
 
+/** Every place of every published plan, category id and all — the fixed set `categoriesHaveFreePlace` checks the live availability of. */
+const placeElements = computed(() =>
+    props.plans.flatMap((plan) =>
+        plan.document.elements.filter((element) => element.kind === 'place'),
+    ),
+);
+
 const soldOut = computed(
-    () => props.noFreePlaces && props.claim.state === 'unplaced',
+    () =>
+        props.plans.length > 0 &&
+        props.claim.state === 'unplaced' &&
+        !categoriesHaveFreePlace(
+            placeElements.value,
+            availability.value,
+            props.claim.resourceTypeIds,
+        ),
 );
 
 const refById = computed(() => {
@@ -176,14 +192,7 @@ watch(availability, (places) => {
             />
         </div>
 
-        <p
-            v-if="soldOut"
-            role="status"
-            class="rounded-md border border-warning/40 bg-warning/15 p-4 text-sm text-warning-contrast"
-        >
-            {{ NO_FREE_PLACES_MESSAGE }}
-        </p>
-
+        <!-- Exactly one of these two banners: `soldOut` requires a published plan. -->
         <p
             v-if="props.plans.length === 0"
             class="text-sm text-text-muted"
@@ -193,6 +202,14 @@ watch(availability, (places) => {
         </p>
 
         <template v-else>
+            <p
+                v-if="soldOut"
+                role="status"
+                class="rounded-md border border-warning/40 bg-warning/15 p-4 text-sm text-warning-contrast"
+            >
+                {{ NO_FREE_PLACES_MESSAGE }}
+            </p>
+
             <PlanTabs
                 v-if="props.plans.length > 1"
                 v-model="activePlanId"
