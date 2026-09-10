@@ -76,7 +76,13 @@ class ResourcesServiceProvider extends ModuleServiceProvider
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
-            $schedule->command(ExpireResourceHoldsCommand::class)->everyMinute();
+            // `withoutOverlapping()` (Commerce's sweeps use the same guard):
+            // the chunked read has no row lock, so a run that falls behind a
+            // backlog — or a manual run colliding with the scheduled one —
+            // must not stack a second pass on top of the first's, which
+            // would let both select the same lapsed row and both emit
+            // `ResourceBookingReleased` for it.
+            $schedule->command(ExpireResourceHoldsCommand::class)->everyMinute()->withoutOverlapping();
         });
     }
 }

@@ -12,6 +12,7 @@ use Konventix\Resources\Actions\ConfirmResourceBooking;
 use Konventix\Resources\Actions\ExpireResourceHolds;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Events\ResourceBookingReleased;
+use Konventix\Resources\Models\ResourceType;
 
 use function Pest\Laravel\travelTo;
 
@@ -118,4 +119,26 @@ it('is registered with artisan and scheduled every minute', function (): void {
 
     expect($entries)->toHaveCount(1)
         ->and($entries->first()->expression)->toBe('* * * * *');
+});
+
+it('never sweeps a held booking with no expiry clock', function (): void {
+    // A type with hold_minutes 0 (HoldResourceBooking) holds without a
+    // clock — the caller confirms in the same transaction (seat picks).
+    // Built directly with the factory rather than seatingUnitType(),
+    // which is canonical and has a single author.
+    $brand = test()->withBrand();
+    $eventId = (string) Str::ulid();
+    $window = seatingProjectWindow($eventId, $brand->id);
+    $type = ResourceType::factory()->forEvent($eventId)->create(['hold_minutes' => 0]);
+
+    $unclocked = seatingHold(seatingPublishedResource($type, 'A-01'), $window);
+
+    expect($unclocked->hold_expires_at)->toBeNull();
+
+    travelTo(now()->addMinutes(31));
+
+    $expired = app(ExpireResourceHolds::class)->handle();
+
+    expect($expired)->toBe(0)
+        ->and($unclocked->fresh()->state)->toBe(BookingState::Held);
 });
