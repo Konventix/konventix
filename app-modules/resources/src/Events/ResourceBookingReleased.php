@@ -12,6 +12,10 @@ namespace Konventix\Resources\Events;
  * make each of them handle three events to learn one fact.
  *
  * Payload is scalars/ULIDs only (ADR-0004).
+ *
+ * Since seating S0 the payload also names the event, the type, the
+ * registration and claim it belongs to and the resource's label, so a
+ * consumer never has to join back into this module's tables (ADR-0004).
  */
 final readonly class ResourceBookingReleased
 {
@@ -23,5 +27,11 @@ final readonly class ResourceBookingReleased
         public string $holderId,
         public string $reason,
         public string $releasedAt,
+        public string $eventId,
+        public string $resourceTypeId,
+        public ?string $registrationId,
+        public ?string $claimId,
+        public string $label,
+        public ?string $ref,
     ) {}
 }

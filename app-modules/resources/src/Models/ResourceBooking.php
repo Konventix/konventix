@@ -77,6 +77,15 @@ class ResourceBooking extends Model
         return $this->belongsTo(Resource::class);
     }
 
+    /**
+     * The booked resource regardless of ambient brand; see
+     * `Resource::resourceTypeUnscoped()` for why the Actions read it this way.
+     */
+    public function resourceUnscoped(): BookableResource
+    {
+        return $this->resource()->withoutGlobalScopes()->firstOrFail();
+    }
+
     public function isExpired(?CarbonInterface $now = null): bool
     {
         return $this->state === BookingState::Held

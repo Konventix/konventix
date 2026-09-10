@@ -218,3 +218,95 @@ it('releases capacity back in quantity mode', function (): void {
 
     expect(bookingTestHold($resource, 1, quantity: 10)->state)->toBe(BookingState::Held);
 });
+
+it('refuses more than one unit on a unit-mode resource in the Action', function (): void {
+    // A seat is one thing. Quantity 2 on a unit resource used to write one
+    // row with quantity 2 — one seat "booked twice" — and the claim path
+    // then handed one seat to a registration that paid for two.
+    $this->withBrand();
+
+    $resource = bookingTestUnitResource();
+
+    expect(fn () => bookingTestHold($resource, 1, quantity: 2))
+        ->toThrow(InvalidArgumentException::class);
+
+    expect(ResourceBooking::query()->count())->toBe(0);
+});
+
+it('names the event, the type, the registration and the label on every booking event', function (): void {
+    $this->withBrand();
+
+    Event::fake([ResourceBookingHeld::class, ResourceBookingConfirmed::class, ResourceBookingReleased::class]);
+
+    $type = ResourceType::factory()->create();
+    $resource = Resource::factory()->ofType($type)->create(['label' => 'A-07']);
+    $registrationId = (string) Str::ulid();
+
+    $booking = app(HoldResourceBooking::class)->handle(
+        resource: $resource,
+        holderType: ResourceBooking::HOLDER_REGISTRATION,
+        holderId: $registrationId,
+        startsAt: now()->startOfHour()->addHours(1),
+        endsAt: now()->startOfHour()->addHours(3),
+        registrationId: $registrationId,
+    );
+
+    // The label is a snapshot: a later plan edit renames the resource, the
+    // history row keeps saying what it said when the booking happened.
+    expect($booking->label)->toBe('A-07');
+
+    Event::assertDispatched(
+        ResourceBookingHeld::class,
+        fn (ResourceBookingHeld $e): bool => $e->eventId === $type->event_id
+            && $e->resourceTypeId === $type->id
+            && $e->registrationId === $registrationId
+            && $e->claimId === null
+            && $e->label === 'A-07'
+            && $e->ref === null
+            && $e->holdExpiresAt !== null,
+    );
+
+    $confirmed = app(ConfirmResourceBooking::class)->handle($booking);
+
+    Event::assertDispatched(
+        ResourceBookingConfirmed::class,
+        fn (ResourceBookingConfirmed $e): bool => $e->eventId === $type->event_id
+            && $e->resourceTypeId === $type->id
+            && $e->registrationId === $registrationId
+            && $e->label === 'A-07',
+    );
+
+    app(ReleaseResourceBooking::class)->handle($confirmed, BookingState::Cancelled, 'registration_cancelled');
+
+    Event::assertDispatched(
+        ResourceBookingReleased::class,
+        fn (ResourceBookingReleased $e): bool => $e->eventId === $type->event_id
+            && $e->resourceTypeId === $type->id
+            && $e->registrationId === $registrationId
+            && $e->label === 'A-07'
+            && $e->reason === 'registration_cancelled',
+    );
+});
+
+it('records the claim, the amendment and an explicit label on the booking row', function (): void {
+    $this->withBrand();
+
+    $resource = bookingTestUnitResource();
+    $claimId = (string) Str::ulid();
+    $amendmentId = (string) Str::ulid();
+
+    $booking = app(HoldResourceBooking::class)->handle(
+        resource: $resource,
+        holderType: ResourceBooking::HOLDER_REGISTRATION,
+        holderId: (string) Str::ulid(),
+        startsAt: now()->startOfHour()->addHours(1),
+        endsAt: now()->startOfHour()->addHours(3),
+        claimId: $claimId,
+        amendmentId: $amendmentId,
+        label: 'Booth 12 (as sold)',
+    );
+
+    expect($booking->fresh()->claim_id)->toBe($claimId)
+        ->and($booking->fresh()->amendment_id)->toBe($amendmentId)
+        ->and($booking->fresh()->label)->toBe('Booth 12 (as sold)');
+});

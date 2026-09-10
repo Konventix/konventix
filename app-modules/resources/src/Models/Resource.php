@@ -57,6 +57,17 @@ class Resource extends Model
     }
 
     /**
+     * The type regardless of ambient brand — for Actions that run with no
+     * brand in context (a webhook-driven confirmation, the hold sweep) and
+     * for the operator host, where BrandScope hardens relation reads to
+     * nothing (ADR-0029, `.ai/rules/app-modules-src.md`).
+     */
+    public function resourceTypeUnscoped(): ResourceType
+    {
+        return $this->resourceType()->withoutGlobalScopes()->firstOrFail();
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

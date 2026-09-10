@@ -7,6 +7,7 @@ namespace Konventix\Resources\Actions;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\CapacityMode;
 use Konventix\Resources\Events\ResourceBookingHeld;
@@ -34,6 +35,11 @@ use Konventix\Resources\Models\ResourceBooking;
  */
 final class HoldResourceBooking
 {
+    /**
+     * @param  string|null  $claimId  the seat claim this booking fulfils (S3)
+     * @param  string|null  $amendmentId  the registration amendment that produced it — idempotency key with `registrationId`
+     * @param  string|null  $label  snapshot label; defaults to the resource's current label
+     */
     public function handle(
         Resource $resource,
         string $holderType,
@@ -42,9 +48,27 @@ final class HoldResourceBooking
         CarbonInterface $endsAt,
         int $quantity = 1,
         ?string $registrationId = null,
+        ?string $claimId = null,
+        ?string $amendmentId = null,
+        ?string $label = null,
     ): ResourceBooking {
-        return DB::transaction(function () use ($resource, $holderType, $holderId, $startsAt, $endsAt, $quantity, $registrationId): ResourceBooking {
-            $type = $resource->resourceType()->withoutGlobalScopes()->firstOrFail();
+        return DB::transaction(function () use ($resource, $holderType, $holderId, $startsAt, $endsAt, $quantity, $registrationId, $claimId, $amendmentId, $label): ResourceBooking {
+            $type = $resource->resourceTypeUnscoped();
+
+            // A unit is one thing. Booking "two" of it would write one row
+            // with quantity 2 — one seat for a registration that paid for
+            // two — so a caller that wants n seats makes n holds. This is a
+            // programming error, not an availability outcome, hence not
+            // ResourceUnavailableException: claim fulfilment must not skip
+            // past it as "taken, try the next seat".
+            if ($type->mode === CapacityMode::Unit && $quantity !== 1) {
+                throw new InvalidArgumentException(sprintf(
+                    'Resource [%s] is a unit; %d units are %d separate bookings.',
+                    $resource->id,
+                    $quantity,
+                    $quantity,
+                ));
+            }
 
             if ($type->mode === CapacityMode::Quantity) {
                 $this->guardRemainingCapacity($resource, $startsAt, $endsAt, $quantity);
@@ -55,7 +79,10 @@ final class HoldResourceBooking
                 'holder_type' => $holderType,
                 'holder_id' => $holderId,
                 'registration_id' => $registrationId,
+                'claim_id' => $claimId,
+                'amendment_id' => $amendmentId,
                 'quantity' => $quantity,
+                'label' => $label ?? $resource->label,
                 // Unit-mode bookings are exclusive, so the constraint guards
                 // them; quantity-mode ones share the interval by design and
                 // are guarded by the summed check above instead (ADR-0034).
@@ -63,7 +90,9 @@ final class HoldResourceBooking
                 'state' => BookingState::Held,
                 'starts_at' => $startsAt,
                 'ends_at' => $endsAt,
-                'hold_expires_at' => now()->addMinutes($type->hold_minutes),
+                // A type with hold_minutes 0 holds without a clock: the
+                // caller confirms in the same transaction (seat picks, S3).
+                'hold_expires_at' => $type->hold_minutes > 0 ? now()->addMinutes($type->hold_minutes) : null,
             ]);
             // brand_id from the resource, not ambient context (ADR-0010).
             $booking->forceFill(['brand_id' => $resource->brand_id]);
@@ -91,7 +120,14 @@ final class HoldResourceBooking
                 quantity: $quantity,
                 startsAt: $startsAt->toIso8601String(),
                 endsAt: $endsAt->toIso8601String(),
-                holdExpiresAt: $booking->hold_expires_at->toIso8601String(),
+                holdExpiresAt: $booking->hold_expires_at?->toIso8601String(),
+                eventId: $type->event_id,
+                resourceTypeId: $type->id,
+                registrationId: $registrationId,
+                claimId: $claimId,
+                label: $booking->label ?? $resource->label,
+                // S1 adds resources.ref; until then there is no human key.
+                ref: null,
             ));
 
             return $booking;

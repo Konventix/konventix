@@ -20,6 +20,10 @@ use Konventix\Resources\Models\ResourceBooking;
  * Idempotent — releasing an already-released booking is a no-op, because a
  * cancellation arriving twice is normal (a user click plus a queued job) and
  * must not emit twice.
+ *
+ * Reasons are plain strings owned by the caller: `registration_cancelled`,
+ * `registration_rejected`, `plan_conflict`, `repicked`, `operator_released`,
+ * `expired` (design doc §4.3).
  */
 final class ReleaseResourceBooking
 {
@@ -32,6 +36,9 @@ final class ReleaseResourceBooking
 
             $booking->forceFill(['state' => $to, 'hold_expires_at' => null])->save();
 
+            $resource = $booking->resourceUnscoped();
+            $type = $resource->resourceTypeUnscoped();
+
             event(new ResourceBookingReleased(
                 bookingId: $booking->id,
                 resourceId: $booking->resource_id,
@@ -40,6 +47,12 @@ final class ReleaseResourceBooking
                 holderId: $booking->holder_id,
                 reason: $reason,
                 releasedAt: now()->toIso8601String(),
+                eventId: $type->event_id,
+                resourceTypeId: $type->id,
+                registrationId: $booking->registration_id,
+                claimId: $booking->claim_id,
+                label: $booking->label ?? $resource->label,
+                ref: null,
             ));
 
             return $booking->refresh();

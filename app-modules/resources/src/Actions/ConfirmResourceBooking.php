@@ -48,6 +48,9 @@ final class ConfirmResourceBooking
                 'hold_expires_at' => null,
             ])->save();
 
+            $resource = $booking->resourceUnscoped();
+            $type = $resource->resourceTypeUnscoped();
+
             event(new ResourceBookingConfirmed(
                 bookingId: $booking->id,
                 resourceId: $booking->resource_id,
@@ -59,6 +62,11 @@ final class ConfirmResourceBooking
                 startsAt: $booking->starts_at->toIso8601String(),
                 endsAt: $booking->ends_at->toIso8601String(),
                 confirmedAt: now()->toIso8601String(),
+                eventId: $type->event_id,
+                resourceTypeId: $type->id,
+                claimId: $booking->claim_id,
+                label: $booking->label ?? $resource->label,
+                ref: null,
             ));
 
             return $booking->refresh();

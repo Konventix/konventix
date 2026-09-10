@@ -6,9 +6,6 @@
 
 ## Next
 
-- [ ] Booking events carry `eventId`, `resourceTypeId`, `registrationId`,
-      `claimId`, `label`, `ref`; `HoldResourceBooking` refuses `quantity > 1`
-      in unit mode and snapshots the label (Seating Task 4).
 - [ ] `FulfilResourceClaims` idempotent per `(registration_id, amendment_id)`,
       `n` unit bookings for quantity `n` in natural label order, catches only
       `ResourceUnavailableException`; `FulfilClaimsOnRegistrationAmended`;
@@ -37,6 +34,14 @@
       winner for N parallel picks.
 
 ## Done
+
+- [x] Seating Task 4 — `HoldResourceBooking` refuses `quantity > 1` in unit
+      mode (`InvalidArgumentException`, a programming error rather than an
+      availability outcome), accepts `claimId`, `amendmentId` and `label`
+      and snapshots the resource label; a type with `hold_minutes` 0 holds
+      without a clock. `ResourceBookingHeld/Confirmed/Released` name the
+      event, the type, the registration, the claim, the label and (from S1)
+      the ref, so consumers never join into this module's tables.
 
 - [x] Seating Task 3 — `resource_event_windows` carries `name` and `slug`;
       `ProjectEventWindow` is one upsert on `(brand_id, event_id)`, parses

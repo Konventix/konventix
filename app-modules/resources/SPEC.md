@@ -60,16 +60,17 @@ its assumptions.
 Events are the only way other modules may react to this one (ADR-0004).
 Payloads carry ULIDs and scalars — never Eloquent models.
 
-All rows below are **proposed**: no ADR names Resources' events yet, so this is
-the intended contract and may still change while the module is built.
+The three booking events are shipped (payload keys are the constructor's
+camelCase properties); `ResourcePublished`, `ResourceWithdrawn` and
+`ResourceBookingTransferred` remain **proposed**.
 
 | Event | Emitted when | Payload |
 |---|---|---|
 | `ResourcePublished` *(proposed)* | A resource becomes bookable for an event | `resource_id`, `resource_type_id`, `event_id`, `venue_id`, `label` |
 | `ResourceWithdrawn` *(proposed)* | A resource stops being bookable; existing bookings need handling | `resource_id`, `event_id`, `withdrawn_at`, `reason` |
-| `ResourceBookingHeld` *(proposed)* | A temporary hold is placed | `booking_id`, `resource_id`, `holder_type`, `holder_id`, `starts_at`, `ends_at`, `expires_at` |
-| `ResourceBookingConfirmed` *(proposed)* | A hold becomes a firm booking | `booking_id`, `resource_id`, `resource_type_id`, `event_id`, `holder_type`, `holder_id`, `starts_at`, `ends_at` |
-| `ResourceBookingReleased` *(proposed)* | A booking is given back, cancelled, or expires | `booking_id`, `resource_id`, `holder_type`, `holder_id`, `released_at`, `reason` |
+| `ResourceBookingHeld` | A temporary hold is placed | `bookingId`, `resourceId`, `brandId`, `holderType`, `holderId`, `quantity`, `startsAt`, `endsAt`, `holdExpiresAt` (null for an unclocked hold), `eventId`, `resourceTypeId`, `registrationId`, `claimId`, `label`, `ref` |
+| `ResourceBookingConfirmed` | A hold becomes a firm booking — **the event other modules act on** | `bookingId`, `resourceId`, `brandId`, `holderType`, `holderId`, `registrationId`, `quantity`, `startsAt`, `endsAt`, `confirmedAt`, `eventId`, `resourceTypeId`, `claimId`, `label`, `ref` |
+| `ResourceBookingReleased` | A booking is given back, cancelled, or expires | `bookingId`, `resourceId`, `brandId`, `holderType`, `holderId`, `reason` (`registration_cancelled`, `registration_rejected`, `plan_conflict`, `repicked`, `operator_released`, `expired`, or a caller's own), `releasedAt`, `eventId`, `resourceTypeId`, `registrationId`, `claimId`, `label`, `ref` |
 | `ResourceBookingTransferred` *(proposed)* | A booking moves to a different holder or a different resource | `booking_id`, `resource_id`, `previous_resource_id`, `holder_id`, `previous_holder_id`, `transferred_at` |
 
 Admission's SPEC currently refers to the badge-relevant event as
