@@ -6,14 +6,20 @@
 
 ## Next
 
-- [ ] Seating S4/S7: the console maps `PlanStaleException` (409) and `PlanConflictException` (422) through their own `render()`; `PlanAdminController@update` needs only `Gate::authorize` and `SavePlan`, `@validate` only `ValidatePlan`, `@reserve`/`@unreserve` only the two operator Actions behind `Permission::BookOnBehalf`.
+- [ ] Seating S7: `PlanAdminController@edit`/`@update`/`@validate` (the plan
+      editor) — the console maps `PlanStaleException` (409) and
+      `PlanConflictException` (422) through their own `render()`;
+      `@update` needs only `Gate::authorize` and `SavePlan`, `@validate`
+      only `ValidatePlan`. `index`, `store`, `publish`, `unpublish`,
+      `export`, `import`, `occupancy`, `reserve` and `unreserve` are done
+      (Task 33).
 - [ ] Seating S6: `RecordPlanMetrics` listens on `PlanSaved` for `resource_plan_saves_total{outcome=saved}`; the `conflict`, `invalid` and `stale` outcomes are counted where the exceptions are caught (the controller), not in the Actions.
 - [ ] Seating (design `docs/superpowers/specs/2026-09-10-seating-design.md`,
       ADR-0060): the save pipeline and projection, claims and picking are
-      done, and so is the category console (Task 30-32). Still open in
-      order: the plan index (create, import, export, publish, occupancy,
-      reservations) and its editor, the picker on the brand host, and
-      observability.
+      done, and so is the category console (Task 30-32). The plan index
+      (create, import, export, publish, occupancy, reservations, Task
+      33-35) is done too. Still open in order: the plan editor, the picker
+      on the brand host, and observability.
 - [ ] Seating MR note: S1 changed `app-modules/resources/database/migrations`
       (six additive migrations), so the reviewer expects the one full-suite
       run of Task 58 in the pipeline.
@@ -30,6 +36,18 @@
       the window. Out of scope for the seating slices (design doc §14).
 
 ## Done
+
+- [x] Seating Task 33: `PlanAdminController` (index, store, publish,
+      unpublish, export, import, occupancy, reserve, unreserve) and
+      `CreatePlan` (an empty `konventix.plan/v1` document at version 0,
+      refusing a duplicate name per brand and event or an event the
+      module doesn't know). Runs on the admin host with no brand in
+      context, so every query escapes `BrandScope` explicitly (grouped
+      place counts, not `withCount()`) and every created row's `brand_id`
+      comes from the request or the plan it belongs to. `reserve`/
+      `unreserve` need `Permission::BookOnBehalf`, everything else
+      `Permission::ManagePlans`. `PlanRowData` is the list row
+      (`#[TypeScript]`).
 
 - [x] Carried fix: `ReservePlaceForOperator` nests `HoldResourceBooking`'s
       transaction exactly the way `AssignPlacesToRegistration` does but
