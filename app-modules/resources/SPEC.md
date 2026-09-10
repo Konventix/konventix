@@ -33,7 +33,12 @@ a plan; a **Kategorie** (category) is a `ResourceType`; a seat booking is a
   `ref` (unique per plan), the derived `zone_id`/`group_id`, `accessible`,
   `blocked` (operator lock), `neighbors` and soft deletion, and its
   `is_published` is derived from the plan on every save. Plan-less resources
-  (booths, devices) keep the manual flag.
+  (booths, devices) keep the manual flag. `Resource::scopeBookable()`
+  (published, not blocked) is the count an operator sizes a seat category's
+  Registration quota against (#282): a blocked or unpublished place is not
+  sellable and does not consume a unit of that ceiling. The ceiling itself
+  is a Registration grant, not a Resources concept — Resources has no quota
+  of its own to enforce.
 - **Plan and plan versions** — `resource_plans` holds one hall plan per
   event and name: dimensions in millimetres, optional raster background,
   display unit, snap step, a `version` incremented per save, `published_at`,
