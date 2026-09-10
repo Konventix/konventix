@@ -6,6 +6,7 @@ namespace Konventix\Resources\Providers;
 
 use Illuminate\Support\Facades\Event;
 use Konventix\Event\Events\EventCreated;
+use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventRescheduled;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Registration\Events\RegistrationConfirmed;
@@ -40,5 +41,6 @@ class ResourcesServiceProvider extends ModuleServiceProvider
 
         Event::listen(EventCreated::class, [ProjectEventWindow::class, 'handleCreated']);
         Event::listen(EventRescheduled::class, [ProjectEventWindow::class, 'handleRescheduled']);
+        Event::listen(EventDetailsUpdated::class, [ProjectEventWindow::class, 'handleDetailsUpdated']);
     }
 }

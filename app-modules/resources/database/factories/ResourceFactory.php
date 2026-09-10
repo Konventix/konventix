@@ -28,13 +28,23 @@ class ResourceFactory extends Factory
             'venue_id' => null,
             'label' => fake()->bothify('##-?'),
             'capacity' => 1,
-            'is_published' => true,
+            'is_published' => false,
         ];
     }
 
     public function withCapacity(int $capacity): static
     {
         return $this->state(fn (array $attributes): array => ['capacity' => $capacity]);
+    }
+
+    /**
+     * Bookable through claim fulfilment. The default is the migration's
+     * default (unpublished): a factory that published by default let tests
+     * pass against rows the real console would never have made bookable.
+     */
+    public function published(): static
+    {
+        return $this->state(fn (array $attributes): array => ['is_published' => true]);
     }
 
     public function ofType(ResourceType $type): static

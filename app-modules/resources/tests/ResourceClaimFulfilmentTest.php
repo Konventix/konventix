@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventRescheduled;
@@ -64,7 +65,8 @@ it('projects the event window from Event contract events', function (): void {
 
     $window = claimTestWindow($eventId, $brand->id);
 
-    expect($window->starts_at->toDateTimeString())->toBe(now()->startOfHour()->addDay()->toDateTimeString());
+    expect($window->starts_at->utc()->toDateTimeString())
+        ->toBe(Date::parse(now()->startOfHour()->addDay()->format('Y-m-d H:i:s'), 'Europe/Berlin')->utc()->toDateTimeString());
 
     event(new EventRescheduled(
         eventId: $eventId,
@@ -73,8 +75,8 @@ it('projects the event window from Event contract events', function (): void {
         timezone: 'Europe/Berlin',
     ));
 
-    expect($window->fresh()->starts_at->toDateTimeString())
-        ->toBe(now()->startOfHour()->addDays(5)->toDateTimeString());
+    expect($window->fresh()->starts_at->utc()->toDateTimeString())
+        ->toBe(Date::parse(now()->startOfHour()->addDays(5)->format('Y-m-d H:i:s'), 'Europe/Berlin')->utc()->toDateTimeString());
 });
 
 it('books a resource for a confirmed registration claim', function (): void {
@@ -85,7 +87,7 @@ it('books a resource for a confirmed registration claim', function (): void {
     $window = claimTestWindow($eventId, $brand->id);
 
     $type = ResourceType::factory()->forEvent($eventId)->create();
-    $resource = Resource::factory()->ofType($type)->create();
+    $resource = Resource::factory()->published()->ofType($type)->create();
 
     $registrationId = claimTestConfirm($eventId, $brand->id, [claimTestGrant($type->id)]);
 
@@ -121,7 +123,7 @@ it('leaves claims unfulfilled rather than failing when the module is off', funct
     $eventId = (string) Str::ulid();
     claimTestWindow($eventId, $brand->id);
     $type = ResourceType::factory()->forEvent($eventId)->create();
-    Resource::factory()->ofType($type)->create();
+    Resource::factory()->published()->ofType($type)->create();
 
     claimTestConfirm($eventId, $brand->id, [claimTestGrant($type->id)]);
 
@@ -136,7 +138,7 @@ it('leaves a claim unfulfilled when nothing is free rather than failing', functi
     claimTestWindow($eventId, $brand->id);
 
     $type = ResourceType::factory()->forEvent($eventId)->create();
-    Resource::factory()->ofType($type)->create();
+    Resource::factory()->published()->ofType($type)->create();
 
     // First registration takes the only resource.
     claimTestConfirm($eventId, $brand->id, [claimTestGrant($type->id)]);
@@ -155,8 +157,8 @@ it('takes the next free resource when the first is taken', function (): void {
     claimTestWindow($eventId, $brand->id);
 
     $type = ResourceType::factory()->forEvent($eventId)->create();
-    Resource::factory()->ofType($type)->create(['label' => 'A-01']);
-    Resource::factory()->ofType($type)->create(['label' => 'A-02']);
+    Resource::factory()->published()->ofType($type)->create(['label' => 'A-01']);
+    Resource::factory()->published()->ofType($type)->create(['label' => 'A-02']);
 
     claimTestConfirm($eventId, $brand->id, [claimTestGrant($type->id)]);
     claimTestConfirm($eventId, $brand->id, [claimTestGrant($type->id)]);
@@ -173,8 +175,8 @@ it('is idempotent when a confirmation is replayed', function (): void {
     claimTestWindow($eventId, $brand->id);
 
     $type = ResourceType::factory()->forEvent($eventId)->create();
-    Resource::factory()->ofType($type)->create();
-    Resource::factory()->ofType($type)->create();
+    Resource::factory()->published()->ofType($type)->create();
+    Resource::factory()->published()->ofType($type)->create();
 
     $registrationId = (string) Str::ulid();
     claimTestConfirm($eventId, $brand->id, [claimTestGrant($type->id)], $registrationId);
@@ -190,7 +192,7 @@ it('leaves claims unfulfilled when no event window has been projected', function
 
     $eventId = (string) Str::ulid();
     $type = ResourceType::factory()->forEvent($eventId)->create();
-    Resource::factory()->ofType($type)->create();
+    Resource::factory()->published()->ofType($type)->create();
 
     claimTestConfirm($eventId, $brand->id, [claimTestGrant($type->id)]);
 

@@ -86,6 +86,7 @@ maintains from them.
 |---|---|---|
 | `RegistrationConfirmed` *(proposed)* | Registration | The one event that materializes entitlements: its `grants` list carries the claimed `resource_type_id` and quantity, which this module turns into holds or confirmed bookings depending on the type's rules. Must be idempotent — the same event may be replayed. |
 | `RegistrationCancelled` *(proposed)* | Registration | Releases every booking held under that registration. |
+| `EventCreated`, `EventRescheduled`, `EventDetailsUpdated` | Event | Projected into `resource_event_windows` (`ProjectEventWindow`): the UTC instants of the event's wall-clock times in the payload's zone (ADR-0027), its name and slug. Upsert on `(brand_id, event_id)`; ungated so a brand that switches Resources on later finds the window there. `event:replay-details` backfills events older than the projection. |
 | `AdmissionRevoked` *(proposed)* | Admission | Releases bookings whose holder is that admission (a personal seat), leaving registration-level bookings alone. |
 | `EventArchived` *(proposed)* | Event | Closes the booking window; bookings become read-only history. |
 | `DataExportRequested` / `UserDeletionRequested` *(proposed)* | Compliance | Fans out to `src/Gdpr/`: exports a person's booking history, detaches holder references, and reports completion back to Compliance. |

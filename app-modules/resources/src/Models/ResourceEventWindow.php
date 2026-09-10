@@ -20,6 +20,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $id
  * @property string $brand_id
  * @property string $event_id
+ * @property string|null $name
+ * @property string|null $slug
  * @property Carbon $starts_at
  * @property Carbon $ends_at
  * @property Carbon|null $created_at
@@ -30,7 +32,7 @@ class ResourceEventWindow extends Model
     use BelongsToBrand;
     use HasUlids;
 
-    protected $fillable = ['event_id', 'starts_at', 'ends_at'];
+    protected $fillable = ['event_id', 'name', 'slug', 'starts_at', 'ends_at'];
 
     public static function forEvent(string $brandId, string $eventId): ?self
     {
