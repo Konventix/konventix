@@ -20,7 +20,6 @@
       only `ValidatePlan`. `index`, `store`, `publish`, `unpublish`,
       `export`, `import`, `occupancy`, `reserve` and `unreserve` are done
       (Task 33).
-- [ ] Seating S6: `RecordPlanMetrics` listens on `PlanSaved` for `resource_plan_saves_total{outcome=saved}`; the `conflict`, `invalid` and `stale` outcomes are counted where the exceptions are caught (the controller), not in the Actions.
 - [ ] Seating (design `docs/superpowers/specs/2026-09-10-seating-design.md`,
       ADR-0060): the save pipeline and projection, claims and picking are
       done, and so is the category console (Task 30-32). The plan index
@@ -44,6 +43,23 @@
 
 ## Done
 
+- [x] Seating Task 44 (#277): `RecordPlanMetrics` listens on `PlanSaved` and
+      a new internal event `PlanSaveRefused{planId,eventId,brandId,outcome}`
+      for `resource_plan_saves_total{outcome=saved|conflict|invalid|stale}`.
+      Corrects the "Next" note this replaces: the `conflict`/`invalid`/`stale`
+      outcomes are **not** counted where the exceptions are caught, because
+      nothing ever catches them there — `PlanStaleException` and
+      `PlanConflictException` are Laravel renderable exceptions
+      (`render(Request)`), so `PlanAdminController` never has a catch block
+      to add a dispatch to, and `resources:plan-import`'s CLI path (also
+      `SavePlan`) would be invisible to a controller-only count anyway.
+      `SavePlan::handle()` is now a thin wrapper: the renamed `save()` holds
+      the whole pipeline, `handle()` catches the three refusals and reports
+      `PlanSaveRefused` before rethrowing unchanged — only once `save()`
+      has fully returned, so a refusal re-checked under the transaction's
+      lock is already unwound before the metrics listener's own query runs
+      (the same 25P02 hazard Task 43 found in `AssignPlacesToRegistration`).
+      `ValidatePlan` (the dry run) is untouched and never counts.
 - [x] Seating Task 43 (#277): `ResourcesMetrics` catalogue
       (`resource_bookings_total{brand,outcome}`, `resource_plan_saves_total{brand,outcome}`
       — filled in Task 44 —, `resource_seat_claims_unplaced{brand,event}`,

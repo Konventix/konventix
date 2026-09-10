@@ -10,10 +10,16 @@ use Konventix\Resources\Actions\AssignPlacesToRegistration;
 use Konventix\Resources\Actions\ConfirmResourceBooking;
 use Konventix\Resources\Actions\HoldResourceBooking;
 use Konventix\Resources\Actions\ReleaseResourceBooking;
+use Konventix\Resources\Actions\SavePlan;
+use Konventix\Resources\Data\PlanSaveData;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
+use Konventix\Resources\Enums\PlanVersionSource;
 use Konventix\Resources\Enums\SeatingMode;
+use Konventix\Resources\Events\PlanSaved;
+use Konventix\Resources\Events\PlanSaveRefused;
 use Konventix\Resources\Events\ResourceBookingRefused;
+use Konventix\Resources\Exceptions\PlanStaleException;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
@@ -199,4 +205,39 @@ it('reports when the hold sweep last finished', function (): void {
 
     expect(seatingMetricsScrape())
         ->toContain('konventix_resource_hold_sweep_last_run_timestamp_seconds '.now()->getTimestamp());
+});
+
+it('counts plan saves by outcome per brand slug', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $planId = (string) Str::ulid();
+
+    event(new PlanSaved(planId: $planId, eventId: $eventId, brandId: $brand->id, version: 1, changedPlaceIds: []));
+    event(new PlanSaveRefused(planId: $planId, eventId: $eventId, brandId: $brand->id, outcome: 'conflict'));
+    event(new PlanSaveRefused(planId: $planId, eventId: $eventId, brandId: $brand->id, outcome: 'invalid'));
+    event(new PlanSaveRefused(planId: $planId, eventId: $eventId, brandId: $brand->id, outcome: 'stale'));
+
+    expect(seatingMetricsRendered())
+        ->toContain('konventix_resource_plan_saves_total{brand="'.$brand->slug.'",outcome="saved"} 1')
+        ->toContain('konventix_resource_plan_saves_total{brand="'.$brand->slug.'",outcome="conflict"} 1')
+        ->toContain('konventix_resource_plan_saves_total{brand="'.$brand->slug.'",outcome="invalid"} 1')
+        ->toContain('konventix_resource_plan_saves_total{brand="'.$brand->slug.'",outcome="stale"} 1');
+});
+
+it('records a stale save from the real save pipeline', function (): void {
+    $brand = $this->withBrand();
+    $plan = Plan::factory()->create(['event_id' => (string) Str::ulid()]);
+
+    $stale = PlanSaveData::from([
+        'expectedVersion' => $plan->version + 1,
+        'document' => ['schema' => 'konventix.plan/v1', 'elements' => []],
+        'resolutions' => [],
+    ]);
+
+    expect(fn () => app(SavePlan::class)->handle($plan, $stale, null, PlanVersionSource::Editor))
+        ->toThrow(PlanStaleException::class);
+
+    expect(seatingMetricsRendered())
+        ->toContain('konventix_resource_plan_saves_total{brand="'.$brand->slug.'",outcome="stale"} 1')
+        ->and($plan->refresh()->version)->toBe(0);
 });

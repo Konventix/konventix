@@ -30,6 +30,8 @@ use Konventix\Resources\Data\SeatSummaryData;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\Permission;
+use Konventix\Resources\Events\PlanSaved;
+use Konventix\Resources\Events\PlanSaveRefused;
 use Konventix\Resources\Events\ResourceBookingConfirmed;
 use Konventix\Resources\Events\ResourceBookingHeld;
 use Konventix\Resources\Events\ResourceBookingRefused;
@@ -37,6 +39,7 @@ use Konventix\Resources\Events\ResourceBookingReleased;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationAmended;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
 use Konventix\Resources\Listeners\Metrics\RecordBookingMetrics;
+use Konventix\Resources\Listeners\Metrics\RecordPlanMetrics;
 use Konventix\Resources\Listeners\ProjectEventWindow;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationCancelled;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationRejected;
@@ -278,6 +281,7 @@ class ResourcesServiceProvider extends ModuleServiceProvider
             [ResourceBookingHeld::class, ResourceBookingConfirmed::class, ResourceBookingReleased::class, ResourceBookingRefused::class],
             RecordBookingMetrics::class,
         );
+        Event::listen([PlanSaved::class, PlanSaveRefused::class], RecordPlanMetrics::class);
     }
 
     /**

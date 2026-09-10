@@ -15,6 +15,7 @@ use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\PlanVersionSource;
 use Konventix\Resources\Events\PlanSaved;
+use Konventix\Resources\Events\PlanSaveRefused;
 use Konventix\Resources\Exceptions\PlanConflictException;
 use Konventix\Resources\Exceptions\PlanStaleException;
 use Konventix\Resources\Models\Plan;
@@ -68,7 +69,52 @@ final class SavePlan
         private readonly ReleaseResourceBooking $release,
     ) {}
 
+    /**
+     * Design §6.1. The pipeline itself is `save()`; this wrapper only turns
+     * the three refusals into `PlanSaveRefused` so the plan-save counter
+     * moves (ADR-0059), then rethrows unchanged — the HTTP mapping (409,
+     * 422) stays with the controller. Dispatched only once `save()` has
+     * fully returned control here: every refusal `save()` can throw, the
+     * ones re-checked under the transaction's lock included, already
+     * unwound through `DB::transaction()`'s own rollback before reaching
+     * this catch, so the metrics listener's own query never runs against a
+     * transaction Postgres still has aborted.
+     */
     public function handle(Plan $plan, PlanSaveData $data, ?string $actorUserId, PlanVersionSource $source): PlanSaveResultData
+    {
+        try {
+            return $this->save($plan, $data, $actorUserId, $source);
+        } catch (PlanStaleException $e) {
+            $this->refused($plan, 'stale');
+
+            throw $e;
+        } catch (PlanConflictException $e) {
+            $this->refused($plan, 'conflict');
+
+            throw $e;
+        } catch (ValidationException $e) {
+            $this->refused($plan, 'invalid');
+
+            throw $e;
+        }
+    }
+
+    private function refused(Plan $plan, string $outcome): void
+    {
+        event(new PlanSaveRefused(
+            planId: $plan->id,
+            eventId: $plan->event_id,
+            brandId: $plan->brand_id,
+            outcome: $outcome,
+        ));
+    }
+
+    /**
+     * Design §6.1 steps 0–6, wrapped by `handle()` above so every refusal
+     * is reported. `ValidatePlan` (the dry run) does not call this: a
+     * validation request is not a save and must not count as a refused one.
+     */
+    private function save(Plan $plan, PlanSaveData $data, ?string $actorUserId, PlanVersionSource $source): PlanSaveResultData
     {
         $this->guardVersion($plan, $data->expectedVersion);
         $this->guardInvariants($plan, $data->document);
