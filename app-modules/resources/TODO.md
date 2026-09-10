@@ -37,6 +37,19 @@
 
 ## Done
 
+- [x] Seating S5, availability (#276): `ComputePlanAvailability::handle()`
+      computes the picker's per-place state — `mine`/`held`/`booked` from
+      the event's occupying bookings, `unavailable` for blocked places and
+      places on an unpublished plan, `free` otherwise — in two reads, never
+      the plan document (design §6.2/§7.4). `FindSeatClaimForRegistrant`
+      is the picker's ownership lookup: the newest non-`released` claim of
+      a registration whose `registrant_user_id` is the signed-in account,
+      no capability involved. `seatingPublishedPlan()`, `seatingClaim()`
+      and `seatingBooking()` land in `tests/Helpers.php`, not
+      `SeatPickPageTest.php`, because Task 41's slot test in Registration
+      calls them too. Still open for S5: the routes, the controllers, the
+      `seating/Pick` page and its plan/keyboard components, and
+      `SeatSummarySlot`.
 - [x] S4 (seating console, #S4, #275): `Permission::ManagePlans`, default
       roles `resources.planner` / `resources.desk` (ADR-0045); the category
       console (`admin/resource-types`) and the plan index (`admin/plans`:

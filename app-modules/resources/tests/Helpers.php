@@ -23,6 +23,7 @@ use Konventix\Resources\Data\PlanConflictResolutionData;
 use Konventix\Resources\Data\PlanDocumentData;
 use Konventix\Resources\Data\PlanSaveData;
 use Konventix\Resources\Data\PlanSaveResultData;
+use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\Permission;
 use Konventix\Resources\Enums\PlanVersionSource;
@@ -710,4 +711,134 @@ function seatingPlanDocument(string $resourceTypeId, int $places = 2): array
     }
 
     return ['schema' => 'konventix.plan/v1', 'elements' => $elements];
+}
+
+/**
+ * One zone, one group, `$places` places in a row — the document and its
+ * projection written side by side, the way SavePlan leaves them: the place
+ * element id is the `resources` row id (design §4.2).
+ *
+ * @return array{plan: Plan, places: list<BookableResource>}
+ */
+function seatingPublishedPlan(string $eventId, ResourceType $type, int $places = 2, bool $published = true): array
+{
+    $zoneId = (string) Str::ulid();
+    $groupId = (string) Str::ulid();
+    $placeIds = array_map(fn (): string => (string) Str::ulid(), range(1, $places));
+
+    $elements = [
+        [
+            'id' => $zoneId, 'kind' => 'zone', 'parentId' => null, 'ref' => 'Z1', 'label' => 'Hall',
+            'layer' => 'default', 'x' => 0, 'y' => 0, 'rotation' => 0,
+            'shape' => ['type' => 'rect', 'w' => 10000, 'h' => 6000],
+            'locked' => false, 'token' => 'chart-2', 'accessible' => false, 'detached' => false, 'blocked' => false,
+        ],
+        [
+            'id' => $groupId, 'kind' => 'group', 'parentId' => $zoneId, 'ref' => 'A', 'label' => 'Row A',
+            'layer' => 'default', 'x' => 1000, 'y' => 1000, 'rotation' => 0,
+            'shape' => ['type' => 'rect', 'w' => 8000, 'h' => 800],
+            'locked' => false, 'accessible' => false, 'detached' => false, 'blocked' => false,
+        ],
+    ];
+
+    foreach ($placeIds as $index => $placeId) {
+        $ref = sprintf('A-%02d', $index + 1);
+        $elements[] = [
+            'id' => $placeId, 'kind' => 'place', 'parentId' => $groupId, 'ref' => $ref, 'label' => $ref,
+            'layer' => 'default', 'x' => $index * 900, 'y' => 0, 'rotation' => 0,
+            'shape' => ['type' => 'rect', 'w' => 800, 'h' => 800],
+            'locked' => false, 'resourceTypeId' => $type->id,
+            'accessible' => false, 'detached' => false, 'blocked' => false,
+        ];
+    }
+
+    $plan = new Plan;
+    $plan->forceFill([
+        'event_id' => $eventId,
+        'venue_id' => null,
+        'name' => 'Main hall '.Str::lower(Str::random(4)),
+        'floor_label' => null,
+        'width_mm' => 10000,
+        'height_mm' => 6000,
+        'background' => null,
+        'unit_display' => 'cm',
+        'snap_step' => 100,
+        'version' => 1,
+        'document' => PlanDocumentData::from(['schema' => 'konventix.plan/v1', 'elements' => $elements]),
+        'published_at' => $published ? now() : null,
+    ])->save();
+
+    $rows = [];
+
+    foreach ($placeIds as $index => $placeId) {
+        $ref = sprintf('A-%02d', $index + 1);
+        $place = Resource::factory()->ofType($type)->make(['label' => $ref, 'capacity' => 1]);
+        $place->forceFill([
+            'id' => $placeId,
+            'plan_id' => $plan->getKey(),
+            'ref' => $ref,
+            'zone_id' => $zoneId,
+            'group_id' => $groupId,
+            'is_published' => $published,
+            'accessible' => false,
+            'blocked' => false,
+        ])->save();
+        $rows[] = $place;
+    }
+
+    return ['plan' => $plan, 'places' => $rows];
+}
+
+/**
+ * @param  list<string>  $resourceTypeIds
+ */
+function seatingClaim(
+    string $eventId,
+    string $registrationId,
+    string $userId,
+    array $resourceTypeIds,
+    int $quantity = 1,
+    ClaimState $state = ClaimState::Unplaced,
+): ResourceClaim {
+    $claim = new ResourceClaim;
+    $claim->forceFill([
+        'event_id' => $eventId,
+        'registration_id' => $registrationId,
+        'registrant_user_id' => $userId,
+        'amendment_id' => null,
+        'resource_type_ids' => $resourceTypeIds,
+        'seating_mode' => SeatingMode::Pick,
+        'quantity' => $quantity,
+        'state' => $state,
+    ])->save();
+
+    return $claim;
+}
+
+/**
+ * A booking row as `AssignPlacesToRegistration` leaves it — holder is the
+ * registration, interval is the event window, no clock (design §7.3).
+ */
+function seatingBooking(
+    Resource $place,
+    ResourceEventWindow $window,
+    string $registrationId,
+    ?ResourceClaim $claim = null,
+    BookingState $state = BookingState::Confirmed,
+): ResourceBooking {
+    $booking = ResourceBooking::factory()->make([
+        'resource_id' => $place->getKey(),
+        'holder_type' => ResourceBooking::HOLDER_REGISTRATION,
+        'holder_id' => $registrationId,
+        'registration_id' => $registrationId,
+        'quantity' => 1,
+        'is_exclusive' => true,
+        'state' => $state,
+        'starts_at' => $window->starts_at,
+        'ends_at' => $window->ends_at,
+        'hold_expires_at' => null,
+    ]);
+    $booking->forceFill(['claim_id' => $claim?->getKey(), 'label' => $place->label])->save();
+
+    return $booking;
 }
