@@ -434,3 +434,63 @@ it('dispatches hold and confirmation after the outermost commit as well', functi
 
     expect($seen)->toBe([['held', 1], ['confirmed', 1]]);
 });
+
+it('sets the brand context from the resource while holding, so a downstream listener sees it after the caller\'s own brand scope has closed', function (): void {
+    // The prerequisite for Task 21: ReservePlaceForOperator holds and
+    // confirms inside one transaction, exactly the shape that lost the
+    // ambient brand for ReleaseResourceBooking before it captured and
+    // restored it. A caller that sets the brand only around the individual
+    // Hold/Confirm call — the way ReleaseBookingsForRegistration and
+    // ExpireResourceHolds already do for release — must still see its own
+    // brand at dispatch time, not whatever is ambient once its withBrand()
+    // block has already closed and the outer transaction finally commits.
+    $brand = $this->withBrand();
+    $resource = bookingTestUnitResource();
+
+    $seen = [];
+    Event::listen(ResourceBookingHeld::class, function () use (&$seen): void {
+        $seen[] = app(BrandContext::class)->id();
+    });
+
+    app(BrandContext::class)->forget();
+
+    DB::transaction(function () use ($resource, $brand, &$seen): void {
+        app(BrandContext::class)->withBrand($brand, fn (): ResourceBooking => app(HoldResourceBooking::class)->handle(
+            resource: $resource,
+            holderType: ResourceBooking::HOLDER_OPERATOR,
+            holderId: (string) Str::ulid(),
+            startsAt: now()->startOfHour()->addHour(),
+            endsAt: now()->startOfHour()->addHours(3),
+        ));
+
+        // The withBrand() scope has already closed; the deferred dispatch
+        // waits for this outermost transaction to commit.
+        expect(app(BrandContext::class)->current())->toBeNull()
+            ->and($seen)->toBe([]);
+    });
+
+    expect($seen)->toBe([$brand->id])
+        ->and(app(BrandContext::class)->current())->toBeNull();
+});
+
+it('sets the brand context from the booking while confirming, so a downstream listener sees it after the caller\'s own brand scope has closed', function (): void {
+    $brand = $this->withBrand();
+    $booking = bookingTestHold(bookingTestUnitResource(), 1);
+
+    $seen = [];
+    Event::listen(ResourceBookingConfirmed::class, function () use (&$seen): void {
+        $seen[] = app(BrandContext::class)->id();
+    });
+
+    app(BrandContext::class)->forget();
+
+    DB::transaction(function () use ($booking, $brand, &$seen): void {
+        app(BrandContext::class)->withBrand($brand, fn (): ResourceBooking => app(ConfirmResourceBooking::class)->handle($booking));
+
+        expect(app(BrandContext::class)->current())->toBeNull()
+            ->and($seen)->toBe([]);
+    });
+
+    expect($seen)->toBe([$brand->id])
+        ->and(app(BrandContext::class)->current())->toBeNull();
+});

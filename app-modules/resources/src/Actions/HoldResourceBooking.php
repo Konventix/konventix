@@ -8,6 +8,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\CapacityMode;
 use Konventix\Resources\Events\ResourceBookingHeld;
@@ -34,7 +35,12 @@ use Konventix\Resources\Models\ResourceBooking;
  * acknowledged trade, not an oversight.
  *
  * Its event is dispatched after the outermost commit, never inside the
- * transaction (design §6.1 step 7).
+ * transaction (design §6.1 step 7). A caller that wraps this call in
+ * `BrandContext::withBrand()` — `ReservePlaceForOperator` holds and confirms
+ * in one transaction — must not assume that scope is still open when the
+ * deferred dispatch runs: whatever brand is ambient when the event is built
+ * is captured and restored for the deferred callback alone, exactly as
+ * `ReleaseResourceBooking` does.
  */
 final class HoldResourceBooking
 {
@@ -136,8 +142,22 @@ final class HoldResourceBooking
             // and the seat assignment release inside their own transaction,
             // and a listener must never see a release the caller then rolls
             // back. Without an open transaction the callback runs at once.
-            DB::afterCommit(static function () use ($event): void {
-                event($event);
+            // Whatever brand is ambient right now is captured and restored
+            // around the deferred dispatch, because by the time it runs a
+            // caller's own withBrand() block has already put the previous
+            // brand back (see ReleaseResourceBooking).
+            $brand = app(BrandContext::class)->current();
+
+            DB::afterCommit(static function () use ($event, $brand): void {
+                if ($brand === null) {
+                    event($event);
+
+                    return;
+                }
+
+                app(BrandContext::class)->withBrand($brand, static function () use ($event): void {
+                    event($event);
+                });
             });
 
             return $booking;
