@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Resources\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
@@ -13,6 +14,7 @@ use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationRejected;
+use Konventix\Resources\Console\ExpireResourceHoldsCommand;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationAmended;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
 use Konventix\Resources\Listeners\ProjectEventWindow;
@@ -58,5 +60,23 @@ class ResourcesServiceProvider extends ModuleServiceProvider
         Event::listen(EventCreated::class, [ProjectEventWindow::class, 'handleCreated']);
         Event::listen(EventRescheduled::class, [ProjectEventWindow::class, 'handleRescheduled']);
         Event::listen(EventDetailsUpdated::class, [ProjectEventWindow::class, 'handleDetailsUpdated']);
+    }
+
+    /**
+     * The hold sweep. Scheduled here rather than in a central kernel —
+     * module wiring never goes into a central provider (ADR-0003).
+     * Registered explicitly: modular discovers nothing under a module's
+     * `src/Console`, and a sweep that silently failed to register would
+     * look like "no holds ever lapse" rather than like a bug.
+     */
+    protected function registerSchedule(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([ExpireResourceHoldsCommand::class]);
+        }
+
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $schedule->command(ExpireResourceHoldsCommand::class)->everyMinute();
+        });
     }
 }

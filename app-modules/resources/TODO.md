@@ -6,8 +6,6 @@
 
 ## Next
 
-- [ ] `resources:expire-holds` every minute, with the last-run heartbeat the
-      S6 gauge reads (Seating Task 7).
 - [ ] Seating, per `docs/superpowers/specs/2026-09-10-seating-design.md`:
       plans, document and projection with ADR-0060 (S1); save pipeline and
       conflicts (S2); seat claims and picking (S3); console (S4); picker
@@ -27,6 +25,11 @@
       winner for N parallel picks.
 
 ## Done
+
+- [x] Seating Task 7 — `resources:expire-holds` (`Actions\ExpireResourceHolds`)
+      every minute: lapsed clocked holds become `expired` with the
+      booking's brand in context, the last run is kept under
+      `ExpireResourceHolds::LAST_RUN_CACHE_KEY` for the S6 heartbeat gauge.
 
 - [x] Seating Task 6 — `ReleaseBookingsOnRegistrationCancelled` and
       `ReleaseBookingsOnRegistrationRejected` release every active booking
