@@ -133,12 +133,19 @@ module that owns it.
 Declared in `src/Enums/Permission.php`. Roles that grant them are per-brand
 data, not code (ADR-0013).
 
-- Manage resource types and their booking rules.
-- Create, publish, and withdraw resources; edit plans and positions.
-- Manage availability windows and blackout periods.
-- Book and release resources on behalf of another holder.
-- Book and release one's own resources — the participant-facing capability.
-- View the full booking list of an event, including holder identity.
+- View resources and bookings (`ViewResources`).
+- Manage resource types — the seating console calls them categories
+  (`ManageResourceTypes`).
+- Create, publish, and withdraw plan-less resources (`ManageResources`).
+- Create, import, publish, and edit hall plans (`ManagePlans`, design
+  `docs/superpowers/specs/2026-09-10-seating-design.md` §8.2).
+- Book and release resources on behalf of another holder, including an
+  operator reservation on a place (`BookOnBehalf`, `ReleaseBookings`).
+- Booking one's own place needs no capability: ownership of the seat claim
+  authorises the picker (design §9.1).
+
+Default roles (ADR-0045): `resources.planner` (everything above) and
+`resources.desk` (view, book on behalf, release).
 
 ## Activation
 

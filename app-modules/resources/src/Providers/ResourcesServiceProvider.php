@@ -10,6 +10,7 @@ use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventRescheduled;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
@@ -19,6 +20,7 @@ use Konventix\Resources\Console\ExpireResourceHoldsCommand;
 use Konventix\Resources\Console\PlanExportCommand;
 use Konventix\Resources\Console\PlanImportCommand;
 use Konventix\Resources\Console\ProbeSeatRace;
+use Konventix\Resources\Enums\Permission;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationAmended;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
 use Konventix\Resources\Listeners\ProjectEventWindow;
@@ -44,6 +46,38 @@ class ResourcesServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'resources';
+    }
+
+    /**
+     * ADR-0045, design §9.1: two starting points per brand. The planner
+     * builds and publishes hall plans and may reseat; the desk only books
+     * and releases on somebody's behalf. `permissions:sync` materializes
+     * both for every brand with the module on and never rewrites a role an
+     * operator has since edited.
+     *
+     * @return list<DefaultRole>
+     */
+    public function defaultRoles(): array
+    {
+        return [
+            DefaultRole::of(
+                'resources.planner',
+                'Planner',
+                Permission::ViewResources,
+                Permission::ManageResourceTypes,
+                Permission::ManageResources,
+                Permission::ManagePlans,
+                Permission::BookOnBehalf,
+                Permission::ReleaseBookings,
+            ),
+            DefaultRole::of(
+                'resources.desk',
+                'Resource Desk',
+                Permission::ViewResources,
+                Permission::BookOnBehalf,
+                Permission::ReleaseBookings,
+            ),
+        ];
     }
 
     protected function registerListeners(): void

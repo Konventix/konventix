@@ -9,6 +9,7 @@ use Illuminate\Validation\ValidationException;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
 use Konventix\Registration\Events\RegistrationAmended;
@@ -36,6 +37,7 @@ use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceEventWindow;
 use Konventix\Resources\Models\ResourceType;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Helpers that more than one file of this module's suite calls. Pest loads
@@ -597,4 +599,115 @@ function seatingUserWithBookOnBehalf(string $brandId): User
     ]);
 
     return $user;
+}
+
+/**
+ * An operator admin on its own admin host with the given capabilities.
+ * The pattern is `registrationTypeOperator()` in Registration's suite;
+ * the host differs so the two suites never share a unique `admin_host`.
+ *
+ * @param  list<string>  $permissions
+ * @return array{0: Operator, 1: User}
+ */
+function seatingOperator(array $permissions = [
+    'platform.access-admin',
+    'resources.manage-resource-types',
+    'resources.manage-plans',
+    'resources.book-on-behalf',
+]): array
+{
+    $operator = Operator::factory()->create();
+    $operator->forceFill(['admin_host' => 'admin.seating.test'])->save();
+
+    $registrar = app(PermissionRegistrar::class);
+    $registrar->setPermissionsTeamId($operator->getKey());
+
+    foreach ($permissions as $name) {
+        PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
+    }
+
+    $role = Role::query()->create([
+        'name' => 'Operator Admin',
+        'guard_name' => 'web',
+        'brand_id' => $operator->getKey(),
+    ]);
+    $role->givePermissionTo($permissions);
+
+    $admin = User::factory()->create();
+    $admin->assignRole($role);
+
+    $registrar->setPermissionsTeamId(null);
+
+    return [$operator, $admin];
+}
+
+/**
+ * Projects an event window (with name and slug, design §4.7) by firing
+ * Event's contract event — the only way this module may learn about an
+ * event (ADR-0004). Takes the brand rather than creating it: a plain Pest
+ * helper cannot call the protected `withBrand()` (.ai/rules/tests.md).
+ */
+function seatingEventWindow(Brand $brand, string $name = 'SXLan 2027', ?string $eventId = null): string
+{
+    $eventId ??= (string) Str::ulid();
+
+    event(new EventCreated(
+        eventId: $eventId,
+        brandId: $brand->getKey(),
+        slug: Str::slug($name).'-'.Str::lower(Str::random(4)),
+        name: $name,
+        startsAt: '2027-05-14 18:00:00',
+        endsAt: '2027-05-16 14:00:00',
+        timezone: 'Europe/Berlin',
+        predecessorEventId: null,
+    ));
+
+    return $eventId;
+}
+
+/**
+ * A minimal valid `konventix.plan/v1` document (design §5): one group with
+ * `$places` places of the given category, refs `A-01`…, so an import or a
+ * save has something structurally complete to accept.
+ *
+ * @return array<string, mixed>
+ */
+function seatingPlanDocument(string $resourceTypeId, int $places = 2): array
+{
+    $groupId = (string) Str::ulid();
+    $elements = [[
+        'id' => $groupId,
+        'kind' => 'group',
+        'parentId' => null,
+        'ref' => 'A',
+        'label' => 'A',
+        'layer' => 'default',
+        'x' => 1000,
+        'y' => 1000,
+        'rotation' => 0,
+        'shape' => ['type' => 'rect', 'w' => 800 * $places, 'h' => 800],
+        'locked' => false,
+    ]];
+
+    for ($n = 1; $n <= $places; $n++) {
+        $elements[] = [
+            'id' => (string) Str::ulid(),
+            'kind' => 'place',
+            'parentId' => $groupId,
+            'ref' => sprintf('A-%02d', $n),
+            'label' => sprintf('A-%02d', $n),
+            'layer' => 'default',
+            'x' => 800 * ($n - 1),
+            'y' => 0,
+            'rotation' => 0,
+            'shape' => ['type' => 'rect', 'w' => 800, 'h' => 800],
+            'locked' => false,
+            'resourceTypeId' => $resourceTypeId,
+            'accessible' => false,
+            'detached' => false,
+            'blocked' => false,
+        ];
+    }
+
+    return ['schema' => 'konventix.plan/v1', 'elements' => $elements];
 }
