@@ -108,6 +108,22 @@ it('exports the subject\'s claims, bookings, operator reservations and plan vers
         ->and($export['plan_versions'][0]['version'])->toBe(1);
 });
 
+it('exports a plan the subject created even when nobody has saved it since', function (): void {
+    // CreatePlan (the console's create dialog) writes no PlanVersion row —
+    // that only happens on the first SavePlan (design §4.4). A plan whose
+    // creator never went on to edit it must still surface as theirs.
+    $this->withBrand();
+    $subjectUserId = (string) Str::ulid();
+    $plan = Plan::factory()->create(['name' => 'Untouched Hall', 'created_by' => $subjectUserId]);
+
+    $export = (new ResourcesGdprHandler)->exportFor(SubjectRef::forUser($subjectUserId));
+
+    expect($export['plans'])->toHaveCount(1)
+        ->and($export['plans'][0]['id'])->toBe($plan->id)
+        ->and($export['plans'][0]['name'])->toBe('Untouched Hall')
+        ->and($export['plan_versions'])->toBe([]);
+});
+
 it('answers an email-only subject with nothing', function (): void {
     $this->withBrand();
 

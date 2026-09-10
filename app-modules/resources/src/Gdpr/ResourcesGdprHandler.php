@@ -27,8 +27,12 @@ use Konventix\Resources\Models\ResourceClaim;
  *
  * Export is what those rows say about the person: the claims, the seat
  * bookings they fulfil (plan name, ref, label, state, interval), their
- * operator reservations, and the versions they authored — never the plan
- * document itself, which is the operator's work, not the subject's.
+ * operator reservations, the plans they created and the versions they
+ * authored — never the plan document itself, which is the operator's work,
+ * not the subject's. A plan's `created_by` and its versions' `created_by`
+ * are exported separately: `CreatePlan` writes no version row (design
+ * §4.4), so a plan whose creator never went on to save it has nothing in
+ * `plan_versions` to surface it.
  *
  * Deletion nulls the pointers and keeps the rows in both modes: a booking
  * is the event's occupancy history and a plan version its editing history.
@@ -68,6 +72,11 @@ final class ResourcesGdprHandler implements GdprHandler
 
         $places = $this->placesOf($bookings);
 
+        $plansCreated = Plan::withoutBrandScope()
+            ->where('created_by', $subjectId)
+            ->orderBy('created_at')
+            ->get();
+
         $versions = PlanVersion::withoutBrandScope()
             ->where('created_by', $subjectId)
             ->orderBy('created_at')
@@ -75,6 +84,7 @@ final class ResourcesGdprHandler implements GdprHandler
 
         $planNames = $this->planNames(array_map('strval', [
             ...$places->pluck('plan_id')->filter()->values()->all(),
+            ...$plansCreated->pluck('id')->values()->all(),
             ...$versions->pluck('plan_id')->values()->all(),
         ]));
 
@@ -107,6 +117,14 @@ final class ResourcesGdprHandler implements GdprHandler
                         'created_at' => $booking->created_at?->toIso8601String(),
                     ];
                 })
+                ->all(),
+            'plans' => $plansCreated
+                ->map(fn (Plan $plan): array => [
+                    'id' => $plan->id,
+                    'event_id' => $plan->event_id,
+                    'name' => $plan->name,
+                    'created_at' => $plan->created_at?->toIso8601String(),
+                ])
                 ->all(),
             'plan_versions' => $versions
                 ->map(fn (PlanVersion $version): array => [

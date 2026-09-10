@@ -134,7 +134,7 @@ Not part of the cross-module contract; other modules must not listen to them.
 | `RegistrationCancelled` | Registration | `ReleaseBookingsOnRegistrationCancelled`, **ungated** (see Activation): every active booking of the registration released with `registration_cancelled`, claims → `released` |
 | `RegistrationRejected` | Registration | `ReleaseBookingsOnRegistrationRejected`, ungated, reason `registration_rejected` |
 | `EventCreated`, `EventRescheduled`, `EventDetailsUpdated` | Event | `ProjectEventWindow`, ungated: upsert of `resource_event_windows` by `(brand_id, event_id)` with timezone-aware instants (ADR-0027), name and slug; `event:replay-details` backfills existing events |
-| `DataExportRequested` / `UserDeletionRequested` | Compliance | `ResourcesGdprHandler` via the registry: exports claims, bookings, operator reservations and plan versions of the subject; erasure nulls `registrant_user_id`, `created_by` on plans and versions, and the `holder_id` of the subject's operator reservations |
+| `DataExportRequested` / `UserDeletionRequested` | Compliance | `ResourcesGdprHandler` via the registry: exports claims, bookings, operator reservations, the plans the subject created and the versions they saved; erasure nulls `registrant_user_id`, `created_by` on plans and versions, and the `holder_id` of the subject's operator reservations |
 
 Resources does **not** listen to Commerce: payment reaches Registration, which
 confirms, and Resources reacts to Registration only (ADR-0006). It keeps no
