@@ -73,6 +73,26 @@ const assignedByOrganiser = computed(
     () => props.claim.seatingMode === 'assign',
 );
 
+/**
+ * The title, heading and description all sat outside the branch above and
+ * kept saying "Choose your seat" / "Pick one place…" over the explanatory
+ * state (re-review fix ahead of merge, #278): three claims contradicting
+ * the one true thing `ASSIGNED_BY_ORGANISER_MESSAGE` already said below
+ * them. `pageTitle` covers the `<Head>` title and the `<Heading>` title
+ * alike; the description reuses the same shared constant rather than a
+ * third wording of the same fact.
+ */
+const pageTitle = computed(() =>
+    assignedByOrganiser.value ? 'Your seat' : 'Choose your seat',
+);
+const pageDescription = computed(() =>
+    assignedByOrganiser.value
+        ? ASSIGNED_BY_ORGANISER_MESSAGE
+        : props.claim.quantity === 1
+          ? 'Pick one place from the categories your registration includes.'
+          : `Pick up to ${props.claim.quantity} places from the categories your registration includes.`,
+);
+
 const activePlanId = ref(props.plans[0]?.id ?? '');
 const activePlan = computed(
     () => props.plans.find((plan) => plan.id === activePlanId.value) ?? null,
@@ -152,6 +172,13 @@ function refreshAvailability(): void {
 }
 
 onMounted(() => {
+    // An assign-mode page renders no picker to keep fresh (re-review fix
+    // ahead of merge, #278): starting the poll here would just fetch
+    // availability that nothing on the page ever reads.
+    if (assignedByOrganiser.value) {
+        return;
+    }
+
     timer = setInterval(refreshAvailability, 15_000);
 });
 
@@ -179,7 +206,7 @@ watch(availability, (places) => {
 </script>
 
 <template>
-    <Head title="Choose your seat" />
+    <Head :title="pageTitle" />
 
     <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6">
         <div>
@@ -193,12 +220,8 @@ watch(availability, (places) => {
 
             <Heading
                 as="h1"
-                title="Choose your seat"
-                :description="
-                    props.claim.quantity === 1
-                        ? 'Pick one place from the categories your registration includes.'
-                        : `Pick up to ${props.claim.quantity} places from the categories your registration includes.`
-                "
+                :title="pageTitle"
+                :description="pageDescription"
             />
         </div>
 
