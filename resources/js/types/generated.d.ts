@@ -1130,6 +1130,138 @@ declare namespace Konventix {
         }
     }
     namespace Resources {
+        namespace Data {
+            export type BackgroundData = {
+                readonly mediaId: string;
+                readonly scaleMmPerPx: number;
+                readonly offsetXMm: number;
+                readonly offsetYMm: number;
+            };
+            export type LabelSchemaData = {
+                readonly row: string;
+                readonly place: string;
+            };
+            export type LayoutData = {
+                readonly type: Konventix.Resources.Enums.LayoutKind;
+                readonly spacing: number;
+                readonly count: number | null;
+                readonly rows: number | null;
+                readonly cols: number | null;
+                readonly rowSpacing: number | null;
+                readonly startIndex: number;
+            };
+            export type PickPlacesData = {
+                readonly placeIds: string[];
+            };
+            export type PlanAvailabilityData = {
+                readonly eventId: string;
+                readonly generatedAt: string;
+                readonly places: Record<
+                    string,
+                    Konventix.Resources.Enums.PlaceState
+                >;
+            };
+            export type PlanConflictBookingData = {
+                readonly bookingId: string;
+                readonly holderType: string;
+                readonly registrationId: string | null;
+                readonly claimId: string | null;
+            };
+            export type PlanConflictData = {
+                readonly placeId: string;
+                readonly ref: string | null;
+                readonly label: string;
+                readonly reason: Konventix.Resources.Enums.ConflictReason;
+                readonly bookings: Konventix.Resources.Data.PlanConflictBookingData[];
+            };
+            export type PlanConflictResolutionData = {
+                readonly placeId: string;
+                readonly resolution: string;
+            };
+            export type PlanDiffSummaryData = {
+                readonly added: number;
+                readonly changed: number;
+                readonly removed: number;
+            };
+            export type PlanDocumentData = {
+                readonly schema: string;
+                readonly elements: Konventix.Resources.Data.PlanElementData[];
+            };
+            export type PlanElementData = {
+                readonly id: string;
+                readonly kind: Konventix.Resources.Enums.ElementKind;
+                readonly x: number;
+                readonly y: number;
+                readonly shape: Konventix.Resources.Data.ShapeData;
+                readonly parentId: string | null;
+                readonly ref: string | null;
+                readonly label: string | null;
+                readonly layer: string;
+                readonly rotation: number;
+                readonly locked: boolean;
+                readonly originId: string | null;
+                readonly token: Konventix.Resources.Enums.CategoryToken | null;
+                readonly layout: Konventix.Resources.Data.LayoutData | null;
+                readonly labelSchema: Konventix.Resources.Data.LabelSchemaData | null;
+                readonly resourceTypeId: string | null;
+                readonly accessible: boolean;
+                readonly detached: boolean;
+                readonly blocked: boolean;
+                readonly fixtureType: Konventix.Resources.Enums.FixtureType | null;
+                readonly text: string | null;
+                readonly fontSizeMm: number | null;
+            };
+            export type PlanOccupancyData = {
+                readonly places: Record<
+                    string,
+                    Konventix.Resources.Data.PlanOccupancyPlaceData
+                >;
+            };
+            export type PlanOccupancyPlaceData = {
+                readonly state: Konventix.Resources.Enums.PlaceState;
+                readonly holderType: string | null;
+                readonly registrationId: string | null;
+                readonly bookingId: string | null;
+            };
+            export type PlanSaveData = {
+                readonly expectedVersion: number;
+                readonly document: Konventix.Resources.Data.PlanDocumentData;
+                readonly resolutions: Konventix.Resources.Data.PlanConflictResolutionData[];
+            };
+            export type PlanSaveResultData = {
+                readonly version: number;
+                readonly changedPlaceIds: string[];
+                readonly warnings: Konventix.Resources.Data.PlanWarningData[];
+                readonly savedAt: string;
+            };
+            export type PlanValidationData = {
+                readonly conflicts: Konventix.Resources.Data.PlanConflictData[];
+                readonly warnings: Konventix.Resources.Data.PlanWarningData[];
+                readonly diff: Konventix.Resources.Data.PlanDiffSummaryData;
+            };
+            export type PlanWarningData = {
+                readonly code: Konventix.Resources.Enums.PlanWarningCode;
+                readonly placeIds: string[];
+                readonly message: string;
+            };
+            export type SeatPickerData = {
+                readonly registrationId: string;
+                readonly claim: unknown;
+                readonly categories: unknown[];
+                readonly plans: unknown[];
+                readonly availability: Konventix.Resources.Data.PlanAvailabilityData;
+                readonly currentPlaceIds: string[];
+            };
+            export type ShapeData = {
+                readonly type: Konventix.Resources.Enums.ShapeKind;
+                readonly w: number | null;
+                readonly h: number | null;
+                readonly radius: number | null;
+                readonly rx: number | null;
+                readonly ry: number | null;
+                readonly points: number[][] | null;
+            };
+        }
         namespace Enums {
             export type BookingState =
                 'held' | 'confirmed' | 'released' | 'cancelled' | 'expired';

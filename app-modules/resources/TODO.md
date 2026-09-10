@@ -26,6 +26,24 @@
 
 ## Done
 
+- [x] Seating Task 11 — the plan document Data classes: `PlanDocumentData`
+      (`SCHEMA = 'konventix.plan/v1'`), `PlanElementData`, `ShapeData`,
+      `LayoutData`, `LabelSchemaData`, `BackgroundData`, and the save,
+      conflict, availability, occupancy and picker payloads
+      (`PlanSaveData`, `PlanConflictResolutionData`, `PlanConflictData`,
+      `PlanConflictBookingData`, `PlanWarningData`, `PlanDiffSummaryData`,
+      `PlanValidationData`, `PlanSaveResultData`, `PlanAvailabilityData`,
+      `PlanOccupancyData`, `PlanOccupancyPlaceData`, `PickPlacesData`,
+      `SeatPickerData`) — nineteen `#[TypeScript]` Data classes in all, the
+      five model-backed ones (`CategoryData`, `ResourceTypeData`, `PlanData`,
+      `PlanViewData`, `SeatClaimData`) deferred to Task 12 after the models
+      exist. `PlanInvariants::check()` (`src/Plans/`) is the structural
+      guard shape validation cannot express — parents, cycles, unique ids
+      and refs, category membership, polygon size — and returns a
+      `list<array{path, message}>` keyed `document.elements.<index>.<field>`
+      rather than throwing, so `SavePlan` (S2) can report every violation
+      at once.
+
 - [x] Seating Task 10 — the seating schema: `resource_plans`,
       `resource_plan_versions` and `resource_claims`; `resource_types`
       gains `description`, `token`, `symbol`, `sort_order`, `default_shape`;

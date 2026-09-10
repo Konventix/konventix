@@ -9,6 +9,7 @@ use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationRejected;
 use Konventix\Resources\Actions\HoldResourceBooking;
+use Konventix\Resources\Data\PlanDocumentData;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceEventWindow;
@@ -184,4 +185,58 @@ function seatingHold(Resource $resource, ResourceEventWindow $window, ?string $r
         endsAt: $window->ends_at,
         registrationId: $registrationId,
     );
+}
+
+/**
+ * One element of a plan document (design §5) as the array the editor sends:
+ * every key present, so a Data validation failure is about the value under
+ * test and never about a missing key.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function seatingRawElement(string $kind, array $overrides = []): array
+{
+    return array_replace([
+        'id' => (string) Str::ulid(),
+        'kind' => $kind,
+        'parentId' => null,
+        'ref' => null,
+        'label' => null,
+        'layer' => 'default',
+        'x' => 0,
+        'y' => 0,
+        'rotation' => 0,
+        'shape' => ['type' => 'rect', 'w' => 800, 'h' => 800, 'radius' => null, 'rx' => null, 'ry' => null, 'points' => null],
+        'locked' => false,
+        'originId' => null,
+        'token' => null,
+        'layout' => null,
+        'labelSchema' => null,
+        'resourceTypeId' => null,
+        'accessible' => false,
+        'detached' => false,
+        'blocked' => false,
+        'fixtureType' => null,
+        'text' => null,
+        'fontSizeMm' => null,
+    ], $overrides);
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function seatingRawPlace(string $resourceTypeId, array $overrides = []): array
+{
+    return seatingRawElement('place', array_replace(['resourceTypeId' => $resourceTypeId], $overrides));
+}
+
+/**
+ * @param  list<array<string, mixed>>  $elements
+ * @return array{schema: string, elements: list<array<string, mixed>>}
+ */
+function seatingRawDocument(array $elements): array
+{
+    return ['schema' => PlanDocumentData::SCHEMA, 'elements' => array_values($elements)];
 }
