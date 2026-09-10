@@ -37,6 +37,30 @@
 
 ## Done
 
+- [x] Seating Task 39 (#276): the picker's view layer under
+      `resources/js/components/plan` — `SeatPlanScene.vue` (fixed mm
+      viewBox, pointer pan/pinch/wheel zoom, `defineExpose`d `svgPoint`/
+      `fitToBbox` for the S7 editor overlay), `PlanShape.vue` (one element
+      per shape kind), `PlanListView.vue` (the genuine keyboard path —
+      real `<button>`s, `aria-pressed`/`aria-disabled`, every place the
+      scene renders also here with its state as text), `PlanTabs.vue`
+      (roving-tabindex WAI-ARIA tablist) and `SelectionHints.vue` (two
+      `role="status"` live regions). Beyond the brief's five files:
+      `PlanPlace.vue` (one rendered place — shape, hatch, symbol, label,
+      hit circle), `PlanBackdrop.vue` (zones/fixtures/annotations) and
+      `PlanDefs.vue` (the shared `<defs>`) split out of the scene, and
+      `useScenePointer.ts` (the pointer/pinch/wheel state machine, DOM-
+      touching so it stays out of Task 38's pure-module vitest coverage)
+      — brings `SeatPlanScene.vue` from ~545 lines as drafted to 299,
+      against the project's "extract before ~300 lines" guideline
+      (CLAUDE_extra.md). Every seat state (free/mine/taken/selected/not-
+      in-category/unavailable) is distinguishable by hatch pattern and
+      category symbol as well as fill colour; every interactive control is
+      a real `<button>` at least 44 px (`size-11`/`min-h-11 min-w-11`,
+      independent of the plan's zoom via `hitRadiusWorld`). No new npm
+      dependency. `vue-tsc --noEmit` and `eslint` both clean; no vitest
+      here by design — Task 40's `SeatPickPageTest` is what exercises this
+      view code end to end.
 - [x] Seating Task 38 (#276): the pure plan modules under
       `resources/js/components/plan` — `transform.ts` (LanCore's one-world
       pan/zoom/pinch transform, ported to millimetres), `geometry.ts`
