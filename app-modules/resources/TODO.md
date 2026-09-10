@@ -16,10 +16,14 @@
       and bookings made before a reschedule keep the old interval (#28).
 - [ ] Soft edit lock and deadline lock for the plan editor; audited override
       (#104). v1 has the version check plus conflict refusal only.
-- [ ] `document.ts`'s `absolutePosition()` sums ancestor `x, y` but ignores
-      ancestor rotation, unlike the picker's `PlanGeometry`/`WorldTransform`,
-      which composes it. Fine for v1 (zones and groups are not rotated by
-      the editor yet); revisit if that changes.
+- [ ] Platform CMS block type embedding a published plan on a brand page
+      (the viewer exists; the block registration does not).
+- [ ] Plan editor follow-ups (S7 shipped the MVP): drag ignores a rotated
+      parent's rotation (`absolutePosition` sums offsets only); raster
+      backgrounds through `MediaPicker` are not wired on the edit page;
+      a zone's shape is not auto-fitted to its children; per-category
+      `default_shape` is not applied when a place is created (800 × 800
+      always); the marquee selects by axis-aligned bbox only.
 
 ## Backlog
 
@@ -72,6 +76,16 @@ event (#90).
       `applyMutation` with same-label coalescing inside 500 ms, a 50-step
       undo ring, dirty tracking against the last *sent* snapshot). All pure
       — no Vue except the store, no DOM — and unit-tested directly.
+- [x] Plan editor MVP (S7, #80): `admin/plans/{plan}/edit` with tree,
+      SVG canvas overlay (select, marquee, snapped drag, delete; V/S/L/D/
+      Space/Esc/Del/Ctrl+Z/Shift+Ctrl+Z/Ctrl+S), inspector with
+      kind-specific fields, category select, blocked/locked flags, group
+      layout with regeneration and operator reservations, client
+      invariants mirroring `PlanInvariants`, four-state save pill, and the
+      conflict dialog that resends with `release` resolutions and the same
+      expected version. Store: one `applyMutation` entry, 500 ms same-label
+      coalescing, 50-step undo ring, `isDirty` against the sent snapshot,
+      ADR-0038 guard.
 - [x] Slice 8 (domain) — bookings, capacity modes and claim fulfilment.
       `resource_types` / `resources` / `resource_bookings` with ADR-0020's
       half-open `[starts_at, ends_at)` invariant as a **PostgreSQL exclusion

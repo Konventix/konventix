@@ -361,7 +361,8 @@ it('renders the editor with categories and occupancy on the admin host', functio
             ->has('editor.plan.document.elements', 3)
             ->where("editor.occupancy.places.{$placeIds[0]}.holderType", 'operator')
             ->where("editor.occupancy.places.{$placeIds[0]}.bookingId", $booking->getKey())
-            ->missing("editor.occupancy.places.{$placeIds[1]}"));
+            ->where("editor.occupancy.places.{$placeIds[1]}.state", 'free')
+            ->where("editor.occupancy.places.{$placeIds[1]}.holderType", null));
 });
 
 it('saves a moved and an added place and answers the new version', function (): void {

@@ -213,6 +213,23 @@ unfulfilled rather than failing the registration, and switching the module on
 later fulfils them retroactively through `event:replay-details` and a replayed
 confirmation.
 
+## Console: plan editor
+
+`admin/plans/{plan}/edit` renders `PlanEditorData` (the plan as the viewer
+sees it, the version the next save must name, the grid step, the event's
+categories, the occupancy). The editor saves whole documents through
+`PUT admin/plans/{plan}` as JSON `PlanSaveData { expectedVersion, document,
+resolutions }` and gets one of three answers: `200 PlanSaveResultData`,
+`409 { currentVersion }` when the version moved, `422 { conflicts,
+errors: { conflicts } }` when an occupied place would be deleted,
+recategorised or blocked without a `release` resolution (the list is
+mirrored under `errors` because Inertia's `useHttp` hands a 422's `errors`
+key to the page and nothing else). `POST admin/plans/{plan}/validate` is
+the same pipeline without the write and answers `PlanValidationData`.
+Geometry is edited only in the document; occupancy is read from the
+projection and never from the document. Operator reservations go through
+the `reserve`/`unreserve` actions behind `BookOnBehalf`.
+
 ## Settled questions
 
 - Capacity greater than one: per type, `unit` or `quantity` mode (ADR-0034).

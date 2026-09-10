@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useHttp } from '@inertiajs/vue3';
 import { Bookmark, BookmarkX } from '@lucide/vue';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { reserve, unreserve } from '@/routes/admin/plans';
 
@@ -10,6 +10,12 @@ import { reserve, unreserve } from '@/routes/admin/plans';
  * `ReservePlaceForOperator` / `ReleaseOperatorReservation`, both behind
  * `BookOnBehalf`). A reservation needs the projected resource row, so the
  * buttons wait for a clean document: an unsaved place has no row yet.
+ *
+ * `occupancy.places` carries one entry per place (`PlanAdminController::
+ * occupancyFor()`), so a free or blocked place still arrives with
+ * `holderType: null` rather than being absent — `holder` reads that
+ * directly instead of branching on `entry === null`, and stays correct if
+ * a caller ever hands over a sparse map instead.
  */
 type Entry = Konventix.Resources.Data.PlanOccupancyData['places'][string];
 
@@ -22,6 +28,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ changed: [] }>();
+
+const holder = computed(() => props.entry?.holderType ?? null);
 
 const error = ref<string | null>(null);
 const http = useHttp<Record<string, never>, unknown>({});
@@ -61,21 +69,18 @@ function releasePlace(): void {
             Occupancy
         </h3>
 
-        <p v-if="entry === null" class="text-sm text-text-muted">Free.</p>
-        <p
-            v-else-if="entry.holderType === 'operator'"
-            class="text-sm text-text"
-        >
+        <p v-if="holder === null" class="text-sm text-text-muted">Free.</p>
+        <p v-else-if="holder === 'operator'" class="text-sm text-text">
             Reserved by the organisation.
         </p>
         <p v-else class="text-sm text-text">
-            {{ entry.state === 'held' ? 'Held' : 'Booked' }} by registration
-            <span class="font-mono text-xs">{{ entry.registrationId }}</span>
+            {{ entry?.state === 'held' ? 'Held' : 'Booked' }} by registration
+            <span class="font-mono text-xs">{{ entry?.registrationId }}</span>
         </p>
 
         <template v-if="canReserve">
             <Button
-                v-if="entry === null"
+                v-if="holder === null"
                 type="button"
                 variant="outline"
                 size="sm"
@@ -86,7 +91,7 @@ function releasePlace(): void {
                 Reserve for the organisation
             </Button>
             <Button
-                v-else-if="entry.holderType === 'operator'"
+                v-else-if="holder === 'operator'"
                 type="button"
                 variant="outline"
                 size="sm"

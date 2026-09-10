@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import { computed, h } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -14,6 +14,7 @@ import { useDataTable } from '@/composables/useDataTable';
 import { formatDateTime } from '@/lib/datetime';
 import {
     download as downloadPlan,
+    edit as editPlan,
     index as plansIndex,
     publish as publishPlan,
     unpublish as unpublishPlan,
@@ -24,8 +25,8 @@ import PlanImportDialog from '../../../components/admin/PlanImportDialog.vue';
 /**
  * Hall plans of the operator's events (design §8.2): name, event, places,
  * version, published — with the create dialog, the import upload, the
- * export link and the publish toggle. The editor link arrives with the
- * editor itself (slice S7, §8.3); until then a plan is built by import.
+ * export link and the publish toggle. The Edit link opens the plan editor
+ * (§8.3); a plan can also be built by import.
  *
  * The export is a plain anchor, not an Inertia link: it is a file, and an
  * Inertia visit would fetch it over XHR and show the JSON in the error
@@ -147,6 +148,14 @@ const columns: ColumnDef<PlanRow>[] = [
         header: '',
         cell: ({ row }) =>
             h('div', { class: 'flex justify-end gap-2' }, [
+                h(
+                    Link,
+                    {
+                        href: editPlan(row.original.id).url,
+                        class: 'inline-flex h-8 items-center rounded-md border border-border px-3 text-sm hover:bg-subtle',
+                    },
+                    () => 'Edit',
+                ),
                 h(
                     Button,
                     {
