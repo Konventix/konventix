@@ -16,6 +16,10 @@
       and bookings made before a reschedule keep the old interval (#28).
 - [ ] Soft edit lock and deadline lock for the plan editor; audited override
       (#104). v1 has the version check plus conflict refusal only.
+- [ ] `document.ts`'s `absolutePosition()` sums ancestor `x, y` but ignores
+      ancestor rotation, unlike the picker's `PlanGeometry`/`WorldTransform`,
+      which composes it. Fine for v1 (zones and groups are not rotated by
+      the editor yet); revisit if that changes.
 
 ## Backlog
 
@@ -59,6 +63,15 @@ event (#90).
       endpoints delegate to `SavePlan`/`ValidatePlan`; nothing is
       reimplemented. `Edit.vue` itself is a later task — the render test in
       `PlanAdminTest` stays red until it exists.
+- [x] S7 editor pure modules (#278): `ulid.ts` (client-minted Crockford
+      ULIDs), `snap.ts` (grid snapping), `document.ts` (tree helpers over
+      the generated Data types), `invariants.ts` (client mirror of
+      `PlanInvariants::check()`, same keys as the server's 422),
+      `generator.ts` (linear/grid group generation and regeneration from a
+      label schema), and `usePlanStore.ts` (the editor's working copy:
+      `applyMutation` with same-label coalescing inside 500 ms, a 50-step
+      undo ring, dirty tracking against the last *sent* snapshot). All pure
+      — no Vue except the store, no DOM — and unit-tested directly.
 - [x] Slice 8 (domain) — bookings, capacity modes and claim fulfilment.
       `resource_types` / `resources` / `resource_bookings` with ADR-0020's
       half-open `[starts_at, ends_at)` invariant as a **PostgreSQL exclusion
