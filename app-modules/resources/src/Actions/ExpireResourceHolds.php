@@ -61,7 +61,12 @@ final class ExpireResourceHolds
             ->chunkById(self::CHUNK, function (Collection $bookings) use (&$expired): void {
                 /** @var ResourceBooking $booking */
                 foreach ($bookings as $booking) {
-                    $brand = Brand::query()->withoutGlobalScopes()->findOrFail($booking->brand_id);
+                    // Plain lookup, no `withoutGlobalScopes()` (item 7 of
+                    // the 2026-09-10 fix wave, #278): `Brand` carries no
+                    // global scope to strip, so the escape hatch documents
+                    // a boundary that does not exist — the same finding
+                    // `ModuleGate::isActiveForBrand()` fixed (#271).
+                    $brand = Brand::query()->findOrFail($booking->brand_id);
 
                     app(BrandContext::class)->withBrand(
                         $brand,
