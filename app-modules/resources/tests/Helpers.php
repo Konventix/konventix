@@ -864,3 +864,124 @@ function seatingMetricsScrape(): string
 
     return test()->withHeader('Authorization', 'Bearer metrics-test-secret')->get('/metrics')->assertOk()->getContent();
 }
+
+/**
+ * An operator with its own admin host and the given capabilities, the
+ * pattern of RegistrationTypeAdminTest: the capability rows are created by
+ * hand because `permissions:sync` does not run inside a test.
+ *
+ * @param  list<string>  $permissions
+ * @return array{0: Operator, 1: User}
+ */
+function seatingEditorOperator(array $permissions = [
+    'platform.access-admin',
+    'resources.manage-plans',
+    'resources.book-on-behalf',
+]): array
+{
+    $operator = Operator::factory()->create();
+    $operator->forceFill(['admin_host' => 'admin.seating-editor.test'])->save();
+
+    $registrar = app(PermissionRegistrar::class);
+    $registrar->setPermissionsTeamId($operator->getKey());
+
+    foreach ($permissions as $name) {
+        PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
+    }
+
+    $role = Role::query()->create([
+        'name' => 'Seating Planner',
+        'guard_name' => 'web',
+        'brand_id' => $operator->getKey(),
+    ]);
+    $role->givePermissionTo($permissions);
+
+    $admin = User::factory()->create();
+    $admin->assignRole($role);
+
+    $registrar->setPermissionsTeamId(null);
+
+    return [$operator, $admin];
+}
+
+function seatingEditorEmptyDocument(): PlanDocumentData
+{
+    return PlanDocumentData::from(['schema' => 'konventix.plan/v1', 'elements' => []]);
+}
+
+/**
+ * One group at (1000, 1000) with `count($placeIds)` places 800 mm apart,
+ * labelled A-01, A-02, … — the smallest document the projection, the
+ * conflict list and the editor all have something to say about.
+ *
+ * @param  list<string>  $placeIds
+ */
+function seatingEditorDocument(string $groupId, array $placeIds, string $categoryId): PlanDocumentData
+{
+    $elements = [[
+        'id' => $groupId,
+        'kind' => 'group',
+        'parentId' => null,
+        'label' => 'A',
+        'x' => 1000,
+        'y' => 1000,
+        'shape' => ['type' => 'point'],
+        'layout' => ['type' => 'linear', 'count' => count($placeIds), 'spacing' => 800, 'startIndex' => 1],
+        'labelSchema' => ['row' => '{row}', 'place' => '{row}-{n:02}'],
+    ]];
+
+    foreach (array_values($placeIds) as $index => $placeId) {
+        $label = sprintf('A-%02d', $index + 1);
+
+        $elements[] = [
+            'id' => $placeId,
+            'kind' => 'place',
+            'parentId' => $groupId,
+            'ref' => $label,
+            'label' => $label,
+            'x' => $index * 800,
+            'y' => 0,
+            'shape' => ['type' => 'rect', 'w' => 800, 'h' => 800],
+            'resourceTypeId' => $categoryId,
+        ];
+    }
+
+    return PlanDocumentData::from(['schema' => 'konventix.plan/v1', 'elements' => $elements]);
+}
+
+/**
+ * A plan of the ambient brand with its places already projected into
+ * `resources` through the real save pipeline, so ids equal resource ids.
+ *
+ * @return array{0: Plan, 1: list<string>, 2: string}
+ */
+function seatingEditorPlan(Brand $brand, string $eventId, ResourceType $category, int $places = 2): array
+{
+    $groupId = (string) Str::ulid();
+    $placeIds = [];
+
+    for ($index = 0; $index < $places; $index++) {
+        $placeIds[] = (string) Str::ulid();
+    }
+
+    $plan = Plan::factory()->create([
+        'event_id' => $eventId,
+        'name' => 'Hall '.Str::lower(Str::random(4)),
+        'width_mm' => 20000,
+        'height_mm' => 10000,
+        'document' => seatingEditorEmptyDocument(),
+    ]);
+
+    app(SavePlan::class)->handle(
+        $plan,
+        PlanSaveData::from([
+            'expectedVersion' => $plan->version,
+            'document' => seatingEditorDocument($groupId, $placeIds, $category->getKey()),
+            'resolutions' => [],
+        ]),
+        null,
+        PlanVersionSource::Editor,
+    );
+
+    return [$plan->refresh(), $placeIds, $groupId];
+}

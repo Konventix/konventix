@@ -53,6 +53,12 @@ event (#90).
       (`ResourcesMetrics`, `ResourcesGauges`, booking and plan recorders),
       the Seating dashboard row, `KonventixResourceHoldSweepStale`,
       `ResourcesGdprHandler`, this SPEC merged with the design.
+- [x] S7 editor backend (#278): `PlanEditorData`, `edit`/`update`/`validate`
+      on `PlanAdminController` (409 stale, 422 conflicts mirrored under
+      `errors.conflicts`, 200 `PlanSaveResultData`), the three routes. Both
+      endpoints delegate to `SavePlan`/`ValidatePlan`; nothing is
+      reimplemented. `Edit.vue` itself is a later task — the render test in
+      `PlanAdminTest` stays red until it exists.
 - [x] Slice 8 (domain) — bookings, capacity modes and claim fulfilment.
       `resource_types` / `resources` / `resource_bookings` with ADR-0020's
       half-open `[starts_at, ends_at)` invariant as a **PostgreSQL exclusion

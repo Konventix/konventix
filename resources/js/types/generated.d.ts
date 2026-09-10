@@ -1206,6 +1206,17 @@ declare namespace Konventix {
                 readonly schema: string;
                 readonly elements: Konventix.Resources.Data.PlanElementData[];
             };
+            export type PlanEditorData = {
+                readonly plan: Konventix.Resources.Data.PlanViewData;
+                readonly eventId: string;
+                readonly version: number;
+                readonly snapStep: number;
+                readonly unitDisplay: string;
+                readonly publishedAt: string | null;
+                readonly canReserve: boolean;
+                readonly categories: Konventix.Resources.Data.CategoryData[];
+                readonly occupancy: Konventix.Resources.Data.PlanOccupancyData;
+            };
             export type PlanElementData = {
                 readonly id: string;
                 readonly kind: Konventix.Resources.Enums.ElementKind;
@@ -1318,7 +1329,6 @@ declare namespace Konventix {
                 readonly plans: Konventix.Resources.Data.PlanViewData[];
                 readonly availability: Konventix.Resources.Data.PlanAvailabilityData;
                 readonly currentPlaceIds: string[];
-                readonly noFreePlaces: boolean;
             };
             export type SeatSummaryData = {
                 readonly registrationId: string;

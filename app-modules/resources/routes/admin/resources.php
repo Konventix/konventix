@@ -26,7 +26,7 @@ Route::post('/resource-types', [ResourceTypeAdminController::class, 'store'])->n
 Route::get('/resource-types/{resourceType}/edit', [ResourceTypeAdminController::class, 'edit'])->name('admin.resource-types.edit');
 Route::put('/resource-types/{resourceType}', [ResourceTypeAdminController::class, 'update'])->name('admin.resource-types.update');
 
-// Plans (design §8.2). S7 appends `edit`, `update` and `validate` here.
+// Plans (design §8.2).
 Route::get('/plans', [PlanAdminController::class, 'index'])->name('admin.plans.index');
 Route::post('/plans', [PlanAdminController::class, 'store'])->name('admin.plans.store');
 Route::post('/plans/upload', [PlanAdminController::class, 'import'])->name('admin.plans.upload');
@@ -36,3 +36,8 @@ Route::get('/plans/{plan}/export', [PlanAdminController::class, 'export'])->name
 Route::get('/plans/{plan}/occupancy', [PlanAdminController::class, 'occupancy'])->name('admin.plans.occupancy');
 Route::post('/plans/{plan}/places/{place}/reserve', [PlanAdminController::class, 'reserve'])->name('admin.plans.reserve');
 Route::delete('/plans/{plan}/places/{place}/reserve', [PlanAdminController::class, 'unreserve'])->name('admin.plans.unreserve');
+
+// The editor (design §8.3): page, JSON save, JSON dry run.
+Route::get('/plans/{plan}/edit', [PlanAdminController::class, 'edit'])->name('admin.plans.edit');
+Route::put('/plans/{plan}', [PlanAdminController::class, 'update'])->name('admin.plans.update');
+Route::post('/plans/{plan}/validate', [PlanAdminController::class, 'validate'])->name('admin.plans.validate');

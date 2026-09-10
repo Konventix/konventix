@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Resources\Actions\ExportPlan;
 use Konventix\Resources\Enums\BookingState;
+use Konventix\Resources\Events\ResourceBookingReleased;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
@@ -323,4 +325,190 @@ it('renders the plan index page', function (): void {
         ->get('http://admin.seating.test/admin/plans')
         ->assertOk()
         ->assertSee('Hall A');
+});
+
+/*
+ * Part 2 — the editor surface (design §8.3): the edit page, the JSON save
+ * with its three answers (200 result, 409 stale, 422 conflicts), the dry
+ * run, and the capability gate on all three.
+ */
+
+it('renders the editor with categories and occupancy on the admin host', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $category = ResourceType::factory()->forEvent($eventId)->create(['name' => 'Standard']);
+    [, $admin] = seatingEditorOperator();
+    [$plan, $placeIds] = seatingEditorPlan($brand, $eventId, $category);
+
+    $booking = ResourceBooking::factory()->create([
+        'resource_id' => $placeIds[0],
+        'holder_type' => ResourceBooking::HOLDER_OPERATOR,
+        'holder_id' => $admin->getKey(),
+        'state' => BookingState::Confirmed,
+    ]);
+
+    $this->actingAs($admin)
+        ->get("http://admin.seating-editor.test/admin/plans/{$plan->getKey()}/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/plans/Edit')
+            ->where('editor.plan.id', $plan->getKey())
+            ->where('editor.version', $plan->version)
+            ->where('editor.snapStep', $plan->snap_step)
+            ->where('editor.canReserve', true)
+            ->has('editor.categories', 1)
+            ->where('editor.categories.0.id', $category->getKey())
+            ->has('editor.plan.document.elements', 3)
+            ->where("editor.occupancy.places.{$placeIds[0]}.holderType", 'operator')
+            ->where("editor.occupancy.places.{$placeIds[0]}.bookingId", $booking->getKey())
+            ->missing("editor.occupancy.places.{$placeIds[1]}"));
+});
+
+it('saves a moved and an added place and answers the new version', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $category = ResourceType::factory()->forEvent($eventId)->create();
+    [, $admin] = seatingEditorOperator();
+    [$plan, $placeIds, $groupId] = seatingEditorPlan($brand, $eventId, $category);
+
+    $newId = (string) Str::ulid();
+    $document = seatingEditorDocument($groupId, [...$placeIds, $newId], $category->getKey())->toArray();
+    $document['elements'][1]['x'] = 5000;
+
+    $this->actingAs($admin)
+        ->putJson("http://admin.seating-editor.test/admin/plans/{$plan->getKey()}", [
+            'expectedVersion' => $plan->version,
+            'document' => $document,
+            'resolutions' => [],
+        ])
+        ->assertOk()
+        ->assertJsonPath('version', $plan->version + 1);
+
+    expect(Resource::withoutBrandScope()->whereKey($newId)->exists())->toBeTrue()
+        ->and($plan->refresh()->version)->toBe($plan->version)
+        ->and($plan->document->elements[1]->x)->toBe(5000);
+});
+
+it('answers 409 with the current version when the expected version is stale', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $category = ResourceType::factory()->forEvent($eventId)->create();
+    [, $admin] = seatingEditorOperator();
+    [$plan, $placeIds, $groupId] = seatingEditorPlan($brand, $eventId, $category);
+
+    $this->actingAs($admin)
+        ->putJson("http://admin.seating-editor.test/admin/plans/{$plan->getKey()}", [
+            'expectedVersion' => $plan->version - 1,
+            'document' => seatingEditorDocument($groupId, $placeIds, $category->getKey())->toArray(),
+            'resolutions' => [],
+        ])
+        ->assertStatus(409)
+        ->assertExactJson(['currentVersion' => $plan->version]);
+
+    expect(Plan::withoutBrandScope()->whereKey($plan->getKey())->value('version'))->toBe($plan->version);
+});
+
+it('answers 422 with the conflict list when an occupied place is removed, and releases it on resend', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $category = ResourceType::factory()->forEvent($eventId)->create();
+    [, $admin] = seatingEditorOperator();
+    [$plan, $placeIds, $groupId] = seatingEditorPlan($brand, $eventId, $category);
+
+    $booking = ResourceBooking::factory()->create([
+        'resource_id' => $placeIds[0],
+        'holder_type' => ResourceBooking::HOLDER_OPERATOR,
+        'holder_id' => $admin->getKey(),
+        'state' => BookingState::Confirmed,
+    ]);
+
+    $withoutFirst = seatingEditorDocument($groupId, [$placeIds[1]], $category->getKey())->toArray();
+
+    $this->actingAs($admin)
+        ->putJson("http://admin.seating-editor.test/admin/plans/{$plan->getKey()}", [
+            'expectedVersion' => $plan->version,
+            'document' => $withoutFirst,
+            'resolutions' => [],
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('conflicts.0.placeId', $placeIds[0])
+        ->assertJsonPath('conflicts.0.reason', 'deleted')
+        ->assertJsonPath('conflicts.0.bookings.0.bookingId', $booking->getKey())
+        // useHttp reads only `errors` on a 422 — the list is mirrored there.
+        ->assertJsonPath('errors.conflicts.0.placeId', $placeIds[0]);
+
+    expect(Resource::withoutBrandScope()->whereKey($placeIds[0])->exists())->toBeTrue()
+        ->and($plan->refresh()->version)->toBe($plan->version);
+
+    Event::fake([ResourceBookingReleased::class]);
+
+    $this->actingAs($admin)
+        ->putJson("http://admin.seating-editor.test/admin/plans/{$plan->getKey()}", [
+            'expectedVersion' => $plan->version,
+            'document' => $withoutFirst,
+            'resolutions' => [['placeId' => $placeIds[0], 'resolution' => 'release']],
+        ])
+        ->assertOk()
+        ->assertJsonPath('version', $plan->version + 1);
+
+    Event::assertDispatched(ResourceBookingReleased::class);
+
+    expect($booking->refresh()->state)->toBe(BookingState::Released)
+        ->and(Resource::withoutBrandScope()->withTrashed()->whereKey($placeIds[0])->first()?->trashed())->toBeTrue();
+});
+
+it('validates without writing and returns the same conflict list', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $category = ResourceType::factory()->forEvent($eventId)->create();
+    [, $admin] = seatingEditorOperator();
+    [$plan, $placeIds, $groupId] = seatingEditorPlan($brand, $eventId, $category);
+
+    $booking = ResourceBooking::factory()->create([
+        'resource_id' => $placeIds[0],
+        'holder_type' => ResourceBooking::HOLDER_OPERATOR,
+        'holder_id' => $admin->getKey(),
+        'state' => BookingState::Confirmed,
+    ]);
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.seating-editor.test/admin/plans/{$plan->getKey()}/validate", [
+            'expectedVersion' => $plan->version,
+            'document' => seatingEditorDocument($groupId, [$placeIds[1]], $category->getKey())->toArray(),
+            'resolutions' => [],
+        ])
+        ->assertOk()
+        ->assertJsonPath('conflicts.0.placeId', $placeIds[0])
+        ->assertJsonPath('conflicts.0.reason', 'deleted')
+        ->assertJsonStructure(['conflicts', 'warnings']);
+
+    expect($booking->refresh()->state)->toBe(BookingState::Confirmed)
+        ->and($plan->refresh()->version)->toBe($plan->version)
+        ->and(Resource::withoutBrandScope()->whereKey($placeIds[0])->exists())->toBeTrue();
+});
+
+it('403s the editor, the save and the dry run without manage-plans', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $category = ResourceType::factory()->forEvent($eventId)->create();
+    [, $admin] = seatingEditorOperator(['platform.access-admin']);
+    [$plan, $placeIds, $groupId] = seatingEditorPlan($brand, $eventId, $category);
+
+    $payload = [
+        'expectedVersion' => $plan->version,
+        'document' => seatingEditorDocument($groupId, $placeIds, $category->getKey())->toArray(),
+        'resolutions' => [],
+    ];
+
+    $this->actingAs($admin)
+        ->get("http://admin.seating-editor.test/admin/plans/{$plan->getKey()}/edit")
+        ->assertForbidden();
+
+    $this->actingAs($admin)
+        ->putJson("http://admin.seating-editor.test/admin/plans/{$plan->getKey()}", $payload)
+        ->assertForbidden();
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.seating-editor.test/admin/plans/{$plan->getKey()}/validate", $payload)
+        ->assertForbidden();
 });

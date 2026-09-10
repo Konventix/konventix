@@ -19,14 +19,24 @@ use Konventix\Resources\Actions\ImportPlan;
 use Konventix\Resources\Actions\PublishPlan;
 use Konventix\Resources\Actions\ReleaseOperatorReservation;
 use Konventix\Resources\Actions\ReservePlaceForOperator;
+use Konventix\Resources\Actions\SavePlan;
 use Konventix\Resources\Actions\UnpublishPlan;
+use Konventix\Resources\Actions\ValidatePlan;
+use Konventix\Resources\Data\CategoryData;
+use Konventix\Resources\Data\PlanConflictData;
 use Konventix\Resources\Data\PlanData;
+use Konventix\Resources\Data\PlanEditorData;
 use Konventix\Resources\Data\PlanOccupancyData;
 use Konventix\Resources\Data\PlanOccupancyPlaceData;
 use Konventix\Resources\Data\PlanRowData;
+use Konventix\Resources\Data\PlanSaveData;
+use Konventix\Resources\Data\PlanViewData;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\Permission;
 use Konventix\Resources\Enums\PlaceState;
+use Konventix\Resources\Enums\PlanVersionSource;
+use Konventix\Resources\Exceptions\PlanConflictException;
+use Konventix\Resources\Exceptions\PlanStaleException;
 use Konventix\Resources\Exceptions\ResourceUnavailableException;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\Resource;
@@ -36,14 +46,15 @@ use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\Resource as BookableResource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceEventWindow;
+use Konventix\Resources\Models\ResourceType;
 use Konventix\Resources\Plans\PlanGeometry;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Operator console: hall plans (design §8.2). This half is the index and
  * the endpoints around a plan — create, publish, unpublish, export, import,
- * occupancy, operator reservations. `edit`, `update` and `validate` (the
- * editor, §8.3) are added by slice S7.
+ * occupancy, operator reservations, and the editor (`edit`, `update`,
+ * `validate`, design §8.3).
  *
  * Runs on the admin host with no brand in context (ADR-0029): every query
  * escapes `BrandScope` explicitly and every created row gets its
@@ -117,6 +128,104 @@ class PlanAdminController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Plan created.')]);
 
         return to_route('admin.plans.index');
+    }
+
+    /**
+     * The editor (design §8.3). Categories and occupancy travel with the
+     * page so the inspector has something to show before the first save;
+     * the page refreshes occupancy through the `occupancy` action after a
+     * reservation.
+     */
+    public function edit(string $plan): Response
+    {
+        Gate::authorize(Permission::ManagePlans->value);
+
+        $plan = $this->find($plan);
+
+        return Inertia::render('admin/plans/Edit', [
+            'editor' => new PlanEditorData(
+                plan: new PlanViewData(
+                    id: $plan->getKey(),
+                    name: $plan->name,
+                    floorLabel: $plan->floor_label,
+                    widthMm: $plan->width_mm,
+                    heightMm: $plan->height_mm,
+                    background: $plan->background,
+                    document: $plan->document,
+                ),
+                eventId: $plan->event_id,
+                version: $plan->version,
+                snapStep: $plan->snap_step,
+                unitDisplay: $plan->unit_display,
+                publishedAt: $plan->published_at?->toIso8601String(),
+                canReserve: Gate::allows(Permission::BookOnBehalf->value),
+                categories: $this->editorCategories($plan),
+                occupancy: $this->occupancyFor($plan),
+            ),
+        ]);
+    }
+
+    /**
+     * The editor's save (design §6.1): 409 `{ currentVersion }` when the
+     * version moved, 422 `{ conflicts }` when an occupied place would be
+     * deleted, recategorised or blocked without a resolution, 200 with the
+     * result otherwise. Data validation answers the framework's 422.
+     *
+     * The version pre-check keeps §6.1's order on the HTTP surface (stale
+     * before invalid); `SavePlan` re-checks under its row lock, which is
+     * the check that counts. The conflict list is mirrored under
+     * `errors.conflicts` because Inertia's `useHttp` hands a 422's `errors`
+     * key to `onError` and nothing else of the body.
+     */
+    public function update(Request $request, string $plan, SavePlan $savePlan): JsonResponse
+    {
+        Gate::authorize(Permission::ManagePlans->value);
+
+        $plan = $this->find($plan);
+
+        if ($request->integer('expectedVersion', -1) !== $plan->version) {
+            return response()->json(['currentVersion' => $plan->version], 409);
+        }
+
+        $data = PlanSaveData::validateAndCreate($request->all());
+
+        try {
+            $result = $savePlan->handle($plan, $data, $request->user()?->getKey(), PlanVersionSource::Editor);
+        } catch (PlanStaleException $exception) {
+            return response()->json(['currentVersion' => $exception->currentVersion], 409);
+        } catch (PlanConflictException $exception) {
+            $conflicts = array_map(
+                fn (PlanConflictData $conflict): array => $conflict->toArray(),
+                $exception->conflicts,
+            );
+
+            return response()->json(['conflicts' => $conflicts, 'errors' => ['conflicts' => $conflicts]], 422);
+        }
+
+        return response()->json($result);
+    }
+
+    /**
+     * The dry run behind the editor's "Check" button: the same pipeline
+     * without step 6, answering the conflict and warning lists as data.
+     */
+    public function validate(Request $request, string $plan, ValidatePlan $validatePlan): JsonResponse
+    {
+        Gate::authorize(Permission::ManagePlans->value);
+
+        $plan = $this->find($plan);
+
+        if ($request->integer('expectedVersion', -1) !== $plan->version) {
+            return response()->json(['currentVersion' => $plan->version], 409);
+        }
+
+        $data = PlanSaveData::validateAndCreate($request->all());
+
+        try {
+            return response()->json($validatePlan->handle($plan, $data));
+        } catch (PlanStaleException $exception) {
+            return response()->json(['currentVersion' => $exception->currentVersion], 409);
+        }
     }
 
     public function publish(string $plan, PublishPlan $publishPlan): RedirectResponse
@@ -233,39 +342,7 @@ class PlanAdminController
     {
         Gate::authorize(Permission::ManagePlans->value);
 
-        $model = $this->find($plan);
-
-        $places = Resource::withoutBrandScope()
-            ->where('plan_id', $model->getKey())
-            ->get(['id', 'blocked']);
-
-        $occupying = ResourceBooking::withoutBrandScope()
-            ->whereIn('resource_id', $places->pluck('id'))
-            ->whereIn('state', BookingState::occupyingValues())
-            ->get()
-            ->keyBy('resource_id');
-
-        /** @var array<string, PlanOccupancyPlaceData> $result */
-        $result = [];
-
-        foreach ($places as $place) {
-            /** @var ResourceBooking|null $booking */
-            $booking = $occupying->get($place->getKey());
-
-            $result[(string) $place->getKey()] = new PlanOccupancyPlaceData(
-                state: match (true) {
-                    $place->blocked => PlaceState::Unavailable,
-                    $booking === null => PlaceState::Free,
-                    $booking->state === BookingState::Held => PlaceState::Held,
-                    default => PlaceState::Booked,
-                },
-                holderType: $booking?->holder_type,
-                registrationId: $booking?->registration_id,
-                bookingId: $booking === null ? null : (string) $booking->getKey(),
-            );
-        }
-
-        return response()->json(new PlanOccupancyData(places: $result));
+        return response()->json($this->occupancyFor($this->find($plan)));
     }
 
     /**
@@ -352,5 +429,69 @@ class PlanAdminController
                 'brandId' => $window->brand_id,
             ])
             ->all());
+    }
+
+    /**
+     * The categories a place of this plan may carry: the plan's event and
+     * brand only, in the operator's sort order.
+     *
+     * @return list<CategoryData>
+     */
+    private function editorCategories(Plan $plan): array
+    {
+        return array_values(ResourceType::withoutBrandScope()
+            ->where('brand_id', $plan->brand_id)
+            ->where('event_id', $plan->event_id)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (ResourceType $type): CategoryData => new CategoryData(
+                id: $type->getKey(),
+                name: $type->name,
+                token: $type->token,
+                symbol: $type->symbol,
+                description: $type->description,
+            ))
+            ->all());
+    }
+
+    /**
+     * Who holds what, per place (design §8.2 `PlanOccupancyData`): shared
+     * by the `occupancy` action and the editor's initial props, so the two
+     * never compute it differently.
+     */
+    private function occupancyFor(Plan $plan): PlanOccupancyData
+    {
+        $places = Resource::withoutBrandScope()
+            ->where('plan_id', $plan->getKey())
+            ->get(['id', 'blocked']);
+
+        $occupying = ResourceBooking::withoutBrandScope()
+            ->whereIn('resource_id', $places->pluck('id'))
+            ->whereIn('state', BookingState::occupyingValues())
+            ->get()
+            ->keyBy('resource_id');
+
+        /** @var array<string, PlanOccupancyPlaceData> $result */
+        $result = [];
+
+        foreach ($places as $place) {
+            /** @var ResourceBooking|null $booking */
+            $booking = $occupying->get($place->getKey());
+
+            $result[(string) $place->getKey()] = new PlanOccupancyPlaceData(
+                state: match (true) {
+                    $place->blocked => PlaceState::Unavailable,
+                    $booking === null => PlaceState::Free,
+                    $booking->state === BookingState::Held => PlaceState::Held,
+                    default => PlaceState::Booked,
+                },
+                holderType: $booking?->holder_type,
+                registrationId: $booking?->registration_id,
+                bookingId: $booking === null ? null : (string) $booking->getKey(),
+            );
+        }
+
+        return new PlanOccupancyData(places: $result);
     }
 }
