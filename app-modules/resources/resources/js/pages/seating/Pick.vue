@@ -8,6 +8,7 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { show as showRegistration } from '@/routes/registration/mine';
+import CategoryLegend from '../../components/plan/CategoryLegend.vue';
 import type { Reason } from '../../components/plan/eligibility';
 import {
     firstPlaceIdsError,
@@ -42,13 +43,10 @@ import SelectionHints from '../../components/plan/SelectionHints.vue';
  * shows the plan — polling might free something up — but says so plainly
  * up front, worded identically to `SeatSummarySlot.vue`'s.
  */
-// A bare `type Props = Konventix.Resources.Data.SeatPickerData;` used
-// directly as `defineProps<Props>()` fails the Vue SFC compiler's macro
-// type resolver ("Unresolvable type reference") — every other page in
-// this codebase that carries a whole Data object nests it as a field of a
-// locally declared object type instead (see e.g.
-// `admin/resource-types/Edit.vue`'s `Props.type`), never bare at the root.
-// Mirrors `SeatPickerData` field for field.
+// A bare `type Props = Konventix.Resources.Data.SeatPickerData;` fails the
+// SFC compiler's macro type resolver ("Unresolvable type reference"); every
+// other page nests a whole Data object as a field instead (e.g.
+// `admin/resource-types/Edit.vue`'s `Props.type`). Mirrors `SeatPickerData`.
 type Props = {
     registrationId: string;
     claim: Konventix.Resources.Data.SeatClaimData;
@@ -212,39 +210,10 @@ watch(availability, (places) => {
                 "
                 class="flex flex-col gap-6"
             >
-                <ul
-                    class="flex flex-wrap gap-3 text-xs text-text-muted"
-                    aria-label="Categories"
-                >
-                    <li
-                        v-for="category in props.categories"
-                        :key="category.id"
-                        class="inline-flex items-center gap-1"
-                    >
-                        <span
-                            class="inline-block size-3 rounded-sm"
-                            :class="
-                                props.claim.resourceTypeIds.includes(
-                                    category.id,
-                                )
-                                    ? ''
-                                    : 'opacity-40'
-                            "
-                            :style="{ background: `var(--${category.token})` }"
-                            aria-hidden="true"
-                        />
-                        {{ category.name
-                        }}<template
-                            v-if="
-                                !props.claim.resourceTypeIds.includes(
-                                    category.id,
-                                )
-                            "
-                        >
-                            (not yours)</template
-                        >
-                    </li>
-                </ul>
+                <CategoryLegend
+                    :categories="props.categories"
+                    :claim-resource-type-ids="props.claim.resourceTypeIds"
+                />
 
                 <SeatPlanScene
                     :plan="activePlan"
