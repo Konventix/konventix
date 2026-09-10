@@ -1053,6 +1053,7 @@ declare namespace Konventix {
             export type QuotaData = {
                 readonly name: string;
                 readonly capacity: number;
+                readonly resourceTypeId: string | null;
             };
             export type RegistrationFormData = {
                 readonly registrationTypeId: string;

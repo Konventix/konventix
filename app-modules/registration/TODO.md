@@ -6,6 +6,19 @@
 
 ## Next
 
+- [x] Category-quota ceiling, the consumer half (design §12b, #282):
+      `quotas.resource_type_id` (nullable ULID, no FK) links a quota to a
+      Resources category, set from the quota form's category select
+      (`registration.quota-form.categories`, filled by Resources — this
+      module still never queries `resource_types`, ADR-0004).
+      `Listeners\AdjustQuotaOnPlaceSupplyChanged` consumes/releases the
+      linked quota's unit on Resources' `PlaceSupplyChanged`, reusing
+      `ConsumesQuotas`/`ReleasesQuotas`' own per-quota lock-and-emit rather
+      than new arithmetic, brand from the payload, idempotent via
+      `quota_supply_change_receipts` keyed on the event's `changeId`. Not
+      built, on the operator's own call: automatic capacity sync with the
+      plan's place count, a queue inside Resources, and the unit mismatch
+      where a seating grant grants more than one place per quota unit.
 - [ ] `registration-types/Edit.vue` is still around 490 lines after the
       grants card moved out (S4, seating): the offer card and the price
       card are the next two extractions before the page is under the

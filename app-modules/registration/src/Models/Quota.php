@@ -22,9 +22,16 @@ use Konventix\Registration\Database\Factories\QuotaFactory;
  * for locking the row (`lockForUpdate()`) and running inside the owning
  * Action's `DB::transaction` — see `SubmitRegistration`.
  *
+ * `resource_type_id` (design §12b, #282) links this quota to a Resources
+ * seat category as its ceiling: nullable, a plain ULID with no FK
+ * (ADR-0014, Resources owns `ResourceType`), set from the quota form's
+ * category select. `AdjustQuotaOnPlaceSupplyChanged` is the only listener
+ * that reads it.
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $name
+ * @property string|null $resource_type_id
  * @property int $capacity
  * @property int $consumed
  * @property Carbon|null $created_at
@@ -39,6 +46,7 @@ class Quota extends Model
 
     protected $fillable = [
         'name',
+        'resource_type_id',
         'capacity',
         'consumed',
     ];

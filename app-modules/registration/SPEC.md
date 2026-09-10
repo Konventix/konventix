@@ -63,6 +63,10 @@ is entitled to what*; other modules materialize those entitlements.
   consumed and released by registrations and may be referenced by more than one
   `RegistrationType`. An amendment consumes one unit per added admission, and
   cancellation releases the submission's unit *plus* every amended one.
+  `resource_type_id` (design §12b, #282) is an optional, nullable link to a
+  Resources seat category — a plain ULID, no FK (ADR-0014) — set on the quota
+  form so one quota can be a category's ceiling: `AdjustQuotaOnPlaceSupplyChanged`
+  is the only reader.
 - **The approval workflow** — submission, review, approval, rejection, and the
   record of who decided what and when.
 - **Grant definitions** — how many admissions of which role, which resource
@@ -132,6 +136,7 @@ maintains from them.
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler |
 | `EventCreated`, `EventDetailsUpdated`, `EventAnnounced`, `EventPublished`, `EventArchived` | Event | Maintain the event read model (`Models\EventSummary`, projected by `Listeners\ProjectEventSummary`) behind the type editor's event picker and behind `/shop`: name, slug, `visibility`, `public_since` (set by `EventAnnounced`/`EventPublished`, never cleared) and `archived_at`. Together `public_since IS NOT NULL AND visibility = 'public' AND archived_at IS NULL` is `Event::scopeListedPublicly()` — the rule a *listing* surface owes, stricter than `isVisibleOnLanding()` — which is what keeps a draft, an unlisted or an archived event's offers off `/shop` (#240). `EventUnpublished` is deliberately **not** projected: it returns the event to `Announced`, where its landing page still sells |
 | `ResourceBookingReleased` (proposed) | Resources | Release the matching resource claim when a booking is given up upstream |
+| `PlaceSupplyChanged` (design §12b, #282) | Resources | A category's bookable supply moved for a reason that is not a sale — blocked/unblocked, reserved for or released from the organisation, a plan published/unpublished. `AdjustQuotaOnPlaceSupplyChanged` finds the quota whose `resource_type_id` matches the payload's category and reuses `ConsumesQuotas`/`ReleasesQuotas`' own per-quota consume/release (same lock, same `QuotaExhausted`/`QuotaReleased` emission), brand taken from the payload rather than ambient context, idempotent per `changeId` (`quota_supply_change_receipts`), a no-op when no quota names the category |
 
 ## Capabilities
 

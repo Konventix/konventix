@@ -43,6 +43,7 @@ use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationRejected;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Gdpr\RegistrationGdprHandler;
+use Konventix\Registration\Listeners\AdjustQuotaOnPlaceSupplyChanged;
 use Konventix\Registration\Listeners\CancelPendingRegistrationOnCartLineGone;
 use Konventix\Registration\Listeners\CancelRegistrationOnOrderLineCancelled;
 use Konventix\Registration\Listeners\CancelRegistrationOnOrderUndone;
@@ -62,6 +63,7 @@ use Konventix\Registration\Listeners\RecordReversalOnOrderLineReversed;
 use Konventix\Registration\Listeners\RecordReversalOnPaymentReversed;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
+use Konventix\Resources\Events\PlaceSupplyChanged;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -137,6 +139,11 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // entry — including units released by expired offers, which is what
         // makes the queue drain itself.
         Event::listen(QuotaReleased::class, PromoteOnQuotaReleased::class);
+
+        // Design §12b/#282: a place's bookability changed for a reason that
+        // is not a sale (blocked, reserved, published…) — consume or
+        // release the unit of whichever quota names that category.
+        Event::listen(PlaceSupplyChanged::class, AdjustQuotaOnPlaceSupplyChanged::class);
 
         // ADR-0036: billing party freezes at first invoice.
         Event::listen(InvoiceIssued::class, MarkInvoicedOnInvoiceIssued::class);
