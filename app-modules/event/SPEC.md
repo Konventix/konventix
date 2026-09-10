@@ -66,7 +66,7 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 | `EventPublished` | The event becomes publicly visible | `event_id`, `brand_id`, `published_at` | implemented |
 | `EventUnpublished` | The event is withdrawn from public view | `event_id`, `brand_id` | implemented |
 | `EventStarted` | Published → Running — doors open, an explicit operator transition (never clock-derived) | `event_id`, `brand_id`, `started_at` | implemented |
-| `EventRescheduled` | Start, end or timezone changes | `event_id`, `starts_at`, `ends_at`, `timezone` | implemented |
+| `EventRescheduled` | Start, end or timezone changes | `event_id`, `brand_id`, `starts_at`, `ends_at`, `timezone` | implemented |
 | `EventCancelled` | The event will not take place | `event_id`, `brand_id`, `reason_code`, `cancelled_at` | implemented |
 | `EventConcluded` | The event has ended | `event_id`, `brand_id`, `concluded_at` | implemented |
 | `EventArchived` | The event is closed for all operations | `event_id`, `brand_id`, `archived_at` | implemented |
