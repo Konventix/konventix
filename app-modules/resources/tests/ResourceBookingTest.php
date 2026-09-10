@@ -366,3 +366,25 @@ it('fulfils a confirmation that arrives with no brand in context', function (): 
     expect(ResourceBooking::withoutBrandScope()->where('registration_id', $registrationId)->count())->toBe(1)
         ->and(app(BrandContext::class)->current())->toBeNull();
 });
+
+it('carries the place ref on the booking events', function (): void {
+    $this->withBrand();
+
+    $resource = bookingTestUnitResource();
+    $resource->forceFill(['ref' => 'A-01'])->save();
+
+    Event::fake([ResourceBookingHeld::class, ResourceBookingConfirmed::class]);
+
+    $booking = app(HoldResourceBooking::class)->handle(
+        resource: $resource,
+        holderType: ResourceBooking::HOLDER_REGISTRATION,
+        holderId: (string) Str::ulid(),
+        startsAt: now()->startOfHour()->addHours(1),
+        endsAt: now()->startOfHour()->addHours(3),
+    );
+
+    app(ConfirmResourceBooking::class)->handle($booking);
+
+    Event::assertDispatched(ResourceBookingHeld::class, fn (ResourceBookingHeld $event): bool => $event->ref === 'A-01');
+    Event::assertDispatched(ResourceBookingConfirmed::class, fn (ResourceBookingConfirmed $event): bool => $event->ref === 'A-01');
+});

@@ -1137,6 +1137,13 @@ declare namespace Konventix {
                 readonly offsetXMm: number;
                 readonly offsetYMm: number;
             };
+            export type CategoryData = {
+                readonly id: string;
+                readonly name: string;
+                readonly token: Konventix.Resources.Enums.CategoryToken;
+                readonly symbol: string | null;
+                readonly description: string | null;
+            };
             export type LabelSchemaData = {
                 readonly row: string;
                 readonly place: string;
@@ -1177,6 +1184,15 @@ declare namespace Konventix {
             export type PlanConflictResolutionData = {
                 readonly placeId: string;
                 readonly resolution: string;
+            };
+            export type PlanData = {
+                readonly eventId: string;
+                readonly name: string;
+                readonly floorLabel: string | null;
+                readonly widthMm: number;
+                readonly heightMm: number;
+                readonly unitDisplay: string;
+                readonly snapStep: number;
             };
             export type PlanDiffSummaryData = {
                 readonly added: number;
@@ -1239,16 +1255,44 @@ declare namespace Konventix {
                 readonly warnings: Konventix.Resources.Data.PlanWarningData[];
                 readonly diff: Konventix.Resources.Data.PlanDiffSummaryData;
             };
+            export type PlanViewData = {
+                readonly id: string;
+                readonly name: string;
+                readonly floorLabel: string | null;
+                readonly widthMm: number;
+                readonly heightMm: number;
+                readonly background: Konventix.Resources.Data.BackgroundData | null;
+                readonly document: Konventix.Resources.Data.PlanDocumentData;
+            };
             export type PlanWarningData = {
                 readonly code: Konventix.Resources.Enums.PlanWarningCode;
                 readonly placeIds: string[];
                 readonly message: string;
             };
+            export type ResourceTypeData = {
+                readonly eventId: string;
+                readonly name: string;
+                readonly slug: string;
+                readonly mode: Konventix.Resources.Enums.CapacityMode;
+                readonly holdMinutes: number;
+                readonly description: string | null;
+                readonly token: Konventix.Resources.Enums.CategoryToken;
+                readonly symbol: string | null;
+                readonly sortOrder: number;
+                readonly defaultShape: Konventix.Resources.Data.ShapeData | null;
+            };
+            export type SeatClaimData = {
+                readonly id: string;
+                readonly resourceTypeIds: string[];
+                readonly seatingMode: Konventix.Resources.Enums.SeatingMode;
+                readonly quantity: number;
+                readonly state: Konventix.Resources.Enums.ClaimState;
+            };
             export type SeatPickerData = {
                 readonly registrationId: string;
-                readonly claim: unknown;
-                readonly categories: unknown[];
-                readonly plans: unknown[];
+                readonly claim: Konventix.Resources.Data.SeatClaimData;
+                readonly categories: Konventix.Resources.Data.CategoryData[];
+                readonly plans: Konventix.Resources.Data.PlanViewData[];
                 readonly availability: Konventix.Resources.Data.PlanAvailabilityData;
                 readonly currentPlaceIds: string[];
             };

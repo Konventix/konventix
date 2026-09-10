@@ -126,8 +126,7 @@ final class HoldResourceBooking
                 registrationId: $registrationId,
                 claimId: $claimId,
                 label: $booking->label ?? $resource->label,
-                // S1 adds resources.ref; until then there is no human key.
-                ref: null,
+                ref: $resource->ref,
             ));
 
             return $booking;

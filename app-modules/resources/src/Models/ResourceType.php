@@ -10,12 +10,19 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
+use Konventix\Resources\Data\ShapeData;
 use Konventix\Resources\Database\Factories\ResourceTypeFactory;
 use Konventix\Resources\Enums\CapacityMode;
+use Konventix\Resources\Enums\CategoryToken;
 use Konventix\Resources\Models\Resource as BookableResource;
 
 /**
- * A kind of bookable thing at an event — seats, booths, rooms (ADR-0034).
+ * A kind of bookable thing at an event — seats, booths, rooms (ADR-0034) —
+ * and, since ADR-0060 point 3, the seating "Kategorie": what a seating grant
+ * references by ULID, drawn with `token` (a semantic design token name, never
+ * a hex, ADR-0008) and `symbol` (a lucide key, so state is never colour alone,
+ * ADR-0055). `default_shape` is what the editor gives a new place of this
+ * type.
  *
  * Per event only: D-EVT-13 settles that there is no venue-level catalogue at
  * release, so the same physical room at two events is two type rows. That is
@@ -28,6 +35,11 @@ use Konventix\Resources\Models\Resource as BookableResource;
  * @property string $slug
  * @property CapacityMode $mode
  * @property int $hold_minutes
+ * @property string|null $description
+ * @property CategoryToken $token
+ * @property string|null $symbol
+ * @property int $sort_order
+ * @property ShapeData|null $default_shape
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -38,7 +50,18 @@ class ResourceType extends Model
     /** @use HasFactory<ResourceTypeFactory> */
     use HasFactory, HasUlids;
 
-    protected $fillable = ['event_id', 'name', 'slug', 'mode', 'hold_minutes'];
+    protected $fillable = [
+        'event_id',
+        'name',
+        'slug',
+        'mode',
+        'hold_minutes',
+        'description',
+        'token',
+        'symbol',
+        'sort_order',
+        'default_shape',
+    ];
 
     /**
      * @return HasMany<BookableResource, $this>
@@ -53,7 +76,14 @@ class ResourceType extends Model
      */
     protected function casts(): array
     {
-        return ['mode' => CapacityMode::class, 'hold_minutes' => 'integer'];
+        return [
+            'mode' => CapacityMode::class,
+            'hold_minutes' => 'integer',
+            'token' => CategoryToken::class,
+            'sort_order' => 'integer',
+            // Nullable value object: a null column is a null property.
+            'default_shape' => ShapeData::class,
+        ];
     }
 
     protected static function newFactory(): ResourceTypeFactory

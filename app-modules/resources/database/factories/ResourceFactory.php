@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Resources\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceType;
 
@@ -50,5 +51,23 @@ class ResourceFactory extends Factory
     public function ofType(ResourceType $type): static
     {
         return $this->state(fn (array $attributes): array => ['resource_type_id' => $type->id]);
+    }
+
+    /**
+     * A place of `$plan`: id-less here (the factory mints one), so this is
+     * for tests that need a projection row without running `SavePlan`.
+     * `is_published` follows the plan, as the projection derives it.
+     */
+    public function forPlan(Plan $plan, string $ref): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'resource_type_id' => ResourceType::factory()->forEvent($plan->event_id),
+            'plan_id' => $plan->id,
+            'venue_id' => $plan->venue_id,
+            'ref' => $ref,
+            'label' => $ref,
+            'capacity' => 1,
+            'is_published' => $plan->published_at !== null,
+        ]);
     }
 }

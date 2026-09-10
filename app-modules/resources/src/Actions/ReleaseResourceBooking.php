@@ -52,7 +52,7 @@ final class ReleaseResourceBooking
                 registrationId: $booking->registration_id,
                 claimId: $booking->claim_id,
                 label: $booking->label ?? $resource->label,
-                ref: null,
+                ref: $resource->ref,
             ));
 
             return $booking->refresh();

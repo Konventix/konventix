@@ -86,6 +86,18 @@ class ResourceBooking extends Model
         return $this->resource()->withoutGlobalScopes()->firstOrFail();
     }
 
+    /**
+     * The seat claim this booking fulfils, when it came from a `seating`
+     * grant (design §4.3). Null for `resource_claim` grants and direct
+     * bookings.
+     *
+     * @return BelongsTo<ResourceClaim, $this>
+     */
+    public function claim(): BelongsTo
+    {
+        return $this->belongsTo(ResourceClaim::class, 'claim_id');
+    }
+
     public function isExpired(?CarbonInterface $now = null): bool
     {
         return $this->state === BookingState::Held

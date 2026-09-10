@@ -110,9 +110,10 @@ final class FulfilResourceClaims
         $candidates = Resource::withoutBrandScope()
             ->where('brand_id', $brandId)
             ->where('resource_type_id', $type->id)
-            ->where('is_published', true)
+            ->bookable()
             ->get()
-            ->sort(fn (Resource $a, Resource $b): int => strnatcasecmp($a->label, $b->label))
+            ->sort(fn (Resource $a, Resource $b): int => [$a->plan_id ?? '', $a->zone_id ?? '', $a->group_id ?? ''] <=> [$b->plan_id ?? '', $b->zone_id ?? '', $b->group_id ?? '']
+                ?: strnatcasecmp($a->ref ?? $a->label, $b->ref ?? $b->label))
             ->values();
 
         $wanted = max(1, $grant['quantity']);

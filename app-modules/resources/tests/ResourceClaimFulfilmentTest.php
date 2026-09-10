@@ -198,3 +198,21 @@ it('leaves claims unfulfilled when no event window has been projected', function
 
     expect(ResourceBooking::query()->count())->toBe(0);
 });
+
+it('skips a blocked place when it fills a resource_claim grant', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources');
+
+    $eventId = (string) Str::ulid();
+    seatingProjectWindow($eventId, $brand->id);
+    $type = seatingUnitType($eventId);
+
+    $blocked = seatingPublishedResource($type, 'A-01');
+    $blocked->forceFill(['blocked' => true])->save();
+    $free = seatingPublishedResource($type, 'A-02');
+
+    seatingConfirmRegistration($eventId, $brand->id, [seatingClaimGrant($type->id)]);
+
+    expect(ResourceBooking::withoutBrandScope()->where('resource_id', $blocked->id)->count())->toBe(0)
+        ->and(ResourceBooking::withoutBrandScope()->where('resource_id', $free->id)->count())->toBe(1);
+});
