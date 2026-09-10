@@ -8,6 +8,16 @@
 export const LABEL_MIN_PX = 9;
 export const DEFAULT_LABEL_MM = 250;
 
+/**
+ * 2026-09-10 batch amendment, ahead of design §12b/#282's quota mechanism:
+ * a category with nothing free is its own explicit state, never a bare
+ * validation error met only after trying to pick. One constant so the
+ * picker (`Pick.vue`) and "Meine Registrierung" (`SeatSummarySlot.vue`)
+ * never word it differently for the same claim.
+ */
+export const NO_FREE_PLACES_MESSAGE =
+    'There are no free places in your categories right now.';
+
 /** `pxPerUnit` is screen pixels per viewBox millimetre at zoom 1. */
 export function labelsVisible(
     zoom: number,

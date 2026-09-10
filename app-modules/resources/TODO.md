@@ -6,6 +6,13 @@
 
 ## Next
 
+- [ ] Picker for a registration with more than one claim (an amendment
+      that added a seating grant): `FindSeatClaimForRegistrant` opens the
+      newest, the older claim has no page. Needs a claim switcher or one
+      page over all claims.
+- [ ] "Zoom to my place" and a deep link (`?place=`) into the picker, so
+      the mail after a `plan_conflict` release lands the person on the
+      right spot — LanCore's most used plan navigation.
 - [ ] Seating S7: `PlanAdminController@edit`/`@update`/`@validate` (the plan
       editor) — the console maps `PlanStaleException` (409) and
       `PlanConflictException` (422) through their own `render()`;
@@ -37,6 +44,19 @@
 
 ## Done
 
+- [x] Seating Task 40 (#276): `/my/registrations/{registration}/seat`
+      renders every published plan of the event as an SVG scene (fixed
+      viewBox, one world transform, rAF pan, cursor-anchored zoom, pinch)
+      beside a list view that is the keyboard path; selection posts
+      `placeIds[]` to `AssignPlacesToRegistration`; availability is
+      `ComputePlanAvailability` over the projection and the occupying
+      bookings, polled every 15 s through `useHttp`. `HasFreePlaceForClaim`
+      is a new Action (beyond the brief's file list, `SeatPickerData` gains
+      `noFreePlaces` to carry it): a claim whose categories have nothing
+      free right now gets its own banner on the page rather than a
+      validation error nobody sees until they try to pick — worded
+      identically to the summary slot Task 41 adds, quoting the design's
+      own flagged phrase ("no free places in your categories").
 - [x] Seating Task 39 (#276): the picker's view layer under
       `resources/js/components/plan` — `SeatPlanScene.vue` (fixed mm
       viewBox, pointer pan/pinch/wheel zoom, `defineExpose`d `svgPoint`/

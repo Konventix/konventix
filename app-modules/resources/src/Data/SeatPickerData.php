@@ -13,6 +13,12 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * categories it may choose from, every published plan of the event with its
  * document, the availability snapshot, and the places the registration
  * holds right now.
+ *
+ * `noFreePlaces` (2026-09-10 batch amendment, ahead of design §12b/#282's
+ * quota mechanism): true when `HasFreePlaceForClaim` finds nothing free in
+ * the claim's own categories. Worded identically to
+ * `SeatSummaryData.noFreePlaces` — the two never disagree about the same
+ * claim.
  */
 #[TypeScript]
 final class SeatPickerData extends Data
@@ -38,5 +44,7 @@ final class SeatPickerData extends Data
 
         /** @var list<string> */
         public readonly array $currentPlaceIds,
+
+        public readonly bool $noFreePlaces,
     ) {}
 }

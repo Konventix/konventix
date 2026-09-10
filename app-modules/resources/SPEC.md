@@ -161,6 +161,29 @@ that grants resource claims still registers people correctly — the claims simp
 stay unfulfilled rather than failing the registration, so switching the feature
 on later can fulfil them retroactively instead of stranding the registration.
 
+## Surfaces
+
+Brand host, `routes/web/resources.php`, `web` + `auth` + the module gate
+(seating design 2026-09-10, §7.4):
+
+| Route | Name | What |
+|---|---|---|
+| `GET /my/registrations/{registration}/seat` | `resources.seating.pick` | The seat picker, `seating/Pick` with `SeatPickerData`. 404 unless the signed-in account is the claim's registrant. |
+| `POST /my/registrations/{registration}/seat` | `resources.seating.pick.store` | `PickPlacesData { placeIds }` → `AssignPlacesToRegistration`, then back to `registration.mine.show`. |
+| `GET /my/registrations/{registration}/seat/availability` | `resources.seating.availability` | JSON `PlanAvailabilityData`, polled every 15 s by the open picker. |
+
+The picker needs no capability: ownership of the `resource_claims` row is
+the authorisation (ADR-0013 has nothing to grant for "your own seat").
+Availability is a read over `resource_bookings` and the projection, never
+over the plan document.
+
+`SeatPickerData.noFreePlaces` (2026-09-10 batch amendment, ahead of §12b's
+quota mechanism): `HasFreePlaceForClaim` answers whether the claim's own
+categories have anything free at all. True renders as its own banner on
+the picker, never as a validation error, and the same field on
+`SeatSummaryData` (Task 41) words the registrant's own page identically —
+the two surfaces never disagree about the same claim.
+
 ## Open questions
 
 - ~~Is a resource with capacity greater than one (a room for 40, a booth strip
