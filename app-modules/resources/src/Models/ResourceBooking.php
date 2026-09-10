@@ -25,6 +25,7 @@ use Konventix\Resources\Models\Resource as BookableResource;
  *
  * `holder_type`/`holder_id` name whoever holds the booking by ULID and a
  * short domain string, never a polymorphic Eloquent relation (ADR-0006).
+ * Holder types are `registration` and, since Seating, `operator`.
  *
  * @property string $id
  * @property string $brand_id
@@ -52,6 +53,12 @@ class ResourceBooking extends Model
     use HasFactory, HasUlids;
 
     public const string HOLDER_REGISTRATION = 'registration';
+
+    /**
+     * An orga reservation (design §4.3): `holder_id` is the acting user's
+     * id, `registration_id` and `claim_id` stay null.
+     */
+    public const string HOLDER_OPERATOR = 'operator';
 
     protected $fillable = [
         'resource_id',
