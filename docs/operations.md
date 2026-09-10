@@ -39,14 +39,15 @@ date, alert names and recipient under the alert's section when done.
 - KonventixDatabaseBackupMissing fires on its own on an instance that never
   completed a backup.
 
-The other ten — KonventixMetricsDown, KonventixHealthCheckFailed,
+The other eleven — KonventixMetricsDown, KonventixHealthCheckFailed,
 KonventixQueueJobsFailing, KonventixWaitingRoomStuck, KonventixWebhookSilence,
 KonventixPaymentFailureRate, KonventixHttp5xxRate, KonventixCheckoutSlow,
-KonventixWalArchivingFailing and KonventixPodsRestarting — are not triggered
+KonventixWalArchivingFailing, KonventixPodsRestarting and
+KonventixResourceHoldSweepStale — are not triggered
 by hand for #168; each has a `vmalert-tool` unit test in
 `contrib/observability/alerts/tests/konventix.rules.test.yaml` that shapes an
 input series so the rule's expression fires and asserts the labels vmalert
-reports, which is the acceptance in place of a live trigger. Two of those ten
+reports, which is the acceptance in place of a live trigger. Two of those eleven
 need more than the unit test to prove the *metric*, not just the rule, is
 honest: KonventixWebhookSilence and KonventixPaymentFailureRate are proven by
 running a sandbox payment flow — a Stripe test-mode webhook withheld, and a
@@ -152,6 +153,24 @@ scheduler pod is down or wedged. `kubectl -n konventix get pods -l
 app.kubernetes.io/component=scheduler`; its log shows `schedule.task`
 records when healthy. Without it: no waiting-room ticks, no cart expiry,
 no health checks, no backups.
+
+### KonventixResourceHoldSweepStale
+
+`resources:expire-holds` has not finished a run for ten minutes. The
+scheduler runs it every minute; it releases *clocked* holds (direct holds
+with a `hold_expires_at`) with reason `expired`. Seat bookings a
+registrant picked are confirmed in the same transaction as their hold and
+are never touched by it (ADR-0060), so nothing a participant sees is lost
+while this fires — but an expired direct hold keeps its resource until
+someone tries to confirm it, and the place looks taken. If
+KonventixScheduleStale fires too, the scheduler is the cause. Otherwise
+the command itself is failing: its `schedule.task` records on the Logs
+dashboard carry the exception, and
+`kubectl -n konventix exec deploy/konventix-scheduler -- php artisan
+resources:expire-holds` runs one sweep by hand. The series only exists
+once the command has completed at least once on the instance, so an
+instance whose brands never switched Resources on never trips this alert;
+the sale dashboard's "Seconds since hold sweep" stat shows the same age.
 
 ### KonventixDatabaseBackupMissing
 

@@ -116,6 +116,14 @@ groups:
           summary: "The scheduler has not ticked for 5 minutes"
           runbook: "docs/operations.md#konventixschedulestale"
 
+      - alert: KonventixResourceHoldSweepStale
+        expr: (time() - konventix_resource_hold_sweep_last_run_timestamp_seconds{job="__RELEASE__"}) > 600
+        for: 1m
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "The resource hold sweep has not run for 10 minutes"
+          runbook: "docs/operations.md#konventixresourceholdsweepstale"
+
   - name: konventix.platform
     rules:
       - alert: KonventixDatabaseBackupMissing
