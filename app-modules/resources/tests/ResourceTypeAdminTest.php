@@ -219,3 +219,24 @@ it('updates name, token and sort order and hands the editor the data object', fu
             ->where('places', 0)
             ->has('events', 1));
 });
+
+it('renders the category list and editor pages', function (): void {
+    // A page added this session needs `npm run build` first: Inertia
+    // resolves it through the Vite manifest and a missing entry looks like
+    // a 500 (.ai/rules/tests.md).
+    $brand = $this->withBrand();
+    $eventId = seatingEventWindow($brand);
+    [, $admin] = seatingOperator();
+
+    $type = ResourceType::factory()->forEvent($eventId)->create(['name' => 'Gamer']);
+
+    $this->actingAs($admin)
+        ->get('http://admin.seating.test/admin/resource-types')
+        ->assertOk()
+        ->assertSee('Gamer');
+
+    $this->actingAs($admin)
+        ->get('http://admin.seating.test/admin/resource-types/'.$type->getKey().'/edit')
+        ->assertOk()
+        ->assertSee('Gamer');
+});

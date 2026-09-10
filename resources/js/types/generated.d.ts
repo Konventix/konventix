@@ -1284,6 +1284,17 @@ declare namespace Konventix {
                 readonly sortOrder: number;
                 readonly defaultShape: Konventix.Resources.Data.ShapeData | null;
             };
+            export type ResourceTypeRowData = {
+                readonly id: string;
+                readonly name: string;
+                readonly slug: string;
+                readonly eventName: string;
+                readonly mode: Konventix.Resources.Enums.CapacityMode;
+                readonly token: Konventix.Resources.Enums.CategoryToken;
+                readonly symbol: string | null;
+                readonly sortOrder: number;
+                readonly places: number;
+            };
             export type SeatClaimData = {
                 readonly id: string;
                 readonly resourceTypeIds: string[];
@@ -1335,6 +1346,7 @@ declare namespace Konventix {
                 | 'resources.view-resources'
                 | 'resources.manage-resource-types'
                 | 'resources.manage-resources'
+                | 'resources.manage-plans'
                 | 'resources.book-on-behalf'
                 | 'resources.release-bookings';
             export type PlaceState =
