@@ -10,9 +10,10 @@
 - [ ] Seating S6: `RecordPlanMetrics` listens on `PlanSaved` for `resource_plan_saves_total{outcome=saved}`; the `conflict`, `invalid` and `stale` outcomes are counted where the exceptions are caught (the controller), not in the Actions.
 - [ ] Seating (design `docs/superpowers/specs/2026-09-10-seating-design.md`,
       ADR-0060): the save pipeline and projection, claims and picking are
-      done. Still open in order: the console (categories, plans, occupancy,
-      reservations), the picker on the brand host, observability and the
-      editor.
+      done, and so is the category console (Task 30-32). Still open in
+      order: the plan index (create, import, export, publish, occupancy,
+      reservations) and its editor, the picker on the brand host, and
+      observability.
 - [ ] Seating MR note: S1 changed `app-modules/resources/database/migrations`
       (six additive migrations), so the reviewer expects the one full-suite
       run of Task 58 in the pipeline.
