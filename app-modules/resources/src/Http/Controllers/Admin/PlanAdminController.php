@@ -451,6 +451,7 @@ class PlanAdminController
                 token: $type->token,
                 symbol: $type->symbol,
                 description: $type->description,
+                mode: $type->mode,
             ))
             ->all());
     }

@@ -9,6 +9,7 @@ import { checkInvariants } from './invariants';
  * panel can show both in one list.
  */
 const CATEGORY = '01HZZZZZZZZZZZZZZZZZZZZZZ1';
+const CATEGORIES = { [CATEGORY]: 'unit' as const };
 
 function documentOf(...elements: DraftElement[]): PlanDocument {
     return { schema: 'konventix.plan/v1', elements } as PlanDocument;
@@ -32,7 +33,7 @@ describe('checkInvariants', () => {
         expect(
             checkInvariants(
                 documentOf(group, place('p1', { parentId: 'g1' })),
-                [CATEGORY],
+                CATEGORIES,
             ),
         ).toEqual([]);
     });
@@ -40,7 +41,7 @@ describe('checkInvariants', () => {
     it('reports a duplicate id on the second occurrence', () => {
         const issues = checkInvariants(
             documentOf(place('p1'), place('p1', { ref: 'x' })),
-            [CATEGORY],
+            CATEGORIES,
         );
 
         expect(issues).toHaveLength(1);
@@ -54,7 +55,7 @@ describe('checkInvariants', () => {
     it('reports a missing parent', () => {
         const issues = checkInvariants(
             documentOf(place('p1', { parentId: 'nope' })),
-            [CATEGORY],
+            CATEGORIES,
         );
 
         expect(issues[0]).toMatchObject({
@@ -69,7 +70,7 @@ describe('checkInvariants', () => {
                 place('p1'),
                 newElement('zone', 'z1', { parentId: 'p1' }),
             ),
-            [CATEGORY],
+            CATEGORIES,
         );
 
         expect(issues[0]).toMatchObject({ index: 1, field: 'parentId' });
@@ -79,7 +80,7 @@ describe('checkInvariants', () => {
         const a = newElement('group', 'a', { parentId: 'b' });
         const b = newElement('group', 'b', { parentId: 'a' });
 
-        const issues = checkInvariants(documentOf(a, b), [CATEGORY]);
+        const issues = checkInvariants(documentOf(a, b), CATEGORIES);
 
         expect(issues.map((issue) => issue.field)).toEqual([
             'parentId',
@@ -93,7 +94,7 @@ describe('checkInvariants', () => {
                 place('p1', { ref: 'A-01' }),
                 place('p2', { ref: 'A-01' }),
             ),
-            [CATEGORY],
+            CATEGORIES,
         );
 
         expect(issues).toEqual([
@@ -111,12 +112,25 @@ describe('checkInvariants', () => {
                 place('p1', { resourceTypeId: null }),
                 place('p2', { resourceTypeId: 'other' }),
             ),
-            [CATEGORY],
+            CATEGORIES,
         );
 
         expect(issues.map((issue) => issue.key)).toEqual([
             'document.elements.0.resourceTypeId',
             'document.elements.1.resourceTypeId',
+        ]);
+    });
+
+    it('reports a place whose category is not unit mode', () => {
+        const issues = checkInvariants(documentOf(place('p1')), {
+            [CATEGORY]: 'quantity',
+        });
+
+        expect(issues).toEqual([
+            expect.objectContaining({
+                field: 'resourceTypeId',
+                key: 'document.elements.0.resourceTypeId',
+            }),
         ]);
     });
 
@@ -137,7 +151,7 @@ describe('checkInvariants', () => {
         });
 
         expect(
-            checkInvariants(documentOf(fixture), [CATEGORY])[0],
+            checkInvariants(documentOf(fixture), CATEGORIES)[0],
         ).toMatchObject({
             field: 'shape.points',
             key: 'document.elements.0.shape.points',

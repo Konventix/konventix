@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Konventix\Resources\Data\PlanDocumentData;
+use Konventix\Resources\Enums\CapacityMode;
 use Konventix\Resources\Plans\PlanInvariants;
 
 /**
@@ -26,7 +27,7 @@ it('accepts a valid document', function (): void {
         ->and($document->elements)->toHaveCount(2)
         ->and($document->elements[1]->resourceTypeId)->toBe($typeId)
         ->and($document->elements[1]->shape->w)->toBe(800)
-        ->and(PlanInvariants::check($document, [$typeId]))->toBe([]);
+        ->and(PlanInvariants::check($document, [$typeId => CapacityMode::Unit]))->toBe([]);
 });
 
 it('rejects an unknown element kind', function (): void {
@@ -70,7 +71,7 @@ it('reports a forbidden parent', function (): void {
 it('reports a missing parent', function (): void {
     $place = seatingRawPlace((string) Str::ulid(), ['parentId' => (string) Str::ulid()]);
 
-    $violations = PlanInvariants::check(PlanDocumentData::from(seatingRawDocument([$place])), [$place['resourceTypeId']]);
+    $violations = PlanInvariants::check(PlanDocumentData::from(seatingRawDocument([$place])), [$place['resourceTypeId'] => CapacityMode::Unit]);
 
     expect($violations)->toBe([
         ['path' => 'document.elements.0.parentId', 'message' => 'Parent element does not exist.'],
@@ -104,7 +105,7 @@ it('reports a duplicate ref', function (): void {
     $first = seatingRawPlace($typeId, ['ref' => 'A-01']);
     $second = seatingRawPlace($typeId, ['ref' => 'A-01']);
 
-    $violations = PlanInvariants::check(PlanDocumentData::from(seatingRawDocument([$first, $second])), [$typeId]);
+    $violations = PlanInvariants::check(PlanDocumentData::from(seatingRawDocument([$first, $second])), [$typeId => CapacityMode::Unit]);
 
     expect($violations)->toBe([
         ['path' => 'document.elements.1.ref', 'message' => 'Ref is used more than once.'],
@@ -124,10 +125,28 @@ it('reports a place without a category', function (): void {
 it('reports a category that does not belong to the plan', function (): void {
     $place = seatingRawPlace((string) Str::ulid());
 
-    $violations = PlanInvariants::check(PlanDocumentData::from(seatingRawDocument([$place])), [(string) Str::ulid()]);
+    $violations = PlanInvariants::check(PlanDocumentData::from(seatingRawDocument([$place])), [(string) Str::ulid() => CapacityMode::Unit]);
 
     expect($violations)->toBe([
         ['path' => 'document.elements.0.resourceTypeId', 'message' => "Category does not belong to this plan's event."],
+    ]);
+});
+
+/**
+ * Item 6 of the 2026-09-10 fix wave (#278): nothing required a
+ * plan-placed resource's category to be unit mode. A quantity-mode
+ * category never arms the exclusion constraint (ADR-0020), so the seat
+ * invariant would survive only through the summed guard ADR-0034 already
+ * calls weaker.
+ */
+it('reports a place whose category is not unit mode', function (): void {
+    $typeId = (string) Str::ulid();
+    $place = seatingRawPlace($typeId);
+
+    $violations = PlanInvariants::check(PlanDocumentData::from(seatingRawDocument([$place])), [$typeId => CapacityMode::Quantity]);
+
+    expect($violations)->toBe([
+        ['path' => 'document.elements.0.resourceTypeId', 'message' => 'Category must be in unit mode to hold a place.'],
     ]);
 });
 

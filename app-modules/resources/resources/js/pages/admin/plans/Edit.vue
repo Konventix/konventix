@@ -55,11 +55,13 @@ const { createAt, createGroup, regenerate, deleteSelection, selectAndReveal } =
 
 useUnsavedChanges(() => store.isDirty.value);
 
-const categoryIds = computed(() =>
-    props.editor.categories.map((category) => category.id),
+const categoryModes = computed(() =>
+    Object.fromEntries(
+        props.editor.categories.map((category) => [category.id, category.mode]),
+    ),
 );
 const issues = computed(() =>
-    checkInvariants(store.document.value, categoryIds.value),
+    checkInvariants(store.document.value, categoryModes.value),
 );
 const conflictDialogOpen = computed(() => saver.saveConflicts.value.length > 0);
 const canSave = computed(

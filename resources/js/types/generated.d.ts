@@ -1146,6 +1146,7 @@ declare namespace Konventix {
                 readonly token: Konventix.Resources.Enums.CategoryToken;
                 readonly symbol: string | null;
                 readonly description: string | null;
+                readonly mode: Konventix.Resources.Enums.CapacityMode;
             };
             export type LabelSchemaData = {
                 readonly row: string;

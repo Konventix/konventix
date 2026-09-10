@@ -13,6 +13,7 @@ use Konventix\Resources\Actions\ValidatePlan;
 use Konventix\Resources\Data\PlanConflictResolutionData;
 use Konventix\Resources\Data\PlanSaveData;
 use Konventix\Resources\Enums\BookingState;
+use Konventix\Resources\Enums\CapacityMode;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\ConflictReason;
 use Konventix\Resources\Enums\PlanVersionSource;
@@ -359,6 +360,35 @@ it('refuses a place whose category is not one of the event and writes nothing', 
     }
 
     expect($errors)->toHaveKey('document.elements.1.resourceTypeId')
+        ->and(seatingPlaces($plan))->toHaveCount(0)
+        ->and($plan->fresh()->version)->toBe(0)
+        ->and(PlanVersion::withoutBrandScope()->where('plan_id', $plan->id)->count())->toBe(0);
+});
+
+/**
+ * Item 6 of the 2026-09-10 fix wave (#278): nothing required a
+ * plan-placed resource's category to be unit mode, so a quantity-mode
+ * category placed on the plan would never arm the exclusion constraint
+ * (ADR-0020) and the seat invariant would survive only through the
+ * weaker, summed guard ADR-0034 already calls out as weaker.
+ */
+it('refuses a place whose category is not unit mode and writes nothing', function (): void {
+    $brand = $this->withBrand();
+    $eventId = seatingEvent($brand);
+    $type = seatingCategory($eventId, mode: CapacityMode::Quantity);
+    $plan = seatingPlan($eventId);
+
+    $a = seatingPlace($type->id, 'A-01');
+
+    $errors = null;
+
+    try {
+        seatingSave($plan, seatingDocument([$a]));
+    } catch (ValidationException $exception) {
+        $errors = $exception->errors();
+    }
+
+    expect($errors)->toHaveKey('document.elements.0.resourceTypeId')
         ->and(seatingPlaces($plan))->toHaveCount(0)
         ->and($plan->fresh()->version)->toBe(0)
         ->and(PlanVersion::withoutBrandScope()->where('plan_id', $plan->id)->count())->toBe(0);

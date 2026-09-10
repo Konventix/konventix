@@ -1,11 +1,18 @@
 import type { PlanDocument, PlanElement } from './document';
 import { ALLOWED_PARENTS } from './document';
 
+type CapacityMode = Konventix.Resources.Enums.CapacityMode;
+
 /**
  * The client mirror of `PlanInvariants::check()` (design §6.1 step 2).
  * Same rules, same keys (`document.elements.<index>.<field>`) as the
  * server's 422, so the validation panel lists both sources alike and the
  * Save button can stay disabled for what the server would refuse anyway.
+ *
+ * The unit-mode check (item 6 of the 2026-09-10 fix wave, #278) mirrors the
+ * server's: `categories` carries every category's capacity mode, not only
+ * its id, so a quantity-mode category placed on the plan is refused here
+ * too, not only after a round trip to the server.
  */
 export type InvariantIssue = {
     index: number;
@@ -35,12 +42,11 @@ function hasCycle(byId: Map<string, Indexed>, element: PlanElement): boolean {
 
 export function checkInvariants(
     document: PlanDocument,
-    categoryIds: readonly string[],
+    categories: Readonly<Record<string, CapacityMode>>,
 ): InvariantIssue[] {
     const issues: InvariantIssue[] = [];
     const byId = new Map<string, Indexed>();
     const refs = new Set<string>();
-    const categories = new Set(categoryIds);
 
     const report = (
         index: number,
@@ -116,12 +122,19 @@ export function checkInvariants(
                     'resourceTypeId',
                     'A place needs a category.',
                 );
-            } else if (!categories.has(element.resourceTypeId)) {
+            } else if (!(element.resourceTypeId in categories)) {
                 report(
                     index,
                     element,
                     'resourceTypeId',
                     'The category does not belong to this event.',
+                );
+            } else if (categories[element.resourceTypeId] !== 'unit') {
+                report(
+                    index,
+                    element,
+                    'resourceTypeId',
+                    'The category must be in unit mode to hold a place.',
                 );
             }
         }

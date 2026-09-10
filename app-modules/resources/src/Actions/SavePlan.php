@@ -190,11 +190,11 @@ final class SavePlan
     {
         $violations = PlanInvariants::check(
             $document,
-            array_values(ResourceType::withoutBrandScope()
+            ResourceType::withoutBrandScope()
                 ->where('brand_id', $plan->brand_id)
                 ->where('event_id', $plan->event_id)
-                ->pluck('id')
-                ->all()),
+                ->pluck('mode', 'id')
+                ->all(),
         );
 
         if ($violations === []) {

@@ -24,6 +24,7 @@ use Konventix\Resources\Data\PlanDocumentData;
 use Konventix\Resources\Data\PlanSaveData;
 use Konventix\Resources\Data\PlanSaveResultData;
 use Konventix\Resources\Enums\BookingState;
+use Konventix\Resources\Enums\CapacityMode;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\Permission;
 use Konventix\Resources\Enums\PlanVersionSource;
@@ -297,11 +298,12 @@ function seatingEvent(Brand $brand): string
  * columns filled in. `token` and `symbol` are projection columns S1 added,
  * so they are written past `$fillable` with `forceFill()`.
  */
-function seatingCategory(string $eventId, string $slug = 'seat', string $token = 'chart-1', ?string $symbol = 'armchair'): ResourceType
+function seatingCategory(string $eventId, string $slug = 'seat', string $token = 'chart-1', ?string $symbol = 'armchair', CapacityMode $mode = CapacityMode::Unit): ResourceType
 {
     $type = ResourceType::factory()->forEvent($eventId)->make([
         'name' => Str::title($slug),
         'slug' => $slug,
+        'mode' => $mode,
     ]);
 
     $type->forceFill(['token' => $token, 'symbol' => $symbol, 'sort_order' => 0])->save();
