@@ -87,6 +87,7 @@ camelCase properties); `ResourcePublished`, `ResourceWithdrawn` and
 | `ResourceBookingConfirmed` | A hold becomes a firm booking — **the event other modules act on** | `bookingId`, `resourceId`, `brandId`, `holderType`, `holderId`, `registrationId`, `quantity`, `startsAt`, `endsAt`, `confirmedAt`, `eventId`, `resourceTypeId`, `claimId`, `label`, `ref` |
 | `ResourceBookingReleased` | A booking is given back, cancelled, or expires | `bookingId`, `resourceId`, `brandId`, `holderType`, `holderId`, `reason` (`registration_cancelled`, `registration_rejected`, `plan_conflict`, `repicked`, `operator_released`, `expired`, or a caller's own), `releasedAt`, `eventId`, `resourceTypeId`, `registrationId`, `claimId`, `label`, `ref` |
 | `ResourceBookingTransferred` *(proposed)* | A booking moves to a different holder or a different resource | `booking_id`, `resource_id`, `previous_resource_id`, `holder_id`, `previous_holder_id`, `transferred_at` |
+| `PlanSaved` | A plan document was saved and projected into `resources` (design 2026-09-10 §6.1); dispatched after the commit | `plan_id`, `event_id`, `brand_id`, `version`, `changed_place_ids` |
 
 Admission's SPEC currently refers to the badge-relevant event as
 `ResourceBookingCreated`. The name to settle on is `ResourceBookingConfirmed`: a

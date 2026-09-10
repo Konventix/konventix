@@ -42,6 +42,8 @@
 
 ## Done
 
+- [x] Seating Task 17: `SavePlan` (version check, invariants, foreign ids, conflicts under lock, batched projection upsert, soft-delete, version rows pruned to 50, `PlanSaved` after commit) and the `ValidatePlan` dry run.
+
 - [x] Seating Task 16: booking events (`Held`, `Confirmed`, `Released`) are dispatched after the outermost commit via `DB::afterCommit`.
 
 - [x] Seating Task 15: read-only plan diff and conflict detection, the save/validate payloads, `PlanStaleException` (409) and `PlanConflictException` (422), `PlanSaved`/`PlanPublished`/`PlanUnpublished`, operator holder type.
