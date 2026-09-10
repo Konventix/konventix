@@ -504,6 +504,19 @@ Deviations found during implementation are appended here with date, reason and t
   `RegistrationMineSeatSlotTest` — corrected in the same commit as this
   entry. `SeatPickController`'s docblock already described the review fix
   correctly and needed no change.
+- 2026-09-10, fix wave item 6 (#278): the Task 11 entry above no longer
+  describes the signature that shipped. `PlanInvariants::check()` now takes
+  `array<string, CapacityMode>` — the event's categories keyed by id to
+  their capacity mode, not just the plan's category ids — so it can refuse
+  a place whose category is not `unit` mode (a quantity-mode category never
+  arms ADR-0020's exclusion constraint, so the seat invariant would
+  otherwise survive only through the weaker, summed guard ADR-0034 already
+  calls out). Both call sites, `SavePlan::guardInvariants()` and
+  `ValidatePlan::guardInvariants()`, already read
+  `ResourceType::withoutBrandScope()->...->pluck('mode', 'id')` and pass
+  that map through unchanged; the client mirror `checkInvariants()`
+  (`invariants.ts`) took the matching change, from a set of category ids to
+  a `categories: Readonly<Record<string, CapacityMode>>` map.
 
 ## 14. Out of scope (one tracking issue, "Nach Event")
 
