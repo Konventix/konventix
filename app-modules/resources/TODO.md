@@ -37,6 +37,29 @@
 
 ## Done
 
+- [x] Seating Task 38 (#276): the pure plan modules under
+      `resources/js/components/plan` — `transform.ts` (LanCore's one-world
+      pan/zoom/pinch transform, ported to millimetres), `geometry.ts`
+      (absolute positions, bounding boxes, hit radius, the zone → group →
+      place tree), `eligibility.ts` (mirrors `AssignPlacesToRegistration`'s
+      taken/wrong-category/limit-reached refusals), `tokens.ts` and
+      `symbols.ts`. `geometry.ts`'s `absoluteOrigin` composes rotation up
+      the parent chain the way the backend's `Plans\WorldTransform::child()`
+      does, rather than summing `x`/`y`: a naive sum only agrees with it
+      when every ancestor's rotation is zero, and `PlanNeighborsTest.php`'s
+      rotated-group case does not catch the difference, because rotating a
+      row of collinear points preserves the distances between them
+      regardless of rotation direction. `geometry.test.ts` pins one concrete
+      rotated world coordinate for that reason. 34 vitest tests across the
+      four test files.
+- [x] Carried fix: `PlanAdminController::findPlace()`'s `/** @var resource */`
+      had already been silently lowercased by pint's docblock fixer — the
+      same PHP `resource` pseudo-type collision documented in
+      `AssignPlacesToRegistration.php`, `AssignPlaceCommand.php` and
+      `tests/Helpers.php`. Fixed the same way: `Resource` imported a second
+      time under the alias `BookableResource`, referenced only in the
+      docblock.
+
 - [x] Seating S5, availability (#276): `ComputePlanAvailability::handle()`
       computes the picker's per-place state — `mine`/`held`/`booked` from
       the event's occupying bookings, `unavailable` for blocked places and

@@ -30,6 +30,10 @@ use Konventix\Resources\Enums\PlaceState;
 use Konventix\Resources\Exceptions\ResourceUnavailableException;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\Resource;
+// Aliased: an unqualified "Resource" in a docblock generic collides with
+// PHP's `resource` pseudo-type and pint's docblock fixer silently lowercases
+// it (the same trap fixed in AssignPlacesToRegistration.php).
+use Konventix\Resources\Models\Resource as BookableResource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceEventWindow;
 use Konventix\Resources\Plans\PlanGeometry;
@@ -328,7 +332,7 @@ class PlanAdminController
      */
     private function findPlace(Plan $plan, string $place): Resource
     {
-        /** @var resource */
+        /** @var BookableResource */
         return Resource::withoutBrandScope()
             ->where('plan_id', $plan->getKey())
             ->findOrFail($place);
