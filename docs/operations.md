@@ -56,6 +56,36 @@ KonventixPodsRestarting are platform-side, sourced from CNPG's and kubelet's
 own exporters rather than anything this application emits, so they are
 observed when they occur in the cluster rather than provoked.
 
+## Opening seating on an event
+
+Order matters, because a registration only grows a seat claim at the moment
+it is confirmed:
+
+1. Create the seat categories under Categories in the operator console.
+2. Give each category its own quota under Quotas, sized to the number of
+   bookable places, and point the quota's Category field at it. Blocking a
+   place or reserving one for the organisation then takes a unit off the
+   sale the way a purchase does, and giving either back offers the unit to
+   the waitlist.
+3. Set the seating grant on every entry under Registration types that should
+   come with a place, and pick the category it grants.
+4. Import or draw the hall plan under Seating plans and publish it.
+
+Unpublishing a plan to edit it does not stop the category selling. The quota
+is untouched, registrations still sell and confirm, and their seat claims wait
+`unplaced` until the plan is published again, at which point the picker serves
+them.
+
+**Cutover hand-over (Eventula import):** step 3 has to happen before the
+Eventula import runs. The importer carries users, events and orders only --
+it does not carry seating -- and a registration that was already confirmed
+when its type had no seating grant gets no claim, so those participants never
+see the picker. There is no backfill command: a claim is only created when a
+registration is confirmed or amended, so an already-confirmed registration on
+a type that gained the grant afterwards needs an amendment adding that grant.
+The amendment id keys the claim, so replaying the same amendment adds
+nothing.
+
 ## Alerts
 
 ### KonventixMetricsDown
