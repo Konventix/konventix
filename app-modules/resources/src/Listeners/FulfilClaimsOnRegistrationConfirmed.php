@@ -6,28 +6,26 @@ namespace Konventix\Resources\Listeners;
 
 use Konventix\Platform\Modules\Concerns\ShortCircuitsInactiveModule;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Resources\Actions\CreateSeatClaims;
 use Konventix\Resources\Actions\FulfilResourceClaims;
 
 /**
- * Materializes `resource_claim` grants into bookings when a registration
- * confirms.
+ * Materializes a confirmed registration's grants (seating design §7.2):
+ * `resource_claim` grants become first-fit bookings, `seating` grants
+ * become unplaced seat claims. Admission grants are Admission's business.
  *
- * Until this existed, `resource_claim` grants were silently dropped —
- * Admission's issuance skips any grant whose kind is not `'admission'`, and
- * nothing else listened. That was intended (the axis existed before the
- * module did), but it means this listener is the first thing that gives those
- * grants any effect at all.
- *
- * Resources is Pennant-gated, so this short-circuits when the module is off
- * for the event's brand — a brand without Resources still registers people
- * correctly, their claims just stay unfulfilled.
+ * Gated on the payload's brand rather than the ambient one: a paid type
+ * confirms from Commerce's webhook, which runs without a brand in context.
+ * A brand without Resources still registers people correctly — their claims
+ * simply stay unfulfilled, and their seat claims are never created.
  */
 final class FulfilClaimsOnRegistrationConfirmed
 {
     use ShortCircuitsInactiveModule;
 
     public function __construct(
-        private readonly FulfilResourceClaims $action,
+        private readonly FulfilResourceClaims $fulfil,
+        private readonly CreateSeatClaims $createSeatClaims,
     ) {}
 
     protected function moduleName(): string
@@ -37,17 +35,22 @@ final class FulfilClaimsOnRegistrationConfirmed
 
     public function handle(RegistrationConfirmed $event): void
     {
-        // The payload's brand, not the ambient one: a paid registration is
-        // confirmed from Stripe's webhook, which runs with no brand in
-        // context, and `isActive()` would read that as "off".
         if (! $this->moduleActiveForBrand($event->brandId)) {
             return;
         }
 
-        $this->action->handle(
+        $this->fulfil->handle(
             registrationId: $event->registrationId,
             eventId: $event->eventId,
             brandId: $event->brandId,
+            grants: $event->grants,
+        );
+
+        $this->createSeatClaims->handle(
+            registrationId: $event->registrationId,
+            eventId: $event->eventId,
+            brandId: $event->brandId,
+            registrantUserId: $event->registrantUserId,
             grants: $event->grants,
         );
     }

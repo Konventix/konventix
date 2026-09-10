@@ -7,6 +7,7 @@ use Konventix\Resources\Actions\ExportPlan;
 use Konventix\Resources\Actions\ImportPlan;
 use Konventix\Resources\Actions\PublishPlan;
 use Konventix\Resources\Console\PlanImportCommand;
+use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\PlanVersion;
 use Konventix\Resources\Models\Resource;
@@ -69,12 +70,33 @@ it('imports the example document as 160 places with unique refs', function (): v
         ->and($places->every(fn (Resource $place): bool => $place->resource_type_id === $type->id
             && $place->zone_id !== null
             && $place->group_id !== null
-            && $place->is_published === false))->toBeTrue()
+            && $place->is_published === false
+            && $place->blocked === false))->toBeTrue()
         ->and(PlanVersion::withoutBrandScope()->where('plan_id', $plan->id)->firstOrFail()->getAttributes()['source'])->toBe('import');
 
     app(PublishPlan::class)->handle($plan);
 
     expect(seatingPlaces($plan)->every(fn (Resource $place): bool => $place->is_published))->toBeTrue();
+});
+
+it('holds a place obtained through the import path', function (): void {
+    $brand = $this->withBrand();
+    $eventId = seatingEvent($brand);
+    $type = seatingCategory($eventId);
+    $plan = seatingPlan($eventId);
+
+    app(ImportPlan::class)->handle($plan, seatingExampleDocument(), null, [
+        PlanImportCommand::PLACEHOLDER_CATEGORY => $type->id,
+    ]);
+    app(PublishPlan::class)->handle($plan);
+
+    $place = seatingPlaces($plan)->sortBy('ref')->first();
+    $window = seatingWindow($eventId, $brand->id);
+
+    $booking = seatingHold($place, $window);
+
+    expect($booking->state)->toBe(BookingState::Held)
+        ->and($booking->resource_id)->toBe($place->id);
 });
 
 it('imports and exports through the artisan commands', function (): void {

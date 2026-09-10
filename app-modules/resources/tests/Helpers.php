@@ -3,9 +3,14 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Konventix\Event\Events\EventCreated;
+use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Permission as PermissionModel;
+use Konventix\Platform\Models\Role;
 use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
@@ -18,6 +23,7 @@ use Konventix\Resources\Data\PlanDocumentData;
 use Konventix\Resources\Data\PlanSaveData;
 use Konventix\Resources\Data\PlanSaveResultData;
 use Konventix\Resources\Enums\ClaimState;
+use Konventix\Resources\Enums\Permission;
 use Konventix\Resources\Enums\PlanVersionSource;
 use Konventix\Resources\Enums\SeatingMode;
 use Konventix\Resources\Models\Plan;
@@ -451,4 +457,144 @@ function seatingOccupy(Resource $place, ?string $registrationId = null): Resourc
     $booking->forceFill(['claim_id' => $claim->id])->save();
 
     return $booking->refresh();
+}
+
+/**
+ * A `kind: seating` grant in the payload shape of `RegistrationConfirmed`.
+ *
+ * @param  list<string>  $resourceTypeIds
+ * @return array{kind: string, role: string, quantity: int, resource_type_id: string|null, resource_type_ids: list<string>|null, seating_mode: string|null}
+ */
+function seatingGrantPayload(array $resourceTypeIds, int $quantity = 1, string $seatingMode = 'pick'): array
+{
+    return [
+        'kind' => 'seating',
+        'role' => 'seat',
+        'quantity' => $quantity,
+        'resource_type_id' => null,
+        'resource_type_ids' => $resourceTypeIds,
+        'seating_mode' => $seatingMode,
+    ];
+}
+
+/**
+ * Dispatches a real `RegistrationConfirmed` so the module's real listener
+ * wiring runs. Returns the registration id.
+ *
+ * @param  list<array<string, mixed>>  $grants
+ */
+function seatingConfirm(string $eventId, string $brandId, array $grants, ?string $registrationId = null, ?string $registrantUserId = null): string
+{
+    $registrationId ??= (string) Str::ulid();
+
+    event(new RegistrationConfirmed(
+        registrationId: $registrationId,
+        registrationTypeId: (string) Str::ulid(),
+        eventId: $eventId,
+        brandId: $brandId,
+        registrantUserId: $registrantUserId ?? (string) Str::ulid(),
+        confirmedAt: now()->toIso8601String(),
+        grants: $grants,
+    ));
+
+    return $registrationId;
+}
+
+/**
+ * Dispatches a real `RegistrationAmended`. Returns the amendment id.
+ *
+ * @param  list<array<string, mixed>>  $grants
+ */
+function seatingAmend(string $eventId, string $brandId, string $registrationId, array $grants, ?string $amendmentId = null, ?string $registrantUserId = null): string
+{
+    $amendmentId ??= (string) Str::ulid();
+
+    event(new RegistrationAmended(
+        registrationId: $registrationId,
+        amendmentId: $amendmentId,
+        registrationTypeId: (string) Str::ulid(),
+        eventId: $eventId,
+        brandId: $brandId,
+        registrantUserId: $registrantUserId ?? (string) Str::ulid(),
+        grants: $grants,
+        amendedAt: now()->toIso8601String(),
+    ));
+
+    return $amendmentId;
+}
+
+/**
+ * The registration's claim from its original confirmation (no amendment).
+ */
+function seatingClaimFor(string $registrationId): ResourceClaim
+{
+    return ResourceClaim::withoutBrandScope()
+        ->where('registration_id', $registrationId)
+        ->whereNull('amendment_id')
+        ->sole();
+}
+
+/**
+ * A place *row*: a unit-mode resource projected from a plan (seating design
+ * §4.2), written directly instead of through `SavePlan`. The name is
+ * deliberately not `seatingPlace()` — that one (Task 14) builds a document
+ * element, and both live in the same process-global namespace.
+ *
+ * @param  array<string, mixed>  $attributes
+ */
+function seatingPlaceRow(Plan $plan, ResourceType $type, string $ref, array $attributes = []): Resource
+{
+    return Resource::factory()->ofType($type)->create(array_merge([
+        'plan_id' => $plan->id,
+        'ref' => $ref,
+        'label' => $ref,
+        'capacity' => 1,
+        'is_published' => $plan->published_at !== null,
+        'blocked' => false,
+    ], $attributes));
+}
+
+/**
+ * Runs an attempt that must be refused with a `ValidationException` and
+ * hands back its errors, so a test asserts on the field and the text.
+ *
+ * @return array<string, array<int, string>>
+ */
+function seatingRefusal(Closure $attempt): array
+{
+    try {
+        $attempt();
+    } catch (ValidationException $exception) {
+        return $exception->errors();
+    }
+
+    throw new RuntimeException('Expected a ValidationException and got none.');
+}
+
+/**
+ * A user holding `resources.book-on-behalf` on the brand, granted the way
+ * `permissions:sync` materialises it: a brand role plus a `model_has_roles`
+ * row (the same shape `PermissionHoldersTest` uses).
+ */
+function seatingUserWithBookOnBehalf(string $brandId): User
+{
+    $user = User::factory()->create();
+
+    PermissionModel::query()->firstOrCreate(['name' => Permission::BookOnBehalf->value, 'guard_name' => 'web']);
+
+    $role = Role::query()->create([
+        'name' => 'Seating desk '.Str::lower(Str::random(4)),
+        'guard_name' => 'web',
+        'brand_id' => $brandId,
+    ]);
+    $role->givePermissionTo([Permission::BookOnBehalf->value]);
+
+    DB::table('model_has_roles')->insert([
+        'role_id' => $role->id,
+        'model_type' => $user->getMorphClass(),
+        'model_id' => $user->id,
+        'brand_id' => $brandId,
+    ]);
+
+    return $user;
 }

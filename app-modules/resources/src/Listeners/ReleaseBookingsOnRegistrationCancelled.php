@@ -6,25 +6,24 @@ namespace Konventix\Resources\Listeners;
 
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Resources\Actions\ReleaseBookingsForRegistration;
+use Konventix\Resources\Actions\ReleaseSeatClaims;
 use Konventix\Resources\Enums\BookingState;
 
 /**
- * The contractual act ended, so the bookings it produced end with it
- * (SPEC.md "Consumes" — `RegistrationCancelled`). Every cancellation path
- * — cart expiry, unpaid reversal sweep, whole-order refund, registrant
- * request — funnels through Registration's `CancelRegistration`, so this
- * one listener covers them all.
+ * A cancelled registration gives everything back (seating design §7.2,
+ * §7.5): every held or confirmed booking, through S0's
+ * `ReleaseBookingsForRegistration` with reason `registration_cancelled`,
+ * and — since this slice — every live seat claim.
  *
- * Deliberately **not** `ShortCircuitsInactiveModule`: releasing is safe
- * and idempotent for a brand that has switched Resources off, and a seat
- * that stays booked for a cancelled registration is the worse outcome.
- * ADR-0060 records this as the explicit ADR-0003 exception. Registered in
- * `ResourcesServiceProvider::registerListeners()`.
+ * Deliberately ungated (ADR-0060's explicit ADR-0003 exception): a release
+ * is safe and idempotent for a brand that switched the module off, and the
+ * event carries no brand id to gate on anyway.
  */
 final class ReleaseBookingsOnRegistrationCancelled
 {
     public function __construct(
         private readonly ReleaseBookingsForRegistration $action,
+        private readonly ReleaseSeatClaims $releaseSeatClaims,
     ) {}
 
     public function handle(RegistrationCancelled $event): void
@@ -34,5 +33,7 @@ final class ReleaseBookingsOnRegistrationCancelled
             to: BookingState::Cancelled,
             reason: ReleaseBookingsForRegistration::REASON_REGISTRATION_CANCELLED,
         );
+
+        $this->releaseSeatClaims->handle($event->registrationId, ReleaseSeatClaims::REASON_CANCELLED);
     }
 }

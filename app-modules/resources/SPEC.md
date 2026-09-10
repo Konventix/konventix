@@ -53,11 +53,11 @@ its assumptions.
   projected into `resources` so that a place *is* a unit-mode resource
   whose id equals the element id (ADR-0060 points 2 and 4). A category is a
   `ResourceType` (point 3).
-- **ResourceClaim** — a seating entitlement snapshotted from a
-  registration's `seating` grant: the categories it may be placed in, the
-  number of places, and whether it is `unplaced`, `placed` or `released`
-  (ADR-0060 point 8, D-EVT-06). A claim that has not been placed is its own
-  row, never a fake booking.
+- **ResourceClaim** — the snapshot of a `grants: seating` entitlement from a
+  confirmed registration: which categories it may pick from, how (`pick` /
+  `assign`), how many places, and whether it is `unplaced`, `placed` or
+  `released`. One per confirmation occasion `(registration_id, amendment_id)`.
+  A claim that has not been placed is its own row, never a fake booking.
 
 ## Does not own
 
@@ -90,6 +90,9 @@ camelCase properties); `ResourcePublished`, `ResourceWithdrawn` and
 | `ResourceBookingHeld` | A temporary hold is placed | `bookingId`, `resourceId`, `brandId`, `holderType`, `holderId`, `quantity`, `startsAt`, `endsAt`, `holdExpiresAt` (null for an unclocked hold), `eventId`, `resourceTypeId`, `registrationId`, `claimId`, `label`, `ref` |
 | `ResourceBookingConfirmed` | A hold becomes a firm booking — **the event other modules act on** | `bookingId`, `resourceId`, `brandId`, `holderType`, `holderId`, `registrationId`, `quantity`, `startsAt`, `endsAt`, `confirmedAt`, `eventId`, `resourceTypeId`, `claimId`, `label`, `ref` |
 | `ResourceBookingReleased` | A booking is given back, cancelled, or expires | `bookingId`, `resourceId`, `brandId`, `holderType`, `holderId`, `reason` (`registration_cancelled`, `registration_rejected`, `plan_conflict`, `repicked`, `operator_released`, `expired`, or a caller's own), `releasedAt`, `eventId`, `resourceTypeId`, `registrationId`, `claimId`, `label`, `ref` |
+| `SeatClaimCreated` | A confirmed registration's seating grant became a claim, unplaced | `claim_id`, `registration_id`, `event_id`, `brand_id` |
+| `SeatClaimPlaced` | A claim was placed on concrete places; its bookings are confirmed. Emitted after commit, again on every re-pick | `claim_id`, `registration_id`, `event_id`, `brand_id`, `place_ids` |
+| `SeatClaimReleased` | The entitlement ended with its registration (cancelled or rejected) | `claim_id`, `registration_id`, `event_id`, `brand_id`, `reason` |
 | `ResourceBookingTransferred` *(proposed)* | A booking moves to a different holder or a different resource | `booking_id`, `resource_id`, `previous_resource_id`, `holder_id`, `previous_holder_id`, `transferred_at` |
 | `PlanSaved` | A plan document was saved and projected into `resources` (design 2026-09-10 §6.1); dispatched after the commit | `plan_id`, `event_id`, `brand_id`, `version`, `changed_place_ids` |
 | `PlanPublished` | A plan became visible to the seat picker (design 2026-09-10 §6.4) | `plan_id`, `event_id`, `brand_id` |
@@ -107,10 +110,10 @@ maintains from them.
 
 | Event | Owning module | Why |
 |---|---|---|
-| `RegistrationConfirmed` | Registration | The one event that materializes entitlements: its `grants` list carries the claimed `resource_type_id` and quantity, which `FulfilResourceClaims` turns into confirmed bookings — `n` separate unit bookings for quantity `n`, one quantity-mode booking otherwise, candidates in natural label order. Gated on the payload's `brandId` (`moduleActiveForBrand`), because paid registrations confirm from a webhook with no ambient brand. Idempotent per `(registration_id, amendment_id null)`. `seating` grants are handled in S3. |
+| `RegistrationConfirmed` | Registration | The one event that materializes entitlements: its `grants` list carries the claimed `resource_type_id` and quantity, which `FulfilResourceClaims` turns into confirmed bookings — `n` separate unit bookings for quantity `n`, one quantity-mode booking otherwise, candidates in natural label order. Gated on the payload's `brandId` (`moduleActiveForBrand`), because paid registrations confirm from a webhook with no ambient brand. Idempotent per `(registration_id, amendment_id null)`; `kind: seating` grants become `resource_claims` rows keyed on `(registration_id, amendment_id)`. |
 | `RegistrationAmended` | Registration | Same as confirmation for the *added* grants only, idempotent per `(registration_id, amendment_id)` (ADR-0036). |
-| `RegistrationCancelled` | Registration | Releases every active booking of that registration (`ReleaseBookingsForRegistration`, state `cancelled`, reason `registration_cancelled`), looked up by registration id alone — the payload carries no brand. **Ungated** (ADR-0060's ADR-0003 exception): a release is safe for a brand that switched the module off. Claims → `released` from S3. |
-| `RegistrationRejected` | Registration | Same release with reason `registration_rejected`. |
+| `RegistrationCancelled` | Registration | Releases every active booking of that registration (`ReleaseBookingsForRegistration`, state `cancelled`, reason `registration_cancelled`), looked up by registration id alone — the payload carries no brand. **Ungated** (ADR-0060's ADR-0003 exception): a release is safe for a brand that switched the module off. Every live seat claim of the registration is released too (`ReleaseSeatClaims`). |
+| `RegistrationRejected` | Registration | Same release with reason `registration_rejected`, and every seat claim and booking of the registration. |
 | `EventCreated`, `EventRescheduled`, `EventDetailsUpdated` | Event | Projected into `resource_event_windows` (`ProjectEventWindow`): the UTC instants of the event's wall-clock times in the payload's zone (ADR-0027), its name and slug. Upsert on `(brand_id, event_id)`; ungated so a brand that switches Resources on later finds the window there. `event:replay-details` backfills events older than the projection. |
 | `AdmissionRevoked` *(proposed)* | Admission | Releases bookings whose holder is that admission (a personal seat), leaving registration-level bookings alone. |
 | `EventArchived` *(proposed)* | Event | Closes the booking window; bookings become read-only history. |

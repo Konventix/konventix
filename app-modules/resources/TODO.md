@@ -18,10 +18,6 @@
       the console (categories, plans, occupancy, reservations), the picker on
       the brand host, observability and the editor. Nothing writes
       `resources` from a document yet.
-- [ ] Two `seating` grants on one registration type collide with the
-      `resource_claims` unique `(registration_id, amendment_id)` fixed in
-      design §4.6; the confirmation listener must merge them into one claim
-      or the design gets a §13 amendment before S3.
 - [ ] Seating MR note: S1 changed `app-modules/resources/database/migrations`
       (six additive migrations), so the reviewer expects the one full-suite
       run of Task 58 in the pipeline.
@@ -44,6 +40,13 @@
       winner for N parallel picks.
 
 ## Done
+
+- [x] Seat claims (seating design §7.2, #S3): `Actions\CreateSeatClaims` on
+      `RegistrationConfirmed` / `RegistrationAmended` (one `resource_claims`
+      row per seating grant, `unplaced`, keyed on
+      `(registration_id, amendment_id)`), `Actions\ReleaseSeatClaims` on
+      cancellation and rejection, events `SeatClaimCreated`,
+      `SeatClaimPlaced`, `SeatClaimReleased`.
 
 - [x] Seating Task 21: `ReservePlaceForOperator` / `ReleaseOperatorReservation` (holder `operator`, reason `operator_released`, occupied places refused by the constraint).
 
