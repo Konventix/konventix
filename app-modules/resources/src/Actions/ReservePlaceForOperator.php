@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Resources\Actions;
 
+use Illuminate\Database\DeadlockException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Resources\Exceptions\ResourceUnavailableException;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceEventWindow;
@@ -21,6 +24,18 @@ use Konventix\Resources\Models\ResourceType;
  * `ResourceUnavailableException`; nothing here checks first (ADR-0020). A
  * blocked place may be reserved: blocking keeps registrants off it, which
  * is exactly when the orga wants it. A removed place may not.
+ *
+ * This transaction nests `HoldResourceBooking`'s own exactly the way
+ * `AssignPlacesToRegistration`'s does, so a genuine `40P01` reaches this
+ * method as Laravel's `DeadlockException` (a `PDOException`, not a
+ * `QueryException` — see `AssignPlacesToRegistration`'s class docblock for
+ * the mechanism) rather than through `HoldResourceBooking`'s own
+ * `QueryException`-only catch. Both that and a raw `QueryException` a
+ * differently-nested caller could still produce are normalised here to this
+ * Action's own contract exception, `ResourceUnavailableException`, so an
+ * operator reserving a seat someone else is buying at that instant gets the
+ * same clean refusal `ResourceUnavailableException` already gives for the
+ * sequential case — never an uncaught crash.
  *
  * `Permission::BookOnBehalf` is checked by the console controller.
  */
@@ -45,16 +60,26 @@ final class ReservePlaceForOperator
                 throw ValidationException::withMessages(['placeId' => ['The event window is not projected yet; run event:replay-details.']]);
             }
 
-            $booking = $this->hold->handle(
-                resource: $place,
-                holderType: ResourceBooking::HOLDER_OPERATOR,
-                holderId: $actorUserId,
-                startsAt: $window->starts_at,
-                endsAt: $window->ends_at,
-                quantity: 1,
-            );
+            try {
+                $booking = $this->hold->handle(
+                    resource: $place,
+                    holderType: ResourceBooking::HOLDER_OPERATOR,
+                    holderId: $actorUserId,
+                    startsAt: $window->starts_at,
+                    endsAt: $window->ends_at,
+                    quantity: 1,
+                );
 
-            return $this->confirm->handle($booking);
+                return $this->confirm->handle($booking);
+            } catch (DeadlockException) {
+                throw ResourceUnavailableException::alreadyBooked($place->id);
+            } catch (QueryException $exception) {
+                if (AssignPlacesToRegistration::isRaceFailure($exception)) {
+                    throw ResourceUnavailableException::alreadyBooked($place->id);
+                }
+
+                throw $exception;
+            }
         });
     }
 }

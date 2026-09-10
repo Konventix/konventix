@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\DeadlockException;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -69,6 +70,34 @@ it('fails through the exclusion constraint when the place is occupied', function
 
     expect($existing->fresh()->state)->toBe(BookingState::Confirmed)
         ->and(ResourceBooking::query()->where('resource_id', $place->id)->whereIn('state', BookingState::occupyingValues())->count())->toBe(1);
+});
+
+it('refuses cleanly when the nested hold reports a deadlock, not just an exclusion violation', function (): void {
+    // A genuine 40P01 needs two live connections actually racing for a
+    // lock — Pest runs single-threaded inside one transaction and can
+    // never produce that contention itself (`ProbeSeatRace`'s own
+    // docblock; the real proof for AssignPlacesToRegistration is the
+    // two-process `resources:probe-seat-race` command, not a Pest test).
+    // This reproduces the *shape* Laravel hands back for a real one
+    // instead: a raw DeadlockException escaping HoldResourceBooking's own
+    // nested transaction, which its QueryException-only catch cannot see,
+    // by throwing it from the model event the real INSERT would otherwise
+    // reach. Before the carried fix nothing in ReservePlaceForOperator
+    // caught this and it crashed the request uncaught; now it refuses the
+    // same clean way the sequential exclusion-violation case above does.
+    $this->withBrand();
+    [, $place] = operatorReservationPlace();
+
+    Event::listen('eloquent.saving: '.ResourceBooking::class, function (ResourceBooking $booking) use ($place): void {
+        if ($booking->resource_id === $place->id) {
+            throw new DeadlockException('deadlock detected', 40001);
+        }
+    });
+
+    expect(fn () => app(ReservePlaceForOperator::class)->handle($place, (string) Str::ulid()))
+        ->toThrow(ResourceUnavailableException::class);
+
+    expect(ResourceBooking::query()->where('resource_id', $place->id)->count())->toBe(0);
 });
 
 it('releases an operator reservation with reason operator_released and frees the place', function (): void {

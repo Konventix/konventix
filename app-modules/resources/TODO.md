@@ -31,6 +31,21 @@
 
 ## Done
 
+- [x] Carried fix: `ReservePlaceForOperator` nests `HoldResourceBooking`'s
+      transaction exactly the way `AssignPlacesToRegistration` does but
+      caught nothing at all — an operator reserving a seat someone else is
+      buying at that instant hit an uncaught `DeadlockException` (a
+      `PDOException` sibling of `QueryException`, not a subclass) instead of
+      a clean refusal. Now catches `DeadlockException` and a race-shaped
+      `QueryException` (`AssignPlacesToRegistration::isRaceFailure()`) and
+      normalises both to `ResourceUnavailableException`, its own existing
+      contract for "the place is taken". `OperatorReservationTest` proves it
+      by throwing a real `DeadlockException` from the `ResourceBooking`
+      `saving` event the actual INSERT would otherwise reach — genuine
+      concurrent contention needs two live connections a Pest test cannot
+      produce, the same reason `resources:probe-seat-race` exists as a
+      separate command for `AssignPlacesToRegistration`.
+
 - [x] `resources:probe-seat-race {place} {--workers=}` (seating design §11,
       #S3): real child processes race one place through
       `AssignPlacesToRegistration`; exactly one winner, one confirmed
