@@ -6,6 +6,10 @@
 
 ## Next
 
+- [ ] The type editor lists `seating` as a grant kind but has no fields for
+      its categories and mode yet, so the guard refuses such a save; the
+      `registration.type-editor.seating-fields` slot and
+      `RegistrationTypeGrantsCard.vue` (seating design §7.1) land in S4/S5.
 - [ ] A frozen type cannot be superseded from the console: an organizer whose
       terms have changed must build the replacement by hand. A "duplicate this
       type" action would make the intended path (new type, old one hidden by
@@ -60,6 +64,17 @@
       filter, refusal at submission and at the cart line (#218).
 
 ## Done
+
+- [x] Seating grant (seating design §7.1, #S3): `GrantKind::Seating`,
+      `Enums\SeatingMode`, `GrantData::resourceTypeIds` / `seatingMode`,
+      `Actions\Concerns\GuardsSeatingGrants` on type create/update and on
+      amendments — one seating grant per list, categories and mode required,
+      no category both first-fit-claimed and offered for picking. `grants` is
+      one of the axes `GuardsTypeConfiguration::frozenAxes()` locks once a
+      type has registrations, so this is not just a validation rule: a
+      seating grant has to be configured on a type before it sells anything,
+      an operational ordering constraint the operator has to know about
+      (ADR-0060) — there is no "add seating to a live type" path.
 
 - [x] ADR-0048 point 3 (Mail Task 5): a registration tells its holder every
       time its state changes. Five new listeners

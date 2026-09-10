@@ -25,7 +25,7 @@ is entitled to what*; other modules materialize those entitlements.
   | `approval` | `none` / `required` |
   | `settlement` | `free` / `instant` / `invoice` / `external` |
   | `confirmation_gate` | `on_submit` / `on_approval` / `on_payment` |
-  | `grants` | admissions, roles, resource claims |
+  | `grants` | admissions, roles, resource claims, seating |
 
   Four fundamentally different processes run on this one model: visitor ticket
   = `public` / `none` / `instant` / `on_payment`; exhibitor = `public` /
@@ -65,9 +65,14 @@ is entitled to what*; other modules materialize those entitlements.
   cancellation releases the submission's unit *plus* every amended one.
 - **The approval workflow** — submission, review, approval, rejection, and the
   record of who decided what and when.
-- **Grant definitions** — how many admissions of which role, and which resource
-  claims, a confirmed registration of a given type is entitled to. The
-  definition lives here; the resulting admissions and bookings do not.
+- **Grant definitions** — how many admissions of which role, which resource
+  claims, and which seating (categories, mode, number of places) a confirmed
+  registration of a given type is entitled to. The definition lives here; the
+  resulting admissions, bookings and seat claims do not. `grants` is one of the
+  axes `GuardsTypeConfiguration` freezes once a type has registrations
+  (ADR-0060), so a seating grant is an operational ordering constraint, not
+  something added after the fact: it must be on the type before the type sells
+  anything, never appended once registrations exist.
 - **Invitation tokens** for `invite_only` types and link tokens for `link`
   visibility.
 - **Cancellation and withdrawal** of the contractual act.

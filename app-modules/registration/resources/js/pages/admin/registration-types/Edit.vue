@@ -107,7 +107,14 @@ watch(needsPrice, (priced) => {
 function addGrant(): void {
     form.grants = [
         ...form.grants,
-        { kind: 'admission', role: '', quantity: 1, resourceTypeId: null },
+        {
+            kind: 'admission',
+            role: '',
+            quantity: 1,
+            resourceTypeId: null,
+            resourceTypeIds: null,
+            seatingMode: null,
+        },
     ];
 }
 

@@ -1021,6 +1021,8 @@ declare namespace Konventix {
                 readonly role: string;
                 readonly quantity: number;
                 readonly resourceTypeId: string | null;
+                readonly resourceTypeIds: string[] | null;
+                readonly seatingMode: Konventix.Registration.Enums.SeatingMode | null;
             };
             export type MyRegistrationData = {
                 readonly id: string;
@@ -1101,7 +1103,7 @@ declare namespace Konventix {
         namespace Enums {
             export type ConfirmationGate =
                 'on_submit' | 'on_approval' | 'on_payment';
-            export type GrantKind = 'admission' | 'resource_claim';
+            export type GrantKind = 'admission' | 'resource_claim' | 'seating';
             export type PaymentStatus = 'none' | 'pending' | 'paid' | 'overdue';
             export type Permission =
                 | 'registration.view-registrations'
@@ -1124,6 +1126,7 @@ declare namespace Konventix {
                 | 'cancelled';
             export type RegistrationVisibility =
                 'public' | 'link' | 'invite_only';
+            export type SeatingMode = 'pick' | 'assign';
             export type TaxClass = 'standard' | 'reduced';
             export type WaitlistState =
                 'queued' | 'offered' | 'converted' | 'expired' | 'withdrawn';

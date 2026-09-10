@@ -30,9 +30,14 @@ use Konventix\Registration\Models\RegistrationType;
  * a settlement or a gate under live registrations does not migrate them — it
  * silently reinterprets them, because the Actions read the type's *current*
  * values when a payment lands or an approval is given.
+ *
+ * The fourth guard, `GuardsSeatingGrants`, covers the seating grant's own
+ * cross-field rules (seating design §7.1).
  */
 trait GuardsTypeConfiguration
 {
+    use GuardsSeatingGrants;
+
     private function guardConfiguration(RegistrationTypeData $data): void
     {
         $priced = $data->settlement->requestsSettlement();
@@ -56,6 +61,8 @@ trait GuardsTypeConfiguration
                 'confirmationGate' => __('Confirming on payment needs a settlement that asks for payment.'),
             ]);
         }
+
+        $this->guardSeatingGrants($data->grants);
     }
 
     /**
