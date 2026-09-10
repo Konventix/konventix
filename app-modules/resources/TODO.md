@@ -42,6 +42,8 @@
 
 ## Done
 
+- [x] Seating Task 14: plan geometry (world transform, boxes), neighbour and warning computation, canonical JSON codec; shared `seating*` test helpers.
+
 - [x] Seating Task 12/13 — S1 complete: `Plan`, `PlanVersion` and
       `ResourceClaim` models with their factories
       (`PlanFactory::withGrid()`, `PlanVersionFactory::forPlan()`,
