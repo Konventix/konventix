@@ -401,6 +401,49 @@ Flagged for the operator (no blocking effect on the run):
 - `grants` stays a frozen axis: configure seating grants on the SXLan types at creation.
 - Category count versus quota is not validated (Resources cannot read quotas); the picker shows "no free places in your categories" and the operator watches `resource_seat_claims_unplaced`.
 
+## 12b. Seat categories and quotas (operator decisions, 2026-09-10)
+
+The question: a seat category has a finite number of places, and Registration owns a `Quota`
+entity that already limits how many registrations of a type may exist. Nothing joined them, so a
+type with a quota of 100 granting seating from a 20-place category could sell 100 registrations
+of which 80 could never be seated. Worse, the two ceilings failed differently: quota exhaustion
+produces a waitlist entry and an offer mail, while "no free seat in your categories" produced a
+red form field.
+
+Decided:
+
+1. **A seat category's ceiling is a Registration `Quota`.** The operator creates one quota per
+   seat category, sets its capacity to that category's bookable place count, and links it to every
+   registration type whose seating grant names that category. Nothing else in the codebase has the
+   three things a ceiling needs — a lock that holds under concurrency, a queue for whoever loses
+   the race, and a screen where the number can be seen and changed — and `Quota` has all three.
+2. **"Category full" therefore behaves exactly like "type full":** the sale stops and the buyer
+   joins the existing waitlist with its offer mail and 48-hour clock. This removes the asymmetry
+   above and is the reason the quota route was chosen over an independent counter.
+3. **Blocking or reserving a place consumes a unit of that category's quota, as if it had been
+   sold; unblocking or releasing gives the unit back.** This is new coupling in a direction that
+   does not exist today (Resources currently listens to Registration and never the reverse), so it
+   is built as: Resources emits a supply event when a place's bookability changes (blocked,
+   reserved for the operator, released, unpublished, deleted, or restored); Registration listens
+   and consumes or releases one unit of the linked quota. Releasing a unit already drains the
+   waitlist, so freeing a blocked seat offers it to the queue without further work.
+4. **The link between a category and its quota is an explicit column**, `quotas.resource_type_id`
+   (nullable, a plain ULID, no constraint), plus a category select on the quota form — not a naming
+   convention.
+5. **The grant contract is unchanged and must not carry a per-category capacity.** Grants freeze
+   once a type has registrations while quota capacity stays editable, a category's places are
+   shared by every type that names it so a per-type number could not bind the others, and the grant
+   already carries what Resources needs for eligibility.
+
+Not solved by this, and accepted: a quota unit is one registration row at submission and one
+admission at amendment, never a seat, so the seat quota is honest only where the seating grant's
+quantity is one; two types granting the same category from different quota rows still oversell it;
+and raising a capacity does not itself drain the waitlist.
+
+Scope note: the SXLan event referenced throughout this document is, per the operator on
+2026-09-10, a test event rather than a live one. The mechanism is therefore built generically and
+no category count is hard-coded anywhere.
+
 ## 13. Amendments
 
 Deviations found during implementation are appended here with date, reason and the task that introduced them.
