@@ -166,7 +166,7 @@ final class AssignPlacesToRegistration
 
             if ($ineligible !== []) {
                 throw $this->refuse(__('Place :ref is not available for this registration.', [
-                    'ref' => $this->refOf($ineligible[0]),
+                    'ref' => $this->refOf($ineligible[0], $locked->brand_id),
                 ]));
             }
 
@@ -369,12 +369,23 @@ final class AssignPlacesToRegistration
 
     /**
      * The human key of a place the claim may not take, for the error text —
-     * or the id when the row is gone.
+     * or the id when the row is gone or belongs to another brand.
+     *
+     * Brand-filtered from the claim (item 3 of the 2026-09-10 fix wave,
+     * #278): a registrant reaches this path by posting a place id, and an
+     * id belonging to another brand entirely was previously still looked
+     * up `withoutBrandScope()` with no brand re-filter, handing that
+     * brand's own place ref back in the error text.
      */
-    private function refOf(string $placeId): string
+    private function refOf(string $placeId, string $brandId): string
     {
-        $place = Resource::withoutBrandScope()->whereKey($placeId)->first();
+        $place = Resource::withoutBrandScope()->whereKey($placeId)->where('brand_id', $brandId)->first();
 
-        return $place->ref ?? $place->label ?? $placeId;
+        // Not `$place?->ref ?? ...`: Larastan mistypes `Builder::first()`
+        // here as never-null, which makes the nullsafe form a phpstan
+        // false positive (`nullsafe.neverNull`) — an explicit null check
+        // sidesteps it without changing the behaviour. A cross-brand id
+        // legitimately finds nothing here now, unlike before the fix.
+        return $place !== null ? ($place->ref ?? $place->label ?? $placeId) : $placeId;
     }
 }

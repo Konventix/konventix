@@ -6,6 +6,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Resources\Actions\AssignPlacesToRegistration;
 use Konventix\Resources\Enums\BookingState;
@@ -13,6 +14,7 @@ use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Events\ResourceBookingReleased;
 use Konventix\Resources\Events\SeatClaimPlaced;
 use Konventix\Resources\Models\Plan;
+use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceEventWindow;
 use Konventix\Resources\Models\ResourceType;
@@ -168,6 +170,35 @@ it('refuses a place of another event', function (): void {
     $errors = seatingRefusal(fn () => assignTestAction()->handle(seatingClaimFor($registrationId), [$foreign->id], AssignPlacesToRegistration::ACTOR_OPERATOR, null));
 
     expect($errors['placeIds'][0])->toContain('X-01')
+        ->and(ResourceBooking::query()->count())->toBe(0);
+});
+
+/**
+ * Item 3 of the 2026-09-10 fix wave (#278): `refOf()` looked a place up
+ * `withoutBrandScope()` with no brand re-filter, so a registrant posting a
+ * place id belonging to another brand entirely got that brand's own place
+ * ref back in the error text — a registrant-facing brand-scope escape.
+ */
+it('does not leak another brand\'s place ref through the refusal text', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources');
+    [$eventId, $type] = assignTestScene($brand);
+    $registrationId = seatingConfirm($eventId, $brand->id, [seatingGrantPayload([$type->id])]);
+
+    $otherBrand = Brand::factory()->create();
+    $foreign = app(BrandContext::class)->withBrand($otherBrand, function () use ($otherBrand): Resource {
+        $otherEventId = (string) Str::ulid();
+        seatingWindow($otherEventId, $otherBrand->id);
+        $otherType = ResourceType::factory()->forEvent($otherEventId)->create();
+        $otherPlan = seatingPlan($otherEventId, ['published_at' => now()]);
+
+        return seatingPlaceRow($otherPlan, $otherType, 'Y-01');
+    });
+
+    $errors = seatingRefusal(fn () => assignTestAction()->handle(seatingClaimFor($registrationId), [$foreign->id], AssignPlacesToRegistration::ACTOR_OPERATOR, null));
+
+    expect($errors['placeIds'][0])->not->toContain('Y-01')
+        ->and($errors['placeIds'][0])->toContain($foreign->id)
         ->and(ResourceBooking::query()->count())->toBe(0);
 });
 
