@@ -18,6 +18,7 @@ use Konventix\Resources\Console\AssignPlaceCommand;
 use Konventix\Resources\Console\ExpireResourceHoldsCommand;
 use Konventix\Resources\Console\PlanExportCommand;
 use Konventix\Resources\Console\PlanImportCommand;
+use Konventix\Resources\Console\ProbeSeatRace;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationAmended;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
 use Konventix\Resources\Listeners\ProjectEventWindow;
@@ -75,7 +76,7 @@ class ResourcesServiceProvider extends ModuleServiceProvider
     protected function registerSchedule(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([ExpireResourceHoldsCommand::class, PlanImportCommand::class, PlanExportCommand::class, AssignPlaceCommand::class]);
+            $this->commands([ExpireResourceHoldsCommand::class, PlanImportCommand::class, PlanExportCommand::class, AssignPlaceCommand::class, ProbeSeatRace::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {

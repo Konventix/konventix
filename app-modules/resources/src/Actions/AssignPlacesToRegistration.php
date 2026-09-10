@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Resources\Actions;
 
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\DeadlockException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -43,7 +44,14 @@ use Konventix\Resources\Models\ResourceEventWindow;
  * error naming the place, and the loser's transaction rolls back whole —
  * no booking, claim still `unplaced`. `placeIds` are sorted and de-duplicated
  * before locking so two pickers touching the same two places lock them in
- * the same order.
+ * the same order. `HoldResourceBooking`'s own transaction is always nested
+ * inside this one, so a real `40P01` reaches this method as Laravel's
+ * `DeadlockException` (a `PDOException`, not a `QueryException` —
+ * `ManagesTransactions::handleTransactionException()` wraps it precisely
+ * because the nesting level is above one) rather than as the SQLSTATE
+ * `isRaceFailure()` matches; both are caught here and treated the same,
+ * a fact `resources:probe-seat-race` proved by racing real processes where
+ * a single Pest transaction cannot.
  *
  * Eligibility is a query over the projection, never over the plan document
  * (seating design §6.2): a place is a non-deleted, non-blocked `resources`
@@ -148,6 +156,14 @@ final class AssignPlacesToRegistration
                     $created[] = $this->confirm->handle($booking);
                 } catch (ResourceUnavailableException) {
                     throw $this->taken($place);
+                } catch (DeadlockException) {
+                    // A deadlock inside HoldResourceBooking's own nested
+                    // transaction: Laravel already rolled that savepoint
+                    // back and reports it as this PDOException subtype
+                    // rather than the QueryException isRaceFailure() reads
+                    // (see the class docblock). Always a race — hold then
+                    // confirm never deadlocks with itself.
+                    throw $this->taken($place);
                 } catch (QueryException $exception) {
                     if (self::isRaceFailure($exception)) {
                         throw $this->taken($place);
@@ -197,10 +213,16 @@ final class AssignPlacesToRegistration
 
     /**
      * The two SQLSTATEs a lost race produces: `23P01` (exclusion violation)
-     * and `40P01` (deadlock). `HoldResourceBooking` already converts the
-     * first into `ResourceUnavailableException` when it sees it; this
-     * catches the constraint name too, for a driver that reports the code
-     * differently, and the deadlock the Action itself never sees.
+     * and `40P01` (deadlock), for a `QueryException` reaching this method
+     * from a transaction at nesting level one — `resources:assign-place`
+     * calling `HoldResourceBooking` with no wrapping transaction of its own,
+     * or a direct unit test. `HoldResourceBooking` already converts the
+     * exclusion violation into `ResourceUnavailableException` when it sees
+     * it; this catches the constraint name too, for a driver that reports
+     * the code differently. The far more common case — this Action's own
+     * transaction nests `HoldResourceBooking`'s — never reaches here as a
+     * `QueryException` at all; see the `DeadlockException` catch above and
+     * the class docblock.
      */
     public static function isRaceFailure(QueryException $exception): bool
     {

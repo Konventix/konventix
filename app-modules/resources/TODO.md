@@ -28,13 +28,20 @@
       (ADR-0020 assigns Resources that job, #28); today it only re-projects
       the window. Out of scope for the seating slices (design doc §14).
 
-## Backlog
-
-- [ ] `resources:probe-seat-race` (design doc §11, optional): child
-      processes on the `commerce:probe-invoice-numbering` pattern proving one
-      winner for N parallel picks.
-
 ## Done
+
+- [x] `resources:probe-seat-race {place} {--workers=}` (seating design §11,
+      #S3): real child processes race one place through
+      `AssignPlacesToRegistration`; exactly one winner, one confirmed
+      booking; cleans up unless `--keep`; refuses production.
+      `SeatRaceProbeTest` runs it in CI. The two-phones check stays in #80.
+      The first real run deadlocked a worker instead of refusing it: a
+      `40P01` inside `HoldResourceBooking`'s transaction, which always nests
+      inside this Action's, reaches Laravel as `DeadlockException` (a
+      `PDOException`), not the `QueryException` `isRaceFailure()` reads —
+      `AssignPlacesToRegistration` now catches it explicitly, the case the
+      single-process suite could assert `isRaceFailure()` on but never
+      actually trigger.
 
 - [x] `Actions\AssignPlacesToRegistration` (seating design §7.3, #S3): the
       one pick path — claim locked `FOR UPDATE`, sorted distinct place ids,
