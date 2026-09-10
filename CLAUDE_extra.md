@@ -68,4 +68,6 @@ resolved by domain at request time — this is NOT multi-tenancy.
 
 Registration (commercial act) ≠ Admission (a person's access right).
 Resource (generic, time-dimensioned) replaces Seat. Staffing replaces OrgaTeam.
+Place = Resource, Kategorie = ResourceType; a hall plan is a document projected
+into `resources`, a seat entitlement is a ResourceClaim (ADR-0060).
 See `docs/architecture/module-map.md` for the full mapping.
