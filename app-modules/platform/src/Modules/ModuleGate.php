@@ -63,9 +63,9 @@ class ModuleGate
      * request and wrong for a `RegistrationConfirmed` that Stripe's webhook
      * fired: the brand is known, it just is not in context.
      *
-     * The brand is loaded `withoutGlobalScopes()` so a hardened scope on the
-     * admin host (ADR-0029) cannot turn a real brand into "not found". The
-     * ambient context is never touched.
+     * `Brand` itself carries no global scope — it is the scoping level, not a
+     * scoped model — so the lookup needs no escape hatch. What matters is
+     * that the ambient context is never touched.
      */
     public function isActiveForBrand(string $module, string $brandId): bool
     {
@@ -73,7 +73,7 @@ class ModuleGate
             return true;
         }
 
-        $brand = Brand::query()->withoutGlobalScopes()->find($brandId);
+        $brand = Brand::query()->find($brandId);
 
         if ($brand === null) {
             return false;
