@@ -34,6 +34,17 @@ use Konventix\Resources\Models\ResourceType;
  * bookings from its confirmation is fulfilled — the old "any booking for
  * this registration" guard silently dropped every amendment.
  *
+ * The idempotency check excludes **seat bookings** (item 4 of the
+ * 2026-09-10 fix wave, #278): `AssignPlacesToRegistration` writes into the
+ * same `(brand_id, registration_id, amendment_id)` key space this Action
+ * checks, but with `claim_id` set — this Action's own bookings never carry
+ * one. Without the `claim_id` filter, a confirmation that arrived before
+ * the event window was projected (this Action fulfils nothing, §"window
+ * projection" below) followed by the registrant picking a seat left a row
+ * that satisfied `alreadyFulfilled` on replay, so a later, correctly-timed
+ * replay of the same confirmation silently never fulfilled the
+ * `resource_claim` grant it was meant to retry.
+ *
  * **Quantity `n` is `n` seats.** In unit mode a claim for two seats makes
  * two separate bookings on two resources (a unit cannot hold quantity 2);
  * in quantity mode it is one booking drawing `n` off one resource's
@@ -65,6 +76,7 @@ final class FulfilResourceClaims
             ->where('brand_id', $brandId)
             ->where('registration_id', $registrationId)
             ->where('amendment_id', $amendmentId)
+            ->whereNull('claim_id')
             ->exists();
 
         if ($alreadyFulfilled) {

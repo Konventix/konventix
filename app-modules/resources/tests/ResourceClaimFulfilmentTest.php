@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventRescheduled;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Resources\Actions\AssignPlacesToRegistration;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
@@ -216,4 +217,47 @@ it('skips a blocked place when it fills a resource_claim grant', function (): vo
 
     expect(ResourceBooking::withoutBrandScope()->where('resource_id', $blocked->id)->count())->toBe(0)
         ->and(ResourceBooking::withoutBrandScope()->where('resource_id', $free->id)->count())->toBe(1);
+});
+
+/**
+ * Item 4 of the 2026-09-10 fix wave (#278): a seat booking (`claim_id` set)
+ * shares this Action's idempotency key space — `(brand_id, registration_id,
+ * amendment_id)` — with a `resource_claim` booking. Before the fix, a
+ * confirmation that found no event window fulfilled nothing; the
+ * registrant then picked a seat; a later replay of the same confirmation
+ * saw the seat booking already in that key space and silently never
+ * fulfilled the booth grant, even once the window existed.
+ */
+it('still fulfils a resource_claim grant on replay after a seat was picked in between', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources');
+
+    $eventId = (string) Str::ulid();
+    // No window projected yet.
+    $seatType = seatingCategory($eventId, 'seat');
+    $boothType = seatingUnitType($eventId);
+    // `AssignPlacesToRegistration` (the pick path) only ever accepts a
+    // place on a *published plan* (design §7.3) — a plan-less resource
+    // like `seatingPublishedResource()` builds is never eligible.
+    ['places' => $seatPlaces] = seatingPublishedPlan($eventId, $seatType, 1);
+    $seatPlace = $seatPlaces[0];
+    $booth = seatingPublishedResource($boothType, 'Booth-01');
+
+    $grants = [seatingClaimGrant($boothType->id), seatingGrantPayload([$seatType->id])];
+    $registrationId = seatingConfirmRegistration($eventId, $brand->id, $grants);
+
+    // The window was missing, so nothing was booked — the booth grant is
+    // still open and the seating claim is unplaced.
+    expect(ResourceBooking::query()->count())->toBe(0);
+
+    seatingProjectWindow($eventId, $brand->id);
+    $claim = seatingClaimFor($registrationId);
+    app(AssignPlacesToRegistration::class)->handle($claim, [$seatPlace->id], AssignPlacesToRegistration::ACTOR_OPERATOR, null);
+
+    // A replayed confirmation must still fulfil the booth grant now that
+    // the window exists, even though a seat booking already occupies the
+    // same (brand, registration, amendment) key space.
+    seatingConfirmRegistration($eventId, $brand->id, $grants, $registrationId);
+
+    expect(ResourceBooking::withoutBrandScope()->where('resource_id', $booth->id)->count())->toBe(1);
 });
