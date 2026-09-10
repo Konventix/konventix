@@ -26,6 +26,14 @@ use Konventix\Platform\Modules\ModuleGate;
  *         // ...
  *     }
  *
+ *     public function handle(RegistrationConfirmed $event): void
+ *     {
+ *         if (! $this->moduleActiveForBrand($event->brandId)) {
+ *             return;
+ *         }
+ *         // ...
+ *     }
+ *
  * The module name comes from the listener's own module ServiceProvider name;
  * implement moduleName() with the same kebab-case string.
  */
@@ -40,5 +48,16 @@ trait ShortCircuitsInactiveModule
     protected function moduleIsInactive(): bool
     {
         return ! app(ModuleGate::class)->isActive($this->moduleName());
+    }
+
+    /**
+     * The gate for events that fire with no brand in context — a webhook, the
+     * scheduler — where the listener hands over the brand id its payload
+     * carries. Same answer as `moduleIsInactive()` for the same brand; this
+     * one just does not need the middleware to have set it.
+     */
+    protected function moduleActiveForBrand(string $brandId): bool
+    {
+        return app(ModuleGate::class)->isActiveForBrand($this->moduleName(), $brandId);
     }
 }

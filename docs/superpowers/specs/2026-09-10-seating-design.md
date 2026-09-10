@@ -411,6 +411,7 @@ Deviations found during implementation are appended here with date, reason and t
 - **2026-09-10, pre-flight scan.** §7.2's first-fit order "plan, zone, group, ref" is implemented as a natural sort of the label with a `ref ?? label` tiebreak, which orders A-2 before A-10 as intended but does not group by plan and zone first. Deferred; single-plan events are unaffected.
 
 - 2026-09-10, pre-flight (issue #281): §4.4's `resource_plans.background` column, its `BackgroundData` shape (§5) and its place in `PlanViewData`/`PlanEditorData` (§7.4, §8.3) ship in this run, but no surface for them does: the plan edit page gets no `MediaPicker` field to set a background and `SeatPlanScene.vue` renders no `<image>`, so §8.3's "raster backgrounds through the media library" is deferred. The value is stored and delivered to the client and ignored there. An operator cannot show a hall photo behind the plan in v1.
+- 2026-09-10, Task 1: `ModuleGate::isActiveForBrand()` takes the module name first, `isActiveForBrand(string $module, string $brandId)`, the way `isActive(string $module)` does; §7.2 wrote it without the module argument. `ShortCircuitsInactiveModule::moduleActiveForBrand(string $brandId)` is as written, the trait supplies the module from `moduleName()`.
 
 ## 14. Out of scope (one tracking issue, "Nach Event")
 
