@@ -51,8 +51,21 @@ return new class extends Migration
 
             $table->timestamp('published_at')->nullable();
 
-            // Reserved for plan copy; a user id, nulled on erasure (GDPR).
+            // Reserved for plan copy (design §14, "Nach Event" backlog): the
+            // source plan's id this one was copied from, analogous to
+            // `resources.origin_id` for a copied place. Not a person's id —
+            // corrected 2026-09-10; this line previously and wrongly said
+            // "a user id, nulled on erasure (GDPR)", which describes
+            // `created_by` below, not this column. Always null today
+            // because plan copy is not built (`ResourcesGdprHandler` has
+            // nothing to touch here yet); whoever ships plan copy should
+            // confirm it still holds no personal data before relying on
+            // that.
             $table->ulid('origin_id')->nullable();
+
+            // Who created this plan (`Actions\CreatePlan`); nulled on
+            // erasure, exported as its own `plans` section — see
+            // `ResourcesGdprHandler`.
             $table->ulid('created_by')->nullable();
 
             $table->timestamps();

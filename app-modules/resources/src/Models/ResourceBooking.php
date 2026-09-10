@@ -27,8 +27,12 @@ use Konventix\Resources\Models\Resource as BookableResource;
  * short domain string, never a polymorphic Eloquent relation (ADR-0006).
  * Holder types are `registration` and, since Seating, `operator`.
  *
- * `holder_id` is nullable only for the erasure case (ADR-0050): a booking
- * is always created with one.
+ * `holder_id` is schema-nullable but only ever actually null for the
+ * erasure case (ADR-0050): a booking is always created with one, and the
+ * check constraint `resource_bookings_registration_holder_not_null` makes
+ * that a database rule for `holder_type = 'registration'` specifically —
+ * that holder is the registration id, never a person's, and can never be
+ * null. Only an `operator` reservation's `holder_id` ever actually nulls.
  *
  * @property string $id
  * @property string $brand_id

@@ -16,6 +16,12 @@ namespace Konventix\Resources\Events;
  * Since seating S0 the payload also names the event, the type, the
  * registration and claim it belongs to and the resource's label, so a
  * consumer never has to join back into this module's tables (ADR-0004).
+ *
+ * `holderId` is nullable (2026-09-10, GDPR follow-up): an operator's own
+ * reservation stays confirmed indefinitely with no clock, so an erasure can
+ * null `resource_bookings.holder_id` long before anyone clicks unreserve —
+ * the row this event is built from is read back after that erasure, not
+ * created fresh. A consumer must not assume the holder is still nameable.
  */
 final readonly class ResourceBookingReleased
 {
@@ -24,7 +30,7 @@ final readonly class ResourceBookingReleased
         public string $resourceId,
         public string $brandId,
         public string $holderType,
-        public string $holderId,
+        public ?string $holderId,
         public string $reason,
         public string $releasedAt,
         public string $eventId,

@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Compliance\Gdpr\SubjectRef;
+use Konventix\Resources\Actions\ReleaseOperatorReservation;
 use Konventix\Resources\Actions\SavePlan;
 use Konventix\Resources\Data\PlanSaveData;
+use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\PlanVersionSource;
 use Konventix\Resources\Enums\SeatingMode;
@@ -151,3 +154,37 @@ it('nulls every reference to the subject and keeps the rows, in both modes', fun
         ->and($otherClaim->refresh()->registrant_user_id)->toBe($otherUserId)
         ->and(ResourceBooking::query()->count())->toBe(4);
 })->with([DeletionMode::Anonymize, DeletionMode::Erase]);
+
+it('releases an operator reservation whose holder was already erased, without crashing', function (): void {
+    // The ordinary sequence, not a contrived one: erase the person first,
+    // then an operator clicks unreserve on the plan console days later.
+    // ReleaseResourceBooking builds ResourceBookingReleased from the row's
+    // own holder_id, now null — a reachable TypeError under strict types
+    // before ResourceBookingReleased/Confirmed's $holderId was widened.
+    $this->withBrand();
+    $subjectUserId = (string) Str::ulid();
+    ['reservation' => $reservation] = seatingGdprFixture($subjectUserId);
+
+    (new ResourcesGdprHandler)->delete(SubjectRef::forUser($subjectUserId), DeletionMode::Erase);
+
+    expect($reservation->refresh()->holder_id)->toBeNull();
+
+    $released = app(ReleaseOperatorReservation::class)->handle($reservation);
+
+    expect($released->state)->toBe(BookingState::Released)
+        ->and($released->holder_id)->toBeNull();
+});
+
+it('the database refuses to null a registration-held booking\'s holder', function (): void {
+    // The schema's own guarantee behind ResourcesGdprHandler's docblock:
+    // erasure may null an operator reservation's holder, but a
+    // registration-held booking's holder_id is the registration id, never
+    // a person's — resource_bookings_registration_holder_not_null makes
+    // that a database rule, not only the handler's intent (ADR-0020's
+    // "the database refuses, not the Action" pattern, ResourceBookingTest).
+    $this->withBrand();
+    $booking = ResourceBooking::factory()->create(['holder_type' => ResourceBooking::HOLDER_REGISTRATION]);
+
+    expect(fn () => ResourceBooking::withoutBrandScope()->whereKey($booking->id)->update(['holder_id' => null]))
+        ->toThrow(QueryException::class);
+});

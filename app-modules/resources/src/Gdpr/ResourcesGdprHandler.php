@@ -39,6 +39,17 @@ use Konventix\Resources\Models\ResourceClaim;
  * The subject is a person, not a person-at-a-brand (ADR-0050 §2): every
  * query drops the brand scope. An email-only subject cannot be answered —
  * nothing here keys on an address. Both methods are idempotent.
+ *
+ * An operator reservation carries no clock and may stay confirmed
+ * indefinitely, so its `holder_id` can be nulled here long before anyone
+ * releases it — `ResourceBookingReleased`/`Confirmed` read that column back
+ * and must tolerate null (2026-09-10 follow-up: this was a reachable
+ * TypeError on the plan console's unreserve button before those events'
+ * `$holderId` was widened; see `ResourcesGdprHandlerTest.php`, "releases an
+ * operator reservation whose holder was already erased, without
+ * crashing"). Only that `operator` case ever nulls:
+ * `resource_bookings_registration_holder_not_null` forbids it for
+ * `holder_type = 'registration'` at the schema level.
  */
 final class ResourcesGdprHandler implements GdprHandler
 {
