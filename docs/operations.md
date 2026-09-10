@@ -7,7 +7,7 @@ section below is the runbook anchor the rule's annotation names.
 ## Dashboards
 
 Grafana folder "Konventix": `konventix-sale` (orders, payments, webhooks,
-waiting room, messages), `konventix-platform` (HTTP, queues, health,
+waiting room, messages, seating), `konventix-platform` (HTTP, queues, health,
 runtime, database), `konventix-logs` (errors, request records, one
 correlation id). Dashboards are generated from
 `contrib/observability/src/`; an edit in Grafana is reverted on the next
