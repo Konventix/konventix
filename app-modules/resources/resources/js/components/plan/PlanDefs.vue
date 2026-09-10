@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { Check } from '@lucide/vue';
 import { symbolFor } from './symbols';
 import { STATE_FILL } from './tokens';
 
 /**
  * The scene's shared SVG `<defs>` (design §7.4): the grid background
- * pattern, the diagonal hatch every ineligible place draws over its fill
- * (state is never colour-only, ADR-0055), and one `<symbol>` per category
- * that `PlanPlace.vue`'s `<use>` references by id. Split out of
- * `SeatPlanScene.vue` purely for size — none of this is interactive.
+ * pattern, the diagonal hatch every ineligible place draws over its fill,
+ * one `<symbol>` per category that `PlanPlace.vue`'s `<use>` references by
+ * id, and the single `seat-badge-mine` check symbol every "mine" place
+ * draws in its corner — state is never colour-only, ADR-0055, and "mine"
+ * is the one selectable state, so it gets a symbol instead of the hatch.
+ * Split out of `SeatPlanScene.vue` purely for size — none of this is
+ * interactive.
  */
 type Category = Konventix.Resources.Data.CategoryData;
 
@@ -50,6 +54,9 @@ defineProps<{ categories: Category[] }>();
             viewBox="0 0 24 24"
         >
             <component :is="symbolFor(category.symbol)" />
+        </symbol>
+        <symbol id="seat-badge-mine" viewBox="0 0 24 24">
+            <Check />
         </symbol>
     </defs>
 </template>
