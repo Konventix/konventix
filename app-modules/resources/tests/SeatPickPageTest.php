@@ -10,6 +10,7 @@ use Konventix\Resources\Actions\ComputePlanAvailability;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\PlaceState;
+use Konventix\Resources\Enums\SeatingMode;
 use Konventix\Resources\Models\Plan;
 // Aliased: an unqualified "Resource" in a docblock generic collides with
 // PHP's `resource` pseudo-type and pint's docblock fixer silently lowercases
@@ -34,7 +35,7 @@ use Konventix\Resources\Models\ResourceType;
 /**
  * @return array{user: User, registrationId: string, eventId: string, type: ResourceType, claim: ResourceClaim, plan: Plan, places: list<BookableResource>, window: ResourceEventWindow}
  */
-function seatPickScene(Brand $brand, int $places = 3, int $quantity = 1): array
+function seatPickScene(Brand $brand, int $places = 3, int $quantity = 1, SeatingMode $seatingMode = SeatingMode::Pick): array
 {
     $eventId = (string) Str::ulid();
     $window = seatingWindow($eventId, $brand->getKey());
@@ -42,7 +43,7 @@ function seatPickScene(Brand $brand, int $places = 3, int $quantity = 1): array
     ['plan' => $plan, 'places' => $rows] = seatingPublishedPlan($eventId, $type, $places);
     $user = User::factory()->create();
     $registrationId = (string) Str::ulid();
-    $claim = seatingClaim($eventId, $registrationId, (string) $user->getKey(), [$type->getKey()], $quantity);
+    $claim = seatingClaim($eventId, $registrationId, (string) $user->getKey(), [$type->getKey()], $quantity, seatingMode: $seatingMode);
 
     return [
         'user' => $user,
@@ -141,6 +142,47 @@ it('renders the picker with SeatPickerData for the claim owner', function (): vo
             ->where('availability.places.'.$scene['places'][0]->getKey(), 'mine')
             ->where('availability.places.'.$scene['places'][1]->getKey(), 'free')
             ->where('currentPlaceIds', [$scene['places'][0]->getKey()]));
+});
+
+/**
+ * Item 1 of the 2026-09-10 fix wave (#278): the operator's `assign` mode
+ * means the organiser places the registrant, never the registrant
+ * themselves — so this page must not offer the picker for such a claim.
+ *
+ * The page still renders (200, not 404 or a redirect) — the explanatory
+ * state is a page, not an error — and carries `claim.seatingMode: assign`,
+ * the one prop `Pick.vue`'s `assignedByOrganiser` branches on to show
+ * `ASSIGNED_BY_ORGANISER_MESSAGE` instead of the picker (no SSR process
+ * runs in this environment, so the rendered markup itself is not
+ * assertable here — `npm run build` and `npm run types:check` cover the
+ * template compiling against this prop shape).
+ */
+it('sends an assign-mode claim so the page shows the explanatory state, not the picker', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources', $brand);
+    $scene = seatPickScene($brand, seatingMode: SeatingMode::Assign);
+
+    $this->actingAs($scene['user'])
+        ->get('/my/registrations/'.$scene['registrationId'].'/seat')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('seating/Pick')
+            ->where('claim.seatingMode', 'assign'));
+});
+
+it('refuses a posted pick against an assign-mode claim', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources', $brand);
+    $scene = seatPickScene($brand, seatingMode: SeatingMode::Assign);
+
+    $this->actingAs($scene['user'])
+        ->from('/my/registrations/'.$scene['registrationId'].'/seat')
+        ->post('/my/registrations/'.$scene['registrationId'].'/seat', ['placeIds' => [$scene['places'][0]->getKey()]])
+        ->assertRedirect('/my/registrations/'.$scene['registrationId'].'/seat')
+        ->assertSessionHasErrors('placeIds');
+
+    expect(ResourceBooking::query()->count())->toBe(0)
+        ->and($scene['claim']->fresh()->state)->toBe(ClaimState::Unplaced);
 });
 
 it('leaves unpublished plans out of the page', function (): void {

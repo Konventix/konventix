@@ -18,6 +18,17 @@ export const DEFAULT_LABEL_MM = 250;
 export const NO_FREE_PLACES_MESSAGE =
     'There are no free places in your categories right now.';
 
+/**
+ * Item 1 of the 2026-09-10 fix wave (#278): an `assign`-mode claim is
+ * placed by the organiser, never by the registrant — the picker must not
+ * render for one, and "Meine Registrierung" must not offer to open it.
+ * One constant, the same pattern as `NO_FREE_PLACES_MESSAGE`, so `Pick.vue`
+ * and `SeatSummarySlot.vue` say the same true, calm thing rather than two
+ * separately worded guesses.
+ */
+export const ASSIGNED_BY_ORGANISER_MESSAGE =
+    'Your seat will be assigned by the organiser.';
+
 /** `pxPerUnit` is screen pixels per viewBox millimetre at zoom 1. */
 export function labelsVisible(
     zoom: number,

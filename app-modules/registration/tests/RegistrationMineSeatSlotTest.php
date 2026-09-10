@@ -7,6 +7,7 @@ use Inertia\Testing\AssertableInertia;
 use Konventix\Identity\Models\User;
 use Konventix\Registration\Models\Registration;
 use Konventix\Resources\Enums\ClaimState;
+use Konventix\Resources\Enums\SeatingMode;
 
 /**
  * Resources' contribution to the registrant's own page (seating design
@@ -83,6 +84,36 @@ it('contributes nothing for a registration without a claim', function (): void {
         ->assertInertia(fn (AssertableInertia $page) => expect(seatSlotProps($page))->toBeNull());
 });
 
+/**
+ * Item 1 of the 2026-09-10 fix wave (#278): an `assign`-mode claim is the
+ * organiser's to place, so this slot must offer no link into the picker —
+ * only the same explanatory text `Pick.vue` shows for the same reason.
+ *
+ * `seatingMode` is the one prop `SeatSummarySlot.vue` branches on to hide
+ * both "Change your seat" and "Choose your seat" and show
+ * `ASSIGNED_BY_ORGANISER_MESSAGE` instead (no SSR process runs in this
+ * environment, so the rendered markup itself is not assertable here —
+ * `npm run build` and `npm run types:check` cover the template compiling
+ * against this prop shape).
+ */
+it('sends an assign-mode claim so the slot shows the explanation, not a picker link', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources', $brand);
+    $user = User::factory()->create();
+    $registration = Registration::factory()->confirmed()->create(['registrant_user_id' => $user->getKey()]);
+    $type = seatingCategory($registration->event_id);
+    seatingClaim($registration->event_id, $registration->getKey(), (string) $user->getKey(), [$type->getKey()], seatingMode: SeatingMode::Assign);
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            $summary = seatSlotProps($page);
+
+            expect($summary['seatingMode'])->toBe('assign');
+        });
+});
+
 it('is absent from the page while the module is off', function (): void {
     $this->withBrand();
     $user = User::factory()->create();
@@ -100,11 +131,18 @@ it('is absent from the page while the module is off', function (): void {
 
 /**
  * The batch's own addition (2026-09-10, ahead of design §12b/#282's quota
- * mechanism): the same `HasFreePlaceForClaim` read `SeatPickController`
- * uses for `SeatPickerData.noFreePlaces` (`SeatPickPageTest`'s matching
- * pair of tests) backs this slot's `noFreePlaces` too, so the picker and
- * "Meine Registrierung" never disagree about whether the same claim's
- * categories have anything free.
+ * mechanism): `HasFreePlaceForClaim` backs this slot's `noFreePlaces`.
+ *
+ * Corrected 2026-09-10 (fix-wave item 2, #278): this is not a read the
+ * picker shares any more. `SeatPickerData` dropped its own `noFreePlaces`
+ * field during an earlier review fix, and `Pick.vue` derives its "nothing
+ * free" banner live from polled availability instead
+ * (`categoriesHaveFreePlace()` in `eligibility.test.ts`, not a Pest test
+ * here). The two surfaces answer over different row sets — this Action
+ * counts every bookable resource of the claim's categories including a
+ * plan-less one, the picker's derivation only ever sees resources placed
+ * on a published plan of the claim's event — so they can, in principle,
+ * disagree; see `HasFreePlaceForClaim`'s docblock.
  */
 it('flags the slot the same way when nothing is free in the claim\'s categories', function (): void {
     $brand = $this->withBrand();

@@ -6,6 +6,7 @@ namespace Konventix\Resources\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Resources\Actions\AssignPlacesToRegistration;
@@ -17,6 +18,7 @@ use Konventix\Resources\Data\PlanViewData;
 use Konventix\Resources\Data\SeatClaimData;
 use Konventix\Resources\Data\SeatPickerData;
 use Konventix\Resources\Enums\BookingState;
+use Konventix\Resources\Enums\SeatingMode;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceType;
@@ -40,6 +42,15 @@ use Konventix\Resources\Models\ResourceType;
  * page already polls `availability` every 15 s, so `Pick.vue` derives
  * "nothing free" from that live map itself rather than from a boolean
  * this method could only compute once, at the moment of the request.
+ *
+ * `claim.seatingMode` decides whether the picker itself renders at all
+ * (item 1 of the 2026-09-10 fix wave, #278): an `assign` claim is placed
+ * by the organiser, never by the registrant, so `Pick.vue` shows the same
+ * explanatory state `SeatSummarySlot.vue` shows and never the picker. This
+ * method still renders the page for an `assign` claim — the explanatory
+ * state is a page, not a 404 — and `store()` refuses a pick against one
+ * regardless of what the client sent, since the mode already travelled in
+ * `claim.seatingMode` and a bypassed frontend could post anyway.
  */
 final class SeatPickController
 {
@@ -102,6 +113,12 @@ final class SeatPickController
         $userId = (string) $request->user()->getAuthIdentifier();
         $claim = $claims->handle($registration, $userId);
         abort_if($claim === null, 404);
+
+        if ($claim->seating_mode === SeatingMode::Assign) {
+            throw ValidationException::withMessages([
+                'placeIds' => __('Your seat will be assigned by the organiser.'),
+            ]);
+        }
 
         $data = PickPlacesData::validateAndCreate($request);
 

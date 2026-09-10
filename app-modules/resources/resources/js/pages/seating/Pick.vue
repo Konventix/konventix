@@ -18,6 +18,7 @@ import {
     toggleSelection,
 } from '../../components/plan/eligibility';
 import {
+    ASSIGNED_BY_ORGANISER_MESSAGE,
     NO_FREE_PLACES_MESSAGE,
     placeLabel,
     selectionAnnouncement,
@@ -62,6 +63,15 @@ type Availability = Konventix.Resources.Data.PlanAvailabilityData;
 type PlaceState = Konventix.Resources.Enums.PlaceState;
 
 const props = defineProps<Props>();
+
+/**
+ * Item 1 of the 2026-09-10 fix wave (#278): an `assign`-mode claim is the
+ * organiser's to place, not the registrant's — the picker itself must not
+ * render, only the explanatory state below.
+ */
+const assignedByOrganiser = computed(
+    () => props.claim.seatingMode === 'assign',
+);
 
 const activePlanId = ref(props.plans[0]?.id ?? '');
 const activePlan = computed(
@@ -192,94 +202,59 @@ watch(availability, (places) => {
             />
         </div>
 
-        <!-- Exactly one of these two banners: `soldOut` requires a published plan. -->
+        <!-- An `assign`-mode claim is the organiser's to place: no picker at
+             all, only the explanatory state (item 1, fix wave #278). -->
         <p
-            v-if="props.plans.length === 0"
-            class="text-sm text-text-muted"
+            v-if="assignedByOrganiser"
             role="status"
+            class="rounded-md border border-border bg-surface-raised p-4 text-sm text-text-muted"
         >
-            No seat plan has been published for this event yet. Come back later.
+            {{ ASSIGNED_BY_ORGANISER_MESSAGE }}
         </p>
 
         <template v-else>
+            <!-- Exactly one of these two banners: `soldOut` requires a published plan. -->
             <p
-                v-if="soldOut"
+                v-if="props.plans.length === 0"
+                class="text-sm text-text-muted"
                 role="status"
-                class="rounded-md border border-warning/40 bg-warning/15 p-4 text-sm text-warning-contrast"
             >
-                {{ NO_FREE_PLACES_MESSAGE }}
+                No seat plan has been published for this event yet. Come back
+                later.
             </p>
 
-            <PlanTabs
-                v-if="props.plans.length > 1"
-                v-model="activePlanId"
-                :plans="props.plans"
-            />
-
-            <div
-                v-if="activePlan"
-                :id="`plan-panel-${activePlan.id}`"
-                role="tabpanel"
-                :aria-labelledby="
-                    props.plans.length > 1
-                        ? `plan-tab-${activePlan.id}`
-                        : undefined
-                "
-                class="flex flex-col gap-6"
-            >
-                <CategoryLegend
-                    :categories="props.categories"
-                    :claim-resource-type-ids="props.claim.resourceTypeIds"
-                />
-
-                <SeatPlanScene
-                    :plan="activePlan"
-                    :categories="props.categories"
-                    :claim="props.claim"
-                    :availability="availability"
-                    :selected-ids="selected"
-                    @toggle="onToggle"
-                    @hint="onHint"
-                />
-
-                <SelectionHints :announcement="announcement" :hint="hint" />
-
-                <Form
-                    v-bind="SeatPickController.store.form(props.registrationId)"
-                    #default="{ errors, processing }"
-                    class="flex flex-col gap-4"
+            <template v-else>
+                <p
+                    v-if="soldOut"
+                    role="status"
+                    class="rounded-md border border-warning/40 bg-warning/15 p-4 text-sm text-warning-contrast"
                 >
-                    <input
-                        v-for="id in selected"
-                        :key="id"
-                        type="hidden"
-                        name="placeIds[]"
-                        :value="id"
+                    {{ NO_FREE_PLACES_MESSAGE }}
+                </p>
+
+                <PlanTabs
+                    v-if="props.plans.length > 1"
+                    v-model="activePlanId"
+                    :plans="props.plans"
+                />
+
+                <div
+                    v-if="activePlan"
+                    :id="`plan-panel-${activePlan.id}`"
+                    role="tabpanel"
+                    :aria-labelledby="
+                        props.plans.length > 1
+                            ? `plan-tab-${activePlan.id}`
+                            : undefined
+                    "
+                    class="flex flex-col gap-6"
+                >
+                    <CategoryLegend
+                        :categories="props.categories"
+                        :claim-resource-type-ids="props.claim.resourceTypeIds"
                     />
 
-                    <InputError :message="firstPlaceIdsError(errors)" />
-
-                    <div class="flex flex-wrap items-center gap-3">
-                        <Button
-                            type="submit"
-                            :disabled="processing || selected.length === 0"
-                        >
-                            {{ processing ? 'Saving…' : 'Save my seat' }}
-                        </Button>
-                        <span class="text-sm text-text-muted">{{
-                            announcement
-                        }}</span>
-                    </div>
-                </Form>
-
-                <section
-                    class="flex flex-col gap-3"
-                    aria-labelledby="plan-list-heading"
-                >
-                    <h2 id="plan-list-heading" class="text-lg font-medium">
-                        Choose from the list
-                    </h2>
-                    <PlanListView
+                    <SeatPlanScene
                         :plan="activePlan"
                         :categories="props.categories"
                         :claim="props.claim"
@@ -288,8 +263,58 @@ watch(availability, (places) => {
                         @toggle="onToggle"
                         @hint="onHint"
                     />
-                </section>
-            </div>
+
+                    <SelectionHints :announcement="announcement" :hint="hint" />
+
+                    <Form
+                        v-bind="
+                            SeatPickController.store.form(props.registrationId)
+                        "
+                        #default="{ errors, processing }"
+                        class="flex flex-col gap-4"
+                    >
+                        <input
+                            v-for="id in selected"
+                            :key="id"
+                            type="hidden"
+                            name="placeIds[]"
+                            :value="id"
+                        />
+
+                        <InputError :message="firstPlaceIdsError(errors)" />
+
+                        <div class="flex flex-wrap items-center gap-3">
+                            <Button
+                                type="submit"
+                                :disabled="processing || selected.length === 0"
+                            >
+                                {{ processing ? 'Saving…' : 'Save my seat' }}
+                            </Button>
+                            <span class="text-sm text-text-muted">{{
+                                announcement
+                            }}</span>
+                        </div>
+                    </Form>
+
+                    <section
+                        class="flex flex-col gap-3"
+                        aria-labelledby="plan-list-heading"
+                    >
+                        <h2 id="plan-list-heading" class="text-lg font-medium">
+                            Choose from the list
+                        </h2>
+                        <PlanListView
+                            :plan="activePlan"
+                            :categories="props.categories"
+                            :claim="props.claim"
+                            :availability="availability"
+                            :selected-ids="selected"
+                            @toggle="onToggle"
+                            @hint="onHint"
+                        />
+                    </section>
+                </div>
+            </template>
         </template>
     </div>
 </template>

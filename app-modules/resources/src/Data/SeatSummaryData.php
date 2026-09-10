@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Resources\Data;
 
+use Konventix\Resources\Enums\SeatingMode;
 use Konventix\Resources\Models\ResourceClaim;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -16,10 +17,14 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * links there by registration id through Wayfinder rather than carrying a
  * URL.
  *
- * `noFreePlaces` (2026-09-10 batch amendment, ahead of design §12b/#282's
- * quota mechanism): the same `HasFreePlaceForClaim` read `SeatPickerData`
- * carries, so a category with nothing free reads identically here and on
- * the picker — never a bare "choose your seat" link into a dead end.
+ * `noFreePlaces`: backed by `HasFreePlaceForClaim`, the one call site left
+ * once the picker started deriving its own "nothing free" banner live from
+ * polled availability (see that Action's docblock) — never a bare "choose
+ * your seat" link into a dead end.
+ *
+ * `seatingMode` (item 1 of the 2026-09-10 fix wave, #278): an `assign`
+ * claim is not the registrant's to pick, so the slot shows the same
+ * explanatory state the picker shows instead of a link into it.
  */
 #[TypeScript]
 final class SeatSummaryData extends Data
@@ -33,6 +38,7 @@ final class SeatSummaryData extends Data
         public readonly int $quantity,
         public readonly array $placeRefs,
         public readonly bool $noFreePlaces,
+        public readonly SeatingMode $seatingMode,
     ) {}
 
     /**
@@ -48,6 +54,7 @@ final class SeatSummaryData extends Data
             quantity: $claim->quantity,
             placeRefs: $placeRefs,
             noFreePlaces: $noFreePlaces,
+            seatingMode: $claim->seating_mode,
         );
     }
 }

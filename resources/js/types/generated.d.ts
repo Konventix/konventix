@@ -1336,6 +1336,7 @@ declare namespace Konventix {
                 readonly quantity: number;
                 readonly placeRefs: string[];
                 readonly noFreePlaces: boolean;
+                readonly seatingMode: Konventix.Resources.Enums.SeatingMode;
             };
             export type ShapeData = {
                 readonly type: Konventix.Resources.Enums.ShapeKind;

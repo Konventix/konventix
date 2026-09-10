@@ -2,7 +2,10 @@
 import { Link } from '@inertiajs/vue3';
 import { Armchair } from '@lucide/vue';
 import SeatPickController from '@/actions/Konventix/Resources/Http/Controllers/SeatPickController';
-import { NO_FREE_PLACES_MESSAGE } from './plan/labels';
+import {
+    ASSIGNED_BY_ORGANISER_MESSAGE,
+    NO_FREE_PLACES_MESSAGE,
+} from './plan/labels';
 
 /**
  * Resources' contribution to Registration's account page, registered by
@@ -19,6 +22,11 @@ import { NO_FREE_PLACES_MESSAGE } from './plan/labels';
  * copy while the claim is still unplaced: once a place is held, a claim
  * that could no longer be re-picked still has its own seat, which is not
  * the sold-out situation this is about.
+ *
+ * `summary.seatingMode` (item 1 of the 2026-09-10 fix wave, #278): an
+ * `assign` claim is the organiser's to place, so this offers no link into
+ * the picker at all — only `ASSIGNED_BY_ORGANISER_MESSAGE`, the same
+ * constant `Pick.vue` shows for the same reason.
  *
  * The link is Wayfinder's `SeatPickController.show`, never a URL carried
  * in the props.
@@ -55,6 +63,7 @@ const props = defineProps<{
                 </ul>
                 <span class="flex-1" />
                 <Link
+                    v-if="props.summary.seatingMode !== 'assign'"
                     :href="
                         SeatPickController.show(props.summary.registrationId)
                     "
@@ -68,16 +77,19 @@ const props = defineProps<{
             <template v-else>
                 <p class="text-sm text-text-muted" role="status">
                     {{
-                        props.summary.claimState === 'unplaced' &&
-                        props.summary.noFreePlaces
-                            ? NO_FREE_PLACES_MESSAGE
-                            : props.summary.claimState === 'unplaced'
-                              ? 'No place chosen yet.'
-                              : 'Your seat is no longer assigned.'
+                        props.summary.seatingMode === 'assign'
+                            ? ASSIGNED_BY_ORGANISER_MESSAGE
+                            : props.summary.claimState === 'unplaced' &&
+                                props.summary.noFreePlaces
+                              ? NO_FREE_PLACES_MESSAGE
+                              : props.summary.claimState === 'unplaced'
+                                ? 'No place chosen yet.'
+                                : 'Your seat is no longer assigned.'
                     }}
                 </p>
                 <span class="flex-1" />
                 <Link
+                    v-if="props.summary.seatingMode !== 'assign'"
                     :href="
                         SeatPickController.show(props.summary.registrationId)
                     "

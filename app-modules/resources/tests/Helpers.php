@@ -801,6 +801,7 @@ function seatingClaim(
     array $resourceTypeIds,
     int $quantity = 1,
     ClaimState $state = ClaimState::Unplaced,
+    SeatingMode $seatingMode = SeatingMode::Pick,
 ): ResourceClaim {
     $claim = new ResourceClaim;
     $claim->forceFill([
@@ -809,7 +810,7 @@ function seatingClaim(
         'registrant_user_id' => $userId,
         'amendment_id' => null,
         'resource_type_ids' => $resourceTypeIds,
-        'seating_mode' => SeatingMode::Pick,
+        'seating_mode' => $seatingMode,
         'quantity' => $quantity,
         'state' => $state,
     ])->save();
