@@ -287,3 +287,56 @@ it('refuses with a clear text when the event window is not projected', function 
     expect($errors['placeIds'][0])->toContain('event window')
         ->and(ResourceBooking::query()->count())->toBe(0);
 });
+
+it('assigns places by ref from the console with the operator actor', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources');
+    [$eventId, $type, $plan] = assignTestScene($brand);
+    seatingPlaceRow($plan, $type, 'A-01');
+    seatingPlaceRow($plan, $type, 'A-02');
+    $registrationId = seatingConfirm($eventId, $brand->id, [seatingGrantPayload([$type->id], quantity: 2, seatingMode: 'assign')]);
+
+    $this->artisan('resources:assign-place', ['registration' => $registrationId, 'refs' => ['A-02', 'A-01']])
+        ->expectsOutputToContain('A-01')
+        ->assertSuccessful();
+
+    expect(seatingClaimFor($registrationId)->state)->toBe(ClaimState::Placed)
+        ->and(ResourceBooking::query()->where('registration_id', $registrationId)->where('state', BookingState::Confirmed->value)->count())->toBe(2);
+});
+
+it('fails from the console for an unknown ref, a taken place and a registration without a claim', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources');
+    [$eventId, $type, $plan] = assignTestScene($brand);
+    $place = seatingPlaceRow($plan, $type, 'A-01');
+    $first = seatingConfirm($eventId, $brand->id, [seatingGrantPayload([$type->id])]);
+    $second = seatingConfirm($eventId, $brand->id, [seatingGrantPayload([$type->id])]);
+    assignTestAction()->handle(seatingClaimFor($first), [$place->id], AssignPlacesToRegistration::ACTOR_OPERATOR, null);
+
+    $this->artisan('resources:assign-place', ['registration' => $second, 'refs' => ['Z-99']])
+        ->expectsOutputToContain('Z-99')
+        ->assertFailed();
+
+    $this->artisan('resources:assign-place', ['registration' => $second, 'refs' => ['A-01']])
+        ->expectsOutputToContain('A-01')
+        ->assertFailed();
+
+    $this->artisan('resources:assign-place', ['registration' => (string) Str::ulid(), 'refs' => ['A-01']])
+        ->expectsOutputToContain('no live seat claim')
+        ->assertFailed();
+
+    expect(ResourceBooking::query()->where('registration_id', $second)->count())->toBe(0);
+});
+
+it('fails from the console when a ref exists on two published plans of the event', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources');
+    [$eventId, $type, $plan] = assignTestScene($brand);
+    seatingPlaceRow($plan, $type, 'A-01');
+    seatingPlaceRow(seatingPlan($eventId, ['published_at' => now()]), $type, 'A-01');
+    $registrationId = seatingConfirm($eventId, $brand->id, [seatingGrantPayload([$type->id])]);
+
+    $this->artisan('resources:assign-place', ['registration' => $registrationId, 'refs' => ['A-01']])
+        ->expectsOutputToContain('ambiguous')
+        ->assertFailed();
+});

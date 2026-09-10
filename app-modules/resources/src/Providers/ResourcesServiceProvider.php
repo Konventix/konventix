@@ -14,6 +14,7 @@ use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationRejected;
+use Konventix\Resources\Console\AssignPlaceCommand;
 use Konventix\Resources\Console\ExpireResourceHoldsCommand;
 use Konventix\Resources\Console\PlanExportCommand;
 use Konventix\Resources\Console\PlanImportCommand;
@@ -74,7 +75,7 @@ class ResourcesServiceProvider extends ModuleServiceProvider
     protected function registerSchedule(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([ExpireResourceHoldsCommand::class, PlanImportCommand::class, PlanExportCommand::class]);
+            $this->commands([ExpireResourceHoldsCommand::class, PlanImportCommand::class, PlanExportCommand::class, AssignPlaceCommand::class]);
         }
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {

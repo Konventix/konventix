@@ -42,6 +42,9 @@
       bookings released `repicked`, hold plus confirm per place, `23P01`
       and `40P01` translated to a `placeIds` error, `SeatClaimPlaced` after
       commit; registrant and operator actors.
+      `resources:assign-place {registration} {refs*} {--brand=}` wraps it
+      for the operator with the `operator` actor and no user check (design
+      §13).
 
 - [x] Seat claims (seating design §7.2, #S3): `Actions\CreateSeatClaims` on
       `RegistrationConfirmed` / `RegistrationAmended` (one `resource_claims`
