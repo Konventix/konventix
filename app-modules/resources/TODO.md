@@ -57,7 +57,7 @@
       `ProjectEventWindow` is one upsert on `(brand_id, event_id)`, parses
       the wall-clock payload with its zone (ADR-0027) and listens to
       `EventDetailsUpdated` too. `resource_bookings` gained `claim_id`
-      (FK arrives with `resource_claims` in S3), `amendment_id` and `label`.
+      (FK arrives with `resource_claims` in Task 10), `amendment_id` and `label`.
       `ResourceFactory` defaults to unpublished like the migration and has a
       `published()` state. `tests/Helpers.php` with the `seating*` helpers.
 
