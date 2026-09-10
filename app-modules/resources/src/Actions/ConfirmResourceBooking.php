@@ -17,6 +17,9 @@ use RuntimeException;
  * An expired hold is refused rather than quietly revived: its interval may
  * already have been taken by someone else, and confirming it would either
  * violate the exclusion constraint or silently double-book in quantity mode.
+ *
+ * Its event is dispatched after the outermost commit, never inside the
+ * transaction (design §6.1 step 7).
  */
 final class ConfirmResourceBooking
 {
@@ -51,7 +54,7 @@ final class ConfirmResourceBooking
             $resource = $booking->resourceUnscoped();
             $type = $resource->resourceTypeUnscoped();
 
-            event(new ResourceBookingConfirmed(
+            $event = new ResourceBookingConfirmed(
                 bookingId: $booking->id,
                 resourceId: $booking->resource_id,
                 brandId: $booking->brand_id,
@@ -67,7 +70,15 @@ final class ConfirmResourceBooking
                 claimId: $booking->claim_id,
                 label: $booking->label ?? $resource->label,
                 ref: $resource->ref,
-            ));
+            );
+
+            // Deferred to the outermost commit (design §6.1 step 7): SavePlan
+            // and the seat assignment release inside their own transaction,
+            // and a listener must never see a release the caller then rolls
+            // back. Without an open transaction the callback runs at once.
+            DB::afterCommit(static function () use ($event): void {
+                event($event);
+            });
 
             return $booking->refresh();
         });

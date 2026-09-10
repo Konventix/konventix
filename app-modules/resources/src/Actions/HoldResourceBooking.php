@@ -32,6 +32,9 @@ use Konventix\Resources\Models\ResourceBooking;
  * serialize; the row-level constraint still applies underneath. ADR-0034 is
  * candid that this invariant is weaker than unit mode's — it is an
  * acknowledged trade, not an oversight.
+ *
+ * Its event is dispatched after the outermost commit, never inside the
+ * transaction (design §6.1 step 7).
  */
 final class HoldResourceBooking
 {
@@ -111,7 +114,7 @@ final class HoldResourceBooking
                 throw $e;
             }
 
-            event(new ResourceBookingHeld(
+            $event = new ResourceBookingHeld(
                 bookingId: $booking->id,
                 resourceId: $resource->id,
                 brandId: $resource->brand_id,
@@ -127,7 +130,15 @@ final class HoldResourceBooking
                 claimId: $claimId,
                 label: $booking->label ?? $resource->label,
                 ref: $resource->ref,
-            ));
+            );
+
+            // Deferred to the outermost commit (design §6.1 step 7): SavePlan
+            // and the seat assignment release inside their own transaction,
+            // and a listener must never see a release the caller then rolls
+            // back. Without an open transaction the callback runs at once.
+            DB::afterCommit(static function () use ($event): void {
+                event($event);
+            });
 
             return $booking;
         });

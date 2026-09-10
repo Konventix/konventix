@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Resources\Actions\ConfirmResourceBooking;
@@ -387,4 +388,49 @@ it('carries the place ref on the booking events', function (): void {
 
     Event::assertDispatched(ResourceBookingHeld::class, fn (ResourceBookingHeld $event): bool => $event->ref === 'A-01');
     Event::assertDispatched(ResourceBookingConfirmed::class, fn (ResourceBookingConfirmed $event): bool => $event->ref === 'A-01');
+});
+
+it('dispatches the release only once the outermost transaction commits', function (): void {
+    // SavePlan and the seat assignment release inside their own
+    // transaction (design §6.1 step 7). RefreshDatabase wraps every test in
+    // one transaction, so "outermost" is level 1 here, not 0.
+    $this->withBrand();
+
+    $booking = bookingTestHold(bookingTestUnitResource(), 1);
+    $levels = [];
+
+    Event::listen(ResourceBookingReleased::class, function () use (&$levels): void {
+        $levels[] = DB::transactionLevel();
+    });
+
+    DB::transaction(function () use ($booking, &$levels): void {
+        app(ReleaseResourceBooking::class)->handle($booking);
+
+        expect($levels)->toBe([]);
+    });
+
+    expect($levels)->toBe([1])
+        ->and($booking->fresh()->state)->toBe(BookingState::Released);
+});
+
+it('dispatches hold and confirmation after the outermost commit as well', function (): void {
+    $this->withBrand();
+
+    $resource = bookingTestUnitResource();
+    $seen = [];
+
+    Event::listen(ResourceBookingHeld::class, function () use (&$seen): void {
+        $seen[] = ['held', DB::transactionLevel()];
+    });
+    Event::listen(ResourceBookingConfirmed::class, function () use (&$seen): void {
+        $seen[] = ['confirmed', DB::transactionLevel()];
+    });
+
+    DB::transaction(function () use ($resource, &$seen): void {
+        app(ConfirmResourceBooking::class)->handle(bookingTestHold($resource, 1));
+
+        expect($seen)->toBe([]);
+    });
+
+    expect($seen)->toBe([['held', 1], ['confirmed', 1]]);
 });

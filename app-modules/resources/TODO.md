@@ -42,6 +42,8 @@
 
 ## Done
 
+- [x] Seating Task 16: booking events (`Held`, `Confirmed`, `Released`) are dispatched after the outermost commit via `DB::afterCommit`.
+
 - [x] Seating Task 15: read-only plan diff and conflict detection, the save/validate payloads, `PlanStaleException` (409) and `PlanConflictException` (422), `PlanSaved`/`PlanPublished`/`PlanUnpublished`, operator holder type.
 
 - [x] Seating Task 14: plan geometry (world transform, boxes), neighbour and warning computation, canonical JSON codec; shared `seating*` test helpers.
