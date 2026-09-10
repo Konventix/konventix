@@ -27,11 +27,14 @@ use Konventix\Resources\Models\Resource as BookableResource;
  * short domain string, never a polymorphic Eloquent relation (ADR-0006).
  * Holder types are `registration` and, since Seating, `operator`.
  *
+ * `holder_id` is nullable only for the erasure case (ADR-0050): a booking
+ * is always created with one.
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $resource_id
  * @property string $holder_type
- * @property string $holder_id
+ * @property string|null $holder_id
  * @property string|null $registration_id
  * @property string|null $claim_id
  * @property string|null $amendment_id

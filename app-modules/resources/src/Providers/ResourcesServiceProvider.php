@@ -6,6 +6,7 @@ namespace Konventix\Resources\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventRescheduled;
@@ -36,6 +37,7 @@ use Konventix\Resources\Events\ResourceBookingConfirmed;
 use Konventix\Resources\Events\ResourceBookingHeld;
 use Konventix\Resources\Events\ResourceBookingRefused;
 use Konventix\Resources\Events\ResourceBookingReleased;
+use Konventix\Resources\Gdpr\ResourcesGdprHandler;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationAmended;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
 use Konventix\Resources\Listeners\Metrics\RecordBookingMetrics;
@@ -306,5 +308,15 @@ class ResourcesServiceProvider extends ModuleServiceProvider
             // `ResourceBookingReleased` for it.
             $schedule->command(ExpireResourceHoldsCommand::class)->everyMinute()->withoutOverlapping();
         });
+    }
+
+    /**
+     * Claims, plan versions and operator reservations point at people; the
+     * handler nulls those pointers and exports what they said (ADR-0004:
+     * Compliance orchestrates, this module touches its own rows).
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register(new ResourcesGdprHandler);
     }
 }
