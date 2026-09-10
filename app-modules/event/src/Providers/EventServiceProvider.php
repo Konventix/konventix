@@ -7,6 +7,7 @@ namespace Konventix\Event\Providers;
 use Illuminate\Database\Eloquent\Builder;
 use Konventix\Event\Blocks\CountdownBlock;
 use Konventix\Event\Blocks\EventHeroBlock;
+use Konventix\Event\Console\ReplayEventDetailsCommand;
 use Konventix\Event\Enums\Permission;
 use Konventix\Event\Models\Event;
 use Konventix\Platform\Blocks\BlockRegistry;
@@ -35,6 +36,21 @@ class EventServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'event';
+    }
+
+    /**
+     * Registered explicitly: modular discovers nothing under a module's
+     * `src/Console`, and a replay command that silently failed to register
+     * would look like "nothing to backfill". Console only — a web worker
+     * never needs the command class loaded.
+     */
+    public function boot(): void
+    {
+        parent::boot();
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([ReplayEventDetailsCommand::class]);
+        }
     }
 
     /**

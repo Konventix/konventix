@@ -27,6 +27,14 @@
 
 ## Done
 
+- [x] `event:replay-details {--event=}` re-emits `EventRescheduled` and
+      `EventDetailsUpdated` with each event's current values, schedule
+      first, so a read model that came later than the event (Resources'
+      `resource_event_windows`) can be backfilled from the contract.
+      `EventRescheduled` gained a trailing nullable `brandId` for the same
+      reason: a projection with no row for the event yet has no other way
+      to learn which brand to insert under (Seating S0, #S0).
+
 - [x] The events list defaults its brand filter from the console selection,
       cleared per list with `brand=all`. Only the brand half applies: this
       list is what the console's event selector points into.
