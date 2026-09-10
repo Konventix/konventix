@@ -27,6 +27,11 @@ final readonly class Box
      */
     public static function ofPoints(array $points): self
     {
+        // Deliberately unreachable through PlanGeometry: every shape kind's
+        // localCorners() returns at least one point (a polygon falls back to
+        // [[0, 0]] when points is null, and PlanInvariants refuses a polygon
+        // with fewer than three points before any geometry runs). Kept as a
+        // defensive guard against a future direct caller of Box::ofPoints().
         if ($points === []) {
             throw new InvalidArgumentException('A box needs at least one point.');
         }

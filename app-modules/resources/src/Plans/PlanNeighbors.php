@@ -44,9 +44,13 @@ final class PlanNeighbors
             }
 
             $byGroup[$group->id][] = $place;
-            // PHP evaluates the property access before `??`, so `?->` is
-            // redundant here (`?? ` already suppresses the "read property on
-            // null" warning); PHPStan flags the nullsafe form as unnecessary.
+            // `layout` (`PlanElementData::$layout`) is genuinely nullable,
+            // but `??`'s left operand is evaluated with isset() semantics
+            // across the whole chain, so a null `layout` never reaches a
+            // property read on null — confirmed with a standalone repro
+            // under a custom E_ALL error handler, no warning either way.
+            // `?->` here is therefore what PHPStan's nullsafe.neverNull
+            // flags it as: redundant ahead of `?? 0`.
             $tolerance[$group->id] = ($group->layout->spacing ?? 0) * self::SPACING_FRACTION;
         }
 

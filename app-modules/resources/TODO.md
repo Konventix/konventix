@@ -42,6 +42,8 @@
 
 ## Done
 
+- [x] Seating Task 19: `PublishPlan`/`UnpublishPlan` set `published_at`, re-derive `is_published` on the projection and emit after the commit.
+
 - [x] Seating Task 18: conflict flow proven end to end (delete/recategorise/block refused with booking ids, release resolution frees the booking and unplaces the claim after the commit, moves are free, dry run matches).
 
 - [x] Seating Task 17: `SavePlan` (version check, invariants, foreign ids, conflicts under lock, batched projection upsert, soft-delete, version rows pruned to 50, `PlanSaved` after commit) and the `ValidatePlan` dry run.

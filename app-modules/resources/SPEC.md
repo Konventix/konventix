@@ -88,6 +88,8 @@ camelCase properties); `ResourcePublished`, `ResourceWithdrawn` and
 | `ResourceBookingReleased` | A booking is given back, cancelled, or expires | `bookingId`, `resourceId`, `brandId`, `holderType`, `holderId`, `reason` (`registration_cancelled`, `registration_rejected`, `plan_conflict`, `repicked`, `operator_released`, `expired`, or a caller's own), `releasedAt`, `eventId`, `resourceTypeId`, `registrationId`, `claimId`, `label`, `ref` |
 | `ResourceBookingTransferred` *(proposed)* | A booking moves to a different holder or a different resource | `booking_id`, `resource_id`, `previous_resource_id`, `holder_id`, `previous_holder_id`, `transferred_at` |
 | `PlanSaved` | A plan document was saved and projected into `resources` (design 2026-09-10 §6.1); dispatched after the commit | `plan_id`, `event_id`, `brand_id`, `version`, `changed_place_ids` |
+| `PlanPublished` | A plan became visible to the seat picker (design 2026-09-10 §6.4) | `plan_id`, `event_id`, `brand_id` |
+| `PlanUnpublished` | A plan was withdrawn from the picker; bookings stay | `plan_id`, `event_id`, `brand_id` |
 
 Admission's SPEC currently refers to the badge-relevant event as
 `ResourceBookingCreated`. The name to settle on is `ResourceBookingConfirmed`: a

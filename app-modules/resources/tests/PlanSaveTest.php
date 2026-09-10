@@ -6,7 +6,9 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Konventix\Platform\Models\Brand;
+use Konventix\Resources\Actions\PublishPlan;
 use Konventix\Resources\Actions\SavePlan;
+use Konventix\Resources\Actions\UnpublishPlan;
 use Konventix\Resources\Actions\ValidatePlan;
 use Konventix\Resources\Data\PlanConflictResolutionData;
 use Konventix\Resources\Data\PlanSaveData;
@@ -14,7 +16,9 @@ use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\ConflictReason;
 use Konventix\Resources\Enums\PlanVersionSource;
+use Konventix\Resources\Events\PlanPublished;
 use Konventix\Resources\Events\PlanSaved;
+use Konventix\Resources\Events\PlanUnpublished;
 use Konventix\Resources\Exceptions\PlanConflictException;
 use Konventix\Resources\Exceptions\PlanStaleException;
 use Konventix\Resources\Models\PlanVersion;
@@ -445,4 +449,41 @@ it('releases the occupying booking and its claim when the conflict is resolved',
         ->and($booking->fresh()->state)->toBe(BookingState::Released)
         ->and(ResourceClaim::withoutBrandScope()->whereKey($booking->claim_id)->value('state'))->toBe(ClaimState::Unplaced)
         ->and(seatingPlaces($plan)->get($a['id'])->deleted_at)->not->toBeNull();
+});
+
+it('publishes and unpublishes a plan, re-deriving is_published on its places', function (): void {
+    $brand = $this->withBrand();
+    $eventId = seatingEvent($brand);
+    $type = seatingCategory($eventId);
+    $plan = seatingPlan($eventId);
+
+    $a = seatingPlace($type->id, 'A-01');
+    $gone = seatingPlace($type->id, 'A-02', ['x' => 800]);
+    seatingSave($plan, seatingDocument([$a, $gone]));
+    seatingSave($plan, seatingDocument([$a]));
+
+    Event::fake([PlanPublished::class, PlanUnpublished::class]);
+
+    app(PublishPlan::class)->handle($plan);
+
+    expect($plan->published_at)->not->toBeNull()
+        ->and(seatingPlaces($plan)->get($a['id'])->is_published)->toBeTrue()
+        // A removed place is history; publishing does not resurrect its flag.
+        ->and(seatingPlaces($plan)->get($gone['id'])->is_published)->toBeFalse();
+    Event::assertDispatched(PlanPublished::class, fn (PlanPublished $event): bool => $event->planId === $plan->id && $event->eventId === $eventId && $event->brandId === $brand->id);
+
+    $publishedAt = $plan->published_at;
+    app(PublishPlan::class)->handle($plan);
+
+    expect($plan->published_at?->equalTo($publishedAt))->toBeTrue();
+    Event::assertDispatchedTimes(PlanPublished::class, 1);
+
+    app(UnpublishPlan::class)->handle($plan);
+
+    expect($plan->published_at)->toBeNull()
+        ->and(seatingPlaces($plan)->get($a['id'])->is_published)->toBeFalse();
+    Event::assertDispatched(PlanUnpublished::class, fn (PlanUnpublished $event): bool => $event->planId === $plan->id);
+
+    app(UnpublishPlan::class)->handle($plan);
+    Event::assertDispatchedTimes(PlanUnpublished::class, 1);
 });

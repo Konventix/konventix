@@ -22,6 +22,10 @@ use Konventix\Resources\Enums\PlanVersionSource;
 use Konventix\Resources\Enums\SeatingMode;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\Resource;
+// Aliased: an unqualified "Resource" in a docblock generic collides with
+// PHP's `resource` pseudo-type and pint's docblock fixer silently lowercases
+// it (the same trap fixed in PlanDiffResult.php).
+use Konventix\Resources\Models\Resource as BookableResource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceEventWindow;
@@ -397,11 +401,11 @@ function seatingSave(Plan $plan, PlanDocumentData $document, array $resolutions 
 /**
  * The plan's projection rows, soft-deleted ones included, keyed by id.
  *
- * @return Collection<string, resource>
+ * @return Collection<string, BookableResource>
  */
 function seatingPlaces(Plan $plan): Collection
 {
-    /** @var Collection<string, resource> $rows */
+    /** @var Collection<string, BookableResource> $rows */
     $rows = Resource::withoutBrandScope()->withTrashed()->where('plan_id', $plan->id)->get()->keyBy('id');
 
     return $rows;
