@@ -37,6 +37,12 @@
 
 ## Done
 
+- [x] Seating Task 35: Resources contributes two admin-area navigation
+      entries ("Categories" at `/admin/resource-types`, order 40; "Seating
+      plans" at `/admin/plans`, order 41), each gated by its own capability
+      rather than a brand — the admin host has no brand to gate on
+      (ADR-0029).
+
 - [x] Seating Task 34: the plan index page (`admin/plans/Index.vue`) lists
       name, event, places, version and publication, with `PlanCreateDialog`
       and `PlanImportDialog` in the toolbar and a publish/unpublish toggle

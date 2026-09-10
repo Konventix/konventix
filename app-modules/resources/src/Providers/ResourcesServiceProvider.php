@@ -10,6 +10,8 @@ use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventRescheduled;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Navigation\NavigationItem;
+use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
@@ -78,6 +80,36 @@ class ResourcesServiceProvider extends ModuleServiceProvider
                 Permission::ReleaseBookings,
             ),
         ];
+    }
+
+    /**
+     * Design §8.1: the two console screens, in the operator area
+     * (ADR-0029). Admin entries carry no brand gate — there is no brand on
+     * that host — so the capability is the only filter; the registry
+     * applies it at render time.
+     */
+    protected function registerNavigation(): void
+    {
+        $this->app->make(NavigationRegistry::class)->add(
+            new NavigationItem(
+                module: 'resources',
+                label: 'Categories',
+                url: '/admin/resource-types',
+                icon: 'layout-grid',
+                order: 40,
+                permission: Permission::ManageResourceTypes->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'resources',
+                label: 'Seating plans',
+                url: '/admin/plans',
+                icon: 'map-pin',
+                order: 41,
+                permission: Permission::ManagePlans->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+        );
     }
 
     protected function registerListeners(): void

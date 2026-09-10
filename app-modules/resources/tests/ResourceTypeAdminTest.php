@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Inertia\Testing\AssertableInertia;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
+use Konventix\Platform\Navigation\NavigationItem;
+use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Resources\Enums\CapacityMode;
 use Konventix\Resources\Enums\CategoryToken;
 use Konventix\Resources\Models\Resource;
@@ -239,4 +241,20 @@ it('renders the category list and editor pages', function (): void {
         ->get('http://admin.seating.test/admin/resource-types/'.$type->getKey().'/edit')
         ->assertOk()
         ->assertSee('Gamer');
+});
+
+it('contributes two admin navigation entries gated by capability', function (): void {
+    // Admin-area entries skip the brand gate (there is no brand on the
+    // admin host) and rely on their capability — `NavigationRegistry`.
+    $entries = app(NavigationRegistry::class)->all()
+        ->filter(fn (NavigationItem $item): bool => $item->module === 'resources' && $item->area === NavigationItem::AREA_ADMIN)
+        ->values();
+
+    expect($entries)->toHaveCount(2)
+        ->and($entries[0]->label)->toBe('Categories')
+        ->and($entries[0]->url)->toBe('/admin/resource-types')
+        ->and($entries[0]->permission)->toBe('resources.manage-resource-types')
+        ->and($entries[1]->label)->toBe('Seating plans')
+        ->and($entries[1]->url)->toBe('/admin/plans')
+        ->and($entries[1]->permission)->toBe('resources.manage-plans');
 });
