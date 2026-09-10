@@ -31,6 +31,10 @@ its assumptions.
 - **ResourceBooking** — a claim on a resource for a half-open interval by a
   holder referenced by ULID (a registration, an admission, a shift, an
   organizer), plus its state: held, confirmed, released, cancelled, expired.
+  Holder types today are `registration` and `operator` (an orga reservation,
+  `holder_id` = the acting user); release reasons are
+  `registration_cancelled`, `registration_rejected`, `plan_conflict`,
+  `repicked`, `operator_released`, `expired` (design 2026-09-10 §4.3).
 - **Hold expiry** — a *clocked direct hold* (a booking held without an
   immediate confirmation: booths, devices, the operator desk) carries a
   deadline from its type's `hold_minutes` and is released by the

@@ -6,6 +6,9 @@
 
 ## Next
 
+- [ ] Seating S3: `AssignPlacesToRegistration` on top of `SavePlan`'s projection — it reads `resources.is_published`, `blocked`, `deleted_at` and `plan_id`, and releases with reason `repicked`; the booking events already defer to the outermost commit (Task 16).
+- [ ] Seating S4/S7: the console maps `PlanStaleException` (409) and `PlanConflictException` (422) through their own `render()`; `PlanAdminController@update` needs only `Gate::authorize` and `SavePlan`, `@validate` only `ValidatePlan`, `@reserve`/`@unreserve` only the two operator Actions behind `Permission::BookOnBehalf`.
+- [ ] Seating S6: `RecordPlanMetrics` listens on `PlanSaved` for `resource_plan_saves_total{outcome=saved}`; the `conflict`, `invalid` and `stale` outcomes are counted where the exceptions are caught (the controller), not in the Actions.
 - [ ] Seating (design `docs/superpowers/specs/2026-09-10-seating-design.md`,
       ADR-0060): S1 shipped the schema, enums, Data classes, `PlanInvariants`,
       models and factories. Still open in order: the save pipeline and
