@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, Plus, Trash2 } from '@lucide/vue';
+import { ArrowLeft } from '@lucide/vue';
 import { computed, watch } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DateTimeField from '@/components/datetime/DateTimeField.vue';
@@ -16,6 +16,7 @@ import {
     index as typesIndex,
     update as updateType,
 } from '@/routes/admin/registration-types';
+import RegistrationTypeGrantsCard from '../../../components/RegistrationTypeGrantsCard.vue';
 
 /**
  * One registration type: its axes (ADR-0005), the grants a confirmed
@@ -41,6 +42,11 @@ type Props = {
     eventPageUrl: string | null;
     registrations: number;
     termsFrozen: boolean;
+    seatingSlots: {
+        module: string;
+        component: string;
+        props: Record<string, unknown>;
+    }[];
 };
 
 const props = defineProps<Props>();
@@ -103,24 +109,6 @@ watch(needsPrice, (priced) => {
           })
         : null;
 });
-
-function addGrant(): void {
-    form.grants = [
-        ...form.grants,
-        {
-            kind: 'admission',
-            role: '',
-            quantity: 1,
-            resourceTypeId: null,
-            resourceTypeIds: null,
-            seatingMode: null,
-        },
-    ];
-}
-
-function removeGrant(index: number): void {
-    form.grants = form.grants.filter((_, position) => position !== index);
-}
 
 function toggleQuota(quotaId: string, checked: boolean): void {
     form.quotaIds = checked
@@ -337,81 +325,13 @@ function submit(): void {
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Grants</CardTitle>
-                    </CardHeader>
-                    <CardContent class="flex flex-col gap-4">
-                        <p class="text-sm text-text-muted">
-                            What a confirmed registration of this type is
-                            entitled to. Admission grants become badges;
-                            resource claims become bookings.
-                        </p>
-
-                        <div
-                            v-for="(grant, index) in form.grants"
-                            :key="index"
-                            class="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-[8rem_1fr_6rem_auto]"
-                        >
-                            <select
-                                v-model="grant.kind"
-                                :disabled="props.termsFrozen"
-                                aria-label="Grant kind"
-                                class="h-9 rounded-md border border-border bg-surface px-3 text-sm disabled:opacity-60"
-                            >
-                                <option
-                                    v-for="value in props.options.grantKind"
-                                    :key="value"
-                                    :value="value"
-                                >
-                                    {{ value }}
-                                </option>
-                            </select>
-                            <Input
-                                v-model="grant.role"
-                                placeholder="Role (visitor, exhibitor, crew…)"
-                                :disabled="props.termsFrozen"
-                            />
-                            <Input
-                                v-model.number="grant.quantity"
-                                type="number"
-                                min="1"
-                                :disabled="props.termsFrozen"
-                            />
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                :disabled="props.termsFrozen"
-                                @click="removeGrant(index)"
-                            >
-                                <Trash2 class="size-3.5" />
-                            </Button>
-                        </div>
-
-                        <p
-                            v-if="form.grants.length === 0"
-                            class="text-sm text-text-muted"
-                        >
-                            No grants — a registration of this type entitles its
-                            holder to nothing yet.
-                        </p>
-
-                        <div>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                :disabled="props.termsFrozen"
-                                @click="addGrant"
-                            >
-                                <Plus class="size-4" />
-                                Add grant
-                            </Button>
-                        </div>
-
-                        <InputError :message="form.errors.grants" />
-                    </CardContent>
-                </Card>
+                <RegistrationTypeGrantsCard
+                    v-model="form.grants"
+                    :kinds="props.options.grantKind"
+                    :disabled="props.termsFrozen"
+                    :error="form.errors.grants"
+                    :seating-slots="props.seatingSlots"
+                />
             </div>
 
             <div class="flex flex-col gap-6">

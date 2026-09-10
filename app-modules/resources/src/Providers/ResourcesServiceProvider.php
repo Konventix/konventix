@@ -13,6 +13,7 @@ use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Permissions\DefaultRole;
+use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
@@ -22,12 +23,15 @@ use Konventix\Resources\Console\ExpireResourceHoldsCommand;
 use Konventix\Resources\Console\PlanExportCommand;
 use Konventix\Resources\Console\PlanImportCommand;
 use Konventix\Resources\Console\ProbeSeatRace;
+use Konventix\Resources\Data\CategoryData;
 use Konventix\Resources\Enums\Permission;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationAmended;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
 use Konventix\Resources\Listeners\ProjectEventWindow;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationCancelled;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationRejected;
+use Konventix\Resources\Models\Resource;
+use Konventix\Resources\Models\ResourceType;
 
 /**
  * Resources is Pennant-gated: a brand that books nothing switches it off and
@@ -109,6 +113,60 @@ class ResourcesServiceProvider extends ModuleServiceProvider
                 permission: Permission::ManagePlans->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
+        );
+    }
+
+    /**
+     * Design §9.2 / §9.3: the type editor's seating fields. Registration
+     * hands over the slot and `{ eventId }`; what comes back — the event's
+     * categories as `CategoryData`, each carrying its **bookable** place
+     * count (published, not blocked, not deleted — `Resource::scopeBookable()`,
+     * the same figure the category console labels "Bookable places", design
+     * §12b / #282) — is this module's business, resolved by closure at
+     * render time under the brand the caller set. The count travels beside
+     * the category rather than on `CategoryData` itself, because that class
+     * also shapes the registrant-facing picker (S5), which has no business
+     * showing an operator a quota-sizing number. Module `resources` and no
+     * `feature`: the module's own Pennant feature is the gate (§2).
+     *
+     * `static` on purpose: `SlotRegistry` is a singleton that outlives the
+     * request under Octane, and a closure capturing `$this` would pin this
+     * provider with it. Slice S5 adds `registration.mine.show` here.
+     */
+    protected function registerSlots(): void
+    {
+        $this->app->make(SlotRegistry::class)->add(
+            slot: 'registration.type-editor.seating-fields',
+            module: 'resources',
+            component: 'resources/SeatingGrantFields',
+            props: static function (array $context): array {
+                $types = ResourceType::query()
+                    ->where('event_id', $context['eventId'])
+                    ->orderBy('sort_order')
+                    ->orderBy('name')
+                    ->get();
+
+                // Bookable, not raw — the number an operator reads to size a
+                // Registration quota, never a count including draft, blocked
+                // or deleted places. A grouped count rather than per-type
+                // queries, mirroring ResourceTypeAdminController's list.
+                $placeCounts = Resource::query()
+                    ->bookable()
+                    ->whereIn('resource_type_id', $types->pluck('id'))
+                    ->selectRaw('resource_type_id, count(*) as aggregate')
+                    ->groupBy('resource_type_id')
+                    ->pluck('aggregate', 'resource_type_id');
+
+                return [
+                    'categories' => $types
+                        ->map(fn (ResourceType $type): array => [
+                            ...CategoryData::fromModel($type)->toArray(),
+                            'bookablePlaces' => (int) ($placeCounts[$type->getKey()] ?? 0),
+                        ])
+                        ->all(),
+                ];
+            },
+            order: 10,
         );
     }
 

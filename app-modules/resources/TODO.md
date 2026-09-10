@@ -37,6 +37,16 @@
 
 ## Done
 
+- [x] S4 (seating console, #S4, #275): `Permission::ManagePlans`, default
+      roles `resources.planner` / `resources.desk` (ADR-0045); the category
+      console (`admin/resource-types`) and the plan index (`admin/plans`:
+      create, import, export, publish, occupancy, operator reservations);
+      navigation; the `registration.type-editor.seating-fields` slot filled
+      with `SeatingGrantFields`, which carries each category's **bookable**
+      place count (`Resource::scopeBookable()`, #282) beside it, resolved
+      from this module's own tables in the slot closure rather than handed
+      to Registration to query. The editor itself is S7.
+
 - [x] Seating Task 35: Resources contributes two admin-area navigation
       entries ("Categories" at `/admin/resource-types`, order 40; "Seating
       plans" at `/admin/plans`, order 41), each gated by its own capability

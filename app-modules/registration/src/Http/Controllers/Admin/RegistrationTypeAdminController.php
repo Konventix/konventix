@@ -9,10 +9,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Scopes\BrandScope;
+use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Actions\CreateRegistrationType;
 use Konventix\Registration\Actions\UpdateRegistrationType;
 use Konventix\Registration\Data\RegistrationTypeData;
@@ -40,10 +42,16 @@ use Konventix\Registration\Models\RegistrationType;
  *
  * The event picker reads Registration's own event read model, never Event's
  * table (ADR-0004).
+ *
+ * The seating-fields slot (design §9.3) is resolved with the type's brand in
+ * context, because `SlotRegistry` gates a gateable module on that brand's
+ * activation and the admin host resolves none.
  */
 class RegistrationTypeAdminController
 {
     use HasDataTableQuery;
+
+    public function __construct(private readonly SlotRegistry $slots) {}
 
     public function index(Request $request, BrandUrl $brandUrl): Response
     {
@@ -168,6 +176,23 @@ class RegistrationTypeAdminController
             // Terms freeze once anyone has registered under them — the form
             // disables what `UpdateRegistrationType` would refuse anyway.
             'termsFrozen' => $registrations > 0,
+            // Design §9.3: a seating grant's fields come from Resources
+            // through a slot, so this module never reads `resource_types`
+            // (ADR-0004). The registry gates on the module's activation for
+            // *a* brand, and the admin host has none in context — so the
+            // slot is resolved with the type's brand set, which is also
+            // what scopes the contribution's own query to that brand.
+            'seatingSlots' => $brand === null ? [] : app(BrandContext::class)->withBrand(
+                $brand,
+                fn (): array => $this->slots
+                    ->for('registration.type-editor.seating-fields', ['eventId' => $type->event_id])
+                    ->map(fn (array $entry): array => [
+                        'module' => $entry['module'],
+                        'component' => $entry['component'],
+                        'props' => $entry['props'],
+                    ])
+                    ->all(),
+            ),
         ]);
     }
 

@@ -6,10 +6,10 @@
 
 ## Next
 
-- [ ] The type editor lists `seating` as a grant kind but has no fields for
-      its categories and mode yet, so the guard refuses such a save; the
-      `registration.type-editor.seating-fields` slot and
-      `RegistrationTypeGrantsCard.vue` (seating design §7.1) land in S4/S5.
+- [ ] `registration-types/Edit.vue` is still around 490 lines after the
+      grants card moved out (S4, seating): the offer card and the price
+      card are the next two extractions before the page is under the
+      300-line guideline.
 - [ ] A frozen type cannot be superseded from the console: an organizer whose
       terms have changed must build the replacement by hand. A "duplicate this
       type" action would make the intended path (new type, old one hidden by
@@ -65,6 +65,20 @@
 
 ## Done
 
+- [x] Type-editor slot for seating (seating design §7.1/§9.3, #S4, #275): the
+      grants card is its own component,
+      `resources/js/components/RegistrationTypeGrantsCard.vue`, and a
+      `seating` row renders whatever the
+      `registration.type-editor.seating-fields` slot contributes — resolved
+      by `RegistrationTypeAdminController@edit` with the type's brand set in
+      `BrandContext`, because `SlotRegistry` gates a gateable module on that
+      brand's activation and the admin host resolves none. This module still
+      reads no `resource_types` row itself (ADR-0004); Resources' own
+      contribution is the only source of category names, tokens, symbols
+      and — per the operator's 2026-09-10 decision that a category's ceiling
+      is a hand-typed Registration quota capacity (#282) — each category's
+      bookable place count, shown beside its checkbox next to the quota
+      cards' consumed/capacity figures on the same screen.
 - [x] Payload projection for seating (seating design §7.1, #S3):
       `GrantData::toEventPayload()` is the one place that turns a grant into
       the scalar shape `RegistrationConfirmed` and `RegistrationAmended`

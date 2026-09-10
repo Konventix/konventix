@@ -2,16 +2,10 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Event\Events\EventArchived;
-use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
-use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
-use Konventix\Platform\Models\Operator;
-use Konventix\Platform\Models\Permission as PermissionModel;
-use Konventix\Platform\Models\Role;
 use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\RegistrationSettlement;
@@ -19,7 +13,6 @@ use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
-use Spatie\Permission\PermissionRegistrar;
 
 /**
  * ADR-0029: the registration-type and quota console — the offer (ADR-0005),
@@ -28,60 +21,6 @@ use Spatie\Permission\PermissionRegistrar;
  * Helper name prefixed with the module: Pest helpers are process-global
  * across every module's test files (.ai/rules/tests.md).
  */
-function registrationTypeOperator(array $permissions = [
-    'platform.access-admin',
-    'registration.manage-registration-types',
-    'registration.manage-quotas',
-]): array
-{
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.regtypes.test'])->save();
-
-    $registrar = app(PermissionRegistrar::class);
-    $registrar->setPermissionsTeamId($operator->getKey());
-
-    foreach ($permissions as $name) {
-        PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
-    }
-
-    $role = Role::query()->create([
-        'name' => 'Operator Admin',
-        'guard_name' => 'web',
-        'brand_id' => $operator->getKey(),
-    ]);
-    $role->givePermissionTo($permissions);
-
-    $admin = User::factory()->create();
-    $admin->assignRole($role);
-
-    $registrar->setPermissionsTeamId(null);
-
-    return [$operator, $admin];
-}
-
-/**
- * Takes the brand rather than creating it: a plain Pest helper runs in global
- * scope and cannot call the protected `withBrand()` on the TestCase
- * (.ai/rules/tests.md).
- */
-function registrationTypeEvent(Brand $brand, string $name = 'SXLan 2027'): string
-{
-    $eventId = (string) Str::ulid();
-
-    event(new EventCreated(
-        eventId: $eventId,
-        brandId: $brand->id,
-        slug: 'sxlan-2027',
-        name: $name,
-        startsAt: '2027-05-14 18:00:00',
-        endsAt: '2027-05-16 14:00:00',
-        timezone: 'Europe/Berlin',
-        predecessorEventId: null,
-    ));
-
-    return $eventId;
-}
-
 it('403s the type console without the manage-registration-types capability', function (): void {
     [, $admin] = registrationTypeOperator(['platform.access-admin']);
 
