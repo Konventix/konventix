@@ -1318,6 +1318,14 @@ declare namespace Konventix {
                 readonly plans: Konventix.Resources.Data.PlanViewData[];
                 readonly availability: Konventix.Resources.Data.PlanAvailabilityData;
                 readonly currentPlaceIds: string[];
+                readonly noFreePlaces: boolean;
+            };
+            export type SeatSummaryData = {
+                readonly registrationId: string;
+                readonly claimState: string;
+                readonly quantity: number;
+                readonly placeRefs: string[];
+                readonly noFreePlaces: boolean;
             };
             export type ShapeData = {
                 readonly type: Konventix.Resources.Enums.ShapeKind;

@@ -18,12 +18,16 @@ use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationRejected;
+use Konventix\Resources\Actions\HasFreePlaceForClaim;
 use Konventix\Resources\Console\AssignPlaceCommand;
 use Konventix\Resources\Console\ExpireResourceHoldsCommand;
 use Konventix\Resources\Console\PlanExportCommand;
 use Konventix\Resources\Console\PlanImportCommand;
 use Konventix\Resources\Console\ProbeSeatRace;
 use Konventix\Resources\Data\CategoryData;
+use Konventix\Resources\Data\SeatSummaryData;
+use Konventix\Resources\Enums\BookingState;
+use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\Permission;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationAmended;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
@@ -31,6 +35,8 @@ use Konventix\Resources\Listeners\ProjectEventWindow;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationCancelled;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationRejected;
 use Konventix\Resources\Models\Resource;
+use Konventix\Resources\Models\ResourceBooking;
+use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceType;
 
 /**
@@ -131,11 +137,21 @@ class ResourcesServiceProvider extends ModuleServiceProvider
      *
      * `static` on purpose: `SlotRegistry` is a singleton that outlives the
      * request under Octane, and a closure capturing `$this` would pin this
-     * provider with it. Slice S5 adds `registration.mine.show` here.
+     * provider with it.
+     *
+     * Slice S5 (design §7.4) adds `registration.mine.show`: Registration
+     * hands over a registration id it has already checked belongs to the
+     * reader; this closure answers with the claim's state, its place refs
+     * and — 2026-09-10 batch amendment, ahead of §12b/#282's quota
+     * mechanism — the same `HasFreePlaceForClaim` read the picker uses, so
+     * a claim whose categories have nothing free reads identically on both
+     * pages. Reads nothing of Registration's (ADR-0004).
      */
     protected function registerSlots(): void
     {
-        $this->app->make(SlotRegistry::class)->add(
+        $slots = $this->app->make(SlotRegistry::class);
+
+        $slots->add(
             slot: 'registration.type-editor.seating-fields',
             module: 'resources',
             component: 'resources/SeatingGrantFields',
@@ -167,6 +183,41 @@ class ResourcesServiceProvider extends ModuleServiceProvider
                 ];
             },
             order: 10,
+        );
+
+        $slots->add(
+            slot: 'registration.mine.show',
+            module: 'resources',
+            component: 'resources/SeatSummarySlot',
+            props: static function (array $context): array {
+                $claim = ResourceClaim::query()
+                    ->where('registration_id', $context['registrationId'])
+                    ->where('state', '!=', ClaimState::Released)
+                    ->orderByDesc('created_at')
+                    ->first();
+
+                if ($claim === null) {
+                    return ['summary' => null];
+                }
+
+                $placeIds = ResourceBooking::query()
+                    ->where('claim_id', $claim->getKey())
+                    ->whereIn('state', BookingState::occupyingValues())
+                    ->pluck('resource_id');
+
+                $refs = array_values(Resource::query()
+                    ->whereKey($placeIds)
+                    ->get(['id', 'ref', 'label'])
+                    ->map(fn (Resource $place): string => $place->ref ?? $place->label)
+                    ->sort(SORT_NATURAL)
+                    ->values()
+                    ->all());
+
+                $noFreePlaces = ! app(HasFreePlaceForClaim::class)->handle($claim);
+
+                return ['summary' => SeatSummaryData::ofClaim($claim, $refs, $noFreePlaces)->toArray()];
+            },
+            order: 20,
         );
     }
 

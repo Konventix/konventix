@@ -461,6 +461,26 @@ Deviations found during implementation are appended here with date, reason and t
 - 2026-09-10, Task 11: `PlanInvariants` lives in `src/Plans/` (a topic directory beside the flat ones, the `competition/src/Brackets` and `commerce/src/Cart` precedent) and takes the plan's category ids as an argument, so it stays pure PHP; its violations are keyed `document.elements.<index>.<field>` already.
 - 2026-09-10, Task 23: a type (and an amendment) carries at most one seating grant. `resource_claims` is unique per `(registration_id, amendment_id)`, so a second grant on the same occasion could never become a claim; several categories are one grant with several `resourceTypeIds`. Enforced in `GuardsSeatingGrants`.
 - 2026-09-10, Task 26: an `operator` actor with a null `actorUserId` is the trusted CLI path (`resources:assign-place`) and skips the `BookOnBehalf` check; with a user id the check runs through Platform's `PermissionHolders` (no User import in Resources).
+- 2026-09-10, S5 (SeatSummarySlot): the slot contribution carries a new
+  `SeatSummaryData { registrationId, claimState, quantity, placeRefs }`
+  as its `summary` prop — §7.4 named the component but no Data object, and
+  ADR-0009 wants one per slot payload (Commerce's
+  `RegistrationSettlementData` precedent). The picker link is built
+  client-side from `registrationId` through Wayfinder; no URL travels in
+  the props.
+- 2026-09-10, batch amendment ahead of §12b/#282's quota mechanism (Tasks
+  40-41): a category with nothing free in a claim's categories is its own
+  explicit page state, not a bare validation error a registrant only
+  meets after trying to pick — the flagged note at the end of §12 already
+  named the wording ("the picker shows 'no free places in your
+  categories'"). `HasFreePlaceForClaim::handle(ResourceClaim): bool` is a
+  new, read-only Action shared by `SeatPickController` and
+  `ResourcesServiceProvider::registerSlots()`'s `registration.mine.show`
+  contribution, so `SeatPickerData.noFreePlaces` and
+  `SeatSummaryData.noFreePlaces` are always the same answer for the same
+  claim. A single frontend constant, `NO_FREE_PLACES_MESSAGE` in
+  `components/plan/labels.ts`, is what both `Pick.vue` and
+  `SeatSummarySlot.vue` render, so the wording itself cannot drift either.
 
 ## 14. Out of scope (one tracking issue, "Nach Event")
 

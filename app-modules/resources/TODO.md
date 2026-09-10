@@ -56,7 +56,9 @@
       free right now gets its own banner on the page rather than a
       validation error nobody sees until they try to pick — worded
       identically to the summary slot Task 41 adds, quoting the design's
-      own flagged phrase ("no free places in your categories").
+      own flagged phrase ("no free places in your categories"). The
+      registrant's page carries the chosen refs or the picker link through
+      the registration.mine.show slot (SeatSummarySlot, SeatSummaryData).
 - [x] Seating Task 39 (#276): the picker's view layer under
       `resources/js/components/plan` — `SeatPlanScene.vue` (fixed mm
       viewBox, pointer pan/pinch/wheel zoom, `defineExpose`d `svgPoint`/
