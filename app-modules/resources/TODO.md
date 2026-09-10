@@ -24,6 +24,24 @@
       a zone's shape is not auto-fitted to its children; per-category
       `default_shape` is not applied when a place is created (800 × 800
       always); the marquee selects by axis-aligned bbox only.
+- [ ] Multi-claim picker (found in the 2026-09-10 fix wave's whole-branch
+      review, #278): `FindSeatClaimForRegistrant` and the
+      `registration.mine.show` slot both take the registration's newest
+      non-released claim. An amendment deliberately creates a second claim
+      (design §7.5 "Amendment adds a seating grant"), so a registration
+      with two has the earlier one silently unreachable — no picker page,
+      no summary row, nothing to show it was ever placed or ever will be.
+      Needs a page (and a slot) that lists every open claim of a
+      registration, not only the latest.
+- [ ] Split the plan editor's three components still over the project's
+      ~300-line guideline (CLAUDE_extra.md "Keep Vue pages small; extract
+      components before a page passes ~300 lines"), found in the same
+      2026-09-10 fix-wave review (#278) that also found this entry
+      missing: `PlanCanvas.vue` (~351 lines), `PlanInspector.vue`
+      (~378) and `PlanInspectorKindFields.vue` (~401). Left oversized to
+      ship the S7 editor MVP; a review ruling parked the split here rather
+      than blocking the slice on it, but the entry itself was never
+      written until now.
 
 ## Backlog
 
