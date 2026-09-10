@@ -5,9 +5,6 @@ declare(strict_types=1);
 namespace Konventix\Resources\Actions;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
-use Konventix\Platform\Brands\BrandContext;
-use Konventix\Resources\Events\PlaceSupplyChanged;
 use Konventix\Resources\Events\PlanUnpublished;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\Resource;
@@ -19,10 +16,19 @@ use Konventix\Resources\Models\Resource;
  * refuses them. Existing bookings are untouched — unpublishing is not a
  * release. Idempotent, emits only on a change.
  *
- * Every live, unblocked place under the plan goes from bookable to
- * unbookable in this one step (a blocked place already was unbookable), so
- * `PlaceSupplyChanged` fires per category with `direction: consumed` and
- * the count of such places (design §12b/#282).
+ * Deliberately does not touch a linked quota (design §12b/#282): publish
+ * and unpublish each snapshot the plan's *current* unblocked count at one
+ * instant, and the two snapshots need not match — a place added, blocked
+ * or unblocked while the plan sat unpublished leaves the mismatch stranded
+ * permanently, and the ordinary "draft the plan, size the quota, then sell
+ * before publishing" sequence would zero out every sale already recorded
+ * the moment the plan opens. An unpublished plan does not stop the
+ * category selling: `SubmitRegistration` still consumes the same quota row
+ * a seat category names, registrations still sell and confirm, their seat
+ * claims sit `unplaced`, and the picker serves them once the plan is
+ * published again. That is the intended workflow, not a gap. Block,
+ * unblock, an operator reservation and its release remain the only things
+ * that move a linked quota, because each of those is symmetric on its own.
  */
 final class UnpublishPlan
 {
@@ -38,46 +44,12 @@ final class UnpublishPlan
 
             $plan->forceFill(['published_at' => null])->save();
 
-            $counts = Resource::withoutBrandScope()
-                ->where('plan_id', $plan->id)
-                ->where('blocked', false)
-                ->selectRaw('resource_type_id, count(*) as aggregate')
-                ->groupBy('resource_type_id')
-                ->pluck('aggregate', 'resource_type_id');
-
             Resource::withoutBrandScope()
                 ->where('plan_id', $plan->id)
                 ->update(['is_published' => false]);
 
-            // Idiom copied from `ReleaseResourceBooking`: whatever brand is
-            // ambient now is captured and restored around the deferred
-            // dispatch alone, since a console request usually has none.
-            $brand = app(BrandContext::class)->current();
-
-            DB::afterCommit(function () use ($plan, $counts, $brand): void {
-                $dispatch = function () use ($plan, $counts): void {
-                    event(new PlanUnpublished(planId: $plan->id, eventId: $plan->event_id, brandId: $plan->brand_id));
-
-                    foreach ($counts as $resourceTypeId => $places) {
-                        event(new PlaceSupplyChanged(
-                            changeId: (string) Str::ulid(),
-                            brandId: $plan->brand_id,
-                            eventId: $plan->event_id,
-                            resourceTypeId: $resourceTypeId,
-                            reason: 'unpublished',
-                            direction: 'consumed',
-                            places: (int) $places,
-                        ));
-                    }
-                };
-
-                if ($brand === null) {
-                    $dispatch();
-
-                    return;
-                }
-
-                app(BrandContext::class)->withBrand($brand, $dispatch);
+            DB::afterCommit(static function () use ($plan): void {
+                event(new PlanUnpublished(planId: $plan->id, eventId: $plan->event_id, brandId: $plan->brand_id));
             });
 
             return $plan;

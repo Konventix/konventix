@@ -517,6 +517,26 @@ Deviations found during implementation are appended here with date, reason and t
   that map through unchanged; the client mirror `checkInvariants()`
   (`invariants.ts`) took the matching change, from a set of category ids to
   a `categories: Readonly<Record<string, CapacityMode>>` map.
+- 2026-09-10, correction (#282): §12b's item 3 lists "unpublished" among
+  the reasons `PlaceSupplyChanged` fires for, and `PublishPlan`/
+  `UnpublishPlan` shipped emitting it — `direction: consumed` for every
+  unblocked place on unpublish, `released` on publish. That is wrong and
+  has been reverted, not merely deferred: publish and unpublish each
+  snapshot the plan's current unblocked count at one instant, and the two
+  snapshots need not match — a place added, blocked or unblocked while
+  the plan sat unpublished stranded a unit permanently, and the ordinary
+  "draft the plan, size the quota, sell, then publish" sequence zeroed
+  out every sale already recorded (`Quota::release()` floors at zero) the
+  moment the plan opened. The quota a seat category names is the same row
+  `registration_type_quota` points at and `SubmitRegistration` consumes on
+  every sale, so an unpublished plan does not stop the category selling —
+  registrations still sell and confirm, their seat claims sit `unplaced`,
+  and the picker serves them once the plan is published again; that is
+  the intended workflow. `PlaceSupplyChanged`'s reason set is therefore
+  `blocked`, `unblocked`, `reserved`, `released` only — publish and
+  unpublish move a plan's visibility and nothing else. Block, unblock, an
+  operator reservation and its release are unaffected: each is symmetric
+  on its own and needs no publish-state guard.
 
 ## 14. Out of scope (one tracking issue, "Nach Event")
 

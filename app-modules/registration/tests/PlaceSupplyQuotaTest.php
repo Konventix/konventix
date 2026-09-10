@@ -11,8 +11,10 @@ use Konventix\Registration\Enums\WaitlistState;
 use Konventix\Registration\Events\WaitlistOfferMade;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\RegistrationType;
+use Konventix\Resources\Actions\PublishPlan;
 use Konventix\Resources\Actions\ReleaseOperatorReservation;
 use Konventix\Resources\Actions\ReservePlaceForOperator;
+use Konventix\Resources\Actions\UnpublishPlan;
 use Konventix\Resources\Events\PlaceSupplyChanged;
 use Konventix\Resources\Models\Resource as BookableResource;
 
@@ -157,4 +159,82 @@ it('offers a freed unit to the waitlist when a released supply event drains the 
     expect($entry->refresh()->state)->toBe(WaitlistState::Offered);
 
     Event::assertDispatched(WaitlistOfferMade::class, fn (WaitlistOfferMade $e): bool => $e->waitlistEntryId === $entry->id);
+});
+
+/**
+ * #282 correction: `PublishPlan`/`UnpublishPlan` briefly emitted
+ * `PlaceSupplyChanged` too, snapshotting the plan's current unblocked
+ * count on every call. A plan drafted before sales open — the ordinary
+ * order — then had its whole place count "released" on publish, and
+ * `Quota::release()` floors at zero, so already-recorded sales vanished
+ * from the ledger. Publishing and unpublishing must not move a quota at
+ * all; see `UnpublishPlan`'s docblock and design §13.
+ */
+it('leaves a linked quota untouched when publishing a plan, even with sales already recorded', function (): void {
+    $eventId = seatingEvent($this->withBrand());
+    $category = seatingCategory($eventId);
+    $quota = Quota::factory()->withCapacity(160)->create(['resource_type_id' => $category->id]);
+    $type = RegistrationType::factory()->create();
+    $type->quotas()->attach($quota);
+
+    $plan = seatingPlan($eventId);
+
+    $places = [];
+
+    for ($i = 1; $i <= 160; $i++) {
+        $places[] = seatingPlace($category->id, sprintf('A-%03d', $i));
+    }
+
+    seatingSave($plan, seatingDocument($places));
+
+    for ($i = 0; $i < 3; $i++) {
+        app(SubmitRegistration::class)->handle($type, (string) Str::ulid(), placeSupplySubmission());
+    }
+
+    expect($plan->published_at)->toBeNull()
+        ->and($quota->refresh()->consumed)->toBe(3);
+
+    Event::fake([PlaceSupplyChanged::class]);
+
+    app(PublishPlan::class)->handle($plan);
+
+    expect($plan->published_at)->not->toBeNull()
+        ->and($quota->refresh()->consumed)->toBe(3);
+
+    Event::assertNotDispatched(PlaceSupplyChanged::class);
+});
+
+it('leaves a linked quota untouched when unpublishing a plan, even with sales already recorded', function (): void {
+    $eventId = seatingEvent($this->withBrand());
+    $category = seatingCategory($eventId);
+    $quota = Quota::factory()->withCapacity(160)->create(['resource_type_id' => $category->id]);
+    $type = RegistrationType::factory()->create();
+    $type->quotas()->attach($quota);
+
+    $plan = seatingPlan($eventId);
+
+    $places = [];
+
+    for ($i = 1; $i <= 160; $i++) {
+        $places[] = seatingPlace($category->id, sprintf('A-%03d', $i));
+    }
+
+    seatingSave($plan, seatingDocument($places));
+
+    for ($i = 0; $i < 3; $i++) {
+        app(SubmitRegistration::class)->handle($type, (string) Str::ulid(), placeSupplySubmission());
+    }
+
+    app(PublishPlan::class)->handle($plan);
+
+    expect($quota->refresh()->consumed)->toBe(3);
+
+    Event::fake([PlaceSupplyChanged::class]);
+
+    app(UnpublishPlan::class)->handle($plan);
+
+    expect($plan->published_at)->toBeNull()
+        ->and($quota->refresh()->consumed)->toBe(3);
+
+    Event::assertNotDispatched(PlaceSupplyChanged::class);
 });

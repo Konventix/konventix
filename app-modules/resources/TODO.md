@@ -8,18 +8,23 @@
 
 - [x] Category-quota ceiling, the supply half (design §12b, #282): a new
       `PlaceSupplyChanged` event (`src/Events/`) fires from `SavePlan`'s
-      projection (blocked/unblocked), `PublishPlan`/`UnpublishPlan`
-      (published/unpublished) and `ReservePlaceForOperator`/
+      projection (blocked/unblocked) and `ReservePlaceForOperator`/
       `ReleaseOperatorReservation` (reserved/released) — the only places
-      that already change a place's bookability outside a sale. Carries
-      the brand, the event, the category, a reason kept for observability
-      only, and `direction`/`places` for how many units moved which way.
-      Registration listens and consumes/releases the linked quota's unit;
-      see its own TODO. Left for later, deliberately out of this slice:
-      the picker's and "Meine Registrierung"'s explicit "category full"
-      state (today's red form field / live-poll banner stand), and an
-      `event` label on `resource_seat_claims_unplaced` — both still open
-      on #282, not solved by the quota link itself.
+      that already change a place's bookability outside a sale.
+      `PublishPlan`/`UnpublishPlan` were wired into this too and then taken
+      back out (#282 correction, §13 of the design doc): each snapshots
+      the plan's current unblocked count at one instant, and the two
+      snapshots need not match, so treating either as a supply move could
+      zero out sales already recorded on the plain "draft, size the quota,
+      sell, then publish" sequence. Carries the brand, the event, the
+      category, a reason kept for observability only, and
+      `direction`/`places` for how many units moved which way. Registration
+      listens and consumes/releases the linked quota's unit; see its own
+      TODO. Left for later, deliberately out of this slice: the picker's
+      and "Meine Registrierung"'s explicit "category full" state (today's
+      red form field / live-poll banner stand), and an `event` label on
+      `resource_seat_claims_unplaced` — both still open on #282, not solved
+      by the quota link itself.
 - [ ] Hand-over from the seating build (#80): the human check on two phones
       picking the same place at the same time, and the `resources:probe-seat-race`
       child-process probe if it was not written in S3.
