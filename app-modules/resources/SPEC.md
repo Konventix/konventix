@@ -31,14 +31,29 @@ its assumptions.
 - **ResourceBooking** — a claim on a resource for a half-open interval by a
   holder referenced by ULID (a registration, an admission, a shift, an
   organizer), plus its state: held, confirmed, released, cancelled, expired.
-- **Hold expiry** — an unconfirmed booking is a temporary hold with a deadline,
-  released automatically when it passes.
+- **Hold expiry** — a *clocked direct hold* (a booking held without an
+  immediate confirmation: booths, devices, the operator desk) carries a
+  deadline from its type's `hold_minutes` and is released by the
+  `resources:expire-holds` sweep when it passes. A seat booking is held and
+  confirmed inside one transaction and never has a deadline (ADR-0060
+  point 6).
 - **Conflict prevention** — the guarantee that two bookings never overlap on the
   same resource beyond its capacity. This is the module's core invariant and it
   is enforced in the persistence layer, not in a controller.
 - **Claim fulfilment** — turning a `grants: resource claims` entitlement from a
   RegistrationType (ADR-0005) into concrete bookings, and releasing them again
   when the entitlement goes away.
+- **Plan** — a hall plan of an event: one `konventix.plan/v1` document
+  (zones, groups, places, fixtures, annotations in millimetres) behind a
+  typed cast, versioned on every save (`PlanVersion`, last 50 kept), and
+  projected into `resources` so that a place *is* a unit-mode resource
+  whose id equals the element id (ADR-0060 points 2 and 4). A category is a
+  `ResourceType` (point 3).
+- **ResourceClaim** — a seating entitlement snapshotted from a
+  registration's `seating` grant: the categories it may be placed in, the
+  number of places, and whether it is `unplaced`, `placed` or `released`
+  (ADR-0060 point 8, D-EVT-06). A claim that has not been placed is its own
+  row, never a fake booking.
 
 ## Does not own
 

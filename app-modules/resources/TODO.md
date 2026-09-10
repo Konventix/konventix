@@ -6,6 +6,22 @@
 
 ## Next
 
+- [ ] Seating (design `docs/superpowers/specs/2026-09-10-seating-design.md`,
+      ADR-0060): S1 shipped the schema, enums, Data classes, `PlanInvariants`,
+      models and factories. Still open in order: the save pipeline and
+      projection (`SavePlan`, `ValidatePlan`, `PlanDiff`, `PlanConflicts`,
+      `PlanWarnings`, publish, import, export), claims and picking
+      (`AssignPlacesToRegistration`, the confirmation and release listeners),
+      the console (categories, plans, occupancy, reservations), the picker on
+      the brand host, observability and the editor. Nothing writes
+      `resources` from a document yet.
+- [ ] Two `seating` grants on one registration type collide with the
+      `resource_claims` unique `(registration_id, amendment_id)` fixed in
+      design §4.6; the confirmation listener must merge them into one claim
+      or the design gets a §13 amendment before S3.
+- [ ] Seating MR note: S1 changed `app-modules/resources/database/migrations`
+      (six additive migrations), so the reviewer expects the one full-suite
+      run of Task 58 in the pipeline.
 - [ ] Seating, per `docs/superpowers/specs/2026-09-10-seating-design.md`:
       plans, document and projection with ADR-0060 (S1); save pipeline and
       conflicts (S2); seat claims and picking (S3); console (S4); picker
@@ -25,6 +41,20 @@
       winner for N parallel picks.
 
 ## Done
+
+- [x] Seating Task 12/13 — S1 complete: `Plan`, `PlanVersion` and
+      `ResourceClaim` models with their factories
+      (`PlanFactory::withGrid()`, `PlanVersionFactory::forPlan()`,
+      `ResourceClaimFactory`); `Resource` gains `SoftDeletes`, the plan
+      projection columns and a `bookable()` scope (published, not blocked)
+      that `FulfilResourceClaims`'s first-fit now uses, in plan/zone/group/ref
+      order; `ResourceType` casts `default_shape` to `ShapeData`; the three
+      booking events finally carry `ref` instead of S0's placeholder; the
+      five model-backed Data classes deferred from Task 11 (`CategoryData`,
+      `ResourceTypeData`, `PlanData`, `PlanViewData`, `SeatClaimData`) close
+      out `SeatPickerData`'s ten deferred phpstan errors. SPEC.md narrows
+      "Hold expiry" to clocked direct holds (ADR-0060 point 6) and names
+      `Plan`/`ResourceClaim` under "Owns".
 
 - [x] Seating Task 11 — the plan document Data classes: `PlanDocumentData`
       (`SCHEMA = 'konventix.plan/v1'`), `PlanElementData`, `ShapeData`,
