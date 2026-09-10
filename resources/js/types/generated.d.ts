@@ -1242,6 +1242,15 @@ declare namespace Konventix {
                 readonly registrationId: string | null;
                 readonly bookingId: string | null;
             };
+            export type PlanRowData = {
+                readonly id: string;
+                readonly name: string;
+                readonly eventName: string;
+                readonly floorLabel: string | null;
+                readonly places: number;
+                readonly version: number;
+                readonly publishedAt: string | null;
+            };
             export type PlanSaveData = {
                 readonly expectedVersion: number;
                 readonly document: Konventix.Resources.Data.PlanDocumentData;

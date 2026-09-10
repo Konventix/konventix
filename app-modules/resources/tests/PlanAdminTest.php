@@ -311,3 +311,16 @@ it('needs book-on-behalf for reservations, not manage-plans', function (): void 
         ->post('http://admin.seating.test/admin/plans/'.$plan->getKey().'/places/'.$place->getKey().'/reserve')
         ->assertForbidden();
 });
+
+it('renders the plan index page', function (): void {
+    $brand = $this->withBrand();
+    $eventId = seatingEventWindow($brand);
+    [, $admin] = seatingOperator();
+
+    Plan::factory()->create(['event_id' => $eventId, 'name' => 'Hall A']);
+
+    $this->actingAs($admin)
+        ->get('http://admin.seating.test/admin/plans')
+        ->assertOk()
+        ->assertSee('Hall A');
+});

@@ -37,6 +37,14 @@
 
 ## Done
 
+- [x] Seating Task 34: the plan index page (`admin/plans/Index.vue`) lists
+      name, event, places, version and publication, with `PlanCreateDialog`
+      and `PlanImportDialog` in the toolbar and a publish/unpublish toggle
+      plus a plain-anchor export link per row (an Inertia link would fetch
+      the JSON over XHR and show it in the error modal). The editor link
+      arrives with the editor itself (S7); a plan is built by import until
+      then.
+
 - [x] Seating Task 33: `PlanAdminController` (index, store, publish,
       unpublish, export, import, occupancy, reserve, unreserve) and
       `CreatePlan` (an empty `konventix.plan/v1` document at version 0,
