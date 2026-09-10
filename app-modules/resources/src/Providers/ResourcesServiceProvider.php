@@ -9,7 +9,9 @@ use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventRescheduled;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationAmended;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
 use Konventix\Resources\Listeners\ProjectEventWindow;
 
@@ -37,6 +39,11 @@ class ResourcesServiceProvider extends ModuleServiceProvider
         Event::listen(
             RegistrationConfirmed::class,
             FulfilClaimsOnRegistrationConfirmed::class,
+        );
+
+        Event::listen(
+            RegistrationAmended::class,
+            FulfilClaimsOnRegistrationAmended::class,
         );
 
         Event::listen(EventCreated::class, [ProjectEventWindow::class, 'handleCreated']);

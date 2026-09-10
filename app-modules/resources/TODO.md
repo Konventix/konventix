@@ -6,11 +6,6 @@
 
 ## Next
 
-- [ ] `FulfilResourceClaims` idempotent per `(registration_id, amendment_id)`,
-      `n` unit bookings for quantity `n` in natural label order, catches only
-      `ResourceUnavailableException`; `FulfilClaimsOnRegistrationAmended`;
-      confirmation gated on the payload's brand, not the ambient one
-      (Seating Task 5).
 - [ ] `ReleaseBookingsOnRegistrationCancelled` and
       `ReleaseBookingsOnRegistrationRejected` (Seating Task 6).
 - [ ] `resources:expire-holds` every minute, with the last-run heartbeat the
@@ -34,6 +29,14 @@
       winner for N parallel picks.
 
 ## Done
+
+- [x] Seating Task 5 — `FulfilResourceClaims` is idempotent per
+      `(registration_id, amendment_id)`, books `n` separate unit resources
+      for quantity `n` in natural label order (`A-2` before `A-10`), and
+      catches only `ResourceUnavailableException`. New
+      `FulfilClaimsOnRegistrationAmended`; both fulfilment listeners gate
+      on the payload's brand (`moduleActiveForBrand`) so the webhook path
+      fulfils too.
 
 - [x] Seating Task 4 — `HoldResourceBooking` refuses `quantity > 1` in unit
       mode (`InvalidArgumentException`, a programming error rather than an

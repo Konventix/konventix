@@ -4,27 +4,45 @@ declare(strict_types=1);
 
 namespace Konventix\Resources\Actions;
 
+use Konventix\Resources\Enums\CapacityMode;
+use Konventix\Resources\Exceptions\ResourceUnavailableException;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceEventWindow;
 use Konventix\Resources\Models\ResourceType;
 
 /**
- * Turns a confirmed registration's `resource_claim` grants into bookings.
+ * Turns a registration's `resource_claim` grants into bookings — at
+ * confirmation (`amendmentId` null) and for every amendment (ADR-0036,
+ * `amendmentId` set).
  *
- * Takes scalars, never Registration's classes — the thin listener unpacks the
- * event, the same shape `IssueAdmissionsForRegistration` uses.
+ * Takes scalars, never Registration's classes — the thin listeners unpack
+ * the event, the same shape `IssueAdmissionsForRegistration` uses.
  *
  * **Fails soft, by design.** Resources' SPEC settles that "a RegistrationType
  * that grants resource claims still registers people correctly — the claims
  * simply stay unfulfilled rather than failing the registration, so switching
  * the feature on later can fulfil them retroactively." So an unknown type, a
- * missing event window, or a fully-booked resource skips that claim and
- * leaves the registration intact. A booth that cannot be allocated is an
- * organizer's problem to solve, not a reason to reject the exhibitor.
+ * missing event window, or a fully-booked type skips that claim and leaves
+ * the registration intact. Only `ResourceUnavailableException` is caught:
+ * it is the one outcome that means "try the next resource"; anything else
+ * is a real failure and surfaces.
  *
- * Idempotent per registration: a replayed confirmation finds its bookings
- * already there and adds none.
+ * **Idempotent per issuing occasion**, keyed on `(registration_id,
+ * amendment_id)`: a replayed confirmation or amendment finds its bookings
+ * and adds none, while an amendment on a registration that already has
+ * bookings from its confirmation is fulfilled — the old "any booking for
+ * this registration" guard silently dropped every amendment.
+ *
+ * **Quantity `n` is `n` seats.** In unit mode a claim for two seats makes
+ * two separate bookings on two resources (a unit cannot hold quantity 2);
+ * in quantity mode it is one booking drawing `n` off one resource's
+ * capacity (ADR-0034). Candidates are tried in *natural* label order, so
+ * `A-2` comes before `A-10` — first-fit that reads like the plan.
+ *
+ * Only `resource_claim` grants are handled here. `seating` grants become
+ * `resource_claims` rows (slice S3); unknown kinds are Admission's or a
+ * future module's and are skipped without complaint.
  *
  * @phpstan-type Grant array{kind: string, role: string, quantity: int, resource_type_id: string|null}
  */
@@ -41,11 +59,12 @@ final class FulfilResourceClaims
      * @param  list<Grant>  $grants
      * @return list<ResourceBooking>
      */
-    public function handle(string $registrationId, string $eventId, string $brandId, array $grants): array
+    public function handle(string $registrationId, string $eventId, string $brandId, array $grants, ?string $amendmentId = null): array
     {
         $alreadyFulfilled = ResourceBooking::withoutBrandScope()
             ->where('brand_id', $brandId)
             ->where('registration_id', $registrationId)
+            ->where('amendment_id', $amendmentId)
             ->exists();
 
         if ($alreadyFulfilled) {
@@ -67,11 +86,7 @@ final class FulfilResourceClaims
                 continue;
             }
 
-            $booking = $this->fulfil($grant, $registrationId, $brandId, $window);
-
-            if ($booking !== null) {
-                $created[] = $booking;
-            }
+            array_push($created, ...$this->fulfil($grant, $registrationId, $brandId, $amendmentId, $window));
         }
 
         return $created;
@@ -79,8 +94,9 @@ final class FulfilResourceClaims
 
     /**
      * @param  Grant  $grant
+     * @return list<ResourceBooking>
      */
-    private function fulfil(array $grant, string $registrationId, string $brandId, ResourceEventWindow $window): ?ResourceBooking
+    private function fulfil(array $grant, string $registrationId, string $brandId, ?string $amendmentId, ResourceEventWindow $window): array
     {
         $type = ResourceType::withoutBrandScope()
             ->where('brand_id', $brandId)
@@ -88,42 +104,72 @@ final class FulfilResourceClaims
             ->first();
 
         if ($type === null) {
-            return null;
+            return [];
         }
 
-        // First resource of the type with room. Which *specific* seat or booth
-        // a claim gets is an allocation question the organizer answers in the
-        // plan UI (SPEC's still-open transfer/allocation question); until then
-        // first-fit is honest and reversible.
-        $resources = Resource::withoutBrandScope()
+        $candidates = Resource::withoutBrandScope()
             ->where('brand_id', $brandId)
             ->where('resource_type_id', $type->id)
             ->where('is_published', true)
-            ->orderBy('label')
-            ->get();
+            ->get()
+            ->sort(fn (Resource $a, Resource $b): int => strnatcasecmp($a->label, $b->label))
+            ->values();
 
-        foreach ($resources as $resource) {
-            try {
-                $booking = $this->hold->handle(
-                    resource: $resource,
-                    holderType: ResourceBooking::HOLDER_REGISTRATION,
-                    holderId: $registrationId,
-                    startsAt: $window->starts_at,
-                    endsAt: $window->ends_at,
-                    quantity: $grant['quantity'],
-                    registrationId: $registrationId,
-                );
+        $wanted = max(1, $grant['quantity']);
 
-                // A claim from a confirmed registration is not provisional —
-                // the commercial act already happened, so it goes straight to
-                // firm rather than sitting on a hold clock nobody will answer.
-                return $this->confirm->handle($booking);
-            } catch (\Throwable) {
-                // This resource is taken; try the next one.
-                continue;
+        if ($type->mode === CapacityMode::Quantity) {
+            foreach ($candidates as $resource) {
+                $booking = $this->book($resource, $wanted, $registrationId, $amendmentId, $window);
+
+                if ($booking !== null) {
+                    return [$booking];
+                }
+            }
+
+            return [];
+        }
+
+        $booked = [];
+
+        foreach ($candidates as $resource) {
+            if (count($booked) === $wanted) {
+                break;
+            }
+
+            $booking = $this->book($resource, 1, $registrationId, $amendmentId, $window);
+
+            if ($booking !== null) {
+                $booked[] = $booking;
             }
         }
 
-        return null;
+        // Fewer than `wanted` free: the ones that were free are kept. A
+        // partial fulfilment is an organizer's problem to solve in the plan,
+        // not a reason to give back what the registration already has.
+        return $booked;
+    }
+
+    private function book(Resource $resource, int $quantity, string $registrationId, ?string $amendmentId, ResourceEventWindow $window): ?ResourceBooking
+    {
+        try {
+            $booking = $this->hold->handle(
+                resource: $resource,
+                holderType: ResourceBooking::HOLDER_REGISTRATION,
+                holderId: $registrationId,
+                startsAt: $window->starts_at,
+                endsAt: $window->ends_at,
+                quantity: $quantity,
+                registrationId: $registrationId,
+                amendmentId: $amendmentId,
+            );
+        } catch (ResourceUnavailableException) {
+            // This resource is taken for the interval; try the next one.
+            return null;
+        }
+
+        // A claim from a confirmed registration is not provisional — the
+        // commercial act already happened, so it goes straight to firm
+        // rather than sitting on a hold clock nobody will answer.
+        return $this->confirm->handle($booking);
     }
 }

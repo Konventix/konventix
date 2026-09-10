@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Resources\Actions\ConfirmResourceBooking;
 use Konventix\Resources\Actions\HoldResourceBooking;
 use Konventix\Resources\Actions\ReleaseResourceBooking;
@@ -309,4 +310,45 @@ it('records the claim, the amendment and an explicit label on the booking row', 
     expect($booking->fresh()->claim_id)->toBe($claimId)
         ->and($booking->fresh()->amendment_id)->toBe($amendmentId)
         ->and($booking->fresh()->label)->toBe('Booth 12 (as sold)');
+});
+
+it('books two separate seats, in natural label order, for a resource claim of quantity two', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources');
+
+    $eventId = (string) Str::ulid();
+    seatingProjectWindow($eventId, $brand->id);
+    $type = seatingUnitType($eventId);
+    // Plain string order would put A-10 before A-2.
+    foreach (['A-10', 'A-2', 'A-1'] as $label) {
+        seatingPublishedResource($type, $label);
+    }
+
+    $registrationId = seatingConfirmRegistration($eventId, $brand->id, [seatingClaimGrant($type->id, 2)]);
+
+    $bookings = ResourceBooking::query()->where('registration_id', $registrationId)->get();
+
+    expect($bookings)->toHaveCount(2)
+        ->and($bookings->pluck('quantity')->unique()->all())->toBe([1])
+        ->and($bookings->pluck('resource_id')->unique())->toHaveCount(2)
+        ->and($bookings->pluck('label')->sort()->values()->all())->toBe(['A-1', 'A-2']);
+});
+
+it('fulfils a confirmation that arrives with no brand in context', function (): void {
+    // The Stripe webhook confirms paid registrations with no ambient brand;
+    // the gate has to read the brand the payload names.
+    $brand = $this->withBrand();
+    $this->activateModule('resources');
+
+    $eventId = (string) Str::ulid();
+    seatingProjectWindow($eventId, $brand->id);
+    $type = seatingUnitType($eventId);
+    seatingPublishedResource($type, 'C-01');
+
+    app(BrandContext::class)->forget();
+
+    $registrationId = seatingConfirmRegistration($eventId, $brand->id, [seatingClaimGrant($type->id)]);
+
+    expect(ResourceBooking::withoutBrandScope()->where('registration_id', $registrationId)->count())->toBe(1)
+        ->and(app(BrandContext::class)->current())->toBeNull();
 });

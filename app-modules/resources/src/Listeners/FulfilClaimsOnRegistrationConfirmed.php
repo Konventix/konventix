@@ -37,7 +37,10 @@ final class FulfilClaimsOnRegistrationConfirmed
 
     public function handle(RegistrationConfirmed $event): void
     {
-        if ($this->moduleIsInactive()) {
+        // The payload's brand, not the ambient one: a paid registration is
+        // confirmed from Stripe's webhook, which runs with no brand in
+        // context, and `isActive()` would read that as "off".
+        if (! $this->moduleActiveForBrand($event->brandId)) {
             return;
         }
 

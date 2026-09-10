@@ -85,7 +85,8 @@ maintains from them.
 
 | Event | Owning module | Why |
 |---|---|---|
-| `RegistrationConfirmed` *(proposed)* | Registration | The one event that materializes entitlements: its `grants` list carries the claimed `resource_type_id` and quantity, which this module turns into holds or confirmed bookings depending on the type's rules. Must be idempotent — the same event may be replayed. |
+| `RegistrationConfirmed` | Registration | The one event that materializes entitlements: its `grants` list carries the claimed `resource_type_id` and quantity, which `FulfilResourceClaims` turns into confirmed bookings — `n` separate unit bookings for quantity `n`, one quantity-mode booking otherwise, candidates in natural label order. Gated on the payload's `brandId` (`moduleActiveForBrand`), because paid registrations confirm from a webhook with no ambient brand. Idempotent per `(registration_id, amendment_id null)`. `seating` grants are handled in S3. |
+| `RegistrationAmended` | Registration | Same as confirmation for the *added* grants only, idempotent per `(registration_id, amendment_id)` (ADR-0036). |
 | `RegistrationCancelled` *(proposed)* | Registration | Releases every booking held under that registration. |
 | `EventCreated`, `EventRescheduled`, `EventDetailsUpdated` | Event | Projected into `resource_event_windows` (`ProjectEventWindow`): the UTC instants of the event's wall-clock times in the payload's zone (ADR-0027), its name and slug. Upsert on `(brand_id, event_id)`; ungated so a brand that switches Resources on later finds the window there. `event:replay-details` backfills events older than the projection. |
 | `AdmissionRevoked` *(proposed)* | Admission | Releases bookings whose holder is that admission (a personal seat), leaving registration-level bookings alone. |
