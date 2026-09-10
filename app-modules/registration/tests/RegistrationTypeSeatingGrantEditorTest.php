@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Inertia\Testing\AssertableInertia;
 use Konventix\Registration\Models\RegistrationType;
 use Konventix\Resources\Enums\CategoryToken;
+use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceType;
 
 /**
@@ -41,6 +42,14 @@ it('offers the event\'s categories through the seating-fields slot when Resource
     ResourceType::factory()->forEvent($eventId)->create(['name' => 'Accessible', 'sort_order' => 1]);
     ResourceType::factory()->create(['name' => 'Other event']);
 
+    // Four places of the same category, only one of them actually
+    // bookable — a raw row count and the slot's bookable count must
+    // diverge here, or this case cannot tell them apart (#282).
+    Resource::factory()->ofType($gamer)->published()->create();
+    Resource::factory()->ofType($gamer)->create();
+    Resource::factory()->ofType($gamer)->published()->create(['blocked' => true]);
+    Resource::factory()->ofType($gamer)->published()->create()->delete();
+
     $this->actingAs($admin)
         ->get("http://admin.regtypes.test/admin/registration-types/{$type->getKey()}/edit")
         ->assertOk()
@@ -51,7 +60,10 @@ it('offers the event\'s categories through the seating-fields slot when Resource
                 ->and($slot['module'])->toBe('resources')
                 ->and(collect($slot['props']['categories'])->pluck('name')->all())->toBe(['Accessible', 'Gamer'])
                 ->and(collect($slot['props']['categories'])->firstWhere('id', $gamer->getKey()))
-                ->toMatchArray(['token' => 'chart-2', 'symbol' => 'gamepad-2']);
+                // Bookable, not raw (#282, design §12b): a category with
+                // four places total shows 1 — published, not blocked, not
+                // deleted — the number an operator sizes a quota on.
+                ->toMatchArray(['token' => 'chart-2', 'symbol' => 'gamepad-2', 'bookablePlaces' => 1]);
         });
 });
 
