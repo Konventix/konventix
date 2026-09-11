@@ -21,10 +21,13 @@ reading either.
 
 ## Owns
 
-- **`Admission`** — a single person's access right: holder, admission role
-  (`visitor`, `exhibitor_crew`, `speaker`, `press`, `crew`, …), validity window,
-  and lifecycle state (issued, assigned, revoked, expired). References its
-  originating registration by ULID only.
+- **`Admission`** — a single person's access right: holder, buyer, admission
+  role (`visitor`, `exhibitor_crew`, `speaker`, `press`, `crew`, …), validity
+  window, and lifecycle state (issued, assigned, revoked, expired).
+  `buyer_user_id` and `holder_user_id` are two independent nullable
+  columns — the registrant who bought a registration-derived admission is
+  not necessarily the person who ends up holding it (design §13). References
+  its originating registration by ULID only.
 - **Holder assignment** — an admission may be issued unassigned (group and B2B
   bookings) and be claimed or named later.
 - **`AdmissionClaimLink`** — the mechanism by which a not-yet-named person

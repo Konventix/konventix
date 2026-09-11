@@ -177,3 +177,40 @@ it('treats two different amendments on one registration as separate deltas', fun
 
     expect(Admission::where('registration_id', $registrationId)->count())->toBe(2);
 });
+
+it('threads the registrant as buyer_user_id on every admission issued at confirmation', function (): void {
+    $this->withBrand();
+
+    $event = confirmedRegistrationEvent([
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 2, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
+    ]);
+
+    event($event);
+
+    $admissions = Admission::where('registration_id', $event->registrationId)->get();
+
+    expect($admissions)->toHaveCount(2)
+        ->and($admissions->pluck('buyer_user_id')->unique()->all())->toBe([$event->registrantUserId]);
+});
+
+it('threads the registrant as buyer_user_id on an admission issued by amendment', function (): void {
+    $this->withBrand();
+
+    $confirmed = confirmedRegistrationEvent([
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 1, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
+    ]);
+    event($confirmed);
+
+    $amended = admissionTestAmendedEvent(
+        [['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 1, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null]],
+        $confirmed->registrationId,
+        (string) Str::ulid(),
+    );
+    event($amended);
+
+    $amendedAdmission = Admission::where('registration_id', $confirmed->registrationId)
+        ->where('role', 'exhibitor_crew')
+        ->firstOrFail();
+
+    expect($amendedAdmission->buyer_user_id)->toBe($amended->registrantUserId);
+});

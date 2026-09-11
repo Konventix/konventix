@@ -31,6 +31,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $assignment_id
  * @property string $event_id
  * @property string|null $holder_user_id
+ * @property string|null $buyer_user_id
  * @property string $role
  * @property Carbon|null $valid_from
  * @property Carbon|null $valid_until
@@ -53,6 +54,7 @@ class Admission extends Model
         'assignment_id',
         'event_id',
         'holder_user_id',
+        'buyer_user_id',
         'role',
         'valid_from',
         'valid_until',

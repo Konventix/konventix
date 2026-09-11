@@ -183,5 +183,9 @@
       rather than replaces on `EventDetailsUpdated`/`EventRescheduled`, and
       learns the primary venue from
       `VenueAssigned`/`VenueUpdated`/`VenueUnassigned` (design §13).
+- [x] `admissions.buyer_user_id`, threaded from `RegistrationConfirmed`'s
+      and `RegistrationAmended`'s `registrantUserId` through
+      `IssueAdmissionsForRegistration`, distinct from `holder_user_id`
+      (design §13).
 
 <!-- Move completed items here with the PR that finished them. -->
