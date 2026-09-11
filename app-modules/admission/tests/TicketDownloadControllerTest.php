@@ -171,3 +171,62 @@ it('wires IssueAdmissionsForRegistration to RegistrationConfirmed and Registrati
         'IssueAdmissionsOnRegistrationConfirmed' => 'RegistrationConfirmed',
     ]);
 });
+
+it('downloads a single-page PDF for the holder', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $holder = User::factory()->create();
+    $admission = Admission::factory()->create(['holder_user_id' => $holder->getKey()]);
+
+    $response = $this->actingAs($holder)
+        ->get('/my/admissions/'.$admission->getKey().'/ticket')
+        ->assertOk();
+
+    expect($response->headers->get('Content-Type'))->toBe('application/pdf');
+
+    $bytes = (string) $response->getContent();
+
+    expect(str_starts_with($bytes, '%PDF'))->toBeTrue()
+        ->and(preg_match_all('/\/Type\s*\/Page(?!s)/', $bytes))->toBe(1);
+});
+
+it('downloads a staff admission\'s ticket even though it carries no registration', function (): void {
+    // D-STF-01: a rostered crew member's admission has no `registration_id`
+    // at all, so the route above has nothing to key on — this route is the
+    // only one that can ever serve its ticket.
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $crew = User::factory()->create();
+    $admission = Admission::factory()->create([
+        'registration_id' => null,
+        'holder_user_id' => $crew->getKey(),
+        'role' => 'crew',
+    ]);
+
+    $this->actingAs($crew)
+        ->get('/my/admissions/'.$admission->getKey().'/ticket')
+        ->assertOk();
+});
+
+it('refuses a stranger holder with 403', function (): void {
+    $this->withBrand();
+    $holder = User::factory()->create();
+    $stranger = User::factory()->create();
+    $admission = Admission::factory()->create(['holder_user_id' => $holder->getKey()]);
+
+    $this->actingAs($stranger)
+        ->get('/my/admissions/'.$admission->getKey().'/ticket')
+        ->assertForbidden();
+});
+
+it('refuses a revoked admission with 404', function (): void {
+    $this->withBrand();
+    $holder = User::factory()->create();
+    $admission = Admission::factory()->revoked()->create(['holder_user_id' => $holder->getKey()]);
+
+    $this->actingAs($holder)
+        ->get('/my/admissions/'.$admission->getKey().'/ticket')
+        ->assertNotFound();
+});

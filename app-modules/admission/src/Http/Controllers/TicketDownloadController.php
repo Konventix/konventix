@@ -65,4 +65,25 @@ final class TicketDownloadController
             'Content-Disposition' => sprintf('attachment; filename="tickets-%s.pdf"', $slug),
         ]);
     }
+
+    /**
+     * The counterpart to `buyer()` above, and the only route that can ever
+     * serve a staff admission's ticket: `registration_id` is null for one
+     * (D-STF-01), so `buyer()` has nothing to key on for it.
+     */
+    public function holder(Request $request, Admission $admission, TicketDocumentRenderer $renderer): SymfonyResponse
+    {
+        abort_unless($admission->holder_user_id === (string) $request->user()->getAuthIdentifier(), 403);
+        abort_if($admission->state === AdmissionState::Revoked, 404, 'This ticket has been revoked.');
+
+        $bytes = $renderer->render(collect([$admission]));
+
+        $slug = EventSummary::query()->where('event_id', $admission->event_id)->value('slug')
+            ?? $admission->event_id;
+
+        return new Response($bytes, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => sprintf('attachment; filename="ticket-%s.pdf"', $slug),
+        ]);
+    }
 }

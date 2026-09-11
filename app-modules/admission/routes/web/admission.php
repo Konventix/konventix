@@ -61,3 +61,14 @@ Route::middleware(['auth'])->group(function (): void {
     Route::get('/my/registrations/{registration}/ticket', [TicketDownloadController::class, 'buyer'])
         ->name('admission.tickets.buyer');
 });
+
+/*
+ * The holder's own single-page file (design §4.1, §7): the counterpart to
+ * the route above, and — for a staff admission, which carries no
+ * `registration_id` at all (D-STF-01) — the only route that can ever serve
+ * its ticket.
+ */
+Route::middleware(['auth'])->group(function (): void {
+    Route::get('/my/admissions/{admission}/ticket', [TicketDownloadController::class, 'holder'])
+        ->name('admission.tickets.holder');
+});
