@@ -70,4 +70,7 @@ Registration (commercial act) ≠ Admission (a person's access right).
 Resource (generic, time-dimensioned) replaces Seat. Staffing replaces OrgaTeam.
 Place = Resource, Kategorie = ResourceType; a hall plan is a document projected
 into `resources`, a seat entitlement is a ResourceClaim (ADR-0060).
+A ticket is not a third credential: it is the rendered PDF of an Admission's
+existing KVX1 token, and the token itself is now stable rather than
+reissued on every read (ADR-0061).
 See `docs/architecture/module-map.md` for the full mapping.

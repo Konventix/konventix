@@ -9,6 +9,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app-modules/*/src/Data/** | .ai/rules/data.md |
 | .gitlab-ci.yml, .github/workflows/** | .ai/rules/ci.md |
 | app/Observability/**, app-modules/platform/src/Observability/**, app/Providers/ObservabilityServiceProvider.php, app-modules/*/src/Metrics/**, app-modules/*/src/Listeners/Metrics/**, contrib/observability/**, config/prometheus.php, config/logging.php, config/health.php, docs/operations.md | .ai/rules/observability.md |
+| app-modules/admission/src/Documents/**, app-modules/admission/src/Actions/IssueAdmissionToken.php, app-modules/admission/src/Actions/VerifyAdmissionToken.php, app-modules/admission/src/Http/Controllers/TicketDownloadController.php, app-modules/event/src/Http/Controllers/EventLandingController.php, app-modules/platform/src/Documents/**, app-modules/platform/src/Calendar/**, app-modules/messaging/src/Data/AttachmentData.php | .ai/rules/tickets.md |
 | phpstan.neon, compose.yaml, compose.prod-local.yaml, Dockerfile, contrib/**, .env.example, README.md | .ai/rules/general.md |
 | resources/js/**, app-modules/*/resources/js/** | .ai/rules/js.md |
 | app-modules/*/src/Listeners/** | .ai/rules/listeners.md |

@@ -10,6 +10,9 @@
 
 ## Backlog
 
+- [ ] A calendar entry per event day or per session, once Agenda exists
+      (design 2026-09-11 §12): today's `.ics` is one `VEVENT` for the whole
+      event, because an event has no sub-sessions yet.
 - [ ] The console event source (`registerConsoleEventSources`) is
       unbounded — every unarchived event across every brand on every admin
       response. Bounded in practice by `archived_at`; add a limit or an
@@ -27,6 +30,13 @@
 
 ## Done
 
+- [x] Public calendar download (#72, ADR-0061): `GET
+      /events/{event:slug}/calendar.ics` calls Platform's
+      `Calendar\CalendarFile::forEvent(...)` with this module's own scalars.
+      `event:replay-details` gained a venue pass — it now also re-fires
+      `VenueAssigned` for each event's primary venue — so a backfilled
+      calendar file and ticket event band are never silently missing their
+      venue on an event created before this deploy.
 - [x] `event:replay-details {--event=}` re-emits `EventRescheduled` and
       `EventDetailsUpdated` with each event's current values, schedule
       first, so a read model that came later than the event (Resources'

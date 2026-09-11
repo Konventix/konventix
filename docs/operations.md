@@ -86,6 +86,63 @@ a type that gained the grant afterwards needs an amendment adding that grant.
 The amendment id keys the claim, so replaying the same amendment adds
 nothing.
 
+## Handing a participant their ticket
+
+A ticket is self-service: the buyer downloads every admission their
+registration granted from `/my/registrations/{registration}/ticket`, and
+anyone who has claimed an admission downloads their own from `/my/tickets`.
+There is no admin route that generates a participant's ticket on an
+operator's behalf — that document is deliberately participant-facing only
+(ADR-0061). When someone at a desk cannot self-serve (no account, a device
+that will not open the mail), the operator equivalent is the **badge**, not
+the ticket: `GET /admin/admissions/{admission}/badge` (`BadgeController`,
+behind `admission.print-badge`) prints the physical identity document
+check-in already reads, from the same KVX1 token. Sending someone to the
+door with a printed badge and no ticket is normal; the two documents carry
+the same scannable code.
+
+An admission with no linked holder account (`holder_user_id` is null) has no
+row in anyone's `/my/tickets` — group and B2B bookings look like this until
+a claim link is used. The buyer's own
+`/my/registrations/{registration}/ticket` still lists every admission the
+registration granted, holder or not, so a buyer can always retrieve every
+ticket their registration paid for, claimed or otherwise.
+
+### A superseded-nonce refusal at the door
+
+`CheckInRejectionReason::NonceSuperseded` means the presented code is real
+but is not the admission's *current* one — someone is scanning an older
+printout or QR after the admission's token was rotated
+(`IssueAdmissionToken::rotate()`, run only on a deliberate reissue, never on
+an ordinary download). The fix is always the same: the holder needs their
+current ticket, downloaded fresh from `/my/tickets` or reprinted as a badge
+from the console. This is not paged — the observability task deliberately
+adds no alert for it (ADR-0059 point 8), because a refusal is already
+visible to the person standing at the door — but
+`admission_tokens_superseded_total` on the Sale dashboard's "Tickets and
+calendars" row is what an operator watches during a sale: a steady trickle
+is reissues behaving as designed, a spike against one event is worth asking
+about.
+
+### Backfilling the ticket's read models
+
+Two commands, safe to re-run, neither one specific to a single event:
+
+- `vendor/bin/sail artisan registration:announce-ownership` — re-emits the
+  narrow `RegistrationOwnershipAnnounced` event for every existing
+  registration, so `admissions.buyer_user_id` is populated for admissions
+  issued before this feature shipped. Never re-sends a confirmation mail:
+  that is exactly why this is its own event and not a replay of
+  `RegistrationConfirmed`.
+- `vendor/bin/sail artisan event:replay-details` — re-emits
+  `EventRescheduled`, `EventDetailsUpdated` and, since this feature,
+  `VenueAssigned` for each event's primary venue, so Admission's
+  `admission_event_summaries` and Registration's
+  `registration_event_summaries` both pick up a name, a schedule and a
+  venue for events created before the two read models existed. Run it again
+  after backfilling a venue onto an event that predates this deploy — the
+  command does not run itself.
+
 ## Alerts
 
 ### KonventixMetricsDown
