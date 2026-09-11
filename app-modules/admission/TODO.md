@@ -187,5 +187,9 @@
       and `RegistrationAmended`'s `registrantUserId` through
       `IssueAdmissionsForRegistration`, distinct from `holder_user_id`
       (design §13).
+- [x] `FillBuyerOnRegistrationOwnershipAnnounced` closes point 5's backfill
+      chain: it fills `buyer_user_id` on admissions that predate that
+      column and is (and must remain) the sole listener on
+      `RegistrationOwnershipAnnounced`.
 
 <!-- Move completed items here with the PR that finished them. -->

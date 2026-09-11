@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Enums\Permission;
 use Konventix\Admission\Events\CheckInRejected;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
+use Konventix\Admission\Listeners\FillBuyerOnRegistrationOwnershipAnnounced;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
@@ -36,6 +37,7 @@ use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationOwnershipAnnounced;
 use Konventix\Staffing\Events\AssignmentAccepted;
 
 /**
@@ -174,6 +176,17 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(
             CheckInRejected::class,
             RecordAdmissionTokenMetrics::class,
+        );
+
+        // design doc §13, 2026-09-11 amendment "a registration-derived
+        // admission is anonymous today": backfills `buyer_user_id` on
+        // admissions that predate it. Only ever null -> value, never
+        // overwrites a set one (FillBuyerOnRegistrationOwnershipAnnounced's
+        // own whereNull guard) — this is the only listener this narrow
+        // event may ever have (see the event's own docblock).
+        Event::listen(
+            RegistrationOwnershipAnnounced::class,
+            FillBuyerOnRegistrationOwnershipAnnounced::class,
         );
     }
 
