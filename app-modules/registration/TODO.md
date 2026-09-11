@@ -6,6 +6,23 @@
 
 ## Next
 
+- [x] Category-quota ceiling, the consumer half (design §12b, #282):
+      `quotas.resource_type_id` (nullable ULID, no FK) links a quota to a
+      Resources category, set from the quota form's category select
+      (`registration.quota-form.categories`, filled by Resources — this
+      module still never queries `resource_types`, ADR-0004).
+      `Listeners\AdjustQuotaOnPlaceSupplyChanged` consumes/releases the
+      linked quota's unit on Resources' `PlaceSupplyChanged`, reusing
+      `ConsumesQuotas`/`ReleasesQuotas`' own per-quota lock-and-emit rather
+      than new arithmetic, brand from the payload, idempotent via
+      `quota_supply_change_receipts` keyed on the event's `changeId`. Not
+      built, on the operator's own call: automatic capacity sync with the
+      plan's place count, a queue inside Resources, and the unit mismatch
+      where a seating grant grants more than one place per quota unit.
+- [ ] `registration-types/Edit.vue` is still around 490 lines after the
+      grants card moved out (S4, seating): the offer card and the price
+      card are the next two extractions before the page is under the
+      300-line guideline.
 - [ ] A frozen type cannot be superseded from the console: an organizer whose
       terms have changed must build the replacement by hand. A "duplicate this
       type" action would make the intended path (new type, old one hidden by
@@ -60,6 +77,45 @@
       filter, refusal at submission and at the cart line (#218).
 
 ## Done
+
+- [x] Type-editor slot for seating (seating design §7.1/§9.3, #S4, #275): the
+      grants card is its own component,
+      `resources/js/components/RegistrationTypeGrantsCard.vue`, and a
+      `seating` row renders whatever the
+      `registration.type-editor.seating-fields` slot contributes — resolved
+      by `RegistrationTypeAdminController@edit` with the type's brand set in
+      `BrandContext`, because `SlotRegistry` gates a gateable module on that
+      brand's activation and the admin host resolves none. This module still
+      reads no `resource_types` row itself (ADR-0004); Resources' own
+      contribution is the only source of category names, tokens, symbols
+      and — per the operator's 2026-09-10 decision that a category's ceiling
+      is a hand-typed Registration quota capacity (#282) — each category's
+      bookable place count, shown beside its checkbox next to the quota
+      cards' consumed/capacity figures on the same screen.
+- [x] Payload projection for seating (seating design §7.1, #S3):
+      `GrantData::toEventPayload()` is the one place that turns a grant into
+      the scalar shape `RegistrationConfirmed` and `RegistrationAmended`
+      carry — `resource_type_ids` and `seating_mode` ride alongside the
+      existing `resource_type_id`, null on every kind but `seating`. Both
+      events also gain `registrantUserId`, read straight off
+      `Registration::$registrant_user_id` (required, never nullable):
+      personal data reaching Resources for the first time, there only so the
+      seating module can authorise the person picking their own seat and
+      answer a data-subject request later — nothing else rides on it. Purely
+      additive: every existing consumer (Admission, Community, Competition,
+      Resources' own `resource_claim` fulfilment) still reads the same keys
+      it always did. SPEC.md's contract table updated in the same commit.
+
+- [x] Seating grant (seating design §7.1, #S3): `GrantKind::Seating`,
+      `Enums\SeatingMode`, `GrantData::resourceTypeIds` / `seatingMode`,
+      `Actions\Concerns\GuardsSeatingGrants` on type create/update and on
+      amendments — one seating grant per list, categories and mode required,
+      no category both first-fit-claimed and offered for picking. `grants` is
+      one of the axes `GuardsTypeConfiguration::frozenAxes()` locks once a
+      type has registrations, so this is not just a validation rule: a
+      seating grant has to be configured on a type before it sells anything,
+      an operational ordering constraint the operator has to know about
+      (ADR-0060) — there is no "add seating to a live type" path.
 
 - [x] ADR-0048 point 3 (Mail Task 5): a registration tells its holder every
       time its state changes. Five new listeners
@@ -348,3 +404,20 @@
       `resources/js/components/registration/EventStatsCard.vue`.
       `tests/RegistrationStatsTest.php` covers capability + operator-host
       enforcement and the counts/per-type numbers for a seeded event.
+- [x] `RegistrationOwnershipAnnounced` and `registration:announce-ownership`
+      (design §13): a replay-safe backfill path for
+      `admissions.buyer_user_id` on rows that predate that column —
+      deliberately its own event rather than a replay of
+      `RegistrationConfirmed`, which also drives the confirmation mail.
+      Only a projection may ever listen to it.
+- [x] `registration_event_summaries` now also carries the schedule
+      (`starts_at`/`ends_at`/`timezone`) and the primary venue
+      (`venue_label`/`venue_id`), projected with the same patch-not-replace
+      care as Admission's table (design §13) — `handleDetailsUpdated()`
+      cannot blank a schedule `handleCreated()` set, and
+      `handleRescheduled()` cannot blank the name; unlike Admission's
+      version, `handleRescheduled()` here only ever patches an existing
+      row, since every event already has one by the time a reschedule can
+      reach it. Feeds the (later) confirmation mail's calendar attachment
+      via `Konventix\Platform\Calendar\CalendarFile`, without Registration
+      ever importing Event.

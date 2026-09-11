@@ -1202,16 +1202,18 @@ release:image:
     # `imagetools create` names an existing manifest a second time — the
     # release is the image that was built and smoked, not a rebuild of it.
     #
-    # It does not preserve the top-level digest, and the comment here used to
-    # say it did. A single-platform manifest gets wrapped in an OCI index on
-    # the way, so the semver tag is an index around the same manifest: in the
-    # registry today `0.5.3` is sha256:4afb57ac… while `sha-33ce3925` is
-    # sha256:c263ef9c…, and the API reports no config revision or size for the
-    # semver tag at all, which is what an index looks like. The layers and the
-    # config are one object either way, so what runs is identical; only a
-    # consumer pinning the *tag's* digest would see two names. Nothing here
-    # does — the chart pins the tag (#82): Chart.yaml's appVersion is "0.4.0",
-    # not "v0.4.0".
+    # Whether that preserves the top-level digest depends on what it is handed.
+    # A single-platform manifest gets wrapped in an OCI index on the way and
+    # comes out with a new digest; an index is copied as it stands. Since #261
+    # the wrap happens once, in `publish:image`, so the sha tag is already an
+    # index by the time this job reads it and the release name carries the same
+    # digest. The registry shows both eras: `0.5.3` is sha256:4afb57ac… against
+    # its own `sha-33ce3925` at sha256:c263ef9c…, from when this job wrapped a
+    # plain manifest, while `0.5.7` and `sha-f3c25e32` are both
+    # sha256:a105f019…. (An index is also what a null `revision` in the tags API
+    # means.) So a digest pinned against a release now resolves under either
+    # name — but keep pinning the tag, which is what the chart does (#82):
+    # Chart.yaml's appVersion is "0.4.0", not "v0.4.0".
     - docker buildx imagetools create
         --tag "$CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}"
         "$CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG"

@@ -34,15 +34,30 @@ import {
  * `consumed` is never editable here: the registration Actions move it under a
  * row lock. Capacity is the lever an organizer has, and the server refuses to
  * cut it below what is already taken.
+ *
+ * `resourceTypeId` (design §12b, #282) links a quota to a Resources seat
+ * category as its ceiling: blocking or reserving a place in that category
+ * now consumes a unit here exactly as a sale would. `categoriesByBrand`
+ * comes from Resources' `registration.quota-form.categories` slot — this
+ * page never queries `resource_types` itself (ADR-0004).
  */
 type QuotaRow = {
     id: string;
     name: string;
+    brandId: string;
     brandName: string;
+    resourceTypeId: string | null;
+    categoryName: string | null;
     capacity: number;
     consumed: number;
     remaining: number;
     typeNames: string[];
+};
+
+type CategoryOption = {
+    id: string;
+    name: string;
+    eventName: string | null;
 };
 
 interface PaginatedQuotas {
@@ -58,8 +73,15 @@ interface PaginatedQuotas {
 const props = defineProps<{
     quotas: PaginatedQuotas;
     brands: { id: string; name: string }[];
+    categoriesByBrand: Record<string, CategoryOption[]>;
     filters: DataTableFilters;
 }>();
+
+function categoryLabel(category: CategoryOption): string {
+    return category.eventName
+        ? `${category.name} (${category.eventName})`
+        : category.name;
+}
 
 const { filters, setSearch, toggleSort, setPerPage, setPage } = useDataTable(
     () => quotasIndex().url,
@@ -90,7 +112,12 @@ const createForm = useForm({
     brand_id: props.brands[0]?.id ?? '',
     name: '',
     capacity: 100,
+    resourceTypeId: null as string | null,
 });
+
+const createCategories = computed<CategoryOption[]>(
+    () => props.categoriesByBrand[createForm.brand_id] ?? [],
+);
 
 function create(): void {
     createForm.post(storeQuota().url, {
@@ -107,11 +134,22 @@ const editing = ref<QuotaRow | null>(null);
 const editForm = useForm({
     name: '',
     capacity: 0,
+    resourceTypeId: null as string | null,
 });
+
+const editCategories = computed<CategoryOption[]>(() =>
+    editing.value === null
+        ? []
+        : (props.categoriesByBrand[editing.value.brandId] ?? []),
+);
 
 function startEdit(quota: QuotaRow): void {
     editing.value = quota;
-    editForm.defaults({ name: quota.name, capacity: quota.capacity });
+    editForm.defaults({
+        name: quota.name,
+        capacity: quota.capacity,
+        resourceTypeId: quota.resourceTypeId,
+    });
     editForm.reset();
     editForm.clearErrors();
 }
@@ -151,6 +189,16 @@ const columns: ColumnDef<QuotaRow>[] = [
         header: 'Brand',
         cell: ({ row }) =>
             h('span', { class: 'text-text-muted' }, row.original.brandName),
+    },
+    {
+        id: 'category',
+        header: 'Category',
+        cell: ({ row }) =>
+            h(
+                'span',
+                { class: 'text-text-muted' },
+                row.original.categoryName ?? '—',
+            ),
     },
     {
         accessorKey: 'capacity',
@@ -258,6 +306,28 @@ const columns: ColumnDef<QuotaRow>[] = [
                                 <InputError :message="createForm.errors.name" />
                             </div>
                             <div class="grid gap-2">
+                                <Label for="quota-category">Category</Label>
+                                <select
+                                    id="quota-category"
+                                    v-model="createForm.resourceTypeId"
+                                    class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                                >
+                                    <option :value="null">
+                                        No category — a plain quota
+                                    </option>
+                                    <option
+                                        v-for="category in createCategories"
+                                        :key="category.id"
+                                        :value="category.id"
+                                    >
+                                        {{ categoryLabel(category) }}
+                                    </option>
+                                </select>
+                                <InputError
+                                    :message="createForm.errors.resourceTypeId"
+                                />
+                            </div>
+                            <div class="grid gap-2">
                                 <Label for="quota-capacity">Capacity</Label>
                                 <Input
                                     id="quota-capacity"
@@ -306,6 +376,26 @@ const columns: ColumnDef<QuotaRow>[] = [
                         <Label for="edit-quota-name">Name</Label>
                         <Input id="edit-quota-name" v-model="editForm.name" />
                         <InputError :message="editForm.errors.name" />
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="edit-quota-category">Category</Label>
+                        <select
+                            id="edit-quota-category"
+                            v-model="editForm.resourceTypeId"
+                            class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                        >
+                            <option :value="null">
+                                No category — a plain quota
+                            </option>
+                            <option
+                                v-for="category in editCategories"
+                                :key="category.id"
+                                :value="category.id"
+                            >
+                                {{ categoryLabel(category) }}
+                            </option>
+                        </select>
+                        <InputError :message="editForm.errors.resourceTypeId" />
                     </div>
                     <div class="grid gap-2">
                         <Label for="edit-quota-capacity">Capacity</Label>

@@ -60,6 +60,8 @@ it('submits and immediately confirms an on_submit / free registration, emitting 
                 'role' => 'visitor',
                 'quantity' => 1,
                 'resource_type_id' => null,
+                'resource_type_ids' => null,
+                'seating_mode' => null,
             ]);
 
         return true;

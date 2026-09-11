@@ -54,6 +54,7 @@ function compTestEligible(string $eventId, string $brandId, ?string $userId = nu
         registrationTypeId: (string) Str::ulid(),
         eventId: $eventId,
         brandId: $brandId,
+        registrantUserId: $userId,
         confirmedAt: now()->toIso8601String(),
         grants: [],
     ));

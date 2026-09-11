@@ -31,10 +31,13 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $assignment_id
  * @property string $event_id
  * @property string|null $holder_user_id
+ * @property string|null $buyer_user_id
  * @property string $role
  * @property Carbon|null $valid_from
  * @property Carbon|null $valid_until
  * @property AdmissionState $state
+ * @property string|null $token_nonce_hash
+ * @property Carbon|null $token_issued_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -51,6 +54,7 @@ class Admission extends Model
         'assignment_id',
         'event_id',
         'holder_user_id',
+        'buyer_user_id',
         'role',
         'valid_from',
         'valid_until',
@@ -66,6 +70,7 @@ class Admission extends Model
             'valid_from' => 'datetime',
             'valid_until' => 'datetime',
             'state' => AdmissionState::class,
+            'token_issued_at' => 'datetime',
         ];
     }
 

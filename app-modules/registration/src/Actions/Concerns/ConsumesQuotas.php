@@ -22,6 +22,14 @@ use Konventix\Registration\Models\RegistrationType;
  *
  * The mirror image is `ReleasesQuotas`, which must give back the same number
  * of units — see its note on amendments.
+ *
+ * `consumeQuota()` is the per-quota body `consumeQuotas()` loops over,
+ * pulled out so `Listeners\AdjustQuotaOnPlaceSupplyChanged` (design §12b,
+ * #282: a block or an operator reservation consumes a unit "as if it had
+ * been sold") can reuse the same lock-then-mutate-then-emit path for the
+ * single quota a category names, without the all-or-nothing capacity
+ * pre-check above — a supply-side change is never refused for exhaustion,
+ * it just makes the ledger honest.
  */
 trait ConsumesQuotas
 {
@@ -37,16 +45,26 @@ trait ConsumesQuotas
         }
 
         foreach ($quotas as $quota) {
-            $quota->consume($units);
+            $this->consumeQuota($quota, $units, $registrationType->event_id);
+        }
+    }
 
-            if ($quota->remaining() === 0) {
-                event(new QuotaExhausted(
-                    quotaId: $quota->id,
-                    eventId: $registrationType->event_id,
-                    brandId: $quota->brand_id,
-                    exhaustedAt: now()->toIso8601String(),
-                ));
-            }
+    /**
+     * Mutates an already-locked quota and emits `QuotaExhausted` the moment
+     * it reaches zero remaining — same effect a sale has, called from
+     * wherever the caller's own lock was taken.
+     */
+    private function consumeQuota(Quota $quota, int $units, string $eventId): void
+    {
+        $quota->consume($units);
+
+        if ($quota->remaining() === 0) {
+            event(new QuotaExhausted(
+                quotaId: $quota->id,
+                eventId: $eventId,
+                brandId: $quota->brand_id,
+                exhaustedAt: now()->toIso8601String(),
+            ));
         }
     }
 }

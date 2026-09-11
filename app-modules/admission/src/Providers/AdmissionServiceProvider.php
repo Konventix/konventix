@@ -5,23 +5,44 @@ declare(strict_types=1);
 namespace Konventix\Admission\Providers;
 
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Data\TicketLinkData;
+use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Enums\Permission;
+use Konventix\Admission\Events\CheckInRejected;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
+use Konventix\Admission\Listeners\FillBuyerOnRegistrationOwnershipAnnounced;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
+use Konventix\Admission\Listeners\Metrics\RecordAdmissionTokenMetrics;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
+use Konventix\Admission\Listeners\ProjectEventSummary;
+use Konventix\Admission\Listeners\ProjectPerson;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
 use Konventix\Admission\Listeners\RevokeAdmissionsOnRegistrationCancelled;
+use Konventix\Admission\Metrics\AdmissionMetrics;
+use Konventix\Admission\Models\Admission;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
+use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventReentryPolicyChanged;
+use Konventix\Event\Events\EventRescheduled;
+use Konventix\Event\Events\VenueAssigned;
+use Konventix\Event\Events\VenueUnassigned;
+use Konventix\Event\Events\VenueUpdated;
+use Konventix\Identity\Events\UserProfileUpdated;
+use Konventix\Identity\Events\UserRegistered;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Navigation\NavigationItem;
+use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationOwnershipAnnounced;
 use Konventix\Staffing\Events\AssignmentAccepted;
 
 /**
@@ -44,6 +65,28 @@ class AdmissionServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'admission';
+    }
+
+    /**
+     * `parent::boot()` first — routes, listeners, slots and the GDPR
+     * handler come from the base class hooks; the metric catalogue is the
+     * one thing the base class has no hook for (ADR-0059), the same
+     * reasoning `ResourcesServiceProvider`/`MessagingServiceProvider` give.
+     */
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->registerMetrics();
+    }
+
+    /**
+     * Admission's metrics (ADR-0059): catalogue entry here, recorder in
+     * registerListeners() below.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...AdmissionMetrics::definitions());
     }
 
     /**
@@ -114,6 +157,64 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             AssignmentAccepted::class,
             IssueCrewAdmissionOnAssignmentAccepted::class,
         );
+
+        // Admission's read model of a person's display name (design doc
+        // §13, 2026-09-11 amendment): the ticket's holder-name fallback needs
+        // one, and Admission may not read Identity's `User` model (ADR-0004).
+        Event::listen(UserRegistered::class, ProjectPerson::class);
+        Event::listen(UserProfileUpdated::class, ProjectPerson::class);
+
+        // Admission's read model of an event's name, slug, schedule and
+        // venue (design doc §13, 2026-09-11 amendment "Admission learns event
+        // facts"): the ticket's event band needs them, and Admission may not
+        // read Event's models (ADR-0004).
+        Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
+        Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
+        Event::listen(EventRescheduled::class, [ProjectEventSummary::class, 'handleRescheduled']);
+        Event::listen(VenueAssigned::class, [ProjectEventSummary::class, 'handleVenueAssigned']);
+        Event::listen(VenueUpdated::class, [ProjectEventSummary::class, 'handleVenueUpdated']);
+        Event::listen(VenueUnassigned::class, [ProjectEventSummary::class, 'handleVenueUnassigned']);
+
+        // Admission's own metric (ADR-0059, design doc §9): the one
+        // rejection reason among CheckInRejected's nine that answers
+        // whether §5's enforcement is rejecting real people.
+        Event::listen(
+            CheckInRejected::class,
+            RecordAdmissionTokenMetrics::class,
+        );
+
+        // design doc §13, 2026-09-11 amendment "a registration-derived
+        // admission is anonymous today": backfills `buyer_user_id` on
+        // admissions that predate it. Only ever null -> value, never
+        // overwrites a set one (FillBuyerOnRegistrationOwnershipAnnounced's
+        // own whereNull guard) — this is the only listener this narrow
+        // event may ever have (see the event's own docblock).
+        Event::listen(
+            RegistrationOwnershipAnnounced::class,
+            FillBuyerOnRegistrationOwnershipAnnounced::class,
+        );
+    }
+
+    /**
+     * The participant's own, in the account menu (design §7). No
+     * `permission`, and none is missing: the menu renders only for a
+     * signed-in user and `MyTicketsController::index()` authorizes on
+     * ownership, which is not a capability anybody can be granted — the
+     * same reasoning Registration's own `My registrations` entry already
+     * documents.
+     */
+    protected function registerNavigation(): void
+    {
+        $this->app->make(NavigationRegistry::class)->add(
+            new NavigationItem(
+                module: 'admission',
+                label: 'My tickets',
+                url: '/my/tickets',
+                icon: 'qr-code',
+                order: 11,
+                area: NavigationItem::AREA_ACCOUNT,
+            ),
+        );
     }
 
     /**
@@ -125,12 +226,41 @@ class AdmissionServiceProvider extends ModuleServiceProvider
      */
     protected function registerSlots(): void
     {
-        $this->app->make(SlotRegistry::class)->add(
+        $slots = $this->app->make(SlotRegistry::class);
+
+        $slots->add(
             slot: 'event.admin.dashboard',
             module: 'admission',
             component: 'admission/EventStatsCard',
             props: [],
             order: 20,
+        );
+
+        // design §7: how many tickets the buyer's file holds, and the link
+        // to it — the same mechanism the seat picker's `SeatSummarySlot`
+        // uses on this slot. Absent (`ticket: null`) when the registration
+        // granted no admissions at all, or when every admission it granted
+        // has since been revoked — never a link into an empty file.
+        // `static`: SlotRegistry is a singleton that outlives the request
+        // under Octane, and a closure capturing `$this` would pin this
+        // provider in memory with it.
+        $slots->add(
+            slot: 'registration.mine.show',
+            module: 'admission',
+            component: 'admission/TicketLinkSlot',
+            props: static function (array $context): array {
+                $count = Admission::query()
+                    ->where('registration_id', $context['registrationId'])
+                    ->where('state', '!=', AdmissionState::Revoked)
+                    ->count();
+
+                if ($count === 0) {
+                    return ['ticket' => null];
+                }
+
+                return ['ticket' => TicketLinkData::of($context['registrationId'], $count)->toArray()];
+            },
+            order: 30,
         );
     }
 

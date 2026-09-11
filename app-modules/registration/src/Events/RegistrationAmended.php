@@ -21,12 +21,18 @@ namespace Konventix\Registration\Events;
  * `amendmentId`; a free one — crew badges included in an exhibitor's
  * package — emits this event alone and never reaches Commerce.
  *
+ * `registrantUserId` travels for the same reason as on `RegistrationConfirmed`:
+ * a seating grant added by amendment becomes a second seat claim, and
+ * Resources authorises its picker from the payload.
+ *
  * Scalars only (ADR-0004).
+ *
+ * @phpstan-type GrantPayload array{kind: string, role: string, quantity: int, resource_type_id: string|null, resource_type_ids: list<string>|null, seating_mode: string|null}
  */
 final readonly class RegistrationAmended
 {
     /**
-     * @param  list<array{kind: string, role: string, quantity: int, resource_type_id: string|null}>  $grants
+     * @param  list<GrantPayload>  $grants
      */
     public function __construct(
         public string $registrationId,
@@ -34,6 +40,7 @@ final readonly class RegistrationAmended
         public string $registrationTypeId,
         public string $eventId,
         public string $brandId,
+        public string $registrantUserId,
         public array $grants,
         public string $amendedAt,
     ) {}

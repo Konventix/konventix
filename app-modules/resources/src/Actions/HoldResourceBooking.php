@@ -7,6 +7,8 @@ namespace Konventix\Resources\Actions;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\CapacityMode;
 use Konventix\Resources\Events\ResourceBookingHeld;
@@ -31,9 +33,22 @@ use Konventix\Resources\Models\ResourceBooking;
  * serialize; the row-level constraint still applies underneath. ADR-0034 is
  * candid that this invariant is weaker than unit mode's — it is an
  * acknowledged trade, not an oversight.
+ *
+ * Its event is dispatched after the outermost commit, never inside the
+ * transaction (design §6.1 step 7). A caller that wraps this call in
+ * `BrandContext::withBrand()` — `ReservePlaceForOperator` holds and confirms
+ * in one transaction — must not assume that scope is still open when the
+ * deferred dispatch runs: whatever brand is ambient when the event is built
+ * is captured and restored for the deferred callback alone, exactly as
+ * `ReleaseResourceBooking` does.
  */
 final class HoldResourceBooking
 {
+    /**
+     * @param  string|null  $claimId  the seat claim this booking fulfils (S3)
+     * @param  string|null  $amendmentId  the registration amendment that produced it — idempotency key with `registrationId`
+     * @param  string|null  $label  snapshot label; defaults to the resource's current label
+     */
     public function handle(
         Resource $resource,
         string $holderType,
@@ -42,9 +57,27 @@ final class HoldResourceBooking
         CarbonInterface $endsAt,
         int $quantity = 1,
         ?string $registrationId = null,
+        ?string $claimId = null,
+        ?string $amendmentId = null,
+        ?string $label = null,
     ): ResourceBooking {
-        return DB::transaction(function () use ($resource, $holderType, $holderId, $startsAt, $endsAt, $quantity, $registrationId): ResourceBooking {
-            $type = $resource->resourceType()->withoutGlobalScopes()->firstOrFail();
+        return DB::transaction(function () use ($resource, $holderType, $holderId, $startsAt, $endsAt, $quantity, $registrationId, $claimId, $amendmentId, $label): ResourceBooking {
+            $type = $resource->resourceTypeUnscoped();
+
+            // A unit is one thing. Booking "two" of it would write one row
+            // with quantity 2 — one seat for a registration that paid for
+            // two — so a caller that wants n seats makes n holds. This is a
+            // programming error, not an availability outcome, hence not
+            // ResourceUnavailableException: claim fulfilment must not skip
+            // past it as "taken, try the next seat".
+            if ($type->mode === CapacityMode::Unit && $quantity !== 1) {
+                throw new InvalidArgumentException(sprintf(
+                    'Resource [%s] is a unit; %d units are %d separate bookings.',
+                    $resource->id,
+                    $quantity,
+                    $quantity,
+                ));
+            }
 
             if ($type->mode === CapacityMode::Quantity) {
                 $this->guardRemainingCapacity($resource, $startsAt, $endsAt, $quantity);
@@ -55,7 +88,10 @@ final class HoldResourceBooking
                 'holder_type' => $holderType,
                 'holder_id' => $holderId,
                 'registration_id' => $registrationId,
+                'claim_id' => $claimId,
+                'amendment_id' => $amendmentId,
                 'quantity' => $quantity,
+                'label' => $label ?? $resource->label,
                 // Unit-mode bookings are exclusive, so the constraint guards
                 // them; quantity-mode ones share the interval by design and
                 // are guarded by the summed check above instead (ADR-0034).
@@ -63,7 +99,9 @@ final class HoldResourceBooking
                 'state' => BookingState::Held,
                 'starts_at' => $startsAt,
                 'ends_at' => $endsAt,
-                'hold_expires_at' => now()->addMinutes($type->hold_minutes),
+                // A type with hold_minutes 0 holds without a clock: the
+                // caller confirms in the same transaction (seat picks, S3).
+                'hold_expires_at' => $type->hold_minutes > 0 ? now()->addMinutes($type->hold_minutes) : null,
             ]);
             // brand_id from the resource, not ambient context (ADR-0010).
             $booking->forceFill(['brand_id' => $resource->brand_id]);
@@ -82,7 +120,7 @@ final class HoldResourceBooking
                 throw $e;
             }
 
-            event(new ResourceBookingHeld(
+            $event = new ResourceBookingHeld(
                 bookingId: $booking->id,
                 resourceId: $resource->id,
                 brandId: $resource->brand_id,
@@ -91,8 +129,36 @@ final class HoldResourceBooking
                 quantity: $quantity,
                 startsAt: $startsAt->toIso8601String(),
                 endsAt: $endsAt->toIso8601String(),
-                holdExpiresAt: $booking->hold_expires_at->toIso8601String(),
-            ));
+                holdExpiresAt: $booking->hold_expires_at?->toIso8601String(),
+                eventId: $type->event_id,
+                resourceTypeId: $type->id,
+                registrationId: $registrationId,
+                claimId: $claimId,
+                label: $booking->label ?? $resource->label,
+                ref: $resource->ref,
+            );
+
+            // Deferred to the outermost commit (design §6.1 step 7): SavePlan
+            // and the seat assignment release inside their own transaction,
+            // and a listener must never see a release the caller then rolls
+            // back. Without an open transaction the callback runs at once.
+            // Whatever brand is ambient right now is captured and restored
+            // around the deferred dispatch, because by the time it runs a
+            // caller's own withBrand() block has already put the previous
+            // brand back (see ReleaseResourceBooking).
+            $brand = app(BrandContext::class)->current();
+
+            DB::afterCommit(static function () use ($event, $brand): void {
+                if ($brand === null) {
+                    event($event);
+
+                    return;
+                }
+
+                app(BrandContext::class)->withBrand($brand, static function () use ($event): void {
+                    event($event);
+                });
+            });
 
             return $booking;
         });

@@ -31,6 +31,19 @@ models (lessons-from-lancore #1); this one imports none.
 - **The event's own descriptive metadata** used by other modules for display:
   name, dates, timezone, venue city. Modules keep this as read models built from
   Event's events rather than querying Event tables.
+- **The public calendar download** — `GET /events/{event:slug}/calendar.ics`
+  (public, unauthenticated, 404 for an event that is not publicly visible,
+  matching the landing page). The RFC 5545 encoding itself is Platform's
+  `Calendar\CalendarFile::forEvent(...)` (ADR-0061): Event calls it with its
+  own scalars — name, description, `starts_at`/`ends_at` converted through
+  `startsAtInstant()`/`endsAtInstant()`, `timezone`, the primary venue's
+  name and city, and the public event URL — the same scalars-in-bytes-out
+  shape every module already uses for `MediaLibrary`. Registration's own
+  `registration_event_summaries` carries the same shape for the
+  confirmation mail's attachment; Admission keeps a second copy for the
+  ticket's event band. Three read models of the same facts, not three
+  owners of them — neither consumer may read Event's models directly
+  (ADR-0004).
 
 ## Does not own
 
@@ -66,7 +79,7 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 | `EventPublished` | The event becomes publicly visible | `event_id`, `brand_id`, `published_at` | implemented |
 | `EventUnpublished` | The event is withdrawn from public view | `event_id`, `brand_id` | implemented |
 | `EventStarted` | Published → Running — doors open, an explicit operator transition (never clock-derived) | `event_id`, `brand_id`, `started_at` | implemented |
-| `EventRescheduled` | Start, end or timezone changes | `event_id`, `starts_at`, `ends_at`, `timezone` | implemented |
+| `EventRescheduled` | Start, end or timezone changes | `event_id`, `brand_id`, `starts_at`, `ends_at`, `timezone` | implemented |
 | `EventCancelled` | The event will not take place | `event_id`, `brand_id`, `reason_code`, `cancelled_at` | implemented |
 | `EventConcluded` | The event has ended | `event_id`, `brand_id`, `concluded_at` | implemented |
 | `EventArchived` | The event is closed for all operations | `event_id`, `brand_id`, `archived_at` | implemented |

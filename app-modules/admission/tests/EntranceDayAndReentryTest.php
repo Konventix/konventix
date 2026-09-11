@@ -72,7 +72,7 @@ it('admits repeatedly under the unlimited default', function (): void {
     app(RotateEntranceSigningKey::class)->handle($brand->id);
 
     $lane = dayTestLane(ReentryPolicy::Unlimited);
-    $token = app(IssueAdmissionToken::class)->handle($lane['admission']);
+    $token = app(IssueAdmissionToken::class)->current($lane['admission']);
 
     expect(dayTestScan($token, $brand->id, $lane['eventId'], 's1')->result)->toBe(CheckInResult::Accepted)
         ->and(dayTestScan($token, $brand->id, $lane['eventId'], 's2')->result)->toBe(CheckInResult::Accepted);
@@ -83,7 +83,7 @@ it('admits once only under once_only', function (): void {
     app(RotateEntranceSigningKey::class)->handle($brand->id);
 
     $lane = dayTestLane(ReentryPolicy::OnceOnly);
-    $token = app(IssueAdmissionToken::class)->handle($lane['admission']);
+    $token = app(IssueAdmissionToken::class)->current($lane['admission']);
 
     expect(dayTestScan($token, $brand->id, $lane['eventId'], 's1')->result)->toBe(CheckInResult::Accepted);
 
@@ -98,7 +98,7 @@ it('admits once per day under once_per_day', function (): void {
     app(RotateEntranceSigningKey::class)->handle($brand->id);
 
     $lane = dayTestLane(ReentryPolicy::OncePerDay, dayCount: 2);
-    $token = app(IssueAdmissionToken::class)->handle($lane['admission']);
+    $token = app(IssueAdmissionToken::class)->current($lane['admission']);
 
     expect(dayTestScan($token, $brand->id, $lane['eventId'], 'd1-a')->result)->toBe(CheckInResult::Accepted)
         ->and(dayTestScan($token, $brand->id, $lane['eventId'], 'd1-b')->result)->toBe(CheckInResult::Rejected);
@@ -115,7 +115,7 @@ it('lets an exit through regardless of the re-entry policy', function (): void {
     app(RotateEntranceSigningKey::class)->handle($brand->id);
 
     $lane = dayTestLane(ReentryPolicy::OnceOnly);
-    $token = app(IssueAdmissionToken::class)->handle($lane['admission']);
+    $token = app(IssueAdmissionToken::class)->current($lane['admission']);
 
     dayTestScan($token, $brand->id, $lane['eventId'], 'in-1');
 
@@ -128,7 +128,7 @@ it('rejects a scan that falls outside every event day', function (): void {
     app(RotateEntranceSigningKey::class)->handle($brand->id);
 
     $lane = dayTestLane();
-    $token = app(IssueAdmissionToken::class)->handle($lane['admission']);
+    $token = app(IssueAdmissionToken::class)->current($lane['admission']);
 
     // An admission is valid *on a day* (D-ADM-04); a scan a week later has no
     // day to be valid on.
@@ -148,7 +148,7 @@ it('rejects a day-scoped token on a day it does not cover', function (): void {
     $days = $lane['profile']->days;
 
     // Scoped to day two only.
-    $token = app(IssueAdmissionToken::class)->handle($lane['admission'], [$days[1]['day_id']]);
+    $token = app(IssueAdmissionToken::class)->current($lane['admission'], [$days[1]['day_id']]);
 
     $onDayOne = dayTestScan($token, $brand->id, $lane['eventId'], 'wrong-day');
 
@@ -166,7 +166,7 @@ it('stamps the event day on an accepted check-in', function (): void {
     app(RotateEntranceSigningKey::class)->handle($brand->id);
 
     $lane = dayTestLane();
-    $token = app(IssueAdmissionToken::class)->handle($lane['admission']);
+    $token = app(IssueAdmissionToken::class)->current($lane['admission']);
 
     expect(dayTestScan($token, $brand->id, $lane['eventId'], 'stamped')->event_day_id)
         ->toBe($lane['dayId']);
@@ -177,7 +177,7 @@ it('rejects a revoked admission at the door', function (): void {
     app(RotateEntranceSigningKey::class)->handle($brand->id);
 
     $lane = dayTestLane();
-    $token = app(IssueAdmissionToken::class)->handle($lane['admission']);
+    $token = app(IssueAdmissionToken::class)->current($lane['admission']);
 
     $lane['admission']->forceFill(['state' => AdmissionState::Revoked])->save();
 

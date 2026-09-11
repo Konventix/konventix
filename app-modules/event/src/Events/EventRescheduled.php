@@ -16,10 +16,18 @@ namespace Konventix\Event\Events;
  */
 final class EventRescheduled
 {
+    /**
+     * `brandId` is nullable and last — additive, like `visibility` on
+     * `EventCreated`. Consumers keyed on `eventId` alone never needed it; a
+     * projection that has no row yet for this event does (Resources'
+     * `resource_event_windows`, backfilled by `event:replay-details`), and
+     * cannot look it up without reading Event's tables.
+     */
     public function __construct(
         public readonly string $eventId,
         public readonly string $startsAt,
         public readonly string $endsAt,
         public readonly string $timezone,
+        public readonly ?string $brandId = null,
     ) {}
 }

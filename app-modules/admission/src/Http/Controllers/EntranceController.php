@@ -67,6 +67,20 @@ final class EntranceController
      * `poll_seconds` and `stale_after_seconds` travel with the payload so the
      * cadence is server-controlled: a big event can tighten the window without
      * re-deploying every device.
+     *
+     * A `token_superseded` entry's `payload.hash` is what makes §5's
+     * enforcement work offline at all: a device remembers the newest hash
+     * per admission id and refuses a scan whose token hashes to something
+     * else. A device that has never seen an admission for this event has
+     * no hash on file and therefore accepts — failing open offline is
+     * deliberate. A freshly provisioned scanner, or one an operator just
+     * reset, must not turn away an entire queue because its local cache is
+     * empty; the delta feed only ever tells it about tokens rotated after
+     * the device started asking. Online verification has no such gap — it
+     * always reads `admissions.token_nonce_hash` straight from the
+     * database (`VerifyAdmissionToken::isSuperseded()`) and is exact, so
+     * this asymmetry is bounded to the door, never the server's own
+     * decision.
      */
     public function delta(Request $request): JsonResponse
     {
@@ -98,6 +112,7 @@ final class EntranceController
             'entries' => $entries->map(fn (EntranceDeltaEntry $entry): array => [
                 'admission_id' => $entry->admission_id,
                 'kind' => $entry->kind,
+                'payload' => $entry->payload,
             ])->all(),
             // Everything below is what the device needs to decide offline.
             'reentry_policy' => $profile === null

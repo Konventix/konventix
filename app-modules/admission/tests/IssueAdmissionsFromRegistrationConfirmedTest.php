@@ -26,6 +26,7 @@ function confirmedRegistrationEvent(array $grants, ?string $registrationId = nul
         registrationTypeId: (string) Str::ulid(),
         eventId: (string) Str::ulid(),
         brandId: app(BrandContext::class)->currentOrFail()->getKey(),
+        registrantUserId: (string) Str::ulid(),
         confirmedAt: now()->toIso8601String(),
         grants: $grants,
     );
@@ -35,7 +36,7 @@ it('issues one admission per unit of quantity on an admission grant', function (
     $this->withBrand();
 
     $event = confirmedRegistrationEvent([
-        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 3, 'resource_type_id' => null],
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 3, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
     ]);
 
     event($event);
@@ -52,9 +53,9 @@ it('issues admissions across multiple grant entries and skips non-admission kind
     $this->withBrand();
 
     $event = confirmedRegistrationEvent([
-        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 2, 'resource_type_id' => null],
-        ['kind' => 'resource_claim', 'role' => 'booth', 'quantity' => 1, 'resource_type_id' => (string) Str::ulid()],
-        ['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 1, 'resource_type_id' => null],
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 2, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
+        ['kind' => 'resource_claim', 'role' => 'booth', 'quantity' => 1, 'resource_type_id' => (string) Str::ulid(), 'resource_type_ids' => null, 'seating_mode' => null],
+        ['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 1, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
     ]);
 
     event($event);
@@ -71,7 +72,7 @@ it('is idempotent: replaying the same confirmation issues nothing new', function
 
     $registrationId = (string) Str::ulid();
     $event = confirmedRegistrationEvent([
-        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 2, 'resource_type_id' => null],
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 2, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
     ], $registrationId);
 
     event($event);
@@ -89,7 +90,7 @@ it('emits AdmissionIssued with the SPEC scalar payload for every admission it cr
     Event::fake([AdmissionIssued::class]);
 
     $event = confirmedRegistrationEvent([
-        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 1, 'resource_type_id' => null],
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 1, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
     ]);
 
     // Event::fake([AdmissionIssued::class]) only intercepts that one event
@@ -119,6 +120,7 @@ function admissionTestAmendedEvent(array $grants, string $registrationId, string
         registrationTypeId: (string) Str::ulid(),
         eventId: (string) Str::ulid(),
         brandId: app(BrandContext::class)->currentOrFail()->getKey(),
+        registrantUserId: (string) Str::ulid(),
         grants: $grants,
         amendedAt: now()->toIso8601String(),
     );
@@ -128,7 +130,7 @@ it('issues exactly the delta for an amendment on a registration that already has
     $this->withBrand();
 
     $confirmed = confirmedRegistrationEvent([
-        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 1, 'resource_type_id' => null],
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 1, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
     ]);
     event($confirmed);
 
@@ -137,7 +139,7 @@ it('issues exactly the delta for an amendment on a registration that already has
     // The old "does this registration have any admissions?" guard would have
     // swallowed this entirely.
     event(admissionTestAmendedEvent(
-        [['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 2, 'resource_type_id' => null]],
+        [['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 2, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null]],
         $confirmed->registrationId,
         $amendmentId,
     ));
@@ -156,7 +158,7 @@ it('is idempotent per amendment: replaying one amendment issues nothing new', fu
 
     $registrationId = (string) Str::ulid();
     $amendmentId = (string) Str::ulid();
-    $grants = [['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 2, 'resource_type_id' => null]];
+    $grants = [['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 2, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null]];
 
     event(admissionTestAmendedEvent($grants, $registrationId, $amendmentId));
     event(admissionTestAmendedEvent($grants, $registrationId, $amendmentId));
@@ -168,10 +170,47 @@ it('treats two different amendments on one registration as separate deltas', fun
     $this->withBrand();
 
     $registrationId = (string) Str::ulid();
-    $grants = [['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 1, 'resource_type_id' => null]];
+    $grants = [['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 1, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null]];
 
     event(admissionTestAmendedEvent($grants, $registrationId, (string) Str::ulid()));
     event(admissionTestAmendedEvent($grants, $registrationId, (string) Str::ulid()));
 
     expect(Admission::where('registration_id', $registrationId)->count())->toBe(2);
+});
+
+it('threads the registrant as buyer_user_id on every admission issued at confirmation', function (): void {
+    $this->withBrand();
+
+    $event = confirmedRegistrationEvent([
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 2, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
+    ]);
+
+    event($event);
+
+    $admissions = Admission::where('registration_id', $event->registrationId)->get();
+
+    expect($admissions)->toHaveCount(2)
+        ->and($admissions->pluck('buyer_user_id')->unique()->all())->toBe([$event->registrantUserId]);
+});
+
+it('threads the registrant as buyer_user_id on an admission issued by amendment', function (): void {
+    $this->withBrand();
+
+    $confirmed = confirmedRegistrationEvent([
+        ['kind' => 'admission', 'role' => 'visitor', 'quantity' => 1, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null],
+    ]);
+    event($confirmed);
+
+    $amended = admissionTestAmendedEvent(
+        [['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 1, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null]],
+        $confirmed->registrationId,
+        (string) Str::ulid(),
+    );
+    event($amended);
+
+    $amendedAdmission = Admission::where('registration_id', $confirmed->registrationId)
+        ->where('role', 'exhibitor_crew')
+        ->firstOrFail();
+
+    expect($amendedAdmission->buyer_user_id)->toBe($amended->registrantUserId);
 });

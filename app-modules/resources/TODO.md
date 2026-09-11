@@ -6,84 +6,131 @@
 
 ## Next
 
-- [ ] Resource + resource-type admin UI, and the seat-plan surface (Vue plan
-      component + Platform CMS block type). The domain is complete and
-      testable; there is no screen, so resources are created via factories or
-      tinker today.
-- [ ] Scheduled hold-expiry sweep: holds carry `hold_expires_at` and
-      confirmation refuses an expired one, but nothing yet moves them to
-      `expired` in the background, so a lapsed hold keeps its slot until
-      someone tries to confirm it.
-- [ ] Allocation beyond first-fit: a claim takes the first free resource of
-      its type, which is honest and reversible but not what an organizer
-      means by "put Musterfirma near the entrance".
+- [x] Category-quota ceiling, the supply half (design §12b, #282): a new
+      `PlaceSupplyChanged` event (`src/Events/`) fires from `SavePlan`'s
+      projection (blocked/unblocked) and `ReservePlaceForOperator`/
+      `ReleaseOperatorReservation` (reserved/released) — the only places
+      that already change a place's bookability outside a sale.
+      `PublishPlan`/`UnpublishPlan` were wired into this too and then taken
+      back out (#282 correction, §13 of the design doc): each snapshots
+      the plan's current unblocked count at one instant, and the two
+      snapshots need not match, so treating either as a supply move could
+      zero out sales already recorded on the plain "draft, size the quota,
+      sell, then publish" sequence. Carries the brand, the event, the
+      category, a reason kept for observability only, and
+      `direction`/`places` for how many units moved which way. Registration
+      listens and consumes/releases the linked quota's unit; see its own
+      TODO. Left for later, deliberately out of this slice: the picker's
+      and "Meine Registrierung"'s explicit "category full" state (today's
+      red form field / live-poll banner stand), and an `event` label on
+      `resource_seat_claims_unplaced` — both still open on #282, not solved
+      by the quota link itself.
+- [ ] Hand-over from the seating build (#80): the human check on two phones
+      picking the same place at the same time, and the `resources:probe-seat-race`
+      child-process probe if it was not written in S3.
+- [ ] Phase 3: admin reseat UI and `TransferResourceBooking` (`assign_manual`
+      resolution in the conflict dialog; `BookOnBehalf`).
 - [ ] `EventRescheduled` must also *shift* existing whole-event bookings
-      (ADR-0020 assigns Resources that job); today it only re-projects the
-      window, so bookings made before a reschedule keep the old interval.
-- [ ] Decide how the no-overlap invariant is enforced (PostgreSQL exclusion
-      constraint over a range type versus an application-level guard that also
-      works on the SQLite test database) and record the outcome — it shapes both
-      the migrations and the booking Actions.
-- [ ] Add migrations for `resource_types`, `resources`, `resource_availabilities`,
-      and `resource_bookings`: ULID primary keys, `BelongsToBrand`, `ulid`
-      columns without FK constraints for `event_id`, `venue_id`, and the polymorphic
-      holder reference (ADR-0014).
+      (ADR-0020 assigns Resources that job); today it re-projects the window
+      and bookings made before a reschedule keep the old interval (#28).
+- [ ] Soft edit lock and deadline lock for the plan editor; audited override
+      (#104). v1 has the version check plus conflict refusal only.
+- [ ] Platform CMS block type embedding a published plan on a brand page
+      (the viewer exists; the block registration does not).
+- [ ] Plan editor follow-ups (S7 shipped the MVP): drag ignores a rotated
+      parent's rotation (`absolutePosition` sums offsets only); raster
+      backgrounds through `MediaPicker` are not wired on the edit page;
+      a zone's shape is not auto-fitted to its children; per-category
+      `default_shape` is not applied when a place is created (800 × 800
+      always); the marquee selects by axis-aligned bbox only.
+- [ ] Multi-claim picker (found in the 2026-09-10 fix wave's whole-branch
+      review, #278): `FindSeatClaimForRegistrant` and the
+      `registration.mine.show` slot both take the registration's newest
+      non-released claim. An amendment deliberately creates a second claim
+      (design §7.5 "Amendment adds a seating grant"), so a registration
+      with two has the earlier one silently unreachable — no picker page,
+      no summary row, nothing to show it was ever placed or ever will be.
+      Needs a page (and a slot) that lists every open claim of a
+      registration, not only the latest.
+- [ ] Split the plan editor's three components still over the project's
+      ~300-line guideline (CLAUDE_extra.md "Keep Vue pages small; extract
+      components before a page passes ~300 lines"), found in the same
+      2026-09-10 fix-wave review (#278) that also found this entry
+      missing: `PlanCanvas.vue` (~351 lines), `PlanInspector.vue`
+      (~378) and `PlanInspectorKindFields.vue` (~401). Left oversized to
+      ship the S7 editor MVP; a review ruling parked the split here rather
+      than blocking the slice on it, but the entry itself was never
+      written until now.
 
 ## Backlog
 
-- [ ] Capacity modes per ADR-0034 (decision log Round 6, D-EVT-03): add a
-      `mode` column (`unit` / `quantity`) to `ResourceType`; `unit` resources
-      get one row per bookable unit and the exclusion constraint applies
-      directly, `quantity` resources carry a capacity column and need a
-      summed-overlap guard in the booking Action since no single database
-      constraint expresses an aggregate check.
-- [ ] Implement the booking Actions — hold, confirm, release, expire, transfer —
-      each with `DB::transaction` and the chosen locking strategy inside, and
-      emit the events listed in `SPEC.md`.
-- [ ] Implement claim fulfilment: a listener on Registration's confirmation and
-      cancellation events that materializes and releases bookings idempotently,
-      short-circuiting when the `resources` feature is off for the brand.
-- [ ] Build the seat-plan surface: one `Data` object for the plan and its
-      availability, a Vue plan component under ~300 lines, and a Platform CMS
-      block type so brands can embed the plan on a public page.
-- [ ] Add a scheduled job that expires stale holds, plus `src/Gdpr/` export and
-      holder detachment wired to Compliance's erasure fan-out.
-- [ ] Feature tests for the Phase 2 definition of done: seat booking for an SXLan
-      registration and booth allocation for an invoice-settled exhibitor
-      registration, including a concurrent double-booking test.
+Tracked in the "Nach Event" issue (design 2026-09-10 §14): floors and
+templates, plan copy between events with category mapping, slotted
+availability, re-pick notification and deadlines, `assign_auto` strategies,
+group booking and neighbour use, export profiles (print PDF, PNG, safety,
+infra), DXF and SVG backgrounds, georeference, utility nodes and cables,
+corridor and power validation, JSON-Patch and API import, occupancy names on
+the plan (SET-F-009), a CMS block, a Redis document cache, viewport culling,
+arc shapes and layouts, plans above 2,000 elements, `EventArchived` and
+`AdmissionRevoked` handling, per-admission seat binding (#16), German UI
+strings (#132), automated accessibility tests (#183), a Plausible funnel
+event (#90).
 
 ## Done
 
-- [x] Shipped in slice 8 as five cases; "manage availability" and "book own"
-      are not cases (availability is a booking, and booking one's own needs
-      no capability); `ReleaseBookings` was added instead.
-
+- [x] Seating (#80, S0–S6, 2026-09-10). S0 refactors: per-booking idempotency
+      and `n` unit bookings in `FulfilResourceClaims`, unit-mode quantity guard,
+      cancellation and rejection listeners (ungated, ADR-0060), amendment
+      listener, `resources:expire-holds` with its heartbeat, timezone-aware
+      event windows with name and slug, event payloads with `eventId`,
+      `resourceTypeId`, `registrationId`, `claimId`, `label`, `ref`. S1 schema:
+      `resource_plans`, `resource_plan_versions`, `resource_claims`, the
+      extended `resource_types`, `resources` and `resource_bookings`,
+      `PlanDocumentData` and its cast, `ManagePlans`, default roles, ADR-0060.
+      S2 save pipeline: `SavePlan`, `ValidatePlan`, invariants, diff,
+      conflicts, warnings, versions, import and export, the example document.
+      S3 claims and picking: `SeatClaimCreated`, `AssignPlacesToRegistration`
+      (hold plus confirm in one transaction, the exclusion constraint decides
+      races), operator reservations, `resources:assign-place`. S4 console:
+      categories, plans, occupancy, reservations. S5 picker: `Pick.vue`,
+      `SeatPlanScene`, the list view, availability polling, the
+      "Meine Registrierung" slot, the type-editor slot. S6: metrics
+      (`ResourcesMetrics`, `ResourcesGauges`, booking and plan recorders),
+      the Seating dashboard row, `KonventixResourceHoldSweepStale`,
+      `ResourcesGdprHandler`, this SPEC merged with the design.
+- [x] S7 editor backend (#278): `PlanEditorData`, `edit`/`update`/`validate`
+      on `PlanAdminController` (409 stale, 422 conflicts mirrored under
+      `errors.conflicts`, 200 `PlanSaveResultData`), the three routes. Both
+      endpoints delegate to `SavePlan`/`ValidatePlan`; nothing is
+      reimplemented. `Edit.vue` itself is a later task — the render test in
+      `PlanAdminTest` stays red until it exists.
+- [x] S7 editor pure modules (#278): `ulid.ts` (client-minted Crockford
+      ULIDs), `snap.ts` (grid snapping), `document.ts` (tree helpers over
+      the generated Data types), `invariants.ts` (client mirror of
+      `PlanInvariants::check()`, same keys as the server's 422),
+      `generator.ts` (linear/grid group generation and regeneration from a
+      label schema), and `usePlanStore.ts` (the editor's working copy:
+      `applyMutation` with same-label coalescing inside 500 ms, a 50-step
+      undo ring, dirty tracking against the last *sent* snapshot). All pure
+      — no Vue except the store, no DOM — and unit-tested directly.
+- [x] Plan editor MVP (S7, #80): `admin/plans/{plan}/edit` with tree,
+      SVG canvas overlay (select, marquee, snapped drag, delete; V/S/L/D/
+      Space/Esc/Del/Ctrl+Z/Shift+Ctrl+Z/Ctrl+S), inspector with
+      kind-specific fields, category select, blocked/locked flags, group
+      layout with regeneration and operator reservations, client
+      invariants mirroring `PlanInvariants`, four-state save pill, and the
+      conflict dialog that resends with `release` resolutions and the same
+      expected version. Store: one `applyMutation` entry, 500 ms same-label
+      coalescing, 50-step undo ring, `isDirty` against the sent snapshot,
+      ADR-0038 guard.
 - [x] Slice 8 (domain) — bookings, capacity modes and claim fulfilment.
       `resource_types` / `resources` / `resource_bookings` with ADR-0020's
       half-open `[starts_at, ends_at)` invariant as a **PostgreSQL exclusion
-      constraint**, not a check in an Action — a read-then-write check loses
-      to a race it cannot see, which is the ADR's whole argument. First
-      `CREATE EXTENSION` in the repo (`btree_gist`); the project is now
-      PostgreSQL-specific, which ADR-0020 names and accepts. The test suite
-      already ran on PostgreSQL, so that half of the cost was paid earlier.
-      The constraint is partial over `state IN (held, confirmed) AND
-      is_exclusive`: releasing frees the slot without deleting who held it,
-      and quantity-mode bookings are excluded because their invariant is a
-      *sum* no constraint can express (ADR-0034) — they are guarded by a
-      locked, summed check in the Action instead. `is_exclusive` is
-      denormalized from the type's mode because a constraint sees only its
-      own row.
-      Hold → confirm → release Actions emitting `ResourceBookingHeld` /
-      `Confirmed` / `Released`; only `Confirmed` is the contract event, since
-      "a hold is provisional and must never reach a badge".
-      `resource_claim` grants are finally materialized: before this they were
-      silently dropped, because Admission skips any grant that is not an
-      admission and nothing else listened. Fulfilment fails soft by design —
-      an unbookable claim leaves the registration intact.
-      `ResourceEventWindow` projects event times from `EventCreated` /
-      `EventRescheduled`, because a whole-event claim needs an interval and
-      Resources may not read Event's models (ADR-0004).
-
-<!-- Move completed items here with the PR that finished them. -->
-
+      constraint**, partial over `state IN (held, confirmed) AND is_exclusive`;
+      `btree_gist` is the first `CREATE EXTENSION` in the repo. Hold → confirm
+      → release Actions emitting `ResourceBookingHeld` / `Confirmed` /
+      `Released`. `resource_claim` grants materialized; fulfilment fails soft.
+      `ResourceEventWindow` projected from Event's events (ADR-0004).
+- [x] Capabilities shipped as five cases in slice 8, `ManagePlans` as the
+      sixth in S1; "manage availability" and "book own" are not cases.
 - [x] Write `SPEC.md` — purpose, ownership boundary, event contract.

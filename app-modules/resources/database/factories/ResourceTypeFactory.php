@@ -6,7 +6,10 @@ namespace Konventix\Resources\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
+use Konventix\Resources\Data\ShapeData;
 use Konventix\Resources\Enums\CapacityMode;
+use Konventix\Resources\Enums\CategoryToken;
+use Konventix\Resources\Enums\ShapeKind;
 use Konventix\Resources\Models\ResourceType;
 
 /**
@@ -32,6 +35,11 @@ class ResourceTypeFactory extends Factory
             'slug' => Str::slug($name).'-'.Str::lower(Str::random(5)),
             'mode' => CapacityMode::Unit,
             'hold_minutes' => 30,
+            'description' => null,
+            'token' => CategoryToken::Chart1,
+            'symbol' => 'armchair',
+            'sort_order' => 0,
+            'default_shape' => new ShapeData(type: ShapeKind::Rect, w: 800, h: 800),
         ];
     }
 

@@ -7,13 +7,17 @@ namespace Konventix\Event\Providers;
 use Illuminate\Database\Eloquent\Builder;
 use Konventix\Event\Blocks\CountdownBlock;
 use Konventix\Event\Blocks\EventHeroBlock;
+use Konventix\Event\Console\ReplayEventDetailsCommand;
 use Konventix\Event\Enums\Permission;
+use Konventix\Event\Metrics\EventMetrics;
 use Konventix\Event\Models\Event;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Operators\ConsoleEventSources;
+use Konventix\Platform\Slots\SlotRegistry;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -35,6 +39,32 @@ class EventServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'event';
+    }
+
+    /**
+     * Registered explicitly: modular discovers nothing under a module's
+     * `src/Console`, and a replay command that silently failed to register
+     * would look like "nothing to backfill". Console only — a web worker
+     * never needs the command class loaded.
+     */
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->registerMetrics();
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([ReplayEventDetailsCommand::class]);
+        }
+    }
+
+    /**
+     * Event's one metric (ADR-0059, design §9): the public calendar
+     * download counter. The host never learns this exists.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...EventMetrics::definitions());
     }
 
     /**
@@ -86,6 +116,32 @@ class EventServiceProvider extends ModuleServiceProvider
                 permission: Permission::ViewVenues->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
+        );
+    }
+
+    /**
+     * Spec §7: the landing page has no action button today, so this is the
+     * first entry `event.landing` carries. Styled after the seat picker's
+     * primary-action link in Resources (`SeatSummarySlot.vue`'s "Choose
+     * your seat"), so a visitor sees one consistent button treatment
+     * across both public and account-page surfaces. No `feature:` gate:
+     * Event is Kernel (`$gateable = false` above), never switched off.
+     */
+    protected function registerSlots(): void
+    {
+        $slots = $this->app->make(SlotRegistry::class);
+
+        $slots->add(
+            slot: 'event.landing',
+            module: 'event',
+            component: 'event/CalendarLink',
+            props: static fn (array $context): array => [
+                'eventSlug' => $context['eventSlug'],
+            ],
+            // After Registration's offers (order: 10, RegistrationServiceProvider)
+            // — "add to calendar" is a secondary action once a visitor has
+            // seen what is on sale, not the page's first call to action.
+            order: 20,
         );
     }
 

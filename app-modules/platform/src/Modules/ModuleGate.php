@@ -7,6 +7,7 @@ namespace Konventix\Platform\Modules;
 use Illuminate\Support\Collection;
 use InterNACHI\Modular\Support\ModuleRegistry;
 use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Models\Brand;
 use Laravel\Pennant\Feature;
 
 /**
@@ -46,6 +47,33 @@ class ModuleGate
         }
 
         $brand = app(BrandContext::class)->current();
+
+        if ($brand === null) {
+            return false;
+        }
+
+        return Feature::for($brand)->active($this->featureName($module));
+    }
+
+    /**
+     * The same question for an explicit brand, for code paths that run with
+     * no ambient brand at all — a payment webhook, the scheduler, a console
+     * request on the operator host — but whose event payload names one.
+     * `isActive()` reads "no brand" as "inactive", which is right for a
+     * request and wrong for a `RegistrationConfirmed` that Stripe's webhook
+     * fired: the brand is known, it just is not in context.
+     *
+     * `Brand` itself carries no global scope — it is the scoping level, not a
+     * scoped model — so the lookup needs no escape hatch. What matters is
+     * that the ambient context is never touched.
+     */
+    public function isActiveForBrand(string $module, string $brandId): bool
+    {
+        if (! $this->isGateable($module)) {
+            return true;
+        }
+
+        $brand = Brand::query()->find($brandId);
 
         if ($brand === null) {
             return false;

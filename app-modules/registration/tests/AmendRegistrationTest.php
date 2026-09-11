@@ -80,6 +80,8 @@ it('adds grants to a confirmed registration and records the delta', function ():
                 'role' => 'exhibitor_crew',
                 'quantity' => 2,
                 'resource_type_id' => null,
+                'resource_type_ids' => null,
+                'seating_mode' => null,
             ]],
     );
 });
@@ -270,7 +272,8 @@ it('is idempotent: replaying the amendment event issues nothing new', function (
         registrationTypeId: $registration->registration_type_id,
         eventId: $registration->event_id,
         brandId: $registration->brand_id,
-        grants: [['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 2, 'resource_type_id' => null]],
+        registrantUserId: $registration->registrant_user_id,
+        grants: [['kind' => 'admission', 'role' => 'exhibitor_crew', 'quantity' => 2, 'resource_type_id' => null, 'resource_type_ids' => null, 'seating_mode' => null]],
         amendedAt: now()->toIso8601String(),
     ));
 

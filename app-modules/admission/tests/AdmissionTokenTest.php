@@ -183,7 +183,7 @@ it('rotation retires the previous key and signs with the new one', function (): 
         ->and($first->fresh()->canSign())->toBeFalse();
 
     $admission = Admission::factory()->create();
-    $token = app(IssueAdmissionToken::class)->handle($admission);
+    $token = app(IssueAdmissionToken::class)->current($admission);
 
     expect((new AdmissionTokenCodec)->kidOf($token))->toBe($second->kid);
 });
@@ -193,7 +193,7 @@ it('refuses to issue a token when the brand has no active signing key', function
 
     $admission = Admission::factory()->create();
 
-    expect(fn () => app(IssueAdmissionToken::class)->handle($admission))
+    expect(fn () => app(IssueAdmissionToken::class)->current($admission))
         ->toThrow(RuntimeException::class);
 });
 
@@ -205,7 +205,7 @@ it('carries no holder identity in the token body', function (): void {
 
     $admission = Admission::factory()->create(['holder_user_id' => (string) Str::ulid()]);
 
-    $token = app(IssueAdmissionToken::class)->handle($admission);
+    $token = app(IssueAdmissionToken::class)->current($admission);
     $body = json_decode(base64_decode(strtr(explode('.', $token)[2], '-_', '+/')), true);
 
     expect(array_keys($body))->toEqualCanonicalizing(['tid', 'evt', 'nonce', 'iat', 'exp', 'days'])

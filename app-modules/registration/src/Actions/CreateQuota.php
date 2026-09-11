@@ -22,6 +22,7 @@ final class CreateQuota
         return DB::transaction(function () use ($brandId, $data): Quota {
             $quota = new Quota([
                 'name' => $data->name,
+                'resource_type_id' => $data->resourceTypeId,
                 'capacity' => $data->capacity,
                 'consumed' => 0,
             ]);

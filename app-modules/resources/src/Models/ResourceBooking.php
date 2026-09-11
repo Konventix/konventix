@@ -25,13 +25,24 @@ use Konventix\Resources\Models\Resource as BookableResource;
  *
  * `holder_type`/`holder_id` name whoever holds the booking by ULID and a
  * short domain string, never a polymorphic Eloquent relation (ADR-0006).
+ * Holder types are `registration` and, since Seating, `operator`.
+ *
+ * `holder_id` is schema-nullable but only ever actually null for the
+ * erasure case (ADR-0050): a booking is always created with one, and the
+ * check constraint `resource_bookings_registration_holder_not_null` makes
+ * that a database rule for `holder_type = 'registration'` specifically —
+ * that holder is the registration id, never a person's, and can never be
+ * null. Only an `operator` reservation's `holder_id` ever actually nulls.
  *
  * @property string $id
  * @property string $brand_id
  * @property string $resource_id
  * @property string $holder_type
- * @property string $holder_id
+ * @property string|null $holder_id
  * @property string|null $registration_id
+ * @property string|null $claim_id
+ * @property string|null $amendment_id
+ * @property string|null $label
  * @property int $quantity
  * @property bool $is_exclusive
  * @property BookingState $state
@@ -50,12 +61,21 @@ class ResourceBooking extends Model
 
     public const string HOLDER_REGISTRATION = 'registration';
 
+    /**
+     * An orga reservation (design §4.3): `holder_id` is the acting user's
+     * id, `registration_id` and `claim_id` stay null.
+     */
+    public const string HOLDER_OPERATOR = 'operator';
+
     protected $fillable = [
         'resource_id',
         'holder_type',
         'holder_id',
         'registration_id',
+        'claim_id',
+        'amendment_id',
         'quantity',
+        'label',
         'is_exclusive',
         'state',
         'starts_at',
@@ -69,6 +89,27 @@ class ResourceBooking extends Model
     public function resource(): BelongsTo
     {
         return $this->belongsTo(Resource::class);
+    }
+
+    /**
+     * The booked resource regardless of ambient brand; see
+     * `Resource::resourceTypeUnscoped()` for why the Actions read it this way.
+     */
+    public function resourceUnscoped(): BookableResource
+    {
+        return $this->resource()->withoutGlobalScopes()->firstOrFail();
+    }
+
+    /**
+     * The seat claim this booking fulfils, when it came from a `seating`
+     * grant (design §4.3). Null for `resource_claim` grants and direct
+     * bookings.
+     *
+     * @return BelongsTo<ResourceClaim, $this>
+     */
+    public function claim(): BelongsTo
+    {
+        return $this->belongsTo(ResourceClaim::class, 'claim_id');
     }
 
     public function isExpired(?CarbonInterface $now = null): bool

@@ -37,6 +37,14 @@ use Konventix\Admission\Models\Admission;
  * Registration at all (see
  * `tests/RegistrationCommerceImportBoundaryTest.php`), so the string is the
  * contract, not the enum.
+ *
+ * `$registrantUserId` is stored as `buyer_user_id` on every admission this
+ * occasion issues (design doc §13, 2026-09-11 amendment "a
+ * registration-derived admission is anonymous today"). It is a different
+ * fact from `holder_user_id`, which stays null here and is filled later
+ * through the existing admission claim links — a group or B2B booking buys
+ * admissions for other people, so the buyer and the eventual holder are
+ * never the same column.
  */
 final class IssueAdmissionsForRegistration
 {
@@ -50,6 +58,7 @@ final class IssueAdmissionsForRegistration
         string $registrationId,
         string $eventId,
         string $brandId,
+        string $registrantUserId,
         array $grants,
         ?string $amendmentId = null,
     ): array {
@@ -63,7 +72,7 @@ final class IssueAdmissionsForRegistration
             return [];
         }
 
-        return DB::transaction(function () use ($registrationId, $eventId, $brandId, $grants, $amendmentId): array {
+        return DB::transaction(function () use ($registrationId, $eventId, $brandId, $registrantUserId, $grants, $amendmentId): array {
             $issued = [];
 
             foreach ($grants as $grant) {
@@ -74,7 +83,7 @@ final class IssueAdmissionsForRegistration
                 $quantity = $grant['quantity'];
 
                 for ($unit = 0; $unit < $quantity; $unit++) {
-                    $issued[] = $this->issueOne($brandId, $registrationId, $eventId, $grant['role'], $amendmentId);
+                    $issued[] = $this->issueOne($brandId, $registrationId, $eventId, $registrantUserId, $grant['role'], $amendmentId);
                 }
             }
 
@@ -86,6 +95,7 @@ final class IssueAdmissionsForRegistration
         string $brandId,
         string $registrationId,
         string $eventId,
+        string $registrantUserId,
         string $role,
         ?string $amendmentId,
     ): Admission {
@@ -98,6 +108,7 @@ final class IssueAdmissionsForRegistration
             'amendment_id' => $amendmentId,
             'event_id' => $eventId,
             'holder_user_id' => null,
+            'buyer_user_id' => $registrantUserId,
             'role' => $role,
             'valid_from' => null,
             'valid_until' => null,

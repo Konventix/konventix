@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Modules\Concerns\ShortCircuitsInactiveModule;
 
 /**
@@ -56,4 +58,44 @@ it('short-circuits with no brand in context at all', function (): void {
     $listener->handle();
 
     expect($listener->ran)->toBeFalse();
+});
+
+/**
+ * The brand-id form of the gate, for listeners on events that fire with no
+ * ambient brand (webhook, scheduler): the payload's brand id is the scope.
+ */
+function gatedBrandProbe(): object
+{
+    return new class
+    {
+        use ShortCircuitsInactiveModule;
+
+        public ?bool $answer = null;
+
+        public function handle(string $brandId): void
+        {
+            $this->answer = $this->moduleActiveForBrand($brandId);
+        }
+
+        protected function moduleName(): string
+        {
+            return 'competition';
+        }
+    };
+}
+
+it('answers for the payload brand id with no brand in context at all', function (): void {
+    $brand = Brand::factory()->create();
+
+    $listener = gatedBrandProbe();
+    $listener->handle($brand->getKey());
+
+    expect($listener->answer)->toBeFalse();
+
+    $this->activateModule('competition', $brand);
+    app(BrandContext::class)->forget();
+
+    $listener->handle($brand->getKey());
+
+    expect($listener->answer)->toBeTrue();
 });

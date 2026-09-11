@@ -7,9 +7,16 @@ namespace Database\Seeders\Demo;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Konventix\Event\Models\Event;
+use Konventix\Registration\Enums\RegistrationStatus;
+use Konventix\Registration\Models\Registration;
 use Konventix\Resources\Actions\ConfirmResourceBooking;
+use Konventix\Resources\Actions\CreatePlan;
+use Konventix\Resources\Actions\CreateSeatClaims;
 use Konventix\Resources\Actions\HoldResourceBooking;
+use Konventix\Resources\Data\PlanData;
 use Konventix\Resources\Enums\CapacityMode;
+use Konventix\Resources\Enums\SeatingMode;
+use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\Resource;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceEventWindow;
@@ -38,15 +45,20 @@ final class DemoResourcesSeeder
     public function __construct(
         private readonly HoldResourceBooking $hold,
         private readonly ConfirmResourceBooking $confirm,
+        private readonly CreatePlan $createPlan,
+        private readonly CreateSeatClaims $createSeatClaims,
     ) {}
 
     /**
-     * The claimed type — a booth in both archetypes — which the trade
-     * registration type grants a claim on. Everything else in the catalogue
-     * is seeded too but nothing references it by id: those exist to be booked
-     * from the plan.
+     * Every type the archetype declares, keyed by name — the claimed type (a
+     * booth in both archetypes, which the trade registration type grants a
+     * claim on) and the floor-plan type (seats at a LAN, meeting rooms at a
+     * fair) both come out of this map by name (`claimedResourceTypeName()`,
+     * `floorPlanResourceTypeName()`) rather than two separate return values.
+     *
+     * @return array<string, ResourceType>
      */
-    public function seedCatalogue(Event $event, EventArchetype $archetype): ResourceType
+    public function seedCatalogue(Event $event, EventArchetype $archetype): array
     {
         $types = [];
 
@@ -68,10 +80,40 @@ final class DemoResourcesSeeder
             $types[$definition['name']] = $type;
         }
 
-        // Every catalogue carries the claimed type; the archetype enum is
-        // what guarantees it, so a missing one is a programming error rather
-        // than a state the seed should paper over.
-        return $types[$archetype->claimedResourceTypeName()];
+        return $types;
+    }
+
+    /**
+     * One hall plan per event (design §4.4), through the real `CreatePlan`
+     * Action rather than a factory row — an empty `konventix.plan/v1`
+     * document, no places yet. The operator console's plan screens
+     * (`admin.plans.edit`/`.download`/`.occupancy`) otherwise have nothing
+     * seeded to open: a genuine seed gap the sweep in `DryRunTest` caught,
+     * since a console screen nobody can reach is worth knowing about. This
+     * plan is deliberately disconnected from the catalogue above — the seat
+     * and booth inventory is still seeded straight into `resources` (see the
+     * class docblock) — so it stays a minimal, honest "awaiting layout" plan
+     * rather than one pretending to describe the floor the seats live on.
+     */
+    public function seedPlan(Event $event): Plan
+    {
+        $existing = Plan::query()->where('event_id', $event->getKey())->first();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        return $this->createPlan->handle(
+            $event->brand_id,
+            new PlanData(
+                eventId: $event->getKey(),
+                name: 'Floor plan',
+                floorLabel: null,
+                widthMm: 20000,
+                heightMm: 15000,
+            ),
+            null,
+        );
     }
 
     /**
@@ -202,5 +244,64 @@ final class DemoResourcesSeeder
     private function slug(Event $event, string $name): string
     {
         return Str::slug($event->slug.'-'.$name);
+    }
+
+    /**
+     * A genuine, unplaced seat claim for every confirmed registration of the
+     * event, against the floor-plan resource type (seats at a LAN, meeting
+     * rooms at a fair) — through the real `CreateSeatClaims` Action, the same
+     * one `FulfilClaimsOnRegistrationConfirmed` calls for a real `seating`
+     * grant. None of the seeded registration types carries that grant
+     * (#282 tracks giving one its own), so without this a registrant's own
+     * seat-picker screen 404s on "no claim" — the ownership rule working
+     * exactly as designed, on data that never gave anyone anything to own.
+     *
+     * Every confirmed registration gets one, not just one type's, because
+     * which registrant `DemoComplianceSeeder`'s account-screen walk logs in
+     * as is picked by registration-independent criteria (it prefers payers,
+     * GitLab #185) — a claim on only one type would leave the picker
+     * reachable by luck of the draw rather than by design. Queried fresh
+     * rather than handed a registration list: Commerce's own priced type
+     * confirms registrants after this event's plain catalogue does (see
+     * `SeedDemoDataCommand::seedEvent()`), so a snapshot taken earlier would
+     * miss them.
+     *
+     * Claims never touch booking inventory — `CreateSeatClaims` only records
+     * the entitlement, and a booking happens only once something is picked —
+     * so this cannot conflict with the direct holds `seedFloorPlanBookings`
+     * already places on the same resource type.
+     */
+    public function seedSeatClaims(Event $event, EventArchetype $archetype): void
+    {
+        $type = ResourceType::query()->firstWhere(
+            'slug',
+            $this->slug($event, $archetype->floorPlanResourceTypeName()),
+        );
+
+        if ($type === null) {
+            return;
+        }
+
+        Registration::query()
+            ->where('event_id', $event->getKey())
+            ->where('status', RegistrationStatus::Confirmed)
+            ->whereNotNull('registrant_user_id')
+            ->get(['id', 'registrant_user_id'])
+            ->each(function (Registration $registration) use ($event, $type): void {
+                $this->createSeatClaims->handle(
+                    registrationId: (string) $registration->getKey(),
+                    eventId: $event->getKey(),
+                    brandId: $event->brand_id,
+                    registrantUserId: $registration->registrant_user_id,
+                    grants: [[
+                        'kind' => 'seating',
+                        'role' => 'seat',
+                        'quantity' => 1,
+                        'resource_type_id' => null,
+                        'resource_type_ids' => [$type->getKey()],
+                        'seating_mode' => SeatingMode::Pick->value,
+                    ]],
+                );
+            });
     }
 }
