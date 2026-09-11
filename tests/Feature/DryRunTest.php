@@ -7,6 +7,7 @@ use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Models\Admission;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
@@ -276,6 +277,36 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
         $registration = $claim === null ? null : Registration::withoutBrandScope()
             ->where('brand_id', $brand->getKey())
             ->whereKey($claim->registration_id)
+            ->first();
+
+        return $registration === null ? null : ['registration' => $registration];
+    }
+
+    // The buyer's combined ticket file (`admission.tickets.buyer`, #72):
+    // authorised entirely on `admissions.buyer_user_id` naming the
+    // signed-in account (ADR-0004 — `TicketDownloadController::buyer()`
+    // never reads a Registration row), the same shape commit f8f794d
+    // already fixed for `admission.tickets.holder`'s `{admission}`. "Any
+    // registration that produced an order" only ever passed this route's
+    // ownership check by luck of row order — this binds to a registration
+    // the walking member is genuinely the buyer of instead.
+    // `DemoCommerceSeeder`'s Supporter type confirms at submission (factory
+    // defaults: on_submit, no approval), which issues each Supporter
+    // registrant an admission naming them as buyer, and
+    // `DemoComplianceSeeder::seedSubjectRequests()` prefers a payer — a
+    // Supporter registrant — for the subject this walk signs in as, so this
+    // resolves for both archetypes.
+    if ($name === 'admission.tickets.buyer' && $member !== null) {
+        $admission = Admission::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->where('buyer_user_id', $member->getKey())
+            ->where('state', '!=', AdmissionState::Revoked)
+            ->whereNotNull('registration_id')
+            ->first();
+
+        $registration = $admission === null ? null : Registration::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->whereKey($admission->registration_id)
             ->first();
 
         return $registration === null ? null : ['registration' => $registration];
