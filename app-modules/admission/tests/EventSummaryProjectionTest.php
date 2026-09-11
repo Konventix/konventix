@@ -5,6 +5,11 @@ declare(strict_types=1);
 use Illuminate\Support\Str;
 use Konventix\Admission\Models\EventSummary;
 use Konventix\Event\Events\EventCreated;
+use Konventix\Event\Events\EventDetailsUpdated;
+use Konventix\Event\Events\EventRescheduled;
+use Konventix\Event\Events\VenueAssigned;
+use Konventix\Event\Events\VenueUnassigned;
+use Konventix\Event\Events\VenueUpdated;
 
 /**
  * Admission's read model of an event's name, schedule and primary venue
@@ -63,4 +68,125 @@ it('converges on replay: firing EventCreated twice for the same event leaves one
 
     $summary = EventSummary::where('event_id', $eventId)->firstOrFail();
     expect($summary->name)->toBe('SXLan 2026 — Final');
+});
+
+it('a details update does not erase the times, and a reschedule does not erase the name', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+
+    event(admissionEventCreatedEvent($eventId, $brand->id, name: 'Original Name', startsAt: '2027-06-15 10:00:00', endsAt: '2027-06-17 18:00:00'));
+
+    event(new EventDetailsUpdated(
+        eventId: $eventId,
+        brandId: $brand->id,
+        slug: 'renamed-slug',
+        name: 'Renamed Event',
+    ));
+
+    $afterDetails = EventSummary::where('event_id', $eventId)->firstOrFail();
+
+    expect($afterDetails->name)->toBe('Renamed Event')
+        ->and($afterDetails->slug)->toBe('renamed-slug')
+        ->and($afterDetails->starts_at->format('Y-m-d H:i:s'))->toBe('2027-06-15 10:00:00')
+        ->and($afterDetails->ends_at->format('Y-m-d H:i:s'))->toBe('2027-06-17 18:00:00');
+
+    event(new EventRescheduled(
+        eventId: $eventId,
+        startsAt: '2027-07-01 09:00:00',
+        endsAt: '2027-07-03 20:00:00',
+        timezone: 'Europe/Berlin',
+        brandId: $brand->id,
+    ));
+
+    $afterReschedule = EventSummary::where('event_id', $eventId)->firstOrFail();
+
+    expect($afterReschedule->name)->toBe('Renamed Event')
+        ->and($afterReschedule->starts_at->format('Y-m-d H:i:s'))->toBe('2027-07-01 09:00:00')
+        ->and($afterReschedule->ends_at->format('Y-m-d H:i:s'))->toBe('2027-07-03 20:00:00');
+});
+
+it('creates the row from a reschedule that names its brand, for an event that predates the projection', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+
+    // Simulates event:replay-details' backfill order for an event this
+    // table never had a row for: the schedule arrives before the details.
+    event(new EventRescheduled(
+        eventId: $eventId,
+        startsAt: '2027-07-01 09:00:00',
+        endsAt: '2027-07-03 20:00:00',
+        timezone: 'Europe/Berlin',
+        brandId: $brand->id,
+    ));
+
+    $summary = EventSummary::where('event_id', $eventId)->firstOrFail();
+
+    expect($summary->starts_at->format('Y-m-d H:i:s'))->toBe('2027-07-01 09:00:00')
+        ->and($summary->name)->toBeNull();
+
+    event(new EventDetailsUpdated(eventId: $eventId, brandId: $brand->id, slug: 'backfilled', name: 'Backfilled Event'));
+
+    expect($summary->fresh()->name)->toBe('Backfilled Event');
+});
+
+it('sets the venue label from the primary venue and ignores a non-primary one', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    event(admissionEventCreatedEvent($eventId, $brand->id));
+
+    event(new VenueAssigned(
+        eventId: $eventId,
+        venueId: (string) Str::ulid(),
+        brandId: $brand->id,
+        name: 'Side Room',
+        city: 'Hamburg',
+        isPrimary: false,
+    ));
+
+    expect(EventSummary::where('event_id', $eventId)->firstOrFail()->venue_label)->toBeNull();
+
+    $primaryVenueId = (string) Str::ulid();
+    event(new VenueAssigned(
+        eventId: $eventId,
+        venueId: $primaryVenueId,
+        brandId: $brand->id,
+        name: 'Congress Centrum',
+        city: 'Hamburg',
+        isPrimary: true,
+    ));
+
+    $summary = EventSummary::where('event_id', $eventId)->firstOrFail();
+
+    expect($summary->venue_label)->toBe('Congress Centrum, Hamburg')
+        ->and($summary->venue_id)->toBe($primaryVenueId);
+});
+
+it('renames the venue label on VenueUpdated and clears it on VenueUnassigned', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $venueId = (string) Str::ulid();
+    event(admissionEventCreatedEvent($eventId, $brand->id));
+    event(new VenueAssigned(eventId: $eventId, venueId: $venueId, brandId: $brand->id, name: 'Congress Centrum', city: 'Hamburg', isPrimary: true));
+
+    event(new VenueUpdated(venueId: $venueId, brandId: $brand->id, name: 'Congress Centrum West', city: 'Hamburg', countryCode: 'DE'));
+
+    expect(EventSummary::where('event_id', $eventId)->firstOrFail()->venue_label)->toBe('Congress Centrum West, Hamburg');
+
+    event(new VenueUnassigned(eventId: $eventId, venueId: $venueId, brandId: $brand->id));
+
+    $summary = EventSummary::where('event_id', $eventId)->firstOrFail();
+
+    expect($summary->venue_label)->toBeNull()
+        ->and($summary->venue_id)->toBeNull();
+});
+
+it('an event with no venue leaves the label null, and a stray venue event for another event breaks nothing', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    event(admissionEventCreatedEvent($eventId, $brand->id));
+
+    event(new VenueUpdated(venueId: (string) Str::ulid(), brandId: $brand->id, name: 'Unrelated Hall', city: 'Berlin', countryCode: 'DE'));
+    event(new VenueUnassigned(eventId: (string) Str::ulid(), venueId: (string) Str::ulid(), brandId: $brand->id));
+
+    expect(EventSummary::where('event_id', $eventId)->firstOrFail()->venue_label)->toBeNull();
 });

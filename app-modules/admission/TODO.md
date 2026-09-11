@@ -179,6 +179,9 @@
       `Listeners\ProjectEventSummary::handleCreated()` — Admission's own
       read model of an event's name and schedule, projected from
       `EventCreated`; sits beside `entrance_event_profiles` (ADR-0033),
-      which is not extended for this.
+      which is not extended for this. `ProjectEventSummary` now patches
+      rather than replaces on `EventDetailsUpdated`/`EventRescheduled`, and
+      learns the primary venue from
+      `VenueAssigned`/`VenueUpdated`/`VenueUnassigned` (design §13).
 
 <!-- Move completed items here with the PR that finished them. -->

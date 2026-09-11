@@ -21,7 +21,12 @@ use Konventix\Admission\Metrics\AdmissionMetrics;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
+use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventReentryPolicyChanged;
+use Konventix\Event\Events\EventRescheduled;
+use Konventix\Event\Events\VenueAssigned;
+use Konventix\Event\Events\VenueUnassigned;
+use Konventix\Event\Events\VenueUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Platform\Modules\ModuleServiceProvider;
@@ -157,6 +162,11 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         // facts"): the ticket's event band needs them, and Admission may not
         // read Event's models (ADR-0004).
         Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
+        Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
+        Event::listen(EventRescheduled::class, [ProjectEventSummary::class, 'handleRescheduled']);
+        Event::listen(VenueAssigned::class, [ProjectEventSummary::class, 'handleVenueAssigned']);
+        Event::listen(VenueUpdated::class, [ProjectEventSummary::class, 'handleVenueUpdated']);
+        Event::listen(VenueUnassigned::class, [ProjectEventSummary::class, 'handleVenueUnassigned']);
 
         // Admission's own metric (ADR-0059, design doc §9): the one
         // rejection reason among CheckInRejected's nine that answers
