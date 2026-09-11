@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { FileDown } from '@lucide/vue';
-import Heading from '@/components/Heading.vue';
 import TicketDownloadController from '@/actions/Konventix/Admission/Http/Controllers/TicketDownloadController';
+import Heading from '@/components/Heading.vue';
 
 /**
  * "What can I get into" — the holder's own tickets, reached from the
