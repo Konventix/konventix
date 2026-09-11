@@ -410,3 +410,14 @@
       deliberately its own event rather than a replay of
       `RegistrationConfirmed`, which also drives the confirmation mail.
       Only a projection may ever listen to it.
+- [x] `registration_event_summaries` now also carries the schedule
+      (`starts_at`/`ends_at`/`timezone`) and the primary venue
+      (`venue_label`/`venue_id`), projected with the same patch-not-replace
+      care as Admission's table (design §13) — `handleDetailsUpdated()`
+      cannot blank a schedule `handleCreated()` set, and
+      `handleRescheduled()` cannot blank the name; unlike Admission's
+      version, `handleRescheduled()` here only ever patches an existing
+      row, since every event already has one by the time a reschedule can
+      reach it. Feeds the (later) confirmation mail's calendar attachment
+      via `Konventix\Platform\Calendar\CalendarFile`, without Registration
+      ever importing Event.

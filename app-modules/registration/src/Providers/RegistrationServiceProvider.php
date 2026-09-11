@@ -23,6 +23,10 @@ use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
+use Konventix\Event\Events\EventRescheduled;
+use Konventix\Event\Events\VenueAssigned;
+use Konventix\Event\Events\VenueUnassigned;
+use Konventix\Event\Events\VenueUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -167,6 +171,10 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // name rather than by pasted ULID (ADR-0004).
         Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
         Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
+        Event::listen(EventRescheduled::class, [ProjectEventSummary::class, 'handleRescheduled']);
+        Event::listen(VenueAssigned::class, [ProjectEventSummary::class, 'handleVenueAssigned']);
+        Event::listen(VenueUpdated::class, [ProjectEventSummary::class, 'handleVenueUpdated']);
+        Event::listen(VenueUnassigned::class, [ProjectEventSummary::class, 'handleVenueUnassigned']);
         Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleArchived']);
         // #240: `/shop` lists offers across every event, so the projection
         // has to know which events are public — `event.landing` gets that
