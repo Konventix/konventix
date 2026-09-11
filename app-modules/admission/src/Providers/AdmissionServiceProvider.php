@@ -6,17 +6,21 @@ namespace Konventix\Admission\Providers;
 
 use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Enums\Permission;
+use Konventix\Admission\Events\CheckInRejected;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
+use Konventix\Admission\Listeners\Metrics\RecordAdmissionTokenMetrics;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
 use Konventix\Admission\Listeners\RevokeAdmissionsOnRegistrationCancelled;
+use Konventix\Admission\Metrics\AdmissionMetrics;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Events\RegistrationAmended;
@@ -44,6 +48,28 @@ class AdmissionServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'admission';
+    }
+
+    /**
+     * `parent::boot()` first — routes, listeners, slots and the GDPR
+     * handler come from the base class hooks; the metric catalogue is the
+     * one thing the base class has no hook for (ADR-0059), the same
+     * reasoning `ResourcesServiceProvider`/`MessagingServiceProvider` give.
+     */
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->registerMetrics();
+    }
+
+    /**
+     * Admission's metrics (ADR-0059): catalogue entry here, recorder in
+     * registerListeners() below.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...AdmissionMetrics::definitions());
     }
 
     /**
@@ -113,6 +139,14 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(
             AssignmentAccepted::class,
             IssueCrewAdmissionOnAssignmentAccepted::class,
+        );
+
+        // Admission's own metric (ADR-0059, design doc §9): the one
+        // rejection reason among CheckInRejected's nine that answers
+        // whether §5's enforcement is rejecting real people.
+        Event::listen(
+            CheckInRejected::class,
+            RecordAdmissionTokenMetrics::class,
         );
     }
 

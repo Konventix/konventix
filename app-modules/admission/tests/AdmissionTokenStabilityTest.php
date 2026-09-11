@@ -16,6 +16,8 @@ use Konventix\Admission\Models\EntranceDevice;
 use Konventix\Admission\Models\EntranceSigningKey;
 use Konventix\Admission\Tokens\AdmissionTokenCodec;
 use Konventix\Admission\Tokens\AdmissionTokenPayload;
+use Prometheus\CollectorRegistry;
+use Prometheus\RenderTextFormat;
 
 /**
  * §5: a stable ticket code. This file grows one `it()` per task in this
@@ -154,4 +156,28 @@ it('documents in IssueAdmissionToken why token_nonce_hash needs no backfill comm
     expect($source)->not->toBeFalse()
         ->and($source)->toContain('backfill')
         ->and($source)->toContain('event:replay-details');
+});
+
+it('increments admission_tokens_superseded_total when a scan is refused for a superseded nonce', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $eventId = (string) Str::ulid();
+    $admission = Admission::factory()->create(['event_id' => $eventId]);
+    $issuer = app(IssueAdmissionToken::class);
+
+    $stale = $issuer->current($admission);
+    $this->travel(1)->second();
+    $issuer->rotate($admission->fresh());
+
+    app(RecordScan::class)->handle(
+        token: $stale,
+        brandId: $brand->id,
+        eventId: $eventId,
+        clientScanId: 'metric-1',
+    );
+
+    $rendered = (new RenderTextFormat)->render(app(CollectorRegistry::class)->getMetricFamilySamples());
+
+    expect($rendered)->toContain('konventix_admission_tokens_superseded_total{brand="'.$brand->slug.'"} 1');
 });
