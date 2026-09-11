@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Mail;
 
+use DateTimeInterface;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Konventix\Messaging\Actions\ResolveBrandTimezone;
 use Konventix\Messaging\Actions\SendMessage;
+use Konventix\Messaging\Data\AttachmentData;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
+use Konventix\Platform\Calendar\CalendarFile;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Konventix\Registration\Enums\PaymentStatus;
@@ -17,6 +21,7 @@ use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Registration;
 use RuntimeException;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\DataCollection;
 
 /**
  * ADR-0048 point 3: the module that owns an event owns its mail — every
@@ -41,7 +46,10 @@ final class RegistrationMailer
         private readonly ResolveBrandTimezone $brandTimezone,
     ) {}
 
-    public function send(Registration $registration, string $templateKey, Data $payload): void
+    /**
+     * @param  DataCollection<int, AttachmentData>|null  $attachments
+     */
+    public function send(Registration $registration, string $templateKey, Data $payload, ?DataCollection $attachments = null): void
     {
         try {
             $this->sendMessage->handle(new SendMessageRequest(
@@ -49,6 +57,7 @@ final class RegistrationMailer
                 templateKey: $templateKey,
                 payload: $payload,
                 brandId: $registration->brand_id,
+                attachments: $attachments,
             ));
         } catch (RuntimeException $exception) {
             Log::warning('Registration lifecycle mail could not be sent.', [
@@ -135,6 +144,56 @@ final class RegistrationMailer
         ];
     }
 
+    /**
+     * The event's calendar file (spec §6.3, §13's 2026-09-11 amendment),
+     * attached to the confirmation mail only — `MailOnRegistrationConfirmed`
+     * is the one caller. Built from this module's own `EventSummary` read
+     * model (ADR-0004: Registration may not import Event) through the
+     * shared encoder every module reaches the way they reach
+     * `MediaLibrary`: `CalendarFile::forEvent()`.
+     *
+     * Null when Registration has not projected a summary for this event,
+     * or that summary predates the columns this needs — a confirmation
+     * mail with no calendar file is the existing behaviour, not a new
+     * failure mode, the same shape as `SendInvoiceMail`'s missing-document
+     * guard.
+     *
+     * `description` is always null here: `EventSummary` carries no
+     * description column, unlike `EventLandingController::calendar()`'s
+     * fuller call, which reads `Event::$description` directly.
+     * `location` is `venue_label` as projected — name and city only, what
+     * `VenueAssigned`'s contract carries (§13's venue amendment) — narrower
+     * than the public route's full address.
+     */
+    public function calendarAttachment(Registration $registration): ?AttachmentData
+    {
+        $summary = EventSummary::withoutBrandScope()
+            ->where('brand_id', $registration->brand_id)
+            ->where('event_id', $registration->event_id)
+            ->first();
+
+        if ($summary === null || $summary->starts_at === null || $summary->ends_at === null || $summary->timezone === null) {
+            return null;
+        }
+
+        $brand = Brand::query()->find($registration->brand_id);
+
+        $ics = CalendarFile::forEvent(
+            uid: $summary->event_id.'@'.$this->hostFor($brand),
+            summary: $summary->name,
+            description: null,
+            location: $summary->venue_label,
+            url: $brand === null || ! Route::has('event.show')
+                ? null
+                : $this->brandAbsolute($registration, route('event.show', ['event' => $summary->slug], absolute: false)),
+            startsAt: $this->wallClockToInstant($summary->starts_at, $summary->timezone),
+            endsAt: $this->wallClockToInstant($summary->ends_at, $summary->timezone),
+            lastModifiedAt: $summary->updated_at,
+        );
+
+        return new AttachmentData(as: $summary->slug.'.ics', content: $ics, mime: 'text/calendar');
+    }
+
     private function registrationUrl(Registration $registration): string
     {
         return $this->brandAbsolute(
@@ -157,5 +216,40 @@ final class RegistrationMailer
         return $base === null
             ? url($path)
             : rtrim($base, '/').$path;
+    }
+
+    /**
+     * Mirrors `Event::wallClockToInstant()` — a private helper on Event's
+     * own model this module may not call (ADR-0004) — on a local copy of
+     * the columns: `EventSummary`'s `starts_at`/`ends_at` are wall clock
+     * plus an IANA zone (ADR-0027), projected verbatim from the same
+     * `EventCreated`/`EventRescheduled` payload fields Event itself
+     * stores.
+     *
+     * `$wallClock` is typed `DateTimeInterface`, not `Carbon`: the
+     * application's date class is `CarbonImmutable`
+     * (`AppServiceProvider::boot()`'s `Date::use()`), so an Eloquent
+     * `datetime` cast — `EventSummary::$starts_at`/`$ends_at` — hands back
+     * a `CarbonImmutable`, which does not extend `Illuminate\Support\Carbon`.
+     */
+    private function wallClockToInstant(DateTimeInterface $wallClock, string $timezone): Carbon
+    {
+        return Carbon::parse($wallClock->format('Y-m-d H:i:s'), $timezone);
+    }
+
+    /**
+     * `CalendarFile::forEvent()`'s `UID` is the event id plus the brand's
+     * host (spec §6.1) — the same primary-domain reasoning
+     * `EventLandingController::hostFor()` uses for the public route, so
+     * the two surfaces agree on one host for the same brand and a calendar
+     * app re-importing either file updates the same entry.
+     */
+    private function hostFor(?Brand $brand): string
+    {
+        $origin = $brand === null ? null : $this->brandUrl->baseFor($brand);
+
+        return $origin === null
+            ? (string) parse_url((string) config('app.url'), PHP_URL_HOST)
+            : (string) parse_url($origin, PHP_URL_HOST);
     }
 }

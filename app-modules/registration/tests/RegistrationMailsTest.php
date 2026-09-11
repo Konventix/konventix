@@ -160,6 +160,41 @@ it('sends only registration.confirmed, not registration.submitted, when a free t
         ->and(str_contains($payload['registrationUrl'], '/my/registrations/'.$registration->id))->toBeTrue();
 });
 
+/**
+ * Spec §6.3 (§13's 2026-09-11 amendment): the confirmation mail is the one
+ * place Registration attaches a calendar file, built from its own
+ * `registration_event_summaries` projection through the shared
+ * `CalendarFile` encoder in Platform — Registration may not import Event
+ * (ADR-0004), so it never touches `Konventix\Event\Models\Event`.
+ * `registrationTypeEvent()` (tests/Helpers.php) is the module's existing,
+ * documented way to seed an `EventSummary` row: it fires `EventCreated`
+ * rather than inventing one, and `EventCreated` already carries the
+ * `startsAt`/`endsAt`/`timezone` the extended projector copies across.
+ */
+it('attaches the event calendar file to the confirmation mail, named for the event', function (): void {
+    $brand = $this->withBrand();
+    $registrant = regMailsRecipient($brand->id);
+    Queue::fake();
+
+    $eventId = registrationTypeEvent($brand);
+    $type = RegistrationType::factory()->create(['event_id' => $eventId]);
+
+    app(SubmitRegistration::class)->handle($type, $registrant->id, regMailsFreeSubmission());
+
+    $confirmed = regMailsPushed('registration.confirmed');
+    $attachments = $confirmed[0]->message->attachments;
+
+    expect($attachments)->not->toBeNull()
+        ->and($attachments->items())->toHaveCount(1);
+
+    $attachment = $attachments->items()[0];
+
+    expect($attachment->as)->toBe('sxlan-2027.ics')
+        ->and($attachment->mime)->toBe('text/calendar')
+        ->and($attachment->content)->toContain('BEGIN:VCALENDAR')
+        ->and($attachment->content)->toContain('SUMMARY:SXLan 2027');
+});
+
 it('sends registration.submitted with nextStep=approval for a type requiring approval', function (): void {
     $brand = $this->withBrand();
     $registrant = regMailsRecipient($brand->id);
