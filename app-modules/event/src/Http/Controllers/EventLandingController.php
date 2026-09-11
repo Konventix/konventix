@@ -118,7 +118,7 @@ final class EventLandingController
             // lets a gateable module — Competition's schedule, Staffing's
             // call for volunteers — join this page later without Event
             // learning it exists.
-            'slots' => $this->slots->for('event.landing', ['eventId' => $event->getKey()])
+            'slots' => $this->slots->for('event.landing', ['eventId' => $event->getKey(), 'eventSlug' => $event->slug])
                 ->map(fn (array $entry): array => [
                     'module' => $entry['module'],
                     'component' => $entry['component'],

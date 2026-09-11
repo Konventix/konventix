@@ -15,6 +15,7 @@ use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\ConsoleEventSources;
+use Konventix\Platform\Slots\SlotRegistry;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -102,6 +103,32 @@ class EventServiceProvider extends ModuleServiceProvider
                 permission: Permission::ViewVenues->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
+        );
+    }
+
+    /**
+     * Spec §7: the landing page has no action button today, so this is the
+     * first entry `event.landing` carries. Styled after the seat picker's
+     * primary-action link in Resources (`SeatSummarySlot.vue`'s "Choose
+     * your seat"), so a visitor sees one consistent button treatment
+     * across both public and account-page surfaces. No `feature:` gate:
+     * Event is Kernel (`$gateable = false` above), never switched off.
+     */
+    protected function registerSlots(): void
+    {
+        $slots = $this->app->make(SlotRegistry::class);
+
+        $slots->add(
+            slot: 'event.landing',
+            module: 'event',
+            component: 'event/CalendarLink',
+            props: static fn (array $context): array => [
+                'eventSlug' => $context['eventSlug'],
+            ],
+            // After Registration's offers (order: 10, RegistrationServiceProvider)
+            // — "add to calendar" is a secondary action once a visitor has
+            // seen what is on sale, not the page's first call to action.
+            order: 20,
         );
     }
 
