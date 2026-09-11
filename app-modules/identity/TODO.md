@@ -164,6 +164,13 @@ person behind it. The value here is in what is left out.
       before ever being recognised — a password account and a Steam-only
       account that both belong to the same person. See the Backlog entries
       above for what it deliberately leaves undone.
+- [x] An unconfirmed address is now prompted for everywhere, not only on the
+      handful of pages the `verified` route middleware already gates (#81):
+      `emailVerified`, a new shared Inertia prop kept off `auth.user` (its
+      shape stays fixed at five fields), and `EmailVerificationBanner.vue` in
+      `AppTopbarLayout.vue`. Most Steam signups hit this from their very
+      first page, since Steam asserts no address for Fortify to have
+      verified in the first place.
 
 - [x] ADR-0016 email-enumeration gap closed (GitLab #18) on all three paths
       the issue named: registration (`register.store`), the forgot-password

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppFooter from '@/components/AppFooter.vue';
 import AppTopbar from '@/components/AppTopbar.vue';
+import EmailVerificationBanner from '@/components/EmailVerificationBanner.vue';
 import EnvironmentRibbon from '@/components/EnvironmentRibbon.vue';
 import SkipToContent from '@/components/SkipToContent.vue';
 import { Toaster } from '@/components/ui/sonner';
@@ -22,6 +23,7 @@ import { Toaster } from '@/components/ui/sonner';
     <div class="flex min-h-screen flex-col bg-background">
         <SkipToContent />
         <EnvironmentRibbon />
+        <EmailVerificationBanner />
         <AppTopbar />
         <!--
             No container of its own: pages own their width and padding here
