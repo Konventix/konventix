@@ -96,14 +96,18 @@ final class CalendarFile
     }
 
     /**
-     * Provisional: this trusts `$moment`'s own wall clock and appends `Z`
-     * literally, which is only correct when `$moment` is already UTC. Task
-     * 4 replaces this with a real UTC conversion once a failing test for a
-     * non-UTC wall clock proves the gap.
+     * The UTC instant for any wall clock, converted via the Unix
+     * timestamp rather than a timezone swap on `$moment` — a
+     * `DateTimeInterface` carries no guarantee of being mutable, and
+     * reading the absolute instant sidesteps that regardless of which zone
+     * the caller's clock is attached to. This is the UTC conversion spec
+     * §6.1 asks for: `$moment` may be a Carbon instance on the event's own
+     * IANA zone (ADR-0027), and the wire format is always `…Z`, never a
+     * `TZID`.
      */
     private static function utcStamp(DateTimeInterface $moment): string
     {
-        return $moment->format('Ymd\THis\Z');
+        return gmdate('Ymd\THis\Z', $moment->getTimestamp());
     }
 
     /**

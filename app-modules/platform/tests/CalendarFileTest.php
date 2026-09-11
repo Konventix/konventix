@@ -123,3 +123,76 @@ it('escapes backslash, semicolon, comma and newlines inside a TEXT value, in tha
 
     expect(explode("\r\n", $ics))->toContain('DESCRIPTION:'.$expected);
 });
+
+it('converts DTSTART and DTEND to UTC instants for an event stored on a non-UTC wall clock', function (): void {
+    Carbon::setTestNow(Carbon::parse('2026-09-11T09:00:00Z'));
+
+    // 14:00 in Europe/Berlin on 2026-10-01 is CEST (UTC+2) — 12:00 UTC.
+    $startsAt = Carbon::parse('2026-10-01 14:00:00', 'Europe/Berlin');
+    $endsAt = Carbon::parse('2026-10-01 18:00:00', 'Europe/Berlin');
+
+    $ics = CalendarFile::forEvent(
+        uid: 'event-tz@brand.konventix.test',
+        summary: 'Timezone check',
+        description: null,
+        location: null,
+        url: null,
+        startsAt: $startsAt,
+        endsAt: $endsAt,
+    );
+
+    expect(explode("\r\n", $ics))
+        ->toContain('DTSTART:20261001T120000Z')
+        ->toContain('DTEND:20261001T160000Z');
+});
+
+it('gives byte-identical output for the same input, including a stable UID, across two calls', function (): void {
+    Carbon::setTestNow(Carbon::parse('2026-09-11T09:00:00Z'));
+
+    $arguments = [
+        'uid' => 'event-01K5STABLE@brand.konventix.test',
+        'summary' => 'Konventix Summit',
+        'description' => 'Doors at nine.',
+        'location' => 'Halle 3, Messeplatz 1, 50679 Köln',
+        'url' => 'https://brand.konventix.test/events/summit',
+        'startsAt' => new DateTimeImmutable('2026-10-01T08:00:00Z'),
+        'endsAt' => new DateTimeImmutable('2026-10-01T17:00:00Z'),
+        'lastModifiedAt' => new DateTimeImmutable('2026-09-01T12:00:00Z'),
+    ];
+
+    $first = CalendarFile::forEvent(...$arguments);
+    $second = CalendarFile::forEvent(...$arguments);
+
+    expect($first)->toBe($second)
+        ->and($first)->not->toContain('SEQUENCE:');
+
+    $lines = explode("\r\n", $first);
+
+    expect($lines)
+        ->toContain('UID:event-01K5STABLE@brand.konventix.test')
+        ->toContain('LOCATION:Halle 3\, Messeplatz 1\, 50679 Köln')
+        ->toContain('URL:https://brand.konventix.test/events/summit')
+        ->toContain('LAST-MODIFIED:20260901T120000Z');
+});
+
+it('omits DESCRIPTION, LOCATION, URL and LAST-MODIFIED when none are given, and still emits a valid file', function (): void {
+    Carbon::setTestNow(Carbon::parse('2026-09-11T09:00:00Z'));
+
+    $ics = CalendarFile::forEvent(
+        uid: 'event-no-venue@brand.konventix.test',
+        summary: 'No venue yet',
+        description: null,
+        location: null,
+        url: null,
+        startsAt: new DateTimeImmutable('2026-10-01T08:00:00Z'),
+        endsAt: new DateTimeImmutable('2026-10-01T17:00:00Z'),
+    );
+
+    expect($ics)->toStartWith("BEGIN:VCALENDAR\r\n")
+        ->and(rtrim($ics, "\r\n"))->toEndWith("END:VEVENT\r\nEND:VCALENDAR")
+        ->and($ics)
+        ->not->toContain('DESCRIPTION:')
+        ->not->toContain('LOCATION:')
+        ->not->toContain('URL:')
+        ->not->toContain('LAST-MODIFIED:');
+});
