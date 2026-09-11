@@ -18,6 +18,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Admission\Http\Controllers\ClaimController;
 use Konventix\Admission\Http\Controllers\EntranceClientAssetController;
+use Konventix\Admission\Http\Controllers\TicketDownloadController;
 
 /*
  * Claiming a holder-less admission (ADR-0032). Two guards stack, exactly as
@@ -48,3 +49,15 @@ Route::view('/entrance', 'admission::entrance.client')->name('admission.entrance
  */
 Route::get('/entrance-sw.js', [EntranceClientAssetController::class, 'serviceWorker']);
 Route::get('/entrance.webmanifest', [EntranceClientAssetController::class, 'manifest']);
+
+/*
+ * The buyer's combined ticket file (design §4.1, §7): every admission the
+ * registration granted, one page each, ordered by creation. Authorised
+ * entirely on `admissions.buyer_user_id` — never a Registration table
+ * (ADR-0004) — which is why `{registration}` stays a plain ULID rather than
+ * a route-model binding, exactly as Resources' seat picker does it.
+ */
+Route::middleware(['auth'])->group(function (): void {
+    Route::get('/my/registrations/{registration}/ticket', [TicketDownloadController::class, 'buyer'])
+        ->name('admission.tickets.buyer');
+});
