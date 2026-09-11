@@ -25,6 +25,7 @@ use Konventix\Identity\Console\ReplayProfilesCommand;
 use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Gdpr\IdentitySubjectResolver;
+use Konventix\Identity\Http\Controllers\AccountRegistrationController;
 use Konventix\Identity\Http\Middleware\EnsureCredentialsAreStrings;
 use Konventix\Identity\Http\Responses\ConsentAwareLoginResponse;
 use Konventix\Identity\Http\Responses\ConsentAwareTwoFactorLoginResponse;
@@ -389,6 +390,14 @@ class IdentityServiceProvider extends ModuleServiceProvider
      * caps per address of origin and per account. `EnsureCredentialsAreStrings`
      * rides along on the routes whose vendor controller reads the submitted
      * address before validating it (review finding 6).
+     *
+     * ADR-0016/#18 rides the same walk for a second reason: `register.store`
+     * needs a different *controller*, not just extra middleware — Fortify's
+     * stock `RegisteredUserController` cannot answer "this succeeded, but
+     * there is no user to log in" (`AccountRegistrationController`'s
+     * docblock). `Route::uses()` swaps only the action array; the name, URI,
+     * and every middleware — including the two lines just added to it —
+     * stay exactly as Fortify registered them.
      */
     private function throttleUnhookedFortifyRoutes(): void
     {
@@ -416,6 +425,10 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
                 if ($middleware !== null) {
                     $route->middleware($middleware);
+                }
+
+                if ($route->getName() === 'register.store') {
+                    $route->uses([AccountRegistrationController::class, 'store']);
                 }
             }
         });
@@ -488,6 +501,42 @@ class IdentityServiceProvider extends ModuleServiceProvider
             ],
             defaultLocale: 'de',
             sample: ['resetUrl' => 'https://example.test/reset/abc123', 'validMinutes' => 60],
+        ));
+
+        // ADR-0016/#18: sent to the *existing* account, never to whoever
+        // submitted the form — the requester sees the same response a fresh
+        // registration gets (`AccountRegistrationController`,
+        // `Actions\CreateNewUser`, `Actions\CompleteSocialSignup`). No
+        // topic, like the two above: security-relevant, not something a
+        // preference can turn off.
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.registration-attempt',
+            subjects: [
+                'de' => 'Registrierungsversuch mit Ihrer E-Mail-Adresse',
+                'en' => 'Someone tried to register with your email address',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Jemand hat soeben versucht, mit dieser E-Mail-Adresse ein
+                    neues Konto anzulegen — Sie haben bei uns aber bereits eines.</p>
+                    <p>Waren Sie das und haben Ihr Passwort vergessen, können Sie
+                    es hier zurücksetzen: <a href="{{ $resetUrl }}">Passwort
+                    zurücksetzen</a>.</p>
+                    <p>Waren Sie es nicht, müssen Sie nichts tun: Ihr Konto ist
+                    unverändert, und es wurde kein neues Konto angelegt.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Somebody just tried to create a new account using this
+                    email address, but you already have one with us.</p>
+                    <p>If that was you and you have forgotten your password,
+                    you can reset it here: <a href="{{ $resetUrl }}">Reset
+                    password</a>.</p>
+                    <p>If it was not you, no action is needed — your account
+                    is unaffected, and no new account was created.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: ['resetUrl' => 'https://example.test/forgot-password'],
         ));
 
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(

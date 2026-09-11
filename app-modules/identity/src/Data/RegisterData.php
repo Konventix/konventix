@@ -16,15 +16,16 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * as validation attributes, so registration and profile-editing can never
  * drift on what a valid name/email/password looks like.
  *
- * Deviation from ADR-0016: the reused `emailRules()` includes
- * `Rule::unique(User::class)`, so a duplicate address surfaces as an ordinary
- * validation error — the ADR requires this path be indistinguishable from
- * success ("check your inbox", never a validation error) because email is
- * unique operator-wide. Making that hold end-to-end means `CreateNewUser`
- * cannot return a real `Authenticatable` for `RegisteredUserController` to
- * auto-login on a duplicate, which means replacing Fortify's stock
- * registration controller/response wiring — out of scope for this PR. Flagged
- * rather than worked around silently; see TODO.md.
+ * ADR-0016/#18: `email` validates through `emailFormatRules()`, not
+ * `emailRules()` — no `Rule::unique(User::class)` here, deliberately. A
+ * duplicate address must not surface as an ordinary validation error (the
+ * ADR requires this path be indistinguishable from success), so the "does
+ * this address already exist" question is answered by `CreateNewUser`
+ * instead, which sends the existing account a notice mail rather than the
+ * requester a validation error. `AccountRegistrationController` is the
+ * `register.store` handler that makes this possible: it does not assume
+ * `CreateNewUser::create()` returns a fresh `Authenticatable` to log in the
+ * way Fortify's stock `RegisteredUserController` does.
  *
  * Amended 2026-09-02 (#143, ADR-0051 §3): the person picks their username at
  * registration under the same rules as the profile form; nothing is generated.
@@ -50,7 +51,7 @@ final class RegisterData extends Data
         return [
             'name' => self::nameRules(),
             'username' => self::usernameRules(),
-            'email' => self::emailRules(),
+            'email' => self::emailFormatRules(),
             'password' => self::passwordRules(),
         ];
     }

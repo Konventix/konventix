@@ -90,13 +90,32 @@ trait ProfileValidationRules
     protected static function emailRules(?string $userId = null): array
     {
         return [
-            'required',
-            'string',
-            'email',
-            'max:255',
+            ...static::emailFormatRules(),
             $userId === null
                 ? Rule::unique(User::class)
                 : Rule::unique(User::class)->ignore($userId),
         ];
+    }
+
+    /**
+     * The shape check alone, with no uniqueness constraint attached.
+     *
+     * ADR-0016/#18: registration (`RegisterData`) and the Steam signup
+     * completion (`CompleteSocialSignupData`) both accept an email address
+     * operator-wide uniqueness must not surface as an ordinary validation
+     * error for — that would announce the address is already in use, which
+     * is exactly what the ADR forbids. Those two forms use this instead of
+     * `emailRules()`; the "does this address already exist" question moves
+     * into the Action that handles the submission (`CreateNewUser`,
+     * `CompleteSocialSignup`), which answers it without telling the
+     * requester. `ProfileUpdateData` — changing your OWN address while
+     * signed in, a different threat model, out of this issue's three named
+     * paths — keeps going through `emailRules()` unchanged.
+     *
+     * @return array<int, ValidationRule|array<mixed>|string>
+     */
+    protected static function emailFormatRules(): array
+    {
+        return ['required', 'string', 'email', 'max:255'];
     }
 }
