@@ -35,6 +35,7 @@ final class IssueAdmissionsOnRegistrationAmended
             registrationId: $event->registrationId,
             eventId: $event->eventId,
             brandId: $event->brandId,
+            registrantUserId: $event->registrantUserId,
             grants: $event->grants,
             amendmentId: $event->amendmentId,
         );

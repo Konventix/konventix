@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Modules\ModuleGate;
@@ -185,4 +186,46 @@ it('never runs an inactive module\'s closure', function (): void {
     $slots->for('test.props.slot', ['eventId' => 'evt-1'])->all();
 
     expect($ran)->toBeTrue();
+});
+
+/**
+ * Webhooks, the scheduler and console requests on the operator host run with
+ * no brand in context, but their event payloads name one. The gate has to
+ * answer for that id without anyone setting the ambient brand first.
+ */
+it('answers for an explicit brand id while no brand is in context', function (): void {
+    app(BrandContext::class)->forget();
+
+    $brand = Brand::factory()->create();
+    $gate = app(ModuleGate::class);
+
+    expect($gate->isActiveForBrand('resources', $brand->getKey()))->toBeFalse();
+
+    Feature::for($brand)->activate($gate->featureName('resources'));
+
+    expect($gate->isActiveForBrand('resources', $brand->getKey()))->toBeTrue()
+        // The ambient answer is still "no brand, so no": the explicit form
+        // never leaks into the context.
+        ->and($gate->isActive('resources'))->toBeFalse()
+        ->and(app(BrandContext::class)->current())->toBeNull();
+});
+
+it('answers per brand id, not for the brand in context', function (): void {
+    $enabled = Brand::factory()->create();
+    $disabled = Brand::factory()->create();
+    $gate = app(ModuleGate::class);
+
+    Feature::for($enabled)->activate($gate->featureName('resources'));
+    app(BrandContext::class)->set($enabled);
+
+    expect($gate->isActiveForBrand('resources', $disabled->getKey()))->toBeFalse()
+        ->and($gate->isActiveForBrand('resources', $enabled->getKey()))->toBeTrue();
+});
+
+it('treats an unknown brand id as inactive and a kernel module as always active', function (): void {
+    $gate = app(ModuleGate::class);
+    $unknown = (string) Str::ulid();
+
+    expect($gate->isActiveForBrand('resources', $unknown))->toBeFalse()
+        ->and($gate->isActiveForBrand('event', $unknown))->toBeTrue();
 });

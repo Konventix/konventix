@@ -6,6 +6,7 @@ namespace Konventix\Registration\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Konventix\Registration\Actions\Concerns\LoadsRegistrationType;
+use Konventix\Registration\Data\GrantData;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Events\RegistrationConfirmed;
@@ -88,15 +89,11 @@ final class ConfirmRegistration
                 registrationTypeId: $registrationType->id,
                 eventId: $registration->event_id,
                 brandId: $registration->brand_id,
+                registrantUserId: $registration->registrant_user_id,
                 confirmedAt: $registration->confirmed_at->toIso8601String(),
                 grants: array_values($registrationType->grants
                     ->toCollection()
-                    ->map(fn ($grant): array => [
-                        'kind' => $grant->kind->value,
-                        'role' => $grant->role,
-                        'quantity' => $grant->quantity,
-                        'resource_type_id' => $grant->resourceTypeId,
-                    ])
+                    ->map(fn (GrantData $grant): array => $grant->toEventPayload())
                     ->all()),
             ));
 

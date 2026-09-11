@@ -7,7 +7,7 @@ not cosmetic — they force generic data models instead of relabeled LAN concept
 
 | Konventix | Absorbs from LanCore | Owns |
 |---|---|---|
-| **Platform** | Theme, EventContext, central wiring | Brand model & resolution, theming/design tokens, plugin registry, Pennant gating, navigation registry, UI slot registry, block-based CMS for brand static pages (modules register their own block types), `Platform\Legal\PublicLegalTexts` — the contract for linking to a brand's published legal text without reading a policy; Platform declares it and binds a null default, Compliance binds the resolver (ADR-0004, #184) |
+| **Platform** | Theme, EventContext, central wiring | Brand model & resolution, theming/design tokens, plugin registry, Pennant gating, navigation registry, UI slot registry, block-based CMS for brand static pages (modules register their own block types), `Platform\Legal\PublicLegalTexts` — the contract for linking to a brand's published legal text without reading a policy; Platform declares it and binds a null default, Compliance binds the resolver (ADR-0004, #184), document watermarking (`Documents\DocumentWatermark`, ADR-0061) and the RFC 5545 calendar encoder (`Calendar\CalendarFile`, ADR-0061) — both take scalars and return bytes, callable by any module the way they all call `MediaLibrary` |
 | **Identity** | Auth, Profile, Steam auth | User (slim!), social login as `SocialProvider` drivers (Steam is one of many), 2FA, sessions |
 | **Event** | Event, Venue | Event lifecycle, venue as sub-concept |
 | **Compliance** | Policy, DataLifecycle | Consent/policies, GDPR export & deletion orchestration (delegating to per-module `Gdpr/` exporters), audit, `CheckoutLegalTexts::SLUGS` — the checkout's `terms`/`withdrawal` roles (#200 AK 4) |
@@ -27,7 +27,7 @@ not cosmetic — they force generic data models instead of relabeled LAN concept
 | Konventix | Absorbs | Notes |
 |---|---|---|
 | **Staffing** | OrgaTeam | Differentiator: teams, shifts, shift roles, assignments, staffer read-model |
-| **Resources** | Seating | Seat becomes one resource type with a **time dimension**; rooms, devices, booth space are future types |
+| **Resources** | Seating | Seat becomes one resource type with a **time dimension**; rooms, devices, booth space are future types. Since ADR-0060 the hall plan, the seat picker and seat claims are surfaces of this module: a place is a unit-mode resource, a category is a resource type, and the plan document is a typed JSON column projected into `resources` |
 | **Competition** | Competition, CompetitionSchedule | Match results state stays here |
 | **GameOps** | Orchestration, Games | The explicitly LAN-specific plugin; proves the plugin architecture. See ADR-0006 companion notes in `docs/decisions/` |
 | **Agenda** | Program | |

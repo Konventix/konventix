@@ -38,6 +38,7 @@ final class UpdateQuota
 
             $locked->forceFill([
                 'name' => $data->name,
+                'resource_type_id' => $data->resourceTypeId,
                 'capacity' => $data->capacity,
             ])->save();
 

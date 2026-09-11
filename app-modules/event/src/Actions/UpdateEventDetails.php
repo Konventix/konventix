@@ -57,6 +57,7 @@ final class UpdateEventDetails
                     startsAt: $event->starts_at->format('Y-m-d H:i:s'),
                     endsAt: $event->ends_at->format('Y-m-d H:i:s'),
                     timezone: $event->timezone,
+                    brandId: $event->brand_id,
                 ));
             }
 

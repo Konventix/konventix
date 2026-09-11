@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Konventix\Admission\Enums\CheckInResult;
+use Konventix\Admission\Models\Admission;
+use Konventix\Admission\Models\AdmissionClaimLink;
 use Konventix\Admission\Models\CheckIn;
 use Konventix\Admission\Models\Checkpoint;
 use Konventix\Admission\Models\EntranceDevice;
@@ -18,6 +20,7 @@ use Konventix\Event\Enums\EventLifecycleState;
 use Konventix\Event\Models\EventDay;
 use Konventix\Event\Models\Venue;
 use Konventix\Platform\Modules\ModuleGate;
+use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
 use Konventix\Resources\Models\ResourceBooking;
@@ -222,4 +225,35 @@ it('seeds checkpoints, entrance devices and real check-ins', function () {
         ->and($checkIns->where('result', CheckInResult::Rejected))->not->toBeEmpty()
         // Every accepted scan is bound to the event day it counted against.
         ->and($checkIns->where('result', CheckInResult::Accepted)->whereNull('event_day_id'))->toBeEmpty();
+
+    // The claim-link lifecycle needs one live example claimed, not just
+    // issued (#72, ADR-0061) — otherwise the holder's own /my/tickets page
+    // is empty for every seeded account and nobody ever sees that screen
+    // with data in it.
+    $claimed = Admission::withoutBrandScope()
+        ->where('event_id', $live->getKey())
+        ->whereNotNull('holder_user_id')
+        ->first();
+
+    expect($claimed)->not->toBeNull()
+        ->and(AdmissionClaimLink::withoutBrandScope()
+            ->where('admission_id', $claimed->id)
+            ->whereNotNull('claimed_at')
+            ->exists())->toBeTrue();
+
+    // A registration-derived admission always carries the registrant who
+    // paid for it, holder or not (design 2026-09-11 §13 amendment).
+    $confirmedRegistration = Registration::query()
+        ->where('event_id', $live->getKey())
+        ->where('status', RegistrationStatus::Confirmed)
+        ->first();
+
+    expect($confirmedRegistration)->not->toBeNull();
+
+    $itsAdmissions = Admission::withoutBrandScope()
+        ->where('registration_id', $confirmedRegistration->id)
+        ->get();
+
+    expect($itsAdmissions)->not->toBeEmpty()
+        ->and($itsAdmissions->whereNull('buyer_user_id'))->toBeEmpty();
 });

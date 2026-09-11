@@ -8,16 +8,20 @@ use Konventix\Registration\Models\Quota;
 use Spatie\LaravelData\Attributes\Validation\IntegerType;
 use Spatie\LaravelData\Attributes\Validation\Max;
 use Spatie\LaravelData\Attributes\Validation\Min;
+use Spatie\LaravelData\Attributes\Validation\Nullable;
 use Spatie\LaravelData\Attributes\Validation\Required;
 use Spatie\LaravelData\Attributes\Validation\StringType;
+use Spatie\LaravelData\Attributes\Validation\Ulid;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
- * The quota form (ADR-0009). Capacity only — `consumed` is a counter the
- * registration Actions move under a row lock, never a field an organizer
- * types over. Raising or lowering capacity is the lever they do have, and
- * `UpdateQuota` refuses to lower it below what is already taken.
+ * The quota form (ADR-0009). Capacity is the lever an organizer has —
+ * `consumed` is a counter the registration Actions move under a row lock,
+ * never a field typed over, and `UpdateQuota` refuses to lower capacity
+ * below what is already taken. `resourceTypeId` (design §12b, #282) is the
+ * quota form's category select, a plain ULID with no FK (Resources owns
+ * `ResourceType`, ADR-0014).
  */
 #[TypeScript]
 final class QuotaData extends Data
@@ -28,6 +32,9 @@ final class QuotaData extends Data
 
         #[Required, IntegerType, Min(0)]
         public readonly int $capacity,
+
+        #[Nullable, Ulid]
+        public readonly ?string $resourceTypeId = null,
     ) {}
 
     public static function fromModel(Quota $quota): self
@@ -35,6 +42,7 @@ final class QuotaData extends Data
         return new self(
             name: $quota->name,
             capacity: $quota->capacity,
+            resourceTypeId: $quota->resource_type_id,
         );
     }
 }

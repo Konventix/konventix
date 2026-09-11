@@ -10,6 +10,15 @@
 
 ## Backlog (Phase 2 — release scope, entrance scanning is a definition-of-done item)
 
+- [ ] Self-service token rotation by the holder (design 2026-09-11 §12,
+      LanCore TKT-F-024): `IssueAdmissionToken::rotate()` exists and is
+      exercised by the door's own reissue path; only a participant-facing
+      "this ticket is compromised, get me a new code" button is missing.
+- [ ] Adopt `Platform\Documents\DocumentWatermark` in the badge and the
+      invoice (design 2026-09-11 §12): the service is built so
+      `BadgeDocumentRenderer` and Commerce's invoice renderer can call it
+      later; neither does yet, and each still carries its own ad hoc
+      watermarking if any.
 - [ ] Camera scanning in the entrance client: it accepts a token by keyboard
       wedge or paste today, which covers USB/Bluetooth scanners but not a
       tablet's camera. `BarcodeDetector` covers Android/Chrome without a
@@ -63,6 +72,42 @@
 
 ## Done
 
+- [x] Participant ticket document and stable token (#72, ADR-0061):
+      `Documents\TicketDocumentRenderer` renders one A4 page per admission
+      from the existing KVX1 token — a rendering of the access right, not a
+      new credential. `IssueAdmissionToken::current()`/`::rotate()` replace
+      `handle()`; a token's nonce is now stored (`token_nonce_hash`,
+      `token_issued_at`) and `VerifyAdmissionToken` refuses a superseded one
+      (`CheckInRejectionReason::NonceSuperseded`, finally wired after
+      existing unreferenced). `Models\Person` and `Models\EventSummary`
+      close two read-model gaps the design found while building this
+      (2026-09-11 amendments): the ticket's holder-name fallback and its
+      event band had nothing to read. SPEC.md's Owns and Consumes updated
+      in the same commit.
+- [x] Ticket PDF, part 4 — the TESTSYSTEM band, drawn only when
+      `DeploymentEnvironment::isProduction()` is false, painted last so it
+      sits above the content bands too (#72 §4.3, ADR-0053).
+      `Documents\TicketDocumentRenderer` is done: event band, holder band,
+      footer band, all three watermark layers. The download routes are the
+      next section's work.
+- [x] Ticket PDF, part 3 — the footer band and the first two watermark
+      layers, through Platform's `DocumentWatermark` service: a
+      low-opacity brand mark and a diagonal forensic repeat seeded from
+      the admission id, with the QR kept scannable by an opaque box
+      painted over it (a later, second full-page absolute sibling) rather
+      than by computing where the repeat may not go (#72 §4.3). The
+      operator's presence on the page is textual only — it has no logo.
+- [x] Ticket PDF, part 2 — the holder band: the QR built from
+      `IssueAdmissionToken::current()` (never `rotate()`, so a
+      re-download stays the same code, pinned by
+      "renders the same token across two requests"), the holder's name or
+      "Unassigned", the role, the valid-days range, and a door-typeable
+      short code (#72 §4.2).
+- [x] Ticket PDF, part 1 — `Documents\TicketDocumentRenderer` renders one
+      A4 page per admission with the event band (brand logo, name, local
+      wall clock with the timezone named, venue), mirroring
+      `BadgeDocumentRenderer` (#72 §4). The holder band, the footer band
+      and the watermark layers land next.
 - [x] Slice 6 — the offline entrance client (ADR-0002's one sanctioned runtime
       carve-out). An installable PWA served at `/entrance` from its own Vite
       entry: a plain Vue app rather than an Inertia page, because Inertia needs
@@ -170,5 +215,26 @@
       component at `resources/js/components/admission/EventStatsCard.vue`.
       `tests/AdmissionStatsTest.php` covers capability + operator-host
       enforcement and the state counts for a seeded event.
+- [x] `admission_people`, `Models\Person` and `Listeners\ProjectPerson` —
+      Admission's own read model of a person's display name, projected from
+      Identity's `UserRegistered`/`UserProfileUpdated`, backfilled by
+      `identity:replay-profiles`; not brand-scoped (ADR-0016), mirrors
+      `registration_registrants`.
+- [x] `admission_event_summaries`, `Models\EventSummary` and
+      `Listeners\ProjectEventSummary::handleCreated()` — Admission's own
+      read model of an event's name and schedule, projected from
+      `EventCreated`; sits beside `entrance_event_profiles` (ADR-0033),
+      which is not extended for this. `ProjectEventSummary` now patches
+      rather than replaces on `EventDetailsUpdated`/`EventRescheduled`, and
+      learns the primary venue from
+      `VenueAssigned`/`VenueUpdated`/`VenueUnassigned` (design §13).
+- [x] `admissions.buyer_user_id`, threaded from `RegistrationConfirmed`'s
+      and `RegistrationAmended`'s `registrantUserId` through
+      `IssueAdmissionsForRegistration`, distinct from `holder_user_id`
+      (design §13).
+- [x] `FillBuyerOnRegistrationOwnershipAnnounced` closes point 5's backfill
+      chain: it fills `buyer_user_id` on admissions that predate that
+      column and is (and must remain) the sole listener on
+      `RegistrationOwnershipAnnounced`.
 
 <!-- Move completed items here with the PR that finished them. -->

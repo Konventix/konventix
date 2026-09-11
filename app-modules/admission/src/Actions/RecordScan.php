@@ -23,11 +23,13 @@ use Konventix\Admission\Models\EntranceEventProfile;
  * authority behind the entrance API (ADR-0033).
  *
  * The order of checks mirrors what an offline device can decide for itself,
- * deliberately: signature, then expiry, then event, then day-scoping, then
- * admission validity, then re-entry. Everything up to admission validity is
- * decidable from the token alone; the last two need local state the device
- * gets from the delta feed and its synced calendar. Keeping the server in the
- * same order means both sides give the same answer and the reason codes match.
+ * deliberately: signature, then expiry, then event, then whether the token
+ * itself is still current, then day-scoping, then admission validity, then
+ * re-entry. Signature, expiry and event are decidable from the token alone;
+ * everything after — nonce-supersession included — needs local state the
+ * device gets from the delta feed (its own hash-per-admission cache, design
+ * doc §5) and its synced calendar. Keeping the server in the same order
+ * means both sides give the same answer and the reason codes match.
  *
  * A rejection is recorded, not thrown: the Admission backlog asks for a full
  * accepted/rejected audit trail, and door staff need the reason preserved.
@@ -87,6 +89,10 @@ final class RecordScan
 
             if ($admission === null) {
                 return $this->reject($brandId, $eventId, null, null, $clientScanId, $scannedAt, $checkpoint, $device, $direction, CheckInRejectionReason::UnknownAdmission);
+            }
+
+            if ($this->verifyToken->isSuperseded($payload, $admission)) {
+                return $this->reject($brandId, $eventId, $admission->id, null, $clientScanId, $scannedAt, $checkpoint, $device, $direction, CheckInRejectionReason::NonceSuperseded);
             }
 
             $profile = EntranceEventProfile::withoutBrandScope()

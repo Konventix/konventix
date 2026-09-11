@@ -7,6 +7,7 @@ namespace Konventix\Registration\Actions;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Konventix\Registration\Actions\Concerns\ConsumesQuotas;
+use Konventix\Registration\Actions\Concerns\GuardsSeatingGrants;
 use Konventix\Registration\Data\GrantData;
 use Konventix\Registration\Enums\GrantKind;
 use Konventix\Registration\Enums\RegistrationStatus;
@@ -47,6 +48,7 @@ use Konventix\Registration\Models\RegistrationAmendment;
 final class AmendRegistration
 {
     use ConsumesQuotas;
+    use GuardsSeatingGrants;
 
     public function __construct(
         private readonly RequestSettlement $requestSettlement,
@@ -91,15 +93,8 @@ final class AmendRegistration
                 registrationTypeId: $registrationType->id,
                 eventId: $registration->event_id,
                 brandId: $registration->brand_id,
-                grants: array_map(
-                    fn (GrantData $grant): array => [
-                        'kind' => $grant->kind->value,
-                        'role' => $grant->role,
-                        'quantity' => $grant->quantity,
-                        'resource_type_id' => $grant->resourceTypeId,
-                    ],
-                    $grants,
-                ),
+                registrantUserId: $registration->registrant_user_id,
+                grants: array_map(fn (GrantData $grant): array => $grant->toEventPayload(), $grants),
                 amendedAt: $amendment->amended_at->toIso8601String(),
             ));
 
@@ -138,6 +133,11 @@ final class AmendRegistration
                 'An amendment must add at least one grant (ADR-0036) — an empty delta is not an amendment.',
             );
         }
+
+        // The same seating rules as on the type (seating design §7.1): an
+        // amendment that adds a seat is a second claim keyed on itself, and
+        // it needs categories and a mode like the original.
+        $this->guardSeatingGrants($grants);
     }
 
     /**

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Listeners;
 
+use Konventix\Messaging\Data\AttachmentData;
 use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Data\RegistrationMailData;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Mail\RegistrationMailer;
 use Konventix\Registration\Models\Registration;
+use Spatie\LaravelData\DataCollection;
 
 /**
  * ADR-0048 point 3: Registration owns `RegistrationConfirmed` — the one
@@ -47,11 +49,17 @@ final class MailOnRegistrationConfirmed
         }
 
         $cart = $this->mailer->cartFields($registration);
+        $calendarAttachment = $this->mailer->calendarAttachment($registration);
 
-        $this->mailer->send($registration, 'registration.confirmed', new RegistrationMailData(
-            ...$this->mailer->commonFields($registration),
-            cartUrl: $cart['cartUrl'],
-            cartHoldExpiresAt: $cart['cartHoldExpiresAt'],
-        ));
+        $this->mailer->send(
+            $registration,
+            'registration.confirmed',
+            new RegistrationMailData(
+                ...$this->mailer->commonFields($registration),
+                cartUrl: $cart['cartUrl'],
+                cartHoldExpiresAt: $cart['cartHoldExpiresAt'],
+            ),
+            attachments: $calendarAttachment === null ? null : new DataCollection(AttachmentData::class, [$calendarAttachment]),
+        );
     }
 }

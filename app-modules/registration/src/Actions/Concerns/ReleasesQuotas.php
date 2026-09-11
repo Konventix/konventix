@@ -6,6 +6,7 @@ namespace Konventix\Registration\Actions\Concerns;
 
 use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Events\QuotaReleased;
+use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationAmendment;
 
@@ -19,6 +20,12 @@ use Konventix\Registration\Models\RegistrationAmendment;
  * (ADR-0036). Releasing only the submission's unit would leak capacity
  * permanently on every amended registration — the seats would stay counted
  * as sold after the registration was cancelled.
+ *
+ * `releaseQuota()` is the per-quota body `releaseQuotas()` loops over,
+ * pulled out for the same reason `ConsumesQuotas::consumeQuota()` is:
+ * `Listeners\AdjustQuotaOnPlaceSupplyChanged` (design §12b, #282) reuses it
+ * to give back the unit an unblock or a released operator reservation
+ * frees, on the single quota its own lock already found.
  */
 trait ReleasesQuotas
 {
@@ -45,14 +52,24 @@ trait ReleasesQuotas
         $units = 1 + $this->amendedUnits($registration);
 
         foreach ($quotas as $quota) {
-            $quota->release($units);
-
-            event(new QuotaReleased(
-                quotaId: $quota->id,
-                releasedUnits: $units,
-                releasedAt: now()->toIso8601String(),
-            ));
+            $this->releaseQuota($quota, $units);
         }
+    }
+
+    /**
+     * Mutates an already-locked quota and emits `QuotaReleased`, which
+     * `PromoteOnQuotaReleased` already turns into a waitlist offer — called
+     * from wherever the caller's own lock was taken.
+     */
+    private function releaseQuota(Quota $quota, int $units): void
+    {
+        $quota->release($units);
+
+        event(new QuotaReleased(
+            quotaId: $quota->id,
+            releasedUnits: $units,
+            releasedAt: now()->toIso8601String(),
+        ));
     }
 
     /**

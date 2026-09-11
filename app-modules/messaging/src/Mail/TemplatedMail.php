@@ -63,14 +63,18 @@ final class TemplatedMail extends Mailable
      */
     public function attachments(): array
     {
-        return array_map(
-            function (AttachmentData $attachment): Attachment {
-                $built = Attachment::fromStorageDisk($attachment->disk, $attachment->path)
-                    ->as($attachment->as);
+        return array_map($this->buildAttachment(...), $this->fileAttachments);
+    }
 
-                return $attachment->mime === null ? $built : $built->withMime($attachment->mime);
-            },
-            $this->fileAttachments,
-        );
+    private function buildAttachment(AttachmentData $attachment): Attachment
+    {
+        if ($attachment->content !== null) {
+            $content = $attachment->content;
+            $built = Attachment::fromData(fn (): string => $content, $attachment->as);
+        } else {
+            $built = Attachment::fromStorageDisk($attachment->disk, $attachment->path)->as($attachment->as);
+        }
+
+        return $attachment->mime === null ? $built : $built->withMime($attachment->mime);
     }
 }

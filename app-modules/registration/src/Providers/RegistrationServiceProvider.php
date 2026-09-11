@@ -23,6 +23,10 @@ use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
+use Konventix\Event\Events\EventRescheduled;
+use Konventix\Event\Events\VenueAssigned;
+use Konventix\Event\Events\VenueUnassigned;
+use Konventix\Event\Events\VenueUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -32,6 +36,7 @@ use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
+use Konventix\Registration\Console\AnnounceRegistrationOwnershipCommand;
 use Konventix\Registration\Console\ExpireWaitlistOffersCommand;
 use Konventix\Registration\Data\PublicOfferData;
 use Konventix\Registration\Enums\Permission;
@@ -43,6 +48,7 @@ use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationRejected;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Gdpr\RegistrationGdprHandler;
+use Konventix\Registration\Listeners\AdjustQuotaOnPlaceSupplyChanged;
 use Konventix\Registration\Listeners\CancelPendingRegistrationOnCartLineGone;
 use Konventix\Registration\Listeners\CancelRegistrationOnOrderLineCancelled;
 use Konventix\Registration\Listeners\CancelRegistrationOnOrderUndone;
@@ -62,6 +68,7 @@ use Konventix\Registration\Listeners\RecordReversalOnOrderLineReversed;
 use Konventix\Registration\Listeners\RecordReversalOnPaymentReversed;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
+use Konventix\Resources\Events\PlaceSupplyChanged;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -138,6 +145,11 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // makes the queue drain itself.
         Event::listen(QuotaReleased::class, PromoteOnQuotaReleased::class);
 
+        // Design §12b/#282: a place's bookability changed for a reason that
+        // is not a sale (blocked, reserved, published…) — consume or
+        // release the unit of whichever quota names that category.
+        Event::listen(PlaceSupplyChanged::class, AdjustQuotaOnPlaceSupplyChanged::class);
+
         // ADR-0036: billing party freezes at first invoice.
         Event::listen(InvoiceIssued::class, MarkInvoicedOnInvoiceIssued::class);
 
@@ -159,6 +171,10 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // name rather than by pasted ULID (ADR-0004).
         Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
         Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
+        Event::listen(EventRescheduled::class, [ProjectEventSummary::class, 'handleRescheduled']);
+        Event::listen(VenueAssigned::class, [ProjectEventSummary::class, 'handleVenueAssigned']);
+        Event::listen(VenueUpdated::class, [ProjectEventSummary::class, 'handleVenueUpdated']);
+        Event::listen(VenueUnassigned::class, [ProjectEventSummary::class, 'handleVenueUnassigned']);
         Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleArchived']);
         // #240: `/shop` lists offers across every event, so the projection
         // has to know which events are public — `event.landing` gets that
@@ -574,7 +590,7 @@ class RegistrationServiceProvider extends ModuleServiceProvider
     {
         parent::boot();
 
-        $this->commands([ExpireWaitlistOffersCommand::class]);
+        $this->commands([ExpireWaitlistOffersCommand::class, AnnounceRegistrationOwnershipCommand::class]);
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command('registration:expire-waitlist-offers')->everyFifteenMinutes();

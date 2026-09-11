@@ -40,6 +40,7 @@ final class IssueAdmissionsOnRegistrationConfirmed
             registrationId: $event->registrationId,
             eventId: $event->eventId,
             brandId: $event->brandId,
+            registrantUserId: $event->registrantUserId,
             grants: $event->grants,
         );
     }

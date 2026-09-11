@@ -6,11 +6,14 @@ namespace Konventix\Registration\Http\Controllers\Admin;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Actions\CreateQuota;
 use Konventix\Registration\Actions\UpdateQuota;
 use Konventix\Registration\Data\QuotaData;
@@ -25,10 +28,19 @@ use Konventix\Registration\Models\RegistrationType;
  *
  * The list shows which types draw on each quota, because "how many places are
  * left" is only answerable together with "for whom".
+ *
+ * The category select (design §12b, #282) reads no `resource_types` row
+ * itself (ADR-0004): Resources' `registration.quota-form.categories` slot is
+ * the only source, resolved per brand the way `RegistrationTypeAdminController`
+ * resolves its own seating-fields slot — with that brand set in context, since
+ * `SlotRegistry` gates a gateable module on it and the admin host resolves
+ * none.
  */
 class QuotaAdminController
 {
     use HasDataTableQuery;
+
+    public function __construct(private readonly SlotRegistry $slots) {}
 
     public function index(Request $request): Response
     {
@@ -45,28 +57,40 @@ class QuotaAdminController
             ->paginate($perPage)
             ->withQueryString();
 
+        $brands = Brand::query()->orderBy('name')->get(['id', 'name']);
+
         /** @var array<string, string> $brandNames */
-        $brandNames = Brand::query()->pluck('name', 'id')->all();
+        $brandNames = $brands->pluck('name', 'id')->all();
+        $categoriesByBrand = $this->categoriesByBrand($brands);
 
         /** @var list<string> $quotaIds */
         $quotaIds = array_values($quotas->getCollection()->pluck('id')->all());
         $typeNames = $this->typeNamesByQuota($quotaIds);
 
         return Inertia::render('admin/quotas/Index', [
-            'quotas' => $quotas->through(fn (Quota $quota): array => [
-                'id' => $quota->getKey(),
-                'name' => $quota->name,
-                'brandName' => $brandNames[$quota->brand_id] ?? '—',
-                'capacity' => $quota->capacity,
-                'consumed' => $quota->consumed,
-                'remaining' => $quota->remaining(),
-                'typeNames' => $typeNames[$quota->getKey()] ?? [],
-            ]),
+            'quotas' => $quotas->through(function (Quota $quota) use ($brandNames, $categoriesByBrand, $typeNames): array {
+                $category = collect($categoriesByBrand[$quota->brand_id] ?? [])
+                    ->firstWhere('id', $quota->resource_type_id);
+
+                return [
+                    'id' => $quota->getKey(),
+                    'name' => $quota->name,
+                    'brandId' => $quota->brand_id,
+                    'brandName' => $brandNames[$quota->brand_id] ?? '—',
+                    'resourceTypeId' => $quota->resource_type_id,
+                    'categoryName' => $category['name'] ?? null,
+                    'capacity' => $quota->capacity,
+                    'consumed' => $quota->consumed,
+                    'remaining' => $quota->remaining(),
+                    'typeNames' => $typeNames[$quota->getKey()] ?? [],
+                ];
+            }),
             'brands' => array_map(
                 fn (string $name, string $id): array => ['id' => $id, 'name' => $name],
                 array_values($brandNames),
                 array_keys($brandNames),
             ),
+            'categoriesByBrand' => $categoriesByBrand,
             'filters' => $this->currentFilters($request, $sort, $perPage),
         ]);
     }
@@ -119,6 +143,39 @@ class QuotaAdminController
             ->get(['registration_types.name', 'link.quota_id'])
             ->groupBy('quota_id')
             ->map(fn ($rows): array => array_values($rows->pluck('name')->all()))
+            ->all();
+    }
+
+    /**
+     * The quota form's category options, per brand — one slot resolution
+     * per brand rather than per quota, mirroring how `brands` above is
+     * already fetched once for the whole page. Never a direct
+     * `resource_types` query (ADR-0004): Resources' own slot closure is the
+     * only source, resolved with each brand set in context so the
+     * contribution's query scopes itself to it.
+     *
+     * The slot's props are opaque cross-module data (`SlotRegistry::for()`
+     * types them `array<string, mixed>`, ADR-0004) — the `{id, name,
+     * eventName}` shape is a contract with Resources' own closure, not
+     * something this module's static types can verify.
+     *
+     * @param  Collection<int, Brand>  $brands
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private function categoriesByBrand(Collection $brands): array
+    {
+        $context = app(BrandContext::class);
+
+        return $brands
+            ->mapWithKeys(fn (Brand $brand): array => [
+                $brand->getKey() => $context->withBrand(
+                    $brand,
+                    fn (): array => $this->slots
+                        ->for('registration.quota-form.categories')
+                        ->pluck('props.categories')
+                        ->first() ?? [],
+                ),
+            ])
             ->all();
     }
 }

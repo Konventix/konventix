@@ -109,7 +109,7 @@ it('serves a PII-free delta with a monotonic cursor and the offline decision inp
         'event_id' => $lane['eventId'],
         'holder_user_id' => (string) Str::ulid(),
     ]);
-    $token = app(IssueAdmissionToken::class)->handle($admission);
+    $token = app(IssueAdmissionToken::class)->current($admission);
 
     $this->postJson('/api/entrance/scans', [
         'scans' => [['token' => $token, 'client_scan_id' => (string) Str::uuid()]],
@@ -144,7 +144,7 @@ it('records an accepted scan and emits AdmissionCheckedIn carrying registration_
 
     $lane = entranceTestLane();
     $admission = Admission::factory()->create(['event_id' => $lane['eventId']]);
-    $token = app(IssueAdmissionToken::class)->handle($admission);
+    $token = app(IssueAdmissionToken::class)->current($admission);
 
     Event::fake([AdmissionCheckedIn::class, CheckInBatchSynchronized::class]);
 
@@ -173,7 +173,7 @@ it('is idempotent per client_scan_id so a reconnect replay writes once', functio
 
     $lane = entranceTestLane();
     $admission = Admission::factory()->create(['event_id' => $lane['eventId']]);
-    $token = app(IssueAdmissionToken::class)->handle($admission);
+    $token = app(IssueAdmissionToken::class)->current($admission);
 
     $payload = ['scans' => [['token' => $token, 'client_scan_id' => 'replayed-scan']]];
 
@@ -219,7 +219,7 @@ it('rejects a token minted for a different event', function (): void {
 
     $lane = entranceTestLane();
     $elsewhere = Admission::factory()->create(['event_id' => (string) Str::ulid()]);
-    $token = app(IssueAdmissionToken::class)->handle($elsewhere);
+    $token = app(IssueAdmissionToken::class)->current($elsewhere);
 
     $this->postJson('/api/entrance/scans', [
         'scans' => [['token' => $token, 'client_scan_id' => 'wrong-event']],

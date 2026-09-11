@@ -79,6 +79,12 @@
       are referenced on the envelope but not persisted on the log row, so a
       flush would lose them). If a digestable topic ever legitimately carries
       attachments, the log row needs to store the references.
+- [ ] `ResendMessage` drops an inline attachment instead of rebuilding it
+      (ADR-0061): `resolveAttachments()` only recognises the disk form
+      (`disk` + `path`) and treats anything else as gone, even though the
+      log row's `content` field is stored in full for an inline attachment
+      today — nothing strips it before the write. `resolveAttachments()`
+      needs an inline branch; the bytes are already sitting in the row.
 - [ ] D-BATCH-7 render-time filtering for inactive modules in the inbox: the
       read endpoints do not yet skip notifications whose topic belongs to a
       module inactive for the brand — harmless today because every module

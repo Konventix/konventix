@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Event\Http\Controllers\EventLandingController;
+use Konventix\Event\Http\Middleware\RecordCalendarDownloadMetrics;
 
 // The brand's public event list — the topbar's "Events" entry (registered in
 // EventServiceProvider) points here. It enumerates only what
@@ -33,3 +34,11 @@ Route::get('/events', [EventLandingController::class, 'index'])
 // the time implicit binding runs.
 Route::get('/events/{event:slug}', [EventLandingController::class, 'show'])
     ->name('event.show');
+
+// The event's calendar file (spec §6.2): public, no authentication, the
+// same visibility rule `show()` enforces. `.ics` sits in the URI itself,
+// not a query string, so both a calendar app's "subscribe by URL" and a
+// plain browser download just work.
+Route::get('/events/{event:slug}/calendar.ics', [EventLandingController::class, 'calendar'])
+    ->middleware(RecordCalendarDownloadMetrics::class)
+    ->name('event.calendar');

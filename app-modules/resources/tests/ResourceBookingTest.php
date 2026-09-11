@@ -3,7 +3,10 @@
 declare(strict_types=1);
 
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Resources\Actions\ConfirmResourceBooking;
 use Konventix\Resources\Actions\HoldResourceBooking;
 use Konventix\Resources\Actions\ReleaseResourceBooking;
@@ -217,4 +220,277 @@ it('releases capacity back in quantity mode', function (): void {
     app(ReleaseResourceBooking::class)->handle($held);
 
     expect(bookingTestHold($resource, 1, quantity: 10)->state)->toBe(BookingState::Held);
+});
+
+it('refuses more than one unit on a unit-mode resource in the Action', function (): void {
+    // A seat is one thing. Quantity 2 on a unit resource used to write one
+    // row with quantity 2 — one seat "booked twice" — and the claim path
+    // then handed one seat to a registration that paid for two.
+    $this->withBrand();
+
+    $resource = bookingTestUnitResource();
+
+    expect(fn () => bookingTestHold($resource, 1, quantity: 2))
+        ->toThrow(InvalidArgumentException::class);
+
+    expect(ResourceBooking::query()->count())->toBe(0);
+});
+
+it('names the event, the type, the registration and the label on every booking event', function (): void {
+    $this->withBrand();
+
+    Event::fake([ResourceBookingHeld::class, ResourceBookingConfirmed::class, ResourceBookingReleased::class]);
+
+    $type = ResourceType::factory()->create();
+    $resource = Resource::factory()->ofType($type)->create(['label' => 'A-07']);
+    $registrationId = (string) Str::ulid();
+
+    $booking = app(HoldResourceBooking::class)->handle(
+        resource: $resource,
+        holderType: ResourceBooking::HOLDER_REGISTRATION,
+        holderId: $registrationId,
+        startsAt: now()->startOfHour()->addHours(1),
+        endsAt: now()->startOfHour()->addHours(3),
+        registrationId: $registrationId,
+    );
+
+    // The label is a snapshot: a later plan edit renames the resource, the
+    // history row keeps saying what it said when the booking happened.
+    expect($booking->label)->toBe('A-07');
+
+    Event::assertDispatched(
+        ResourceBookingHeld::class,
+        fn (ResourceBookingHeld $e): bool => $e->eventId === $type->event_id
+            && $e->resourceTypeId === $type->id
+            && $e->registrationId === $registrationId
+            && $e->claimId === null
+            && $e->label === 'A-07'
+            && $e->ref === null
+            && $e->holdExpiresAt !== null,
+    );
+
+    $confirmed = app(ConfirmResourceBooking::class)->handle($booking);
+
+    Event::assertDispatched(
+        ResourceBookingConfirmed::class,
+        fn (ResourceBookingConfirmed $e): bool => $e->eventId === $type->event_id
+            && $e->resourceTypeId === $type->id
+            && $e->registrationId === $registrationId
+            && $e->label === 'A-07',
+    );
+
+    app(ReleaseResourceBooking::class)->handle($confirmed, BookingState::Cancelled, 'registration_cancelled');
+
+    Event::assertDispatched(
+        ResourceBookingReleased::class,
+        fn (ResourceBookingReleased $e): bool => $e->eventId === $type->event_id
+            && $e->resourceTypeId === $type->id
+            && $e->registrationId === $registrationId
+            && $e->label === 'A-07'
+            && $e->reason === 'registration_cancelled',
+    );
+});
+
+it('records the claim, the amendment and an explicit label on the booking row', function (): void {
+    $brand = $this->withBrand();
+
+    $resource = bookingTestUnitResource();
+    $claimId = (string) Str::ulid();
+    $amendmentId = (string) Str::ulid();
+
+    // resource_bookings.claim_id carries a foreign key onto resource_claims
+    // as of Task 10; a real claim row is not a model concern yet (that
+    // arrives with Konventix\Resources\Models\ResourceClaim in Task 12), so
+    // this inserts the row directly.
+    DB::table('resource_claims')->insert([
+        'id' => $claimId,
+        'brand_id' => $brand->id,
+        'event_id' => (string) Str::ulid(),
+        'registration_id' => (string) Str::ulid(),
+        'resource_type_ids' => json_encode([$resource->resource_type_id]),
+        'seating_mode' => 'assign',
+    ]);
+
+    $booking = app(HoldResourceBooking::class)->handle(
+        resource: $resource,
+        holderType: ResourceBooking::HOLDER_REGISTRATION,
+        holderId: (string) Str::ulid(),
+        startsAt: now()->startOfHour()->addHours(1),
+        endsAt: now()->startOfHour()->addHours(3),
+        claimId: $claimId,
+        amendmentId: $amendmentId,
+        label: 'Booth 12 (as sold)',
+    );
+
+    expect($booking->fresh()->claim_id)->toBe($claimId)
+        ->and($booking->fresh()->amendment_id)->toBe($amendmentId)
+        ->and($booking->fresh()->label)->toBe('Booth 12 (as sold)');
+});
+
+it('books two separate seats, in natural label order, for a resource claim of quantity two', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources');
+
+    $eventId = (string) Str::ulid();
+    seatingProjectWindow($eventId, $brand->id);
+    $type = seatingUnitType($eventId);
+    // Plain string order would put A-10 before A-2.
+    foreach (['A-10', 'A-2', 'A-1'] as $label) {
+        seatingPublishedResource($type, $label);
+    }
+
+    $registrationId = seatingConfirmRegistration($eventId, $brand->id, [seatingClaimGrant($type->id, 2)]);
+
+    $bookings = ResourceBooking::query()->where('registration_id', $registrationId)->get();
+
+    expect($bookings)->toHaveCount(2)
+        ->and($bookings->pluck('quantity')->unique()->all())->toBe([1])
+        ->and($bookings->pluck('resource_id')->unique())->toHaveCount(2)
+        ->and($bookings->pluck('label')->sort()->values()->all())->toBe(['A-1', 'A-2']);
+});
+
+it('fulfils a confirmation that arrives with no brand in context', function (): void {
+    // The Stripe webhook confirms paid registrations with no ambient brand;
+    // the gate has to read the brand the payload names.
+    $brand = $this->withBrand();
+    $this->activateModule('resources');
+
+    $eventId = (string) Str::ulid();
+    seatingProjectWindow($eventId, $brand->id);
+    $type = seatingUnitType($eventId);
+    seatingPublishedResource($type, 'C-01');
+
+    app(BrandContext::class)->forget();
+
+    $registrationId = seatingConfirmRegistration($eventId, $brand->id, [seatingClaimGrant($type->id)]);
+
+    expect(ResourceBooking::withoutBrandScope()->where('registration_id', $registrationId)->count())->toBe(1)
+        ->and(app(BrandContext::class)->current())->toBeNull();
+});
+
+it('carries the place ref on the booking events', function (): void {
+    $this->withBrand();
+
+    $resource = bookingTestUnitResource();
+    $resource->forceFill(['ref' => 'A-01'])->save();
+
+    Event::fake([ResourceBookingHeld::class, ResourceBookingConfirmed::class]);
+
+    $booking = app(HoldResourceBooking::class)->handle(
+        resource: $resource,
+        holderType: ResourceBooking::HOLDER_REGISTRATION,
+        holderId: (string) Str::ulid(),
+        startsAt: now()->startOfHour()->addHours(1),
+        endsAt: now()->startOfHour()->addHours(3),
+    );
+
+    app(ConfirmResourceBooking::class)->handle($booking);
+
+    Event::assertDispatched(ResourceBookingHeld::class, fn (ResourceBookingHeld $event): bool => $event->ref === 'A-01');
+    Event::assertDispatched(ResourceBookingConfirmed::class, fn (ResourceBookingConfirmed $event): bool => $event->ref === 'A-01');
+});
+
+it('dispatches the release only once the outermost transaction commits', function (): void {
+    // SavePlan and the seat assignment release inside their own
+    // transaction (design §6.1 step 7). RefreshDatabase wraps every test in
+    // one transaction, so "outermost" is level 1 here, not 0.
+    $this->withBrand();
+
+    $booking = bookingTestHold(bookingTestUnitResource(), 1);
+    $levels = [];
+
+    Event::listen(ResourceBookingReleased::class, function () use (&$levels): void {
+        $levels[] = DB::transactionLevel();
+    });
+
+    DB::transaction(function () use ($booking, &$levels): void {
+        app(ReleaseResourceBooking::class)->handle($booking);
+
+        expect($levels)->toBe([]);
+    });
+
+    expect($levels)->toBe([1])
+        ->and($booking->fresh()->state)->toBe(BookingState::Released);
+});
+
+it('dispatches hold and confirmation after the outermost commit as well', function (): void {
+    $this->withBrand();
+
+    $resource = bookingTestUnitResource();
+    $seen = [];
+
+    Event::listen(ResourceBookingHeld::class, function () use (&$seen): void {
+        $seen[] = ['held', DB::transactionLevel()];
+    });
+    Event::listen(ResourceBookingConfirmed::class, function () use (&$seen): void {
+        $seen[] = ['confirmed', DB::transactionLevel()];
+    });
+
+    DB::transaction(function () use ($resource, &$seen): void {
+        app(ConfirmResourceBooking::class)->handle(bookingTestHold($resource, 1));
+
+        expect($seen)->toBe([]);
+    });
+
+    expect($seen)->toBe([['held', 1], ['confirmed', 1]]);
+});
+
+it('sets the brand context from the resource while holding, so a downstream listener sees it after the caller\'s own brand scope has closed', function (): void {
+    // The prerequisite for Task 21: ReservePlaceForOperator holds and
+    // confirms inside one transaction, exactly the shape that lost the
+    // ambient brand for ReleaseResourceBooking before it captured and
+    // restored it. A caller that sets the brand only around the individual
+    // Hold/Confirm call — the way ReleaseBookingsForRegistration and
+    // ExpireResourceHolds already do for release — must still see its own
+    // brand at dispatch time, not whatever is ambient once its withBrand()
+    // block has already closed and the outer transaction finally commits.
+    $brand = $this->withBrand();
+    $resource = bookingTestUnitResource();
+
+    $seen = [];
+    Event::listen(ResourceBookingHeld::class, function () use (&$seen): void {
+        $seen[] = app(BrandContext::class)->id();
+    });
+
+    app(BrandContext::class)->forget();
+
+    DB::transaction(function () use ($resource, $brand, &$seen): void {
+        app(BrandContext::class)->withBrand($brand, fn (): ResourceBooking => app(HoldResourceBooking::class)->handle(
+            resource: $resource,
+            holderType: ResourceBooking::HOLDER_OPERATOR,
+            holderId: (string) Str::ulid(),
+            startsAt: now()->startOfHour()->addHour(),
+            endsAt: now()->startOfHour()->addHours(3),
+        ));
+
+        // The withBrand() scope has already closed; the deferred dispatch
+        // waits for this outermost transaction to commit.
+        expect(app(BrandContext::class)->current())->toBeNull()
+            ->and($seen)->toBe([]);
+    });
+
+    expect($seen)->toBe([$brand->id])
+        ->and(app(BrandContext::class)->current())->toBeNull();
+});
+
+it('sets the brand context from the booking while confirming, so a downstream listener sees it after the caller\'s own brand scope has closed', function (): void {
+    $brand = $this->withBrand();
+    $booking = bookingTestHold(bookingTestUnitResource(), 1);
+
+    $seen = [];
+    Event::listen(ResourceBookingConfirmed::class, function () use (&$seen): void {
+        $seen[] = app(BrandContext::class)->id();
+    });
+
+    app(BrandContext::class)->forget();
+
+    DB::transaction(function () use ($booking, $brand, &$seen): void {
+        app(BrandContext::class)->withBrand($brand, fn (): ResourceBooking => app(ConfirmResourceBooking::class)->handle($booking));
+
+        expect(app(BrandContext::class)->current())->toBeNull()
+            ->and($seen)->toBe([]);
+    });
+
+    expect($seen)->toBe([$brand->id])
+        ->and(app(BrandContext::class)->current())->toBeNull();
 });

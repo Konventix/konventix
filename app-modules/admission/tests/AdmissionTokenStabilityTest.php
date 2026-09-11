@@ -1,0 +1,222 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Konventix\Admission\Actions\IssueAdmissionToken;
+use Konventix\Admission\Actions\RecordScan;
+use Konventix\Admission\Actions\RotateEntranceSigningKey;
+use Konventix\Admission\Enums\CheckInRejectionReason;
+use Konventix\Admission\Enums\CheckInResult;
+use Konventix\Admission\Models\Admission;
+use Konventix\Admission\Models\Checkpoint;
+use Konventix\Admission\Models\EntranceDeltaEntry;
+use Konventix\Admission\Models\EntranceDevice;
+use Konventix\Admission\Models\EntranceSigningKey;
+use Konventix\Admission\Tokens\AdmissionTokenCodec;
+use Konventix\Admission\Tokens\AdmissionTokenPayload;
+use Prometheus\CollectorRegistry;
+use Prometheus\RenderTextFormat;
+
+/**
+ * §5: a stable ticket code. This file grows one `it()` per task in this
+ * plan section (Tasks 5-10) rather than one file per task, because every
+ * later case exercises the same `IssueAdmissionToken`/`VerifyAdmissionToken`
+ * /`RecordScan` triangle Task 6 and 7 stand up.
+ */
+it('gives admissions nullable token-stability columns and entrance_delta_entries a payload column, with a pepper needing no new env var', function (): void {
+    expect(Schema::hasColumns('admissions', ['token_nonce_hash', 'token_issued_at']))->toBeTrue()
+        ->and(Schema::hasColumn('entrance_delta_entries', 'payload'))->toBeTrue();
+
+    $this->withBrand();
+    $admission = Admission::factory()->create();
+
+    expect($admission->token_nonce_hash)->toBeNull()
+        ->and($admission->token_issued_at)->toBeNull();
+
+    expect(config('admission.token_pepper'))->toBeString()
+        ->and(config('admission.token_pepper'))->not->toBe('');
+});
+
+it('returns the same token body from two current() calls, and a different one after rotate()', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $admission = Admission::factory()->create();
+    $issuer = app(IssueAdmissionToken::class);
+
+    $first = $issuer->current($admission);
+    $second = $issuer->current($admission->fresh());
+
+    expect($second)->toBe($first);
+
+    $this->travel(1)->second();
+    $rotated = $issuer->rotate($admission->fresh());
+
+    expect($rotated)->not->toBe($first);
+});
+
+it('stores a hash and writes no delta entry when current() first issues a token', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $admission = Admission::factory()->create();
+    app(IssueAdmissionToken::class)->current($admission);
+
+    $admission->refresh();
+
+    expect($admission->token_nonce_hash)->not->toBeNull()
+        ->and(EntranceDeltaEntry::withoutBrandScope()->where('admission_id', $admission->id)->count())->toBe(0);
+});
+
+it('writes exactly one token_superseded delta entry carrying the new hash when rotate() supersedes an existing hash', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $admission = Admission::factory()->create();
+    $issuer = app(IssueAdmissionToken::class);
+    $issuer->current($admission); // First mint: establishes the hash, writes no entry (pinned above).
+
+    $this->travel(1)->second();
+    $issuer->rotate($admission->fresh());
+
+    $admission->refresh();
+
+    $entries = EntranceDeltaEntry::withoutBrandScope()
+        ->where('admission_id', $admission->id)
+        ->where('kind', EntranceDeltaEntry::KIND_TOKEN_SUPERSEDED)
+        ->get();
+
+    expect($entries)->toHaveCount(1)
+        ->and($entries->first()->payload)->toBe(['hash' => $admission->token_nonce_hash])
+        ->and($admission->token_nonce_hash)->not->toBeNull();
+});
+
+it('refuses a token minted before the first rotation with NonceSuperseded, still refuses it after a second rotate() writes a second entry, through RecordScan, and accepts one for an admission with no stored hash', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+    $key = EntranceSigningKey::withoutBrandScope()->where('brand_id', $brand->id)->firstOrFail();
+
+    $eventId = (string) Str::ulid();
+    $admission = Admission::factory()->create(['event_id' => $eventId]);
+    $issuer = app(IssueAdmissionToken::class);
+
+    $stale = $issuer->current($admission);
+
+    $this->travel(1)->second();
+    $issuer->rotate($admission->fresh());
+
+    $rejected = app(RecordScan::class)->handle(
+        token: $stale,
+        brandId: $brand->id,
+        eventId: $eventId,
+        clientScanId: 'stale-1',
+    );
+
+    expect($rejected->result)->toBe(CheckInResult::Rejected)
+        ->and($rejected->reason_code)->toBe(CheckInRejectionReason::NonceSuperseded->value);
+
+    $this->travel(1)->second();
+    $issuer->rotate($admission->fresh());
+
+    expect(EntranceDeltaEntry::withoutBrandScope()
+        ->where('admission_id', $admission->id)
+        ->where('kind', EntranceDeltaEntry::KIND_TOKEN_SUPERSEDED)
+        ->count())->toBe(2);
+
+    $stillRejected = app(RecordScan::class)->handle(
+        token: $stale,
+        brandId: $brand->id,
+        eventId: $eventId,
+        clientScanId: 'stale-2',
+    );
+
+    expect($stillRejected->result)->toBe(CheckInResult::Rejected)
+        ->and($stillRejected->reason_code)->toBe(CheckInRejectionReason::NonceSuperseded->value);
+
+    // An admission with no stored hash — nothing has rotated for it since
+    // before this enforcement shipped — accepts anything: this is what
+    // keeps every token already in circulation working across the deploy.
+    $preDeploy = Admission::factory()->create(['event_id' => $eventId]);
+    $preDeployToken = (new AdmissionTokenCodec)->encode(
+        new AdmissionTokenPayload(
+            admissionId: $preDeploy->id,
+            eventId: $eventId,
+            nonce: (string) Str::ulid(),
+            issuedAt: now()->subDays(10)->getTimestamp(),
+            expiresAt: now()->addDays(50)->getTimestamp(),
+        ),
+        $key->kid,
+        $key->private_key,
+    );
+
+    $accepted = app(RecordScan::class)->handle(
+        token: $preDeployToken,
+        brandId: $brand->id,
+        eventId: $eventId,
+        clientScanId: 'pre-deploy-1',
+    );
+
+    expect($accepted->result)->toBe(CheckInResult::Accepted);
+});
+
+it('carries the new hash through the delta feed on a token_superseded entry', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $eventId = (string) Str::ulid();
+    $admission = Admission::factory()->create(['event_id' => $eventId]);
+
+    $checkpoint = Checkpoint::factory()->forEvent($eventId)->create();
+    $plainDeviceToken = Str::random(48);
+    EntranceDevice::factory()->withToken($plainDeviceToken)->create(['checkpoint_id' => $checkpoint->id]);
+
+    $issuer = app(IssueAdmissionToken::class);
+    $issuer->current($admission); // Establishes the hash rotate() below supersedes.
+    $this->travel(1)->second();
+    $issuer->rotate($admission->fresh());
+
+    $response = $this->getJson('/api/entrance/delta?since=0', [
+        'Authorization' => 'Bearer '.$plainDeviceToken,
+        'Accept' => 'application/json',
+    ])->assertOk();
+
+    $entry = collect($response->json('entries'))->firstWhere('kind', 'token_superseded');
+
+    expect($entry)->not->toBeNull()
+        ->and($entry['admission_id'])->toBe($admission->id)
+        ->and($entry['payload'])->toBe(['hash' => $admission->fresh()->token_nonce_hash]);
+});
+
+it('documents in IssueAdmissionToken why token_nonce_hash needs no backfill command', function (): void {
+    $source = file_get_contents(dirname(__DIR__).'/src/Actions/IssueAdmissionToken.php');
+
+    expect($source)->not->toBeFalse()
+        ->and($source)->toContain('backfill')
+        ->and($source)->toContain('event:replay-details');
+});
+
+it('increments admission_tokens_superseded_total when a scan is refused for a superseded nonce', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $eventId = (string) Str::ulid();
+    $admission = Admission::factory()->create(['event_id' => $eventId]);
+    $issuer = app(IssueAdmissionToken::class);
+
+    $stale = $issuer->current($admission);
+    $this->travel(1)->second();
+    $issuer->rotate($admission->fresh());
+
+    app(RecordScan::class)->handle(
+        token: $stale,
+        brandId: $brand->id,
+        eventId: $eventId,
+        clientScanId: 'metric-1',
+    );
+
+    $rendered = (new RenderTextFormat)->render(app(CollectorRegistry::class)->getMetricFamilySamples());
+
+    expect($rendered)->toContain('konventix_admission_tokens_superseded_total{brand="'.$brand->slug.'"} 1');
+});

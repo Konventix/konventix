@@ -163,6 +163,21 @@ scalars and ULIDs, which is exactly what the rule asks for.
   resend, so it bypasses digest/quiet-hours holds rather than joining an
   unrelated window. Refuses (`LogicException`, mapped to a redirect with
   errors) a record still `Queued`/`Held` — nothing to resend yet.
+- **Two forms of attachment** (ADR-0061, narrowing the disk-only contract
+  this module deliberately drew at Slice 2): `AttachmentData`'s constructor
+  accepts either a disk and a path, or inline `content` capped at 64 KiB —
+  exactly one of the two, enforced by the constructor, never both and never
+  neither. `TemplatedMail::attachments()` builds `Attachment::fromData(...)`
+  for the inline form and keeps `fromStorageDisk(...)` for the other.
+  `Actions\ResendMessage::resolveAttachments()` only ever rebuilds the disk
+  form — it matches on a stored `disk`/`path` pair and drops anything else,
+  logged as if the file were missing from disk — so an inline attachment is
+  silently dropped on resend today, even though its `content` did reach the
+  log row (the row stores the whole `AttachmentData` shape it was handed;
+  nothing strips inline bytes before writing it). Event's calendar file is
+  the first and, so far, only inline consumer; Admission's ticket is
+  deliberately never mailed at all, only downloaded, so the size ceiling has
+  not yet had to say no to anything bigger.
 - **The outbound pipeline**: its own queue name, retry and backoff policy, and
   the brand context carried into and restored inside the job (ADR-0010).
 - **Rendering context**: the brand read model — name, canonical domain, sender

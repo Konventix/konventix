@@ -50,6 +50,7 @@ final class RescheduleEvent
                 startsAt: $startsAt,
                 endsAt: $endsAt,
                 timezone: $timezone,
+                brandId: $event->brand_id,
             ));
 
             return $event->refresh();

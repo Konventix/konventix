@@ -7,6 +7,9 @@ use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Konventix\Admission\Actions\ClaimAdmission;
+use Konventix\Admission\Actions\IssueAdmissionClaimLink;
+use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Models\Admission;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
@@ -29,6 +32,10 @@ use Konventix\Platform\Models\StaticPage;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
+use Konventix\Resources\Enums\ClaimState;
+use Konventix\Resources\Models\Plan;
+use Konventix\Resources\Models\ResourceClaim;
+use Konventix\Resources\Models\ResourceType;
 use Laravel\Pennant\Feature;
 
 /**
@@ -253,6 +260,59 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
 
         return $own === null ? null : ['registration' => $own];
     }
+
+    // The seat picker and its availability poll both authorize on the
+    // claim's registrant (`FindSeatClaimForRegistrant`) and 404 for anyone
+    // else — the ownership rule working exactly as designed, the same shape
+    // as `registration.mine.show` above. It is correct behaviour, not a
+    // screen this walk can skip past: `DemoResourcesSeeder::seedSeatClaims()`
+    // gives every confirmed registrant a genuine, unplaced claim for exactly
+    // this reason, so the walking member's own registration resolves here.
+    if (($name === 'resources.seating.pick' || $name === 'resources.seating.availability') && $member !== null) {
+        $claim = ResourceClaim::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->where('registrant_user_id', $member->getKey())
+            ->where('state', '!=', ClaimState::Released)
+            ->orderByDesc('created_at')
+            ->first();
+
+        $registration = $claim === null ? null : Registration::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->whereKey($claim->registration_id)
+            ->first();
+
+        return $registration === null ? null : ['registration' => $registration];
+    }
+
+    // The buyer's combined ticket file (`admission.tickets.buyer`, #72):
+    // authorised entirely on `admissions.buyer_user_id` naming the
+    // signed-in account (ADR-0004 — `TicketDownloadController::buyer()`
+    // never reads a Registration row), the same shape commit f8f794d
+    // already fixed for `admission.tickets.holder`'s `{admission}`. "Any
+    // registration that produced an order" only ever passed this route's
+    // ownership check by luck of row order — this binds to a registration
+    // the walking member is genuinely the buyer of instead.
+    // `DemoCommerceSeeder`'s Supporter type confirms at submission (factory
+    // defaults: on_submit, no approval), which issues each Supporter
+    // registrant an admission naming them as buyer, and
+    // `DemoComplianceSeeder::seedSubjectRequests()` prefers a payer — a
+    // Supporter registrant — for the subject this walk signs in as, so this
+    // resolves for both archetypes.
+    if ($name === 'admission.tickets.buyer' && $member !== null) {
+        $admission = Admission::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->where('buyer_user_id', $member->getKey())
+            ->where('state', '!=', AdmissionState::Revoked)
+            ->whereNotNull('registration_id')
+            ->first();
+
+        $registration = $admission === null ? null : Registration::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->whereKey($admission->registration_id)
+            ->first();
+
+        return $registration === null ? null : ['registration' => $registration];
+    }
     $eventQuery = fn () => Event::withoutBrandScope()->where('brand_id', $brand->getKey());
 
     // The public form takes both halves of one pair: the type must belong to
@@ -345,7 +405,28 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             $parameter === 'registrationType' => RegistrationType::withoutBrandScope()
                 ->where('brand_id', $brand->getKey())
                 ->first(),
+            // `{admission}` is only ever this route's — `admission.tickets.holder`
+            // (the console's badge route resolves it without a `$member`) —
+            // and `holder()` 403s unless `holder_user_id` names the signed-in
+            // account. Most admissions have no holder at all (a sold
+            // admission names nobody until it is claimed), so "any admission
+            // of the brand" only ever passed the check by luck of row order.
+            // `DemoAdmissionSeeder::seedClaimLinks()` claims one admission
+            // for the first seeded member on purpose so a holder's list is
+            // never empty; this binds to the walking member's own held
+            // admission instead of an arbitrary one.
+            $parameter === 'admission' && $member !== null => Admission::withoutBrandScope()
+                ->where('brand_id', $brand->getKey())
+                ->where('holder_user_id', $member->getKey())
+                ->first(),
             $parameter === 'admission' => Admission::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
+            // The console's plan screens (`admin.plans.edit`/`.download`/
+            // `.occupancy`): `DemoResourcesSeeder::seedPlan()` gives every
+            // event one, empty but real, so they are genuinely reachable.
+            $parameter === 'plan' => Plan::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
+            // The console's category screen (`admin.resource-types.edit`) —
+            // `DemoResourcesSeeder::seedCatalogue()` already seeds these.
+            $parameter === 'resourceType' => ResourceType::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             // Always null — konventix:seed sends no mail, so no brand ever
             // has a MessageRecord — which is exactly why the route this
             // parameter belongs to is also listed in dryRunSkippedRoutes().
@@ -550,6 +631,28 @@ it('serves every public and account screen for both archetypes', function (strin
             ->select('registrant_user_id'))
         ->whereIn('id', dryRunDownloadableRequests($brand)->select('subject_id'))
         ->firstOrFail();
+
+    // `admission.tickets.holder`'s `{admission}` (resolved below) authorizes
+    // entirely on `holder_user_id` naming the signed-in account, and
+    // `DemoAdmissionSeeder::seedClaimLinks()` claims exactly one admission on
+    // purpose — for whichever member it seeds first, not necessarily the
+    // member chosen above for their registration and their data request.
+    // Claiming one here, through the same `ClaimAdmission` action a real
+    // claim link redeems, is this test's own fixture rather than a resolver
+    // papering over that seed gap: skipping the route instead would mean the
+    // holder download is never exercised at all.
+    if (! Admission::withoutBrandScope()->where('brand_id', $brand->getKey())->where('holder_user_id', $member->getKey())->exists()) {
+        $unclaimed = Admission::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->whereNull('holder_user_id')
+            ->whereIn('state', [AdmissionState::Issued, AdmissionState::Assigned])
+            ->first();
+
+        if ($unclaimed !== null) {
+            $link = app(IssueAdmissionClaimLink::class)->handle($unclaimed);
+            app(ClaimAdmission::class)->handle($link->getKey(), $member->getKey());
+        }
+    }
 
     $routes = dryRunRoutes()
         ->reject(dryRunIsConsoleRoute(...))

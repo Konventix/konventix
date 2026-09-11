@@ -7,7 +7,7 @@ section below is the runbook anchor the rule's annotation names.
 ## Dashboards
 
 Grafana folder "Konventix": `konventix-sale` (orders, payments, webhooks,
-waiting room, messages), `konventix-platform` (HTTP, queues, health,
+waiting room, messages, seating), `konventix-platform` (HTTP, queues, health,
 runtime, database), `konventix-logs` (errors, request records, one
 correlation id). Dashboards are generated from
 `contrib/observability/src/`; an edit in Grafana is reverted on the next
@@ -39,14 +39,15 @@ date, alert names and recipient under the alert's section when done.
 - KonventixDatabaseBackupMissing fires on its own on an instance that never
   completed a backup.
 
-The other ten — KonventixMetricsDown, KonventixHealthCheckFailed,
+The other eleven — KonventixMetricsDown, KonventixHealthCheckFailed,
 KonventixQueueJobsFailing, KonventixWaitingRoomStuck, KonventixWebhookSilence,
 KonventixPaymentFailureRate, KonventixHttp5xxRate, KonventixCheckoutSlow,
-KonventixWalArchivingFailing and KonventixPodsRestarting — are not triggered
+KonventixWalArchivingFailing, KonventixPodsRestarting and
+KonventixResourceHoldSweepStale — are not triggered
 by hand for #168; each has a `vmalert-tool` unit test in
 `contrib/observability/alerts/tests/konventix.rules.test.yaml` that shapes an
 input series so the rule's expression fires and asserts the labels vmalert
-reports, which is the acceptance in place of a live trigger. Two of those ten
+reports, which is the acceptance in place of a live trigger. Two of those eleven
 need more than the unit test to prove the *metric*, not just the rule, is
 honest: KonventixWebhookSilence and KonventixPaymentFailureRate are proven by
 running a sandbox payment flow — a Stripe test-mode webhook withheld, and a
@@ -54,6 +55,93 @@ run of declined test cards. KonventixWalArchivingFailing and
 KonventixPodsRestarting are platform-side, sourced from CNPG's and kubelet's
 own exporters rather than anything this application emits, so they are
 observed when they occur in the cluster rather than provoked.
+
+## Opening seating on an event
+
+Order matters, because a registration only grows a seat claim at the moment
+it is confirmed:
+
+1. Create the seat categories under Categories in the operator console.
+2. Give each category its own quota under Quotas, sized to the number of
+   bookable places, and point the quota's Category field at it. Blocking a
+   place or reserving one for the organisation then takes a unit off the
+   sale the way a purchase does, and giving either back offers the unit to
+   the waitlist.
+3. Set the seating grant on every entry under Registration types that should
+   come with a place, and pick the category it grants.
+4. Import or draw the hall plan under Seating plans and publish it.
+
+Unpublishing a plan to edit it does not stop the category selling. The quota
+is untouched, registrations still sell and confirm, and their seat claims wait
+`unplaced` until the plan is published again, at which point the picker serves
+them.
+
+**Cutover hand-over (Eventula import):** step 3 has to happen before the
+Eventula import runs. The importer carries users, events and orders only --
+it does not carry seating -- and a registration that was already confirmed
+when its type had no seating grant gets no claim, so those participants never
+see the picker. There is no backfill command: a claim is only created when a
+registration is confirmed or amended, so an already-confirmed registration on
+a type that gained the grant afterwards needs an amendment adding that grant.
+The amendment id keys the claim, so replaying the same amendment adds
+nothing.
+
+## Handing a participant their ticket
+
+A ticket is self-service: the buyer downloads every admission their
+registration granted from `/my/registrations/{registration}/ticket`, and
+anyone who has claimed an admission downloads their own from `/my/tickets`.
+There is no admin route that generates a participant's ticket on an
+operator's behalf — that document is deliberately participant-facing only
+(ADR-0061). When someone at a desk cannot self-serve (no account, a device
+that will not open the mail), the operator equivalent is the **badge**, not
+the ticket: `GET /admin/admissions/{admission}/badge` (`BadgeController`,
+behind `admission.print-badge`) prints the physical identity document
+check-in already reads, from the same KVX1 token. Sending someone to the
+door with a printed badge and no ticket is normal; the two documents carry
+the same scannable code.
+
+An admission with no linked holder account (`holder_user_id` is null) has no
+row in anyone's `/my/tickets` — group and B2B bookings look like this until
+a claim link is used. The buyer's own
+`/my/registrations/{registration}/ticket` still lists every admission the
+registration granted, holder or not, so a buyer can always retrieve every
+ticket their registration paid for, claimed or otherwise.
+
+### A superseded-nonce refusal at the door
+
+`CheckInRejectionReason::NonceSuperseded` means the presented code is real
+but is not the admission's *current* one — someone is scanning an older
+printout or QR after the admission's token was rotated
+(`IssueAdmissionToken::rotate()`, run only on a deliberate reissue, never on
+an ordinary download). The fix is always the same: the holder needs their
+current ticket, downloaded fresh from `/my/tickets` or reprinted as a badge
+from the console. This is not paged — the observability task deliberately
+adds no alert for it (ADR-0059 point 8), because a refusal is already
+visible to the person standing at the door — but
+`admission_tokens_superseded_total` on the Sale dashboard's "Tickets and
+calendars" row is what an operator watches during a sale: a steady trickle
+is reissues behaving as designed, a spike against one event is worth asking
+about.
+
+### Backfilling the ticket's read models
+
+Two commands, safe to re-run, neither one specific to a single event:
+
+- `vendor/bin/sail artisan registration:announce-ownership` — re-emits the
+  narrow `RegistrationOwnershipAnnounced` event for every existing
+  registration, so `admissions.buyer_user_id` is populated for admissions
+  issued before this feature shipped. Never re-sends a confirmation mail:
+  that is exactly why this is its own event and not a replay of
+  `RegistrationConfirmed`.
+- `vendor/bin/sail artisan event:replay-details` — re-emits
+  `EventRescheduled`, `EventDetailsUpdated` and, since this feature,
+  `VenueAssigned` for each event's primary venue, so Admission's
+  `admission_event_summaries` and Registration's
+  `registration_event_summaries` both pick up a name, a schedule and a
+  venue for events created before the two read models existed. Run it again
+  after backfilling a venue onto an event that predates this deploy — the
+  command does not run itself.
 
 ## Alerts
 
@@ -152,6 +240,24 @@ scheduler pod is down or wedged. `kubectl -n konventix get pods -l
 app.kubernetes.io/component=scheduler`; its log shows `schedule.task`
 records when healthy. Without it: no waiting-room ticks, no cart expiry,
 no health checks, no backups.
+
+### KonventixResourceHoldSweepStale
+
+`resources:expire-holds` has not finished a run for ten minutes. The
+scheduler runs it every minute; it releases *clocked* holds (direct holds
+with a `hold_expires_at`) with reason `expired`. Seat bookings a
+registrant picked are confirmed in the same transaction as their hold and
+are never touched by it (ADR-0060), so nothing a participant sees is lost
+while this fires — but an expired direct hold keeps its resource until
+someone tries to confirm it, and the place looks taken. If
+KonventixScheduleStale fires too, the scheduler is the cause. Otherwise
+the command itself is failing: its `schedule.task` records on the Logs
+dashboard carry the exception, and
+`kubectl -n konventix exec deploy/konventix-scheduler -- php artisan
+resources:expire-holds` runs one sweep by hand. The series only exists
+once the command has completed at least once on the instance, so an
+instance whose brands never switched Resources on never trips this alert;
+the sale dashboard's "Seconds since hold sweep" stat shows the same age.
 
 ### KonventixDatabaseBackupMissing
 

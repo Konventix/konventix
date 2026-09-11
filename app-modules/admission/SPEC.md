@@ -21,10 +21,13 @@ reading either.
 
 ## Owns
 
-- **`Admission`** — a single person's access right: holder, admission role
-  (`visitor`, `exhibitor_crew`, `speaker`, `press`, `crew`, …), validity window,
-  and lifecycle state (issued, assigned, revoked, expired). References its
-  originating registration by ULID only.
+- **`Admission`** — a single person's access right: holder, buyer, admission
+  role (`visitor`, `exhibitor_crew`, `speaker`, `press`, `crew`, …), validity
+  window, and lifecycle state (issued, assigned, revoked, expired).
+  `buyer_user_id` and `holder_user_id` are two independent nullable
+  columns — the registrant who bought a registration-derived admission is
+  not necessarily the person who ends up holding it (design §13). References
+  its originating registration by ULID only.
 - **Holder assignment** — an admission may be issued unassigned (group and B2B
   bookings) and be claimed or named later.
 - **`AdmissionClaimLink`** — the mechanism by which a not-yet-named person
@@ -39,8 +42,21 @@ reading either.
   race ADR-0032 names as unbuilt: two people who both open the same forwarded
   link cannot both win. Optionally email-bound, so forwarding does not
   transfer the seat.
-- **Ticket tokens** — the scannable credential, its format, its issuance, and
-  its rotation or invalidation.
+- **Ticket tokens** — the scannable credential, its format, and its issuance
+  and rotation through `IssueAdmissionToken::current()`/`::rotate()`
+  (ADR-0061). The token is stable across repeated issuance: `current()`
+  returns the admission's existing nonce, only `rotate()` mints a new one,
+  and a token carrying a superseded nonce is refused at the door
+  (`token_nonce_hash`, `token_issued_at`,
+  `CheckInRejectionReason::NonceSuperseded`).
+- **The ticket document** — one A4 PDF page per admission
+  (`Documents\TicketDocumentRenderer`, mirroring `BadgeDocumentRenderer`):
+  an event band, a holder band with the QR, and a footer band naming the
+  operator and where the full purchase conditions live. Rendered fresh on
+  every request and stored nowhere, like the badge. Watermarked by
+  Platform's shared `DocumentWatermark` service — a brand mark, a forensic
+  repeat seeded from the admission id, and a TESTSYSTEM band off
+  production — which Admission is the first module to call.
 - **Badge** — the physical or printed identity of the holder at the venue:
   what is on it, when it is issued, and when it is reprinted.
 - **`BadgeTemplate`** — the per-event badge design (D-ADM-05): a typed
@@ -55,6 +71,27 @@ reading either.
   is **not** stored: a badge is reproducible on demand from the admission plus
   its template, so unlike a GoBD-archived invoice (ADR-0031) keeping
   attendee-bearing documents on disk would add GDPR surface for no gain.
+- **`Models\Person`** — this module's own holder read model (display name
+  only), projected from Identity's `UserRegistered`/`UserProfileUpdated` and
+  backfilled by `identity:replay-profiles`, mirroring Registration's
+  `Registrant` and Messaging's `Recipient`. Supplies the ticket's and the
+  claim flow's holder-name fallback: the linked holder's display name, else
+  "Unassigned" — the badge's own fallback, now shared rather than
+  re-derived.
+- **`Models\EventSummary`** (`admission_event_summaries`) — this module's
+  own read model of an event's name, start, end, timezone and venue label,
+  projected from Event's `EventCreated`, `EventRescheduled`,
+  `VenueAssigned`, `VenueUpdated` and `VenueUnassigned`, and patched (never
+  replaced) on `EventDetailsUpdated`. Supplies the ticket's event band;
+  Admission may not read Event's models directly (ADR-0004), so this exists
+  even though Registration keeps a similarly-shaped copy for its own mail
+  path — two read models, not two owners.
+- **`admissions.buyer_user_id`** — the registrant who paid for or submitted
+  the registration this admission came from, threaded from
+  `RegistrationConfirmed`/`RegistrationAmended` and backfilled for
+  pre-existing rows by Registration's `registration:announce-ownership`.
+  Distinct from `holder_user_id`: a registration-derived admission is born
+  with a buyer and no holder, and stays that way until someone claims it.
 - **Check-in and check-out records** — every scan, accepted or rejected, with
   checkpoint, device, operator, and timestamp. This is the audit trail of who
   was in the building. `scanned_at` and `synced_at` are separate: an offline
@@ -140,9 +177,10 @@ maintains from them.
 | `EventDaysChanged` | Event | Projects the event-day calendar into `EntranceEventProfile` so a door can resolve the current day locally (D-ADM-04, ADR-0033). Replaces rather than patches — the payload always carries the complete set |
 | `EventReentryPolicyChanged` | Event | Projects the re-entry knob into the same read model (D-ADM-03). Without it the door could not evaluate re-entry offline, and Admission may not read Event's models (ADR-0004) |
 | `RegistrationCancelled` (ADR-0057 point 6) | Registration | Revoke the admissions that registration produced — `AdmissionState::Revoked`, one `AdmissionRevoked` each, and a `KIND_REVOKED` entry in the entrance delta feed so offline doors (ADR-0033) stop admitting them. An admission with an accepted check-in is kept: attendance happened, and money owed after the fact is Commerce's receivable, not the door's. This is the only path by which a cancellation reaches Admission; there is deliberately no listener on `PaymentReversed`, because a door that evaluates payment is ADR-0005's prohibition |
-| `UserProfileUpdated` (proposed) | Identity | Maintain the holder read model (badge name, photo reference) |
+| `UserRegistered`, `UserProfileUpdated` | Identity | Maintain `Models\Person`, the holder-name read model the ticket and the badge fallback both read (ADR-0061). Backfilled by `identity:replay-profiles` |
+| `EventCreated`, `EventRescheduled`, `EventDetailsUpdated`, `VenueAssigned`, `VenueUpdated`, `VenueUnassigned` | Event | Maintain `Models\EventSummary` (`admission_event_summaries`): times and timezone from the first two, venue label from the venue events, name/slug patched (not replaced) from `EventDetailsUpdated`. Backfilled by `event:replay-details`, which since this feature also re-fires `VenueAssigned` for each event's primary venue |
+| `RegistrationOwnershipAnnounced` | Registration | Backfills `admissions.buyer_user_id` for rows that predate the column — the replay-safe counterpart to `RegistrationConfirmed`/`RegistrationAmended`, which already carry `registrantUserId` going forward |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler; check-in records are attendance data and need an explicit answer |
-| `EventPublished`, `EventUpdated` (proposed) | Event | Maintain the event read model that supplies default validity windows and checkpoint context |
 | `ResourceBookingConfirmed` (proposed) | Resources | Show the holder's seat or booth on the badge without owning the booking. Deliberately the *confirmed* event, not a hold — a tentative booking must never reach a badge |
 
 ## Capabilities

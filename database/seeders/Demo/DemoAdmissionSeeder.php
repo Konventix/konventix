@@ -6,6 +6,7 @@ namespace Database\Seeders\Demo;
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Konventix\Admission\Actions\ClaimAdmission;
 use Konventix\Admission\Actions\IssueAdmissionClaimLink;
 use Konventix\Admission\Actions\IssueAdmissionToken;
 use Konventix\Admission\Actions\RecordScan;
@@ -21,6 +22,7 @@ use Konventix\Admission\Models\EntranceDevice;
 use Konventix\Admission\Models\EntranceEventProfile;
 use Konventix\Admission\Models\EntranceSigningKey;
 use Konventix\Event\Models\Event;
+use Konventix\Identity\Models\User;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\MediaItem;
@@ -50,6 +52,7 @@ final class DemoAdmissionSeeder
         private readonly RecordScan $recordScan,
         private readonly RotateEntranceSigningKey $rotateKey,
         private readonly IssueAdmissionClaimLink $issueClaimLink,
+        private readonly ClaimAdmission $claimAdmission,
         private readonly MediaLibrary $library,
     ) {}
 
@@ -70,8 +73,9 @@ final class DemoAdmissionSeeder
 
     /**
      * @param  array<string, MediaItem>  $media
+     * @param  Collection<int, User>  $members
      */
-    public function handle(Event $event, array $media): void
+    public function handle(Event $event, array $media, Collection $members): void
     {
         $this->seedBadgeTemplate($event, $media);
 
@@ -79,7 +83,7 @@ final class DemoAdmissionSeeder
 
         $this->seedDevices($checkpoints);
         $this->seedCheckIns($event, $checkpoints);
-        $this->seedClaimLinks($event);
+        $this->seedClaimLinks($event, $members);
     }
 
     /**
@@ -241,7 +245,7 @@ final class DemoAdmissionSeeder
                 ->whereNull('revoked_at')
                 ->first();
 
-            $token = $this->issueToken->handle($admission);
+            $token = $this->issueToken->current($admission);
 
             $this->recordScan->handle(
                 token: $token,
@@ -274,8 +278,19 @@ final class DemoAdmissionSeeder
      * Claim links (ADR-0032): the badge a registrant bought for someone who
      * has no account yet. Only holder-less admissions can be claimed, which
      * is what the query filters on — the action refuses the rest outright.
+     *
+     * The first is claimed on the spot by a real member: without this, every
+     * seeded admission stays holder-less and `/my/tickets` (the holder's own
+     * ticket list, #72) is empty for every demo account, which teaches
+     * nothing about a screen that exists for exactly this case. It is
+     * claimed unbound (`intendedEmail: null`) — `ClaimAdmission` refuses a
+     * claimant whose email does not match a bound link's `intended_email`,
+     * and a demo member's real email was never the one on the link. The
+     * rest stay open, email-bound links, exactly as before.
+     *
+     * @param  Collection<int, User>  $members
      */
-    private function seedClaimLinks(Event $event): void
+    private function seedClaimLinks(Event $event, Collection $members): void
     {
         $unclaimed = Admission::query()
             ->where('event_id', $event->getKey())
@@ -285,8 +300,16 @@ final class DemoAdmissionSeeder
             ->limit(2)
             ->get();
 
-        foreach ($unclaimed as $admission) {
+        $unclaimed->values()->each(function (Admission $admission, int $index) use ($members): void {
+            if ($index === 0 && $members->isNotEmpty()) {
+                $holder = $members->first();
+                $link = $this->issueClaimLink->handle($admission, intendedEmail: null);
+                $this->claimAdmission->handle($link->getKey(), $holder->getKey(), null);
+
+                return;
+            }
+
             $this->issueClaimLink->handle($admission, intendedEmail: fake()->safeEmail());
-        }
+        });
     }
 }
