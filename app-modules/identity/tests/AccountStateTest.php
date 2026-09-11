@@ -47,3 +47,22 @@ test('a locked account with the wrong password still gets the generic failure', 
     $response->assertSessionHasErrors('email');
     $this->assertGuest();
 });
+
+/**
+ * #81: `MergeUserAccounts` clears the closed account's password, so this is
+ * really exercising the same "no password at all" branch a Steam-only
+ * account already hits — see `AuthenticateUser`'s belt-and-braces
+ * `AccountState::Merged` check for why the explicit state check still
+ * exists even though this path never reaches it.
+ */
+test('a merged account cannot log in, even naming its own former password', function () {
+    $user = User::factory()->merged()->create();
+
+    $response = $this->post(route('login'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $response->assertSessionHasErrors('email');
+    $this->assertGuest();
+});

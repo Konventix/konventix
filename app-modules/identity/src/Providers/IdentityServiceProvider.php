@@ -549,6 +549,72 @@ class IdentityServiceProvider extends ModuleServiceProvider
             sample: ['resetUrl' => 'https://example.test/forgot-password'],
         ));
 
+        // #81: two keys, not one branching on which side of the merge the
+        // reader is — `.ai/rules/app-modules-src.md` prefers that shape, the
+        // same call `commerce.invoice-issued`/`commerce.invoice-paid` made.
+        // Neither carries a topic: like `identity.registration-attempt`, an
+        // account-security notice is not something a preference can suppress.
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.account-merged-survivor',
+            subjects: [
+                'de' => 'Ihre Konten wurden zusammengeführt',
+                'en' => 'Your accounts have been merged',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Ein Administrator hat das Konto mit der E-Mail-Adresse
+                    {{ $otherEmail }} mit diesem Konto zusammengeführt, weil
+                    beide Ihnen gehören.</p>
+                    <p>Sie können sich weiterhin genau wie bisher bei diesem
+                    Konto anmelden — mit Passwort oder über Steam, je nachdem,
+                    was vorher mit welchem Konto verbunden war.</p>
+                    <p>War das nicht auf Ihre Anfrage hin, wenden Sie sich
+                    bitte umgehend an den Support.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>An administrator merged the account at
+                    {{ $otherEmail }} into this one, because both belonged to
+                    you.</p>
+                    <p>You can keep signing in to this account exactly as
+                    before — by password or through Steam, whichever was
+                    connected to which account.</p>
+                    <p>If you did not ask for this, please contact support
+                    right away.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: ['otherEmail' => 'old-account@example.test'],
+        ));
+
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.account-merged-closed',
+            subjects: [
+                'de' => 'Dieses Konto wurde zusammengeführt',
+                'en' => 'This account has been merged',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Ein Administrator hat dieses Konto mit dem Konto
+                    {{ $survivorEmail }} zusammengeführt, weil beide Ihnen
+                    gehören. Eine Anmeldung mit diesem Konto ist ab sofort
+                    nicht mehr möglich — melden Sie sich stattdessen bei
+                    {{ $survivorEmail }} an.</p>
+                    <p>War das nicht auf Ihre Anfrage hin, wenden Sie sich
+                    bitte umgehend an den Support.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>An administrator merged this account into the account
+                    at {{ $survivorEmail }}, because both belonged to you.
+                    Signing in with this account no longer works — sign in
+                    at {{ $survivorEmail }} instead.</p>
+                    <p>If you did not ask for this, please contact support
+                    right away.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: ['survivorEmail' => 'kept-account@example.test'],
+        ));
+
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
             key: 'identity.welcome',
             subjects: [

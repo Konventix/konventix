@@ -124,14 +124,46 @@ person behind it. The value here is in what is left out.
       default provider already covers `Features::resetPasswords()` and manual
       password changes.
 
-- [ ] No "Sign in with Steam" button exists on the login page yet — Steam
-      sign-in today only starts from `LinkedAccounts.vue`, which links an
-      account and does not authenticate. When one lands, it must pass the
-      login form's own remember checkbox through the redirect:
-      `{ query: { remember: form.remember ? 1 : 0 } }`, matching what
-      `SocialAuthController::redirect()` now reads.
+- [ ] Cross-module data move for `AccountsMerged` (#81): Registration,
+      Commerce, Admission and Compliance each need a listener that
+      reassigns their own owned rows (registrations, orders, admissions,
+      consent records) from `merged_user_id` to `surviving_user_id` when
+      this event fires. None exists yet, so a merged account's history stays
+      on the closed account today — the admin "Merge accounts" card says so
+      in the same words. Commerce was another agent's territory while this
+      slice was built; the other three are equally untouched.
+- [ ] `brand_memberships` and role grants are not moved by a merge either
+      (`Actions\MergeUserAccounts`'s docblock has the reasoning) — the
+      survivor may not show membership on a brand only the closed account
+      visited, and inherits none of its roles. Worth a follow-up once the
+      cross-module listeners above exist and de-duplication rules
+      (a shared brand on both accounts, `MediaUsage` reassignment) can be
+      designed alongside them rather than bolted on later.
+- [ ] Self-service account merging (a person proving control of both
+      accounts, e.g. an emailed confirmation to the other address) was the
+      first design considered for #81 and is still the right shape for a
+      person to request on their own — this slice built the operator-console
+      version instead (`MergeUserAccounts`'s docblock has the full
+      reasoning). Worth reconsidering once the cross-module data move above
+      exists, since a self-service merge that cannot honestly say "your
+      history moved too" is not much of an improvement on asking support.
+- [ ] Importing Steam identifiers from the LanCore migration is blocked on
+      #87 and untouched by #81 — a migrated account still gets recognised by
+      Steam only after it first signs in that way, same as before.
 
 ## Done
+
+- [x] A "Sign in with Steam" button on the login page (#81) — Steam sign-in
+      used to start only from `LinkedAccounts.vue`, reachable only after
+      signing in some other way, which was backwards for a deployment where
+      most migrated accounts sign in *by* Steam. The link carries the login
+      form's own remember tick through the redirect exactly as this note
+      specified.
+- [x] An operator-performed account merge (#81, `Actions\MergeUserAccounts`)
+      for the duplicate a migrated account gets if it signs in with Steam
+      before ever being recognised — a password account and a Steam-only
+      account that both belong to the same person. See the Backlog entries
+      above for what it deliberately leaves undone.
 
 - [x] ADR-0016 email-enumeration gap closed (GitLab #18) on all three paths
       the issue named: registration (`register.store`), the forgot-password

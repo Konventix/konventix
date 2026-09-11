@@ -239,6 +239,15 @@ final class SocialAuthController
                 ->withErrors(['email' => __('That sign-in could not be completed. Please try again.')]);
         }
 
+        // #81: `MergeUserAccounts` moves every SocialIdentity row off a
+        // merged account, so `findIdentity()` above can no longer resolve
+        // one to a Merged user in the first place — this is belt and
+        // braces for the same reason the Anonymized check above is.
+        if ($user->state === AccountState::Merged) {
+            return redirect()->route('login')
+                ->withErrors(['email' => __('That sign-in could not be completed. Please try again.')]);
+        }
+
         // Fires `Login`, which is what records the brand membership
         // (ADR-0016) — the same wiring the password path uses, unchanged.
         Auth::login($user, remember: (bool) $request->session()->pull(self::REMEMBER_SESSION_KEY, false));

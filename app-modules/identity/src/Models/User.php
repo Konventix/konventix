@@ -53,6 +53,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string $locale
  * @property string|null $timezone
  * @property AccountState $state
+ * @property string|null $merged_into_user_id
  * @property AccountPreferencesData $preferences
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes

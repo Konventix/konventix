@@ -19,9 +19,12 @@ keeps as its own read model.
 
 - **User**, deliberately narrow: ULID, display name, email, password hash,
   locale, timezone, account state, and typed preference values. Nothing else.
-  Account state is `AccountState::Active`/`Locked` today; `pending` is
-  covered by `email_verified_at` instead of its own state, and `anonymized`
-  is deferred to the `Gdpr/` handler (TODO.md Backlog).
+  Account state is `AccountState::Active`/`Locked`/`Anonymized`/`Merged`;
+  `pending` is covered by `email_verified_at` instead of its own state.
+  `Anonymized` is written by the `Gdpr/` handler; `Merged` (#81) is written
+  by `Actions\MergeUserAccounts` and carries `merged_into_user_id` — see
+  that Action's docblock for what an operator-performed merge moves and, at
+  length, what it deliberately does not.
 - **Authentication**: registration of accounts, login and logout, password
   reset, email verification, remember-me, and lockout after failed attempts.
   Fortify's `LoginResponse` and `TwoFactorLoginResponse` are rebound in
@@ -114,10 +117,20 @@ event class lands.
 | `TwoFactorEnabled` | 2FA enrolment is confirmed | `user_id`, `enabled_at` | proposed |
 | `TwoFactorDisabled` | 2FA is switched off or reset | `user_id`, `disabled_at` | proposed |
 | `UserAnonymized` | Identity's own records for a subject are scrubbed | `user_id`, `anonymized_at` | shipped |
+| `AccountsMerged` | An operator merges two accounts belonging to the same person (#81) | `surviving_user_id`, `merged_user_id`, `performed_by_user_id`, `merged_at` | shipped |
 
 `UserAnonymized` reports completion of Identity's part of a deletion. It is not
 a signal for other modules to delete their data — that fan-out is Compliance's
 (ADR-0004).
+
+`AccountsMerged` is the same shape of seam: it reports that Identity's own
+part of a merge is done (the login methods), not that any other module has
+moved anything. No listener exists yet in Registration, Commerce, Admission
+or Compliance — a merged account's registrations, orders, admissions and
+consent records stay on the closed account until one lands (TODO.md
+Backlog). Importing a Steam identifier for a migrated account (the fourth
+gap #81 named) is a separate, narrower piece of work blocked on #87 and is
+not touched here either.
 
 ## Consumes
 

@@ -65,6 +65,14 @@ final class AuthenticateUser
             return null;
         }
 
+        // #81: a merged account's password was cleared by `MergeUserAccounts`,
+        // so `hasPassword()` above already refuses it before this line is
+        // ever reached — this is belt and braces for the same reason the
+        // Anonymized check above is, in case that invariant is ever broken.
+        if ($user->state === AccountState::Merged) {
+            return null;
+        }
+
         return $user;
     }
 }
