@@ -44,6 +44,14 @@ reading either.
   transfer the seat.
 - **Ticket tokens** — the scannable credential, its format, its issuance, and
   its rotation or invalidation.
+- **The ticket document** — one A4 PDF page per admission
+  (`Documents\TicketDocumentRenderer`, mirroring `BadgeDocumentRenderer`):
+  an event band, a holder band with the QR, and a footer band naming the
+  operator and where the full purchase conditions live. Rendered fresh on
+  every request and stored nowhere, like the badge. Watermarked by
+  Platform's shared `DocumentWatermark` service — a brand mark, a forensic
+  repeat seeded from the admission id, and a TESTSYSTEM band off
+  production — which Admission is the first module to call.
 - **Badge** — the physical or printed identity of the holder at the venue:
   what is on it, when it is issued, and when it is reprinted.
 - **`BadgeTemplate`** — the per-event badge design (D-ADM-05): a typed

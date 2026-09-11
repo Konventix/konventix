@@ -63,6 +63,11 @@
 
 ## Done
 
+- [x] Ticket PDF, part 1 — `Documents\TicketDocumentRenderer` renders one
+      A4 page per admission with the event band (brand logo, name, local
+      wall clock with the timezone named, venue), mirroring
+      `BadgeDocumentRenderer` (#72 §4). The holder band, the footer band
+      and the watermark layers land next.
 - [x] Slice 6 — the offline entrance client (ADR-0002's one sanctioned runtime
       carve-out). An installable PWA served at `/entrance` from its own Vite
       entry: a plain Vue app rather than an Inertia page, because Inertia needs
