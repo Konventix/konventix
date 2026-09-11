@@ -3,10 +3,17 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Konventix\Admission\Actions\IssueAdmissionToken;
+use Konventix\Admission\Actions\RecordScan;
 use Konventix\Admission\Actions\RotateEntranceSigningKey;
+use Konventix\Admission\Enums\CheckInRejectionReason;
+use Konventix\Admission\Enums\CheckInResult;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\EntranceDeltaEntry;
+use Konventix\Admission\Models\EntranceSigningKey;
+use Konventix\Admission\Tokens\AdmissionTokenCodec;
+use Konventix\Admission\Tokens\AdmissionTokenPayload;
 
 /**
  * §5: a stable ticket code. This file grows one `it()` per task in this
@@ -62,4 +69,54 @@ it('writes a token_superseded delta entry carrying the new hash on rotate()', fu
 
     expect($entry->payload)->toBe(['hash' => $admission->token_nonce_hash])
         ->and($admission->token_nonce_hash)->not->toBeNull();
+});
+
+it('refuses a token minted before rotation with NonceSuperseded, through RecordScan, and accepts one for an admission with no stored hash', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+    $key = EntranceSigningKey::withoutBrandScope()->where('brand_id', $brand->id)->firstOrFail();
+
+    $eventId = (string) Str::ulid();
+    $admission = Admission::factory()->create(['event_id' => $eventId]);
+    $issuer = app(IssueAdmissionToken::class);
+
+    $stale = $issuer->current($admission);
+
+    $this->travel(1)->second();
+    $issuer->rotate($admission->fresh());
+
+    $rejected = app(RecordScan::class)->handle(
+        token: $stale,
+        brandId: $brand->id,
+        eventId: $eventId,
+        clientScanId: 'stale-1',
+    );
+
+    expect($rejected->result)->toBe(CheckInResult::Rejected)
+        ->and($rejected->reason_code)->toBe(CheckInRejectionReason::NonceSuperseded->value);
+
+    // An admission with no stored hash — nothing has rotated for it since
+    // before this enforcement shipped — accepts anything: this is what
+    // keeps every token already in circulation working across the deploy.
+    $preDeploy = Admission::factory()->create(['event_id' => $eventId]);
+    $preDeployToken = (new AdmissionTokenCodec)->encode(
+        new AdmissionTokenPayload(
+            admissionId: $preDeploy->id,
+            eventId: $eventId,
+            nonce: (string) Str::ulid(),
+            issuedAt: now()->subDays(10)->getTimestamp(),
+            expiresAt: now()->addDays(50)->getTimestamp(),
+        ),
+        $key->kid,
+        $key->private_key,
+    );
+
+    $accepted = app(RecordScan::class)->handle(
+        token: $preDeployToken,
+        brandId: $brand->id,
+        eventId: $eventId,
+        clientScanId: 'pre-deploy-1',
+    );
+
+    expect($accepted->result)->toBe(CheckInResult::Accepted);
 });
