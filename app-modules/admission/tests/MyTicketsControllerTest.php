@@ -70,3 +70,16 @@ it('sends a signed-out visitor to log in', function (): void {
 
     $this->get('/my/tickets')->assertRedirect('/login');
 });
+
+it('adds "My tickets" to the account navigation', function (): void {
+    $this->withBrand();
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get('/')
+        ->assertInertia(function (AssertableInertia $page): void {
+            $labels = collect($page->toArray()['props']['accountNav'])->pluck('label');
+
+            expect($labels)->toContain('My tickets');
+        });
+});

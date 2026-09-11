@@ -31,6 +31,8 @@ use Konventix\Event\Events\VenueUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Navigation\NavigationItem;
+use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
@@ -187,6 +189,28 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(
             RegistrationOwnershipAnnounced::class,
             FillBuyerOnRegistrationOwnershipAnnounced::class,
+        );
+    }
+
+    /**
+     * The participant's own, in the account menu (design §7). No
+     * `permission`, and none is missing: the menu renders only for a
+     * signed-in user and `MyTicketsController::index()` authorizes on
+     * ownership, which is not a capability anybody can be granted — the
+     * same reasoning Registration's own `My registrations` entry already
+     * documents.
+     */
+    protected function registerNavigation(): void
+    {
+        $this->app->make(NavigationRegistry::class)->add(
+            new NavigationItem(
+                module: 'admission',
+                label: 'My tickets',
+                url: '/my/tickets',
+                icon: 'qr-code',
+                order: 11,
+                area: NavigationItem::AREA_ACCOUNT,
+            ),
         );
     }
 
