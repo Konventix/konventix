@@ -57,25 +57,43 @@ it('returns the same token body from two current() calls, and a different one af
     expect($rotated)->not->toBe($first);
 });
 
-it('writes a token_superseded delta entry carrying the new hash on rotate()', function (): void {
+it('stores a hash and writes no delta entry when current() first issues a token', function (): void {
     $brand = $this->withBrand();
     app(RotateEntranceSigningKey::class)->handle($brand->id);
 
     $admission = Admission::factory()->create();
-    app(IssueAdmissionToken::class)->rotate($admission);
+    app(IssueAdmissionToken::class)->current($admission);
 
     $admission->refresh();
 
-    $entry = EntranceDeltaEntry::withoutBrandScope()
+    expect($admission->token_nonce_hash)->not->toBeNull()
+        ->and(EntranceDeltaEntry::withoutBrandScope()->where('admission_id', $admission->id)->count())->toBe(0);
+});
+
+it('writes exactly one token_superseded delta entry carrying the new hash when rotate() supersedes an existing hash', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $admission = Admission::factory()->create();
+    $issuer = app(IssueAdmissionToken::class);
+    $issuer->current($admission); // First mint: establishes the hash, writes no entry (pinned above).
+
+    $this->travel(1)->second();
+    $issuer->rotate($admission->fresh());
+
+    $admission->refresh();
+
+    $entries = EntranceDeltaEntry::withoutBrandScope()
         ->where('admission_id', $admission->id)
         ->where('kind', EntranceDeltaEntry::KIND_TOKEN_SUPERSEDED)
-        ->firstOrFail();
+        ->get();
 
-    expect($entry->payload)->toBe(['hash' => $admission->token_nonce_hash])
+    expect($entries)->toHaveCount(1)
+        ->and($entries->first()->payload)->toBe(['hash' => $admission->token_nonce_hash])
         ->and($admission->token_nonce_hash)->not->toBeNull();
 });
 
-it('refuses a token minted before rotation with NonceSuperseded, through RecordScan, and accepts one for an admission with no stored hash', function (): void {
+it('refuses a token minted before the first rotation with NonceSuperseded, still refuses it after a second rotate() writes a second entry, through RecordScan, and accepts one for an admission with no stored hash', function (): void {
     $brand = $this->withBrand();
     app(RotateEntranceSigningKey::class)->handle($brand->id);
     $key = EntranceSigningKey::withoutBrandScope()->where('brand_id', $brand->id)->firstOrFail();
@@ -98,6 +116,24 @@ it('refuses a token minted before rotation with NonceSuperseded, through RecordS
 
     expect($rejected->result)->toBe(CheckInResult::Rejected)
         ->and($rejected->reason_code)->toBe(CheckInRejectionReason::NonceSuperseded->value);
+
+    $this->travel(1)->second();
+    $issuer->rotate($admission->fresh());
+
+    expect(EntranceDeltaEntry::withoutBrandScope()
+        ->where('admission_id', $admission->id)
+        ->where('kind', EntranceDeltaEntry::KIND_TOKEN_SUPERSEDED)
+        ->count())->toBe(2);
+
+    $stillRejected = app(RecordScan::class)->handle(
+        token: $stale,
+        brandId: $brand->id,
+        eventId: $eventId,
+        clientScanId: 'stale-2',
+    );
+
+    expect($stillRejected->result)->toBe(CheckInResult::Rejected)
+        ->and($stillRejected->reason_code)->toBe(CheckInRejectionReason::NonceSuperseded->value);
 
     // An admission with no stored hash — nothing has rotated for it since
     // before this enforcement shipped — accepts anything: this is what
@@ -136,7 +172,10 @@ it('carries the new hash through the delta feed on a token_superseded entry', fu
     $plainDeviceToken = Str::random(48);
     EntranceDevice::factory()->withToken($plainDeviceToken)->create(['checkpoint_id' => $checkpoint->id]);
 
-    app(IssueAdmissionToken::class)->rotate($admission);
+    $issuer = app(IssueAdmissionToken::class);
+    $issuer->current($admission); // Establishes the hash rotate() below supersedes.
+    $this->travel(1)->second();
+    $issuer->rotate($admission->fresh());
 
     $response = $this->getJson('/api/entrance/delta?since=0', [
         'Authorization' => 'Bearer '.$plainDeviceToken,

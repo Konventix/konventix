@@ -30,10 +30,13 @@ use RuntimeException;
  * it embeds is deterministic (TKT-F-018), derived from the admission's id
  * and its stored `token_issued_at` rather than stored itself. `rotate()`
  * is the write path: it always advances `token_issued_at`, which changes
- * the derived nonce, stores its HMAC hash on the admission, and leaves a
- * `token_superseded` delta entry so an offline device learns the previous
- * token no longer admits. `VerifyAdmissionToken::isSuperseded()` is the
- * other half of the pair.
+ * the derived nonce, and stores its HMAC hash on the admission. It leaves
+ * a `token_superseded` delta entry too, but only when a previous hash was
+ * on file to supersede — an admission's first token, whether minted by
+ * `current()`'s own first-mint branch or by calling `rotate()` directly
+ * on one that has never had a hash, supersedes nothing and writes no
+ * entry. `VerifyAdmissionToken::isSuperseded()` is the other half of the
+ * pair.
  *
  * There used to be a single `handle()` that minted a fresh, random nonce on
  * every call; its docblock claimed this stranded the previous QR, but
@@ -92,10 +95,19 @@ final class IssueAdmissionToken
     }
 
     /**
-     * Supersedes whatever token this admission carried before. The only
-     * path that calls this today is `current()`'s own first-mint branch —
-     * a participant-facing rotation button is out of scope (design doc
-     * §12); this method is where it will hook in later.
+     * Supersedes whatever token this admission carried before — if it
+     * carried one. The only path that calls this today is `current()`'s
+     * own first-mint branch — a participant-facing rotation button is out
+     * of scope (design doc §12); this method is where it will hook in
+     * later.
+     *
+     * A `token_superseded` delta entry is written only when `$admission`
+     * already had a stored hash: that is the only case where a previous
+     * token actually exists for a device to stop trusting. An admission's
+     * first token — whether minted here directly or via `current()`'s
+     * delegation — supersedes nothing, so it writes no entry; claiming
+     * otherwise is what made `EntranceApiTest`'s delta-feed case see two
+     * rows for one accepted scan (#72).
      *
      * The signing key is resolved *before* anything is written: a brand
      * with no active key must fail exactly the way the old `handle()` did
@@ -108,13 +120,18 @@ final class IssueAdmissionToken
     {
         $key = $this->signingKeyFor($admission->brand_id);
         $issuedAt = now();
+        $hadPreviousHash = $admission->token_nonce_hash !== null;
         $hash = $this->hashOf($this->nonceFor($admission->id, $issuedAt));
 
-        DB::transaction(function () use ($admission, $hash, $issuedAt): void {
+        DB::transaction(function () use ($admission, $hash, $issuedAt, $hadPreviousHash): void {
             $admission->forceFill([
                 'token_nonce_hash' => $hash,
                 'token_issued_at' => $issuedAt,
             ])->save();
+
+            if (! $hadPreviousHash) {
+                return;
+            }
 
             $entry = new EntranceDeltaEntry([
                 'event_id' => $admission->event_id,

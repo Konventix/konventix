@@ -117,15 +117,9 @@ it('serves a PII-free delta with a monotonic cursor and the offline decision inp
 
     $response = $this->getJson('/api/entrance/delta?since=0', entranceTestHeaders($lane['token']))->assertOk();
 
-    // Two entries, not one: IssueAdmissionToken::current() had nothing
-    // stored for this brand-new admission, so its first call rotated —
-    // and wrote its own token_superseded delta entry — before minting the
-    // token the scan below then checks in (design doc §5, Task 6).
-    expect($response->json('entries'))->toHaveCount(2)
+    expect($response->json('entries'))->toHaveCount(1)
         ->and($response->json('entries.0.admission_id'))->toBe($admission->id)
-        ->and($response->json('entries.0.kind'))->toBe('token_superseded')
-        ->and($response->json('entries.1.admission_id'))->toBe($admission->id)
-        ->and($response->json('entries.1.kind'))->toBe('checked_in')
+        ->and($response->json('entries.0.kind'))->toBe('checked_in')
         ->and($response->json('next'))->toBeGreaterThan(0)
         ->and($response->json('reentry_policy'))->toBe('once_per_day')
         ->and($response->json('poll_seconds'))->toBe(EntranceEventProfile::DEFAULT_POLL_SECONDS)
