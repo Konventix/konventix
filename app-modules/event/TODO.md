@@ -154,3 +154,8 @@
       `tests/EventAdminTest.php` covers capability + operator-host
       enforcement, the cross-brand index listing, and that both modules'
       slot contributions appear on the dashboard.
+- [x] `event:replay-details` now also re-fires `VenueAssigned` for each
+      event's primary venue (design §13), after the schedule and the
+      details, so a read model added after an event already has one — such
+      as Admission's `admission_event_summaries` — can still backfill its
+      location instead of shipping with a permanently-null `venue_label`.

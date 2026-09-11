@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Konventix\Event\Actions\AssignVenue;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventRescheduled;
+use Konventix\Event\Events\VenueAssigned;
 use Konventix\Event\Models\Event as EventModel;
+use Konventix\Event\Models\Venue;
 
 /**
  * `event:replay-details` re-emits the two display-and-schedule contract
@@ -96,4 +99,42 @@ it('fails for an --event id that does not exist', function (): void {
         ->assertFailed();
 
     Event::assertNotDispatched(EventRescheduled::class);
+});
+
+it('re-emits VenueAssigned for the primary venue and nothing for an event without one', function (): void {
+    $this->withBrand();
+    $withVenue = EventModel::factory()->create();
+    $venue = Venue::factory()->create(['name' => 'Congress Centrum', 'city' => 'Hamburg']);
+    app(AssignVenue::class)->handle($withVenue, $venue, isPrimary: true);
+
+    $withoutVenue = EventModel::factory()->create();
+
+    Event::fake([EventRescheduled::class, EventDetailsUpdated::class, VenueAssigned::class]);
+
+    $this->artisan('event:replay-details')->assertSuccessful();
+
+    Event::assertDispatchedTimes(VenueAssigned::class, 1);
+    Event::assertDispatched(
+        VenueAssigned::class,
+        fn (VenueAssigned $e): bool => $e->eventId === $withVenue->id
+            && $e->venueId === $venue->id
+            && $e->brandId === $withVenue->brand_id
+            && $e->name === 'Congress Centrum'
+            && $e->city === 'Hamburg'
+            && $e->isPrimary === true,
+    );
+    expect($withoutVenue)->not->toBeNull(); // the second event exists; VenueAssigned fired only once above.
+});
+
+it('does not re-emit VenueAssigned for a venue that is not primary', function (): void {
+    $this->withBrand();
+    $event = EventModel::factory()->create();
+    $secondary = Venue::factory()->create();
+    app(AssignVenue::class)->handle($event, $secondary, isPrimary: false);
+
+    Event::fake([EventRescheduled::class, EventDetailsUpdated::class, VenueAssigned::class]);
+
+    $this->artisan('event:replay-details', ['--event' => $event->id])->assertSuccessful();
+
+    Event::assertNotDispatched(VenueAssigned::class);
 });
