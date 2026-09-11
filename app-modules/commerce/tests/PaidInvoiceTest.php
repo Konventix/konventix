@@ -219,6 +219,43 @@ it('logs a warning and issues nothing when the paid order has no billing party',
             && $context['order_id'] === $order->id);
 });
 
+/**
+ * #4: `PlaceOrderFromCart::guardBillingAddress()` stops a *new* cart order
+ * over the threshold from ever placing without one, but an order this old
+ * predates that guard — the pre-ADR-0048 shape `paidInvoiceBillingParty()`
+ * itself produces, an account identity with no address. The listener
+ * withholds the Rechnung rather than issue one missing a legally required
+ * field; `OrderAdminController::addBillingAddress()` is the retrofit.
+ */
+it('logs a warning and issues nothing when a paid order exceeds 250 € gross with a billing party that has no address', function (): void {
+    paidInvoiceBrand();
+    Log::spy();
+
+    $order = paidInvoiceOrder();
+    $order->forceFill(['total_gross' => '250.01'])->save();
+    $payment = paidInvoicePayment($order);
+
+    app(RecordPaymentSuccess::class)->handle($payment);
+
+    expect(Invoice::query()->where('order_id', $order->id)->exists())->toBeFalse();
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'threshold')
+            && $context['order_id'] === $order->id);
+});
+
+it('still issues the invoice for a paid order at exactly the 250 € threshold with no address', function (): void {
+    paidInvoiceBrand();
+    $order = paidInvoiceOrder();
+    $order->forceFill(['total_gross' => '250.00'])->save();
+    $payment = paidInvoicePayment($order);
+
+    app(RecordPaymentSuccess::class)->handle($payment);
+
+    expect(Invoice::query()->where('order_id', $order->id)->exists())->toBeTrue();
+});
+
 it('archives a paid ZUGFeRD document with the prepaid amount, payment means 48 for a card PSP, and mails it as bezahlt', function (): void {
     $brand = paidInvoiceBrand();
     Storage::fake('invoices');
