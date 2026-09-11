@@ -372,6 +372,20 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             $parameter === 'registrationType' => RegistrationType::withoutBrandScope()
                 ->where('brand_id', $brand->getKey())
                 ->first(),
+            // `{admission}` is only ever this route's — `admission.tickets.holder`
+            // (the console's badge route resolves it without a `$member`) —
+            // and `holder()` 403s unless `holder_user_id` names the signed-in
+            // account. Most admissions have no holder at all (a sold
+            // admission names nobody until it is claimed), so "any admission
+            // of the brand" only ever passed the check by luck of row order.
+            // `DemoAdmissionSeeder::seedClaimLinks()` claims one admission
+            // for the first seeded member on purpose so a holder's list is
+            // never empty; this binds to the walking member's own held
+            // admission instead of an arbitrary one.
+            $parameter === 'admission' && $member !== null => Admission::withoutBrandScope()
+                ->where('brand_id', $brand->getKey())
+                ->where('holder_user_id', $member->getKey())
+                ->first(),
             $parameter === 'admission' => Admission::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             // The console's plan screens (`admin.plans.edit`/`.download`/
             // `.occupancy`): `DemoResourcesSeeder::seedPlan()` gives every
