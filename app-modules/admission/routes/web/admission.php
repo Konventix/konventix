@@ -20,6 +20,7 @@ use Konventix\Admission\Http\Controllers\ClaimController;
 use Konventix\Admission\Http\Controllers\EntranceClientAssetController;
 use Konventix\Admission\Http\Controllers\MyTicketsController;
 use Konventix\Admission\Http\Controllers\TicketDownloadController;
+use Konventix\Admission\Http\Middleware\RecordTicketRenderMetrics;
 
 /*
  * Claiming a holder-less admission (ADR-0032). Two guards stack, exactly as
@@ -60,6 +61,7 @@ Route::get('/entrance.webmanifest', [EntranceClientAssetController::class, 'mani
  */
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/my/registrations/{registration}/ticket', [TicketDownloadController::class, 'buyer'])
+        ->middleware(RecordTicketRenderMetrics::class)
         ->name('admission.tickets.buyer');
 });
 
@@ -71,6 +73,7 @@ Route::middleware(['auth'])->group(function (): void {
  */
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/my/admissions/{admission}/ticket', [TicketDownloadController::class, 'holder'])
+        ->middleware(RecordTicketRenderMetrics::class)
         ->name('admission.tickets.holder');
 });
 

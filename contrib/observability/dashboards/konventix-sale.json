@@ -1693,6 +1693,301 @@
         }
       },
       "id": 34
+    },
+    {
+      "id": 35,
+      "type": "row",
+      "title": "Tickets and calendars",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 82,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Tickets rendered",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 0,
+        "y": 83
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_admission_tickets_rendered_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Ticket PDF pages served in the selected range.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 36
+    },
+    {
+      "type": "stat",
+      "title": "Calendar downloads",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 4,
+        "y": 83
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_event_calendar_downloads_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 37
+    },
+    {
+      "type": "stat",
+      "title": "Tokens superseded",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 8,
+        "y": 83
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_admission_tokens_superseded_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Scans refused for a nonce that was rotated since — reissues behaving as designed, not paged (ADR-0061).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 38
+    },
+    {
+      "type": "timeseries",
+      "title": "Tickets and calendars per hour",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 12,
+        "y": 83
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (brand) (increase(konventix_admission_tickets_rendered_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{brand}} tickets",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (brand) (increase(konventix_event_calendar_downloads_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{brand}} calendars",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 39
+    },
+    {
+      "type": "timeseries",
+      "title": "Tokens superseded per hour by brand",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 0,
+        "y": 91
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (brand) (increase(konventix_admission_tokens_superseded_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{brand}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 40
     }
   ]
 }

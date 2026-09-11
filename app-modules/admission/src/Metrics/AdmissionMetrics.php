@@ -9,13 +9,13 @@ use Konventix\Platform\Observability\MetricKind;
 
 /**
  * Admission's entries in the metric catalogue (ADR-0059, design doc §9).
- * Only the one this feature owns here: the ticket PDF and calendar
- * counters belong to the plan sections that render them. Incremented by
- * `Listeners\Metrics\RecordAdmissionTokenMetrics`. The `konventix-sale`
- * dashboard row for all three of this feature's metrics is a later task's
- * (design doc §9) — this class only has to be declared, or
- * `ObservabilityCoverageTest` has nothing to check that later panel
- * against.
+ * `admission_tokens_superseded_total` is incremented by
+ * `Listeners\Metrics\RecordAdmissionTokenMetrics`;
+ * `admission_tickets_rendered_total` is incremented by
+ * `Http\Middleware\RecordTicketRenderMetrics` on the two ticket-PDF routes
+ * — an HTTP-triggered fact, not a domain-state change, so it has no
+ * listener. Both live on the `konventix-sale` dashboard's "Tickets and
+ * calendars" row alongside Event's `event_calendar_downloads_total`.
  */
 final class AdmissionMetrics
 {
@@ -27,6 +27,16 @@ final class AdmissionMetrics
                 'admission_tokens_superseded_total',
                 MetricKind::Counter,
                 "Scans refused because the presented token's nonce no longer matches the admission's current one.",
+                ['brand'],
+            ),
+
+            // Task 33 (design §9): one increment per admission page a
+            // ticket route actually served, recorded by
+            // Http\Middleware\RecordTicketRenderMetrics.
+            new MetricDefinition(
+                'admission_tickets_rendered_total',
+                MetricKind::Counter,
+                'Ticket PDF pages rendered and served.',
                 ['brand'],
             ),
         ];

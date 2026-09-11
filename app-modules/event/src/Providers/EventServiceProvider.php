@@ -9,11 +9,13 @@ use Konventix\Event\Blocks\CountdownBlock;
 use Konventix\Event\Blocks\EventHeroBlock;
 use Konventix\Event\Console\ReplayEventDetailsCommand;
 use Konventix\Event\Enums\Permission;
+use Konventix\Event\Metrics\EventMetrics;
 use Konventix\Event\Models\Event;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Operators\ConsoleEventSources;
 use Konventix\Platform\Slots\SlotRegistry;
 
@@ -49,9 +51,20 @@ class EventServiceProvider extends ModuleServiceProvider
     {
         parent::boot();
 
+        $this->registerMetrics();
+
         if ($this->app->runningInConsole()) {
             $this->commands([ReplayEventDetailsCommand::class]);
         }
+    }
+
+    /**
+     * Event's one metric (ADR-0059, design §9): the public calendar
+     * download counter. The host never learns this exists.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...EventMetrics::definitions());
     }
 
     /**

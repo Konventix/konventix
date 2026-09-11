@@ -54,5 +54,15 @@ export default dashboard({
             timeseries('Bookings per minute by outcome', [prom(`sum by (brand, outcome) (rate(konventix_resource_bookings_total{${J}}[5m])) * 60`, '{{brand}} {{outcome}}')], { w: 8 }),
             timeseries('Plan saves per hour by outcome', [prom(`sum by (brand, outcome) (increase(konventix_resource_plan_saves_total{${J}}[1h]))`, '{{brand}} {{outcome}}')], { w: 8, description: 'conflict, invalid and stale are refused saves; nothing was written.' }),
         ]),
+        row('Tickets and calendars', [
+            stat('Tickets rendered', [prom(`sum(increase(konventix_admission_tickets_rendered_total{${J}}[$__range]))`)], { description: 'Ticket PDF pages served in the selected range.' }),
+            stat('Calendar downloads', [prom(`sum(increase(konventix_event_calendar_downloads_total{${J}}[$__range]))`)]),
+            stat('Tokens superseded', [prom(`sum(increase(konventix_admission_tokens_superseded_total{${J}}[$__range]))`)], { description: 'Scans refused for a nonce that was rotated since — reissues behaving as designed, not paged (ADR-0061).' }),
+            timeseries('Tickets and calendars per hour', [
+                prom(`sum by (brand) (increase(konventix_admission_tickets_rendered_total{${J}}[1h]))`, '{{brand}} tickets'),
+                prom(`sum by (brand) (increase(konventix_event_calendar_downloads_total{${J}}[1h]))`, '{{brand}} calendars'),
+            ], { w: 12 }),
+            timeseries('Tokens superseded per hour by brand', [prom(`sum by (brand) (increase(konventix_admission_tokens_superseded_total{${J}}[1h]))`, '{{brand}}')], { w: 12 }),
+        ]),
     ],
 });

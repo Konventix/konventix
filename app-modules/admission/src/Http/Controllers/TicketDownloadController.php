@@ -57,6 +57,11 @@ final class TicketDownloadController
 
         $bytes = $renderer->render($admissions);
 
+        // Read by RecordTicketRenderMetrics (ADR-0059, design §9): this
+        // response bundles one page per admission, not one page per
+        // request.
+        $request->attributes->set('konventix_ticket_pages', $admissions->count());
+
         $slug = EventSummary::query()->where('event_id', $admissions->first()->event_id)->value('slug')
             ?? $admissions->first()->event_id;
 
@@ -77,6 +82,10 @@ final class TicketDownloadController
         abort_if($admission->state === AdmissionState::Revoked, 404, 'This ticket has been revoked.');
 
         $bytes = $renderer->render(collect([$admission]));
+
+        // Read by RecordTicketRenderMetrics (ADR-0059, design §9): exactly
+        // one page, always, for this route.
+        $request->attributes->set('konventix_ticket_pages', 1);
 
         $slug = EventSummary::query()->where('event_id', $admission->event_id)->value('slug')
             ?? $admission->event_id;
