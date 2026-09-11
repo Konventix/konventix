@@ -5,6 +5,8 @@ import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import {
     ORDER_WITH_OBLIGATION_TO_PAY,
@@ -63,6 +65,32 @@ const canCheckout = computed(() => !consentRequired.value || acceptTerms.value);
 const busyLineId = ref<string | null>(null);
 const startingAccount = ref<string | null>(null);
 
+/**
+ * §33 UStDV vs §14 Abs. 4 UStG (#4): `cart.billingAddressRequired` is the
+ * same figure `PlaceOrderFromCart::guardBillingAddress()` checks at
+ * submit time, so the address fields appear before the payer ever hits a
+ * 422 — but the server re-checks against the cart it actually placed, not
+ * these fields' mere presence, since the total can still move between
+ * this render and the submit. Country defaults to DE: Konventix's release
+ * scope is the German market (ADR-0030), and a domestic payer should not
+ * have to type it.
+ */
+const billingAddressLine = ref('');
+const billingPostalCode = ref('');
+const billingCity = ref('');
+const billingCountryCode = ref('DE');
+
+const billingAddressLineError = computed(
+    () => page.props.errors.billingAddressLine,
+);
+const billingPostalCodeError = computed(
+    () => page.props.errors.billingPostalCode,
+);
+const billingCityError = computed(() => page.props.errors.billingCity);
+const billingCountryCodeError = computed(
+    () => page.props.errors.billingCountryCode,
+);
+
 function changeQuantity(line: CartLine, quantity: number): void {
     if (
         quantity < 1 ||
@@ -91,7 +119,18 @@ function checkout(accountId: string): void {
     startingAccount.value = accountId;
     router.post(
         checkoutCart().url,
-        { account: accountId, accept_terms: acceptTerms.value },
+        {
+            account: accountId,
+            accept_terms: acceptTerms.value,
+            // Empty strings read back as null, not as "present but blank" —
+            // `PlaceOrderFromCart::guardBillingAddress()` and
+            // `BillingPartyData::hasPostalAddress()` both treat any field
+            // still empty as missing (#4).
+            billingAddressLine: billingAddressLine.value || null,
+            billingPostalCode: billingPostalCode.value || null,
+            billingCity: billingCity.value || null,
+            billingCountryCode: billingCountryCode.value || null,
+        },
         { onFinish: () => (startingAccount.value = null) },
     );
 }
@@ -234,6 +273,104 @@ const expiresInMinutes = computed<number | null>(() => {
                             {{ taxNote('gross') }}
                         </span>
                     </span>
+                </div>
+            </div>
+
+            <!--
+                #4: German VAT law (§14 Abs. 4 UStG) needs a postal address
+                on the invoice above the §33 UStDV small-amount ceiling —
+                asked for here, before the order is placed, rather than only
+                after checkout refuses it (`billingAddressRequired` mirrors
+                `PlaceOrderFromCart::guardBillingAddress()`'s own check).
+            -->
+            <div
+                v-if="cart.billingAddressRequired"
+                class="flex flex-col gap-4 border-t border-border pt-4"
+            >
+                <p class="text-sm text-text-muted">
+                    Orders over 250 € need a billing address on the invoice.
+                </p>
+                <div class="grid gap-2">
+                    <Label for="billingAddressLine">Street and number</Label>
+                    <Input
+                        id="billingAddressLine"
+                        v-model="billingAddressLine"
+                        autocomplete="street-address"
+                        :aria-invalid="
+                            billingAddressLineError ? true : undefined
+                        "
+                        :aria-describedby="
+                            billingAddressLineError
+                                ? 'billingAddressLine-error'
+                                : undefined
+                        "
+                    />
+                    <InputError
+                        id="billingAddressLine-error"
+                        :message="billingAddressLineError"
+                    />
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="grid gap-2">
+                        <Label for="billingPostalCode">Postal code</Label>
+                        <Input
+                            id="billingPostalCode"
+                            v-model="billingPostalCode"
+                            autocomplete="postal-code"
+                            :aria-invalid="
+                                billingPostalCodeError ? true : undefined
+                            "
+                            :aria-describedby="
+                                billingPostalCodeError
+                                    ? 'billingPostalCode-error'
+                                    : undefined
+                            "
+                        />
+                        <InputError
+                            id="billingPostalCode-error"
+                            :message="billingPostalCodeError"
+                        />
+                    </div>
+                    <div class="col-span-2 grid gap-2">
+                        <Label for="billingCity">City</Label>
+                        <Input
+                            id="billingCity"
+                            v-model="billingCity"
+                            autocomplete="address-level2"
+                            :aria-invalid="billingCityError ? true : undefined"
+                            :aria-describedby="
+                                billingCityError
+                                    ? 'billingCity-error'
+                                    : undefined
+                            "
+                        />
+                        <InputError
+                            id="billingCity-error"
+                            :message="billingCityError"
+                        />
+                    </div>
+                </div>
+                <div class="grid gap-2">
+                    <Label for="billingCountryCode">Country code</Label>
+                    <Input
+                        id="billingCountryCode"
+                        v-model="billingCountryCode"
+                        autocomplete="country"
+                        maxlength="2"
+                        class="max-w-24 uppercase"
+                        :aria-invalid="
+                            billingCountryCodeError ? true : undefined
+                        "
+                        :aria-describedby="
+                            billingCountryCodeError
+                                ? 'billingCountryCode-error'
+                                : undefined
+                        "
+                    />
+                    <InputError
+                        id="billingCountryCode-error"
+                        :message="billingCountryCodeError"
+                    />
                 </div>
             </div>
 

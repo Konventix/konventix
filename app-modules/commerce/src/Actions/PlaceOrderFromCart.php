@@ -6,6 +6,7 @@ namespace Konventix\Commerce\Actions;
 
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
@@ -19,6 +20,7 @@ use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\CheckoutRedirect;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
+use Konventix\Commerce\Tax\GermanVat;
 use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Platform\Operators\OperatorSettings;
 
@@ -37,7 +39,12 @@ use Konventix\Platform\Operators\OperatorSettings;
  * account must be live, offered (ADR-0046) and able to host a checkout page,
  * checked *before* the order is created so an unreachable account never
  * leaves a stray pending order behind — a later retry with a good account
- * still finds nothing to reuse, since no order was ever placed.
+ * still finds nothing to reuse, since no order was ever placed. One guard
+ * is not of that family: `guardBillingAddress()` (#4) refuses a checkout
+ * whose computed gross exceeds `GermanVat::requiresBillingAddress()` and
+ * carries no postal address, and it throws `ValidationException` on the
+ * address fields themselves rather than `CartCheckoutRefusedException` —
+ * a missing address is a form error to fix, not a checkout refused outright.
  *
  * **The sales window is deliberately NOT re-checked here** (#218, fix round
  * 1). A registration line is only ever placed while its sale is open
@@ -130,14 +137,17 @@ final class PlaceOrderFromCart
             billingCountryCode: null,
         );
 
+        $this->guardBillingAddress($calculation->totalGross, $billingParty);
+
         $order = new Order([
             'settles_type' => self::SETTLES_CART,
             'settles_id' => $cart->id,
             'request_key' => $cart->id,
             'payer_user_id' => $cart->payer_user_id,
-            // ADR-0048: a cart order needs a billing party too — the payer's
-            // account identity, since a shop checkout gathers nothing more
-            // (`BillingPartyData::ofAccount`'s own docblock).
+            // ADR-0048: a cart order needs a billing party too — always the
+            // payer's account identity, plus a postal address whenever the
+            // computed gross demands one (`guardBillingAddress()` below, #4;
+            // `BillingPartyData::ofAccount`'s own docblock).
             'billing_party' => $billingParty,
             'status' => OrderStatus::Pending,
             'currency' => $this->operatorSettings->currencyForBrand($cart->brand_id),
@@ -218,6 +228,47 @@ final class PlaceOrderFromCart
         $order = Order::withoutBrandScope()->whereKey($cart->checked_out_order_id)->first();
 
         return $order !== null && $order->status === OrderStatus::Pending ? $order : null;
+    }
+
+    /**
+     * §33 UStDV's small-amount exception stops applying above
+     * `GermanVat::SMALL_AMOUNT_INVOICE_THRESHOLD_GROSS` — from there
+     * §14 Abs. 4 UStG's full invoice needs the recipient's postal address,
+     * and a cart checkout is the only place that address can still be
+     * collected before the order (and the PSP session) exists at all (#4).
+     * `ValidationException` here, not `CartCheckoutRefusedException`: this
+     * refuses one specific field, the same shape
+     * `SubmitRegistration::guardBillingParty()` uses for the equivalent
+     * check on an invoice-settled registration, so the checkout form shows
+     * it the way it shows a missing account or an unaccepted contract.
+     *
+     * Checked against the computed gross, not a page-load estimate: a
+     * cart's contents can still change between the cart page rendering a
+     * total and this submit, in either direction — a line added since
+     * pushes a small cart over the ceiling, a line removed drops a large
+     * one back under it, and this reads the total this checkout actually
+     * produced, not one the browser remembered.
+     */
+    private function guardBillingAddress(string $totalGross, BillingPartyData $billingParty): void
+    {
+        if (! GermanVat::requiresBillingAddress($totalGross) || $billingParty->hasPostalAddress()) {
+            return;
+        }
+
+        $missing = array_keys(array_filter([
+            'billingAddressLine' => $billingParty->addressLine === null,
+            'billingPostalCode' => $billingParty->postalCode === null,
+            'billingCity' => $billingParty->city === null,
+            'billingCountryCode' => $billingParty->countryCode === null,
+        ]));
+
+        throw ValidationException::withMessages(array_fill_keys(
+            $missing,
+            __(
+                'An order over :threshold € needs a billing address before it can be completed (§14 UStG) — the small-amount exception (§33 UStDV) stops here.',
+                ['threshold' => GermanVat::SMALL_AMOUNT_INVOICE_THRESHOLD_GROSS],
+            ),
+        ));
     }
 
     private function guardAccountOffered(string $brandId, SettlementAccount $account): SettlementAccount

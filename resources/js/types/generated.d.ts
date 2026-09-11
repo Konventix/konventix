@@ -66,6 +66,7 @@ declare namespace Konventix {
                 readonly currency: string;
                 readonly expiresAt: string | null;
                 readonly accounts: Konventix.Commerce.Data.CheckoutAccountData[];
+                readonly billingAddressRequired: boolean;
             };
             export type CartLineData = {
                 readonly id: string;
@@ -600,6 +601,9 @@ declare namespace Konventix {
                 readonly username: string;
                 readonly email: string;
                 readonly password: string;
+            };
+            export type RegistrationAttemptMailData = {
+                readonly resetUrl: string;
             };
             export type SessionData = {
                 readonly id: string;

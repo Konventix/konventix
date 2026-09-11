@@ -56,25 +56,38 @@ final class BillingPartyData extends Data
     }
 
     /**
-     * A cart checkout's payer (ADR-0047, ADR-0048): the account holds only a
-     * name and an email, never a postal address or a VAT id — so a shop
-     * order's invoice addresses the payer by account identity alone. Country
-     * is deliberately null rather than a guessed `'DE'`: the cart's own tax
-     * calculation already resolves ADR-0030's domestic treatment with no
-     * billing country at all (`PlaceOrderFromCart`'s own docblock), so a
-     * null here changes nothing about what tax applies — it would only be a
-     * fabricated fact on the invoice.
+     * A cart checkout's payer (ADR-0047, ADR-0048): the account always
+     * supplies the name and the email; a postal address is layered on top
+     * only when the payer typed one — which `CartController::checkout()`
+     * asks for exactly when the order needs it
+     * (`GermanVat::requiresBillingAddress()`, #4). Below that threshold a
+     * shop checkout still gathers nothing more than account identity, the
+     * small-amount invoice (§33 UStDV) needing no address at all. VAT id
+     * stays out of scope here regardless — a cart checkout is B2C by
+     * construction, never the reverse-charge path.
+     *
+     * Country is independent of tax treatment either way: the cart's own
+     * tax calculation always resolves ADR-0030's domestic treatment with no
+     * billing country passed to it at all (`PlaceOrderFromCart`'s own
+     * docblock) — whatever is typed here changes nothing about what tax
+     * applies, it is address data for the invoice document alone.
      */
-    public static function ofAccount(string $name, string $email): self
-    {
+    public static function ofAccount(
+        string $name,
+        string $email,
+        ?string $addressLine = null,
+        ?string $postalCode = null,
+        ?string $city = null,
+        ?string $countryCode = null,
+    ): self {
         return new self(
             organizationName: null,
             recipientName: $name,
             email: $email,
-            addressLine: null,
-            postalCode: null,
-            city: null,
-            countryCode: null,
+            addressLine: $addressLine,
+            postalCode: $postalCode,
+            city: $city,
+            countryCode: $countryCode,
             vatId: null,
         );
     }
@@ -86,5 +99,22 @@ final class BillingPartyData extends Data
     public function displayName(): string
     {
         return $this->organizationName ?? $this->recipientName ?? 'Unbekannter Empfänger';
+    }
+
+    /**
+     * Whether this party carries enough of a postal address for §14 Abs. 4
+     * UStG's full invoice requirements — street, postal code, city and
+     * country, the same four fields `SubmitRegistration::guardBillingParty()`
+     * requires of an invoice-settled registration (#4: matching that
+     * validation is the point, so an operator sees one concept, not two).
+     * An `ofAccount()` party with no address supplied answers false, and so
+     * does one still missing just the country.
+     */
+    public function hasPostalAddress(): bool
+    {
+        return $this->addressLine !== null
+            && $this->postalCode !== null
+            && $this->city !== null
+            && $this->countryCode !== null;
     }
 }
