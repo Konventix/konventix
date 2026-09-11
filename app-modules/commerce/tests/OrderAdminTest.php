@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Actions\CancelOrderForUnpaidReversal;
 use Konventix\Commerce\Actions\IssueCreditNote;
+use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Enums\ReversalKind;
@@ -234,6 +235,136 @@ it('403s cancelling a reversed order without the book-manual-payment capability'
         ->assertForbidden();
 
     expect($order->refresh()->status)->toBe(OrderStatus::PaymentReversed);
+});
+
+/*
+|--------------------------------------------------------------------------
+| The operator's billing-address retrofit (#4)
+|--------------------------------------------------------------------------
+|
+| IssueInvoiceOnOrderPaid withholds a Rechnung for an order over the 250 €
+| threshold with no postal address (PaidInvoiceTest.php) rather than issue
+| one missing a legally required field. This is the other half: the
+| operator completes the party, and — since an issued invoice can never be
+| corrected in place (ADR-0031) — the invoice is produced right here for an
+| order that is already paid, rather than waiting for a replay of OrderPaid
+| that will never come.
+|
+*/
+
+function commerceInvoicingOperator(array $extra = []): array
+{
+    return commerceOperator(array_values(array_unique(array_merge(
+        ['platform.access-admin', 'commerce.view-orders', 'commerce.issue-invoices'],
+        $extra,
+    ))));
+}
+
+it('adds a missing billing address to a paid over-threshold order and issues the invoice', function (): void {
+    [, $admin] = commerceInvoicingOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'cart',
+        'total_net' => '210.08',
+        'total_tax' => '39.92',
+        'total_gross' => '250.01',
+        'billing_party' => BillingPartyData::ofAccount('Erika Musterfrau', 'erika@example.com'),
+    ]);
+    OrderLine::factory()->forOrder($order)->create();
+    Payment::factory()->succeeded()->create(['order_id' => $order->id, 'provider' => 'stripe']);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/billing-address", [
+            'recipientName' => 'Erika Musterfrau',
+            'addressLine' => 'Hauptstraße 1',
+            'postalCode' => '10115',
+            'city' => 'Berlin',
+            'countryCode' => 'DE',
+        ])
+        ->assertRedirect();
+
+    expect($order->refresh()->billing_party->addressLine)->toBe('Hauptstraße 1')
+        ->and($order->billing_party->city)->toBe('Berlin');
+
+    // withoutBrandScope(): the request above hit the admin host, which
+    // hardens BrandScope to zero rows for the rest of this process
+    // (ADR-0029, .ai/rules/app-modules-src.md) — a plain query here reads
+    // nothing without the escape hatch.
+    $invoice = Invoice::withoutBrandScope()->where('order_id', $order->id)->sole();
+    expect($invoice->billing_party->addressLine)->toBe('Hauptstraße 1')
+        ->and($invoice->paid_at)->not->toBeNull()
+        ->and($invoice->paid_via)->toBe('Stripe');
+});
+
+it('stores the address on a still-pending order without issuing an invoice yet', function (): void {
+    [, $admin] = commerceInvoicingOperator();
+
+    $this->withBrand();
+    $order = Order::factory()->create([
+        'settles_type' => 'cart',
+        'total_gross' => '250.01',
+        'billing_party' => BillingPartyData::ofAccount('Erika Musterfrau', 'erika@example.com'),
+    ]);
+    OrderLine::factory()->forOrder($order)->create();
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/billing-address", [
+            'recipientName' => 'Erika Musterfrau',
+            'addressLine' => 'Hauptstraße 1',
+            'postalCode' => '10115',
+            'city' => 'Berlin',
+            'countryCode' => 'DE',
+        ])
+        ->assertRedirect();
+
+    expect($order->refresh()->billing_party->addressLine)->toBe('Hauptstraße 1')
+        ->and(Invoice::withoutBrandScope()->where('order_id', $order->id)->exists())->toBeFalse();
+});
+
+it('422s completing the billing address once an invoice already exists, leaving the party unchanged (ADR-0031)', function (): void {
+    [, $admin] = commerceInvoicingOperator();
+
+    $this->withBrand();
+    $originalParty = BillingPartyData::ofAccount('Erika Musterfrau', 'erika@example.com');
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'cart',
+        'total_gross' => '250.01',
+        'billing_party' => $originalParty,
+    ]);
+    Invoice::factory()->create(['order_id' => $order->id]);
+
+    $this->actingAs($admin)
+        ->postJson("http://admin.commerce.test/admin/orders/{$order->id}/billing-address", [
+            'recipientName' => 'Erika Musterfrau',
+            'addressLine' => 'Hauptstraße 1',
+            'postalCode' => '10115',
+            'city' => 'Berlin',
+            'countryCode' => 'DE',
+        ])
+        ->assertStatus(422);
+
+    expect($order->refresh()->billing_party->addressLine)->toBeNull()
+        ->and(Invoice::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+});
+
+it('403s the billing-address retrofit without the issue-invoices capability', function (): void {
+    [, $admin] = commerceOperator(['platform.access-admin', 'commerce.view-orders']);
+
+    $this->withBrand();
+    $order = Order::factory()->create(['billing_party' => BillingPartyData::ofAccount('Erika Musterfrau', 'erika@example.com')]);
+
+    $this->actingAs($admin)
+        ->post("http://admin.commerce.test/admin/orders/{$order->id}/billing-address", [
+            'recipientName' => 'Erika Musterfrau',
+            'addressLine' => 'Hauptstraße 1',
+            'postalCode' => '10115',
+            'city' => 'Berlin',
+            'countryCode' => 'DE',
+        ])
+        ->assertForbidden();
+
+    expect($order->refresh()->billing_party->addressLine)->toBeNull();
 });
 
 it('shows one order with lines, invoice, payments and credit notes', function (): void {

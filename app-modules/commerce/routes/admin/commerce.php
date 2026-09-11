@@ -36,6 +36,10 @@ Route::post('/orders/{order}/cancel-reversed', [OrderAdminController::class, 'ca
 // ever had (ADR-0037). Whole only — a partial one still splits the tax like
 // the full invoice (#7).
 Route::post('/orders/{order}/refund', [OrderAdminController::class, 'refund'])->name('admin.orders.refund');
+// #4: the operator's retrofit for an order the small-amount threshold caught
+// with no billing address — completes the party and, for an already-paid
+// order, issues the Rechnung that OrderPaid withheld.
+Route::post('/orders/{order}/billing-address', [OrderAdminController::class, 'addBillingAddress'])->name('admin.orders.billing-address');
 Route::get('/invoices/{invoice}/document', [InvoiceDocumentController::class, 'download'])->name('admin.invoices.document');
 Route::get('/credit-notes/{creditNote}/document', [CreditNoteDocumentController::class, 'download'])->name('admin.credit-notes.document');
 

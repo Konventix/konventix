@@ -10,9 +10,30 @@
 
 ## Backlog (Phase 2 — release scope, invoice-settled registrations are a definition-of-done item)
 
-- [ ] B2C invoices above 250 € need a postal address (§14 UStG vs §33
+- [x] B2C invoices above 250 € need a postal address (§14 UStG vs §33
       UStDV): a way for the operator or payer to complete the billing
-      address on a cart order.
+      address on a cart order. Fixed (#4): `GermanVat::
+      requiresBillingAddress()` states the 250 € gross ceiling once;
+      `PlaceOrderFromCart::guardBillingAddress()` demands the address at
+      checkout for a cart whose computed total is over it, and the cart
+      page (`cart.billingAddressRequired`) asks for it up front.
+      `IssueInvoiceOnOrderPaid` withholds the Rechnung — never issues one
+      missing a legally required field, since an issued invoice can never
+      be corrected in place (ADR-0031) — for any order (not just cart) that
+      is paid over the threshold with no address; `OrderAdminController::
+      addBillingAddress()` is the operator's retrofit, completing the party
+      and issuing the invoice itself for an order that is already paid.
+      Follow-ups this did not do: the same gap exists for a registration's
+      instant-settled order, whose billing party can carry the same
+      no-address shape — Registration's own `SubmitRegistrationData` is a
+      different module and out of this issue's scope, but its billing party
+      hits `IssueInvoiceOnOrderPaid`'s same guard today (withheld, not
+      wrongly issued) and would benefit from asking for the address up
+      front the way the cart now does. The admin retrofit form edits the
+      whole billing party (name/org included) rather than only the address
+      fields the issue named — deliberately, so an operator correcting a
+      typo does not need a second form, but worth a second look if that
+      turns out to be more surface than operators want.
 - [x] A cart order whose payment failed has no re-pay link (the grace sweep
       cancels it after 60 min; the payer re-shops). Fixed: order-scoped
       re-pay at `GET`/`POST /pay/order/{order}` (`CheckoutController::
