@@ -43,10 +43,24 @@ use RuntimeException;
  * `handle()` any more; a call site with neither name is a compile error,
  * not a silent third behaviour.
  *
- * Whether an admission that already exists ever gets a `token_nonce_hash`
- * without someone calling `rotate()` on it — a backfill command — is
- * Task 9's own decision; its reasoning is appended to this docblock once
- * that task lands, not asserted here ahead of it.
+ *
+ * **Deliberately no `admission:backfill-token-hashes` command.**
+ * `event:replay-details` and `identity:replay-profiles` are this
+ * codebase's house pattern for populating a read model that missed rows
+ * created before its projector existed, and it works there because the
+ * *source of truth* — Event's own `starts_at`/`timezone`, an account's own
+ * name — still lives in a row the command can re-read and re-emit. There
+ * is no analogous source for a nonce: the old `handle()` minted one with
+ * `Str::ulid()`, and it was never captured anywhere — not in a column, not
+ * in an event payload, the one place TKT-F-018 explicitly forbids storing
+ * it. A command that called `current()` for every existing admission would
+ * not backfill anything; it would mint a brand-new deterministic nonce,
+ * store its hash, and immediately supersede every token already printed or
+ * downloaded before the deploy — the exact regression this feature exists
+ * to prevent. The null-hash branch in `VerifyAdmissionToken::
+ * isSuperseded()` is not a stand-in for a backfill that has not shipped
+ * yet; it is the only correct behaviour, permanently, for every admission
+ * whose token predates this migration.
  */
 final class IssueAdmissionToken
 {

@@ -147,3 +147,11 @@ it('carries the new hash through the delta feed on a token_superseded entry', fu
         ->and($entry['admission_id'])->toBe($admission->id)
         ->and($entry['payload'])->toBe(['hash' => $admission->fresh()->token_nonce_hash]);
 });
+
+it('documents in IssueAdmissionToken why token_nonce_hash needs no backfill command', function (): void {
+    $source = file_get_contents(dirname(__DIR__).'/src/Actions/IssueAdmissionToken.php');
+
+    expect($source)->not->toBeFalse()
+        ->and($source)->toContain('backfill')
+        ->and($source)->toContain('event:replay-details');
+});
