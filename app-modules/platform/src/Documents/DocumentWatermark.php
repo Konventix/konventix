@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Documents;
 
+use Konventix\Platform\Environment\DeploymentEnvironment;
+
 /**
  * The watermark layers a ticket PDF needs (spec §4.3), built in Platform
  * rather than in Admission so the badge (#23) and the invoice can adopt the
@@ -57,6 +59,8 @@ class DocumentWatermark
      * expects it.
      */
     private const float JITTER_PERCENT = 6.0;
+
+    public function __construct(private readonly DeploymentEnvironment $environment) {}
 
     /**
      * `$forensicLines` is a list of already-composed strings — this class
@@ -137,5 +141,24 @@ class DocumentWatermark
         $fraction = crc32($seed.'|'.$axis.'|'.$index) / 4294967295;
 
         return ($fraction - 0.5) * self::JITTER_PERCENT;
+    }
+
+    /**
+     * Spec §4.3, layer 3: a single diagonal band reading TESTSYSTEM, drawn
+     * on every instance that is not literally production (ADR-0053) — this
+     * is the renderer ADR-0053 §5 says would ask `DeploymentEnvironment`,
+     * and the ticket is its first caller. Never `env('APP_ENV')` here or
+     * anywhere else that needs this fact (CLAUDE_extra.md).
+     */
+    public function testSystemBanner(): string
+    {
+        if ($this->environment->isProduction()) {
+            return '';
+        }
+
+        return '<div style="position:absolute; left:-15%; top:44%; width:130%; '
+            .'transform:rotate(-28deg); opacity:0.22; background:#dc2626; '
+            .'color:#ffffff; text-align:center; font-size:22pt; font-weight:bold; '
+            .'padding:6pt 0;">TESTSYSTEM &middot; TESTSYSTEM &middot; TESTSYSTEM</div>';
     }
 }

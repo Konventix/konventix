@@ -52,3 +52,19 @@ it('escapes forensic text so a holder name cannot inject markup', function (): v
     expect($html)->not->toContain('<script>alert(1)</script>')
         ->and($html)->toContain('&lt;script&gt;');
 });
+
+it('bands TESTSYSTEM off production, driven through DeploymentEnvironment', function (): void {
+    config(['app.env' => 'staging']);
+
+    $watermark = app(DocumentWatermark::class);
+
+    expect($watermark->testSystemBanner())->toContain('TESTSYSTEM');
+});
+
+it('renders no TESTSYSTEM band on production', function (): void {
+    config(['app.env' => 'production']);
+
+    $watermark = app(DocumentWatermark::class);
+
+    expect($watermark->testSystemBanner())->toBe('');
+});
