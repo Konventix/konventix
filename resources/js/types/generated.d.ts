@@ -18,6 +18,10 @@ declare namespace Konventix {
                 readonly role: string;
                 readonly state: string;
             };
+            export type TicketLinkData = {
+                readonly registrationId: string;
+                readonly ticketCount: number;
+            };
         }
         namespace Enums {
             export type AdmissionState =

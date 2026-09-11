@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Admission\Providers;
 
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Data\TicketLinkData;
+use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Enums\Permission;
 use Konventix\Admission\Events\CheckInRejected;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
@@ -19,6 +21,7 @@ use Konventix\Admission\Listeners\ProjectPerson;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
 use Konventix\Admission\Listeners\RevokeAdmissionsOnRegistrationCancelled;
 use Konventix\Admission\Metrics\AdmissionMetrics;
+use Konventix\Admission\Models\Admission;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
@@ -223,12 +226,41 @@ class AdmissionServiceProvider extends ModuleServiceProvider
      */
     protected function registerSlots(): void
     {
-        $this->app->make(SlotRegistry::class)->add(
+        $slots = $this->app->make(SlotRegistry::class);
+
+        $slots->add(
             slot: 'event.admin.dashboard',
             module: 'admission',
             component: 'admission/EventStatsCard',
             props: [],
             order: 20,
+        );
+
+        // design §7: how many tickets the buyer's file holds, and the link
+        // to it — the same mechanism the seat picker's `SeatSummarySlot`
+        // uses on this slot. Absent (`ticket: null`) when the registration
+        // granted no admissions at all, or when every admission it granted
+        // has since been revoked — never a link into an empty file.
+        // `static`: SlotRegistry is a singleton that outlives the request
+        // under Octane, and a closure capturing `$this` would pin this
+        // provider in memory with it.
+        $slots->add(
+            slot: 'registration.mine.show',
+            module: 'admission',
+            component: 'admission/TicketLinkSlot',
+            props: static function (array $context): array {
+                $count = Admission::query()
+                    ->where('registration_id', $context['registrationId'])
+                    ->where('state', '!=', AdmissionState::Revoked)
+                    ->count();
+
+                if ($count === 0) {
+                    return ['ticket' => null];
+                }
+
+                return ['ticket' => TicketLinkData::of($context['registrationId'], $count)->toArray()];
+            },
+            order: 30,
         );
     }
 
