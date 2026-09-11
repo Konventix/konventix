@@ -226,3 +226,27 @@ it('shows the TESTSYSTEM band off production and hides it on production, through
         ->and(str_starts_with($production, '%PDF'))->toBeTrue()
         ->and(strlen($nonProduction))->toBeGreaterThan(strlen($production));
 });
+
+it('paints the TESTSYSTEM layer before the content, so the opaque QR box covers it too', function (): void {
+    // Regression pin (§4.3): "a clear rectangle kept around the QR" is a
+    // property of every watermark layer, not only the forensic repeat.
+    // dompdf paints absolutely positioned, z-index:auto siblings in
+    // document order, the same as a browser — `.qr-box` is opaque and
+    // lives inside `.content`, so `.testsystem-layer` must be emitted
+    // before `.content` in the markup or the band paints on top of the
+    // QR instead of being covered by it. Reads the raw Blade output
+    // directly (no PDF, no dompdf, no database) because this is a
+    // property of the view's markup order, not of anything a renderer or
+    // dompdf could change.
+    $html = view('admission::tickets.document', ['pages' => [ticketPageFixture()]])->render();
+
+    $watermarkPosition = mb_strpos($html, 'class="watermark-layer"');
+    $testsystemPosition = mb_strpos($html, 'class="testsystem-layer"');
+    $contentPosition = mb_strpos($html, 'class="content"');
+
+    expect($watermarkPosition)->not->toBeFalse()
+        ->and($testsystemPosition)->not->toBeFalse()
+        ->and($contentPosition)->not->toBeFalse()
+        ->and($watermarkPosition)->toBeLessThan($testsystemPosition)
+        ->and($testsystemPosition)->toBeLessThan($contentPosition);
+});

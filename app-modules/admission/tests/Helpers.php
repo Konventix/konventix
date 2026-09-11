@@ -112,3 +112,32 @@ function ticketSigningKey(Brand $brand): EntranceSigningKey
 {
     return app(RotateEntranceSigningKey::class)->handle($brand->id);
 }
+
+/**
+ * A minimal `$page` array shaped like `TicketDocumentRenderer::
+ * pageDataFor()`'s return value, for a test that renders the ticket
+ * Blade view directly (`view('admission::tickets.document', [...])
+ * ->render()`) rather than going through the renderer and dompdf — the
+ * watermark layers' document order (§4.3) is a property of the view's
+ * markup, not of anything the renderer or the database contributes, so
+ * a test pinning it needs no brand, admission or database row at all.
+ */
+function ticketPageFixture(array $overrides = []): array
+{
+    return array_merge([
+        'brandLogo' => null,
+        'eventName' => 'Kon Fest 2026',
+        'eventWhen' => '16.10.2026 10:00 – 18.10.2026 18:00 (Europe/Berlin)',
+        'venueLabel' => 'Halle 3, Musterstadt',
+        'holderName' => 'Erika Musterfrau',
+        'role' => 'crew',
+        'validRange' => 'All event days',
+        'doorCode' => 'ABCD-1234',
+        'qr' => 'data:image/svg+xml;base64,',
+        'operatorLegalName' => 'Konventix Dev Operator',
+        'brandName' => 'SXLan',
+        'admissionId' => (string) Str::ulid(),
+        'watermarkHtml' => '<div class="brandmark">brand mark</div>',
+        'testSystemHtml' => '<div class="testsystem">TESTSYSTEM</div>',
+    ], $overrides);
+}
