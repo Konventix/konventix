@@ -458,6 +458,15 @@ task that found them. The body above is never edited.
   and calendar `LOCATION` would be silently empty. The command also re-fires
   `VenueAssigned` for each event's primary venue. An event with no venue
   renders without one, which is already required by §11.
+- **2026-09-11, pre-flight scan: the unconfirmed-registration refusal in §4.1
+  is structural, not a check.** A download route cannot ask whether a
+  registration is confirmed without reading Registration's table, which
+  ADR-0004 forbids. It does not need to: an admission row only ever comes
+  into existence from `RegistrationConfirmed` or `RegistrationAmended`, so no
+  admission can exist for an unconfirmed registration. The invariant is
+  therefore pinned by a test asserting that `IssueAdmissionsForRegistration`
+  is wired to those two events and nothing else, so a future issuance path
+  added elsewhere fails that test instead of quietly handing out tickets.
 - **2026-09-11, planning: the calendar file names the venue as name and
   city.** `VenueAssigned` carries no street address, so `LOCATION` and the
   ticket's event band say what the contract offers. Widening that payload is

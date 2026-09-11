@@ -8136,11 +8136,11 @@ git commit -m "Attach the event's calendar file to the registration confirmation
 ### Task 33: Observability — the tickets-and-calendar dashboard row
 
 **Files:**
-- Modify: `app-modules/admission/src/Metrics/AdmissionMetrics.php` (created by Task 7; already carries `admission_tokens_superseded_total`)
+- Modify: `app-modules/admission/src/Metrics/AdmissionMetrics.php` (created by Task 10; already carries `admission_tokens_superseded_total`). **Append the new definition; do not retype the existing one** — its `help` string is Task 10's and must survive verbatim.
 - Create: `app-modules/admission/src/Http/Middleware/RecordTicketRenderMetrics.php`
 - Modify: `app-modules/admission/src/Http/Controllers/TicketDownloadController.php` (created by Task 23)
 - Modify: `app-modules/admission/routes/web/admission.php`
-- Modify: `app-modules/admission/tests/AdmissionMetricsTest.php` (created by Task 7)
+- Modify: `app-modules/admission/tests/AdmissionMetricsTest.php` (created by Task 10)
 - Create: `app-modules/event/src/Metrics/EventMetrics.php`
 - Modify: `app-modules/event/src/Providers/EventServiceProvider.php`
 - Create: `app-modules/event/src/Http/Middleware/RecordCalendarDownloadMetrics.php`
@@ -8151,11 +8151,11 @@ git commit -m "Attach the event's calendar file to the registration confirmation
 - Test: `tests/Feature/ObservabilityCoverageTest.php` (existing — verifies coverage, not modified)
 
 **Interfaces:**
-- Consumes: `Konventix\Platform\Observability\Metrics::increment(string $name, array $labels = [], float $by = 1.0)`; `Konventix\Platform\Observability\{MetricDefinition,MetricKind,MetricCatalog}`; `Konventix\Platform\Brands\BrandContext::current(): ?Brand`; `Konventix\Platform\Brands\BrandSlugs::UNKNOWN`; the ticket routes `GET /my/registrations/{registration}/ticket` (`TicketDownloadController::buyer`) and `GET /my/admissions/{admission}/ticket` (`TicketDownloadController::holder`), each producing a PDF from `Collection<int, Admission> $admissions`; the calendar route `GET /events/{event:slug}/calendar.ics` (`EventLandingController::calendar`, an earlier task); `admission_tokens_superseded_total{brand}` already registered and incremented by Task 8's `VerifyAdmissionToken` on `CheckInRejectionReason::NonceSuperseded`.
+- Consumes: `Konventix\Platform\Observability\Metrics::increment(string $name, array $labels = [], float $by = 1.0)`; `Konventix\Platform\Observability\{MetricDefinition,MetricKind,MetricCatalog}`; `Konventix\Platform\Brands\BrandContext::current(): ?Brand`; `Konventix\Platform\Brands\BrandSlugs::UNKNOWN`; the ticket routes `GET /my/registrations/{registration}/ticket` (`TicketDownloadController::buyer`) and `GET /my/admissions/{admission}/ticket` (`TicketDownloadController::holder`), each producing a PDF from `Collection<int, Admission> $admissions`; the calendar route `GET /events/{event:slug}/calendar.ics` (`EventLandingController::calendar`, an earlier task); `admission_tokens_superseded_total{brand}` already registered and incremented by Task 7's `VerifyAdmissionToken` on `CheckInRejectionReason::NonceSuperseded`.
 - Produces: `admission_tickets_rendered_total{brand}`, `event_calendar_downloads_total{brand}` — both counters, both declared and recorded; the `konventix-sale` dashboard's new "Tickets and calendars" row, which is what Task 37's evidence post on #72 points at for the machine-readable acceptance criterion.
 
 - [ ] **Step 1: Add `admission_tickets_rendered_total` to Admission's metric catalogue**
-Task 7 already returns `admission_tokens_superseded_total` from `AdmissionMetrics::definitions()`. Add the second entry to the same array — `register()` in `AdmissionServiceProvider::registerMetrics()` spreads the whole array, so no provider change is needed:
+Task 10 already returns `admission_tokens_superseded_total` from `AdmissionMetrics::definitions()`. Add the second entry to the same array — `register()` in `AdmissionServiceProvider::registerMetrics()` spreads the whole array, so no provider change is needed:
 ```php
     /** @return list<MetricDefinition> */
     public static function definitions(): array
@@ -8364,7 +8364,7 @@ use Konventix\Event\Http\Middleware\RecordCalendarDownloadMetrics;
 ```
 
 - [ ] **Step 6: The dashboard row**
-Add a "Tickets and calendars" row to `contrib/observability/src/sale.mjs`, holding all three metrics per design §9 — the two this task records and `admission_tokens_superseded_total` from Task 8, whose registration this task does not touch:
+Add a "Tickets and calendars" row to `contrib/observability/src/sale.mjs`, holding all three metrics per design §9 — the two this task records and `admission_tokens_superseded_total` from Task 10, whose registration this task does not touch:
 ```js
         row('Tickets and calendars', [
             stat('Tickets rendered', [prom(`sum(increase(konventix_admission_tickets_rendered_total{${J}}[$__range]))`)], { description: 'Ticket PDF pages served in the selected range.' }),
@@ -8384,7 +8384,7 @@ npm run observability:build
 **No alert.** Nothing here can fail silently: a render or a download failure is a plain 500, already caught by `KonventixHttp5xxRate` and `KonventixErrorsLogged` (ADR-0059 point 8); a superseded-nonce refusal is a `CheckInRejectionReason` the person standing at the door sees immediately, not a background condition anyone needs paging for. `ObservabilityCoverageTest` enforces the mechanical half — every declared metric on a dashboard, every referenced metric declared, `/metrics` renders nothing undeclared — and does not expect a rule for a metric this task does not add one for.
 
 - [ ] **Step 7: Extend the metric feature tests**
-`AdmissionMetricsTest.php` (Task 7) already asserts `admission_tokens_superseded_total`. Add a case for the new one, following `WebhookMetricsTest`'s probe-route shape:
+`AdmissionMetricsTest.php` (Task 10) already asserts `admission_tokens_superseded_total`. Add a case for the new one, following `WebhookMetricsTest`'s probe-route shape:
 ```php
 it('counts ticket pages served, once per rendered response', function (): void {
     Route::middleware(RecordTicketRenderMetrics::class)
