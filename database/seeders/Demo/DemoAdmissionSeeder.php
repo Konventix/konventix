@@ -241,7 +241,7 @@ final class DemoAdmissionSeeder
                 ->whereNull('revoked_at')
                 ->first();
 
-            $token = $this->issueToken->handle($admission);
+            $token = $this->issueToken->current($admission);
 
             $this->recordScan->handle(
                 token: $token,

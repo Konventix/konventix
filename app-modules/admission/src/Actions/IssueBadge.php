@@ -21,10 +21,13 @@ use Throwable;
  * there is nothing to gain from keeping attendee-bearing documents on disk —
  * and a retention rule to answer for if we did.
  *
- * The QR reuses the admission's existing token when one is supplied, and only
- * mints a fresh one when there is no signing key problem and none was given.
- * Minting on every print would strand the attendee's previous QR each time a
- * badge is reprinted, because a new nonce supersedes the old token.
+ * The QR reuses the admission's existing token when one is supplied, and
+ * otherwise asks `IssueAdmissionToken::current()` for one — which itself
+ * reuses the admission's stored nonce rather than minting a new one, so
+ * reprinting a badge never strands a QR already handed to someone (design
+ * doc §5; this replaces the docblock's old, previously-false claim that a
+ * fresh nonce was minted "when there is no signing key problem and none
+ * was given").
  */
 final class IssueBadge
 {
@@ -91,7 +94,7 @@ final class IssueBadge
     private function tokenFor(Admission $admission): ?string
     {
         try {
-            return $this->issueToken->handle($admission);
+            return $this->issueToken->current($admission);
         } catch (Throwable) {
             return null;
         }

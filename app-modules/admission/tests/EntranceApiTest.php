@@ -109,7 +109,7 @@ it('serves a PII-free delta with a monotonic cursor and the offline decision inp
         'event_id' => $lane['eventId'],
         'holder_user_id' => (string) Str::ulid(),
     ]);
-    $token = app(IssueAdmissionToken::class)->handle($admission);
+    $token = app(IssueAdmissionToken::class)->current($admission);
 
     $this->postJson('/api/entrance/scans', [
         'scans' => [['token' => $token, 'client_scan_id' => (string) Str::uuid()]],
@@ -117,9 +117,15 @@ it('serves a PII-free delta with a monotonic cursor and the offline decision inp
 
     $response = $this->getJson('/api/entrance/delta?since=0', entranceTestHeaders($lane['token']))->assertOk();
 
-    expect($response->json('entries'))->toHaveCount(1)
+    // Two entries, not one: IssueAdmissionToken::current() had nothing
+    // stored for this brand-new admission, so its first call rotated —
+    // and wrote its own token_superseded delta entry — before minting the
+    // token the scan below then checks in (design doc §5, Task 6).
+    expect($response->json('entries'))->toHaveCount(2)
         ->and($response->json('entries.0.admission_id'))->toBe($admission->id)
-        ->and($response->json('entries.0.kind'))->toBe('checked_in')
+        ->and($response->json('entries.0.kind'))->toBe('token_superseded')
+        ->and($response->json('entries.1.admission_id'))->toBe($admission->id)
+        ->and($response->json('entries.1.kind'))->toBe('checked_in')
         ->and($response->json('next'))->toBeGreaterThan(0)
         ->and($response->json('reentry_policy'))->toBe('once_per_day')
         ->and($response->json('poll_seconds'))->toBe(EntranceEventProfile::DEFAULT_POLL_SECONDS)
@@ -144,7 +150,7 @@ it('records an accepted scan and emits AdmissionCheckedIn carrying registration_
 
     $lane = entranceTestLane();
     $admission = Admission::factory()->create(['event_id' => $lane['eventId']]);
-    $token = app(IssueAdmissionToken::class)->handle($admission);
+    $token = app(IssueAdmissionToken::class)->current($admission);
 
     Event::fake([AdmissionCheckedIn::class, CheckInBatchSynchronized::class]);
 
@@ -173,7 +179,7 @@ it('is idempotent per client_scan_id so a reconnect replay writes once', functio
 
     $lane = entranceTestLane();
     $admission = Admission::factory()->create(['event_id' => $lane['eventId']]);
-    $token = app(IssueAdmissionToken::class)->handle($admission);
+    $token = app(IssueAdmissionToken::class)->current($admission);
 
     $payload = ['scans' => [['token' => $token, 'client_scan_id' => 'replayed-scan']]];
 
@@ -219,7 +225,7 @@ it('rejects a token minted for a different event', function (): void {
 
     $lane = entranceTestLane();
     $elsewhere = Admission::factory()->create(['event_id' => (string) Str::ulid()]);
-    $token = app(IssueAdmissionToken::class)->handle($elsewhere);
+    $token = app(IssueAdmissionToken::class)->current($elsewhere);
 
     $this->postJson('/api/entrance/scans', [
         'scans' => [['token' => $token, 'client_scan_id' => 'wrong-event']],
