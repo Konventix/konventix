@@ -7,6 +7,8 @@ use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Konventix\Admission\Actions\ClaimAdmission;
+use Konventix\Admission\Actions\IssueAdmissionClaimLink;
 use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Models\Admission;
 use Konventix\Commerce\Models\Invoice;
@@ -629,6 +631,28 @@ it('serves every public and account screen for both archetypes', function (strin
             ->select('registrant_user_id'))
         ->whereIn('id', dryRunDownloadableRequests($brand)->select('subject_id'))
         ->firstOrFail();
+
+    // `admission.tickets.holder`'s `{admission}` (resolved below) authorizes
+    // entirely on `holder_user_id` naming the signed-in account, and
+    // `DemoAdmissionSeeder::seedClaimLinks()` claims exactly one admission on
+    // purpose — for whichever member it seeds first, not necessarily the
+    // member chosen above for their registration and their data request.
+    // Claiming one here, through the same `ClaimAdmission` action a real
+    // claim link redeems, is this test's own fixture rather than a resolver
+    // papering over that seed gap: skipping the route instead would mean the
+    // holder download is never exercised at all.
+    if (! Admission::withoutBrandScope()->where('brand_id', $brand->getKey())->where('holder_user_id', $member->getKey())->exists()) {
+        $unclaimed = Admission::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->whereNull('holder_user_id')
+            ->whereIn('state', [AdmissionState::Issued, AdmissionState::Assigned])
+            ->first();
+
+        if ($unclaimed !== null) {
+            $link = app(IssueAdmissionClaimLink::class)->handle($unclaimed);
+            app(ClaimAdmission::class)->handle($link->getKey(), $member->getKey());
+        }
+    }
 
     $routes = dryRunRoutes()
         ->reject(dryRunIsConsoleRoute(...))
