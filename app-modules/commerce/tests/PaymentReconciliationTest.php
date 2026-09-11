@@ -29,6 +29,7 @@ use Konventix\Commerce\Settlement\SettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
+use Konventix\Commerce\Settlement\Stripe\StripeSessionNotFoundException;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaymentSnapshot;
 use Konventix\Commerce\Settlement\Unzer\UnzerPaypageSnapshot;
@@ -67,6 +68,14 @@ final class ReconciliationTestStripeApi implements StripeApi
      * @var ?callable(): void
      */
     public $beforeAnswering = null;
+
+    /**
+     * Simulates Stripe's own "No such checkout.session" answer (#286):
+     * `fetchCheckoutSession()` throws instead of returning `$session`, the
+     * same terminal answer `SdkStripeApi` translates a real
+     * `resource_missing` `InvalidRequestException` into.
+     */
+    public bool $sessionNotFound = false;
 
     public function createCheckoutSession(array $params): StripeCheckoutSession
     {
@@ -109,6 +118,10 @@ final class ReconciliationTestStripeApi implements StripeApi
 
         if ($this->beforeAnswering !== null) {
             ($this->beforeAnswering)();
+        }
+
+        if ($this->sessionNotFound) {
+            throw StripeSessionNotFoundException::forSession($sessionId);
         }
 
         return $this->session;
@@ -357,6 +370,79 @@ it('fails a pending Stripe payment whose session expired', function (): void {
         ->and($payment->failure_reason)->toBe('checkout_expired');
 
     Event::assertDispatched(PaymentFailed::class);
+});
+
+/**
+ * #286: Stripe answering "No such checkout.session" is a definite answer,
+ * not a failure to ask. Two rows on dev hit exactly this against orders
+ * the buyer had already abandoned and that `ExpireCarts` had cancelled —
+ * the sweep used to catch the SDK's exception, log a stack trace, and
+ * leave the payment `pending` forever, which is what kept
+ * `KonventixWebhookSilence` firing.
+ */
+it('expires a pending Stripe payment whose session vanished at the provider, when its order is already cancelled', function (): void {
+    test()->withBrand();
+
+    $account = SettlementAccount::factory()->create([
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+    ]);
+
+    $order = Order::factory()->create([
+        'status' => OrderStatus::Cancelled,
+        'total_gross' => '119.00',
+        'currency' => 'EUR',
+    ]);
+
+    $payment = Payment::factory()->create([
+        'order_id' => $order->id,
+        'settlement_account_id' => $account->id,
+        'provider' => SettlementAccount::PROVIDER_STRIPE,
+        'external_id' => 'cs_recon_vanished_terminal',
+        'amount' => '119.00',
+        'currency' => 'EUR',
+    ]);
+    reconciliationTestAge($payment, 60);
+
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->sessionNotFound = true;
+    app()->instance(StripeApi::class, $stripe);
+
+    Event::fake([PaymentFailed::class]);
+
+    $this->artisan('commerce:reconcile-payments')
+        ->expectsOutputToContain('1 resolved (session vanished at provider)')
+        ->assertSuccessful();
+
+    expect($stripe->sessionFetches)->toBe(['cs_recon_vanished_terminal'])
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Expired)
+        ->and($payment->failure_reason)->toBe('provider_session_not_found');
+
+    Event::assertDispatched(PaymentFailed::class);
+});
+
+/**
+ * The other half of #286: an order still open when its Stripe session
+ * vanishes is a case for a human, not this sweep — money may genuinely be
+ * in doubt, and nothing here may decide that silently.
+ */
+it('leaves a pending Stripe payment alone and flags it for review when its session vanished but the order is still open', function (): void {
+    [$order, $payment] = reconciliationTestStripePending();
+
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->sessionNotFound = true;
+    app()->instance(StripeApi::class, $stripe);
+
+    Event::fake([PaymentFailed::class]);
+
+    $this->artisan('commerce:reconcile-payments')
+        ->expectsOutputToContain(strtoupper(substr($order->id, -8)))
+        ->expectsOutputToContain('1 flagged for review (session vanished at provider, order still open)')
+        ->assertSuccessful();
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Pending)
+        ->and($payment->failure_reason)->toBeNull();
+
+    Event::assertNotDispatched(PaymentFailed::class);
 });
 
 it('leaves a payment younger than fifteen minutes to the webhook', function (): void {

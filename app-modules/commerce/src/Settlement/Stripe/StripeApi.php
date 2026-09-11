@@ -76,7 +76,15 @@ interface StripeApi
      * `checkout.session.async_payment_failed` carries, which is why the
      * reconciliation has to read it. Null where the session has no intent.
      *
+     * A session the provider no longer holds is a definite answer, not a
+     * failure to ask: it is reported as `StripeSessionNotFoundException`
+     * rather than folded into whatever transport error an implementation
+     * would otherwise throw (#286), so a caller may treat "gone" and
+     * "unreachable" differently without knowing any SDK.
+     *
      * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     *
+     * @throws StripeSessionNotFoundException when the provider no longer holds the session.
      */
     public function fetchCheckoutSession(string $sessionId): array;
 }
