@@ -33,3 +33,10 @@ Route::get('/events', [EventLandingController::class, 'index'])
 // the time implicit binding runs.
 Route::get('/events/{event:slug}', [EventLandingController::class, 'show'])
     ->name('event.show');
+
+// The event's calendar file (spec §6.2): public, no authentication, the
+// same visibility rule `show()` enforces. `.ics` sits in the URI itself,
+// not a query string, so both a calendar app's "subscribe by URL" and a
+// plain browser download just work.
+Route::get('/events/{event:slug}/calendar.ics', [EventLandingController::class, 'calendar'])
+    ->name('event.calendar');
