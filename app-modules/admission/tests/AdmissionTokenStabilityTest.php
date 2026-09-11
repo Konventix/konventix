@@ -10,7 +10,9 @@ use Konventix\Admission\Actions\RotateEntranceSigningKey;
 use Konventix\Admission\Enums\CheckInRejectionReason;
 use Konventix\Admission\Enums\CheckInResult;
 use Konventix\Admission\Models\Admission;
+use Konventix\Admission\Models\Checkpoint;
 use Konventix\Admission\Models\EntranceDeltaEntry;
+use Konventix\Admission\Models\EntranceDevice;
 use Konventix\Admission\Models\EntranceSigningKey;
 use Konventix\Admission\Tokens\AdmissionTokenCodec;
 use Konventix\Admission\Tokens\AdmissionTokenPayload;
@@ -119,4 +121,29 @@ it('refuses a token minted before rotation with NonceSuperseded, through RecordS
     );
 
     expect($accepted->result)->toBe(CheckInResult::Accepted);
+});
+
+it('carries the new hash through the delta feed on a token_superseded entry', function (): void {
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+
+    $eventId = (string) Str::ulid();
+    $admission = Admission::factory()->create(['event_id' => $eventId]);
+
+    $checkpoint = Checkpoint::factory()->forEvent($eventId)->create();
+    $plainDeviceToken = Str::random(48);
+    EntranceDevice::factory()->withToken($plainDeviceToken)->create(['checkpoint_id' => $checkpoint->id]);
+
+    app(IssueAdmissionToken::class)->rotate($admission);
+
+    $response = $this->getJson('/api/entrance/delta?since=0', [
+        'Authorization' => 'Bearer '.$plainDeviceToken,
+        'Accept' => 'application/json',
+    ])->assertOk();
+
+    $entry = collect($response->json('entries'))->firstWhere('kind', 'token_superseded');
+
+    expect($entry)->not->toBeNull()
+        ->and($entry['admission_id'])->toBe($admission->id)
+        ->and($entry['payload'])->toBe(['hash' => $admission->fresh()->token_nonce_hash]);
 });
