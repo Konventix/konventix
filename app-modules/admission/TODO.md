@@ -63,6 +63,12 @@
 
 ## Done
 
+- [x] Ticket PDF, part 4 — the TESTSYSTEM band, drawn only when
+      `DeploymentEnvironment::isProduction()` is false, painted last so it
+      sits above the content bands too (#72 §4.3, ADR-0053).
+      `Documents\TicketDocumentRenderer` is done: event band, holder band,
+      footer band, all three watermark layers. The download routes are the
+      next section's work.
 - [x] Ticket PDF, part 3 — the footer band and the first two watermark
       layers, through Platform's `DocumentWatermark` service: a
       low-opacity brand mark and a diagonal forensic repeat seeded from

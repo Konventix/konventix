@@ -50,6 +50,13 @@
             width: 100%;
             height: 100%;
         }
+        .testsystem-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
         .event-band {
             position: absolute;
             top: 0;
@@ -159,6 +166,8 @@
                 <div class="line">{{ __('Full terms: see the confirmation you received when you registered.') }}</div>
             </div>
         </div>
+
+        <div class="testsystem-layer">{!! $page['testSystemHtml'] !!}</div>
     </div>
 @endforeach
 </body>

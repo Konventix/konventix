@@ -183,3 +183,46 @@ it('hands the watermark service the forensic lines composed from the page, and t
 
     expect(str_starts_with($bytes, '%PDF'))->toBeTrue();
 });
+
+it('asks the watermark service for the TESTSYSTEM band on every page', function (): void {
+    $brand = $this->withBrand(ticketOperatorBrand());
+    ticketSigningKey($brand);
+
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    $admission = ticketAdmissionFor($eventId, ticketPerson());
+
+    $this->mock(DocumentWatermark::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('html')->andReturn('');
+        $mock->shouldReceive('testSystemBanner')
+            ->once()
+            ->andReturn('<div class="testsystem">TESTSYSTEM</div>');
+    });
+
+    $bytes = app(TicketDocumentRenderer::class)->render(collect([$admission]));
+
+    expect(str_starts_with($bytes, '%PDF'))->toBeTrue();
+});
+
+it('shows the TESTSYSTEM band off production and hides it on production, through DeploymentEnvironment', function (): void {
+    // The real (unmocked) DocumentWatermark and DeploymentEnvironment —
+    // the binding case is end-to-end, driven only through config, never
+    // through env() (ADR-0053).
+    $brand = $this->withBrand(ticketOperatorBrand());
+    ticketSigningKey($brand);
+
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    $admission = ticketAdmissionFor($eventId, ticketPerson());
+
+    // The suite runs as `testing`, which is not production
+    // (DeploymentEnvironmentTest.php).
+    $nonProduction = app(TicketDocumentRenderer::class)->render(collect([$admission]));
+
+    config(['app.env' => 'production']);
+    $production = app(TicketDocumentRenderer::class)->render(collect([$admission]));
+
+    expect(str_starts_with($nonProduction, '%PDF'))->toBeTrue()
+        ->and(str_starts_with($production, '%PDF'))->toBeTrue()
+        ->and(strlen($nonProduction))->toBeGreaterThan(strlen($production));
+});

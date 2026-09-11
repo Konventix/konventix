@@ -149,6 +149,11 @@ final class TicketDocumentRenderer
             // seeded from the admission id so two renders of the same
             // ticket look the same.
             'watermarkHtml' => $this->watermark->html($forensicLines, $brandLogo, $admission->id),
+            // §4.3 layer 3: a single diagonal band, empty on production.
+            // `DocumentWatermark::testSystemBanner()` asks
+            // `DeploymentEnvironment` itself — this renderer never reads
+            // `app.env` or calls `env()` (ADR-0053).
+            'testSystemHtml' => $this->watermark->testSystemBanner(),
         ];
     }
 
