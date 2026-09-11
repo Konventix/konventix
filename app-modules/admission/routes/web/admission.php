@@ -18,6 +18,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Admission\Http\Controllers\ClaimController;
 use Konventix\Admission\Http\Controllers\EntranceClientAssetController;
+use Konventix\Admission\Http\Controllers\MyTicketsController;
 use Konventix\Admission\Http\Controllers\TicketDownloadController;
 
 /*
@@ -71,4 +72,16 @@ Route::middleware(['auth'])->group(function (): void {
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/my/admissions/{admission}/ticket', [TicketDownloadController::class, 'holder'])
         ->name('admission.tickets.holder');
+});
+
+/*
+ * The holder's own list (design §4.1, §7): every admission whose
+ * `holder_user_id` is the signed-in account, whichever registration — if
+ * any — produced it. An admission nobody has claimed appears here for
+ * nobody; its ticket reaches its buyer through the buyer's own route
+ * instead.
+ */
+Route::middleware(['auth'])->group(function (): void {
+    Route::get('/my/tickets', [MyTicketsController::class, 'index'])
+        ->name('admission.tickets.mine');
 });

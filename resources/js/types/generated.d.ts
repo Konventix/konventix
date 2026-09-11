@@ -11,6 +11,13 @@ declare namespace Konventix {
                 readonly showQrCode: boolean;
                 readonly footerText: string | null;
             };
+            export type MyTicketData = {
+                readonly id: string;
+                readonly eventId: string;
+                readonly eventName: string;
+                readonly role: string;
+                readonly state: string;
+            };
         }
         namespace Enums {
             export type AdmissionState =
