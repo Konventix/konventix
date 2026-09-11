@@ -466,7 +466,7 @@ class SeedDemoDataCommand extends Command
 
         $this->inBrand($brand, fn () => $this->commerce->handle($brand, $event, $members, $registrationsPerEvent));
 
-        $this->inBrand($brand, fn () => $this->admission->handle($event, $media));
+        $this->inBrand($brand, fn () => $this->admission->handle($event, $media, $members));
         $this->inBrand($brand, fn () => $this->staffing->handle($event, $members, $archetype));
 
         // A trade fair runs no tournaments, and the module is off for it
