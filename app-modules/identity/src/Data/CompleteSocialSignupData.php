@@ -22,10 +22,15 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * provider. A password can be adopted later through the ordinary reset flow.
  *
  * Reuses the same rule Concerns as registration, so the two ways into an
- * account cannot drift on what a valid name or address looks like — including
- * `emailRules()`' uniqueness check, which is what refuses a signup naming an
- * address that already exists. See the controller for why that refusal is
- * correct here rather than an invitation to link the accounts.
+ * account cannot drift on what a valid name or address looks like —
+ * including `emailFormatRules()`, the format-only half of `emailRules()`
+ * (ADR-0016/#18): no `Rule::unique(User::class)` here either, for the same
+ * reason `RegisterData` drops it. A signup naming an address that already
+ * exists is still refused rather than linked — see the controller for why
+ * that refusal is correct here rather than an invitation to link the
+ * accounts — but the refusal itself must not be visible to whoever typed
+ * the address, so `CompleteSocialSignup` answers the "does this address
+ * exist" question the same way `CreateNewUser` does.
  */
 #[TypeScript]
 final class CompleteSocialSignupData extends Data
@@ -46,7 +51,7 @@ final class CompleteSocialSignupData extends Data
         return [
             'name' => self::nameRules(),
             'username' => self::usernameRules(),
-            'email' => self::emailRules(),
+            'email' => self::emailFormatRules(),
         ];
     }
 

@@ -119,22 +119,33 @@ it('sends somebody back to the start when the handshake has expired', function (
  * Steam asserts no email, so a matching address proves nothing about who typed
  * it — auto-linking here would be account takeover by typing. The signup is
  * refused and no account is touched.
+ *
+ * ADR-0016/#18: the refusal must not be visible to whoever typed the address
+ * either, so it answers exactly like a genuine signup — no validation error,
+ * the same redirect, nobody logged in because there is nothing of theirs to
+ * log into. EmailEnumerationTest covers the byte-for-byte comparison and the
+ * notice mail; this test is the Steam-specific shape: no identity linked, no
+ * account touched beyond the mail.
  */
 it('refuses a signup naming an address that already exists, and links nothing', function (): void {
     $this->withBrand();
 
     $existing = User::factory()->create(['email' => 'taken@example.test']);
 
-    $this->withSession(['identity.social.pending' => identityPendingSteamSignup()])
+    $response = $this->withSession(['identity.social.pending' => identityPendingSteamSignup()])
         ->post('http://localhost/auth/steam/complete', [
             'name' => 'Impostor',
             'username' => 'impostor',
             'email' => 'taken@example.test',
-        ])->assertSessionHasErrors('email');
+        ]);
+
+    $response->assertSessionHasNoErrors();
+    $response->assertRedirect();
 
     expect($existing->socialIdentities()->count())->toBe(0)
         ->and(auth()->check())->toBeFalse()
-        ->and(SocialIdentity::query()->count())->toBe(0);
+        ->and(SocialIdentity::query()->count())->toBe(0)
+        ->and(User::where('username', 'impostor')->exists())->toBeFalse();
 });
 
 it('shows the completion page with the provider name it came from', function (): void {

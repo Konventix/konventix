@@ -153,24 +153,40 @@ final class SocialAuthController
         // match would be account takeover by typing. The person signs in with
         // that account and links Steam from their settings instead.
         //
-        // The refusal surfaces as an ordinary "already taken" validation error,
-        // which is the same ADR-0016 disclosure gap the registration form
-        // already has (see RegisterData and TODO.md). Inherited knowingly
-        // rather than solved differently in one corner.
+        // ADR-0016/#18: the refusal must not be visible to whoever typed the
+        // address, so `CompleteSocialSignup::handle()` returns `null` instead
+        // of throwing or returning the account it declined to link, and this
+        // method answers exactly as it would for a fresh signup — no
+        // `Auth::login()` (there is nothing of the requester's to log into),
+        // but the same redirect either way. The existing account is told
+        // instead (`AuthMailer::sendRegistrationAttemptNotice()`, called from
+        // inside the Action).
         $data = CompleteSocialSignupData::validateAndCreate($request->all());
 
         $user = $complete->handle($data, $pending);
 
         $request->session()->forget(self::PENDING_SESSION_KEY);
 
-        Auth::login($user, remember: (bool) $request->session()->pull(self::REMEMBER_SESSION_KEY, false));
+        $remember = (bool) $request->session()->pull(self::REMEMBER_SESSION_KEY, false);
 
+        if ($user !== null) {
+            Auth::login($user, remember: $remember);
+        }
+
+        // Unconditional, like `AccountRegistrationController`: the session
+        // cookie rotates the same way whether or not an account exists to
+        // log into, which is one fewer signal a response-diffing script
+        // could read between the two branches.
         $request->session()->regenerate();
 
         // GitLab #205: the same contract-consent gate the password login
         // applies, on the way in that Fortify's responses never see. The
         // `require-consent` alias on this route cannot do it — the person is
-        // still a guest when the middleware runs.
+        // still a guest when the middleware runs. A guest here (the
+        // duplicate-address branch) owes no such redirect, and
+        // `outstandingContractRedirect()` answers null for one without
+        // needing a special case (its own docblock: session-only, and it
+        // reads nothing about who is signed in).
         return $this->outstandingContractRedirect($request) ?? redirect()->intended(route('dashboard'));
     }
 
