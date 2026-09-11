@@ -13,12 +13,15 @@ use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
 use Konventix\Admission\Listeners\Metrics\RecordAdmissionTokenMetrics;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
+use Konventix\Admission\Listeners\ProjectPerson;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
 use Konventix\Admission\Listeners\RevokeAdmissionsOnRegistrationCancelled;
 use Konventix\Admission\Metrics\AdmissionMetrics;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventReentryPolicyChanged;
+use Konventix\Identity\Events\UserProfileUpdated;
+use Konventix\Identity\Events\UserRegistered;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Permissions\DefaultRole;
@@ -140,6 +143,12 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             AssignmentAccepted::class,
             IssueCrewAdmissionOnAssignmentAccepted::class,
         );
+
+        // Admission's read model of a person's display name (design doc
+        // §13, 2026-09-11 amendment): the ticket's holder-name fallback needs
+        // one, and Admission may not read Identity's `User` model (ADR-0004).
+        Event::listen(UserRegistered::class, ProjectPerson::class);
+        Event::listen(UserProfileUpdated::class, ProjectPerson::class);
 
         // Admission's own metric (ADR-0059, design doc §9): the one
         // rejection reason among CheckInRejected's nine that answers

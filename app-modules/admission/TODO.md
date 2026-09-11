@@ -170,5 +170,10 @@
       component at `resources/js/components/admission/EventStatsCard.vue`.
       `tests/AdmissionStatsTest.php` covers capability + operator-host
       enforcement and the state counts for a seeded event.
+- [x] `admission_people`, `Models\Person` and `Listeners\ProjectPerson` —
+      Admission's own read model of a person's display name, projected from
+      Identity's `UserRegistered`/`UserProfileUpdated`, backfilled by
+      `identity:replay-profiles`; not brand-scoped (ADR-0016), mirrors
+      `registration_registrants`.
 
 <!-- Move completed items here with the PR that finished them. -->
