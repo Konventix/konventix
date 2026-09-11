@@ -17,8 +17,8 @@ use Konventix\Admission\Models\Person;
 use Konventix\Platform\Documents\DocumentWatermark;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
-use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
+use Konventix\Platform\Operators\OperatorSettings;
 
 /**
  * Renders the ticket PDF (GitLab #72 §4): one A4 portrait page per
@@ -27,10 +27,19 @@ use Konventix\Platform\Operators\OperatorDateTimeFormat;
  * remote fetching disabled.
  *
  * `$admissions` holds admissions of a single brand (§4.1), so the brand
- * (and its operator) are resolved once from the first admission rather
- * than per page. Both are read through plain queries, never
- * `$admission->brand`/`$brand->operator` (see Task 19's note on
+ * and the operator's legal name are resolved once from the first
+ * admission rather than per page. Both are read through plain queries,
+ * never `$admission->brand`/`$brand->operator` (see Task 19's note on
  * `Model::shouldBeStrict()`).
+ *
+ * The operator's legal name comes from `OperatorSettings::sellerForBrand()`
+ * (ADR-0004) — the same sanctioned doorway Commerce, Compliance and
+ * Messaging already use to reach operator data without importing
+ * `Konventix\Platform\Models\Operator` across the module boundary. It
+ * works from a brand host during a participant request the same as it
+ * does from a queue worker: it resolves the operator through the brand
+ * row itself, never through `OperatorContext` (which is only ever set on
+ * the admin host, ADR-0029).
  *
  * This task adds the footer band and the first two of the three watermark
  * layers (§4.3): a low-opacity brand mark and a diagonal forensic repeat,
@@ -52,6 +61,7 @@ final class TicketDocumentRenderer
         private readonly OperatorDateTimeFormat $dates,
         private readonly IssueAdmissionToken $issueAdmissionToken,
         private readonly DocumentWatermark $watermark,
+        private readonly OperatorSettings $operatorSettings,
     ) {}
 
     /**
@@ -60,8 +70,8 @@ final class TicketDocumentRenderer
     public function render(Collection $admissions): string
     {
         $brandId = $admissions->first()?->brand_id;
-        $brand = $brandId === null ? null : Brand::query()->with('operator')->find($brandId);
-        $operator = $brand?->operator;
+        $brand = $brandId === null ? null : Brand::query()->find($brandId);
+        $operatorLegalName = $brandId === null ? null : $this->operatorSettings->sellerForBrand($brandId)->legalName;
 
         $eventSummaries = $this->eventSummariesFor($admissions, $brandId);
         $people = $this->peopleFor($admissions);
@@ -69,7 +79,7 @@ final class TicketDocumentRenderer
         $pages = $admissions->map(fn (Admission $admission): array => $this->pageDataFor(
             $admission,
             $brand,
-            $operator,
+            $operatorLegalName,
             $eventSummaries->get($admission->event_id),
             $admission->holder_user_id === null ? null : $people->get($admission->holder_user_id),
         ))->all();
@@ -114,7 +124,7 @@ final class TicketDocumentRenderer
     /**
      * @return array<string, mixed>
      */
-    private function pageDataFor(Admission $admission, ?Brand $brand, ?Operator $operator, ?EventSummary $event, ?Person $holder): array
+    private function pageDataFor(Admission $admission, ?Brand $brand, ?string $operatorLegalName, ?EventSummary $event, ?Person $holder): array
     {
         $holderName = $holder->display_name ?? 'Unassigned';
         $role = str_replace('_', ' ', $admission->role);
@@ -127,7 +137,7 @@ final class TicketDocumentRenderer
             $holderName,
             $event?->name,
             $event?->venue_label,
-            $operator?->legal_name,
+            $operatorLegalName,
             $role,
             $admission->id,
         ], fn (?string $line): bool => $line !== null && $line !== ''));
@@ -142,7 +152,7 @@ final class TicketDocumentRenderer
             'validRange' => $this->validRangeFor($admission),
             'doorCode' => $this->doorCode($admission->id),
             'qr' => $this->qrDataUri($this->issueAdmissionToken->current($admission)),
-            'operatorLegalName' => $operator?->legal_name,
+            'operatorLegalName' => $operatorLegalName,
             'brandName' => $brand?->name,
             'admissionId' => $admission->id,
             // The brand mark and the forensic repeat, deterministically
