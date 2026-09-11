@@ -404,3 +404,9 @@
       `resources/js/components/registration/EventStatsCard.vue`.
       `tests/RegistrationStatsTest.php` covers capability + operator-host
       enforcement and the counts/per-type numbers for a seeded event.
+- [x] `RegistrationOwnershipAnnounced` and `registration:announce-ownership`
+      (design §13): a replay-safe backfill path for
+      `admissions.buyer_user_id` on rows that predate that column —
+      deliberately its own event rather than a replay of
+      `RegistrationConfirmed`, which also drives the confirmation mail.
+      Only a projection may ever listen to it.

@@ -117,6 +117,7 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 | `RegistrationPaymentStatusChanged` | The independent payment status field moves | `registration_id`, `brand_id`, `previous_status`, `status`, `changed_at` |
 | `QuotaExhausted` | The last unit of a quota is consumed | `quota_id`, `event_id`, `brand_id`, `exhausted_at` |
 | `QuotaReleased` | Units return to a quota after cancellation or expiry | `quota_id`, `released_units`, `released_at` |
+| `RegistrationOwnershipAnnounced` | `registration:announce-ownership` replays it for every registration (design doc §13, 2026-09-11 amendment) | `registration_id`, `brand_id`, `registrant_user_id` — a registration's buyer, restated for backfill only — never re-emits `RegistrationConfirmed`'s mail-triggering payload |
 
 ## Consumes
 

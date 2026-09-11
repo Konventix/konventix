@@ -32,6 +32,7 @@ use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
+use Konventix\Registration\Console\AnnounceRegistrationOwnershipCommand;
 use Konventix\Registration\Console\ExpireWaitlistOffersCommand;
 use Konventix\Registration\Data\PublicOfferData;
 use Konventix\Registration\Enums\Permission;
@@ -581,7 +582,7 @@ class RegistrationServiceProvider extends ModuleServiceProvider
     {
         parent::boot();
 
-        $this->commands([ExpireWaitlistOffersCommand::class]);
+        $this->commands([ExpireWaitlistOffersCommand::class, AnnounceRegistrationOwnershipCommand::class]);
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command('registration:expire-waitlist-offers')->everyFifteenMinutes();
