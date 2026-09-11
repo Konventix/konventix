@@ -13,10 +13,10 @@ use Laravel\Fortify\Features;
  * Three paths named in the issue, three groups of tests in this file —
  * registration (`register.store`), the Steam signup completion
  * (`auth/{provider}/complete`), and the forgot-password request
- * (`password.email`, in a later commit). Each duplicate branch is compared
- * directly against a genuine one made in the same test, rather than against
- * a hard-coded expectation, so a future change to what "success" looks like
- * cannot silently widen the gap between the two again.
+ * (`password.email`). Each duplicate branch is compared directly against a
+ * genuine one made in the same test, rather than against a hard-coded
+ * expectation, so a future change to what "success" looks like cannot
+ * silently widen the gap between the two again.
  *
  * `enumerationMailPushed()` is scoped to this file (`.ai/rules/tests.md`:
  * Pest helper names are process-global across every module's test files in
@@ -132,4 +132,38 @@ it('Steam signup naming an existing address answers exactly like a genuine signu
     $pushed = enumerationMailPushed('identity.registration-attempt');
     expect($pushed)->toHaveCount(1);
     expect($pushed[0]->message->recipientId)->toBe($existing->getKey());
+});
+
+it('answers a forgot-password request identically whether or not the address has an account', function (): void {
+    $this->withBrand();
+    Queue::fake();
+
+    User::factory()->create(['email' => 'has-account@example.test']);
+
+    $withAccount = $this->post(route('password.email'), ['email' => 'has-account@example.test']);
+    $withoutAccount = $this->post(route('password.email'), ['email' => 'no-such-account@example.test']);
+
+    expect($withAccount->status())->toBe($withoutAccount->status());
+
+    $message = 'If an account exists for that email address, we have emailed a password reset link to it.';
+
+    $withAccount->assertSessionHasNoErrors()->assertSessionHas('status', $message);
+    $withoutAccount->assertSessionHasNoErrors()->assertSessionHas('status', $message);
+});
+
+it('answers a JSON forgot-password request identically too', function (): void {
+    $this->withBrand();
+    Queue::fake();
+
+    User::factory()->create(['email' => 'has-account@example.test']);
+
+    $message = 'If an account exists for that email address, we have emailed a password reset link to it.';
+
+    $this->postJson(route('password.email'), ['email' => 'has-account@example.test'])
+        ->assertOk()
+        ->assertExactJson(['message' => $message]);
+
+    $this->postJson(route('password.email'), ['email' => 'no-such-account@example.test'])
+        ->assertOk()
+        ->assertExactJson(['message' => $message]);
 });

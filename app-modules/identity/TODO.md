@@ -97,19 +97,14 @@ person behind it. The value here is in what is left out.
       `MediaLibrary` is resolved at call time, never captured at boot
       (.ai/rules/providers.md). `tests/SocialIdentityTest.php` (Task 10 cases)
       and Compliance's `GdprSweepTest`.
-- [ ] ADR-0016 gap, flagged rather than worked around (`RegisterData`'s
-      docblock): a duplicate email on the registration form surfaces as an
-      ordinary "already taken" validation error, not the "indistinguishable
-      from success" response the ADR requires. Closing this means replacing
-      Fortify's stock `RegisteredUserController`/`RegisterResponse` — it
-      cannot auto-login on a duplicate — which is a bigger change than this
-      PR's scope. The same gap already existed for password reset before this
-      PR and is unchanged here. **GitLab #18, Phase 2** (ADR-0054 §6): the
-      "check your inbox" mail also names the operator and the brand the
-      account was first used on — it is where a person with two brands
-      learns they have one account. The sign-up page half of this point is
-      done (#241, `OperatorPresenceNotice`); the mail half and
-      enumeration-safe registration are what remains open here.
+- [ ] ADR-0054 §6, still open (was called "GitLab #18, Phase 2" while the
+      enumeration gap below was open too — that half is now closed, this one
+      is not): the notice mail a duplicate registration/signup sends
+      (`identity.registration-attempt`, below) does not yet name the
+      operator or the brand the account was first used on — it is where a
+      person with two brands would learn they have one account. The sign-up
+      page half of this point is done (#241, `OperatorPresenceNotice`); the
+      mail half is what remains.
 - [ ] "Leave brand B, keep the account" has no path (ADR-0054 consequences):
       deletion spans the operator (ADR-0050), and nothing removes a single
       membership with its brand-scoped rows. Not a go-live concern; design
@@ -138,6 +133,55 @@ person behind it. The value here is in what is left out.
 
 ## Done
 
+- [x] ADR-0016 email-enumeration gap closed (GitLab #18) on all three paths
+      the issue named: registration (`register.store`), the forgot-password
+      request (`password.email`), and the Steam signup completion
+      (`auth/{provider}/complete`). None of the three tells a requester an
+      address is already in use.
+      Registration and Steam signup share the shape: `RegisterData`/
+      `CompleteSocialSignupData` validate the address's format only
+      (`ProfileValidationRules::emailFormatRules()`, no `Rule::unique`), and
+      `Actions\CreateNewUser`/`Actions\CompleteSocialSignup` answer the
+      "does this address already exist" question themselves — a real
+      account for a new address, `null` for a duplicate, and a notice mail
+      (`AuthMailer::sendRegistrationAttemptNotice()`,
+      `identity.registration-attempt`) to the *existing* account either
+      way, offering the ordinary forgot-password form rather than a token
+      this class minted itself. `null` had nowhere to go through Fortify's
+      stock `RegisteredUserController` (it unconditionally logs in whatever
+      `CreatesNewUsers::create()` returns), so `register.store` now answers
+      through this module's own `Http\Controllers\
+      AccountRegistrationController` instead —
+      `IdentityServiceProvider::throttleUnhookedFortifyRoutes()` swaps the
+      route's action onto it post-boot, the same "walk `Route::getRoutes()`
+      in a `booted()` callback" trick that method already used for
+      middleware, so the route's name, URI and throttling are untouched and
+      `Features::registration()` stays enabled (tests gate on it).
+      `SocialAuthController::store()` needed no such replacement — it was
+      already this module's own controller — just to skip `Auth::login()`
+      on `null` and answer with the same redirect either way.
+      Password reset needed no Action changes at all: Fortify's own
+      `PasswordResetLinkController` already calls a broker whose
+      `INVALID_USER` and `RESET_LINK_SENT` differ only in which response
+      contract gets built, so `Http\Responses\GenericPasswordResetLinkResponse`
+      binds to *both* (`IdentityServiceProvider::configureFortifyResponses()`)
+      and answers the same message regardless — no controller or route
+      changed.
+      Timing: `Illuminate\Auth\Passwords\PasswordBroker::sendResetLink()`
+      already wraps its whole body in a fixed-floor `Illuminate\Support\
+      Timebox` (its own, pre-existing behaviour — nothing added here), which
+      is what password reset relies on. Registration and Steam signup had no
+      such floor — a real signup hashes a password (registration) or writes
+      a second row and fires two more events (both) that a duplicate never
+      pays for — so `CreateNewUser`/`CompleteSocialSignup` each wrap their
+      branch decision in the same `Timebox`, 200ms, matching the broker's
+      own default rather than inventing a second number.
+      `tests/EmailEnumerationTest.php` compares each duplicate branch
+      directly against a genuine one made in the same test (status code,
+      redirect target, session status message) rather than against a
+      hard-coded expectation. `tests/RegistrationTest.php` and
+      `tests/SocialSignupTest.php` carry the path-specific shape (no account
+      created, existing one untouched beyond the mail).
 - [x] `RecordBrandMembership` resolves `BrandContext` at call time (#142). Under
       Octane the event dispatcher builds listeners from the worker's base
       application, so the constructor-injected context was always empty and no

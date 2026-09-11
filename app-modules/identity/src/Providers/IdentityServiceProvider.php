@@ -29,6 +29,7 @@ use Konventix\Identity\Http\Controllers\AccountRegistrationController;
 use Konventix\Identity\Http\Middleware\EnsureCredentialsAreStrings;
 use Konventix\Identity\Http\Responses\ConsentAwareLoginResponse;
 use Konventix\Identity\Http\Responses\ConsentAwareTwoFactorLoginResponse;
+use Konventix\Identity\Http\Responses\GenericPasswordResetLinkResponse;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Listeners\SendWelcomeOnVerified;
 use Konventix\Identity\Social\SocialProviderRegistry;
@@ -45,7 +46,9 @@ use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\OperatorPresence;
+use Laravel\Fortify\Contracts\FailedPasswordResetLinkRequestResponse as FailedPasswordResetLinkRequestResponseContract;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
+use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse as SuccessfulPasswordResetLinkRequestResponseContract;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
@@ -207,6 +210,13 @@ class IdentityServiceProvider extends ModuleServiceProvider
     {
         $this->app->bind(LoginResponseContract::class, ConsentAwareLoginResponse::class);
         $this->app->bind(TwoFactorLoginResponseContract::class, ConsentAwareTwoFactorLoginResponse::class);
+
+        // ADR-0016/#18: one class answers both contracts, so "address not
+        // found" and "reset link sent" produce the identical response —
+        // see GenericPasswordResetLinkResponse's own docblock for why this
+        // has to happen here and not by editing Fortify's stock responses.
+        $this->app->bind(SuccessfulPasswordResetLinkRequestResponseContract::class, GenericPasswordResetLinkResponse::class);
+        $this->app->bind(FailedPasswordResetLinkRequestResponseContract::class, GenericPasswordResetLinkResponse::class);
     }
 
     /**
