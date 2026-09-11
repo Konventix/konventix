@@ -11,16 +11,19 @@
     One `.ticket-page` per admission, `page-break-before` on every page
     after the first so dompdf never adds a trailing blank page.
 
-    Watermark stacking (§4.3): `.watermark-layer` (the brand mark and the
-    forensic repeat, from `DocumentWatermark::html()`) is painted first,
-    full-page. `.content` — the three bands — is a second, later,
-    full-page absolutely-positioned sibling, so dompdf paints it on top of
-    the watermark automatically: two elements at the same stacking level
-    (position:absolute, z-index:auto) paint in document order. The bands
-    themselves have no background, so the watermark shows through
-    everywhere except `.qr-box`, which is opaque — "a clear rectangle kept
-    around the QR... by stacking the QR in an opaque box above the
-    watermark layer, not by computing coordinates".
+    Watermark stacking (§4.3): all three layers are full-page,
+    absolutely-positioned siblings with no `z-index`, so dompdf paints
+    them in document order, the same as a browser. `.watermark-layer`
+    (the brand mark and the forensic repeat, from `DocumentWatermark::
+    html()`) is painted first, then `.testsystem-layer` (`DocumentWatermark
+    ::testSystemBanner()`) on top of it, then `.content` — the three
+    bands — last. The bands themselves have no background, so both
+    watermark layers show through everywhere except `.qr-box`, which is
+    opaque — "a clear rectangle kept around the QR... by stacking the QR
+    in an opaque box above the watermark layer[s], not by computing
+    coordinates". `.testsystem-layer` must stay between `.watermark-layer`
+    and `.content`, never after it: after it would paint the band on top
+    of the opaque QR box too.
 --}}
 <!DOCTYPE html>
 <html lang="en">
@@ -43,14 +46,14 @@
             width: 100%;
             height: 100%;
         }
-        .content {
+        .testsystem-layer {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
         }
-        .testsystem-layer {
+        .content {
             position: absolute;
             top: 0;
             left: 0;
@@ -62,23 +65,23 @@
             top: 0;
             left: 0;
             width: 100%;
-            height: 90mm;
-            padding: 14mm 16mm;
+            height: 64mm;
+            padding: 12mm 16mm;
             box-sizing: border-box;
             border-bottom: 0.75pt solid #d1d5db;
         }
-        .event-band .logo { max-height: 24mm; max-width: 60mm; margin-bottom: 8mm; }
+        .event-band .logo { max-height: 24mm; max-width: 60mm; margin-bottom: 6mm; }
         .event-band .event-name { font-size: 20pt; font-weight: bold; margin: 0 0 4mm; }
         .event-band .event-when { font-size: 11pt; color: #374151; margin: 0 0 2mm; }
         .event-band .venue { font-size: 11pt; color: #374151; }
 
         .holder-band {
             position: absolute;
-            top: 90mm;
+            top: 64mm;
             left: 0;
             width: 100%;
-            height: 165mm;
-            padding: 12mm 16mm;
+            height: 195mm;
+            padding: 14mm 16mm;
             box-sizing: border-box;
             text-align: center;
         }
@@ -86,14 +89,14 @@
             display: inline-block;
             background-color: #ffffff;
             padding: 10px;
-            margin: 4mm 0 6mm;
+            margin: 6mm 0 10mm;
         }
         .qr-box img { width: 320px; height: 320px; display: block; }
-        .holder-name { font-size: 18pt; font-weight: bold; margin: 0 0 2mm; }
+        .holder-name { font-size: 18pt; font-weight: bold; margin: 0 0 4mm; }
         .holder-name.unassigned { font-style: italic; font-weight: normal; color: #6b7280; }
         .role-badge {
             display: inline-block;
-            margin: 2mm 0 6mm;
+            margin: 3mm 0 8mm;
             padding: 2mm 6mm;
             border-radius: 10pt;
             font-size: 9pt;
@@ -102,15 +105,15 @@
             color: #ffffff;
             background-color: #1f2937;
         }
-        .valid-range { font-size: 10pt; color: #374151; margin-bottom: 2mm; }
+        .valid-range { font-size: 10pt; color: #374151; margin-bottom: 4mm; }
         .door-code { font-size: 8pt; color: #9ca3af; letter-spacing: 0.06em; }
 
         .footer-band {
             position: absolute;
-            top: 255mm;
+            top: 259mm;
             left: 0;
             width: 100%;
-            height: 42mm;
+            height: 38mm;
             padding: 10mm 16mm;
             box-sizing: border-box;
             border-top: 0.75pt solid #d1d5db;
@@ -125,6 +128,8 @@
 @foreach ($pages as $page)
     <div class="ticket-page" style="{{ $loop->first ? '' : 'page-break-before: always;' }}">
         <div class="watermark-layer">{!! $page['watermarkHtml'] !!}</div>
+
+        <div class="testsystem-layer">{!! $page['testSystemHtml'] !!}</div>
 
         <div class="content">
             <div class="event-band">
@@ -166,8 +171,6 @@
                 <div class="line">{{ __('Full terms: see the confirmation you received when you registered.') }}</div>
             </div>
         </div>
-
-        <div class="testsystem-layer">{!! $page['testSystemHtml'] !!}</div>
     </div>
 @endforeach
 </body>
