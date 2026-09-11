@@ -406,3 +406,27 @@ Binding cases:
 
 Deviations found during implementation are appended here with a date and the
 task that found them. The body above is never edited.
+
+- **2026-09-11, planning: the calendar builder moves to Platform, and two
+  modules gain an event read model.** §8 gave the calendar file to Event.
+  That works for the public route, where Event reads its own models, but not
+  for the confirmation mail: Registration sends it and may not import Event
+  (ADR-0004). Registration's own `registration_event_summaries` carries a
+  name, a slug and visibility, and no time or venue at all; Admission has no
+  event summary whatsoever, yet the ticket's event band needs a name, a
+  start, an end, a timezone and a venue. So: the RFC 5545 encoder becomes
+  `Konventix\Platform\Calendar\CalendarFile`, taking scalars and returning
+  bytes, which every module may call the way they all call `MediaLibrary`.
+  `registration_event_summaries` gains `starts_at`, `ends_at`, `timezone` and
+  `venue_label`, projected by extending the existing `ProjectEventSummary`.
+  Admission gains its own `admission_event_summaries` with the same columns
+  and its own projector, the way Resources keeps `resource_event_windows`.
+  Both project from Event's existing contract events, which already carry
+  everything needed: `EventCreated` and `EventRescheduled` carry the times
+  and the timezone, and `VenueAssigned`, `VenueUpdated` and `VenueUnassigned`
+  carry the venue's name and city. `EventDetailsUpdated` carries no times, so
+  a projector must patch the name and slug there rather than replace the row.
+- **2026-09-11, planning: the calendar file names the venue as name and
+  city.** `VenueAssigned` carries no street address, so `LOCATION` and the
+  ticket's event band say what the contract offers. Widening that payload is
+  an Event change this issue does not need.
