@@ -426,6 +426,38 @@ task that found them. The body above is never edited.
   and the timezone, and `VenueAssigned`, `VenueUpdated` and `VenueUnassigned`
   carry the venue's name and city. `EventDetailsUpdated` carries no times, so
   a projector must patch the name and slug there rather than replace the row.
+- **2026-09-11, planning: a registration-derived admission is anonymous
+  today, which changes who can fetch a ticket.**
+  `IssueAdmissionsForRegistration` hard-sets `holder_user_id` to null and
+  drops the `registrantUserId` its triggering event carries, so an admission
+  born from a sale names nobody at all. A person becomes the holder later,
+  through the existing admission claim links. Three consequences. The
+  holder's own list in §4.1 serves only claimed admissions, which is correct
+  and worth saying out loud. `admissions` gains a nullable `buyer_user_id`,
+  threaded from `RegistrationConfirmed` and `RegistrationAmended`, which
+  already carry it. And rows that exist before this deploy have neither, so
+  Registration gains a narrow `RegistrationOwnershipAnnounced` event plus a
+  `registration:announce-ownership` command that emits it for every
+  registration. That event exists precisely so the backfill is replay-safe:
+  re-emitting `RegistrationConfirmed` would re-send every confirmation mail,
+  and nothing but a projection may ever listen to the new one.
+- **2026-09-11, planning: the holder-name fallback drops the billing
+  recipient.** §4.2 named the registration's billing recipient as the middle
+  fallback. Admission cannot read that, and no event it can reach carries a
+  person's name at all. Admission therefore gains its own people read model
+  on Identity's `UserRegistered` and `UserProfileUpdated`, mirroring
+  Registration's `ProjectRegistrant` and Messaging's `ProjectRecipient`, and
+  backfilled by the existing `identity:replay-profiles`. The chain becomes:
+  the linked holder's display name, else "Unassigned", which is what the
+  badge already renders. `IssueBadge`'s manually typed holder name is an
+  operator affordance and stays untouched.
+- **2026-09-11, planning: `event:replay-details` gains a venue pass.** It
+  re-fires `EventRescheduled` and `EventDetailsUpdated`, which between them
+  carry a name, a slug, the times and the timezone, but no venue. A
+  backfilled event summary would therefore have no venue and the ticket band
+  and calendar `LOCATION` would be silently empty. The command also re-fires
+  `VenueAssigned` for each event's primary venue. An event with no venue
+  renders without one, which is already required by §11.
 - **2026-09-11, planning: the calendar file names the venue as name and
   city.** `VenueAssigned` carries no street address, so `LOCATION` and the
   ticket's event band say what the contract offers. Widening that payload is
