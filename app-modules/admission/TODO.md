@@ -63,6 +63,12 @@
 
 ## Done
 
+- [x] Ticket PDF, part 2 — the holder band: the QR built from
+      `IssueAdmissionToken::current()` (never `rotate()`, so a
+      re-download stays the same code, pinned by
+      "renders the same token across two requests"), the holder's name or
+      "Unassigned", the role, the valid-days range, and a door-typeable
+      short code (#72 §4.2).
 - [x] Ticket PDF, part 1 — `Documents\TicketDocumentRenderer` renders one
       A4 page per admission with the event band (brand logo, name, local
       wall clock with the timezone named, venue), mirroring
