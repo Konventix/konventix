@@ -265,6 +265,21 @@
       by hand before the sweep would, and book a bank transfer or a door
       payment on it.
 
+      A vanished Stripe session is a definite answer, not a failure to ask
+      (#286): `SdkStripeApi::fetchCheckoutSession()` translates Stripe's own
+      "No such checkout.session" (`resource_missing`) into
+      `StripeSessionNotFoundException` rather than letting the vendor's
+      `InvalidRequestException` be caught by name in the console.
+      `ReconcilePayments` expires the payment (`failure_reason` =
+      `provider_session_not_found`) when its order already reached a
+      terminal state (cancelled, refunded); when the order is still open it
+      changes nothing and instead names the order in a warning — logged and
+      printed, not a per-run operator mail, because that case stays open by
+      design until a human resolves it. Both counted separately from
+      "corrected" in the summary line. No console action exists yet to void
+      or expire a stuck payment by hand for the open-order case; that gap is
+      left to a follow-up issue rather than folded in here.
+
 - [x] Non-production invoice/credit-note numbers carry an environment
       marker (#74, ADR-0053): `DrawInvoiceNumber` and `DrawCreditNoteNumber`
       prepend the environment name as a leading segment off production
