@@ -163,10 +163,14 @@ final class TicketDocumentRenderer
             return null;
         }
 
+        // §4.2: wall clock as stored (ADR-0027), never converted — `starts_at`/
+        // `ends_at` carry no offset, so handing a zone to `dateTime()` would
+        // shift the printed time instead of merely labelling it. The event
+        // landing page prints the same two columns the same way.
         return sprintf(
             '%s – %s (%s)',
-            $this->dates->dateTime($event->starts_at, $event->timezone),
-            $this->dates->dateTime($event->ends_at, $event->timezone),
+            $this->dates->dateTime($event->starts_at),
+            $this->dates->dateTime($event->ends_at),
             $event->timezone,
         );
     }

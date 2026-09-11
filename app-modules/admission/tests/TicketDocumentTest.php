@@ -73,6 +73,22 @@ it('renders an admission whose event has no summary yet', function (): void {
     expect(str_starts_with(app(TicketDocumentRenderer::class)->render(collect([$admission])), '%PDF'))->toBeTrue();
 });
 
+it('prints the event band time as the stored wall clock, never shifted by its timezone', function (): void {
+    // Regression pin: `starts_at`/`ends_at` are wall-clock with no offset
+    // (ADR-0027) — handing `OperatorDateTimeFormat::dateTime()` a zone
+    // converts instead of merely labelling it, so a 10:00 CEST event
+    // printed as 12:00. Europe/Berlin is UTC+2 in October, so this
+    // fixture's default 10:00-18:00 window catches the shift a UTC
+    // fixture would hide.
+    $brand = $this->withBrand(ticketOperatorBrand());
+    $event = ticketEventSummary($brand, (string) Str::ulid());
+
+    $when = (new ReflectionMethod(TicketDocumentRenderer::class, 'eventWhenFor'))
+        ->invoke(app(TicketDocumentRenderer::class), $event);
+
+    expect($when)->toBe('16.10.2026 10:00 – 18.10.2026 18:00 (Europe/Berlin)');
+});
+
 it('renders a staff admission with no registration at all', function (): void {
     // registration_id is nullable (§4.1) and a staff admission has none —
     // the page must still render.

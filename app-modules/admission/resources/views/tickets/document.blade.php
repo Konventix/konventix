@@ -65,23 +65,38 @@
             top: 0;
             left: 0;
             width: 100%;
-            height: 64mm;
+            height: 50mm;
             padding: 12mm 16mm;
             box-sizing: border-box;
             border-bottom: 0.75pt solid #d1d5db;
         }
-        .event-band .logo { max-height: 24mm; max-width: 60mm; margin-bottom: 6mm; }
+        .event-band .info { width: 122mm; }
         .event-band .event-name { font-size: 20pt; font-weight: bold; margin: 0 0 4mm; }
         .event-band .event-when { font-size: 11pt; color: #374151; margin: 0 0 2mm; }
         .event-band .venue { font-size: 11pt; color: #374151; }
+        /* The brand's mark, right of the event details. Its left rule holds
+           the column whether or not a logo fills it, so a brand with none
+           still reads as a deliberate two-column masthead rather than text
+           beside a void. */
+        .event-band .brand-mark {
+            position: absolute;
+            top: 12mm;
+            right: 16mm;
+            width: 46mm;
+            height: 26mm;
+            padding-left: 8mm;
+            box-sizing: border-box;
+            border-left: 0.75pt solid #d1d5db;
+        }
+        .event-band .brand-mark .logo { display: block; max-height: 26mm; max-width: 38mm; }
 
         .holder-band {
             position: absolute;
-            top: 64mm;
+            top: 50mm;
             left: 0;
             width: 100%;
-            height: 195mm;
-            padding: 14mm 16mm;
+            height: 209mm;
+            padding: 30mm 16mm 16mm;
             box-sizing: border-box;
             text-align: center;
         }
@@ -89,14 +104,14 @@
             display: inline-block;
             background-color: #ffffff;
             padding: 10px;
-            margin: 6mm 0 10mm;
+            margin: 0 0 14mm;
         }
         .qr-box img { width: 320px; height: 320px; display: block; }
-        .holder-name { font-size: 18pt; font-weight: bold; margin: 0 0 4mm; }
+        .holder-name { font-size: 18pt; font-weight: bold; margin: 0 0 8mm; }
         .holder-name.unassigned { font-style: italic; font-weight: normal; color: #6b7280; }
         .role-badge {
             display: inline-block;
-            margin: 3mm 0 8mm;
+            margin: 4mm 0 14mm;
             padding: 2mm 6mm;
             border-radius: 10pt;
             font-size: 9pt;
@@ -105,7 +120,7 @@
             color: #ffffff;
             background-color: #1f2937;
         }
-        .valid-range { font-size: 10pt; color: #374151; margin-bottom: 4mm; }
+        .valid-range { font-size: 10pt; color: #374151; margin-bottom: 10mm; }
         .door-code { font-size: 8pt; color: #9ca3af; letter-spacing: 0.06em; }
 
         .footer-band {
@@ -133,19 +148,23 @@
 
         <div class="content">
             <div class="event-band">
-                @if ($page['brandLogo'] !== null)
-                    <img class="logo" src="{{ $page['brandLogo'] }}" alt="">
-                @endif
+                <div class="info">
+                    <div class="event-name">{{ $page['eventName'] ?? __('Event details unavailable') }}</div>
 
-                <div class="event-name">{{ $page['eventName'] ?? __('Event details unavailable') }}</div>
+                    @if ($page['eventWhen'] !== null)
+                        <div class="event-when">{{ $page['eventWhen'] }}</div>
+                    @endif
 
-                @if ($page['eventWhen'] !== null)
-                    <div class="event-when">{{ $page['eventWhen'] }}</div>
-                @endif
+                    @if ($page['venueLabel'] !== null)
+                        <div class="venue">{{ $page['venueLabel'] }}</div>
+                    @endif
+                </div>
 
-                @if ($page['venueLabel'] !== null)
-                    <div class="venue">{{ $page['venueLabel'] }}</div>
-                @endif
+                <div class="brand-mark">
+                    @if ($page['brandLogo'] !== null)
+                        <img class="logo" src="{{ $page['brandLogo'] }}" alt="">
+                    @endif
+                </div>
             </div>
 
             <div class="holder-band">
