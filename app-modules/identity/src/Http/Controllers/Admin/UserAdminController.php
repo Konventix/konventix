@@ -216,7 +216,12 @@ class UserAdminController
         /** @var User $operator */
         $operator = $request->user();
 
-        $action->handle($user, $data->email, $operator);
+        $action->handle(
+            $user,
+            $data->email,
+            $operator,
+            acknowledgedClosedAccountHistoryStaysBehind: $data->acknowledgedClosedAccountHistoryStaysBehind,
+        );
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Accounts merged.')]);
 

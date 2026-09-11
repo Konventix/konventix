@@ -19,6 +19,12 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * operator who can already search the user list by email
  * (`UserAdminController::index()`) learns nothing from this error that
  * search did not already tell them.
+ *
+ * `acknowledgedClosedAccountHistoryStaysBehind` is the operator's tick on
+ * the "Merge accounts" card's own checkbox — format only here, `boolean`,
+ * same as `FooterLinkData::$opensInNewTab`. Whether it is actually *true*
+ * is a business rule, not a shape rule, and is enforced where the other
+ * merge refusals live: `Actions\MergeUserAccounts::handle()`.
  */
 #[TypeScript]
 final class MergeUserAccountData extends Data
@@ -27,6 +33,7 @@ final class MergeUserAccountData extends Data
 
     public function __construct(
         public readonly string $email,
+        public readonly bool $acknowledgedClosedAccountHistoryStaysBehind = false,
     ) {}
 
     /**
@@ -36,6 +43,7 @@ final class MergeUserAccountData extends Data
     {
         return [
             'email' => self::emailFormatRules(),
+            'acknowledgedClosedAccountHistoryStaysBehind' => ['boolean'],
         ];
     }
 }

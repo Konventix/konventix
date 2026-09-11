@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
 import { Lock, LockOpen } from '@lucide/vue';
+import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
+import { index as registrationsForAddress } from '@/routes/admin/registrations';
 import {
     edit as editUser,
     lock as lockUser,
@@ -57,9 +60,24 @@ const form = useForm({
 });
 
 const lockForm = useForm({ reason: '' });
-const mergeForm = useForm({ email: '' });
+const mergeForm = useForm({
+    email: '',
+    acknowledgedClosedAccountHistoryStaysBehind: false,
+});
 
 useUnsavedChanges(() => form.isDirty);
+
+/**
+ * A quick, honest check before an irreversible merge (correction on #81):
+ * Registration's admin list is the one module with a live search by email
+ * already (`RegistrationAdminController::index()`'s free-text `search`).
+ * Commerce and Admission have no equivalent admin search yet, so this link
+ * covers registrations only — it is a partial check, not a full "what does
+ * this account hold" view, and nothing here claims otherwise.
+ */
+const registrationsForEmailHref = computed(() =>
+    registrationsForAddress.url({ query: { search: mergeForm.email } }),
+);
 
 function submit(): void {
     form.put(updateUser(props.user.id).url, { preserveScroll: true });
@@ -260,14 +278,12 @@ function submitMerge(): void {
                             closes and can no longer sign in.
                         </p>
                         <p class="text-sm text-text-muted">
-                            Only sign-in methods move. Registrations, orders,
-                            admissions and consent records stay on the closed
-                            account until each of those modules ships a listener
-                            for this event — ask the person to contact support
-                            if they need that history moved too. Brand
-                            memberships and roles are not moved either. Only run
-                            this after the person has asked for it and you have
-                            confirmed they control both addresses.
+                            Only sign-in methods move. Brand memberships and
+                            roles are not moved either. Only run this after the
+                            person has asked for it, you have confirmed they
+                            control both addresses, and you are sure which
+                            account should survive — this cannot be undone from
+                            here.
                         </p>
                         <form
                             class="flex flex-col gap-3"
@@ -284,12 +300,56 @@ function submitMerge(): void {
                                     placeholder="other-account@example.test"
                                 />
                                 <InputError :message="mergeForm.errors.email" />
+                                <a
+                                    v-if="mergeForm.email"
+                                    :href="registrationsForEmailHref"
+                                    target="_blank"
+                                    rel="noopener"
+                                    class="text-xs text-accent underline underline-offset-2"
+                                >
+                                    Check this address's registrations before
+                                    merging
+                                </a>
                             </div>
+                            <div class="flex items-start gap-2">
+                                <Checkbox
+                                    id="merge-acknowledge"
+                                    class="mt-0.5"
+                                    aria-describedby="merge-acknowledge-error"
+                                    :model-value="
+                                        mergeForm.acknowledgedClosedAccountHistoryStaysBehind
+                                    "
+                                    @update:model-value="
+                                        (value: boolean | 'indeterminate') =>
+                                            (mergeForm.acknowledgedClosedAccountHistoryStaysBehind =
+                                                value === true)
+                                    "
+                                />
+                                <Label
+                                    for="merge-acknowledge"
+                                    class="text-sm font-normal"
+                                >
+                                    I understand the closed account's
+                                    registrations, orders, admissions and
+                                    consent records will not move — they'll stay
+                                    behind and become unreachable.
+                                </Label>
+                            </div>
+                            <InputError
+                                id="merge-acknowledge-error"
+                                :message="
+                                    mergeForm.errors
+                                        .acknowledgedClosedAccountHistoryStaysBehind
+                                "
+                            />
                             <Button
                                 type="submit"
                                 variant="destructive"
                                 class="self-start"
-                                :disabled="mergeForm.processing"
+                                :disabled="
+                                    mergeForm.processing ||
+                                    !mergeForm.acknowledgedClosedAccountHistoryStaysBehind
+                                "
                             >
                                 Merge into this account
                             </Button>

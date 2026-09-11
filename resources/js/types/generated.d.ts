@@ -586,6 +586,7 @@ declare namespace Konventix {
             };
             export type MergeUserAccountData = {
                 readonly email: string;
+                readonly acknowledgedClosedAccountHistoryStaysBehind: boolean;
             };
             export type PasswordResetMailData = {
                 readonly resetUrl: string;

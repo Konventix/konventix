@@ -131,7 +131,30 @@ person behind it. The value here is in what is left out.
       this event fires. None exists yet, so a merged account's history stays
       on the closed account today — the admin "Merge accounts" card says so
       in the same words. Commerce was another agent's territory while this
-      slice was built; the other three are equally untouched.
+      slice was built; the other three are equally untouched. Until a
+      listener lands, `MergeUserAccounts::handle()` refuses to run at all
+      without an explicit `acknowledgedClosedAccountHistoryStaysBehind`
+      acknowledgement, and the console makes the operator tick it before
+      the submit button unlocks — a correction on the first cut of #81,
+      which let an operator close the wrong-direction account with no
+      warning at all. The "Merge accounts" card also links to Registration's
+      admin search for the address being closed, the one module with a live
+      per-email lookup today — Commerce and Admission have none, so that
+      check is partial, not a full "what does this account hold" view. A
+      real one is `GdprHandlerRegistry::exportFor()` reached honestly,
+      through Compliance's own subject-request/export flow once an operator
+      workflow exists for it, not a direct read from Identity — see that
+      registry's own docblock and `SubjectRequestController`'s: it is
+      Compliance's internal orchestration tool for the statutory fan-out,
+      gated by three capabilities separate from `ManageUsers`
+      (`ViewSubjectRequests`/`HandleSubjectRequests`/`DownloadSubjectExport`,
+      the last one because "an operator reading one person's entire record
+      across every module is the most privileged read in the application"),
+      and every other module only ever writes into it. Identity reading
+      from it here would be the first read from outside Compliance and
+      would hand a `ManageUsers`-only operator that privileged a read with
+      none of that gating or audit trail — wrong boundary to cross for this
+      correction.
 - [ ] `brand_memberships` and role grants are not moved by a merge either
       (`Actions\MergeUserAccounts`'s docblock has the reasoning) — the
       survivor may not show membership on a brand only the closed account
@@ -164,6 +187,14 @@ person behind it. The value here is in what is left out.
       before ever being recognised — a password account and a Steam-only
       account that both belong to the same person. See the Backlog entries
       above for what it deliberately leaves undone.
+- [x] Required, informed acknowledgement before a merge can close an account
+      (#81 correction): `MergeUserAccounts::handle()` refuses without
+      `acknowledgedClosedAccountHistoryStaysBehind`, the console's checkbox
+      states plainly what does not move, the submit button stays disabled
+      until it is ticked, and the "Other account's email" field links out to
+      a check of Registration's admin search for that address. See the
+      Backlog entry above for why that check is partial and why this does
+      not reach `GdprHandlerRegistry` directly.
 - [x] An unconfirmed address is now prompted for everywhere, not only on the
       handful of pages the `verified` route middleware already gates (#81):
       `emailVerified`, a new shared Inertia prop kept off `auth.user` (its

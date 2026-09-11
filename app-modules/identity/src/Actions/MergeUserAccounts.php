@@ -87,16 +87,33 @@ use Konventix\Identity\Models\User;
  * A GitLab follow-up should track the cross-module listeners; this class's
  * own docblock and TODO.md are where a reader looking for "did the merge
  * move my registration" will find the honest answer today.
+ *
+ * **The acknowledgement gate.** Because the paragraph above is a real,
+ * current limitation and not a hypothetical one, `handle()` refuses to run
+ * at all unless `$acknowledgedClosedAccountHistoryStaysBehind` is true — the
+ * same refusal shape as an anonymized account or a provider conflict below,
+ * a `ValidationException` an operator can act on, not an exception to
+ * catch. Nothing about this is enforceable client-side alone: the console
+ * disables its submit button until the "Merge accounts" card's own
+ * checkbox is ticked, but this gate is what actually stops a
+ * would-be-wrong-direction merge reaching the transaction below, ticked box
+ * or not.
  */
 final class MergeUserAccounts
 {
     public function __construct(private readonly AuthMailer $mailer) {}
 
     /**
-     * @throws ValidationException when the two accounts cannot be merged as asked
+     * @throws ValidationException when the two accounts cannot be merged as asked, or the operator has not acknowledged what the merge leaves behind
      */
-    public function handle(User $survivor, string $otherEmail, User $performedBy): User
+    public function handle(User $survivor, string $otherEmail, User $performedBy, bool $acknowledgedClosedAccountHistoryStaysBehind): User
     {
+        if (! $acknowledgedClosedAccountHistoryStaysBehind) {
+            throw ValidationException::withMessages([
+                'acknowledgedClosedAccountHistoryStaysBehind' => [__("Confirm that the closed account's registrations, orders, admissions and consent records will not move before merging.")],
+            ]);
+        }
+
         $closed = DB::transaction(function () use ($survivor, $otherEmail, $performedBy): User {
             $other = User::query()->where('email', $otherEmail)->first();
 

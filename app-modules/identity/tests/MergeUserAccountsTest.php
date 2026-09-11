@@ -90,6 +90,7 @@ it('merges the closed account into the survivor: identities move, credentials ar
     $this->actingAs($admin)
         ->post("http://admin.mergeusers.test/admin/users/{$survivor->getKey()}/merge", [
             'email' => 'closed@mergeusers.test',
+            'acknowledgedClosedAccountHistoryStaysBehind' => true,
         ])
         ->assertRedirect();
 
@@ -132,6 +133,7 @@ it('refuses to merge an account into itself', function (): void {
     $this->actingAs($admin)
         ->post("http://admin.mergeusers.test/admin/users/{$survivor->getKey()}/merge", [
             'email' => 'solo@mergeusers.test',
+            'acknowledgedClosedAccountHistoryStaysBehind' => true,
         ])
         ->assertSessionHasErrors('email');
 
@@ -145,6 +147,7 @@ it('refuses to merge in an address that names no account', function (): void {
     $this->actingAs($admin)
         ->post("http://admin.mergeusers.test/admin/users/{$survivor->getKey()}/merge", [
             'email' => 'nobody-here@mergeusers.test',
+            'acknowledgedClosedAccountHistoryStaysBehind' => true,
         ])
         ->assertSessionHasErrors('email');
 });
@@ -158,6 +161,7 @@ it('refuses to merge in an account that was already merged elsewhere', function 
     $this->actingAs($admin)
         ->post("http://admin.mergeusers.test/admin/users/{$survivor->getKey()}/merge", [
             'email' => 'already-merged@mergeusers.test',
+            'acknowledgedClosedAccountHistoryStaysBehind' => true,
         ])
         ->assertSessionHasErrors('email');
 
@@ -172,8 +176,47 @@ it('refuses to merge into a survivor that is not active', function (): void {
     $this->actingAs($admin)
         ->post("http://admin.mergeusers.test/admin/users/{$survivor->getKey()}/merge", [
             'email' => 'other@mergeusers.test',
+            'acknowledgedClosedAccountHistoryStaysBehind' => true,
         ])
         ->assertSessionHasErrors('email');
+
+    expect($other->refresh()->state)->toBe(AccountState::Active);
+});
+
+/**
+ * #81 follow-up: closing an account is unrecoverable for whatever it holds
+ * that Identity does not move (registrations, orders, admissions, consent
+ * records — `Actions\MergeUserAccounts`'s "acknowledgement gate" docblock).
+ * An operator who has not ticked the console's checkbox — or a direct API
+ * caller who omits the field — must not be able to close an account by
+ * accident.
+ */
+it("refuses to merge without acknowledging that the closed account's history stays behind", function (): void {
+    $admin = mergeAdminOperator();
+    $survivor = User::factory()->create();
+    $other = User::factory()->create(['email' => 'unacknowledged@mergeusers.test']);
+
+    $this->actingAs($admin)
+        ->post("http://admin.mergeusers.test/admin/users/{$survivor->getKey()}/merge", [
+            'email' => 'unacknowledged@mergeusers.test',
+            'acknowledgedClosedAccountHistoryStaysBehind' => false,
+        ])
+        ->assertSessionHasErrors('acknowledgedClosedAccountHistoryStaysBehind');
+
+    expect($survivor->refresh()->state)->toBe(AccountState::Active)
+        ->and($other->refresh()->state)->toBe(AccountState::Active);
+});
+
+it('refuses to merge when the acknowledgement field is left off the request entirely', function (): void {
+    $admin = mergeAdminOperator();
+    $survivor = User::factory()->create();
+    $other = User::factory()->create(['email' => 'omitted@mergeusers.test']);
+
+    $this->actingAs($admin)
+        ->post("http://admin.mergeusers.test/admin/users/{$survivor->getKey()}/merge", [
+            'email' => 'omitted@mergeusers.test',
+        ])
+        ->assertSessionHasErrors('acknowledgedClosedAccountHistoryStaysBehind');
 
     expect($other->refresh()->state)->toBe(AccountState::Active);
 });
@@ -194,6 +237,7 @@ it('refuses to merge when both accounts have the same provider connected', funct
     $this->actingAs($admin)
         ->post("http://admin.mergeusers.test/admin/users/{$survivor->getKey()}/merge", [
             'email' => 'other-steam@mergeusers.test',
+            'acknowledgedClosedAccountHistoryStaysBehind' => true,
         ])
         ->assertSessionHasErrors('email');
 
