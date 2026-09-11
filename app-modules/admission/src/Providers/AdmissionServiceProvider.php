@@ -13,11 +13,13 @@ use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
 use Konventix\Admission\Listeners\Metrics\RecordAdmissionTokenMetrics;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
+use Konventix\Admission\Listeners\ProjectEventSummary;
 use Konventix\Admission\Listeners\ProjectPerson;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
 use Konventix\Admission\Listeners\RevokeAdmissionsOnRegistrationCancelled;
 use Konventix\Admission\Metrics\AdmissionMetrics;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Identity\Events\UserProfileUpdated;
@@ -149,6 +151,12 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         // one, and Admission may not read Identity's `User` model (ADR-0004).
         Event::listen(UserRegistered::class, ProjectPerson::class);
         Event::listen(UserProfileUpdated::class, ProjectPerson::class);
+
+        // Admission's read model of an event's name, slug, schedule and
+        // venue (design doc §13, 2026-09-11 amendment "Admission learns event
+        // facts"): the ticket's event band needs them, and Admission may not
+        // read Event's models (ADR-0004).
+        Event::listen(EventCreated::class, [ProjectEventSummary::class, 'handleCreated']);
 
         // Admission's own metric (ADR-0059, design doc §9): the one
         // rejection reason among CheckInRejected's nine that answers

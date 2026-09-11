@@ -175,5 +175,10 @@
       Identity's `UserRegistered`/`UserProfileUpdated`, backfilled by
       `identity:replay-profiles`; not brand-scoped (ADR-0016), mirrors
       `registration_registrants`.
+- [x] `admission_event_summaries`, `Models\EventSummary` and
+      `Listeners\ProjectEventSummary::handleCreated()` — Admission's own
+      read model of an event's name and schedule, projected from
+      `EventCreated`; sits beside `entrance_event_profiles` (ADR-0033),
+      which is not extended for this.
 
 <!-- Move completed items here with the PR that finished them. -->
