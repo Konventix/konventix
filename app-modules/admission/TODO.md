@@ -63,6 +63,13 @@
 
 ## Done
 
+- [x] Ticket PDF, part 3 — the footer band and the first two watermark
+      layers, through Platform's `DocumentWatermark` service: a
+      low-opacity brand mark and a diagonal forensic repeat seeded from
+      the admission id, with the QR kept scannable by an opaque box
+      painted over it (a later, second full-page absolute sibling) rather
+      than by computing where the repeat may not go (#72 §4.3). The
+      operator's presence on the page is textual only — it has no logo.
 - [x] Ticket PDF, part 2 — the holder band: the QR built from
       `IssueAdmissionToken::current()` (never `rotate()`, so a
       re-download stays the same code, pinned by

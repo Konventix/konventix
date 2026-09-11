@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Konventix\Admission\Documents\TicketDocumentRenderer;
 use Konventix\Admission\Models\Admission;
+use Konventix\Platform\Documents\DocumentWatermark;
+use Mockery\MockInterface;
 
 /**
  * Ticket rendering (§4 of docs/superpowers/specs/2026-09-11-tickets-and-calendar-design.md).
@@ -141,4 +143,43 @@ it('renders the same token across two requests', function (): void {
 
     expect($first)->not->toBeNull()
         ->and($second)->toBe($first);
+});
+
+it('hands the watermark service the forensic lines composed from the page, and the brand logo as its seed image', function (): void {
+    // §4.3: holder name, event name, venue, operator legal name, role and
+    // the admission id, in that order, composed here as plain strings —
+    // "the service knows nothing about admissions".
+    $brand = $this->withBrand(ticketOperatorBrand(['legal_name' => 'Sund-Xplosion e.V.']));
+    ticketSigningKey($brand);
+
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId, [
+        'name' => 'Kon Fest 2026',
+        'venue_label' => 'Halle 3, Musterstadt',
+    ]);
+    $holder = ticketPerson(['display_name' => 'Erika Musterfrau']);
+    $admission = ticketAdmissionFor($eventId, $holder, ['role' => 'exhibitor_crew']);
+
+    $this->mock(DocumentWatermark::class, function (MockInterface $mock) use ($admission): void {
+        $mock->shouldReceive('html')
+            ->once()
+            ->with(
+                [
+                    'Erika Musterfrau',
+                    'Kon Fest 2026',
+                    'Halle 3, Musterstadt',
+                    'Sund-Xplosion e.V.',
+                    'exhibitor crew',
+                    $admission->id,
+                ],
+                null, // BrandFactory leaves logo_media_id null by default.
+                $admission->id,
+            )
+            ->andReturn('');
+        $mock->shouldReceive('testSystemBanner')->andReturn('');
+    });
+
+    $bytes = app(TicketDocumentRenderer::class)->render(collect([$admission]));
+
+    expect(str_starts_with($bytes, '%PDF'))->toBeTrue();
 });

@@ -5,13 +5,22 @@
     Same constraints as the badge and the invoice: block layout, inline
     CSS, no flexbox or grid, and NO external assets — every image arrives
     as a `data:` URI because dompdf ships with remote fetching disabled.
-    Semantic theming (ADR-0008) does not apply here, matching the badge and
-    the invoice.
+    Semantic theming (ADR-0008) does not apply here, matching the badge
+    and the invoice.
 
     One `.ticket-page` per admission, `page-break-before` on every page
-    after the first so dompdf never adds a trailing blank page. Three
-    absolutely-positioned bands stack down the page: event (0–90mm),
-    holder (90–255mm), footer (255–297mm, added in Task 21).
+    after the first so dompdf never adds a trailing blank page.
+
+    Watermark stacking (§4.3): `.watermark-layer` (the brand mark and the
+    forensic repeat, from `DocumentWatermark::html()`) is painted first,
+    full-page. `.content` — the three bands — is a second, later,
+    full-page absolutely-positioned sibling, so dompdf paints it on top of
+    the watermark automatically: two elements at the same stacking level
+    (position:absolute, z-index:auto) paint in document order. The bands
+    themselves have no background, so the watermark shows through
+    everywhere except `.qr-box`, which is opaque — "a clear rectangle kept
+    around the QR... by stacking the QR in an opaque box above the
+    watermark layer, not by computing coordinates".
 --}}
 <!DOCTYPE html>
 <html lang="en">
@@ -26,6 +35,20 @@
             width: 210mm;
             height: 297mm;
             overflow: hidden;
+        }
+        .watermark-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
         }
         .event-band {
             position: absolute;
@@ -74,45 +97,67 @@
         }
         .valid-range { font-size: 10pt; color: #374151; margin-bottom: 2mm; }
         .door-code { font-size: 8pt; color: #9ca3af; letter-spacing: 0.06em; }
+
+        .footer-band {
+            position: absolute;
+            top: 255mm;
+            left: 0;
+            width: 100%;
+            height: 42mm;
+            padding: 10mm 16mm;
+            box-sizing: border-box;
+            border-top: 0.75pt solid #d1d5db;
+            font-size: 8pt;
+            color: #6b7280;
+        }
+        .footer-band .line { margin-bottom: 1.5mm; }
+        .footer-band .ticket-id { font-family: 'DejaVu Sans Mono', monospace; }
     </style>
 </head>
 <body>
 @foreach ($pages as $page)
     <div class="ticket-page" style="{{ $loop->first ? '' : 'page-break-before: always;' }}">
-        <div class="event-band">
-            @if ($page['brandLogo'] !== null)
-                <img class="logo" src="{{ $page['brandLogo'] }}" alt="">
-            @endif
+        <div class="watermark-layer">{!! $page['watermarkHtml'] !!}</div>
 
-            <div class="event-name">{{ $page['eventName'] ?? __('Event details unavailable') }}</div>
+        <div class="content">
+            <div class="event-band">
+                @if ($page['brandLogo'] !== null)
+                    <img class="logo" src="{{ $page['brandLogo'] }}" alt="">
+                @endif
 
-            @if ($page['eventWhen'] !== null)
-                <div class="event-when">{{ $page['eventWhen'] }}</div>
-            @endif
+                <div class="event-name">{{ $page['eventName'] ?? __('Event details unavailable') }}</div>
 
-            @if ($page['venueLabel'] !== null)
-                <div class="venue">{{ $page['venueLabel'] }}</div>
-            @endif
-        </div>
+                @if ($page['eventWhen'] !== null)
+                    <div class="event-when">{{ $page['eventWhen'] }}</div>
+                @endif
 
-        <div class="holder-band">
-            <div class="qr-box"><img src="{{ $page['qr'] }}" alt=""></div>
+                @if ($page['venueLabel'] !== null)
+                    <div class="venue">{{ $page['venueLabel'] }}</div>
+                @endif
+            </div>
 
-            {{-- ADR-0032: an admission may legitimately have no holder yet;
-                 the ticket prints an unclaimed placeholder the same way the
-                 badge does rather than treating it as broken data. --}}
-            @if ($page['holderName'] === 'Unassigned')
-                <div class="holder-name unassigned">{{ __('Unassigned') }}</div>
-            @else
-                <div class="holder-name">{{ $page['holderName'] }}</div>
-            @endif
+            <div class="holder-band">
+                <div class="qr-box"><img src="{{ $page['qr'] }}" alt=""></div>
 
-            <div class="role-badge">{{ $page['role'] }}</div>
-            <div class="valid-range">{{ $page['validRange'] }}</div>
+                @if ($page['holderName'] === 'Unassigned')
+                    <div class="holder-name unassigned">{{ __('Unassigned') }}</div>
+                @else
+                    <div class="holder-name">{{ $page['holderName'] }}</div>
+                @endif
 
-            {{-- Short reference for the door to type in when a scan fails
-                 (ADR-0033 accepts losing the name-based fallback offline). --}}
-            <div class="door-code">{{ __('Door code') }}: {{ $page['doorCode'] }}</div>
+                <div class="role-badge">{{ $page['role'] }}</div>
+                <div class="valid-range">{{ $page['validRange'] }}</div>
+                <div class="door-code">{{ __('Door code') }}: {{ $page['doorCode'] }}</div>
+            </div>
+
+            <div class="footer-band">
+                <div class="line">{{ __('Issued by') }} {{ $page['operatorLegalName'] }} &middot; {{ $page['brandName'] }}</div>
+                <div class="line ticket-id">{{ __('Ticket ID') }}: {{ $page['admissionId'] }}</div>
+                {{-- Out of scope (§12): the full purchase conditions are
+                     deliberately not printed — the buyer already consented
+                     at checkout, and reprinting them here would add pages. --}}
+                <div class="line">{{ __('Full terms: see the confirmation you received when you registered.') }}</div>
+            </div>
         </div>
     </div>
 @endforeach

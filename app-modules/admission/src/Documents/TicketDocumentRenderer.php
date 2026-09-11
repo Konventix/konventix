@@ -14,8 +14,10 @@ use Konventix\Admission\Actions\IssueAdmissionToken;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\EventSummary;
 use Konventix\Admission\Models\Person;
+use Konventix\Platform\Documents\DocumentWatermark;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
 
 /**
@@ -24,33 +26,32 @@ use Konventix\Platform\Operators\OperatorDateTimeFormat;
  * stored, every image inlined as a `data:` URI because dompdf ships with
  * remote fetching disabled.
  *
- * `$admissions` holds admissions of a single brand (§4.1), so the brand is
- * resolved once from the first admission rather than per page.
+ * `$admissions` holds admissions of a single brand (§4.1), so the brand
+ * (and its operator) are resolved once from the first admission rather
+ * than per page. Both are read through plain queries, never
+ * `$admission->brand`/`$brand->operator` (see Task 19's note on
+ * `Model::shouldBeStrict()`).
  *
- * Brand is read through a plain query, never `$admission->brand` (see
- * Task 19's note on `Model::shouldBeStrict()`).
+ * This task adds the footer band and the first two of the three watermark
+ * layers (§4.3): a low-opacity brand mark and a diagonal forensic repeat,
+ * both produced by one call into Platform's `DocumentWatermark::html()`.
+ * The forensic lines are composed here, as plain strings — the service
+ * itself "knows nothing about admissions". Task 22 adds the third layer,
+ * TESTSYSTEM.
  *
- * This task adds the holder band: the QR built from
- * `IssueAdmissionToken::current()` — never `rotate()`, which is a write
- * path only a claim or a reassignment may call — the holder's name or
- * "Unassigned", the role, the valid-days range and a door-typeable short
- * code. Task 21 adds the footer band and the first two watermark layers,
- * Task 22 the TESTSYSTEM layer.
+ * The operator has no logo field (only a name and a legal name), so its
+ * presence on the page is textual only — the footer band and the
+ * forensic repeat, never an image.
  */
 final class TicketDocumentRenderer
 {
-    /**
-     * The QR's nominal size (§4.2). Same technique as
-     * `BadgeDocumentRenderer::qrDataUri()` — an inline SVG needs no
-     * imagick or gd and dompdf renders it natively — at the ticket's own
-     * size rather than the badge's smaller one.
-     */
     private const int QR_SIZE_PX = 320;
 
     public function __construct(
         private readonly MediaLibrary $mediaLibrary,
         private readonly OperatorDateTimeFormat $dates,
         private readonly IssueAdmissionToken $issueAdmissionToken,
+        private readonly DocumentWatermark $watermark,
     ) {}
 
     /**
@@ -59,7 +60,8 @@ final class TicketDocumentRenderer
     public function render(Collection $admissions): string
     {
         $brandId = $admissions->first()?->brand_id;
-        $brand = $brandId === null ? null : Brand::query()->find($brandId);
+        $brand = $brandId === null ? null : Brand::query()->with('operator')->find($brandId);
+        $operator = $brand?->operator;
 
         $eventSummaries = $this->eventSummariesFor($admissions, $brandId);
         $people = $this->peopleFor($admissions);
@@ -67,6 +69,7 @@ final class TicketDocumentRenderer
         $pages = $admissions->map(fn (Admission $admission): array => $this->pageDataFor(
             $admission,
             $brand,
+            $operator,
             $eventSummaries->get($admission->event_id),
             $admission->holder_user_id === null ? null : $people->get($admission->holder_user_id),
         ))->all();
@@ -94,11 +97,6 @@ final class TicketDocumentRenderer
     }
 
     /**
-     * One query for every holder this run needs. `Person` is Admission's
-     * own projection of Identity's account events (§13 amendment "the
-     * holder-name fallback drops the billing recipient") — this module may
-     * not read Identity's `users` table (ADR-0004).
-     *
      * @param  Collection<int, Admission>  $admissions
      * @return Collection<string, Person>
      */
@@ -116,18 +114,41 @@ final class TicketDocumentRenderer
     /**
      * @return array<string, mixed>
      */
-    private function pageDataFor(Admission $admission, ?Brand $brand, ?EventSummary $event, ?Person $holder): array
+    private function pageDataFor(Admission $admission, ?Brand $brand, ?Operator $operator, ?EventSummary $event, ?Person $holder): array
     {
+        $holderName = $holder->display_name ?? 'Unassigned';
+        $role = str_replace('_', ' ', $admission->role);
+        $brandLogo = $brand?->logo_media_id === null ? null : $this->mediaLibrary->dataUriFor($brand->logo_media_id);
+
+        // §4.3: holder name, event name, venue, operator legal name, role
+        // and the admission id, in that order. Nulls (a missing summary,
+        // no venue, no operator) are dropped rather than printed as gaps.
+        $forensicLines = array_values(array_filter([
+            $holderName,
+            $event?->name,
+            $event?->venue_label,
+            $operator?->legal_name,
+            $role,
+            $admission->id,
+        ], fn (?string $line): bool => $line !== null && $line !== ''));
+
         return [
-            'brandLogo' => $brand?->logo_media_id === null ? null : $this->mediaLibrary->dataUriFor($brand->logo_media_id),
+            'brandLogo' => $brandLogo,
             'eventName' => $event?->name,
             'eventWhen' => $this->eventWhenFor($event),
             'venueLabel' => $event?->venue_label,
-            'holderName' => $holder->display_name ?? 'Unassigned',
-            'role' => str_replace('_', ' ', $admission->role),
+            'holderName' => $holderName,
+            'role' => $role,
             'validRange' => $this->validRangeFor($admission),
             'doorCode' => $this->doorCode($admission->id),
             'qr' => $this->qrDataUri($this->issueAdmissionToken->current($admission)),
+            'operatorLegalName' => $operator?->legal_name,
+            'brandName' => $brand?->name,
+            'admissionId' => $admission->id,
+            // The brand mark and the forensic repeat, deterministically
+            // seeded from the admission id so two renders of the same
+            // ticket look the same.
+            'watermarkHtml' => $this->watermark->html($forensicLines, $brandLogo, $admission->id),
         ];
     }
 
@@ -145,12 +166,6 @@ final class TicketDocumentRenderer
         );
     }
 
-    /**
-     * The days the token covers (§4.2). `valid_from`/`valid_until` null —
-     * the common case — means the admission carries no window narrower
-     * than the whole event, and the ticket says so in words rather than
-     * printing an empty range.
-     */
     private function validRangeFor(Admission $admission): string
     {
         if ($admission->valid_from === null || $admission->valid_until === null) {
@@ -160,14 +175,6 @@ final class TicketDocumentRenderer
         return $this->dates->date($admission->valid_from).' – '.$this->dates->date($admission->valid_until);
     }
 
-    /**
-     * A door-typeable fallback for when a scan fails and there is no other
-     * way to look the holder up (mirrors the badge's `.ref` line,
-     * ADR-0033) — not the full 26-character ULID printed there: its first
-     * 10 characters are a shared, low-entropy timestamp, so the last 8 —
-     * the random tail — carry the identifying bits, split into two groups
-     * of four to read aloud at a door.
-     */
     private function doorCode(string $admissionId): string
     {
         $tail = strtoupper(substr($admissionId, -8));
@@ -175,11 +182,6 @@ final class TicketDocumentRenderer
         return substr($tail, 0, 4).'-'.substr($tail, 4, 4);
     }
 
-    /**
-     * @see BadgeDocumentRenderer::qrDataUri() the same technique — SVG,
-     * not raster: no imagick or gd, crisp at any print size, dompdf
-     * renders it natively.
-     */
     private function qrDataUri(string $token): string
     {
         $writer = new Writer(new ImageRenderer(new RendererStyle(self::QR_SIZE_PX, 0), new SvgImageBackEnd));
