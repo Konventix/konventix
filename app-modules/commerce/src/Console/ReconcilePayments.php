@@ -25,6 +25,7 @@ use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeReversalCatchUp;
+use Konventix\Commerce\Settlement\Stripe\StripeSessionNotFoundException;
 use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Messaging\Actions\SendMessage;
@@ -123,6 +124,26 @@ final class ReconcilePayments extends Command
     private const string MOLLIE_REFUND_TRANSFERRED = 'refunded';
 
     /**
+     * The `failure_reason` a vanished Stripe session is recorded under
+     * (#286): the provider's own "No such checkout.session" answer, not a
+     * guess at why the attempt failed.
+     */
+    private const string VANISHED_SESSION_REASON = 'provider_session_not_found';
+
+    /**
+     * Order states #286 treats as terminal enough for a vanished Stripe
+     * session to be resolved automatically: the sale is definitely over,
+     * so the provider no longer having a session confirms what already
+     * happened rather than contradicting it. `PaymentReversed` is
+     * deliberately absent — that order is still owed money, and a session
+     * Stripe lost track of says nothing about whether the reversed payment
+     * itself is in order.
+     *
+     * @var list<OrderStatus>
+     */
+    private const array TERMINAL_ORDER_STATUSES = [OrderStatus::Cancelled, OrderStatus::Refunded];
+
+    /**
      * Which PaymentIntent statuses mean the attempt has given up — owned by
      * `StripeSettlementAdapter`, because the expiry sweeps ask the same
      * question of the same seam (#231, fix round 1) and the two answers must
@@ -144,6 +165,22 @@ final class ReconcilePayments extends Command
     private int $corrected = 0;
 
     private int $reversalsFound = 0;
+
+    /**
+     * A pending payment expired because its Stripe session vanished at the
+     * provider and its order had already reached a terminal state (#286) —
+     * counted apart from `$corrected`: this is the sweep resolving its own
+     * dead end, not a notification it caught up on.
+     */
+    private int $vanishedSessionsResolved = 0;
+
+    /**
+     * A pending payment whose Stripe session vanished while its order is
+     * still open (#286) — left untouched and counted apart from
+     * `$corrected`, because nothing here decided what happened to the
+     * money.
+     */
+    private int $vanishedSessionsNeedingReview = 0;
 
     /**
      * Payments this run just settled. A payment corrected in the pending
@@ -221,10 +258,13 @@ final class ReconcilePayments extends Command
     private function report(): void
     {
         $this->components->info(sprintf(
-            'Reconciliation complete: %d payment(s) checked, %d corrected, %d reversal(s) found.',
+            'Reconciliation complete: %d payment(s) checked, %d corrected, %d reversal(s) found, '
+            .'%d resolved (session vanished at provider), %d flagged for review (session vanished at provider, order still open).',
             $this->checked,
             $this->corrected,
             $this->reversalsFound,
+            $this->vanishedSessionsResolved,
+            $this->vanishedSessionsNeedingReview,
         ));
     }
 
@@ -317,9 +357,18 @@ final class ReconcilePayments extends Command
             return;
         }
 
-        // Read back on this instance's own Stripe account (ADR-0058): the
-        // session id is the whole address, no account id travels with it.
-        $session = app(StripeApi::class)->fetchCheckoutSession($payment->external_id);
+        try {
+            // Read back on this instance's own Stripe account (ADR-0058):
+            // the session id is the whole address, no account id travels
+            // with it.
+            $session = app(StripeApi::class)->fetchCheckoutSession($payment->external_id);
+        } catch (StripeSessionNotFoundException) {
+            // Stripe's own answer, not a failure to ask (#286): the
+            // session is gone and nothing was paid through it.
+            $this->resolveVanishedStripeSession($payment, $recordFailure);
+
+            return;
+        }
 
         if ($session['payment_intent'] !== null) {
             $payment->forceFill(['provider_transaction_id' => $session['payment_intent']])->save();
@@ -361,6 +410,100 @@ final class ReconcilePayments extends Command
                 (string) $session['payment_intent_status'],
             );
         }
+    }
+
+    /**
+     * "No such checkout.session" (#286): the session is gone and nothing
+     * was paid through it. Where the order already reached a terminal
+     * state — cancelled or refunded — that is exactly what a lost webhook
+     * would have reported, so the payment is expired the same way an
+     * abandoned checkout is. Where the order is still open, a vanished
+     * session is not this sweep's to decide: money may genuinely be in
+     * doubt, and guessing here would be worse than leaving it for a human.
+     */
+    private function resolveVanishedStripeSession(Payment $payment, RecordPaymentFailure $recordFailure): void
+    {
+        $order = Order::withoutBrandScope()->find($payment->order_id);
+
+        if ($order === null || ! in_array($order->status, self::TERMINAL_ORDER_STATUSES, true)) {
+            $this->flagVanishedSessionForReview($payment, $order);
+
+            return;
+        }
+
+        // Same re-read-then-compare shape as applyTransition(): a webhook
+        // cannot settle a session Stripe says does not exist, but the
+        // consistency is cheap and keeps this path honest the same way.
+        $payment->refresh();
+
+        $before = $payment->status;
+
+        $recordFailure->handle($payment, self::VANISHED_SESSION_REASON, expired: true);
+
+        $payment->refresh();
+
+        if ($payment->status === $before) {
+            return;
+        }
+
+        $this->vanishedSessionResolved($payment);
+    }
+
+    /**
+     * A vanished session resolved on its own, without a human — counted
+     * and reported apart from `correction()` (#286): this is not a
+     * notification the sweep caught up on, it is the sweep closing out a
+     * payment the provider has no record of at all.
+     */
+    private function vanishedSessionResolved(Payment $payment): void
+    {
+        $this->vanishedSessionsResolved++;
+
+        Log::warning('Payment expired: the provider no longer holds its checkout session and the order was already terminal (#286).', [
+            'payment_id' => $payment->id,
+            'order_id' => $payment->order_id,
+            'brand_id' => $payment->brand_id,
+            'external_id' => $payment->external_id,
+        ]);
+
+        $this->notifyOperators(
+            $payment,
+            sprintf('Zahlung durch Abgleich aufgelöst: Bestellung %s', $this->orderNumberShort($payment)),
+            'Der Zahlungsanbieter kennt die Checkout-Session dieser Zahlung nicht mehr; die zugehörige Bestellung war '
+            .'bereits storniert oder erstattet. Der regelmäßige Abgleich hat die Zahlung auf "expired" gesetzt.',
+        );
+    }
+
+    /**
+     * A vanished session against an order that is **not** terminal (#286):
+     * nothing here may decide whether the money is real, so nothing
+     * changes. Logged and printed rather than mailed to an operator on
+     * every run — the whole complaint this fixes is an alert that fires
+     * forever for a case nothing can resolve automatically, and a
+     * per-hour operations notice for a case that stays open by design
+     * would only move that flood, not stop it. An operator investigating
+     * finds this in the command's own output and in the log, named by
+     * order.
+     */
+    private function flagVanishedSessionForReview(Payment $payment, ?Order $order): void
+    {
+        $this->vanishedSessionsNeedingReview++;
+
+        $this->components->warn(sprintf(
+            'Payment [%s] on order %s: the provider no longer holds its checkout session, but the order is still %s — '
+            .'this needs a human, the money may genuinely be in doubt (#286).',
+            $payment->id,
+            $this->orderNumberShort($payment),
+            $order?->status->value ?? 'missing',
+        ));
+
+        Log::warning('Payment session vanished at the provider while its order is not terminal; left for manual review (#286).', [
+            'payment_id' => $payment->id,
+            'order_id' => $payment->order_id,
+            'brand_id' => $payment->brand_id,
+            'external_id' => $payment->external_id,
+            'order_status' => $order?->status->value,
+        ]);
     }
 
     /**

@@ -5,14 +5,21 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Settlement\Stripe;
 
 use RuntimeException;
+use Stripe\Exception\InvalidRequestException;
 use Stripe\PaymentIntent;
 use Stripe\StripeClient;
 
 /**
  * The real `StripeApi`: a thin pass-through to the Stripe SDK, built on a
  * `StripeClient` instance (never the deprecated global key). Deliberately
- * free of logic; everything decidable lives in `StripeSettlementAdapter`,
- * which is tested against a fake of the interface instead of this class.
+ * close to free of logic; everything decidable about *what a provider
+ * answer means* lives in `StripeSettlementAdapter` or its callers, tested
+ * against a fake of the interface instead of this class. The one exception
+ * is exception translation itself (#286): only this file may `use
+ * Stripe\Exception\…`, so a vendor failure that is actually a definite
+ * answer — "this session does not exist" — is turned into a plain
+ * exception here, the same way a session without a hosted URL already
+ * became a `RuntimeException` below rather than an SDK oddity leaking out.
  *
  * The client carries this instance's own secret key
  * (`CommerceServiceProvider`'s binding, resolved by `StripeCredentials`),
@@ -107,14 +114,30 @@ final class SdkStripeApi implements StripeApi
      * "still processing" from "the attempt was refused" — the fact
      * `checkout.session.async_payment_failed` would have carried.
      *
+     * A session Stripe no longer holds — "No such checkout.session", the
+     * `resource_missing` error code — is a definite answer, not a transport
+     * failure, so it is translated into `StripeSessionNotFoundException`
+     * rather than left as the SDK's `InvalidRequestException` (#286). Any
+     * other invalid-request error is a real fault and travels on unchanged.
+     *
      * @return array{status: string, payment_status: string, payment_intent: ?string, payment_intent_status: ?string}
+     *
+     * @throws StripeSessionNotFoundException when Stripe no longer holds the session.
      */
     public function fetchCheckoutSession(string $sessionId): array
     {
-        $session = $this->client->checkout->sessions->retrieve(
-            $sessionId,
-            ['expand' => ['payment_intent']],
-        );
+        try {
+            $session = $this->client->checkout->sessions->retrieve(
+                $sessionId,
+                ['expand' => ['payment_intent']],
+            );
+        } catch (InvalidRequestException $exception) {
+            if ($exception->getStripeCode() !== 'resource_missing') {
+                throw $exception;
+            }
+
+            throw StripeSessionNotFoundException::forSession($sessionId, $exception);
+        }
 
         $intent = $session->payment_intent;
 

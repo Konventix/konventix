@@ -38,6 +38,7 @@ final class OperatorSettingsData extends Data
         public readonly ?string $vatId,
         public readonly ?string $taxNumber,
         public readonly bool $smallBusinessScheme,
+        public readonly bool $signupsOpen,
         public readonly DateFormat $dateFormat,
         public readonly TimeFormat $timeFormat,
     ) {}
@@ -55,6 +56,7 @@ final class OperatorSettingsData extends Data
             vatId: $operator->vat_id,
             taxNumber: $operator->tax_number,
             smallBusinessScheme: $operator->small_business_scheme,
+            signupsOpen: $operator->signups_open,
             dateFormat: DateFormat::tryFrom($operator->date_format) ?? DateFormat::DayMonthYear,
             timeFormat: TimeFormat::tryFrom($operator->time_format) ?? TimeFormat::TwentyFourHour,
         );
@@ -82,6 +84,10 @@ final class OperatorSettingsData extends Data
             'vatId' => ['nullable', 'string', 'max:32'],
             'taxNumber' => ['nullable', 'string', 'max:32'],
             'smallBusinessScheme' => ['boolean'],
+            // Whether strangers may create accounts (hotfix 2026-09-13).
+            // Operator level: an account is the person's, and a signup on
+            // one brand host is an account on every brand of the operator.
+            'signupsOpen' => ['boolean'],
             // How this instance writes a date and a time (#242), operator
             // level because the invoice, the mail and the console table
             // behind one legal sender may not disagree about it.

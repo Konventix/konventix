@@ -177,6 +177,20 @@
 
 - [x] Metrics for orders, payments, carts, stock and the waiting room in
       `src/Metrics` and `src/Listeners/Metrics` (ADR-0059, #173).
+
+      `payments_pending` reports every brand on every scrape, zero included
+      (hotfix 2026-09-13). The registry only sets the rows a gauge closure
+      returns and the Redis storage keeps a series until it is overwritten,
+      so a row emitted only while an order was pending outlived the order:
+      dev carried `payments_pending{brand="sxlan"} 1` for two days against
+      an empty table, and KonventixWebhookSilence with it, until the key
+      was deleted by hand. `CommerceMetricsTest` scrapes twice through one
+      registry to prove the row returns to `0`. Still open: a brand that is
+      deleted, or has the waiting room switched off, leaves its last row in
+      Redis indefinitely (nothing wipes the registry on deploy) — no gauge
+      here can emit a label set it no longer knows about, so that needs a
+      per-gauge wipe of stale label sets before the render, which promphp's
+      storage has no API for.
 - [x] Slice 24 (ADR-0058, #215) — Stripe Connect removed: one Stripe account
       per instance, its secret and webhook signing secret resolved
       row-before-environment by `Settlement\Stripe\StripeCredentials`
@@ -243,6 +257,21 @@
       point 9, #6). The operator can act on it too: cancel a reversed order
       by hand before the sweep would, and book a bank transfer or a door
       payment on it.
+
+      A vanished Stripe session is a definite answer, not a failure to ask
+      (#286): `SdkStripeApi::fetchCheckoutSession()` translates Stripe's own
+      "No such checkout.session" (`resource_missing`) into
+      `StripeSessionNotFoundException` rather than letting the vendor's
+      `InvalidRequestException` be caught by name in the console.
+      `ReconcilePayments` expires the payment (`failure_reason` =
+      `provider_session_not_found`) when its order already reached a
+      terminal state (cancelled, refunded); when the order is still open it
+      changes nothing and instead names the order in a warning — logged and
+      printed, not a per-run operator mail, because that case stays open by
+      design until a human resolves it. Both counted separately from
+      "corrected" in the summary line. No console action exists yet to void
+      or expire a stuck payment by hand for the open-order case; that gap is
+      left to a follow-up issue rather than folded in here.
 
 - [x] Non-production invoice/credit-note numbers carry an environment
       marker (#74, ADR-0053): `DrawInvoiceNumber` and `DrawCreditNoteNumber`
