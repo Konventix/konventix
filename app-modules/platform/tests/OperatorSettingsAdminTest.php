@@ -97,7 +97,7 @@ it('saves the operator closing signups', function (): void {
     // through `OperatorSettings::signupsOpen()`.
     [$operator, $admin] = operatorWithSettingsAdmin();
 
-    expect($operator->signups_open)->toBeTrue();
+    expect($operator->refresh()->signups_open)->toBeTrue();
 
     $this->actingAs($admin)
         ->put('http://admin.operatorsettings.test/admin/settings/operator', [
