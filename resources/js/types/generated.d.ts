@@ -896,6 +896,7 @@ declare namespace Konventix {
                 readonly vatId: string | null;
                 readonly taxNumber: string | null;
                 readonly smallBusinessScheme: boolean;
+                readonly signupsOpen: boolean;
                 readonly dateFormat: Konventix.Platform.Enums.DateFormat;
                 readonly timeFormat: Konventix.Platform.Enums.TimeFormat;
             };

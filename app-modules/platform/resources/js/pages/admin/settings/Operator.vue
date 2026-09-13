@@ -25,6 +25,12 @@ import { update } from '@/routes/admin/settings/operator';
  */
 const props = defineProps<{
     operator: Konventix.Platform.Data.OperatorSettingsData;
+    /**
+     * The environment has closed signups for the whole instance
+     * (`SIGNUPS_ENABLED=false`). The switch below still saves, but cannot
+     * re-open them — so the page says so beside it.
+     */
+    signupsForcedClosed: boolean;
 }>();
 
 // Nullable columns arrive as null and bind to text inputs as empty strings —
@@ -42,6 +48,7 @@ const form = useForm({
     vatId: props.operator.vatId ?? '',
     taxNumber: props.operator.taxNumber ?? '',
     smallBusinessScheme: props.operator.smallBusinessScheme,
+    signupsOpen: props.operator.signupsOpen,
     dateFormat: props.operator.dateFormat,
     timeFormat: props.operator.timeFormat,
 });
@@ -191,6 +198,47 @@ function submit(): void {
                         <InputError
                             :message="form.errors.smallBusinessScheme"
                         />
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Accounts</CardTitle>
+                </CardHeader>
+                <CardContent class="grid gap-4">
+                    <div class="flex items-start gap-3">
+                        <Checkbox id="signupsOpen" v-model="form.signupsOpen" />
+                        <div class="grid gap-1">
+                            <Label for="signupsOpen">
+                                Let visitors create accounts
+                            </Label>
+                            <p class="text-xs text-text-muted">
+                                Off, the sign-up form and the Steam sign-up step
+                                tell a stranger that sign-up is closed. People
+                                who already have an account log in as before. An
+                                account is the person's, so this applies on
+                                every brand host at once.
+                            </p>
+                            <!--
+                                Always rendered so a screen reader has a live
+                                region to observe when the environment's cap
+                                is what decides (ADR-0055); only its text
+                                comes and goes.
+                            -->
+                            <p
+                                class="text-xs text-warning"
+                                role="status"
+                                data-test="signups-forced-closed"
+                            >
+                                <template v-if="signupsForcedClosed">
+                                    Sign-up is closed by this instance's
+                                    configuration (SIGNUPS_ENABLED). The switch
+                                    is saved, but cannot open it.
+                                </template>
+                            </p>
+                        </div>
+                        <InputError :message="form.errors.signupsOpen" />
                     </div>
                 </CardContent>
             </Card>

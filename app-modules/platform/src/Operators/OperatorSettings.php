@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Operators;
 
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Data\OperatorSellerData;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
 use RuntimeException;
 
 /**
@@ -84,5 +86,46 @@ class OperatorSettings
         $scheme = parse_url((string) config('app.url'), PHP_URL_SCHEME) ?? 'https';
 
         return "{$scheme}://{$adminHost}";
+    }
+
+    /**
+     * Whether a stranger may create an account right now — Identity's
+     * signup gate is the caller (hotfix 2026-09-13).
+     *
+     * Two switches, and both must be on: the instance cap
+     * `platform.signups.enabled` (`SIGNUPS_ENABLED`, config/platform.php)
+     * and the operator's own `signups_open`, set on the console's Operator
+     * settings page. The environment can therefore close signups on an
+     * instance that should never take a stranger's account, and the console
+     * cannot re-open them; the console can close them on an instance the
+     * environment left open.
+     *
+     * The operator is the one the request already resolved: the brand's on
+     * a brand host, the console's on the admin host. Neither is resolved on
+     * a host that matched nothing, and an instance runs as one operator
+     * (ADR-0001), so the first row answers there — and an instance with no
+     * operator row at all has nobody to sign up to.
+     */
+    public function signupsOpen(): bool
+    {
+        if (! config('platform.signups.enabled')) {
+            return false;
+        }
+
+        $operator = app(BrandContext::class)->current()?->operator
+            ?? app(OperatorContext::class)->current()
+            ?? Operator::query()->first();
+
+        return $operator?->signups_open ?? false;
+    }
+
+    /**
+     * Whether the environment alone has closed signups — the settings page
+     * says so next to the switch, so an operator who flips it on and sees
+     * nothing change is told why rather than left to wonder.
+     */
+    public function signupsForcedClosed(): bool
+    {
+        return ! config('platform.signups.enabled');
     }
 }

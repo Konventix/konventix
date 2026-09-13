@@ -26,6 +26,7 @@ use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Gdpr\IdentitySubjectResolver;
 use Konventix\Identity\Http\Middleware\EnsureCredentialsAreStrings;
+use Konventix\Identity\Http\Middleware\EnsureSignupsOpen;
 use Konventix\Identity\Http\Responses\ConsentAwareLoginResponse;
 use Konventix\Identity\Http\Responses\ConsentAwareTwoFactorLoginResponse;
 use Konventix\Identity\Listeners\RecordBrandMembership;
@@ -44,6 +45,7 @@ use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\OperatorPresence;
+use Konventix\Platform\Operators\OperatorSettings;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Laravel\Fortify\Features;
@@ -81,6 +83,11 @@ class IdentityServiceProvider extends ModuleServiceProvider
         $this->configureFortifyViews();
         $this->configureRateLimiting();
         $this->throttleUnhookedFortifyRoutes();
+
+        // The signup gate as a named alias for the module's own social
+        // completion routes (routes/web/identity.php); Fortify's register
+        // routes get the class wrapped on above.
+        Route::aliasMiddleware('signups-open', EnsureSignupsOpen::class);
 
         $this->commands([ReplayProfilesCommand::class]);
     }
@@ -221,6 +228,10 @@ class IdentityServiceProvider extends ModuleServiceProvider
     {
         Fortify::loginView(fn (Request $request) => Inertia::render('auth/Login', [
             'canResetPassword' => Features::enabled(Features::resetPasswords()),
+            // The "Sign up" link goes with the gate that would refuse it
+            // (EnsureSignupsOpen): a link to a page that bounces back here
+            // with an error is worse than no link.
+            'canRegister' => Features::enabled(Features::registration()) && app(OperatorSettings::class)->signupsOpen(),
             'status' => $request->session()->get('status'),
             ...app(OperatorPresence::class)->props(),
         ]));
@@ -393,9 +404,15 @@ class IdentityServiceProvider extends ModuleServiceProvider
     private function throttleUnhookedFortifyRoutes(): void
     {
         $credentials = EnsureCredentialsAreStrings::class;
+        $signupsOpen = EnsureSignupsOpen::class;
 
         $additions = [
-            'register.store' => ['throttle:registration', $credentials],
+            // The signup gate on both halves of the form (hotfix
+            // 2026-09-13): the page, so a closed instance never shows a
+            // form it would refuse, and the submission, so the page being
+            // hidden is not the only thing in the way.
+            'register' => [$signupsOpen],
+            'register.store' => [$signupsOpen, 'throttle:registration', $credentials],
             'password.email' => ['throttle:password-reset', $credentials],
             'password.update' => ['throttle:password-reset', $credentials],
             // Review finding 5: Fortify offers no limiter hook for this one
