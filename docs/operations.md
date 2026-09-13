@@ -56,6 +56,18 @@ KonventixPodsRestarting are platform-side, sourced from CNPG's and kubelet's
 own exporters rather than anything this application emits, so they are
 observed when they occur in the cluster rather than provoked.
 
+## A console page answers 403 to the operator admin
+
+Capabilities are per scope: on the admin host only roles of the *operator*
+scope count, and the one that exists is "Operator Admin". Since 0.6.3
+`permissions:sync` (the migrate hook runs it on every deploy) re-grants that
+role every capability the release declares, unless the operator has narrowed
+it (`roles.customized_at`). On an instance where a page still 403s, run
+`php artisan permissions:sync` once and reload; a role the operator narrowed
+on purpose is reported as `skipped` and has to be widened by hand. Roles
+granted on a *brand* do not apply on the admin host — that is ADR-0029, not
+a bug.
+
 ## Closing sign-up
 
 Operator settings in the console, "Let visitors create accounts": off, the
