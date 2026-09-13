@@ -20,6 +20,20 @@ use Spatie\Prometheus\Facades\Prometheus;
  * rendered, outside any brand context, so queries drop the brand scope and
  * group by brand themselves.
  *
+ * **Every label set a gauge can carry is written on every scrape.** The
+ * registry only ever *sets* the rows a closure returns — the Redis storage
+ * (`config/prometheus.php`) keeps a series until something overwrites it,
+ * and the in-memory one behaves the same within a process. A closure that
+ * returns rows only for brands with something to report therefore leaves
+ * the last non-zero value standing after the condition has passed: on dev,
+ * `payments_pending{brand="sxlan"} 1` outlived the pending order by two
+ * days and held KonventixWebhookSilence lit against an empty table
+ * (2026-09-13). So `payments_pending` reports every brand, `0` included,
+ * and the waiting-room gauges report every brand the feature is on for.
+ * A brand that is deleted or has the feature switched off still leaves
+ * its last row behind; that is the one case this does not cover, and it
+ * is noted in TODO.md.
+ *
  * The webhook timestamp is the one gauge with memory: the middleware writes
  * the last arrival per provider into the cache, and a provider that has not
  * been heard from since the deploy reports the moment of the first scrape
@@ -47,14 +61,19 @@ final class CommerceGauges implements Collector
             ->label('brand')
             ->helpText('Orders still awaiting payment.')
             ->value(function (): array {
-                $slugs = Brand::query()->pluck('slug', 'id');
-
-                return Order::withoutBrandScope()
+                $pending = Order::withoutBrandScope()
                     ->where('status', OrderStatus::Pending)
                     ->selectRaw('brand_id, count(*) as pending')
                     ->groupBy('brand_id')
-                    ->get()
-                    ->map(fn (Order $row): array => [(int) $row->getAttribute('pending'), [(string) ($slugs[$row->brand_id] ?? 'unknown')]])
+                    ->pluck('pending', 'brand_id');
+
+                // One row per brand, zero included: a row that is only
+                // emitted while something is pending is never reset once
+                // nothing is (class docblock).
+                return Brand::query()
+                    ->pluck('slug', 'id')
+                    ->map(fn (string $slug, string $brandId): array => [(int) ($pending[$brandId] ?? 0), [$slug]])
+                    ->values()
                     ->all();
             });
 
@@ -74,6 +93,10 @@ final class CommerceGauges implements Collector
                 function (WaitingRoomStore $store, Brand $brand): ?float {
                     $timestamp = $store->lastAdmissionAt($brand->getKey())?->getTimestamp();
 
+                    // Null until the first tick: a zero here would read as
+                    // 1970 and trip KonventixWaitingRoomStuck on every
+                    // brand that merely switched the feature on. The row
+                    // stays absent, which is safe — absence cannot go stale.
                     return $timestamp === null ? null : (float) $timestamp;
                 },
             ));

@@ -95,6 +95,36 @@ it('reports pending payments per brand at scrape time', function (): void {
     expect(commerceMetricsScrape())->toContain('konventix_payments_pending{brand="'.$brand->slug.'"} 2');
 });
 
+it('reports zero pending payments for a brand once none are pending', function (): void {
+    // The registry only ever sets the rows the closure hands it, and the
+    // storage keeps a series until it is overwritten. A row emitted only
+    // while something is pending outlives the condition: on dev a cancelled
+    // test checkout left `payments_pending{brand="sxlan"} 1` standing for
+    // two days against an empty table, and KonventixWebhookSilence with it
+    // (2026-09-13). Two scrapes through one registry, as two scrapes of one
+    // running instance share one Redis.
+    $brand = $this->withBrand();
+    $order = Order::factory()->create(['brand_id' => $brand->id, 'status' => OrderStatus::Pending]);
+
+    expect(commerceMetricsScrape())->toContain('konventix_payments_pending{brand="'.$brand->slug.'"} 1');
+
+    $order->update(['status' => OrderStatus::Cancelled]);
+
+    expect(commerceMetricsScrape())->toContain('konventix_payments_pending{brand="'.$brand->slug.'"} 0');
+});
+
+it('reports every brand on the pending payments gauge, not only those with a pending order', function (): void {
+    $quiet = $this->withBrand();
+    $busy = Brand::factory()->create();
+    Order::factory()->create(['brand_id' => $busy->id, 'status' => OrderStatus::Pending]);
+
+    $scrape = commerceMetricsScrape();
+
+    expect($scrape)
+        ->toContain('konventix_payments_pending{brand="'.$quiet->slug.'"} 0')
+        ->toContain('konventix_payments_pending{brand="'.$busy->slug.'"} 1');
+});
+
 it('reports waiting room depth, admissions and the last admission per brand', function (): void {
     $brand = $this->withBrand();
     Feature::for($brand)->activate('commerce:waiting-room');

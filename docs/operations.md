@@ -56,6 +56,16 @@ KonventixPodsRestarting are platform-side, sourced from CNPG's and kubelet's
 own exporters rather than anything this application emits, so they are
 observed when they occur in the cluster rather than provoked.
 
+## Closing sign-up
+
+Operator settings in the console, "Let visitors create accounts": off, the
+sign-up form and the Steam sign-up step send a stranger to the login page
+with a note that sign-up is closed, and the login page drops its "Sign up"
+link. Existing accounts log in as before. `SIGNUPS_ENABLED=false` in the environment (the chart's
+`app.signups.enabled`) closes sign-up for the whole instance whatever the
+switch says — the console then shows why beside the switch — which is what a
+test system on a public host wants.
+
 ## Opening seating on an event
 
 Order matters, because a registration only grows a seat claim at the moment
@@ -202,6 +212,17 @@ errors, the ingress log for `api/commerce/webhooks/<provider>` with a
 non-2xx status, and that the webhook URL and signing secret in the
 settlement console are current. `commerce:reconcile-payments --pending`
 settles what the provider knows about meanwhile.
+
+If the Orders list shows nothing pending for the brand the metric names,
+compare `konventix_payments_pending` on `/metrics` with
+`select brand_id, count(*) from orders where status = 'pending' group by 1`.
+Before 0.6.2 the gauge only wrote rows for brands with a pending order, and a
+row once written stayed in Redis at its last value after the order was
+cancelled — dev carried `payments_pending{brand="sxlan"} 1` for two days
+against an empty table (2026-09-13). Since 0.6.2 every brand is written on
+every scrape, `0` included. A stale row from an older release goes away with
+`valkey-cli --scan --pattern 'konventix:metrics:*payments_pending*' | xargs
+valkey-cli del` on the app's Redis; the next scrape rewrites it.
 
 ### KonventixPaymentFailureRate
 
