@@ -10,9 +10,9 @@ use Konventix\Compliance\Database\Seeders\OperatorLegalTextsSeeder;
 use Konventix\Identity\Models\Session;
 use Konventix\Identity\Models\User;
 use Konventix\Identity\Profile\UsernameGenerator;
+use Konventix\Platform\Actions\MaterializeOperatorAdminRole;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
-use Konventix\Platform\Models\Permission;
 use Konventix\Platform\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -124,21 +124,19 @@ class InstallCommand extends Command
             $this->info("Admin host: {$adminHost}");
         }
 
+        // Created with every capability, and re-granted on every later
+        // permissions:sync until the operator narrows it (ADR-0045 rule,
+        // applied to the operator scope by MaterializeOperatorAdminRole).
+        app(MaterializeOperatorAdminRole::class)->handle($operator);
+
         $registrar = app(PermissionRegistrar::class);
         $registrar->setPermissionsTeamId($operator->getKey());
 
         /** @var Role $role */
-        $role = Role::query()->firstOrCreate([
-            'name' => 'Operator Admin',
-            'guard_name' => 'web',
-            'brand_id' => $operator->getKey(),
-        ]);
-
-        // Only on the release that creates the role. Re-syncing on every run
-        // would silently undo an operator's own narrowing of it (ADR-0045).
-        if ($role->wasRecentlyCreated) {
-            $role->syncPermissions(Permission::query()->where('guard_name', 'web')->get());
-        }
+        $role = Role::query()
+            ->where('brand_id', $operator->getKey())
+            ->where('default_key', MaterializeOperatorAdminRole::DEFAULT_KEY)
+            ->firstOrFail();
 
         $admin = User::query()->firstWhere('email', $adminEmail);
 
