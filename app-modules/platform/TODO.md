@@ -98,6 +98,16 @@ depends on brand resolution and gating working.
 
 ## Done
 
+- [x] `operators.signups_open` and `OperatorSettings::signupsOpen()` /
+      `signupsForcedClosed()` (hotfix 2026-09-13): the operator's own switch
+      for account creation on the Operator settings page, capped by
+      `platform.signups.enabled` (`SIGNUPS_ENABLED`). Operator level, not
+      brand level — an account is the person's (ADR-0016), so a signup on
+      one brand host is an account on every brand. Identity enforces it;
+      this module only owns the setting and its page. The page names the
+      environment's cap beside the switch so a switch that cannot open
+      anything is explained.
+
 - [x] ADR-0048 (mail-and-receipts tranche): three new cross-module read
       doorways for branded mail, none of them an Eloquent import.
       `Permissions\PermissionHolders::userIdsWithPermission(brandId,

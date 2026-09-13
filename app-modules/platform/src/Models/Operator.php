@@ -38,6 +38,7 @@ use Konventix\Platform\Database\Factories\OperatorFactory;
  * @property string|null $vat_id
  * @property string|null $tax_number
  * @property bool $small_business_scheme
+ * @property bool $signups_open
  * @property string $date_format
  * @property string $time_format
  * @property Carbon|null $created_at
@@ -59,6 +60,7 @@ class Operator extends Model
         'vat_id',
         'tax_number',
         'small_business_scheme',
+        'signups_open',
         'date_format',
         'time_format',
     ];
@@ -70,6 +72,7 @@ class Operator extends Model
     {
         return [
             'small_business_scheme' => 'boolean',
+            'signups_open' => 'boolean',
         ];
     }
 

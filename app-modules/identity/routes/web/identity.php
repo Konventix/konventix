@@ -29,8 +29,9 @@ Route::get('auth/{provider}/callback', [SocialAuthController::class, 'callback']
 // collect what it could not tell us. Guest-only — a signed-in person reaching
 // the callback links instead of signing up. `require-consent` applies the
 // policy gate that Registration's public form uses, so consent is not
-// something a social signup routes around.
-Route::middleware(['guest', 'require-consent'])->group(function (): void {
+// something a social signup routes around; `signups-open` is the gate the
+// e-mail/password form carries, so closed signups are not either.
+Route::middleware(['guest', 'signups-open', 'require-consent'])->group(function (): void {
     Route::get('auth/{provider}/complete', [SocialAuthController::class, 'complete'])
         ->name('social.complete');
 
