@@ -112,11 +112,11 @@ class OperatorSettings
             return false;
         }
 
-        $operator = app(BrandContext::class)->current()?->operator
+        $operator = app(BrandContext::class)->current()->operator
             ?? app(OperatorContext::class)->current()
             ?? Operator::query()->first();
 
-        return $operator?->signups_open ?? false;
+        return $operator->signups_open ?? false;
     }
 
     /**
