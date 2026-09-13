@@ -7,7 +7,9 @@ namespace Konventix\Platform\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 use Konventix\Platform\Actions\MaterializeDefaultRoles;
+use Konventix\Platform\Actions\MaterializeOperatorAdminRole;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission;
 use Konventix\Platform\Permissions\PermissionCatalog;
 use Spatie\Permission\PermissionRegistrar;
@@ -29,7 +31,7 @@ class SyncPermissionsCommand extends Command
 
     protected $description = 'Upsert permission rows from every module\'s Permission enum, report orphans, and materialize default roles per brand';
 
-    public function handle(PermissionCatalog $catalog, PermissionRegistrar $registrar, MaterializeDefaultRoles $materialize): int
+    public function handle(PermissionCatalog $catalog, PermissionRegistrar $registrar, MaterializeDefaultRoles $materialize, MaterializeOperatorAdminRole $materializeOperatorAdmin): int
     {
         $guard = (string) $this->option('guard');
 
@@ -72,6 +74,14 @@ class SyncPermissionsCommand extends Command
 
         if ($this->option('no-roles')) {
             return self::SUCCESS;
+        }
+
+        // The operator scope's own seeded role, first (hotfix 2026-09-13):
+        // a capability a release adds has to reach the admin host too, or
+        // the console page behind it is a 403 for the operator who
+        // installed the instance. Same untouched-only rule as the brands.
+        foreach (Operator::query()->orderBy('name')->get() as $operator) {
+            $this->line(sprintf('Operator Admin for [%s]: %s', $operator->name, $materializeOperatorAdmin->handle($operator)));
         }
 
         // ADR-0045: defaults are materialized here so a deploy that adds a

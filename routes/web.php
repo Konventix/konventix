@@ -22,7 +22,16 @@ use Spatie\Health\Http\Controllers\HealthCheckResultsController;
 // `home`-slug static page, render it through the same block pipeline as
 // `/pages/{slug}` (StaticPageController); otherwise fall back to the
 // minimal Welcome page.
-Route::get('/', function (StaticPageRenderer $renderer) {
+Route::get('/', function (StaticPageRenderer $renderer, OperatorContext $operator) {
+    // The admin host has no brand and therefore no home page: BrandScope
+    // hardens the query below to nothing and the operator lands on the
+    // empty Welcome page with no way into the console (hotfix 2026-09-13).
+    // The console is the only thing this host is for, so `/` goes there;
+    // `admin.dashboard` sends a guest on to login itself.
+    if ($operator->hasOperator()) {
+        return redirect()->route('admin.dashboard');
+    }
+
     $home = StaticPage::query()
         ->where('slug', 'home')
         ->published()

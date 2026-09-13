@@ -32,7 +32,10 @@ rewritten.**
   activation for the activated module (ADR-0003: a module switched on later
   gets its roles then, not on the next deploy), and from brand creation for
   the always-active modules.
-- Brand scope only. The operator scope keeps its single seeded role.
+- Brand scope only for *declared* defaults. The operator scope keeps its
+  single seeded role, "Operator Admin" — but since 2026-09-13 (amended, see
+  below) that role follows the same untouched-only rule: `permissions:sync`
+  re-grants it the whole catalogue while `customized_at` is null.
 
 ### Alternative rejected
 
@@ -49,3 +52,22 @@ and be renamed under them; intent has to be recorded, not inferred.
   on the next sync — config pretending to be data.
 - Default sets are a starting point; a brand whose operator wants different
   ones edits them and is left alone from then on.
+
+## Amendment 2026-09-13: the operator scope's seeded role is re-synced too
+
+"The operator scope keeps its single seeded role" turned out to mean *keeps
+it frozen*: `konventix:install` granted "Operator Admin" every row that
+existed on the day of installation and nothing ever revisited it, so every
+capability a later release added — the whole seating console, `resources.*`,
+in 0.6.0 — was a row nobody held on the admin host, and the console pages
+behind it answered 403 to the operator who installed the instance. There is
+no editor for the operator scope, so the only remedy was tinker.
+
+`Actions\MaterializeOperatorAdminRole` now treats that role as the operator
+scope's one default (`default_key` `platform.operator-admin`, stamped onto
+the pre-existing row on first sight): `permissions:sync` re-grants it the full
+catalogue on every run while `customized_at` is null, and leaves it alone
+once the operator has narrowed it — exactly the rule above, applied one
+scope up. `konventix:install` goes through the same action, so a fresh
+install and a re-sync agree on what the role is.
+

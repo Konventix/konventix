@@ -98,6 +98,15 @@ depends on brand resolution and gating working.
 
 ## Done
 
+- [x] "Operator Admin" follows the untouched-only re-sync rule (ADR-0045
+      amendment 2026-09-13, hotfix): `MaterializeOperatorAdminRole`, run from
+      `permissions:sync` for every operator and from `konventix:install`.
+      Before, the role was granted everything once at install and never
+      revisited, so every capability a later release added (all of
+      `resources.*` from 0.6.0) was a 403 on the admin host with no editor
+      to grant it from. `/` on the admin host now redirects to `/admin` —
+      there is no brand and so no home page there.
+
 - [x] `operators.signups_open` and `OperatorSettings::signupsOpen()` /
       `signupsForcedClosed()` (hotfix 2026-09-13): the operator's own switch
       for account creation on the Operator settings page, capped by
