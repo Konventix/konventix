@@ -32,6 +32,12 @@ use Konventix\Admission\Http\Middleware\RecordTicketRenderMetrics;
  * assign an admission to nobody.
  */
 Route::middleware(['auth'])->group(function (): void {
+    // The landing page (#292 §4.3) on the same path as the POST, so one
+    // signed URL serves both: `signed` covers path and query, not method.
+    Route::get('/admissions/claim/{link}', [ClaimController::class, 'show'])
+        ->middleware('signed')
+        ->name('admission.claim.show');
+
     Route::post('/admissions/claim/{link}', [ClaimController::class, 'store'])
         ->middleware('signed')
         ->name('admission.claim');
