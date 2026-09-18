@@ -34,7 +34,11 @@ const NotificationBell = resolveRegisteredComponent(
         </div>
         <div class="ml-auto flex items-center gap-2">
             <AdminSelectionBar />
-            <component :is="NotificationBell" v-if="NotificationBell" />
+            <component
+                :is="NotificationBell"
+                v-if="NotificationBell"
+                shell="console"
+            />
         </div>
     </header>
 </template>
