@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { Link, usePage } from '@inertiajs/vue3';
-import { useEcho } from '@laravel/echo-vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import { Bell, Check } from '@lucide/vue';
-import { computed, onMounted, ref } from 'vue';
+import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -10,30 +9,26 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { edit as notificationSettings } from '@/routes/notification-preferences';
-import {
-    feed as notificationsFeed,
-    index as notificationsIndex,
-    read as notificationsRead,
-    readAll as notificationsReadAll,
-} from '@/routes/notifications';
+import { index as notificationsIndex } from '@/routes/notifications';
+import { badgeText, bellLabel } from './notificationInbox';
+import { useNotificationInbox } from './useNotificationInbox';
 
 /**
- * The in-app inbox bell (ADR-0041 point 6). Lives in the persistent layout,
- * so the fetch below runs once per browser page load — never per Inertia
- * visit (lessons-from-lancore #5) — and `notification.received` pushes over
- * Reverb keep it current in between.
+ * The in-app inbox bell (ADR-0041 point 6). A view of the page's one inbox
+ * (`useNotificationInbox`): the brand shell mounts it twice, mobile and
+ * desktop, and both must show the same list and the same count (#294).
+ *
+ * `shell` picks the trigger's look, because the bell is the one control the
+ * two shells share: in the brand bar its neighbours are the round, bordered
+ * menu button and account trigger; in the console header it sits next to
+ * the `SidebarTrigger`, a ghost button of the same 28px.
  */
-/**
- * A mutable copy of the generated shape. laravel-data emits every field
- * `readonly`, which is right for a server payload and wrong for this list:
- * marking a notification read updates it in place and lets the request catch
- * up afterwards.
- */
-type Notification = {
-    -readonly [
-        K in keyof Konventix.Messaging.Data.NotificationData
-    ]: Konventix.Messaging.Data.NotificationData[K];
-};
+withDefaults(
+    defineProps<{
+        shell?: 'brand' | 'console';
+    }>(),
+    { shell: 'brand' },
+);
 
 const page = usePage();
 // The shared auth prop already types the id as a ULID string (ADR-0014,
@@ -45,99 +40,25 @@ const userId = computed<string | undefined>(() => {
     return id === undefined || id === null ? undefined : String(id);
 });
 
-const notifications = ref<Notification[]>([]);
-const unread = ref(0);
+const { inbox, markRead, markAllRead } = useNotificationInbox(userId);
 
-async function fetchJson(
-    url: string,
-    method: 'get' | 'post' = 'get',
-): Promise<unknown> {
-    const xsrf = document.cookie
-        .split('; ')
-        .find((row) => row.startsWith('XSRF-TOKEN='))
-        ?.split('=')[1];
+/**
+ * A notification's URL is a link into this brand, so it stays an Inertia
+ * visit — a full load throws the console's whole SPA away for one click. A
+ * URL on another origin (a brand's mail can carry one) still navigates.
+ */
+function open(notification: { id: string; url: string | null }): void {
+    void markRead(notification.id);
 
-    const response = await fetch(url, {
-        method,
-        headers: {
-            Accept: 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            ...(method === 'post' && xsrf
-                ? { 'X-XSRF-TOKEN': decodeURIComponent(xsrf) }
-                : {}),
-        },
-        credentials: 'same-origin',
-    });
-
-    if (!response.ok) {
-        throw new Error(`Notification request failed: ${response.status}`);
-    }
-
-    return response.json();
-}
-
-onMounted(async () => {
-    if (!userId.value) {
+    if (!notification.url) {
         return;
     }
 
-    try {
-        const data = (await fetchJson(notificationsFeed().url)) as {
-            unread: number;
-            notifications: Notification[];
-        };
-        unread.value = data.unread;
-        notifications.value = data.notifications;
-    } catch {
-        // The bell is decoration on every page it renders on — a failed
-        // fetch must never break the page around it.
-    }
-});
+    const target = new URL(notification.url, window.location.href);
 
-useEcho<Notification>(
-    `Konventix.Identity.Models.User.${userId.value ?? ''}`,
-    '.notification.received',
-    (incoming) => {
-        notifications.value = [incoming, ...notifications.value].slice(0, 15);
-        unread.value += 1;
-    },
-);
-
-async function markRead(notification: Notification): Promise<void> {
-    if (notification.readAt) {
-        return;
-    }
-
-    notification.readAt = new Date().toISOString();
-    unread.value = Math.max(0, unread.value - 1);
-
-    try {
-        await fetchJson(
-            notificationsRead({ notification: notification.id }).url,
-            'post',
-        );
-    } catch {
-        // Optimistically marked; the server state catches up on next load.
-    }
-}
-
-async function markAllRead(): Promise<void> {
-    notifications.value.forEach((notification) => {
-        notification.readAt = notification.readAt ?? new Date().toISOString();
-    });
-    unread.value = 0;
-
-    try {
-        await fetchJson(notificationsReadAll().url, 'post');
-    } catch {
-        // See markRead.
-    }
-}
-
-function open(notification: Notification): void {
-    void markRead(notification);
-
-    if (notification.url) {
+    if (target.origin === window.location.origin) {
+        router.visit(target.pathname + target.search + target.hash);
+    } else {
         window.location.href = notification.url;
     }
 }
@@ -146,19 +67,35 @@ function open(notification: Notification): void {
 <template>
     <DropdownMenu v-if="userId">
         <DropdownMenuTrigger as-child>
+            <button
+                v-if="shell === 'brand'"
+                type="button"
+                class="relative inline-flex size-9 items-center justify-center rounded-full border border-border bg-surface text-text-muted transition hover:bg-surface-muted hover:text-text"
+                :aria-label="bellLabel(inbox.unread)"
+            >
+                <Bell class="size-4" />
+                <span
+                    v-if="inbox.unread > 0"
+                    aria-hidden="true"
+                    class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-medium text-on-accent"
+                >
+                    {{ badgeText(inbox.unread) }}
+                </span>
+            </button>
             <Button
+                v-else
                 variant="ghost"
                 size="icon"
-                class="relative"
-                aria-label="Notifications"
+                class="relative h-7 w-7"
+                :aria-label="bellLabel(inbox.unread)"
             >
-                <Bell class="size-5" />
+                <Bell class="size-4" />
                 <span
-                    v-if="unread > 0"
-                    class="text-accent-foreground absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-medium"
-                    role="status"
+                    v-if="inbox.unread > 0"
+                    aria-hidden="true"
+                    class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-medium text-on-accent"
                 >
-                    {{ unread > 9 ? '9+' : unread }}
+                    {{ badgeText(inbox.unread) }}
                 </span>
             </Button>
         </DropdownMenuTrigger>
@@ -168,7 +105,7 @@ function open(notification: Notification): void {
             >
                 <span class="text-sm font-medium">Notifications</span>
                 <Button
-                    v-if="unread > 0"
+                    v-if="inbox.unread > 0"
                     variant="ghost"
                     size="sm"
                     class="h-auto px-2 py-1 text-xs"
@@ -179,13 +116,20 @@ function open(notification: Notification): void {
             </div>
             <div class="max-h-96 overflow-y-auto">
                 <p
-                    v-if="notifications.length === 0"
+                    v-if="!inbox.loaded"
+                    class="px-3 py-6 text-center text-sm text-text-muted"
+                    role="status"
+                >
+                    Loading…
+                </p>
+                <p
+                    v-else-if="inbox.notifications.length === 0"
                     class="px-3 py-6 text-center text-sm text-text-muted"
                 >
                     Nothing here yet.
                 </p>
                 <div
-                    v-for="notification in notifications"
+                    v-for="notification in inbox.notifications"
                     :key="notification.id"
                     class="flex items-start gap-1 border-b border-border last:border-b-0 hover:bg-subtle"
                 >
@@ -238,7 +182,7 @@ function open(notification: Notification): void {
                         type="button"
                         class="mt-1.5 mr-2 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-text-muted transition hover:bg-surface-muted hover:text-text"
                         :aria-label="`Mark &quot;${notification.title}&quot; as read`"
-                        @click="markRead(notification)"
+                        @click="markRead(notification.id)"
                     >
                         <Check class="size-4" />
                     </button>

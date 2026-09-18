@@ -73,16 +73,26 @@ function submit(): void {
  * Push on this device (ADR-0041 point 7): the subscription lives in the
  * browser's push manager; the backend only mirrors it. `push-sw.js` is a
  * static worker that renders the typed payload — nothing else.
+ *
+ * The permission is the browser's, and it is asked for exactly once (#294):
+ * after `denied` no call to `requestPermission()` ever prompts again — the
+ * person has to allow the site in the browser's own settings. So the page
+ * says how, follows that change live through the Permissions API instead
+ * of demanding a reload, and tells the difference between "declined" and
+ * "closed the prompt without answering" (`default` stays `default`).
  */
-const pushSupported =
+const browserSupportsPush =
     typeof window !== 'undefined' &&
     'serviceWorker' in navigator &&
     'PushManager' in window &&
-    props.vapidPublicKey !== null;
+    'Notification' in window;
 
+const pushSupported = browserSupportsPush && props.vapidPublicKey !== null;
+
+const permission = ref<NotificationPermission>('default');
 const pushEnabled = ref(false);
-const pushDenied = ref(false);
 const pushBusy = ref(false);
+const promptDismissed = ref(false);
 
 /**
  * Returns a `Uint8Array<ArrayBuffer>` rather than the `ArrayBufferLike` that
@@ -130,30 +140,62 @@ async function pushRequest(
     }
 }
 
+async function refreshPushState(): Promise<void> {
+    permission.value = Notification.permission;
+
+    const registration =
+        await navigator.serviceWorker.getRegistration('/push-sw.js');
+    pushEnabled.value = !!(await registration?.pushManager.getSubscription());
+}
+
 onMounted(async () => {
     if (!pushSupported) {
         return;
     }
 
-    pushDenied.value = Notification.permission === 'denied';
+    await refreshPushState();
 
-    const registration =
-        await navigator.serviceWorker.getRegistration('/push-sw.js');
-    pushEnabled.value = !!(await registration?.pushManager.getSubscription());
+    // Follow the browser's site settings live: someone who unblocks the
+    // site in the address bar's permission panel comes back to a page
+    // that already offers the button. Safari does not know the
+    // `notifications` permission name and throws — then "Check again"
+    // is the way back.
+    try {
+        const status = await navigator.permissions.query({
+            name: 'notifications',
+        });
+        status.addEventListener('change', () => {
+            void refreshPushState();
+        });
+    } catch {
+        // No live updates on this browser; the manual check remains.
+    }
 });
 
+/**
+ * Asks for the permission only when it is still undecided; `granted` skips
+ * the prompt, `denied` never reaches here (the page shows the way to the
+ * browser settings instead). Runs from the click itself — browsers refuse
+ * a prompt that is not the direct result of a user gesture.
+ */
 async function enablePush(): Promise<void> {
     if (!props.vapidPublicKey) {
         return;
     }
 
     pushBusy.value = true;
+    promptDismissed.value = false;
 
     try {
-        if ((await Notification.requestPermission()) !== 'granted') {
-            pushDenied.value = Notification.permission === 'denied';
+        if (Notification.permission !== 'granted') {
+            const answer = await Notification.requestPermission();
+            permission.value = answer;
 
-            return;
+            if (answer !== 'granted') {
+                promptDismissed.value = answer === 'default';
+
+                return;
+            }
         }
 
         const registration =
@@ -283,29 +325,69 @@ async function disablePush(): Promise<void> {
                 Browser notifications reach this device even while the site is
                 closed. Each device is enabled separately.
             </p>
-            <p v-if="pushDenied" class="text-sm text-text-muted">
-                Notifications are blocked for this site in the browser settings.
-            </p>
-            <div v-else>
-                <Button
-                    v-if="!pushEnabled"
-                    type="button"
-                    variant="outline"
-                    :disabled="pushBusy"
-                    @click="enablePush"
+            <template v-if="permission === 'denied'">
+                <p class="text-sm text-text" role="status">
+                    Notifications are blocked for this site. The browser will
+                    not ask again by itself — allow them in the site settings
+                    (the lock or tune icon next to the address bar, then
+                    "Notifications"), and check again here.
+                </p>
+                <div>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        :disabled="pushBusy"
+                        @click="refreshPushState"
+                    >
+                        Check again
+                    </Button>
+                </div>
+            </template>
+            <template v-else>
+                <p
+                    v-if="promptDismissed"
+                    class="text-sm text-text-muted"
+                    role="status"
                 >
-                    Enable on this device
-                </Button>
-                <Button
-                    v-else
-                    type="button"
-                    variant="outline"
-                    :disabled="pushBusy"
-                    @click="disablePush"
-                >
-                    Disable on this device
-                </Button>
-            </div>
+                    The browser closed the permission prompt without an answer.
+                    Try again and choose "Allow".
+                </p>
+                <div>
+                    <Button
+                        v-if="!pushEnabled"
+                        type="button"
+                        variant="outline"
+                        :disabled="pushBusy"
+                        @click="enablePush"
+                    >
+                        {{
+                            permission === 'granted'
+                                ? 'Enable on this device'
+                                : 'Allow notifications on this device'
+                        }}
+                    </Button>
+                    <Button
+                        v-else
+                        type="button"
+                        variant="outline"
+                        :disabled="pushBusy"
+                        @click="disablePush"
+                    >
+                        Disable on this device
+                    </Button>
+                </div>
+            </template>
         </div>
+        <!--
+            Two reasons for no push, told apart, so the person testing the
+            cutover does not read "no VAPID keys on this deployment" as "my
+            browser cannot do this" — or the other way round.
+        -->
+        <p v-else-if="!browserSupportsPush" class="text-xs text-text-muted">
+            This browser does not support push notifications.
+        </p>
+        <p v-else class="text-xs text-text-muted">
+            Push notifications are not set up on this installation.
+        </p>
     </div>
 </template>
