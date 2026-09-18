@@ -3,14 +3,18 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Konventix\Admission\Actions\RotateEntranceSigningKey;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\EntranceSigningKey;
 use Konventix\Admission\Models\EventSummary;
 use Konventix\Admission\Models\Person;
+use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
+use Konventix\Platform\Models\Permission as PermissionModel;
+use Konventix\Platform\Models\Role;
 
 /**
  * Shared fixtures for this feature's admission tests (#72). Every function
@@ -140,4 +144,33 @@ function ticketPageFixture(array $overrides = []): array
         'watermarkHtml' => '<div class="brandmark">brand mark</div>',
         'testSystemHtml' => '<div class="testsystem">TESTSYSTEM</div>',
     ], $overrides);
+}
+
+/**
+ * A user holding one Admission capability on the brand, granted the way
+ * `permissions:sync` materialises it — a brand role plus a `model_has_roles`
+ * row — which is the shape `PermissionHolders` reads (#292). Mirrors
+ * Resources' `seatingUserWithBookOnBehalf()`.
+ */
+function admissionUserWithPermission(string $brandId, string $permission): User
+{
+    $user = User::factory()->create();
+
+    PermissionModel::query()->firstOrCreate(['name' => $permission, 'guard_name' => 'web']);
+
+    $role = Role::query()->create([
+        'name' => 'Desk '.Str::lower(Str::random(4)),
+        'guard_name' => 'web',
+        'brand_id' => $brandId,
+    ]);
+    $role->givePermissionTo([$permission]);
+
+    DB::table('model_has_roles')->insert([
+        'role_id' => $role->id,
+        'model_type' => $user->getMorphClass(),
+        'model_id' => $user->id,
+        'brand_id' => $brandId,
+    ]);
+
+    return $user;
 }
