@@ -67,7 +67,7 @@ class EventSummary extends Model
      */
     public const string VISIBILITY_PUBLIC = 'public';
 
-    protected $fillable = ['event_id', 'name', 'slug', 'visibility', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id', 'public_since', 'archived_at'];
+    protected $fillable = ['event_id', 'name', 'slug', 'visibility', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id', 'banner_media_id', 'public_since', 'archived_at'];
 
     /**
      * @return array<string, string>

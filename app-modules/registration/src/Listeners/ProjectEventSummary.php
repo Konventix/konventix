@@ -74,11 +74,29 @@ final class ProjectEventSummary
             endsAt: $event->endsAt,
             timezone: $event->timezone,
         );
+
+        $this->projectBanner($event->eventId, $event->brandId, $event->bannerMediaId);
     }
 
     public function handleDetailsUpdated(EventDetailsUpdated $event): void
     {
         $this->project($event->eventId, $event->brandId, $event->name, $event->slug, $event->visibility);
+
+        $this->projectBanner($event->eventId, $event->brandId, $event->bannerMediaId);
+    }
+
+    /**
+     * Outside `project()` on purpose: its `array_filter` treats null as
+     * "not carried", but for the banner (#292) null is a fact — the picture
+     * was removed — and both events always carry the current value. The
+     * mails read it (`RegistrationMailer`).
+     */
+    private function projectBanner(string $eventId, string $brandId, ?string $bannerMediaId): void
+    {
+        EventSummary::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('event_id', $eventId)
+            ->update(['banner_media_id' => $bannerMediaId]);
     }
 
     /**

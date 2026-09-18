@@ -49,7 +49,7 @@ class EventSummary extends Model
 
     protected $table = 'admission_event_summaries';
 
-    protected $fillable = ['event_id', 'name', 'slug', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id'];
+    protected $fillable = ['event_id', 'name', 'slug', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id', 'banner_media_id'];
 
     /**
      * @return array<string, string>

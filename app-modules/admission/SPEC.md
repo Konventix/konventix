@@ -79,10 +79,14 @@ reading either.
   "Unassigned" — the badge's own fallback, now shared rather than
   re-derived.
 - **`Models\EventSummary`** (`admission_event_summaries`) — this module's
-  own read model of an event's name, start, end, timezone and venue label,
-  projected from Event's `EventCreated`, `EventRescheduled`,
-  `VenueAssigned`, `VenueUpdated` and `VenueUnassigned`, and patched (never
-  replaced) on `EventDetailsUpdated`. Supplies the ticket's event band;
+  own read model of an event's name, start, end, timezone, venue label and
+  banner (`banner_media_id`, a Platform media ULID resolved through
+  `MediaLibrary`, #292), projected from Event's `EventCreated`,
+  `EventRescheduled`, `VenueAssigned`, `VenueUpdated` and
+  `VenueUnassigned`, and patched (never replaced) on `EventDetailsUpdated`
+  — the banner being the one column a details update may set to null,
+  because both events always carry its current value. Supplies the
+  ticket's event band;
   Admission may not read Event's models directly (ADR-0004), so this exists
   even though Registration keeps a similarly-shaped copy for its own mail
   path — two read models, not two owners.
