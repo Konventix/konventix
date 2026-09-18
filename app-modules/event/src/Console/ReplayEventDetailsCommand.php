@@ -79,6 +79,7 @@ final class ReplayEventDetailsCommand extends Command
                     slug: $event->slug,
                     name: $event->name,
                     visibility: $event->visibility->value,
+                    bannerMediaId: $event->banner_media_id,
                 ));
 
                 $venue = $event->primaryVenue();

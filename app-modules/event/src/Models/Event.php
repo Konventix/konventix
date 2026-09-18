@@ -60,6 +60,7 @@ class Event extends Model
         'name',
         'slug',
         'description',
+        'banner_media_id',
         'starts_at',
         'ends_at',
         'timezone',

@@ -56,6 +56,9 @@ final class EventData extends Data
 
         #[Nullable, Ulid]
         public readonly ?string $predecessorEventId = null,
+        /** A media-library ULID (ADR-0035), owned by the event's brand; null for no banner (#292). */
+        #[Nullable, Ulid]
+        public readonly ?string $bannerMediaId = null,
     ) {}
 
     /**
@@ -88,6 +91,7 @@ final class EventData extends Data
             visibility: $event->visibility,
             reentryPolicy: $event->reentry_policy,
             predecessorEventId: $event->predecessor_event_id,
+            bannerMediaId: $event->banner_media_id,
         );
     }
 }

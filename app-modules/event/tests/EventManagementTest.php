@@ -11,17 +11,20 @@ use Konventix\Event\Actions\PublishEvent;
 use Konventix\Event\Actions\StartEvent;
 use Konventix\Event\Actions\SyncEventDays;
 use Konventix\Event\Actions\UnassignVenue;
+use Konventix\Event\Actions\UpdateEventDetails;
 use Konventix\Event\Data\EventData;
 use Konventix\Event\Enums\EventLifecycleState;
 use Konventix\Event\Enums\EventVisibility;
 use Konventix\Event\Enums\ReentryPolicy;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
+use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventStarted;
 use Konventix\Event\Events\VenueAssigned;
 use Konventix\Event\Exceptions\IllegalEventStateTransitionException;
 use Konventix\Event\Models\Event;
 use Konventix\Event\Models\Venue;
+use Konventix\Platform\Models\MediaItem;
 
 function eventFormData(string $slug = 'sxlan-2027'): EventData
 {
@@ -144,3 +147,39 @@ it('refuses to start an event that is not published', function (): void {
 
     app(StartEvent::class)->handle(Event::factory()->create());
 })->throws(IllegalEventStateTransitionException::class);
+
+it('announces the banner on EventCreated and EventDetailsUpdated', function (): void {
+    $brand = $this->withBrand();
+    $banner = MediaItem::factory()->create(['brand_id' => $brand->id]);
+    EventBus::fake([EventCreated::class, EventDetailsUpdated::class]);
+
+    $data = eventFormData('banner-2027');
+    $event = app(CreateEvent::class)->handle($brand->getKey(), new EventData(
+        name: $data->name,
+        slug: $data->slug,
+        description: $data->description,
+        startsAt: $data->startsAt,
+        endsAt: $data->endsAt,
+        timezone: $data->timezone,
+        visibility: $data->visibility,
+        reentryPolicy: $data->reentryPolicy,
+        bannerMediaId: $banner->id,
+    ));
+
+    EventBus::assertDispatched(EventCreated::class, fn (EventCreated $e): bool => $e->bannerMediaId === $banner->id);
+
+    app(UpdateEventDetails::class)->handle($event, new EventData(
+        name: $data->name,
+        slug: $data->slug,
+        description: $data->description,
+        startsAt: $data->startsAt,
+        endsAt: $data->endsAt,
+        timezone: $data->timezone,
+        visibility: $data->visibility,
+        reentryPolicy: $data->reentryPolicy,
+        bannerMediaId: null,
+    ));
+
+    EventBus::assertDispatched(EventDetailsUpdated::class, fn (EventDetailsUpdated $e): bool => $e->bannerMediaId === null);
+    expect($event->fresh()->banner_media_id)->toBeNull();
+});

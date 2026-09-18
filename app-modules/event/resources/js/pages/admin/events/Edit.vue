@@ -3,6 +3,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Plus, Star, Trash2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import MediaPicker from '@/components/admin/MediaPicker.vue';
 import DateField from '@/components/datetime/DateField.vue';
 import TimeField from '@/components/datetime/TimeField.vue';
 import InputError from '@/components/InputError.vue';
@@ -10,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useAdminCapabilities } from '@/composables/useAdminCapabilities';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import {
     show as showEvent,
@@ -45,13 +47,18 @@ type Props = {
         visibility: string;
         reentryPolicy: string;
         predecessorEventId: string | null;
+        bannerMediaId: string | null;
+        brandId: string;
     };
     days: { date: string; label: string | null }[];
     venues: { id: string; name: string; city: string; isPrimary: boolean }[];
     availableVenues: { id: string; name: string; city: string }[];
+    /** The brand's images for the banner picker (#292). */
+    media: Konventix.Platform.Data.MediaItemData[];
 };
 
 const props = defineProps<Props>();
+const { canManageMedia } = useAdminCapabilities();
 
 const form = useForm({
     name: props.event.name,
@@ -63,6 +70,7 @@ const form = useForm({
     visibility: props.event.visibility,
     reentryPolicy: props.event.reentryPolicy,
     predecessorEventId: props.event.predecessorEventId,
+    bannerMediaId: props.event.bannerMediaId,
     days: [...props.days],
 });
 
@@ -212,6 +220,22 @@ function promoteVenue(venueId: string): void {
                             v-model="form.description"
                         />
                         <InputError :message="form.errors.description" />
+                    </div>
+                    <div class="grid gap-2">
+                        <!-- The banner (#292): on the ticket page, the ticket
+                             PDF, the public event page and every mail. -->
+                        <MediaPicker
+                            v-model="form.bannerMediaId"
+                            label="Banner"
+                            :media="props.media"
+                            :brand-id="props.event.brandId"
+                            :can-upload="canManageMedia"
+                        />
+                        <p class="text-xs text-text-muted">
+                            A wide picture — it heads the ticket, the public
+                            event page and every mail about this event.
+                        </p>
+                        <InputError :message="form.errors.bannerMediaId" />
                     </div>
                     <div class="grid gap-4 sm:grid-cols-2">
                         <DateField
