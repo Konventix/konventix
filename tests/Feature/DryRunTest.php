@@ -96,6 +96,7 @@ function dryRunSkippedRoutes(): array
         // Their own tests mint one.
         'password.reset' => 'needs a password-reset token',
         'verification.verify' => 'needs a signed verification link',
+        'admission.claim.show' => 'needs a signed claim link (#292 §4.3); the same URL the POST takes',
 
         // Same shape: konventix:seed never posts to the public data-request
         // form, so no `DataSubjectRequestVerification` row — and therefore no
