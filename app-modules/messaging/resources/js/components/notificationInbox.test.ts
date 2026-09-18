@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { InboxNotification } from './notificationInbox';
 import {
     applyFeed,
     badgeText,
@@ -8,7 +9,6 @@ import {
     markAllRead,
     markRead,
     receive,
-    type InboxNotification,
 } from './notificationInbox';
 
 function notification(

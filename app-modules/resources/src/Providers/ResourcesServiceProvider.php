@@ -327,7 +327,7 @@ class ResourcesServiceProvider extends ModuleServiceProvider
                     number: $index + 1,
                     placeRef: $bound->has($admission->id) ? ($boundRefs->get($bound->get($admission->id)) ?? null) : null,
                     isHeld: $admission->holder_user_id !== null,
-                ))->all();
+                ))->values()->all();
 
                 return ['summary' => SeatSummaryData::ofClaim($claim, $refs, $noFreePlaces, $rows)->toArray()];
             },
@@ -356,7 +356,7 @@ class ResourcesServiceProvider extends ModuleServiceProvider
                     ->whereIn('state', BookingState::occupyingValues())
                     ->value('resource_id');
 
-                /** @var Resource|null $place */
+                /** @var \Konventix\Resources\Models\Resource|null $place */
                 $place = $placeId === null ? null : Resource::query()->whereKey($placeId)->first();
 
                 return ['seat' => (new TicketSeatActionData(

@@ -17,7 +17,6 @@ use Konventix\Resources\Models\ResourceClaim;
  * `FindSeatClaimForRegistrant` answers.
  *
  * A staff admission has no registration and therefore never a claim: null.
- *
  */
 final class FindSeatClaimForAdmission
 {

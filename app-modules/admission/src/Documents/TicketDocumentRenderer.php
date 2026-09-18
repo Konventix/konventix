@@ -87,7 +87,7 @@ final class TicketDocumentRenderer
             $eventSummaries->get($admission->event_id),
             $admission->holder_user_id === null ? null : $people->get($admission->holder_user_id),
             $seats->get($admission->id),
-            $banners->get($eventSummaries->get($admission->event_id)?->banner_media_id ?? ''),
+            $banners->get($eventSummaries->get($admission->event_id)->banner_media_id ?? ''),
         ))->all();
 
         return Pdf::loadView('admission::tickets.document', ['pages' => $pages])

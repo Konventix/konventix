@@ -1,18 +1,18 @@
 import { echo } from '@laravel/echo-vue';
-import { reactive, readonly, watch, type Ref } from 'vue';
+import type { Ref } from 'vue';
+import { reactive, readonly, watch } from 'vue';
 import {
     feed as notificationsFeed,
     read as notificationsRead,
     readAll as notificationsReadAll,
 } from '@/routes/notifications';
+import type { InboxNotification, InboxState } from './notificationInbox';
 import {
     applyFeed,
     emptyInbox,
     markAllRead as applyMarkAllRead,
     markRead as applyMarkRead,
     receive,
-    type InboxNotification,
-    type InboxState,
 } from './notificationInbox';
 
 /**

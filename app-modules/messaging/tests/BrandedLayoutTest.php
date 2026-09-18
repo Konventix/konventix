@@ -222,8 +222,10 @@ it('renders a hero image row only when the request names one', function (): void
 
         expect($html)->toContain('src="https://s3.example.test/media/banner.jpg"')
             ->toContain('alt="SXLan 2027"')
-            // The hero sits above the body, after the header.
-            ->and(strpos($html, 'banner.jpg'))->toBeLessThan(strpos($html, 'Welcome, Ada.'));
+            // The hero sits above the body, after the header. The hidden
+            // preheader repeats the body's first line before either, so
+            // the *last* occurrence is the body itself.
+            ->and(strpos($html, 'banner.jpg'))->toBeLessThan(strrpos($html, 'Welcome, Ada.'));
 
         return true;
     });

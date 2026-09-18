@@ -34,6 +34,7 @@ use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Models\Plan;
+use Konventix\Resources\Models\ResourceAdmission;
 use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceType;
 use Laravel\Pennant\Feature;
@@ -282,6 +283,33 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             ->first();
 
         return $registration === null ? null : ['registration' => $registration];
+    }
+
+    // The per-ticket seat poll (`resources.admission-seat.availability`,
+    // #292 §6.4) authorises through `FindSeatClaimForAdmission`: the
+    // admission must be in Resources' own read model, live, belong to a
+    // registration with a live claim, and the caller must be that claim's
+    // registrant or the admission's holder — 404 otherwise, by design. The
+    // generic `{admission}` binding below picks the member's *held*
+    // admission, which is whatever `seedClaimLinks()` had left unclaimed and
+    // may be a staff admission with no registration at all. Bind to an
+    // admission of the member's own claimed registration instead, the same
+    // row `resources.seating.pick` resolves through.
+    if ($name === 'resources.admission-seat.availability' && $member !== null) {
+        $claim = ResourceClaim::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->where('registrant_user_id', $member->getKey())
+            ->where('state', '!=', ClaimState::Released)
+            ->orderByDesc('created_at')
+            ->first();
+
+        $admission = $claim === null ? null : ResourceAdmission::withoutBrandScope()
+            ->where('brand_id', $brand->getKey())
+            ->where('registration_id', $claim->registration_id)
+            ->where('state', '!=', ResourceAdmission::STATE_REVOKED)
+            ->first();
+
+        return $admission === null ? null : ['admission' => $admission->getKey()];
     }
 
     // The buyer's combined ticket file (`admission.tickets.buyer`, #72):

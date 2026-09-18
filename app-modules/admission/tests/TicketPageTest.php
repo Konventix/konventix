@@ -86,6 +86,8 @@ it('shows the manager an unclaimed ticket of theirs, and refuses everybody else'
             ->where('registrationId', $admission->registration_id));
 
     $this->actingAs($stranger)->get('/my/tickets/'.$admission->id)->assertForbidden();
+
+    auth()->logout();
     $this->get('/my/tickets/'.$admission->id)->assertRedirect('/login');
 });
 

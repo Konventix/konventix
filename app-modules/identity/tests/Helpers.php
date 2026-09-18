@@ -49,4 +49,3 @@ function identityCallbackFrom(object $test, string $steamId, ?string $nonce = 'n
     return $test->withSession(['identity.social.steam.nonce' => $nonce])
         ->get('http://localhost/auth/steam/callback?'.http_build_query($query));
 }
-

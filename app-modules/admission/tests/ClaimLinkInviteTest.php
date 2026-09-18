@@ -101,7 +101,8 @@ it('renders the template with and without an inviter name, directives on their o
         expiresAt: '28.08.2026 18:00',
     ), 'en'));
 
-    expect($withName->body)->toContain('Ada Lovelace has reserved a ticket for you — Kon Fest 2026.')
+    expect($withName->body)->toContain('Ada Lovelace has reserved a ticket for you.')
+        ->toContain('Event: Kon Fest 2026')
         ->toContain('href="https://example.test/claim/x"')
         ->not->toContain('@if')
         ->not->toContain('@endif');

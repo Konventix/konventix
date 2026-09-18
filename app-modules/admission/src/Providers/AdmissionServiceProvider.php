@@ -266,9 +266,12 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             bodies: [
                 'de' => <<<'BLADE'
                     @if ($managerName)
-                    <p>{{ $managerName }} hat ein Ticket für Sie reserviert{{ $eventName ? ' — '.$eventName : '' }}.</p>
+                    <p>{{ $managerName }} hat ein Ticket für Sie reserviert.</p>
                     @else
-                    <p>Ein Ticket wurde für Sie reserviert{{ $eventName ? ' — '.$eventName : '' }}.</p>
+                    <p>Ein Ticket wurde für Sie reserviert.</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Veranstaltung: {{ $eventName }}</p>
                     @endif
                     <p>Um es auf Ihren Namen zu übernehmen, melden Sie sich an oder legen Sie ein Konto an, und bestätigen Sie dann:</p>
                     <p><a href="{{ $claimUrl }}">Ticket übernehmen</a></p>
@@ -276,9 +279,12 @@ class AdmissionServiceProvider extends ModuleServiceProvider
                     BLADE,
                 'en' => <<<'BLADE'
                     @if ($managerName)
-                    <p>{{ $managerName }} has reserved a ticket for you{{ $eventName ? ' — '.$eventName : '' }}.</p>
+                    <p>{{ $managerName }} has reserved a ticket for you.</p>
                     @else
-                    <p>A ticket has been reserved for you{{ $eventName ? ' — '.$eventName : '' }}.</p>
+                    <p>A ticket has been reserved for you.</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Event: {{ $eventName }}</p>
                     @endif
                     <p>To put it in your name, sign in or create an account, then confirm:</p>
                     <p><a href="{{ $claimUrl }}">Claim your ticket</a></p>

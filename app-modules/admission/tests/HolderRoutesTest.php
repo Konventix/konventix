@@ -74,6 +74,10 @@ it('403s the holder, a stranger, and sends a guest to login', function (): void 
 
     $this->actingAs($holder)->delete('/my/admissions/'.$admission->id.'/holder')->assertForbidden();
     $this->actingAs(User::factory()->create())->post('/my/admissions/'.$admission->id.'/invite')->assertForbidden();
+
+    // `actingAs()` stays signed in for the rest of the test; a guest has to
+    // be made one (as `CheckoutPageTest` does).
+    auth()->logout();
     $this->post('/my/admissions/'.$admission->id.'/holder')->assertRedirect('/login');
 });
 

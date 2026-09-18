@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Http\Controllers\Admin;
 
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -106,8 +108,20 @@ class MediaAdminController
             // nothing in this application needs one: brand logos, favicons
             // and page images are all raster. `mimes` judges the file's
             // actual type, not the name it arrived under, so renaming an SVG
-            // to .png does not get past this line.
-            'file' => ['required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,gif,webp,pdf'],
+            // to .png does not get past this line — on a real upload. A
+            // file that claims a raster type also has to decode as one:
+            // `getimagesize()` reads the header, and refusing here keeps the
+            // thumbnail step from being the first to notice (as a 500).
+            'file' => [
+                'required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,gif,webp,pdf',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if ($value instanceof UploadedFile
+                        && str_starts_with((string) $value->getMimeType(), 'image/')
+                        && @getimagesize($value->getRealPath()) === false) {
+                        $fail(__('The file is not a valid image.'));
+                    }
+                },
+            ],
             'alt_text' => ['nullable', 'string', 'max:255'],
         ]);
 

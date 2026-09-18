@@ -272,6 +272,7 @@ it('shows an invitee what they would claim, and 410s a dead link', function (): 
         ->assertInertia(fn (AssertableInertia $page) => $page->where('alreadyHolderOfAnother', true));
 
     // A guest is sent to log in and comes back to the very same signed URL.
+    auth()->logout();
     $this->get($url)->assertRedirect('/login');
     expect(session('url.intended'))->toBe($url);
 

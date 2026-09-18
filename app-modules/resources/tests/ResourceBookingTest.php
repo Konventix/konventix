@@ -520,7 +520,7 @@ it('names the admission a booking seats, on the row and on the three events', fu
     app(ConfirmResourceBooking::class)->handle($booking);
     Event::assertDispatched(ResourceBookingConfirmed::class, fn (ResourceBookingConfirmed $e): bool => $e->admissionId === $admissionId);
 
-    app(ReleaseResourceBooking::class)->handle($booking->fresh(), 'repicked');
+    app(ReleaseResourceBooking::class)->handle($booking->fresh(), BookingState::Released, 'repicked');
     Event::assertDispatched(ResourceBookingReleased::class, fn (ResourceBookingReleased $e): bool => $e->admissionId === $admissionId);
 });
 
@@ -545,7 +545,7 @@ it('is the database that refuses a second occupying place for the same admission
     // the Action's own savepoint so the transaction survives to assert on.
     expect(fn () => $hold($second))->toThrow(QueryException::class);
 
-    app(ReleaseResourceBooking::class)->handle($booking, 'repicked');
+    app(ReleaseResourceBooking::class)->handle($booking, BookingState::Released, 'repicked');
 
     expect($hold($second)->admission_id)->toBe($admissionId);
 });
