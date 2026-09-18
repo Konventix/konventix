@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { ArrowLeft, Armchair, CalendarPlus, FileDown } from '@lucide/vue';
+import { ArrowLeft, CalendarPlus, FileDown } from '@lucide/vue';
 import MyTicketsController from '@/actions/Konventix/Admission/Http/Controllers/MyTicketsController';
 import TicketDownloadController from '@/actions/Konventix/Admission/Http/Controllers/TicketDownloadController';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { calendar } from '@/routes/event';
 import TicketEventBand from '../../../components/TicketEventBand.vue';
 import TicketHolderBand from '../../../components/TicketHolderBand.vue';
@@ -19,9 +20,37 @@ import TicketHolderBand from '../../../components/TicketHolderBand.vue';
  * The two file links are plain anchors, not Inertia `<Link>`s — they
  * stream a download, and an Inertia visit would expect a page back.
  */
-type Ticket = Konventix.Admission.Data.TicketPageData;
+// Spelled out rather than `Konventix.Admission.Data.TicketPageData`: a bare
+// namespaced type fails the SFC compiler's macro type resolver (see
+// `seating/Pick.vue`). Mirrors `TicketPageData`.
+type Props = {
+    id: string;
+    eventId: string;
+    eventName: string | null;
+    eventSlug: string | null;
+    eventWhen: string | null;
+    venueLabel: string | null;
+    bannerUrl: string | null;
+    bannerAlt: string | null;
+    role: string;
+    state: string;
+    validRange: string;
+    holderName: string;
+    isHolder: boolean;
+    isManager: boolean;
+    checkedIn: boolean;
+    qrSvg: string;
+    doorCode: string;
+    seat: Konventix.Admission.Data.TicketSeatData | null;
+    registrationId: string | null;
+    slots: {
+        module: string;
+        component: string;
+        props: Record<string, unknown>;
+    }[];
+};
 
-const props = defineProps<Ticket>();
+const props = defineProps<Props>();
 </script>
 
 <template>
@@ -87,14 +116,13 @@ const props = defineProps<Ticket>();
                     <CalendarPlus class="size-4" aria-hidden="true" />
                     Add to calendar
                 </a>
-                <Link
-                    v-if="props.canPickSeat"
-                    :href="`/my/admissions/${props.id}/seat`"
-                    class="inline-flex min-h-11 items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-text hover:border-accent"
-                >
-                    <Armchair class="size-4" aria-hidden="true" />
-                    {{ props.seat ? 'Change seat' : 'Choose a seat' }}
-                </Link>
+                <!-- Resources' seat button, when the viewer may pick (§6.4). -->
+                <template v-for="slot in props.slots" :key="slot.component">
+                    <component
+                        :is="resolveRegisteredComponent(slot.component)"
+                        v-bind="slot.props"
+                    />
+                </template>
             </footer>
         </article>
     </div>

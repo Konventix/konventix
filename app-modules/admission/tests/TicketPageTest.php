@@ -52,7 +52,7 @@ it('shows the holder their ticket with the banner, the seat and the same code th
             ->where('isManager', false)
             ->where('checkedIn', false)
             ->where('seat.placeLabel', 'A12')
-            ->where('canPickSeat', false)
+            ->has('slots')
             ->where('qrSvg', fn (string $svg): bool => str_starts_with($svg, '<svg') && ! str_contains($svg, '<?xml'))
             ->where('doorCode', fn (string $code): bool => preg_match('/^[A-Z0-9]{4}-[A-Z0-9]{4}$/', $code) === 1));
 

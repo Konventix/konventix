@@ -20,6 +20,7 @@ use Konventix\Admission\Models\EventSummary;
 use Konventix\Admission\Models\Person;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
+use Konventix\Platform\Slots\SlotRegistry;
 
 /**
  * One ticket, on screen (#292 §4.5): the event band with the banner, the
@@ -37,6 +38,7 @@ final class TicketPageController
         private readonly TicketQr $qr,
         private readonly OperatorDateTimeFormat $dates,
         private readonly MediaLibrary $media,
+        private readonly SlotRegistry $slots,
     ) {}
 
     public function show(Request $request, Admission $admission): Response
@@ -80,11 +82,19 @@ final class TicketPageController
                 placeRef: $seat->place_ref,
                 placeLabel: $seat->place_label,
             ),
-            // Resources decides who may pick (§6.3); until its per-admission
-            // picker exists this is off, and the row shows the seat only.
-            canPickSeat: false,
             registrationId: $admission->registration_id,
-        ))->toArray());
+        ))->toArray() + [
+            // Resources decides who may pick the seat (§6.3) and contributes
+            // the button through this slot — Admission never asks its
+            // tables (ADR-0004, ADR-0003 enforcement point 3).
+            'slots' => $this->slots->for('admission.ticket.show', ['admissionId' => $admission->id])
+                ->map(fn (array $entry): array => [
+                    'module' => $entry['module'],
+                    'component' => $entry['component'],
+                    'props' => $entry['props'],
+                ])
+                ->all(),
+        ]);
     }
 
     /**

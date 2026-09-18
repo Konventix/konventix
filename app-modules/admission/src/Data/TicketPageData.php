@@ -40,8 +40,6 @@ final class TicketPageData extends Data
         public readonly string $qrSvg,
         public readonly string $doorCode,
         public readonly ?TicketSeatData $seat,
-        /** Whether the seat picker is open to this viewer for this ticket (§6.3's actor rule); false until Resources says so. */
-        public readonly bool $canPickSeat,
         public readonly ?string $registrationId,
     ) {}
 }

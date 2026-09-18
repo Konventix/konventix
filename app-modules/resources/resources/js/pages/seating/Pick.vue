@@ -2,11 +2,13 @@
 import { Form, Head, Link, useHttp } from '@inertiajs/vue3';
 import { ArrowLeft } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import AdmissionSeatController from '@/actions/Konventix/Resources/Http/Controllers/AdmissionSeatController';
 import SeatAvailabilityController from '@/actions/Konventix/Resources/Http/Controllers/SeatAvailabilityController';
 import SeatPickController from '@/actions/Konventix/Resources/Http/Controllers/SeatPickController';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { show as showTicket } from '@/routes/admission/tickets';
 import { show as showRegistration } from '@/routes/registration/mine';
 import CategoryLegend from '../../components/plan/CategoryLegend.vue';
 import type { Reason } from '../../components/plan/eligibility';
@@ -58,11 +60,28 @@ type Props = {
     plans: Konventix.Resources.Data.PlanViewData[];
     availability: Konventix.Resources.Data.PlanAvailabilityData;
     currentPlaceIds: string[];
+    /** Per-ticket mode (#292 §6.4): one admission, one place. */
+    admissionId?: string | null;
+    maxPlaces?: number | null;
 };
 type Availability = Konventix.Resources.Data.PlanAvailabilityData;
 type PlaceState = Konventix.Resources.Enums.PlaceState;
 
 const props = defineProps<Props>();
+
+/**
+ * Per-ticket mode (#292 §6.4): the same picker opened for one admission —
+ * a single place, saved to the admission's own route, back to its ticket
+ * page. Everything else — categories, plans, the poll — is the claim's and
+ * unchanged. `maxPlaces` replaces `claim.quantity` as the selection cap.
+ */
+const perTicket = computed(() => Boolean(props.admissionId));
+const maxPlaces = computed(() => props.maxPlaces ?? props.claim.quantity);
+/** The claim as the scene and the list see it: the cap is this page's, not the group's. */
+const pickerClaim = computed(() => ({
+    ...props.claim,
+    quantity: maxPlaces.value,
+}));
 
 /**
  * Item 1 of the 2026-09-10 fix wave (#278): an `assign`-mode claim is the
@@ -88,9 +107,11 @@ const pageTitle = computed(() =>
 const pageDescription = computed(() =>
     assignedByOrganiser.value
         ? ASSIGNED_BY_ORGANISER_MESSAGE
-        : props.claim.quantity === 1
-          ? 'Pick one place from the categories your registration includes.'
-          : `Pick up to ${props.claim.quantity} places from the categories your registration includes.`,
+        : maxPlaces.value === 1
+          ? perTicket.value
+              ? 'Pick the place this ticket sits on.'
+              : 'Pick one place from the categories your registration includes.'
+          : `Pick up to ${maxPlaces.value} places from the categories your registration includes.`,
 );
 
 const activePlanId = ref(props.plans[0]?.id ?? '');
@@ -139,21 +160,17 @@ const refById = computed(() => {
 const announcement = computed(() =>
     selectionAnnouncement(
         selected.value.map((id) => refById.value.get(id) ?? id),
-        props.claim.quantity,
+        maxPlaces.value,
     ),
 );
 
 function onToggle(placeId: string): void {
     hint.value = null;
-    selected.value = toggleSelection(
-        selected.value,
-        placeId,
-        props.claim.quantity,
-    );
+    selected.value = toggleSelection(selected.value, placeId, maxPlaces.value);
 }
 
 function onHint(reason: Reason): void {
-    hint.value = hintFor(reason, props.claim.quantity);
+    hint.value = hintFor(reason, maxPlaces.value);
 }
 
 const http = useHttp<Record<string, never>, Availability>();
@@ -164,7 +181,13 @@ function refreshAvailability(): void {
         return;
     }
 
-    http.get(SeatAvailabilityController.show.url(props.registrationId), {
+    const url = props.admissionId
+        ? AdmissionSeatController.availability.url({
+              admission: props.admissionId,
+          })
+        : SeatAvailabilityController.show.url(props.registrationId);
+
+    http.get(url, {
         onSuccess: (response) => {
             availability.value = response.places;
         },
@@ -211,11 +234,15 @@ watch(availability, (places) => {
     <div class="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6">
         <div>
             <Link
-                :href="showRegistration(props.registrationId)"
+                :href="
+                    props.admissionId
+                        ? showTicket(props.admissionId)
+                        : showRegistration(props.registrationId)
+                "
                 class="mb-4 inline-flex items-center gap-2 text-sm text-text-muted hover:text-text"
             >
                 <ArrowLeft class="size-4" />
-                Your registration
+                {{ perTicket ? 'Your ticket' : 'Your registration' }}
             </Link>
 
             <Heading
@@ -280,7 +307,7 @@ watch(availability, (places) => {
                     <SeatPlanScene
                         :plan="activePlan"
                         :categories="props.categories"
-                        :claim="props.claim"
+                        :claim="pickerClaim"
                         :availability="availability"
                         :selected-ids="selected"
                         @toggle="onToggle"
@@ -291,7 +318,13 @@ watch(availability, (places) => {
 
                     <Form
                         v-bind="
-                            SeatPickController.store.form(props.registrationId)
+                            props.admissionId
+                                ? AdmissionSeatController.store.form({
+                                      admission: props.admissionId,
+                                  })
+                                : SeatPickController.store.form(
+                                      props.registrationId,
+                                  )
                         "
                         #default="{ errors, processing }"
                         class="flex flex-col gap-4"
@@ -329,7 +362,7 @@ watch(availability, (places) => {
                         <PlanListView
                             :plan="activePlan"
                             :categories="props.categories"
-                            :claim="props.claim"
+                            :claim="pickerClaim"
                             :availability="availability"
                             :selected-ids="selected"
                             @toggle="onToggle"

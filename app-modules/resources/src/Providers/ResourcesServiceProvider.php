@@ -25,14 +25,17 @@ use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationRejected;
+use Konventix\Resources\Actions\FindSeatClaimForAdmission;
 use Konventix\Resources\Actions\HasFreePlaceForClaim;
 use Konventix\Resources\Console\AssignPlaceCommand;
 use Konventix\Resources\Console\ExpireResourceHoldsCommand;
 use Konventix\Resources\Console\PlanExportCommand;
 use Konventix\Resources\Console\PlanImportCommand;
 use Konventix\Resources\Console\ProbeSeatRace;
+use Konventix\Resources\Data\AdmissionSeatRowData;
 use Konventix\Resources\Data\CategoryData;
 use Konventix\Resources\Data\SeatSummaryData;
+use Konventix\Resources\Data\TicketSeatActionData;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\Permission;
@@ -54,6 +57,7 @@ use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationRejected;
 use Konventix\Resources\Metrics\ResourcesGauges;
 use Konventix\Resources\Metrics\ResourcesMetrics;
 use Konventix\Resources\Models\Resource;
+use Konventix\Resources\Models\ResourceAdmission;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceEventWindow;
@@ -300,9 +304,67 @@ class ResourcesServiceProvider extends ModuleServiceProvider
 
                 $noFreePlaces = ! app(HasFreePlaceForClaim::class)->handle($claim);
 
-                return ['summary' => SeatSummaryData::ofClaim($claim, $refs, $noFreePlaces)->toArray()];
+                // Per ticket (#292 §6.4): each admission of the registration
+                // and the place bound to it, so the page shows "Ticket 2 —
+                // A12" rather than a bag of refs. Numbered in issue order.
+                $admissions = ResourceAdmission::query()
+                    ->where('registration_id', $claim->registration_id)
+                    ->where('state', '!=', ResourceAdmission::STATE_REVOKED)
+                    ->orderBy('created_at')
+                    ->get();
+                $bound = ResourceBooking::query()
+                    ->where('claim_id', $claim->getKey())
+                    ->whereNotNull('admission_id')
+                    ->whereIn('state', BookingState::occupyingValues())
+                    ->pluck('resource_id', 'admission_id');
+                $boundRefs = Resource::query()
+                    ->whereKey($bound->values())
+                    ->get(['id', 'ref', 'label'])
+                    ->mapWithKeys(fn (Resource $place): array => [$place->id => $place->ref ?? $place->label]);
+                $rows = $admissions->values()->map(fn (ResourceAdmission $admission, int $index): AdmissionSeatRowData => new AdmissionSeatRowData(
+                    admissionId: $admission->id,
+                    number: $index + 1,
+                    placeRef: $bound->has($admission->id) ? ($boundRefs->get($bound->get($admission->id)) ?? null) : null,
+                    isHeld: $admission->holder_user_id !== null,
+                ))->all();
+
+                return ['summary' => SeatSummaryData::ofClaim($claim, $refs, $noFreePlaces, $rows)->toArray()];
             },
             order: 20,
+        );
+
+        // The ticket page (#292 §6.4): the way into the per-ticket picker,
+        // offered only when this viewer may act on the ticket's claim —
+        // `FindSeatClaimForAdmission` is the whole decision, and null means
+        // the slot renders nothing. Reads nothing of Admission's tables: the
+        // admission comes from this module's own read model.
+        $slots->add(
+            slot: 'admission.ticket.show',
+            module: 'resources',
+            component: 'resources/TicketSeatSlot',
+            props: static function (array $context): array {
+                $found = app(FindSeatClaimForAdmission::class)->handle($context['admissionId'], (string) auth()->id());
+
+                if ($found === null) {
+                    return ['seat' => null];
+                }
+
+                $placeId = ResourceBooking::query()
+                    ->where('claim_id', $found['claim']->getKey())
+                    ->where('admission_id', $found['admission']->id)
+                    ->whereIn('state', BookingState::occupyingValues())
+                    ->value('resource_id');
+
+                $place = $placeId === null ? null : Resource::query()->find($placeId);
+
+                return ['seat' => (new TicketSeatActionData(
+                    admissionId: $found['admission']->id,
+                    placeLabel: $place === null ? null : ($place->ref ?? $place->label),
+                    seatingMode: $found['claim']->seating_mode->value,
+                    noFreePlaces: $placeId === null && ! app(HasFreePlaceForClaim::class)->handle($found['claim']),
+                ))->toArray()];
+            },
+            order: 10,
         );
     }
 

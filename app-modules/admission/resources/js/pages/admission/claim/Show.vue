@@ -16,9 +16,21 @@ import { Button } from '@/components/ui/button';
  * guessing. `alreadyHolderOfAnother` only informs: two tickets for one
  * person is the manager's call.
  */
-type Landing = Konventix.Admission.Data.ClaimLandingData;
+// Spelled out rather than `Konventix.Admission.Data.ClaimLandingData`: a
+// bare namespaced type fails the SFC compiler's macro type resolver (see
+// `seating/Pick.vue`). Mirrors `ClaimLandingData`.
+type Props = {
+    linkId: string;
+    eventName: string | null;
+    role: string;
+    managerName: string | null;
+    intendedEmail: string | null;
+    expiresAt: string;
+    alreadyHolderOfAnother: boolean;
+    claimUrl: string;
+};
 
-const props = defineProps<Landing>();
+const props = defineProps<Props>();
 
 const claiming = ref(false);
 
