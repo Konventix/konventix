@@ -1,5 +1,6 @@
 import { usePage } from '@inertiajs/vue3';
-import { computed, type ComputedRef } from 'vue';
+import type { ComputedRef } from 'vue';
+import { computed } from 'vue';
 
 /**
  * The console capabilities the shell shares (`HandleInertiaRequests`,

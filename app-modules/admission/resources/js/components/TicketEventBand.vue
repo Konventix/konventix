@@ -29,12 +29,12 @@ const props = defineProps<{
         />
         <div
             v-if="props.bannerUrl"
-            class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"
+            class="absolute inset-0 bg-gradient-to-t from-surface-inverted/80 via-surface-inverted/30 to-transparent"
             aria-hidden="true"
         />
         <div
             class="relative flex h-full flex-col justify-end gap-1 p-5"
-            :class="props.bannerUrl ? 'text-white' : ''"
+            :class="props.bannerUrl ? 'text-text-inverted' : ''"
         >
             <h1 class="text-2xl leading-tight font-semibold">
                 {{ props.eventName ?? 'Your event' }}

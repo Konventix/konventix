@@ -28,7 +28,7 @@ const props = defineProps<{
             <div
                 role="img"
                 :aria-label="`Scan code, door code ${props.doorCode}`"
-                class="size-44 shrink-0 rounded-lg bg-white p-2 [&>svg]:size-full"
+                class="size-44 shrink-0 rounded-lg bg-surface p-2 [&>svg]:size-full"
                 v-html="props.qrSvg"
             />
             <p class="font-mono text-sm tracking-widest text-text">
