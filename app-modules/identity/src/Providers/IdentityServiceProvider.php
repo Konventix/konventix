@@ -31,6 +31,7 @@ use Konventix\Identity\Http\Responses\ConsentAwareLoginResponse;
 use Konventix\Identity\Http\Responses\ConsentAwareTwoFactorLoginResponse;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Listeners\SendWelcomeOnVerified;
+use Konventix\Identity\Models\User;
 use Konventix\Identity\Social\SocialProviderRegistry;
 use Konventix\Identity\Social\SteamProvider;
 use Konventix\Messaging\Enums\Channel;
@@ -264,10 +265,26 @@ class IdentityServiceProvider extends ModuleServiceProvider
             ...app(OperatorPresence::class)->props(),
         ]));
 
-        Fortify::verifyEmailView(fn (Request $request) => Inertia::render('auth/VerifyEmail', [
-            'status' => $request->session()->get('status'),
-            ...app(OperatorPresence::class)->props(),
-        ]));
+        // One route, two screens (#293): an account still on a placeholder
+        // address has nothing a verification link could be sent to, so the
+        // notice becomes the form that collects the address. Fortify's
+        // controller has already established the account is unverified
+        // before this closure runs.
+        Fortify::verifyEmailView(function (Request $request) {
+            $user = $request->user();
+
+            if ($user instanceof User && $user->hasPlaceholderEmail()) {
+                return Inertia::render('auth/SetEmail', [
+                    'status' => $request->session()->get('status'),
+                    ...app(OperatorPresence::class)->props(),
+                ]);
+            }
+
+            return Inertia::render('auth/VerifyEmail', [
+                'status' => $request->session()->get('status'),
+                ...app(OperatorPresence::class)->props(),
+            ]);
+        });
 
         Fortify::confirmPasswordView(fn () => Inertia::render('auth/ConfirmPassword', [
             ...app(OperatorPresence::class)->props(),
@@ -463,8 +480,8 @@ class IdentityServiceProvider extends ModuleServiceProvider
     /**
      * ADR-0048 point 3/5: `identity.verify-email` and `identity.password-
      * reset` carry no topic — contractual, un-mutable, the suppression list
-     * is the only gate — `identity.welcome` alone declares one
-     * (`registerMessageTopics()` below).
+     * is the only gate — `identity.welcome` and `identity.email-missing`
+     * declare one each (`registerMessageTopics()` below).
      */
     protected function registerMessageTemplates(): void
     {
@@ -552,6 +569,26 @@ class IdentityServiceProvider extends ModuleServiceProvider
                 'shopUrl' => 'https://example.test/shop',
             ],
         ));
+
+        // #293: the in-app nudge an account on a placeholder address finds in
+        // its inbox. In-app only — there is no address to mail — and never
+        // suppressible, since the account's ability to be reached at all is
+        // what it is about. `InAppChannel` lifts `url` from the payload.
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.email-missing',
+            subjects: [
+                'de' => 'Bitte E-Mail-Adresse festlegen',
+                'en' => 'Please set your email address',
+            ],
+            // The inbox shows the body as plain text and makes the whole
+            // row the link (`notifications/Index.vue`), so no anchor here.
+            bodies: [
+                'de' => '<p>Ihr Konto wurde ohne E-Mail-Adresse übernommen. Bitte legen Sie eine fest, damit wir Sie erreichen können und Sie Ihr Konto bei Bedarf wiederherstellen können. Bis dahin bleiben Bestellungen und Einstellungen gesperrt.</p>',
+                'en' => '<p>Your account was carried over without an email address. Please set one so we can reach you and you can recover your account if you ever need to. Until then, orders and settings stay locked.</p>',
+            ],
+            defaultLocale: 'de',
+            sample: ['url' => 'https://example.test/email/verify'],
+        ));
     }
 
     protected function registerMessageTopics(): void
@@ -561,6 +598,13 @@ class IdentityServiceProvider extends ModuleServiceProvider
             label: 'Welcome and onboarding',
             defaultChannels: [Channel::Mail],
             suppressible: true,
+        ));
+
+        $this->app->make(TopicRegistry::class)->register(new Topic(
+            key: 'identity.email-missing',
+            label: 'Account needs an email address',
+            defaultChannels: [Channel::InApp],
+            suppressible: false,
         ));
     }
 }

@@ -229,8 +229,21 @@ final class SocialAuthController
 
         $request->session()->regenerate();
 
-        // GitLab #205, as in `store()` above.
-        return $this->outstandingContractRedirect($request) ?? redirect()->intended(route('dashboard'));
+        // GitLab #205, as in `store()` above. Consent first: it is the legal
+        // gate, and it hands the intended URL back afterwards.
+        if (($consent = $this->outstandingContractRedirect($request)) !== null) {
+            return $consent;
+        }
+
+        // #293: an account carried over without an address (Steam-only in
+        // Eventula) goes straight to the page that collects one. `verified`
+        // would bounce it there from `dashboard` anyway; sending it directly
+        // means the first thing the person sees explains itself.
+        if ($user->hasPlaceholderEmail()) {
+            return redirect()->route('verification.notice');
+        }
+
+        return redirect()->intended(route('dashboard'));
     }
 
     private function findIdentity(SocialIdentityData $identity): ?SocialIdentity

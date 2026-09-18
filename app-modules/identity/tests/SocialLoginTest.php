@@ -2,10 +2,6 @@
 
 declare(strict_types=1);
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
-use GuzzleHttp\Psr7\Response;
 use Illuminate\Support\Facades\Event;
 use Konventix\Compliance\Enums\LawfulBasis;
 use Konventix\Compliance\Models\Policy;
@@ -20,34 +16,9 @@ use Konventix\Identity\Models\User;
  * One callback, three outcomes: sign in somebody we recognise, link a new
  * identity for somebody already signed in, or start a signup. Which one it is
  * cannot be known until the provider has answered, which is why they share a
- * route.
+ * route. The callback helper lives in `tests/Helpers.php` (.ai/rules/tests.md:
+ * a helper a second file calls cannot be declared in a `*Test.php`).
  */
-function identityCallbackFrom(object $test, string $steamId, ?string $nonce = 'nonce-value')
-{
-    Socialite::driver('steam')->setHttpClient(new Client([
-        'handler' => HandlerStack::create(
-            new MockHandler([new Response(200, [], "ns:http://specs.openid.net/auth/2.0\nis_valid:true\n")])
-        ),
-    ]));
-
-    $query = [
-        'openid_ns' => 'http://specs.openid.net/auth/2.0',
-        'openid_mode' => 'id_res',
-        'openid_op_endpoint' => 'https://steamcommunity.com/openid/login',
-        'openid_claimed_id' => 'https://steamcommunity.com/openid/id/'.$steamId,
-        'openid_identity' => 'https://steamcommunity.com/openid/id/'.$steamId,
-        'openid_return_to' => 'http://localhost/auth/steam/callback',
-        'openid_response_nonce' => '2026-08-19T10:00:00Zabcdef',
-        'openid_assoc_handle' => '1234567890',
-        'openid_signed' => 'signed,op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle',
-        'openid_sig' => 'c2lnbmF0dXJl',
-        'nonce' => $nonce,
-    ];
-
-    return $test->withSession(['identity.social.steam.nonce' => $nonce])
-        ->get('http://localhost/auth/steam/callback?'.http_build_query($query));
-}
-
 it('signs in the account an identity already points at', function (): void {
     $this->withBrand();
 

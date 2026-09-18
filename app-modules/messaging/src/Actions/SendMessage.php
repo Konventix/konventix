@@ -7,6 +7,7 @@ namespace Konventix\Messaging\Actions;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 use Konventix\Messaging\Channels\ChannelMap;
+use Konventix\Messaging\Channels\UndeliverableAddress;
 use Konventix\Messaging\Data\SendMessageData;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Messaging\Digests\HoldPolicy;
@@ -196,6 +197,14 @@ final class SendMessage
 
         if (Suppression::blocks($brandId, $channel, $email, $request->recipientId)) {
             return 'suppression_list';
+        }
+
+        // A reserved-TLD address (#293) is refused on the mail channel only:
+        // the in-app row and a push subscription reach the account, not the
+        // address. Logged as suppressed so the delivery log shows the
+        // attempt instead of the transport quietly eating it.
+        if ($channel === Channel::Mail && UndeliverableAddress::is($email)) {
+            return 'undeliverable_address';
         }
 
         return null;
