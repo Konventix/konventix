@@ -283,7 +283,7 @@ it('shows an invitee what they would claim, and 410s a dead link', function (): 
     $this->actingAs($invitee)->get(str_replace('signature=', 'signature=0', $url))->assertForbidden();
 });
 
-it('sends a successful claim to the ticket list', function (): void {
+it('sends a successful claim to the ticket page', function (): void {
     $this->withBrand();
     $admission = claimTestPlaceholder();
     $issuer = app(IssueAdmissionClaimLink::class);
@@ -292,7 +292,7 @@ it('sends a successful claim to the ticket list', function (): void {
 
     $this->actingAs($claimant)
         ->post($issuer->urlFor($link))
-        ->assertRedirect('/my/tickets');
+        ->assertRedirect('/my/tickets/'.$admission->id);
 
     expect($admission->fresh()->holder_user_id)->toBe($claimant->id);
 });

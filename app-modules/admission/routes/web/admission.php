@@ -22,6 +22,7 @@ use Konventix\Admission\Http\Controllers\HolderController;
 use Konventix\Admission\Http\Controllers\InviteController;
 use Konventix\Admission\Http\Controllers\MyTicketsController;
 use Konventix\Admission\Http\Controllers\TicketDownloadController;
+use Konventix\Admission\Http\Controllers\TicketPageController;
 use Konventix\Admission\Http\Middleware\RecordTicketRenderMetrics;
 
 /*
@@ -95,6 +96,11 @@ Route::middleware(['auth'])->group(function (): void {
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/my/tickets', [MyTicketsController::class, 'index'])
         ->name('admission.tickets.mine');
+
+    // The ticket page (#292 §4.3): one admission on screen, for its holder
+    // and for the buyer who manages it.
+    Route::get('/my/tickets/{admission}', [TicketPageController::class, 'show'])
+        ->name('admission.tickets.show');
 });
 
 /*

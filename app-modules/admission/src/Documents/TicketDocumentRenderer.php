@@ -4,10 +4,6 @@ declare(strict_types=1);
 
 namespace Konventix\Admission\Documents;
 
-use BaconQrCode\Renderer\Image\SvgImageBackEnd;
-use BaconQrCode\Renderer\ImageRenderer;
-use BaconQrCode\Renderer\RendererStyle\RendererStyle;
-use BaconQrCode\Writer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Collection;
 use Konventix\Admission\Actions\IssueAdmissionToken;
@@ -54,14 +50,13 @@ use Konventix\Platform\Operators\OperatorSettings;
  */
 final class TicketDocumentRenderer
 {
-    private const int QR_SIZE_PX = 320;
-
     public function __construct(
         private readonly MediaLibrary $mediaLibrary,
         private readonly OperatorDateTimeFormat $dates,
         private readonly IssueAdmissionToken $issueAdmissionToken,
         private readonly DocumentWatermark $watermark,
         private readonly OperatorSettings $operatorSettings,
+        private readonly TicketQr $qr,
     ) {}
 
     /**
@@ -151,7 +146,7 @@ final class TicketDocumentRenderer
             'role' => $role,
             'validRange' => $this->validRangeFor($admission),
             'doorCode' => $this->doorCode($admission->id),
-            'qr' => $this->qrDataUri($this->issueAdmissionToken->current($admission)),
+            'qr' => $this->qr->dataUri($this->issueAdmissionToken->current($admission)),
             'operatorLegalName' => $operatorLegalName,
             'brandName' => $brand?->name,
             'admissionId' => $admission->id,
@@ -199,12 +194,5 @@ final class TicketDocumentRenderer
         $tail = strtoupper(substr($admissionId, -8));
 
         return substr($tail, 0, 4).'-'.substr($tail, 4, 4);
-    }
-
-    private function qrDataUri(string $token): string
-    {
-        $writer = new Writer(new ImageRenderer(new RendererStyle(self::QR_SIZE_PX, 0), new SvgImageBackEnd));
-
-        return 'data:image/svg+xml;base64,'.base64_encode($writer->writeString($token));
     }
 }

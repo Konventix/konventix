@@ -25,12 +25,14 @@ final class MyTicketData extends Data
         public readonly string $eventName,
         public readonly string $role,
         public readonly string $state,
+        /** Who holds it, for the "tickets you manage" list (#292); null while unassigned. */
+        public readonly ?string $holderName = null,
     ) {}
 
     /**
      * Named `of*` rather than `from*` (.ai/rules/data.md).
      */
-    public static function ofModel(Admission $admission, ?string $eventName): self
+    public static function ofModel(Admission $admission, ?string $eventName, ?string $holderName = null): self
     {
         return new self(
             id: $admission->getKey(),
@@ -38,6 +40,7 @@ final class MyTicketData extends Data
             eventName: $eventName ?? $admission->event_id,
             role: $admission->role,
             state: $admission->state->value,
+            holderName: $holderName,
         );
     }
 }

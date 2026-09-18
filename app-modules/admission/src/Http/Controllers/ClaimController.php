@@ -89,7 +89,7 @@ final class ClaimController
         $user = $request->user();
 
         try {
-            $claim->handle(
+            $admission = $claim->handle(
                 linkId: $link,
                 claimantUserId: (string) $user->getKey(),
                 claimantEmail: $user->email,
@@ -100,6 +100,6 @@ final class ClaimController
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('The ticket is now yours.')]);
 
-        return to_route('admission.tickets.mine');
+        return to_route('admission.tickets.show', ['admission' => $admission->id]);
     }
 }
