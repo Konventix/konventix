@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Admission\Providers;
 
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Actions\SendClaimLink;
 use Konventix\Admission\Console\AnnounceAdmissionOwnershipCommand;
 use Konventix\Admission\Data\TicketLinkData;
 use Konventix\Admission\Enums\AdmissionState;
@@ -34,6 +35,8 @@ use Konventix\Event\Events\VenueUnassigned;
 use Konventix\Event\Events\VenueUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
+use Konventix\Messaging\Templates\MessageTemplate;
+use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -228,6 +231,52 @@ class AdmissionServiceProvider extends ModuleServiceProvider
      * `AdmissionStatsController` — Event never queries this module's models
      * directly.
      */
+    /**
+     * The claim-link invitation (#292 §4.6, #16 point 1): sending is
+     * Messaging's concern, this module only declares what its mail says.
+     * Every directive on its own line (`.ai/rules/app-modules-src.md`).
+     */
+    protected function registerMessageTemplates(): void
+    {
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: SendClaimLink::TEMPLATE_KEY,
+            subjects: [
+                'de' => 'Ein Ticket wartet auf Sie',
+                'en' => 'A ticket is waiting for you',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    @if ($managerName)
+                    <p>{{ $managerName }} hat ein Ticket für Sie reserviert{{ $eventName ? ' — '.$eventName : '' }}.</p>
+                    @else
+                    <p>Ein Ticket wurde für Sie reserviert{{ $eventName ? ' — '.$eventName : '' }}.</p>
+                    @endif
+                    <p>Um es auf Ihren Namen zu übernehmen, melden Sie sich an oder legen Sie ein Konto an, und bestätigen Sie dann:</p>
+                    <p><a href="{{ $claimUrl }}">Ticket übernehmen</a></p>
+                    <p>Der Link gilt bis {{ $expiresAt }} und nur für diese E-Mail-Adresse.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    @if ($managerName)
+                    <p>{{ $managerName }} has reserved a ticket for you{{ $eventName ? ' — '.$eventName : '' }}.</p>
+                    @else
+                    <p>A ticket has been reserved for you{{ $eventName ? ' — '.$eventName : '' }}.</p>
+                    @endif
+                    <p>To put it in your name, sign in or create an account, then confirm:</p>
+                    <p><a href="{{ $claimUrl }}">Claim your ticket</a></p>
+                    <p>The link is valid until {{ $expiresAt }} and only for this e-mail address.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'eventName' => 'SXLan 2027',
+                'managerName' => 'Ada Lovelace',
+                'role' => 'visitor',
+                'claimUrl' => 'https://example.test/admissions/claim/abc123',
+                'expiresAt' => '28.08.2026 18:00',
+            ],
+        ));
+    }
+
     protected function registerSlots(): void
     {
         $slots = $this->app->make(SlotRegistry::class);
