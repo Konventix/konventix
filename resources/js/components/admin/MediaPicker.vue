@@ -124,7 +124,6 @@ function submitUpload(): void {
     uploadError.value = null;
 
     upload.post(MediaAdminController.quickStore.url(), {
-        forceFormData: true,
         onSuccess: (item) => {
             candidates.value = prependCandidate(candidates.value, item);
             uploadFile.value = null;
