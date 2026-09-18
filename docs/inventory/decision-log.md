@@ -306,6 +306,27 @@ inventory's numbering for the same topic and needed no change.
 - Module count is now **19**; `module-map.md` carries Support and an explicit
   "the satellites are gone" section.
 
+## Round 8 — Competition surface design (2026-09-18, GitLab #32/#33)
+
+Taken against the module as shipped in slice 10 and SXLAN's measured
+tournament history in the Eventula dump. Full text:
+`docs/superpowers/specs/2026-09-18-competition-design.md`.
+
+| ID | Decision | Chosen | Status |
+|---|---|---|---|
+| D-CMP-15 | Competition lifecycle | **Explicit `CompetitionStatus` with enforced transitions; `SignupClosed` between `Published` and `Running`** so signups close before anything starts. (User requirement.) | spec (Competition) |
+| D-CMP-16 | Non-bracket contests and stages | **A `leaderboard` stage format (scored entries, optional heats, organizer verification). Multi-stage modelled now — `entry_source`, `advance_count`, a `SeedSource` seam — one stage in the UI.** | spec (Competition) |
+| D-CMP-17 | Team formation | **Invite code per team, captain as a member role, a public "interested to play" list, incomplete teams held and resolved by the organizer at signup close (fill from the list or decline). No join requests, e-mail invites or substitutes.** (User spec.) | spec (Competition) |
+| D-CMP-18 | Check-in | **Per competition: none / self-service window / desk, plus an optional requirement that the roster was checked in at the event door** via a presence read model from Admission's events. (User decision.) | spec (Competition) |
+| D-CMP-19 | Results | **Participants report; agreeing reports record and are then orga-only; differing reports dispute, resolved with a mandatory note; score entries carry optional/required proofs and need verification; corrections cascade and void downstream results; every step is a match-history row.** (User spec.) | spec (Competition) |
+| D-CMP-20 | Seeding | **Random by default, drag-order override, regeneration until the first result.** | spec (Competition) |
+| D-CMP-21 | Scheduling depth | **`starts_at` plus desk-set `scheduled_at` per match and per round; board and estimator stay #117.** | spec (Competition) |
+| D-CMP-22 | Bracket rendering | **Port LanBrackets' canvas onto semantic tokens, table view as the accessible alternative; public pages poll.** (User: porting is okay.) | spec (Competition) |
+| D-CMP-23 | Capabilities | **`ManageSchedule`, `CheckInEntrants`, `ViewEntrantContacts` added; Tournament Admin and Tournament Desk as default roles.** Closes #135 for this module. | spec (Competition) |
+| D-CMP-24 | Swiss pairing | **Swiss stays available with greedy pairing; blossom deferred until a Swiss competition is planned.** | spec (Competition), #33 |
+| D-CMP-25 | Eventula tournaments | **Not imported** — results lived in Challonge, the dump holds none. | — |
+| D-GOP-04 (amended) | Catalogue read model | **`Discipline` is the source of record for contest defaults; GameOps' catalogue event carries identity and operational fields only.** | adr → ADR-0062 |
+
 ## Open
 
 **56 of the 68 inventory decisions remain open.** They are written up in the
