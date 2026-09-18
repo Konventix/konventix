@@ -50,6 +50,7 @@ use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
+use Laravel\Socialite\Contracts\Factory as SocialiteFactory;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 use SocialiteProviders\Steam\SteamExtendSocialite;
 
@@ -120,13 +121,6 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
         // ADR-0048 point 5: the welcome that follows the first verification.
         Event::listen(Verified::class, SendWelcomeOnVerified::class);
-
-        // Community Socialite providers are not auto-discovered the way the
-        // built-in ones are — they extend the manager by listening for this
-        // event. Registered explicitly here because modular event discovery is
-        // off and stays off (.ai/rules/listeners.md); without this line
-        // `Socialite::driver('steam')` raises "Driver [steam] not supported".
-        Event::listen(SocialiteWasCalled::class, [SteamExtendSocialite::class, 'handle']);
     }
 
     /**
@@ -146,6 +140,24 @@ class IdentityServiceProvider extends ModuleServiceProvider
             $registry->register($app->make(SteamProvider::class));
 
             return $registry;
+        });
+
+        // Community Socialite providers are not auto-discovered the way the
+        // built-in ones are: the Manager package fires `SocialiteWasCalled`
+        // exactly once, after boot, and each provider's listener extends
+        // whatever factory instance exists at that moment. That was a plain
+        // `Event::listen` here, and it passed every test — but Octane flushes
+        // the factory before every request (config/octane.php `flush`, so a
+        // cached driver holds no stale request), and the instance resolved
+        // afterwards has never heard of Steam: "Driver [steam] not supported"
+        // on every login of the dev cluster (found 2026-09-18). Extending on
+        // every resolution covers the boot-time instance and each post-flush
+        // one alike. `afterResolving` runs once the container has stored the
+        // singleton, so the package's own `make(Factory)` inside returns this
+        // very instance instead of recursing; the Manager's boot-time event
+        // then merely re-extends an instance that already knows the driver.
+        $this->app->afterResolving(SocialiteFactory::class, function (): void {
+            (new SteamExtendSocialite)->handle($this->app->make(SocialiteWasCalled::class));
         });
 
         // Compliance's public verification link resolves an address to an
