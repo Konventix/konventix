@@ -39,6 +39,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $timezone
  * @property string|null $venue_label
  * @property string|null $venue_id
+ * @property string|null $banner_media_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */

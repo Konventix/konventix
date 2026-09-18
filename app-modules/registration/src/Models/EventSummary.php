@@ -46,6 +46,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property Carbon|null $ends_at
  * @property string|null $timezone
  * @property string|null $venue_label
+ * @property string|null $banner_media_id
  * @property string|null $venue_id
  * @property Carbon|null $public_since
  * @property Carbon|null $archived_at
