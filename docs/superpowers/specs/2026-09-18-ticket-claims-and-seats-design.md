@@ -603,3 +603,11 @@ occupancy names on the plan (SET-F-009); German UI strings (#132).
 
 Deviations found during implementation are appended here with a date and
 the task that found them. The body above is never edited.
+
+- **2026-09-18, Task 1: no Data class for the upload.** §5b's plan named a
+  `MediaQuickUploadData`; the repository has no Data class carrying an
+  `UploadedFile` and the generated TypeScript would have nothing to say
+  about one. `store()` and `quickStore()` share a private `upload()` on
+  the controller with the validation `store()` always had. The tests live
+  in `MediaLibraryTest.php` next to `mediaOperator()`, which that file
+  declares and a second file may not call (`.ai/rules/tests.md`).
