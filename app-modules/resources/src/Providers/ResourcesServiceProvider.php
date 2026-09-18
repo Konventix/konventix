@@ -322,12 +322,12 @@ class ResourcesServiceProvider extends ModuleServiceProvider
                     ->whereKey($bound->values())
                     ->get(['id', 'ref', 'label'])
                     ->mapWithKeys(fn (Resource $place): array => [$place->id => $place->ref ?? $place->label]);
-                $rows = $admissions->values()->map(fn (ResourceAdmission $admission, int $index): AdmissionSeatRowData => new AdmissionSeatRowData(
+                $rows = array_values($admissions->values()->map(fn (ResourceAdmission $admission, int $index): AdmissionSeatRowData => new AdmissionSeatRowData(
                     admissionId: $admission->id,
                     number: $index + 1,
                     placeRef: $bound->has($admission->id) ? ($boundRefs->get($bound->get($admission->id)) ?? null) : null,
                     isHeld: $admission->holder_user_id !== null,
-                ))->values()->all();
+                ))->all());
 
                 return ['summary' => SeatSummaryData::ofClaim($claim, $refs, $noFreePlaces, $rows)->toArray()];
             },

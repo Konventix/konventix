@@ -135,9 +135,16 @@ function submitUpload(): void {
 
             uploadError.value = first ?? 'The upload was refused.';
         },
-        onException: () => {
+        onNetworkError: () => {
             uploadError.value =
                 'The upload did not reach the server. Try again.';
+
+            return false;
+        },
+        onHttpException: () => {
+            uploadError.value = 'The upload failed on the server. Try again.';
+
+            return false;
         },
     });
 }

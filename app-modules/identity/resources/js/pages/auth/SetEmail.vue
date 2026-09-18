@@ -62,8 +62,8 @@ defineOptions({
                 />
                 <InputError id="email-error" :message="errors.email" />
                 <p class="text-xs text-text-muted">
-                    We will send you a link to confirm this address. Until it
-                    is confirmed, orders and settings stay locked.
+                    We will send you a link to confirm this address. Until it is
+                    confirmed, orders and settings stay locked.
                 </p>
             </div>
 
