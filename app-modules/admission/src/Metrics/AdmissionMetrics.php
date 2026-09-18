@@ -39,6 +39,22 @@ final class AdmissionMetrics
                 'Ticket PDF pages rendered and served.',
                 ['brand'],
             ),
+            // #292 §9: how tickets change hands — claimed through a link,
+            // assigned by the buyer or at the desk, taken back.
+            new MetricDefinition(
+                'admission_holder_changes_total',
+                MetricKind::Counter,
+                'Holder changes on admissions, by how they happened.',
+                ['brand', 'outcome'],
+            ),
+            // #292 §9: invitations issued, mailed or not, withdrawn. A
+            // `send_failed` that outruns `sent` is the alert.
+            new MetricDefinition(
+                'admission_claim_invites_total',
+                MetricKind::Counter,
+                'Claim-link invitations by outcome.',
+                ['brand', 'outcome'],
+            ),
         ];
     }
 }

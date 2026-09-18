@@ -6,6 +6,7 @@ namespace Konventix\Admission\Actions;
 
 use Illuminate\Support\Facades\Log;
 use Konventix\Admission\Data\ClaimLinkMailData;
+use Konventix\Admission\Events\ClaimLinkSent;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionClaimLink;
 use Konventix\Admission\Models\EventSummary;
@@ -82,8 +83,12 @@ final class SendClaimLink
                 'reason' => $exception->getMessage(),
             ]);
 
+            event(new ClaimLinkSent(linkId: $link->id, admissionId: $admission->id, brandId: $admission->brand_id, sent: false));
+
             return false;
         }
+
+        event(new ClaimLinkSent(linkId: $link->id, admissionId: $admission->id, brandId: $admission->brand_id, sent: true));
 
         return true;
     }

@@ -39,15 +39,15 @@ date, alert names and recipient under the alert's section when done.
 - KonventixDatabaseBackupMissing fires on its own on an instance that never
   completed a backup.
 
-The other eleven — KonventixMetricsDown, KonventixHealthCheckFailed,
+The other twelve — KonventixMetricsDown, KonventixHealthCheckFailed,
 KonventixQueueJobsFailing, KonventixWaitingRoomStuck, KonventixWebhookSilence,
 KonventixPaymentFailureRate, KonventixHttp5xxRate, KonventixCheckoutSlow,
-KonventixWalArchivingFailing, KonventixPodsRestarting and
-KonventixResourceHoldSweepStale — are not triggered
+KonventixWalArchivingFailing, KonventixPodsRestarting,
+KonventixResourceHoldSweepStale and KonventixClaimInviteMailFailing — are not triggered
 by hand for #168; each has a `vmalert-tool` unit test in
 `contrib/observability/alerts/tests/konventix.rules.test.yaml` that shapes an
 input series so the rule's expression fires and asserts the labels vmalert
-reports, which is the acceptance in place of a live trigger. Two of those eleven
+reports, which is the acceptance in place of a live trigger. Two of those twelve
 need more than the unit test to prove the *metric*, not just the rule, is
 honest: KonventixWebhookSilence and KonventixPaymentFailureRate are proven by
 running a sandbox payment flow — a Stripe test-mode webhook withheld, and a
@@ -163,7 +163,16 @@ Two commands, safe to re-run, neither one specific to a single event:
   `registration_event_summaries` both pick up a name, a schedule and a
   venue for events created before the two read models existed. Run it again
   after backfilling a venue onto an event that predates this deploy — the
-  command does not run itself.
+  command does not run itself. Since #292 the same run also carries each
+  event's `banner_media_id` into both summaries.
+- `vendor/bin/sail artisan admission:announce-ownership` — re-emits the
+  narrow `AdmissionOwnershipAnnounced` event for every admission (#292), so
+  Resources' `resource_admissions` read model — who holds and who bought
+  each ticket, which the per-ticket seat picker authorises on — is
+  populated for admissions issued before that table existed. Only a
+  projection listens; never a replay of `AdmissionIssued`, which would
+  count every admission on the dashboards a second time. Run it once after
+  the deploy that brings the table, after `event:replay-details`.
 
 ## Alerts
 
@@ -312,6 +321,17 @@ A pod restarted more than three times in thirty minutes. `kubectl -n
 konventix describe pod <pod>` shows OOMKilled or a failing probe;
 `kubectl logs --previous` shows the last words. Memory limits per role
 are in the chart values.
+
+### KonventixClaimInviteMailFailing
+
+More claim-link invitations failed to send than were sent in the last
+half hour (#292). The links exist — the buyer was told to copy them — so
+nobody is locked out, but a manager whose invitations never arrive stops
+trusting the feature. `SendMessage` refused: look for "Claim link mail
+could not be sent." in the logs, which carries Messaging's reason — no
+resolvable address (the link is bound, so this means a malformed one got
+past validation), a brand with no mail identity, or the mail transport
+itself, in which case `KonventixQueueJobsFailing` fires beside this.
 
 ### KonventixRoleUnavailable
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Admission\Actions;
 
+use Konventix\Admission\Events\ClaimLinkRevoked;
 use Konventix\Admission\Models\AdmissionClaimLink;
 
 /**
@@ -20,5 +21,7 @@ final class RevokeClaimLink
         }
 
         $link->forceFill(['revoked_at' => now()])->save();
+
+        event(new ClaimLinkRevoked(linkId: $link->id, admissionId: $link->admission_id, brandId: $link->brand_id));
     }
 }

@@ -8,13 +8,19 @@ use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Actions\SendClaimLink;
 use Konventix\Admission\Console\AnnounceAdmissionOwnershipCommand;
 use Konventix\Admission\Enums\Permission;
+use Konventix\Admission\Events\AdmissionHolderAssigned;
+use Konventix\Admission\Events\AdmissionHolderUnassigned;
 use Konventix\Admission\Events\CheckInRejected;
+use Konventix\Admission\Events\ClaimLinkIssued;
+use Konventix\Admission\Events\ClaimLinkRevoked;
+use Konventix\Admission\Events\ClaimLinkSent;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
 use Konventix\Admission\Listeners\FillBuyerOnRegistrationOwnershipAnnounced;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
 use Konventix\Admission\Listeners\Metrics\RecordAdmissionTokenMetrics;
+use Konventix\Admission\Listeners\Metrics\RecordHolderMetrics;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
 use Konventix\Admission\Listeners\ProjectAdmissionSeat;
 use Konventix\Admission\Listeners\ProjectEventSummary;
@@ -187,6 +193,13 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         // *confirmed* booking — a hold must never reach a ticket.
         Event::listen(ResourceBookingConfirmed::class, [ProjectAdmissionSeat::class, 'handleConfirmed']);
         Event::listen(ResourceBookingReleased::class, [ProjectAdmissionSeat::class, 'handleReleased']);
+
+        // ADR-0059, #292 §9: holder changes and invitations.
+        Event::listen(AdmissionHolderAssigned::class, [RecordHolderMetrics::class, 'handleAssigned']);
+        Event::listen(AdmissionHolderUnassigned::class, [RecordHolderMetrics::class, 'handleUnassigned']);
+        Event::listen(ClaimLinkIssued::class, [RecordHolderMetrics::class, 'handleIssued']);
+        Event::listen(ClaimLinkSent::class, [RecordHolderMetrics::class, 'handleSent']);
+        Event::listen(ClaimLinkRevoked::class, [RecordHolderMetrics::class, 'handleRevoked']);
 
         // Admission's own metric (ADR-0059, design doc §9): the one
         // rejection reason among CheckInRejected's nine that answers

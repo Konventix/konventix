@@ -7,6 +7,7 @@ namespace Konventix\Admission\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 use Konventix\Admission\Enums\AdmissionState;
+use Konventix\Admission\Events\ClaimLinkIssued;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionClaimLink;
 use RuntimeException;
@@ -48,6 +49,13 @@ final class IssueAdmissionClaimLink
             ]);
             // brand_id from the admission, not ambient context (ADR-0010).
             $link->forceFill(['brand_id' => $admission->brand_id])->save();
+
+            event(new ClaimLinkIssued(
+                linkId: $link->id,
+                admissionId: $admission->id,
+                brandId: $admission->brand_id,
+                bound: $intendedEmail !== null,
+            ));
 
             return $link;
         });

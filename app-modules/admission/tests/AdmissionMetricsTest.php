@@ -3,8 +3,18 @@
 declare(strict_types=1);
 
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
+use Konventix\Admission\Actions\AssignHolder;
+use Konventix\Admission\Actions\IssueAdmissionClaimLink;
+use Konventix\Admission\Actions\RevokeClaimLink;
+use Konventix\Admission\Actions\SendClaimLink;
+use Konventix\Admission\Actions\UnassignHolder;
+use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Http\Middleware\RecordTicketRenderMetrics;
+use Konventix\Admission\Models\Admission;
+use Konventix\Identity\Models\User;
 use Konventix\Platform\Brands\BrandSlugs;
 use Prometheus\CollectorRegistry;
 use Prometheus\RenderTextFormat;
@@ -63,4 +73,37 @@ it('is wired onto the real ticket routes', function (): void {
     expect(Route::getRoutes()->getByName('admission.tickets.buyer')?->gatherMiddleware())->toContain(RecordTicketRenderMetrics::class)
         ->and(Route::getRoutes()->getByName('admission.tickets.holder')?->gatherMiddleware())->toContain(RecordTicketRenderMetrics::class)
         ->and(Route::getRoutes()->getByName('admission.tickets.mine')?->gatherMiddleware())->not->toContain(RecordTicketRenderMetrics::class);
+});
+
+// #292 §9: holder changes and invitations, each an outcome on a counter.
+it('counts holder changes and invitations by outcome', function (): void {
+    $brand = $this->withBrand();
+    $slug = BrandSlugs::of($brand->getKey());
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    $buyer = User::factory()->create();
+    $admission = Admission::factory()->forRegistration((string) Str::ulid())->create([
+        'event_id' => $eventId,
+        'holder_user_id' => null,
+        'state' => AdmissionState::Issued,
+        'buyer_user_id' => $buyer->id,
+    ]);
+
+    // Bound invite, mailed; then withdrawn; then a bearer link; then the buyer takes it.
+    Queue::fake();
+    $link = app(IssueAdmissionClaimLink::class)->handle($admission, 'friend@example.test');
+    app(SendClaimLink::class)->handle($link, $admission, $buyer->id);
+    app(RevokeClaimLink::class)->handle($link);
+    app(IssueAdmissionClaimLink::class)->handle($admission, null);
+    app(AssignHolder::class)->handle($admission, $buyer->id, AssignHolder::ACTOR_MANAGER, $buyer->id);
+    app(UnassignHolder::class)->handle($admission->fresh(), UnassignHolder::ACTOR_MANAGER, $buyer->id, UnassignHolder::REASON_MANAGER);
+
+    $rendered = metricsRendered();
+
+    expect($rendered)
+        ->toContain('konventix_admission_claim_invites_total{brand="'.$slug.'",outcome="issued"} 2')
+        ->toContain('konventix_admission_claim_invites_total{brand="'.$slug.'",outcome="sent"} 1')
+        ->toContain('konventix_admission_claim_invites_total{brand="'.$slug.'",outcome="revoked"} 1')
+        ->toContain('konventix_admission_holder_changes_total{brand="'.$slug.'",outcome="assigned"} 1')
+        ->toContain('konventix_admission_holder_changes_total{brand="'.$slug.'",outcome="unassigned"} 1');
 });
