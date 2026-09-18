@@ -7,8 +7,6 @@ namespace Konventix\Admission\Providers;
 use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Actions\SendClaimLink;
 use Konventix\Admission\Console\AnnounceAdmissionOwnershipCommand;
-use Konventix\Admission\Data\TicketLinkData;
-use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Enums\Permission;
 use Konventix\Admission\Events\CheckInRejected;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
@@ -23,7 +21,7 @@ use Konventix\Admission\Listeners\ProjectPerson;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
 use Konventix\Admission\Listeners\RevokeAdmissionsOnRegistrationCancelled;
 use Konventix\Admission\Metrics\AdmissionMetrics;
-use Konventix\Admission\Models\Admission;
+use Konventix\Admission\Support\BuildTicketManager;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
@@ -289,30 +287,24 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             order: 20,
         );
 
-        // design §7: how many tickets the buyer's file holds, and the link
-        // to it — the same mechanism the seat picker's `SeatSummarySlot`
-        // uses on this slot. Absent (`ticket: null`) when the registration
-        // granted no admissions at all, or when every admission it granted
-        // has since been revoked — never a link into an empty file.
-        // `static`: SlotRegistry is a singleton that outlives the request
-        // under Octane, and a closure capturing `$this` would pin this
-        // provider in memory with it.
+        // The ticket manager (#292 §4.5, #16): one row per admission the
+        // registration granted, with the holder, the live invitation and
+        // the seat — and the download of the buyer's combined file. Absent
+        // (`manager: null`) when the registration granted no admissions, or
+        // every one has been revoked — `SeatSummarySlot`'s idiom on this
+        // same slot. `static`: SlotRegistry is a singleton that outlives the
+        // request under Octane, and a closure capturing `$this` would pin
+        // this provider in memory with it; the builder is resolved per call
+        // for the same reason.
         $slots->add(
             slot: 'registration.mine.show',
             module: 'admission',
-            component: 'admission/TicketLinkSlot',
-            props: static function (array $context): array {
-                $count = Admission::query()
-                    ->where('registration_id', $context['registrationId'])
-                    ->where('state', '!=', AdmissionState::Revoked)
-                    ->count();
-
-                if ($count === 0) {
-                    return ['ticket' => null];
-                }
-
-                return ['ticket' => TicketLinkData::of($context['registrationId'], $count)->toArray()];
-            },
+            component: 'admission/TicketManagerSlot',
+            props: static fn (array $context): array => [
+                'manager' => app(BuildTicketManager::class)
+                    ->handle($context['registrationId'], (string) auth()->id())
+                    ?->toArray(),
+            ],
             order: 30,
         );
     }
