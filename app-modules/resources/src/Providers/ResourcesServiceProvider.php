@@ -6,6 +6,11 @@ namespace Konventix\Resources\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Events\AdmissionHolderAssigned;
+use Konventix\Admission\Events\AdmissionHolderUnassigned;
+use Konventix\Admission\Events\AdmissionIssued;
+use Konventix\Admission\Events\AdmissionOwnershipAnnounced;
+use Konventix\Admission\Events\AdmissionRevoked;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
@@ -42,6 +47,7 @@ use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationAmended;
 use Konventix\Resources\Listeners\FulfilClaimsOnRegistrationConfirmed;
 use Konventix\Resources\Listeners\Metrics\RecordBookingMetrics;
 use Konventix\Resources\Listeners\Metrics\RecordPlanMetrics;
+use Konventix\Resources\Listeners\ProjectAdmission;
 use Konventix\Resources\Listeners\ProjectEventWindow;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationCancelled;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationRejected;
@@ -318,6 +324,14 @@ class ResourcesServiceProvider extends ModuleServiceProvider
         Event::listen(EventCreated::class, [ProjectEventWindow::class, 'handleCreated']);
         Event::listen(EventRescheduled::class, [ProjectEventWindow::class, 'handleRescheduled']);
         Event::listen(EventDetailsUpdated::class, [ProjectEventWindow::class, 'handleDetailsUpdated']);
+
+        // Admissions, for the seat-per-ticket picker (#292 §6.1). Ungated:
+        // a read model stays current whether or not a brand seats anybody.
+        Event::listen(AdmissionIssued::class, [ProjectAdmission::class, 'handleIssued']);
+        Event::listen(AdmissionHolderAssigned::class, [ProjectAdmission::class, 'handleHolderAssigned']);
+        Event::listen(AdmissionHolderUnassigned::class, [ProjectAdmission::class, 'handleHolderUnassigned']);
+        Event::listen(AdmissionRevoked::class, [ProjectAdmission::class, 'handleRevoked']);
+        Event::listen(AdmissionOwnershipAnnounced::class, [ProjectAdmission::class, 'handleOwnershipAnnounced']);
 
         // ADR-0059: Resources' own metrics, from its own events.
         Event::listen(
