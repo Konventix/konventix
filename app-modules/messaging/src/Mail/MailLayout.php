@@ -24,8 +24,13 @@ final class MailLayout
     /**
      * @return array{html: string, text: string}
      */
-    public static function wrap(RenderedMessage $rendered, BrandMailIdentityData $identity, ?string $preferencesUrl): array
-    {
+    public static function wrap(
+        RenderedMessage $rendered,
+        BrandMailIdentityData $identity,
+        ?string $preferencesUrl,
+        ?string $heroImageUrl = null,
+        ?string $heroImageAlt = null,
+    ): array {
         $plainBody = self::plainBody($rendered->body);
 
         $html = View::make('messaging::layouts.branded', [
@@ -33,6 +38,10 @@ final class MailLayout
             'body' => $rendered->body,
             'identity' => $identity,
             'preferencesUrl' => $preferencesUrl,
+            // The hero row (#292): a picture the sender named, or nothing.
+            // The text part never mentions it — it is decoration.
+            'heroImageUrl' => $heroImageUrl,
+            'heroImageAlt' => $heroImageAlt,
             'locale' => $rendered->locale,
             // First 90 chars of the text part: the hidden preheader the
             // inbox list shows beside the subject.

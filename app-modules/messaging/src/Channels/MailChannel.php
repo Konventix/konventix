@@ -49,7 +49,13 @@ final class MailChannel implements MessageChannel
         $settings = $this->settingsFor($message->brandId);
 
         $identity = $this->identityResolver->for($message->brandId);
-        $wrapped = MailLayout::wrap($rendered, $identity, $this->preferencesUrlFor($message));
+        $wrapped = MailLayout::wrap(
+            $rendered,
+            $identity,
+            $this->preferencesUrlFor($message),
+            $message->heroImageUrl,
+            $message->heroImageAlt,
+        );
 
         $mailable = new TemplatedMail(
             messageSubject: $rendered->subject,

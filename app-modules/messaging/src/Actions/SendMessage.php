@@ -89,6 +89,8 @@ final class SendMessage
                 attachments: $request->attachments,
                 topicKey: $request->topicKey,
                 urgent: $request->urgent,
+                heroImageUrl: $request->heroImageUrl,
+                heroImageAlt: $request->heroImageAlt,
             );
 
             $refusal = $this->refusalFor($request, $channel, $brandId, $email);

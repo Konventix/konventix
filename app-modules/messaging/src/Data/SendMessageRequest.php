@@ -45,5 +45,10 @@ final class SendMessageRequest extends Data
         public readonly ?string $topicKey = null,
         // D-CNT-08's word: an urgent send bypasses digests and quiet hours.
         public readonly bool $urgent = false,
+        // A picture the layout prints full-width between the header and
+        // the body (#292) — an event's banner, resolved by the sender to an
+        // absolute, publicly reachable URL. Null renders no row at all.
+        public readonly ?string $heroImageUrl = null,
+        public readonly ?string $heroImageAlt = null,
     ) {}
 }

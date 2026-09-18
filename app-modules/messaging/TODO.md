@@ -114,6 +114,12 @@
 
 ## Done
 
+- [x] Hero picture row in the branded layout (#292): `SendMessageRequest`
+      and `SendMessageData` carry `heroImageUrl`/`heroImageAlt`, the layout
+      prints the row between header and body. Not logged, so
+      `FlushHeldMessages`/`ResendMessage` rebuild without it — a follow-up
+      if a held announcement ever wants its banner back.
+
 - [x] ADR-0048 (mail-and-receipts tranche): every mail wears the brand's own
       layout, the delivery log and the template editor get screens, and
       Identity's auth mail moves onto this pipe.
