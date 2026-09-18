@@ -53,6 +53,17 @@ export default dashboard({
             timeseries('Seat claims unplaced', [prom(`konventix_resource_seat_claims_unplaced{${J}}`, '{{brand}} {{event}}')], { w: 8 }),
             timeseries('Bookings per minute by outcome', [prom(`sum by (brand, outcome) (rate(konventix_resource_bookings_total{${J}}[5m])) * 60`, '{{brand}} {{outcome}}')], { w: 8 }),
             timeseries('Plan saves per hour by outcome', [prom(`sum by (brand, outcome) (increase(konventix_resource_plan_saves_total{${J}}[1h]))`, '{{brand}} {{outcome}}')], { w: 8, description: 'conflict, invalid and stale are refused saves; nothing was written.' }),
+            stat('Seats placed per ticket', [prom(`sum(increase(konventix_resource_admission_seats_total{${J}, outcome="placed"}[$__range]))`)], { description: 'Bookings bound to one admission and confirmed (#292); a released one is a move, a give-up or a revocation.' }),
+            timeseries('Seats per ticket per hour by outcome', [prom(`sum by (brand, outcome) (increase(konventix_resource_admission_seats_total{${J}}[1h]))`, '{{brand}} {{outcome}}')], { w: 8 }),
+        ]),
+        row('Holders and invites', [
+            stat('Tickets claimed', [prom(`sum(increase(konventix_admission_holder_changes_total{${J}, outcome="claimed"}[$__range]))`)], { description: 'Holders named through a claim link (#292).' }),
+            stat('Tickets assigned', [prom(`sum(increase(konventix_admission_holder_changes_total{${J}, outcome="assigned"}[$__range]))`)], { description: 'Holders named directly: the buyer for themselves, or the desk.' }),
+            stat('Tickets taken back', [prom(`sum(increase(konventix_admission_holder_changes_total{${J}, outcome="unassigned"}[$__range]))`)]),
+            stat('Invites sent', [prom(`sum(increase(konventix_admission_claim_invites_total{${J}, outcome="sent"}[$__range]))`)]),
+            stat('Invite mails failed', [prom(`sum(increase(konventix_admission_claim_invites_total{${J}, outcome="send_failed"}[$__range]))`)], { description: 'Messaging refused the mail; the link exists and the buyer was told to copy it. KonventixClaimInviteMailFailing pages when these outrun the sent ones.', thresholds: thresholds('green', [1, 'orange']) }),
+            timeseries('Holder changes per hour by outcome', [prom(`sum by (brand, outcome) (increase(konventix_admission_holder_changes_total{${J}}[1h]))`, '{{brand}} {{outcome}}')], { w: 12 }),
+            timeseries('Invites per hour by outcome', [prom(`sum by (brand, outcome) (increase(konventix_admission_claim_invites_total{${J}}[1h]))`, '{{brand}} {{outcome}}')], { w: 12 }),
         ]),
         row('Tickets and calendars', [
             stat('Tickets rendered', [prom(`sum(increase(konventix_admission_tickets_rendered_total{${J}}[$__range]))`)], { description: 'Ticket PDF pages served in the selected range.' }),

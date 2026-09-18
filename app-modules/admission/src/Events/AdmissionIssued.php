@@ -23,5 +23,7 @@ final class AdmissionIssued
         public readonly string $role,
         public readonly ?string $holderUserId,
         public readonly string $issuedAt,
+        /** The registrant who bought it (`admissions.buyer_user_id`), null for a staff admission (#292). Additive. */
+        public readonly ?string $buyerUserId = null,
     ) {}
 }

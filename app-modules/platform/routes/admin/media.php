@@ -14,4 +14,6 @@ use Konventix\Platform\Http\Controllers\Admin\MediaAdminController;
 
 Route::get('/media', [MediaAdminController::class, 'index'])->name('admin.media.index');
 Route::post('/media', [MediaAdminController::class, 'store'])->name('admin.media.store');
+// The picker's own door (#292): the same upload, answered as JSON.
+Route::post('/media/quick', [MediaAdminController::class, 'quickStore'])->name('admin.media.quick-store');
 Route::delete('/media/{media}', [MediaAdminController::class, 'destroy'])->name('admin.media.destroy');

@@ -14,6 +14,7 @@ use Konventix\Messaging\Data\AttachmentData;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Calendar\CalendarFile;
+use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\OperatorDateTimeFormat;
 use Konventix\Registration\Enums\PaymentStatus;
@@ -44,6 +45,7 @@ final class RegistrationMailer
         // memoises the operator's chosen formats (review finding 6).
         private readonly OperatorDateTimeFormat $dates,
         private readonly ResolveBrandTimezone $brandTimezone,
+        private readonly MediaLibrary $media,
     ) {}
 
     /**
@@ -51,6 +53,8 @@ final class RegistrationMailer
      */
     public function send(Registration $registration, string $templateKey, Data $payload, ?DataCollection $attachments = null): void
     {
+        $hero = $this->heroFor($registration);
+
         try {
             $this->sendMessage->handle(new SendMessageRequest(
                 recipientId: $registration->registrant_user_id,
@@ -58,6 +62,8 @@ final class RegistrationMailer
                 payload: $payload,
                 brandId: $registration->brand_id,
                 attachments: $attachments,
+                heroImageUrl: $hero['url'] ?? null,
+                heroImageAlt: $hero['altText'] ?? null,
             ));
         } catch (RuntimeException $exception) {
             Log::warning('Registration lifecycle mail could not be sent.', [
@@ -66,6 +72,47 @@ final class RegistrationMailer
                 'reason' => $exception->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * The event's banner as the mail's hero row (#292): the media ULID from
+     * this module's own event summary, resolved through Platform's library
+     * — null without a banner, and null again once the picture is gone, so
+     * a deleted file never costs a mail. Same lookup for every lifecycle
+     * mail, because the person reading a cancellation deserves the same
+     * picture as the person reading a confirmation.
+     *
+     * @return array{url: string, altText: string|null}|null
+     */
+    private function heroFor(Registration $registration): ?array
+    {
+        $bannerMediaId = EventSummary::withoutBrandScope()
+            ->where('brand_id', $registration->brand_id)
+            ->where('event_id', $registration->event_id)
+            ->value('banner_media_id');
+
+        if ($bannerMediaId === null) {
+            return null;
+        }
+
+        $reference = $this->media->referenceFor($bannerMediaId);
+
+        if ($reference === null) {
+            return null;
+        }
+
+        return [
+            'url' => $reference['url'],
+            'altText' => $reference['altText'] ?? $this->eventNameFor($registration),
+        ];
+    }
+
+    private function eventNameFor(Registration $registration): ?string
+    {
+        return EventSummary::withoutBrandScope()
+            ->where('brand_id', $registration->brand_id)
+            ->where('event_id', $registration->event_id)
+            ->value('name');
     }
 
     /**

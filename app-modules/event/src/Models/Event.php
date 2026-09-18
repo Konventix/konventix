@@ -34,6 +34,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $name
  * @property string $slug
  * @property string|null $description
+ * @property string|null $banner_media_id
  * @property Carbon $starts_at
  * @property Carbon $ends_at
  * @property string $timezone
@@ -60,6 +61,7 @@ class Event extends Model
         'name',
         'slug',
         'description',
+        'banner_media_id',
         'starts_at',
         'ends_at',
         'timezone',

@@ -47,7 +47,30 @@ it('shows an unclaimed admission for nobody, including its own buyer', function 
 
     $this->actingAs($buyer)
         ->get('/my/tickets')
-        ->assertInertia(fn (AssertableInertia $page) => $page->has('tickets', 0));
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('tickets', 0)
+            // …but under "tickets you manage" it is theirs to assign (#292).
+            ->has('managed', 1)
+            ->where('managed.0.holderName', null));
+});
+
+it('lists the tickets this person bought for others, named after their holders', function (): void {
+    $this->withBrand();
+    $buyer = User::factory()->create();
+    $holder = ticketPerson(['display_name' => 'Grace Hopper']);
+
+    Admission::factory()->create(['buyer_user_id' => $buyer->getKey(), 'holder_user_id' => $holder->id]);
+    // Held by the buyer themselves: a ticket, not a managed one.
+    Admission::factory()->create(['buyer_user_id' => $buyer->getKey(), 'holder_user_id' => $buyer->getKey()]);
+    // Somebody else's purchase.
+    Admission::factory()->create(['holder_user_id' => null]);
+
+    $this->actingAs($buyer)
+        ->get('/my/tickets')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('tickets', 1)
+            ->has('managed', 1)
+            ->where('managed.0.holderName', 'Grace Hopper'));
 });
 
 it('lists a staff admission that carries no registration at all', function (): void {

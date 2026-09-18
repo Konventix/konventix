@@ -197,3 +197,45 @@ it('dispatches the queued send only after the surrounding transaction commits', 
 
     Mail::assertNothingSent();
 });
+
+// The hero row (#292): one full-width picture between the header and the
+// body when the sender names one, and no trace of it otherwise — the text
+// part in particular never mentions it.
+it('renders a hero image row only when the request names one', function (): void {
+    $this->withBrand();
+
+    brandedLayoutTemplate();
+    Mail::fake();
+
+    app(SendMessage::class)->handle(new SendMessageRequest(
+        recipientId: null,
+        templateKey: 'branded-layout.test',
+        payload: new BrandedLayoutTestPayload('Ada'),
+        recipientEmail: 'ada@example.test',
+        recipientLocale: 'en',
+        heroImageUrl: 'https://s3.example.test/media/banner.jpg',
+        heroImageAlt: 'SXLan 2027',
+    ));
+
+    Mail::assertSent(TemplatedMail::class, function (TemplatedMail $mail): bool {
+        $html = $mail->render();
+
+        expect($html)->toContain('src="https://s3.example.test/media/banner.jpg"')
+            ->toContain('alt="SXLan 2027"')
+            // The hero sits above the body, after the header. The hidden
+            // preheader repeats the body's first line before either, so
+            // the *last* occurrence is the body itself.
+            ->and(strpos($html, 'banner.jpg'))->toBeLessThan(strrpos($html, 'Welcome, Ada.'));
+
+        return true;
+    });
+
+    Mail::fake();
+    app(SendMessage::class)->handle(brandedLayoutRequest());
+
+    Mail::assertSent(TemplatedMail::class, function (TemplatedMail $mail): bool {
+        expect($mail->render())->not->toContain('banner.jpg');
+
+        return true;
+    });
+});

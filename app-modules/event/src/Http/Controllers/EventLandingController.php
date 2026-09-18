@@ -13,6 +13,7 @@ use Konventix\Event\Models\EventDay;
 use Konventix\Event\Models\Venue;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Calendar\CalendarFile;
+use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Slots\SlotRegistry;
 
@@ -85,14 +86,21 @@ final class EventLandingController
         ];
     }
 
-    public function show(Event $event): Response
+    public function show(Event $event, MediaLibrary $media): Response
     {
         abort_unless($event->isVisibleOnLanding(), 404);
+
+        // The banner (#292): resolved through the library, which answers null
+        // for a picture that has since been deleted — the page then simply
+        // has no hero rather than a broken image.
+        $banner = $event->banner_media_id === null ? null : $media->referenceFor($event->banner_media_id);
 
         return Inertia::render('event/Landing', [
             'event' => [
                 'name' => $event->name,
                 'description' => $event->description,
+                'bannerUrl' => $banner['url'] ?? null,
+                'bannerAlt' => $banner['altText'] ?? null,
                 'state' => $event->state->value,
                 'startsAt' => $event->starts_at->format('Y-m-d H:i'),
                 'endsAt' => $event->ends_at->format('Y-m-d H:i'),

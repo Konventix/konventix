@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Http\Controllers\Admin;
 
+use Closure;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -71,6 +74,32 @@ class MediaAdminController
     {
         Gate::authorize(Permission::ManageMedia->value);
 
+        $this->upload($request, $storeMediaUpload);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('File uploaded.')]);
+
+        return to_route('admin.media.index');
+    }
+
+    /**
+     * The same upload, answered as JSON (#292): the media picker inside a
+     * brand, product, block or event form calls this so an operator can add
+     * a picture without leaving the form for the library. One Action behind
+     * two doors — the validation and the capability are those of `store()`,
+     * only the answer differs, because the picker wants the item back to
+     * select it, not a redirect to the index.
+     */
+    public function quickStore(Request $request, StoreMediaUpload $storeMediaUpload, MediaLibrary $library): JsonResponse
+    {
+        Gate::authorize(Permission::ManageMedia->value);
+
+        $item = $this->upload($request, $storeMediaUpload);
+
+        return response()->json(MediaItemData::fromModel($item, $library)->toArray(), 201);
+    }
+
+    private function upload(Request $request, StoreMediaUpload $storeMediaUpload): MediaItem
+    {
         $validated = $request->validate([
             'brand_id' => ['required', 'ulid', 'exists:brands,id'],
             // No `svg` (#252). The delivery route is unauthenticated and
@@ -79,21 +108,29 @@ class MediaAdminController
             // nothing in this application needs one: brand logos, favicons
             // and page images are all raster. `mimes` judges the file's
             // actual type, not the name it arrived under, so renaming an SVG
-            // to .png does not get past this line.
-            'file' => ['required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,gif,webp,pdf'],
+            // to .png does not get past this line — on a real upload. A
+            // file that claims a raster type also has to decode as one:
+            // `getimagesize()` reads the header, and refusing here keeps the
+            // thumbnail step from being the first to notice (as a 500).
+            'file' => [
+                'required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,gif,webp,pdf',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if ($value instanceof UploadedFile
+                        && str_starts_with((string) $value->getMimeType(), 'image/')
+                        && @getimagesize($value->getRealPath()) === false) {
+                        $fail(__('The file is not a valid image.'));
+                    }
+                },
+            ],
             'alt_text' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $storeMediaUpload->handle(
+        return $storeMediaUpload->handle(
             brandId: $validated['brand_id'],
             file: $validated['file'],
             altText: $validated['alt_text'] ?? null,
             uploadedByUserId: $request->user()?->getKey(),
         );
-
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('File uploaded.')]);
-
-        return to_route('admin.media.index');
     }
 
     public function destroy(string $media, DeleteMediaItem $deleteMediaItem): RedirectResponse

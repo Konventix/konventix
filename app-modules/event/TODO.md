@@ -30,6 +30,12 @@
 
 ## Done
 
+- [x] The event banner (#292): `events.banner_media_id`, a media-library
+      ULID owned by the event's brand, picked in the editor (upload from the
+      picker included), usage recorded and released like a brand's marks,
+      announced on `EventCreated` and `EventDetailsUpdated` and re-fired by
+      `event:replay-details` so read models backfill.
+
 - [x] Public calendar download (#72, ADR-0061): `GET
       /events/{event:slug}/calendar.ics` calls Platform's
       `Calendar\CalendarFile::forEvent(...)` with this module's own scalars.

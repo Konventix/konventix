@@ -18,7 +18,7 @@ not cosmetic — they force generic data models instead of relabeled LAN concept
 | Konventix | Absorbs | Owns |
 |---|---|---|
 | **Registration** | Ticketing (sales side) | RegistrationType with explicit axes, Registration (1) → Admissions/Bookings (N), Quota as standalone entity |
-| **Admission** | Ticketing (entrance side) | Per-person access rights, badge, check-in, ticket tokens, entrance API (offline-capable client) |
+| **Admission** | Ticketing (entrance side) | Per-person access rights, badge, check-in, ticket tokens, entrance API (offline-capable client), the ticket page and the buyer's ticket manager (holders, claim invites); keeps a read model of each ticket's seat off Resources' booking events, while Resources keeps one of admissions off Admission's — two projections, never a shared table (#292) |
 | **Commerce** | Shop, Cashier, PayPal | Cart, own Order/Invoice entities as source of truth, settlement adapters (Stripe, Mollie, bank transfer), vouchers, per-brand invoice number ranges, `Settlement\PayLink`/`Settlement\PaymentWindow` — where and how long an unpaid order stays payable (#5, #131) |
 | **Content** | News, Announcement, Publishing | One publishing model, multiple content types, comments |
 

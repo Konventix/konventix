@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
@@ -35,6 +36,7 @@ use Konventix\Resources\Models\Resource;
 // PHP's `resource` pseudo-type and pint's docblock fixer silently lowercases
 // it (the same trap fixed in PlanDiffResult.php).
 use Konventix\Resources\Models\Resource as BookableResource;
+use Konventix\Resources\Models\ResourceAdmission;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceEventWindow;
@@ -987,4 +989,28 @@ function seatingEditorPlan(Brand $brand, string $eventId, ResourceType $category
     );
 
     return [$plan->refresh(), $placeIds, $groupId];
+}
+
+/**
+ * An admission as Resources' read model holds it (#292 §6.1), written the
+ * way `ProjectAdmission` would — brand explicit, key the admission's own.
+ */
+function seatingAdmission(
+    string $registrationId,
+    string $eventId,
+    ?string $holderUserId = null,
+    ?string $buyerUserId = null,
+    string $state = ResourceAdmission::STATE_ISSUED,
+): ResourceAdmission {
+    $admission = new ResourceAdmission([
+        'id' => (string) Str::ulid(),
+        'registration_id' => $registrationId,
+        'event_id' => $eventId,
+        'holder_user_id' => $holderUserId,
+        'buyer_user_id' => $buyerUserId,
+        'state' => $holderUserId === null ? $state : ($state === ResourceAdmission::STATE_ISSUED ? ResourceAdmission::STATE_ASSIGNED : $state),
+    ]);
+    $admission->forceFill(['brand_id' => app(BrandContext::class)->currentOrFail()->getKey()])->save();
+
+    return $admission;
 }

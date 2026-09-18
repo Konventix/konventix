@@ -69,7 +69,12 @@
 - [ ] Push end-to-end against a real browser: the channel, worker and
       subscription flow are tested on fakes; a manual pass against Chrome and
       Firefox (permission prompt, delivery with the site closed, endpoint
-      rotation) still needs doing once a deployment has VAPID keys.
+      rotation, denied → allowed in the site settings → subscribe) still
+      needs doing once a deployment has VAPID keys. Tracked in **GitLab
+      #294**, which also made the settings page follow the browser's
+      permission state (the browser never re-prompts after `denied`) and
+      gave the bell one inbox per page (`useNotificationInbox`) instead of
+      one per mount.
 - [ ] Recipient timezone is never populated: Identity's contract events carry
       no timezone field, so quiet hours always fall back to the brand's
       Messaging settings (or the app timezone) today. Needs
@@ -113,6 +118,12 @@
       query-ergonomics question, not a correctness one.
 
 ## Done
+
+- [x] Hero picture row in the branded layout (#292): `SendMessageRequest`
+      and `SendMessageData` carry `heroImageUrl`/`heroImageAlt`, the layout
+      prints the row between header and body. Not logged, so
+      `FlushHeldMessages`/`ResendMessage` rebuild without it — a follow-up
+      if a held announcement ever wants its banner back.
 
 - [x] ADR-0048 (mail-and-receipts tranche): every mail wears the brand's own
       layout, the delivery log and the template editor get screens, and

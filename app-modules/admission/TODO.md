@@ -46,23 +46,37 @@
       `KIND_REVOKED` entry to the entrance delta feed so offline doors
       (ADR-0033) stop admitting them — a checked-in admission is kept.
       `TicketTokenIssued` still has no producer.
-- [ ] Deliver claim links through Messaging: `IssueAdmissionClaimLink` mints
-      the link and `urlFor()` builds the signed URL, but nothing emails it —
-      an organizer has to copy it out by hand. Needs an `admission.claim-link`
-      message template registered in `registerMessageTemplates()`, mirroring
-      `registration.waitlist-offer`, plus a payload Data class.
-- [ ] Organizer UI for claim links: issue, re-issue, revoke, and see which
-      placeholders are still unclaimed on a group booking.
-- [ ] Organizer-side holder assignment: `AdmissionHolderAssigned` carries
-      `viaClaimLink: false` for the desk case, but no Action produces it yet —
-      `Permission::AssignHolder`/`ReassignHolder` remain unwired.
+- [x] Deliver claim links through Messaging (#16 point 1, #292 §4.6):
+      `SendClaimLink` renders `admission.claim-link` (`ClaimLinkMailData`)
+      to the address a bound link is meant for, with the event's banner as
+      the mail's hero; an unbound link is a bearer link the buyer copies.
+- [ ] Organizer UI for claim links (#16 point 2): issue, re-issue, revoke,
+      and see which placeholders are still unclaimed on a group booking.
+      The buyer's own version of this exists — the ticket manager on the
+      registration page (`TicketManagerSlot.vue`, `BuildTicketManager`) —
+      and the Actions it uses take an `operator` actor, so the console is
+      a screen, not new domain code.
+- [x] Holder assignment without a link (#16 point 3, #73): `AssignHolder`
+      and `UnassignHolder`, `Permission::AssignHolder`/`ReassignHolder`
+      checked through Platform's `PermissionHolders` for the `operator`
+      actor, ownership (`buyer_user_id`) for the `manager` actor. Take-back
+      refused after an accepted check-in; the seat stays with the ticket.
+- [x] The ticket page (#292 §4.5): `/my/tickets/{admission}` with the
+      current KVX1 token as inline SVG (`Documents\TicketQr`, shared with
+      the PDF), the banner, the seat from `admission_seats`, and Resources'
+      seat button through the `admission.ticket.show` slot. The invitee's
+      landing page on the claim link's own signed URL.
+- [ ] `Documents\TicketDocumentRenderer` and `Http\Controllers\TicketPageController`
+      format the same event band and validity range with two copies of the
+      same three helpers; fold them into one presenter (#292 follow-up).
 - [ ] Badge template admin UI: `BadgeTemplate` and the
       `admission.manage-badge-templates` capability exist, but there is no
       screen — designing a badge currently means tinker. The print endpoint
       (`GET /admin/admissions/{admission}/badge`) does exist.
 - [ ] Batch badge printing: one admission per request today, which is wrong
       for a check-in desk handing out a group booking's badges at once.
-- [ ] Holder assignment and reassignment for group and B2B bookings.
+- [x] Holder assignment and reassignment for group and B2B bookings —
+      the buyer's side (#292); the desk's screen is the item above.
 - [ ] Holder read model from Identity events, and the GDPR handler in
       `src/Gdpr/` — check-in logs are attendance data and need an explicit
       retention answer with Compliance.

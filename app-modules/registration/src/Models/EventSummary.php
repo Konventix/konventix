@@ -46,6 +46,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property Carbon|null $ends_at
  * @property string|null $timezone
  * @property string|null $venue_label
+ * @property string|null $banner_media_id
  * @property string|null $venue_id
  * @property Carbon|null $public_since
  * @property Carbon|null $archived_at
@@ -67,7 +68,7 @@ class EventSummary extends Model
      */
     public const string VISIBILITY_PUBLIC = 'public';
 
-    protected $fillable = ['event_id', 'name', 'slug', 'visibility', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id', 'public_since', 'archived_at'];
+    protected $fillable = ['event_id', 'name', 'slug', 'visibility', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id', 'banner_media_id', 'public_since', 'archived_at'];
 
     /**
      * @return array<string, string>

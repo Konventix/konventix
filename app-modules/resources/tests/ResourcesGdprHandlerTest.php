@@ -18,6 +18,7 @@ use Konventix\Resources\Gdpr\ResourcesGdprHandler;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\PlanVersion;
 use Konventix\Resources\Models\Resource;
+use Konventix\Resources\Models\ResourceAdmission;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceType;
@@ -187,4 +188,29 @@ it('the database refuses to null a registration-held booking\'s holder', functio
 
     expect(fn () => ResourceBooking::withoutBrandScope()->whereKey($booking->id)->update(['holder_id' => null]))
         ->toThrow(QueryException::class);
+});
+
+// #292 §10: the admission read model names the person twice — as holder and
+// as buyer — and forgets both on erasure while the row, and the seat bound
+// to it, stay.
+it('exports the admissions a person holds or bought and clears both pointers on erasure', function (): void {
+    $this->withBrand();
+    $subjectId = (string) Str::ulid();
+    $eventId = (string) Str::ulid();
+    $held = seatingAdmission((string) Str::ulid(), $eventId, $subjectId, (string) Str::ulid());
+    $bought = seatingAdmission((string) Str::ulid(), $eventId, null, $subjectId);
+    seatingAdmission((string) Str::ulid(), $eventId, (string) Str::ulid(), (string) Str::ulid());
+
+    $export = (new ResourcesGdprHandler)->exportFor(SubjectRef::forUser($subjectId));
+
+    expect(array_column($export['admissions'], 'id'))->toEqualCanonicalizing([$held->id, $bought->id]);
+
+    $heldRow = collect($export['admissions'])->firstWhere('id', $held->id);
+    expect($heldRow['holds'])->toBeTrue()->and($heldRow['bought'])->toBeFalse();
+
+    (new ResourcesGdprHandler)->delete(SubjectRef::forUser($subjectId), DeletionMode::Anonymize);
+
+    expect($held->fresh()->holder_user_id)->toBeNull()
+        ->and($bought->fresh()->buyer_user_id)->toBeNull()
+        ->and(ResourceAdmission::query()->count())->toBe(3);
 });

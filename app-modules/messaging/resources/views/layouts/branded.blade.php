@@ -7,7 +7,11 @@
     theme catalogue's own defaults as the fallback already baked into them.
 
     Expects: $subject, $body (raw HTML), $identity (BrandMailIdentityData),
-    $preferencesUrl (?string), $locale, $preheader.
+    $preferencesUrl (?string), $locale, $preheader, and optionally a hero
+    picture — $heroImageUrl / $heroImageAlt (?string, #292) — printed as one
+    full-width row between the header and the body. Width and height are
+    left to the picture: a mail client that blocks remote images shows the
+    alt text in the space it would take and nothing else moves.
 --}}
 <!DOCTYPE html>
 <html lang="{{ $locale }}">
@@ -36,6 +40,13 @@
                             @endif
                         </td>
                     </tr>
+                    @if (($heroImageUrl ?? null) !== null)
+                        <tr>
+                            <td style="background-color:#ffffff; padding:0; line-height:0;">
+                                <img src="{{ $heroImageUrl }}" alt="{{ $heroImageAlt ?? '' }}" width="600" style="display:block; border:0; width:100%; max-width:600px; height:auto;">
+                            </td>
+                        </tr>
+                    @endif
                     <tr>
                         <td style="background-color:#ffffff; padding:32px; font-family:Arial, Helvetica, sans-serif; font-size:15px; line-height:1.6; color:#18181b;">
                             {!! $body !!}

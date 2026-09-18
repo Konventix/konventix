@@ -39,5 +39,14 @@ final class RecordBookingMetrics
             'brand' => BrandSlugs::of($event->brandId),
             'outcome' => $outcome,
         ]);
+
+        // The per-ticket counter (#292 §9): only bookings bound to an
+        // admission, only the two outcomes a ticket's seat has.
+        if (($event instanceof ResourceBookingConfirmed || $event instanceof ResourceBookingReleased) && $event->admissionId !== null) {
+            app(Metrics::class)->increment('resource_admission_seats_total', [
+                'brand' => BrandSlugs::of($event->brandId),
+                'outcome' => $event instanceof ResourceBookingConfirmed ? 'placed' : 'released',
+            ]);
+        }
     }
 }
