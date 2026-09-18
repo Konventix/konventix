@@ -8,6 +8,7 @@ use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\SeatingMode;
+use Konventix\Resources\Models\Resource as BookableResource;
 use Konventix\Resources\Models\ResourceAdmission;
 use Konventix\Resources\Models\ResourceBooking;
 
@@ -16,7 +17,7 @@ use Konventix\Resources\Models\ResourceBooking;
  * opened to its holder and to the buyer who manages the group, a 404 for
  * everybody else — including a stranger who guesses the id.
  *
- * @return array{manager: User, holder: User, admission: ResourceAdmission, registrationId: string, eventId: string, places: list<\Konventix\Resources\Models\Resource>}
+ * @return array{manager: User, holder: User, admission: ResourceAdmission, registrationId: string, eventId: string, places: list<BookableResource>}
  */
 function admissionSeatPageScene(Brand $brand, SeatingMode $seatingMode = SeatingMode::Pick): array
 {

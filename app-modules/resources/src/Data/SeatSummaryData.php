@@ -55,6 +55,7 @@ final class SeatSummaryData extends Data
      * Named `of*` rather than `from*` (.ai/rules/data.md).
      *
      * @param  list<string>  $placeRefs
+     * @param  list<AdmissionSeatRowData>  $admissions
      */
     public static function ofClaim(ResourceClaim $claim, array $placeRefs, bool $noFreePlaces, array $admissions = []): self
     {

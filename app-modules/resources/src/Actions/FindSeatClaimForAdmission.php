@@ -18,10 +18,12 @@ use Konventix\Resources\Models\ResourceClaim;
  *
  * A staff admission has no registration and therefore never a claim: null.
  *
- * @return array{claim: ResourceClaim, admission: ResourceAdmission}|null
  */
 final class FindSeatClaimForAdmission
 {
+    /**
+     * @return array{claim: ResourceClaim, admission: ResourceAdmission}|null
+     */
     public function handle(string $admissionId, string $userId): ?array
     {
         $admission = ResourceAdmission::query()->find($admissionId);

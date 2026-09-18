@@ -356,7 +356,8 @@ class ResourcesServiceProvider extends ModuleServiceProvider
                     ->whereIn('state', BookingState::occupyingValues())
                     ->value('resource_id');
 
-                $place = $placeId === null ? null : Resource::query()->find($placeId);
+                /** @var Resource|null $place */
+                $place = $placeId === null ? null : Resource::query()->whereKey($placeId)->first();
 
                 return ['seat' => (new TicketSeatActionData(
                     admissionId: $found['admission']->id,
