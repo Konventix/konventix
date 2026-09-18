@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Admission\Providers;
 
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Console\AnnounceAdmissionOwnershipCommand;
 use Konventix\Admission\Data\TicketLinkData;
 use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Enums\Permission;
@@ -78,6 +79,9 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         $this->registerMetrics();
+
+        // The Resources read-model backfill (#292); see the command.
+        $this->commands([AnnounceAdmissionOwnershipCommand::class]);
     }
 
     /**
