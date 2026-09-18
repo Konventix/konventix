@@ -52,6 +52,7 @@ use Konventix\Resources\Listeners\Metrics\RecordBookingMetrics;
 use Konventix\Resources\Listeners\Metrics\RecordPlanMetrics;
 use Konventix\Resources\Listeners\ProjectAdmission;
 use Konventix\Resources\Listeners\ProjectEventWindow;
+use Konventix\Resources\Listeners\ReleaseBookingOnAdmissionRevoked;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationCancelled;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationRejected;
 use Konventix\Resources\Metrics\ResourcesGauges;
@@ -394,6 +395,8 @@ class ResourcesServiceProvider extends ModuleServiceProvider
         Event::listen(AdmissionHolderUnassigned::class, [ProjectAdmission::class, 'handleHolderUnassigned']);
         Event::listen(AdmissionRevoked::class, [ProjectAdmission::class, 'handleRevoked']);
         Event::listen(AdmissionOwnershipAnnounced::class, [ProjectAdmission::class, 'handleOwnershipAnnounced']);
+        // Ungated like the other release listeners (#292 §6.5).
+        Event::listen(AdmissionRevoked::class, ReleaseBookingOnAdmissionRevoked::class);
 
         // ADR-0059: Resources' own metrics, from its own events.
         Event::listen(

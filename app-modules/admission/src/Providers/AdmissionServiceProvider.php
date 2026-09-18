@@ -16,6 +16,7 @@ use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
 use Konventix\Admission\Listeners\IssueCrewAdmissionOnAssignmentAccepted;
 use Konventix\Admission\Listeners\Metrics\RecordAdmissionTokenMetrics;
 use Konventix\Admission\Listeners\ProjectEventDaysOnEventDaysChanged;
+use Konventix\Admission\Listeners\ProjectAdmissionSeat;
 use Konventix\Admission\Listeners\ProjectEventSummary;
 use Konventix\Admission\Listeners\ProjectPerson;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
@@ -45,6 +46,8 @@ use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationOwnershipAnnounced;
+use Konventix\Resources\Events\ResourceBookingConfirmed;
+use Konventix\Resources\Events\ResourceBookingReleased;
 use Konventix\Staffing\Events\AssignmentAccepted;
 
 /**
@@ -179,6 +182,11 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(VenueAssigned::class, [ProjectEventSummary::class, 'handleVenueAssigned']);
         Event::listen(VenueUpdated::class, [ProjectEventSummary::class, 'handleVenueUpdated']);
         Event::listen(VenueUnassigned::class, [ProjectEventSummary::class, 'handleVenueUnassigned']);
+
+        // Which place each admission sits on (#292 §5), off Resources'
+        // *confirmed* booking — a hold must never reach a ticket.
+        Event::listen(ResourceBookingConfirmed::class, [ProjectAdmissionSeat::class, 'handleConfirmed']);
+        Event::listen(ResourceBookingReleased::class, [ProjectAdmissionSeat::class, 'handleReleased']);
 
         // Admission's own metric (ADR-0059, design doc §9): the one
         // rejection reason among CheckInRejected's nine that answers

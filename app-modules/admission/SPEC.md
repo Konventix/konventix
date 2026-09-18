@@ -187,7 +187,7 @@ maintains from them.
 | `EventCreated`, `EventRescheduled`, `EventDetailsUpdated`, `VenueAssigned`, `VenueUpdated`, `VenueUnassigned` | Event | Maintain `Models\EventSummary` (`admission_event_summaries`): times and timezone from the first two, venue label from the venue events, name/slug patched (not replaced) from `EventDetailsUpdated`. Backfilled by `event:replay-details`, which since this feature also re-fires `VenueAssigned` for each event's primary venue |
 | `RegistrationOwnershipAnnounced` | Registration | Backfills `admissions.buyer_user_id` for rows that predate the column — the replay-safe counterpart to `RegistrationConfirmed`/`RegistrationAmended`, which already carry `registrantUserId` going forward |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler; check-in records are attendance data and need an explicit answer |
-| `ResourceBookingConfirmed` (proposed) | Resources | Show the holder's seat or booth on the badge without owning the booking. Deliberately the *confirmed* event, not a hold — a tentative booking must never reach a badge |
+| `ResourceBookingConfirmed`, `ResourceBookingReleased` | Resources | `ProjectAdmissionSeat` (#292 §5): maintain `Models\AdmissionSeat` (`admission_seats`) — the place bound to an admission, for the ticket page and the ticket PDF — from a *confirmed* booking that names an `admissionId`, deleted again when that booking is released. A hold never reaches a ticket; a booking naming no admission is nobody's seat here |
 
 ## Capabilities
 
