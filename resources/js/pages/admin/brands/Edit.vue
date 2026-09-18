@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useAdminCapabilities } from '@/composables/useAdminCapabilities';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { update as updateBrand } from '@/routes/admin/brands';
@@ -42,6 +43,7 @@ type Props = {
 };
 
 const props = defineProps<Props>();
+const { canManageMedia } = useAdminCapabilities();
 
 const form = useForm({
     name: props.brand.name,
@@ -214,6 +216,8 @@ function moduleLabel(module: string): string {
                         </p>
 
                         <MediaPicker
+                            :brand-id="props.brand.id"
+                            :can-upload="canManageMedia"
                             v-model="form.logoMediaId"
                             label="Logo (light mode)"
                             :media="media"
@@ -221,6 +225,8 @@ function moduleLabel(module: string): string {
                         <InputError :message="form.errors.logoMediaId" />
 
                         <MediaPicker
+                            :brand-id="props.brand.id"
+                            :can-upload="canManageMedia"
                             v-model="form.logoDarkMediaId"
                             label="Logo (dark mode)"
                             :media="media"
@@ -236,6 +242,8 @@ function moduleLabel(module: string): string {
                         <InputError :message="form.errors.logoDarkMediaId" />
 
                         <MediaPicker
+                            :brand-id="props.brand.id"
+                            :can-upload="canManageMedia"
                             v-model="form.faviconMediaId"
                             label="Favicon"
                             :media="media"

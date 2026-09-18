@@ -4,11 +4,13 @@ import MediaPicker from '@/components/admin/MediaPicker.vue';
 import InputError from '@/components/InputError.vue';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useAdminCapabilities } from '@/composables/useAdminCapabilities';
 import type { BlockEditorProps } from '@/types/blocks';
 
 type Data = Konventix.Platform.Data.Blocks.HeroBlockData;
 
 const props = defineProps<BlockEditorProps<Data>>();
+const { canManageMedia } = useAdminCapabilities();
 const emit = defineEmits<{ 'update:modelValue': [value: Data] }>();
 
 function set<K extends keyof Data>(key: K, value: Data[K]): void {
@@ -63,6 +65,8 @@ const id = useId();
                 label="Image"
                 :model-value="props.modelValue.imageMediaId"
                 :media="props.context.media"
+                :brand-id="props.context.brandId ?? null"
+                :can-upload="canManageMedia"
                 :described-by="
                     props.errors.imageMediaId ? `${id}-image-error` : undefined
                 "

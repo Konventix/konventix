@@ -17,6 +17,7 @@ use Konventix\Platform\Cookies\CookieRegistry;
 use Konventix\Platform\Data\BrandIdentityData;
 use Konventix\Platform\Data\FooterLinkData;
 use Konventix\Platform\Environment\DeploymentEnvironment;
+use Konventix\Platform\Enums\Permission as PlatformPermission;
 use Konventix\Platform\Models\AdminFavorite;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\FooterColumn;
@@ -132,6 +133,10 @@ class HandleInertiaRequests extends Middleware
                         ->all()
                     : [],
                 'selection' => $this->consoleSelection(),
+                // Whether the media picker may offer its own upload (#292).
+                // The route checks the capability again; this only decides
+                // whether the button is drawn.
+                'canManageMedia' => $request->user()?->can(PlatformPermission::ManageMedia->value) ?? false,
             ] : null,
             // The operator's footer, rendered by the brand shell on every
             // page (the operator console has its own chrome and renders

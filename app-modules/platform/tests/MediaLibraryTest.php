@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\MediaItem;
@@ -230,4 +231,25 @@ it('422s a quick upload of an svg renamed to png, and of an unknown brand', func
         ->assertJsonValidationErrors('brand_id');
 
     expect(MediaItem::withoutBrandScope()->count())->toBe(0);
+});
+
+it('tells the console shell whether the picker may upload', function (): void {
+    [$operator, $admin] = mediaOperator();
+
+    // A second person on the same operator who may look but not manage.
+    $registrar = app(PermissionRegistrar::class);
+    $registrar->setPermissionsTeamId($operator->getKey());
+    $viewerRole = Role::query()->create(['name' => 'Viewer', 'guard_name' => 'web', 'brand_id' => $operator->getKey()]);
+    $viewerRole->givePermissionTo(['platform.access-admin', 'platform.view-media']);
+    $viewer = User::factory()->create();
+    $viewer->assignRole($viewerRole);
+    $registrar->setPermissionsTeamId(null);
+
+    $this->actingAs($admin)
+        ->get('http://admin.media.test/admin/media')
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('admin.canManageMedia', true));
+
+    $this->actingAs($viewer)
+        ->get('http://admin.media.test/admin/media')
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('admin.canManageMedia', false));
 });
