@@ -36,16 +36,19 @@ let subscribedTo: string | null = null;
 const channelFor = (userId: string): string =>
     `Konventix.Identity.Models.User.${userId}`;
 
-async function fetchJson(
-    url: string,
-    method: 'get' | 'post' = 'get',
-): Promise<unknown> {
+/**
+ * The request shape every inbox call shares. The URL is never a parameter
+ * here: each caller hands `fetch()` the Wayfinder route directly, so what is
+ * fetched is always one of the three named routes and nothing a value could
+ * steer.
+ */
+function requestInit(method: 'get' | 'post'): RequestInit {
     const xsrf = document.cookie
         .split('; ')
         .find((row) => row.startsWith('XSRF-TOKEN='))
         ?.split('=')[1];
 
-    const response = await fetch(url, {
+    return {
         method,
         headers: {
             Accept: 'application/json',
@@ -55,8 +58,10 @@ async function fetchJson(
                 : {}),
         },
         credentials: 'same-origin',
-    });
+    };
+}
 
+async function parseJson(response: Response): Promise<unknown> {
     if (!response.ok) {
         throw new Error(`Notification request failed: ${response.status}`);
     }
@@ -92,7 +97,8 @@ function follow(userId: string | null): void {
         });
     subscribedTo = userId;
 
-    void fetchJson(notificationsFeed().url)
+    void fetch(notificationsFeed().url, requestInit('get'))
+        .then(parseJson)
         .then((data) => {
             // The account may have changed while the request was in flight.
             if (state.ownerId === userId) {
@@ -119,7 +125,10 @@ async function markRead(id: string): Promise<void> {
     }
 
     try {
-        await fetchJson(notificationsRead({ notification: id }).url, 'post');
+        await fetch(
+            notificationsRead({ notification: id }).url,
+            requestInit('post'),
+        ).then(parseJson);
     } catch {
         // Optimistically marked; the server state catches up on next load.
     }
@@ -129,7 +138,9 @@ async function markAllRead(): Promise<void> {
     applyMarkAllRead(state);
 
     try {
-        await fetchJson(notificationsReadAll().url, 'post');
+        await fetch(notificationsReadAll().url, requestInit('post')).then(
+            parseJson,
+        );
     } catch {
         // See markRead.
     }
