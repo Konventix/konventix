@@ -18,6 +18,8 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Admission\Http\Controllers\ClaimController;
 use Konventix\Admission\Http\Controllers\EntranceClientAssetController;
+use Konventix\Admission\Http\Controllers\HolderController;
+use Konventix\Admission\Http\Controllers\InviteController;
 use Konventix\Admission\Http\Controllers\MyTicketsController;
 use Konventix\Admission\Http\Controllers\TicketDownloadController;
 use Konventix\Admission\Http\Middleware\RecordTicketRenderMetrics;
@@ -87,4 +89,26 @@ Route::middleware(['auth'])->group(function (): void {
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/my/tickets', [MyTicketsController::class, 'index'])
         ->name('admission.tickets.mine');
+});
+
+/*
+ * The ticket manager's actions (#292 §4.3, #16 points 1 and 3): the buyer
+ * of a registration names themselves the holder of one of its admissions,
+ * takes one back, invites somebody by address or link, or withdraws the
+ * invitation. Ownership (`buyer_user_id`) is the whole authorisation, checked
+ * inline in the controllers. The invite routes send mail, so they are
+ * throttled a little tighter than the page they sit on.
+ */
+Route::middleware(['auth'])->group(function (): void {
+    Route::post('/my/admissions/{admission}/holder', [HolderController::class, 'store'])
+        ->name('admission.holder.store');
+    Route::delete('/my/admissions/{admission}/holder', [HolderController::class, 'destroy'])
+        ->name('admission.holder.destroy');
+
+    Route::post('/my/admissions/{admission}/invite', [InviteController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->name('admission.invite.store');
+    Route::delete('/my/admissions/{admission}/invite', [InviteController::class, 'destroy'])
+        ->middleware('throttle:20,1')
+        ->name('admission.invite.destroy');
 });
