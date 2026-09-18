@@ -42,6 +42,7 @@ use Konventix\Resources\Models\Resource as BookableResource;
  * @property string|null $registration_id
  * @property string|null $claim_id
  * @property string|null $amendment_id
+ * @property string|null $admission_id
  * @property string|null $label
  * @property int $quantity
  * @property bool $is_exclusive
@@ -74,6 +75,7 @@ class ResourceBooking extends Model
         'registration_id',
         'claim_id',
         'amendment_id',
+        'admission_id',
         'quantity',
         'label',
         'is_exclusive',

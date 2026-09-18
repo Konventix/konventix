@@ -76,6 +76,7 @@ final class ConfirmResourceBooking
                 claimId: $booking->claim_id,
                 label: $booking->label ?? $resource->label,
                 ref: $resource->ref,
+                admissionId: $booking->admission_id,
             );
 
             // Deferred to the outermost commit (design §6.1 step 7): SavePlan

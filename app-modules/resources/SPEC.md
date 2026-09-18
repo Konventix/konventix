@@ -109,9 +109,9 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 
 | Event | Emitted when | Payload |
 |---|---|---|
-| `ResourceBookingHeld` | A provisional hold is placed; nothing irreversible may react to it | `bookingId`, `resourceId`, `brandId`, `eventId`, `resourceTypeId`, `holderType`, `holderId`, `registrationId?`, `claimId?`, `label`, `ref`, `quantity`, `startsAt`, `endsAt`, `holdExpiresAt?` |
-| `ResourceBookingConfirmed` | A hold becomes firm — **the event other modules act on** (a badge, a bill) | as above plus `confirmedAt`, without `holdExpiresAt` |
-| `ResourceBookingReleased` | A booking gives its interval back | `bookingId`, `resourceId`, `brandId`, `eventId`, `resourceTypeId`, `holderType`, `holderId`, `registrationId?`, `claimId?`, `label`, `ref`, `reason`, `releasedAt`; reasons `registration_cancelled`, `registration_rejected`, `plan_conflict`, `repicked`, `operator_released`, `expired` |
+| `ResourceBookingHeld` | A provisional hold is placed; nothing irreversible may react to it | `bookingId`, `resourceId`, `brandId`, `eventId`, `resourceTypeId`, `holderType`, `holderId`, `registrationId?`, `claimId?`, `label`, `ref`, `quantity`, `startsAt`, `endsAt`, `holdExpiresAt?`, `admissionId` (nullable, #292 §6.2 — the admission this place seats) |
+| `ResourceBookingConfirmed` | A hold becomes firm — **the event other modules act on** (a badge, a bill) | as above plus `confirmedAt`, without `holdExpiresAt`, `admissionId` (nullable, #292 §6.2 — the admission this place seats) |
+| `ResourceBookingReleased` | A booking gives its interval back | `bookingId`, `resourceId`, `brandId`, `eventId`, `resourceTypeId`, `holderType`, `holderId`, `registrationId?`, `claimId?`, `label`, `ref`, `reason`, `releasedAt`; reasons `registration_cancelled`, `registration_rejected`, `plan_conflict`, `repicked`, `operator_released`, `expired`, `admissionId` (nullable, #292 §6.2 — the admission this place seats) |
 | `PlanSaved` | A plan save committed | `planId`, `eventId`, `brandId`, `version`, `changedPlaceIds` |
 | `PlanPublished` / `PlanUnpublished` | A plan reaches or leaves the picker | `planId`, `eventId`, `brandId` |
 | `SeatClaimCreated` | A confirmed registration with a `seating` grant may pick | `claimId`, `registrationId`, `eventId`, `brandId` |

@@ -41,5 +41,7 @@ final readonly class ResourceBookingHeld
         public ?string $claimId,
         public string $label,
         public ?string $ref,
+        /** The admission this place seats (#292 §6.2); null for a registration-level or operator booking. Additive. */
+        public ?string $admissionId = null,
     ) {}
 }
