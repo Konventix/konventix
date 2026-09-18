@@ -49,9 +49,9 @@
 - Consumes: `StoreMediaUpload::handle(brandId, file, altText, uploadedByUserId)`, `MediaItemData::fromModel($item, $library)`, `Permission::ManageMedia`.
 - Produces: `201` with `MediaItemData` JSON; `403` without the capability; `422` for SVG, oversize, foreign brand.
 
-- [ ] Tests: uploads a PNG and gets the item back with `variantsPending: true`; refuses without `ManageMedia`; refuses an SVG renamed to `.png` (`mimes` judges content); refuses a brand id that does not exist; records `uploaded_by_user_id`.
-- [ ] Implement `quickStore()` as `store()` minus the redirect — the same Action, a `JsonResponse`. Keep `store()`'s redirect behaviour; both validate through the new Data.
-- [ ] `flock <lock> vendor/bin/sail composer verify -- platform`; commit `Answer a quick media upload with the item as JSON so a form can pick it without leaving (#292).`
+- [x] Tests: uploads a PNG and gets the item back with `variantsPending: true`; refuses without `ManageMedia`; refuses an SVG renamed to `.png` (`mimes` judges content); refuses a brand id that does not exist; records `uploaded_by_user_id`.
+- [x] Implement `quickStore()` as `store()` minus the redirect — the same Action, a `JsonResponse`. Keep `store()`'s redirect behaviour; both validate through the new Data.
+- [x] `flock <lock> vendor/bin/sail composer verify -- platform`; commit `Answer a quick media upload with the item as JSON so a form can pick it without leaving (#292).`
 
 ### Task 2: `MediaPicker.vue` gains Upload
 
@@ -65,17 +65,17 @@
 - Consumes: Wayfinder `MediaAdminController.quickStore`, Inertia v3 `useHttp` (multipart `FormData`), `MediaItemData`.
 - Produces: `update:modelValue` with the new ULID.
 
-- [ ] Client checks `accept="image/jpeg,image/png,image/gif,image/webp"` and `file.size <= 10 * 1024 * 1024` before sending; the server's 422 message is shown under the input when it still refuses.
-- [ ] The selected tile shows `url` while `thumbUrl` is null — already the picker's fallback; verify, do not reimplement.
-- [ ] `npx prettier --check` on the touched files; `npx vitest run resources/js/components/admin`; commit `Let the media picker upload a picture on the spot for anyone who may manage media (#292).`
+- [x] Client checks `accept="image/jpeg,image/png,image/gif,image/webp"` and `file.size <= 10 * 1024 * 1024` before sending; the server's 422 message is shown under the input when it still refuses.
+- [x] The selected tile shows `url` while `thumbUrl` is null — already the picker's fallback; verify, do not reimplement.
+- [x] `npx prettier --check` on the touched files; `npx vitest run resources/js/components/admin`; commit `Let the media picker upload a picture on the spot for anyone who may manage media (#292).`
 
 ### Task 3: Product and brand forms prove the round-trip
 
 **Files:**
 - Modify: `app-modules/commerce/tests/ProductAdminTest.php`, `app-modules/platform/tests/BrandAdminTest.php` (or their nearest equivalents — find the test that already asserts the picker's `media` prop)
 
-- [ ] One feature test per form: the page's Inertia props carry `brandId` next to `media`, and a quick upload for that brand followed by a save with the returned id stores it and records usage.
-- [ ] Commit `Prove the brand and product forms can pick a picture they just uploaded (#292).`
+- [x] One feature test per form: the page's Inertia props carry `brandId` next to `media`, and a quick upload for that brand followed by a save with the returned id stores it and records usage.
+- [x] Commit `Prove the brand and product forms can pick a picture they just uploaded (#292).`
 
 ---
 
@@ -91,8 +91,8 @@
 - Modify: `app-modules/event/resources/js/pages/admin/events/Edit.vue` — `MediaPicker` under the description, label "Banner", `brandId`, `canUpload`
 - Test: `app-modules/event/tests/EventBannerTest.php`
 
-- [ ] Tests: create and update store the id and record usage; changing it releases the old and records the new; another brand's media is refused; clearing it releases usage; the editor page carries `media` and `brandId`.
-- [ ] `types:generate`; commit `Give an event a banner from the brand's media library (#292).`
+- [x] Tests: create and update store the id and record usage; changing it releases the old and records the new; another brand's media is refused; clearing it releases usage; the editor page carries `media` and `brandId`.
+- [x] `types:generate`; commit `Give an event a banner from the brand's media library (#292).`
 
 ### Task 5: `EventCreated` and `EventDetailsUpdated` carry the banner
 
@@ -102,8 +102,8 @@
 - Modify: `app-modules/event/SPEC.md` (the contract table)
 - Test: extend `app-modules/event/tests/EventManagementTest.php` and `ReplayEventDetailsCommandTest.php`
 
-- [ ] Tests: both events carry the id after create/update; replay re-fires it with the stored id.
-- [ ] Commit `Announce an event's banner on its created and details-updated events (#292).`
+- [x] Tests: both events carry the id after create/update; replay re-fires it with the stored id.
+- [x] Commit `Announce an event's banner on its created and details-updated events (#292).`
 
 ### Task 6: Both event summaries learn the banner
 
@@ -113,8 +113,8 @@
 - Modify: `app-modules/admission/src/Models/EventSummary.php`, `app-modules/admission/src/Listeners/ProjectEventSummary.php`; `app-modules/registration/src/Models/EventSummary.php`, `app-modules/registration/src/Listeners/ProjectEventSummary.php` — set on `EventCreated`, **patch** on `EventDetailsUpdated` (never replace the row: `.ai/rules/tickets.md`)
 - Test: extend `app-modules/admission/tests/EventSummaryProjectionTest.php` and Registration's projection test
 
-- [ ] Tests per module: created carries it; details-updated patches it and leaves times and venue alone; null clears it.
-- [ ] Commit `Project the event banner into Admission's and Registration's event summaries (#292).`
+- [x] Tests per module: created carries it; details-updated patches it and leaves times and venue alone; null clears it.
+- [x] Commit `Project the event banner into Admission's and Registration's event summaries (#292).`
 
 ### Task 7: The landing page hero
 
@@ -123,8 +123,8 @@
 - Modify: `app-modules/event/resources/js/pages/event/Landing.vue` — hero `<img>` above the blocks, `object-cover`, fixed aspect, alt text or the event name; nothing when null
 - Test: extend `app-modules/event/tests/EventLandingRouteTest.php`
 
-- [ ] Tests: props carry the URL for a banner; null without one; null when the media row is gone.
-- [ ] `npm run build`; commit `Show the event banner as the landing page's hero (#292).`
+- [x] Tests: props carry the URL for a banner; null without one; null when the media row is gone.
+- [x] `npm run build`; commit `Show the event banner as the landing page's hero (#292).`
 
 ### Task 8: Messaging renders a hero the sender names
 
@@ -133,7 +133,7 @@
 - Modify: `app-modules/messaging/SPEC.md`
 - Test: `app-modules/messaging/tests/MailLayoutTest.php` (extend: parse the HTML, assert the `<img>` row exists with the URL and alt, and is absent without)
 
-- [ ] Commit `Let a mail carry a hero image row above its body (#292).`
+- [x] Commit `Let a mail carry a hero image row above its body (#292).`
 
 ### Task 9: The lifecycle mails and the confirmation carry the banner
 
@@ -141,8 +141,8 @@
 - Modify: `app-modules/registration/src/Mail/RegistrationMailer.php` — `send()` resolves `registration_event_summaries.banner_media_id` (the summary it already reads for `eventName`) through `MediaLibrary::referenceFor()` and sets `heroImageUrl`/`heroImageAlt` on the request
 - Test: extend the mailer's test (the one asserting `registration.confirmed` is sent)
 
-- [ ] Tests: the request carries the URL when the summary has a banner; null otherwise; a missing media row yields null and the mail still sends.
-- [ ] Commit `Head every registration mail with the event's banner (#292).`
+- [x] Tests: the request carries the URL when the summary has a banner; null otherwise; a missing media row yields null and the mail still sends.
+- [x] Commit `Head every registration mail with the event's banner (#292).`
 
 ---
 
@@ -159,7 +159,7 @@
 
 **Precedent:** `registration:announce-ownership` and `RegistrationOwnershipAnnounced`, including the structural test that only projections listen to it — copy that test for the new event.
 
-- [ ] Commit `Announce an admission's buyer on issue, a holder's removal, and a replay-safe ownership snapshot (#16).`
+- [x] Commit `Announce an admission's buyer on issue, a holder's removal, and a replay-safe ownership snapshot (#16).`
 
 ### Task 11: `AssignHolder`
 
@@ -170,8 +170,8 @@
 
 **Interfaces:** operator check through Platform's `PermissionHolders` exactly as `AssignPlacesToRegistration::guardActor()` does for `BookOnBehalf`.
 
-- [ ] Tests: manager assigns self; manager refused for a foreign registration; refused when a holder exists; refused when revoked; live link revoked in the same transaction; operator with `AssignHolder` may name anybody; operator without is refused; event carries `viaClaimLink: false`.
-- [ ] Commit `Let a registration's buyer name themselves the holder of one of its admissions (#16).`
+- [x] Tests: manager assigns self; manager refused for a foreign registration; refused when a holder exists; refused when revoked; live link revoked in the same transaction; operator with `AssignHolder` may name anybody; operator without is refused; event carries `viaClaimLink: false`.
+- [x] Commit `Let a registration's buyer name themselves the holder of one of its admissions (#16).`
 
 ### Task 12: `UnassignHolder`
 
@@ -179,8 +179,8 @@
 - Create: `app-modules/admission/src/Actions/UnassignHolder.php` (lock; refuse with a `CheckIn` row; refuse revoked; null holder, `Issued`; `AdmissionHolderUnassigned`)
 - Test: `app-modules/admission/tests/UnassignHolderTest.php`
 
-- [ ] Tests: manager takes back; refused after check-in; refused for a stranger; operator needs `ReassignHolder`; the seat read model is untouched (Task 27 asserts the inverse from Resources' side).
-- [ ] Commit `Let a buyer take an admission back from its holder until the door has seen it (#16).`
+- [x] Tests: manager takes back; refused after check-in; refused for a stranger; operator needs `ReassignHolder`; the seat read model is untouched (Task 27 asserts the inverse from Resources' side).
+- [x] Commit `Let a buyer take an admission back from its holder until the door has seen it (#16).`
 
 ### Task 13: `RevokeClaimLink`, `SendClaimLink` and the `admission.claim-link` template
 
@@ -191,8 +191,8 @@
 
 **Interfaces:** `SendMessage::handle(new SendMessageRequest(recipientId: null, recipientEmail: $link->intended_email, templateKey: 'admission.claim-link', payload, brandId, heroImageUrl/Alt from `admission_event_summaries`))`. Manager name from `admission_people`. Failure → `Log::warning`, never a rollback (the link stays).
 
-- [ ] Tests: mail goes to the bound address with the signed URL; an unbound link sends nothing; revoke sets `revoked_at` and is idempotent; a send failure leaves the link live.
-- [ ] Commit `Mail a claim link to the address it is bound to, and let its issuer revoke it (#16).`
+- [x] Tests: mail goes to the bound address with the signed URL; an unbound link sends nothing; revoke sets `revoked_at` and is idempotent; a send failure leaves the link live.
+- [x] Commit `Mail a claim link to the address it is bound to, and let its issuer revoke it (#16).`
 
 ### Task 14: Routes, controllers and Data for the manager's actions
 
@@ -202,9 +202,9 @@
 - Create: `app-modules/admission/src/Support/FindManagedAdmission.php` (loads by id where `buyer_user_id = auth`, 404 otherwise — the ownership check every manager route shares)
 - Test: `app-modules/admission/tests/HolderRoutesTest.php`, `app-modules/admission/tests/InviteRoutesTest.php`
 
-- [ ] `InviteController::store` issues, sends when an address was posted, flashes `inviteUrl` (built by `urlFor()`) so the panel can show the copy field; `destroy` revokes.
-- [ ] Tests: each route for manager (200/redirect), holder-only user (404), stranger (404), anonymous (login); the throttle answers 429 on the 21st invite.
-- [ ] Commit `Open the holder and invite actions to a registration's buyer over HTTP (#16).`
+- [x] `InviteController::store` issues, sends when an address was posted, flashes `inviteUrl` (built by `urlFor()`) so the panel can show the copy field; `destroy` revokes.
+- [x] Tests: each route for manager (200/redirect), holder-only user (404), stranger (404), anonymous (login); the throttle answers 429 on the 21st invite.
+- [x] Commit `Open the holder and invite actions to a registration's buyer over HTTP (#16).`
 
 ### Task 15: The invitee's landing page
 
@@ -214,8 +214,8 @@
 - Create: `app-modules/admission/src/Data/ClaimLandingData.php` (§4.4), `app-modules/admission/resources/js/pages/admission/claim/Show.vue`
 - Test: extend `app-modules/admission/tests/AdmissionClaimLinkTest.php`
 
-- [ ] Tests: renders for a live link with event, role, manager name and expiry; 410 for claimed/revoked/expired; a bound link's page shows the address it is meant for; the flag `alreadyHolderOfAnother` is true when the visitor holds another admission of the event; anonymous → login → back to the link.
-- [ ] `npm run build`; commit `Show an invitee what they are claiming before they claim it (#16).`
+- [x] Tests: renders for a live link with event, role, manager name and expiry; 410 for claimed/revoked/expired; a bound link's page shows the address it is meant for; the flag `alreadyHolderOfAnother` is true when the visitor holds another admission of the event; anonymous → login → back to the link.
+- [x] `npm run build`; commit `Show an invitee what they are claiming before they claim it (#16).`
 
 ### Task 16: `TicketManagerSlot.vue` replaces the download card
 
@@ -226,8 +226,8 @@
 - Delete: `TicketLinkSlot.vue`, `TicketLinkData.php` (after every reference is gone)
 - Test: rewrite `app-modules/admission/tests/RegistrationTicketSlotTest.php`; vitest for the row's action visibility matrix
 
-- [ ] Rows and actions exactly as §4.5: *This one is mine* / *Invite* / *Copy link* / *Revoke* / *Take back* / *Ticket*, by state; download-all stays at the top.
-- [ ] Commit `Turn the registration page's ticket card into the buyer's ticket manager (#16).`
+- [x] Rows and actions exactly as §4.5: *This one is mine* / *Invite* / *Copy link* / *Revoke* / *Take back* / *Ticket*, by state; download-all stays at the top.
+- [x] Commit `Turn the registration page's ticket card into the buyer's ticket manager (#16).`
 
 ### Task 17: Metrics for holders and invites
 
@@ -236,7 +236,7 @@
 - Modify: `contrib/observability/src/sale.mjs` — row "Holders and invites"; `contrib/observability/rules/*.yaml` — `KonventixClaimInviteMailFailing` (warning, `send_failed > sent` over 30 m, runbook anchor in `docs/operations.md`)
 - Test: extend `app-modules/admission/tests/AdmissionMetricsTest.php`; `ObservabilityCoverageTest` must pass
 
-- [ ] Commit `Count holder changes and claim invites, and alert when invite mail stops arriving (#16).`
+- [x] Commit `Count holder changes and claim invites, and alert when invite mail stops arriving (#16).`
 
 ---
 
@@ -251,7 +251,7 @@
 
 **Precedent:** `ProjectEventWindow` and Admission's `ProjectEventSummary`.
 
-- [ ] Commit `Give Resources its own read model of admissions, fed by Admission's events (#292).`
+- [x] Commit `Give Resources its own read model of admissions, fed by Admission's events (#292).`
 
 ### Task 19: `resource_bookings.admission_id`, the partial unique index, and the three events
 
@@ -261,8 +261,8 @@
 - Modify: `app-modules/resources/SPEC.md`
 - Test: extend `app-modules/resources/tests/ResourceBookingTest.php`
 
-- [ ] Tests: a hold with an admission id writes it and the three events carry it; a second occupying booking for the same admission fails the index inside the Action's savepoint; released rows do not count.
-- [ ] Commit `Let a booking name the admission it seats, one place per admission by the schema (#292).`
+- [x] Tests: a hold with an admission id writes it and the three events carry it; a second occupying booking for the same admission fails the index inside the Action's savepoint; released rows do not count.
+- [x] Commit `Let a booking name the admission it seats, one place per admission by the schema (#292).`
 
 ### Task 20: `AssignPlaceToAdmission`
 
@@ -271,8 +271,8 @@
 - Modify: `app-modules/resources/src/Actions/AssignPlacesToRegistration.php` (uses the trait; behaviour unchanged)
 - Test: `app-modules/resources/tests/AssignPlaceToAdmissionTest.php`
 
-- [ ] Tests: holder picks own; manager picks any admission of the registration; stranger refused; `assign` mode refused for both; cap across bound + unbound honoured; picking the group's unbound place rebinds it; repick releases the old with `repicked`; null place gives the seat up and the claim goes `unplaced` only when no booking remains; revoked admission refused; race → `placeIds` validation error and `ResourceBookingRefused`.
-- [ ] Commit `Seat one admission on one place, picked by its holder or its buyer (#292).`
+- [x] Tests: holder picks own; manager picks any admission of the registration; stranger refused; `assign` mode refused for both; cap across bound + unbound honoured; picking the group's unbound place rebinds it; repick releases the old with `repicked`; null place gives the seat up and the claim goes `unplaced` only when no booking remains; revoked admission refused; race → `placeIds` validation error and `ResourceBookingRefused`.
+- [x] Commit `Seat one admission on one place, picked by its holder or its buyer (#292).`
 
 ### Task 21: Per-admission picker routes, `FindSeatClaimForAdmission`, `SeatPickerData`
 
@@ -282,8 +282,8 @@
 - Modify: `app-modules/resources/src/Data/SeatPickerData.php` (`admissionId: ?string`, `maxPlaces: int`)
 - Test: `app-modules/resources/tests/AdmissionSeatControllerTest.php`
 
-- [ ] Tests: show for holder, for manager, 404 otherwise; store binds; availability answers for either; the registration-level routes still work for a registration with no admissions in the read model.
-- [ ] `types:generate`; commit `Open the seat picker per admission (#292).`
+- [x] Tests: show for holder, for manager, 404 otherwise; store binds; availability answers for either; the registration-level routes still work for a registration with no admissions in the read model.
+- [x] `types:generate`; commit `Open the seat picker per admission (#292).`
 
 ### Task 22: `Pick.vue` single-select and the per-admission summary
 
@@ -292,7 +292,7 @@
 - Modify: `app-modules/resources/src/Data/SeatSummaryData.php` (`admissions: list<AdmissionSeatRowData {admissionId, placeRef, placeLabel, holderUserId, pickUrl}>`), `ResourcesServiceProvider::registerSlots()` (rows from `resource_bookings.admission_id` + `resource_admissions`), `SeatSummarySlot.vue` (per-admission rows; no link to the registration picker when admissions exist)
 - Test: vitest on the selection model; extend the slot's feature test
 
-- [ ] Commit `Show each ticket's seat on the registration page and pick one seat at a time for a ticket (#292).`
+- [x] Commit `Show each ticket's seat on the registration page and pick one seat at a time for a ticket (#292).`
 
 ### Task 23: A revoked admission frees its seat
 
@@ -300,8 +300,8 @@
 - Create: `app-modules/resources/src/Listeners/ReleaseBookingOnAdmissionRevoked.php` (ungated, reason `admission_revoked`), register it
 - Test: `app-modules/resources/tests/AdmissionRevocationTest.php`
 
-- [ ] Tests: release on revoke; an unassigned holder (`AdmissionHolderUnassigned`) keeps the booking.
-- [ ] Commit `Free a seat when its admission is revoked, keep it when the holder merely changes (#292).`
+- [x] Tests: release on revoke; an unassigned holder (`AdmissionHolderUnassigned`) keeps the booking.
+- [x] Commit `Free a seat when its admission is revoked, keep it when the holder merely changes (#292).`
 
 ### Task 24: Seat metrics
 
@@ -309,7 +309,7 @@
 - Modify: `app-modules/resources/src/Metrics/ResourcesMetrics.php`, `src/Listeners/Metrics/RecordBookingMetrics.php` (or a new recorder) for `resource_admission_seats_total{outcome}`; `contrib/observability/src/sale.mjs` Seating row
 - Test: extend `app-modules/resources/tests/ResourcesMetricsTest.php`
 
-- [ ] Commit `Count seats placed, given up and refused per ticket (#292).`
+- [x] Commit `Count seats placed, given up and refused per ticket (#292).`
 
 ---
 
@@ -322,7 +322,7 @@
 - Modify: `AdmissionServiceProvider`, `app-modules/admission/SPEC.md`
 - Test: `app-modules/admission/tests/AdmissionSeatProjectionTest.php`
 
-- [ ] Commit `Let Admission know which place each of its admissions sits on (#292).`
+- [x] Commit `Let Admission know which place each of its admissions sits on (#292).`
 
 ### Task 26: `TicketQr` and the ticket page
 
@@ -334,8 +334,8 @@
 - Modify: `app-modules/admission/resources/js/pages/admission/tickets/Index.vue` (rows link to the page; "Tickets you manage" section — `MyTicketsController` gains the managed list)
 - Test: `app-modules/admission/tests/TicketPageTest.php`; extend `MyTicketsControllerTest.php`
 
-- [ ] Tests: page for holder and for manager; 404 for others; `qrSvg` decodes to the same token the PDF carries; `bannerUrl` from the summary, null when unresolvable; seat present after a bound booking; `canPickSeat` follows §6.3's actor rule and `assign` mode.
-- [ ] `types:generate`, `npm run build`; commit `Give every ticket a page of its own with its code, seat and banner (#292).`
+- [x] Tests: page for holder and for manager; 404 for others; `qrSvg` decodes to the same token the PDF carries; `bannerUrl` from the summary, null when unresolvable; seat present after a bound booking; `canPickSeat` follows §6.3's actor rule and `assign` mode.
+- [x] `types:generate`, `npm run build`; commit `Give every ticket a page of its own with its code, seat and banner (#292).`
 
 ### Task 27: The PDF names the seat and wears the banner
 
@@ -343,7 +343,7 @@
 - Modify: `app-modules/admission/src/Documents/TicketDocumentRenderer.php` (seat line in the holder band from `admission_seats`; banner `<img>` at the top of the event band from `MediaLibrary::dataUriFor($summary->banner_media_id)`; watermark layers stay before content), the Blade view
 - Test: extend `app-modules/admission/tests/TicketDocumentTest.php` (magic bytes + length with and without banner; the structural layer-order test now also asserts the banner sits after the watermark layers and before the QR box)
 
-- [ ] Commit `Print the seat and the event banner on the ticket (#292).`
+- [x] Commit `Print the seat and the event banner on the ticket (#292).`
 
 ### Task 28: The manager panel and `ManagedAdmissionData` show the seat
 
@@ -351,7 +351,7 @@
 - Modify: `AdmissionServiceProvider::registerSlots()` (fill `seat` from `admission_seats`), `TicketManagerRow.vue` (seat chip, link to the per-admission picker via Wayfinder `AdmissionSeatController.show`)
 - Test: extend `RegistrationTicketSlotTest.php`
 
-- [ ] Commit `Show each ticket's seat in the buyer's ticket manager (#292).`
+- [x] Commit `Show each ticket's seat in the buyer's ticket manager (#292).`
 
 ---
 
@@ -363,15 +363,15 @@
 - Modify: `app-modules/admission/src/Gdpr/AdmissionGdprHandler.php` (§10), `app-modules/resources/src/Gdpr/ResourcesGdprHandler.php` (§10)
 - Test: extend `AdmissionGdprHandlerTest.php` and Resources' handler test
 
-- [ ] Commit `Export and erase what the holder work and the seat read models know about a person (#16).`
+- [x] Commit `Export and erase what the holder work and the seat read models know about a person (#16).`
 
 ### Task 30: Backfill on dev, documentation, rules
 
 - [ ] Run once on the dev cluster after deploy, in this order: `event:replay-details` (banners into both summaries), `admission:announce-ownership` (Resources' admission read model). Record both in `docs/operations.md` next to `registration:announce-ownership`.
-- [ ] `SPEC.md` of admission, resources, event, messaging, platform: the new events, read models, routes and the picker's upload door. `TODO.md` of each: check off #16 points 1 and 3, add the console (point 2), the `banner` variant, drag-and-drop upload.
-- [ ] `.ai/rules/tickets.md`: three new entries — *one place per admission is the partial index, not a check*; *`AdmissionOwnershipAnnounced` is projection-only*; *the mail hero is the layout's, never a template's `<img>`*. `.ai/rules/seating.md`: *`admission_id` is written by `HoldResourceBooking` only; the registration-level pick path still exists for registrations without admissions*.
-- [ ] `docs/architecture/module-map.md`: Admission ↔ Resources read models.
-- [ ] Commit `Document the holder, seat-per-ticket and banner work (#16).`
+- [x] `SPEC.md` of admission, resources, event, messaging, platform: the new events, read models, routes and the picker's upload door. `TODO.md` of each: check off #16 points 1 and 3, add the console (point 2), the `banner` variant, drag-and-drop upload.
+- [x] `.ai/rules/tickets.md`: three new entries — *one place per admission is the partial index, not a check*; *`AdmissionOwnershipAnnounced` is projection-only*; *the mail hero is the layout's, never a template's `<img>`*. `.ai/rules/seating.md`: *`admission_id` is written by `HoldResourceBooking` only; the registration-level pick path still exists for registrations without admissions*.
+- [x] `docs/architecture/module-map.md`: Admission ↔ Resources read models.
+- [x] Commit `Document the holder, seat-per-ticket and banner work (#16).`
 
 ### Task 31: Verify before the merge request
 

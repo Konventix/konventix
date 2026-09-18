@@ -71,6 +71,27 @@ reading either.
   is **not** stored: a badge is reproducible on demand from the admission plus
   its template, so unlike a GoBD-archived invoice (ADR-0031) keeping
   attendee-bearing documents on disk would add GDPR surface for no gain.
+- **The ticket manager and the ticket page** (#292, #16) — the buyer of a
+  registration is the **manager** of its admissions (`buyer_user_id`);
+  whoever is named on one is its **holder** (`holder_user_id`). The
+  manager names themselves (`Actions\AssignHolder`, never a third person
+  without their consent), invites by address (`SendClaimLink`, the
+  `admission.claim-link` mail) or by bearer link, withdraws
+  (`RevokeClaimLink`) and takes a ticket back until the door has accepted
+  it (`UnassignHolder`, `AdmissionHolderUnassigned`) — all from the
+  `registration.mine.show` slot (`TicketManagerSlot`, built by
+  `Support\BuildTicketManager`). An organizer does the same by capability
+  (`Permission::AssignHolder`/`ReassignHolder`, the `operator` actor).
+  Every ticket has a page, `/my/tickets/{admission}`, for holder and
+  manager alike: the event band with the banner, the scan code as inline
+  SVG of the *current* token (`Documents\TicketQr`, the same encoder the
+  PDF uses), the seat, and Resources' seat button through the
+  `admission.ticket.show` slot. The claim link's signed URL serves both the
+  landing page (GET) and the claim (POST).
+- **`Models\AdmissionSeat`** (`admission_seats`) — which place an admission
+  sits on, projected from Resources' `ResourceBookingConfirmed`/`Released`
+  once they name an admission (#292 §5); the ticket page and the PDF name
+  the seat from here. No personal data.
 - **`Models\Person`** — this module's own holder read model (display name
   only), projected from Identity's `UserRegistered`/`UserProfileUpdated` and
   backfilled by `identity:replay-profiles`, mirroring Registration's

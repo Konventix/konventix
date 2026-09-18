@@ -4,6 +4,11 @@ paths:
   - 'app-modules/admission/src/Actions/IssueAdmissionToken.php'
   - 'app-modules/admission/src/Actions/VerifyAdmissionToken.php'
   - 'app-modules/admission/src/Http/Controllers/TicketDownloadController.php'
+  - 'app-modules/admission/src/Http/Controllers/TicketPageController.php'
+  - 'app-modules/admission/src/Console/**'
+  - 'app-modules/admission/src/Listeners/ProjectAdmissionSeat.php'
+  - 'app-modules/resources/src/Listeners/ProjectAdmission.php'
+  - 'app-modules/messaging/src/Mail/MailLayout.php'
   - 'app-modules/event/src/Http/Controllers/EventLandingController.php'
   - 'app-modules/platform/src/Documents/**'
   - 'app-modules/platform/src/Calendar/**'
@@ -93,6 +98,29 @@ repeat) on top of the QR, breaking the scan. A structural test pins the
 rendered Blade HTML's layer order for exactly this reason; if it starts
 failing, the fix is to restore the order, never to relax the test.
 
+## `AdmissionOwnershipAnnounced` is projection-only, like its Registration twin
+`admission:announce-ownership` re-emits it for every admission so Resources'
+`resource_admissions` can backfill; `AnnounceAdmissionOwnershipCommandTest`
+scans every module's ServiceProvider and fails on any listener whose class
+name does not start with `Project`. Re-emitting `AdmissionIssued` instead
+would count every admission ever issued on the dashboards again.
+
+## Two seat read models, two directions, never a shared table
+Resources keeps `resource_admissions` (who holds, who bought, what state)
+off Admission's events, and Admission keeps `admission_seats` (which place)
+off Resources' `ResourceBookingConfirmed`/`Released` — only when the event
+names an `admissionId`, and only the *confirmed* event. The seat release
+deletes only when the row still points at the booking being released, so a
+re-pick's late release cannot erase the new seat. Neither module queries
+the other's table for any of this.
+
+## The mail hero is the layout's row, never an `<img>` in a template body
+`SendMessageRequest::$heroImageUrl`/`$heroImageAlt` → `MailLayout::wrap()`
+→ one full-width row in `branded.blade.php`. A sender resolves the picture
+itself (`MediaLibrary::referenceFor()` off its own event summary) and
+passes an absolute URL; the text part never mentions it, and a held or
+resent copy — rebuilt from the log — goes without.
+
 ## Tests
 A rendered PDF is asserted on its magic bytes and its length, never
 byte-compared, following `BadgeDocumentTest`/`InvoiceDocumentTest`. The
@@ -100,11 +128,14 @@ calendar file is asserted by parsing it — CRLF endings, folded lines,
 escaped text — never by string-matching the raw bytes.
 
 ## Observability
-No alert exists for anything in this feature (ADR-0059, design §9): a
-render or download failure is a plain 500 already covered by
+A render or download failure is a plain 500 already covered by
 `KonventixHttp5xxRate`/`KonventixErrorsLogged`, and a superseded-nonce
 refusal is visible to the person at the door. `admission_tickets_rendered_
 total`, `event_calendar_downloads_total` and `admission_tokens_superseded_
-total` all live on the `konventix-sale` dashboard's "Tickets and calendars"
-row — adding a fourth metric here without a panel fails
-`ObservabilityCoverageTest`.
+total` live on the `konventix-sale` dashboard's "Tickets and calendars"
+row; `admission_holder_changes_total` and `admission_claim_invites_total`
+(#292) on its "Holders and invites" row, and `KonventixClaimInviteMailFailing`
+is the one alert — `send_failed` outrunning `sent` over thirty minutes is
+a failure nobody at the venue sees. A metric without a panel fails
+`ObservabilityCoverageTest`; an alert without a `vmalert-tool` case in
+`contrib/observability/alerts/tests/` fails `verify:observability`.

@@ -611,3 +611,44 @@ the task that found them. The body above is never edited.
   the controller with the validation `store()` always had. The tests live
   in `MediaLibraryTest.php` next to `mediaOperator()`, which that file
   declares and a second file may not call (`.ai/rules/tests.md`).
+- **2026-09-18, Task 11–14: a stranger gets 403, not 404.** §4.3 said
+  404; `TicketDownloadController` already answers a stranger with 403 on
+  the same admissions, and two surfaces disagreeing about the same person
+  would be worse than either code. The `{admission}` binding is
+  brand-scoped, so a wrong host still 404s. Invite addresses validate
+  `email:rfc` only — `dns` would refuse every test address and pass or
+  fail on the mail server's mood.
+- **2026-09-18, Task 15: one signed URL for the landing page and the
+  claim.** The GET landing page lives on the POST's path; a signature
+  covers path and query, never the method, so `IssueAdmissionClaimLink::
+  urlFor()` is unchanged and the page posts to its own address. A
+  successful claim lands on the new ticket page rather than `back()`.
+- **2026-09-18, Task 16: the invite URL is never flashed.** The panel
+  rebuilds it from the live link on every render, so the invite POST
+  simply redirects back — no session hand-off.
+- **2026-09-18, Task 20: no shared trait yet.** `AssignPlaceToAdmission`
+  carries its own copy of the eligibility query and the race handling
+  (fifteen lines each) and reuses `AssignPlacesToRegistration::
+  isRaceFailure()`; extracting the concern is in Resources' TODO. The
+  per-admission picker posts the picker's own `PickPlacesData` capped at
+  one place, and gives the seat up through a DELETE route rather than a
+  null place in the POST.
+- **2026-09-18, Task 21/26: the ticket page's seat button is a slot.**
+  `TicketPageData` carries no `canPickSeat`; Resources contributes the
+  button through a new `admission.ticket.show` slot (`TicketSeatSlot`),
+  since whether this viewer may pick is Resources' knowledge
+  (`FindSeatClaimForAdmission`) and Admission may not ask its tables.
+- **2026-09-18, Task 17/24: the invite events.** `IssueAdmissionClaimLink`,
+  `SendClaimLink` and `RevokeClaimLink` emit `ClaimLinkIssued`, `ClaimLinkSent`
+  and `ClaimLinkRevoked` for the recorder. Holder changes are labelled
+  `claimed` (via link), `assigned` (buyer or desk — the event does not say
+  which) and `unassigned`. Seats per ticket are counted off the booking
+  events themselves as `placed`/`released`; refusals stay on
+  `resource_bookings_total`.
+- **2026-09-18, Task 26: the ticket page's PDF button.** A manager who
+  does not hold the ticket cannot use the holder's PDF route; for them the
+  button points at the registration's combined file.
+- **2026-09-18, all tasks: pages spell out their prop types.** A bare
+  `Konventix.*.Data.X` in `defineProps<>()` fails the SFC compiler's type
+  resolver (`Pick.vue` found this first); every new page mirrors its Data
+  class in a local `Props` type.
