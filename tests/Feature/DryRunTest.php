@@ -286,17 +286,18 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
         return $registration === null ? null : ['registration' => $registration];
     }
 
-    // The per-ticket seat poll (`resources.admission-seat.availability`,
-    // #292 §6.4) authorises through `FindSeatClaimForAdmission`: the
-    // admission must be in Resources' own read model, live, belong to a
-    // registration with a live claim, and the caller must be that claim's
-    // registrant or the admission's holder — 404 otherwise, by design. The
+    // The per-ticket picker and its poll (`resources.admission-seat.show`
+    // and `.availability`, #292 §6.4) authorise through
+    // `FindSeatClaimForAdmission`: the admission must be in Resources' own
+    // read model, live, belong to a registration with a live claim, and the
+    // caller must be that claim's registrant or the admission's holder —
+    // 404 otherwise, by design. The
     // generic `{admission}` binding below picks the member's *held*
     // admission, which is whatever `seedClaimLinks()` had left unclaimed and
     // may be a staff admission with no registration at all. Bind to an
     // admission of the member's own claimed registration instead, the same
     // row `resources.seating.pick` resolves through.
-    if ($name === 'resources.admission-seat.availability' && $member !== null) {
+    if (in_array($name, ['resources.admission-seat.show', 'resources.admission-seat.availability'], true) && $member !== null) {
         $claim = ResourceClaim::withoutBrandScope()
             ->where('brand_id', $brand->getKey())
             ->where('registrant_user_id', $member->getKey())
