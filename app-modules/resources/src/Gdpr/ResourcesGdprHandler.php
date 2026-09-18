@@ -12,6 +12,7 @@ use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\PlanVersion;
 use Konventix\Resources\Models\Resource as BookableResource;
+use Konventix\Resources\Models\ResourceAdmission;
 use Konventix\Resources\Models\ResourceBooking;
 use Konventix\Resources\Models\ResourceClaim;
 
@@ -146,6 +147,24 @@ final class ResourcesGdprHandler implements GdprHandler
                     'created_at' => $version->created_at?->toIso8601String(),
                 ])
                 ->all(),
+            // The admission read model (#292 §10): the tickets this person
+            // holds or bought, as far as seating knows them — ids and
+            // state, nothing about the other people on the booking.
+            'admissions' => ResourceAdmission::withoutBrandScope()
+                ->where(fn (Builder $query): Builder => $query
+                    ->where('holder_user_id', $subjectId)
+                    ->orWhere('buyer_user_id', $subjectId))
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn (ResourceAdmission $admission): array => [
+                    'id' => $admission->id,
+                    'event_id' => $admission->event_id,
+                    'registration_id' => $admission->registration_id,
+                    'holds' => $admission->holder_user_id === $subjectId,
+                    'bought' => $admission->buyer_user_id === $subjectId,
+                    'state' => $admission->state,
+                ])
+                ->all(),
         ];
     }
 
@@ -173,6 +192,15 @@ final class ResourcesGdprHandler implements GdprHandler
             ->where('holder_type', ResourceBooking::HOLDER_OPERATOR)
             ->where('holder_id', $subjectId)
             ->update(['holder_id' => null]);
+
+        // The read model follows Admission's own tombstone (#292 §10): the
+        // row stays — the seat is the ticket's — the person leaves it.
+        ResourceAdmission::withoutBrandScope()
+            ->where('holder_user_id', $subjectId)
+            ->update(['holder_user_id' => null]);
+        ResourceAdmission::withoutBrandScope()
+            ->where('buyer_user_id', $subjectId)
+            ->update(['buyer_user_id' => null]);
     }
 
     /**

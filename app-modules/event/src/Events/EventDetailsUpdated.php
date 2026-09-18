@@ -22,5 +22,7 @@ final readonly class EventDetailsUpdated
         public string $slug,
         public string $name,
         public ?string $visibility = null,
+        /** The banner's media-library ULID, null for none (#292). Also additive. */
+        public ?string $bannerMediaId = null,
     ) {}
 }

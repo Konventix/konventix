@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useAdminCapabilities } from '@/composables/useAdminCapabilities';
 import { useDragReorder } from '@/composables/useDragReorder';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import {
@@ -28,6 +29,7 @@ const props = defineProps<{
     media: Konventix.Platform.Data.MediaItemData[];
     events: { id: string; name: string; brandId: string }[];
 }>();
+const { canManageMedia } = useAdminCapabilities();
 
 const form = useForm<{
     name: string;
@@ -187,6 +189,8 @@ function remove(): void {
                             v-model="form.imageMediaId"
                             label="Image"
                             :media="props.media"
+                            :brand-id="props.product.brandId"
+                            :can-upload="canManageMedia"
                         />
                         <InputError :message="form.errors.imageMediaId" />
                     </div>

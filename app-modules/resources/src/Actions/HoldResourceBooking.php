@@ -60,8 +60,9 @@ final class HoldResourceBooking
         ?string $claimId = null,
         ?string $amendmentId = null,
         ?string $label = null,
+        ?string $admissionId = null,
     ): ResourceBooking {
-        return DB::transaction(function () use ($resource, $holderType, $holderId, $startsAt, $endsAt, $quantity, $registrationId, $claimId, $amendmentId, $label): ResourceBooking {
+        return DB::transaction(function () use ($resource, $holderType, $holderId, $startsAt, $endsAt, $quantity, $registrationId, $claimId, $amendmentId, $label, $admissionId): ResourceBooking {
             $type = $resource->resourceTypeUnscoped();
 
             // A unit is one thing. Booking "two" of it would write one row
@@ -90,6 +91,8 @@ final class HoldResourceBooking
                 'registration_id' => $registrationId,
                 'claim_id' => $claimId,
                 'amendment_id' => $amendmentId,
+                // The one writer of this column (#292 §6.2).
+                'admission_id' => $admissionId,
                 'quantity' => $quantity,
                 'label' => $label ?? $resource->label,
                 // Unit-mode bookings are exclusive, so the constraint guards
@@ -136,6 +139,7 @@ final class HoldResourceBooking
                 claimId: $claimId,
                 label: $booking->label ?? $resource->label,
                 ref: $resource->ref,
+                admissionId: $admissionId,
             );
 
             // Deferred to the outermost commit (design §6.1 step 7): SavePlan

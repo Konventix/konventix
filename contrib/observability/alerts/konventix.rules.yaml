@@ -124,6 +124,15 @@ groups:
           summary: "The resource hold sweep has not run for 10 minutes"
           runbook: "docs/operations.md#konventixresourceholdsweepstale"
 
+      - alert: KonventixClaimInviteMailFailing
+        expr: |
+          sum by (brand) (increase(konventix_admission_claim_invites_total{job="__RELEASE__", outcome="send_failed"}[30m]))
+          > sum by (brand) (increase(konventix_admission_claim_invites_total{job="__RELEASE__", outcome="sent"}[30m]))
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "Claim-link invitations for {{ $labels.brand }} are failing to send"
+          runbook: "docs/operations.md#konventixclaiminvitemailfailing"
+
   - name: konventix.platform
     rules:
       - alert: KonventixDatabaseBackupMissing

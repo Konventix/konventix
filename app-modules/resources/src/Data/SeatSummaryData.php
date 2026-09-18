@@ -6,6 +6,7 @@ namespace Konventix\Resources\Data;
 
 use Konventix\Resources\Enums\SeatingMode;
 use Konventix\Resources\Models\ResourceClaim;
+use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -39,14 +40,24 @@ final class SeatSummaryData extends Data
         public readonly array $placeRefs,
         public readonly bool $noFreePlaces,
         public readonly SeatingMode $seatingMode,
+        /**
+         * The registration's tickets and their places (#292 §6.4). Empty for
+         * a registration with no admissions in the read model, which keeps
+         * the registration-level picker.
+         *
+         * @var list<AdmissionSeatRowData>
+         */
+        #[DataCollectionOf(AdmissionSeatRowData::class)]
+        public readonly array $admissions = [],
     ) {}
 
     /**
      * Named `of*` rather than `from*` (.ai/rules/data.md).
      *
      * @param  list<string>  $placeRefs
+     * @param  list<AdmissionSeatRowData>  $admissions
      */
-    public static function ofClaim(ResourceClaim $claim, array $placeRefs, bool $noFreePlaces): self
+    public static function ofClaim(ResourceClaim $claim, array $placeRefs, bool $noFreePlaces, array $admissions = []): self
     {
         return new self(
             registrationId: $claim->registration_id,
@@ -55,6 +66,7 @@ final class SeatSummaryData extends Data
             placeRefs: $placeRefs,
             noFreePlaces: $noFreePlaces,
             seatingMode: $claim->seating_mode,
+            admissions: $admissions,
         );
     }
 }

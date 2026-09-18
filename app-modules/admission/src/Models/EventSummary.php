@@ -39,6 +39,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $timezone
  * @property string|null $venue_label
  * @property string|null $venue_id
+ * @property string|null $banner_media_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -49,7 +50,7 @@ class EventSummary extends Model
 
     protected $table = 'admission_event_summaries';
 
-    protected $fillable = ['event_id', 'name', 'slug', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id'];
+    protected $fillable = ['event_id', 'name', 'slug', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id', 'banner_media_id'];
 
     /**
      * @return array<string, string>

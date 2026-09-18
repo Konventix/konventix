@@ -34,5 +34,8 @@ final class SendMessageData extends Data
         public readonly ?DataCollection $attachments = null,
         public readonly ?string $topicKey = null,
         public readonly bool $urgent = false,
+        /** See `SendMessageRequest::$heroImageUrl` (#292). Not logged: a held or resent copy goes without. */
+        public readonly ?string $heroImageUrl = null,
+        public readonly ?string $heroImageAlt = null,
     ) {}
 }

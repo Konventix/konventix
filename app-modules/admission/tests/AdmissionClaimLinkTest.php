@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Admission\Actions\ClaimAdmission;
 use Konventix\Admission\Actions\IssueAdmissionClaimLink;
 use Konventix\Admission\Enums\AdmissionState;
@@ -228,4 +229,70 @@ it('surfaces every failure as the same 410', function (): void {
 
     // Second use of the same signed URL: signature still valid, link is not.
     $this->actingAs(User::factory()->create())->post($url)->assertStatus(410);
+});
+
+// The landing page (#292 §4.5): the same signed URL as the POST — signature
+// over path and query, never the method — showing the offer before the
+// button that takes it.
+it('shows an invitee what they would claim, and 410s a dead link', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    $manager = ticketPerson(['display_name' => 'Ada Lovelace']);
+    $admission = Admission::factory()->forRegistration((string) Str::ulid())->create([
+        'event_id' => $eventId,
+        'holder_user_id' => null,
+        'state' => AdmissionState::Issued,
+        'buyer_user_id' => $manager->id,
+        'role' => 'visitor',
+    ]);
+    $issuer = app(IssueAdmissionClaimLink::class);
+    $link = $issuer->handle($admission, 'friend@example.test');
+    $url = $issuer->urlFor($link);
+    $invitee = User::factory()->create();
+
+    $this->actingAs($invitee)
+        ->get($url)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admission/claim/Show')
+            ->where('linkId', $link->id)
+            ->where('eventName', 'Kon Fest 2026')
+            ->where('role', 'visitor')
+            ->where('managerName', 'Ada Lovelace')
+            ->where('intendedEmail', 'friend@example.test')
+            ->where('alreadyHolderOfAnother', false)
+            ->where('claimUrl', $url));
+
+    // Another ticket of the same event already in their name: said, not refused.
+    Admission::factory()->create(['event_id' => $eventId, 'holder_user_id' => $invitee->id, 'state' => AdmissionState::Assigned]);
+
+    $this->actingAs($invitee)
+        ->get($url)
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('alreadyHolderOfAnother', true));
+
+    // A guest is sent to log in and comes back to the very same signed URL.
+    $this->get($url)->assertRedirect('/login');
+    expect(session('url.intended'))->toBe($url);
+
+    // Revoked: the page is gone the same way the POST would be.
+    $link->forceFill(['revoked_at' => now()])->save();
+    $this->actingAs($invitee)->get($url)->assertStatus(410);
+
+    // Tampered: the signature no longer matches.
+    $this->actingAs($invitee)->get(str_replace('signature=', 'signature=0', $url))->assertForbidden();
+});
+
+it('sends a successful claim to the ticket page', function (): void {
+    $this->withBrand();
+    $admission = claimTestPlaceholder();
+    $issuer = app(IssueAdmissionClaimLink::class);
+    $link = $issuer->handle($admission);
+    $claimant = User::factory()->create();
+
+    $this->actingAs($claimant)
+        ->post($issuer->urlFor($link))
+        ->assertRedirect('/my/tickets/'.$admission->id);
+
+    expect($admission->fresh()->holder_user_id)->toBe($claimant->id);
 });

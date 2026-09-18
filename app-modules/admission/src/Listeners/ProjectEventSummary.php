@@ -43,10 +43,13 @@ final class ProjectEventSummary
             endsAt: $event->endsAt,
             timezone: $event->timezone,
         );
+
+        $this->projectBanner($event->eventId, $event->brandId, $event->bannerMediaId);
     }
 
     /**
-     * `EventDetailsUpdated` carries no times: patches name and slug only.
+     * `EventDetailsUpdated` carries no times: patches name and slug only —
+     * and the banner, which unlike the rest may legitimately become null.
      */
     public function handleDetailsUpdated(EventDetailsUpdated $event): void
     {
@@ -56,6 +59,21 @@ final class ProjectEventSummary
             name: $event->name,
             slug: $event->slug,
         );
+
+        $this->projectBanner($event->eventId, $event->brandId, $event->bannerMediaId);
+    }
+
+    /**
+     * Outside `project()` on purpose: its `array_filter` treats null as
+     * "not carried", but for the banner (#292) null is a fact — the picture
+     * was removed — and both events always carry the current value.
+     */
+    private function projectBanner(string $eventId, string $brandId, ?string $bannerMediaId): void
+    {
+        EventSummary::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('event_id', $eventId)
+            ->update(['banner_media_id' => $bannerMediaId]);
     }
 
     /**

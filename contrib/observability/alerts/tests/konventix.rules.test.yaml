@@ -273,3 +273,19 @@ tests:
             exp_annotations:
               summary: "konventix-web has unavailable replicas"
               runbook: "docs/operations.md#konventixroleunavailable"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_admission_claim_invites_total{job="konventix", brand="sxlan", outcome="send_failed"}'
+        values: '0 0 1 2 3 4'
+      - series: 'konventix_admission_claim_invites_total{job="konventix", brand="sxlan", outcome="sent"}'
+        values: '0 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 5m
+        groupname: konventix.app
+        alertname: KonventixClaimInviteMailFailing
+        exp_alerts:
+          - exp_labels: {brand: sxlan, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Claim-link invitations for sxlan are failing to send"
+              runbook: "docs/operations.md#konventixclaiminvitemailfailing"

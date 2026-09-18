@@ -115,6 +115,7 @@ class StaticPageAdminController
                 $registry->editable(),
             ))),
             'context' => [
+                'brandId' => $brand->getKey(),
                 'media' => MediaItem::withoutBrandScope()
                     ->withCount(['usages' => fn ($query) => $query->withoutGlobalScope(BrandScope::class)])
                     ->where('brand_id', $brand->getKey())

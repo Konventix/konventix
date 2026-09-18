@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Http\Controllers\Admin;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -71,6 +72,32 @@ class MediaAdminController
     {
         Gate::authorize(Permission::ManageMedia->value);
 
+        $this->upload($request, $storeMediaUpload);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('File uploaded.')]);
+
+        return to_route('admin.media.index');
+    }
+
+    /**
+     * The same upload, answered as JSON (#292): the media picker inside a
+     * brand, product, block or event form calls this so an operator can add
+     * a picture without leaving the form for the library. One Action behind
+     * two doors — the validation and the capability are those of `store()`,
+     * only the answer differs, because the picker wants the item back to
+     * select it, not a redirect to the index.
+     */
+    public function quickStore(Request $request, StoreMediaUpload $storeMediaUpload, MediaLibrary $library): JsonResponse
+    {
+        Gate::authorize(Permission::ManageMedia->value);
+
+        $item = $this->upload($request, $storeMediaUpload);
+
+        return response()->json(MediaItemData::fromModel($item, $library)->toArray(), 201);
+    }
+
+    private function upload(Request $request, StoreMediaUpload $storeMediaUpload): MediaItem
+    {
         $validated = $request->validate([
             'brand_id' => ['required', 'ulid', 'exists:brands,id'],
             // No `svg` (#252). The delivery route is unauthenticated and
@@ -84,16 +111,12 @@ class MediaAdminController
             'alt_text' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $storeMediaUpload->handle(
+        return $storeMediaUpload->handle(
             brandId: $validated['brand_id'],
             file: $validated['file'],
             altText: $validated['alt_text'] ?? null,
             uploadedByUserId: $request->user()?->getKey(),
         );
-
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('File uploaded.')]);
-
-        return to_route('admin.media.index');
     }
 
     public function destroy(string $media, DeleteMediaItem $deleteMediaItem): RedirectResponse

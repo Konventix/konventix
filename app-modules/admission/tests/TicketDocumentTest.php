@@ -6,7 +6,9 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Konventix\Admission\Documents\TicketDocumentRenderer;
 use Konventix\Admission\Models\Admission;
+use Konventix\Admission\Models\AdmissionSeat;
 use Konventix\Platform\Documents\DocumentWatermark;
+use Konventix\Platform\Models\MediaItem;
 use Mockery\MockInterface;
 
 /**
@@ -265,4 +267,51 @@ it('paints the TESTSYSTEM layer before the content, so the opaque QR box covers 
         ->and($contentPosition)->not->toBeFalse()
         ->and($watermarkPosition)->toBeLessThan($testsystemPosition)
         ->and($testsystemPosition)->toBeLessThan($contentPosition);
+});
+
+// The seat (#292 §5) and the banner (§5a): both printed when this module's
+// read models carry them, both absent without costing the render, and the
+// banner painted after the watermark layers and before the QR box.
+it('prints the seat and the banner when they exist, and renders without them when they do not', function (): void {
+    $brand = $this->withBrand(ticketOperatorBrand());
+    ticketSigningKey($brand);
+    Storage::fake('media');
+
+    $eventId = (string) Str::ulid();
+    $banner = MediaItem::factory()->create(['brand_id' => $brand->id]);
+    Storage::disk('media')->put($banner->path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='));
+    ticketEventSummary($brand, $eventId, ['banner_media_id' => $banner->id]);
+    $admission = ticketAdmissionFor($eventId, ticketPerson());
+    $seat = new AdmissionSeat(['admission_id' => $admission->id, 'booking_id' => (string) Str::ulid(), 'place_ref' => 'A-12', 'place_label' => 'A-12']);
+    $seat->forceFill(['brand_id' => $brand->id])->save();
+
+    $with = app(TicketDocumentRenderer::class)->render(collect([$admission]));
+
+    expect(str_starts_with($with, '%PDF'))->toBeTrue()
+        ->and(strlen($with))->toBeGreaterThan(1000);
+
+    // The picture is gone: the media row deleted, the summary still naming it.
+    $banner->delete();
+    $seat->delete();
+
+    $without = app(TicketDocumentRenderer::class)->render(collect([$admission->fresh()]));
+
+    expect(str_starts_with($without, '%PDF'))->toBeTrue()
+        ->and(strlen($without))->toBeLessThan(strlen($with));
+});
+
+it('paints the banner after the watermark layers and before the QR box, and names the seat', function (): void {
+    $html = view('admission::tickets.document', ['pages' => [ticketPageFixture([
+        'banner' => 'data:image/png;base64,iVBORw0KGgo=',
+        'seatLabel' => 'A-12',
+    ])]])->render();
+
+    $testsystemPosition = mb_strpos($html, 'class="testsystem-layer"');
+    $bannerPosition = mb_strpos($html, 'class="banner"');
+    $qrPosition = mb_strpos($html, 'class="qr-box"');
+
+    expect($bannerPosition)->not->toBeFalse()
+        ->and($testsystemPosition)->toBeLessThan($bannerPosition)
+        ->and($bannerPosition)->toBeLessThan($qrPosition)
+        ->and($html)->toContain('Seat: A-12');
 });

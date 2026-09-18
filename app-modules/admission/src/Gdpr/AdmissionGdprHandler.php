@@ -74,6 +74,23 @@ final class AdmissionGdprHandler implements GdprHandler
                     'valid_until' => $admission->valid_until?->toIso8601String(),
                 ])
                 ->all(),
+            // The tickets this person bought for others (#292 §10): the
+            // manager's side of the same rows, listed so the export says
+            // what the ticket manager showed them. Ids and roles only —
+            // the other people on the booking are not this subject's data.
+            'managed_admissions' => Admission::withoutBrandScope()
+                ->where('buyer_user_id', $subjectId)
+                ->where('holder_user_id', '!=', $subjectId)
+                ->orWhere(fn ($query) => $query->where('buyer_user_id', $subjectId)->whereNull('holder_user_id'))
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn (Admission $admission): array => [
+                    'id' => $admission->getKey(),
+                    'event_id' => $admission->event_id,
+                    'role' => $admission->role,
+                    'state' => $admission->state->value,
+                ])
+                ->all(),
             'claim_links' => AdmissionClaimLink::withoutBrandScope()
                 ->where(function ($query) use ($subjectId, $admissions): void {
                     $query->where('claimed_by_user_id', $subjectId)
@@ -111,5 +128,12 @@ final class AdmissionGdprHandler implements GdprHandler
                     ->orWhereIn('admission_id', $admissionIds);
             })
             ->update(['intended_email' => null]);
+
+        // A claim this person made stays a fact about the admission, not
+        // about them once the account is a tombstone (#292 §10) — the row
+        // keeps `claimed_at`, loses who.
+        AdmissionClaimLink::withoutBrandScope()
+            ->where('claimed_by_user_id', $subjectId)
+            ->update(['claimed_by_user_id' => null]);
     }
 }

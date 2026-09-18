@@ -56,6 +56,12 @@ depends on brand resolution and gating working.
       branch; the nav icons `activity`, `list-checks` and `building` are
       absent from `navIcons.ts` and fall back to the generic mark.
 
+- [x] Upload from inside the picker (#292): `POST /admin/media/quick`
+      answers the same `StoreMediaUpload` as JSON (`MediaItemData`) so
+      `MediaPicker.vue` can add a picture to a brand, product, block or event
+      form without leaving it. Same capability, same validation, no SVG.
+- [ ] Drag-and-drop and multi-file upload in the picker; a `banner` variant
+      beside `thumb` in `ThumbnailGenerator` (#292 follow-ups).
 - [x] Object storage for the media library (ADR-0043, ROADMAP slice 17):
       `hero` blocks reference media by ULID and resolve at render (17a); the
       `media_s3` disk plus a `public_direct` delivery branch in

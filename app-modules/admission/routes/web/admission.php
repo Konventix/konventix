@@ -18,8 +18,11 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Admission\Http\Controllers\ClaimController;
 use Konventix\Admission\Http\Controllers\EntranceClientAssetController;
+use Konventix\Admission\Http\Controllers\HolderController;
+use Konventix\Admission\Http\Controllers\InviteController;
 use Konventix\Admission\Http\Controllers\MyTicketsController;
 use Konventix\Admission\Http\Controllers\TicketDownloadController;
+use Konventix\Admission\Http\Controllers\TicketPageController;
 use Konventix\Admission\Http\Middleware\RecordTicketRenderMetrics;
 
 /*
@@ -30,6 +33,12 @@ use Konventix\Admission\Http\Middleware\RecordTicketRenderMetrics;
  * assign an admission to nobody.
  */
 Route::middleware(['auth'])->group(function (): void {
+    // The landing page (#292 §4.3) on the same path as the POST, so one
+    // signed URL serves both: `signed` covers path and query, not method.
+    Route::get('/admissions/claim/{link}', [ClaimController::class, 'show'])
+        ->middleware('signed')
+        ->name('admission.claim.show');
+
     Route::post('/admissions/claim/{link}', [ClaimController::class, 'store'])
         ->middleware('signed')
         ->name('admission.claim');
@@ -87,4 +96,31 @@ Route::middleware(['auth'])->group(function (): void {
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/my/tickets', [MyTicketsController::class, 'index'])
         ->name('admission.tickets.mine');
+
+    // The ticket page (#292 §4.3): one admission on screen, for its holder
+    // and for the buyer who manages it.
+    Route::get('/my/tickets/{admission}', [TicketPageController::class, 'show'])
+        ->name('admission.tickets.show');
+});
+
+/*
+ * The ticket manager's actions (#292 §4.3, #16 points 1 and 3): the buyer
+ * of a registration names themselves the holder of one of its admissions,
+ * takes one back, invites somebody by address or link, or withdraws the
+ * invitation. Ownership (`buyer_user_id`) is the whole authorisation, checked
+ * inline in the controllers. The invite routes send mail, so they are
+ * throttled a little tighter than the page they sit on.
+ */
+Route::middleware(['auth'])->group(function (): void {
+    Route::post('/my/admissions/{admission}/holder', [HolderController::class, 'store'])
+        ->name('admission.holder.store');
+    Route::delete('/my/admissions/{admission}/holder', [HolderController::class, 'destroy'])
+        ->name('admission.holder.destroy');
+
+    Route::post('/my/admissions/{admission}/invite', [InviteController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->name('admission.invite.store');
+    Route::delete('/my/admissions/{admission}/invite', [InviteController::class, 'destroy'])
+        ->middleware('throttle:20,1')
+        ->name('admission.invite.destroy');
 });

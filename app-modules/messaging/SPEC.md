@@ -105,7 +105,12 @@ scalars and ULIDs, which is exactly what the rule asks for.
   topic) carries none, since only the suppression list applies to it. A
   generated plain-text alternative rides beside the HTML part (subject,
   the body with `<p>`/`<br>` turned into line breaks and every other tag
-  stripped, then the same footer lines).
+  stripped, then the same footer lines). A sender may name a **hero
+  picture** (`SendMessageRequest::$heroImageUrl` / `$heroImageAlt`, #292 —
+  an event's banner, already an absolute URL): the layout prints it as one
+  full-width row between the header and the body, and prints nothing
+  without one. It is decoration — the text part never mentions it, and a
+  held or resent copy, rebuilt from the log, goes without.
   The identity is a read model (`Data\BrandMailIdentityData`) resolved
   fresh per send from the envelope's own `brandId` by
   `Branding\BrandMailIdentityResolver` — never a singleton holding a brand

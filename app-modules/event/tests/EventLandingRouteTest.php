@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Str;
 use Konventix\Event\Models\Event;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\MediaItem;
 
 /**
  * SPEC.md "Event visibility": the public landing route resolves a published
@@ -54,4 +56,28 @@ it('404s an unknown slug', function (): void {
     $this->withBrand();
 
     $this->get('/events/does-not-exist')->assertNotFound();
+});
+
+// The hero (#292): the banner's URL and alt text through the media library,
+// null without one — and null again once the picture is gone, so a deleted
+// file never leaves a broken image on the public page.
+it('hands the landing page the banner, and null when there is none or it no longer resolves', function (): void {
+    $brand = $this->withBrand();
+    $banner = MediaItem::factory()->create(['brand_id' => $brand->id, 'alt_text' => 'The hall']);
+
+    $withBanner = Event::factory()->published()->create(['banner_media_id' => $banner->id]);
+    $bare = Event::factory()->published()->create(['slug' => 'bare-event']);
+    $stale = Event::factory()->published()->create(['slug' => 'stale-event', 'banner_media_id' => (string) Str::ulid()]);
+
+    $this->get('/events/'.$withBanner->slug)
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('event.bannerUrl', fn (?string $url): bool => is_string($url) && str_contains($url, $banner->path))
+            ->where('event.bannerAlt', 'The hall'));
+
+    $this->get('/events/'.$bare->slug)
+        ->assertInertia(fn ($page) => $page->where('event.bannerUrl', null)->where('event.bannerAlt', null));
+
+    $this->get('/events/'.$stale->slug)
+        ->assertInertia(fn ($page) => $page->where('event.bannerUrl', null));
 });
