@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Identity\Http\Controllers\AccountEmailController;
 use Konventix\Identity\Http\Controllers\LinkedAccountController;
 use Konventix\Identity\Http\Controllers\MembershipImageController;
 use Konventix\Identity\Http\Controllers\ProfileController;
@@ -41,6 +42,15 @@ Route::middleware(['guest', 'signups-open', 'require-consent'])->group(function 
 });
 
 Route::middleware(['auth'])->group(function (): void {
+    // An account that arrived without an address (#293, the Eventula import's
+    // Steam-only accounts) sets one here. `auth` but not `verified` on
+    // purpose: this is the step that makes verification possible at all.
+    // The form lives on Fortify's `verification.notice`, which
+    // `IdentityServiceProvider` branches for a placeholder account.
+    Route::post('email', [AccountEmailController::class, 'store'])
+        ->middleware('throttle:6,1')
+        ->name('account-email.store');
+
     // The account hub. Was a redirect to /settings/profile; it is a page of
     // its own now because the topbar's Account menu points at "Settings" as
     // a destination, and dropping someone straight into the profile form

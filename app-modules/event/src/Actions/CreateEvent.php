@@ -10,6 +10,7 @@ use Konventix\Event\Data\EventData;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Event\Models\Event;
+use Konventix\Platform\Media\MediaLibrary;
 
 /**
  * Creates an event under an explicit brand (SPEC.md "Public contract" —
@@ -25,6 +26,7 @@ final class CreateEvent
 {
     public function __construct(
         private readonly SyncEventDays $syncEventDays,
+        private readonly MediaLibrary $media,
     ) {}
 
     /**
@@ -34,11 +36,13 @@ final class CreateEvent
     {
         return DB::transaction(function () use ($brandId, $data, $days): Event {
             $this->guardSlugUnique($brandId, $data->slug);
+            $this->guardOwnedBanner($brandId, $data->bannerMediaId);
 
             $event = new Event([
                 'name' => $data->name,
                 'slug' => $data->slug,
                 'description' => $data->description,
+                'banner_media_id' => $data->bannerMediaId,
                 'starts_at' => $data->startsAt,
                 'ends_at' => $data->endsAt,
                 'timezone' => $data->timezone,
@@ -50,6 +54,10 @@ final class CreateEvent
             $event->brand_id = $brandId;
             $event->save();
 
+            if ($event->banner_media_id !== null) {
+                $this->media->recordUsage($event->banner_media_id, 'event', 'event', $event->id);
+            }
+
             event(new EventCreated(
                 eventId: $event->id,
                 brandId: $event->brand_id,
@@ -60,6 +68,7 @@ final class CreateEvent
                 timezone: $event->timezone,
                 predecessorEventId: $event->predecessor_event_id,
                 visibility: $event->visibility->value,
+                bannerMediaId: $event->banner_media_id,
             ));
 
             // Emitted at creation, not only on change: a consumer that hears
@@ -77,6 +86,18 @@ final class CreateEvent
 
             return $event;
         });
+    }
+
+    /**
+     * Mirrors `UpdateEventDetails::guardOwnedBanner()`.
+     */
+    private function guardOwnedBanner(string $brandId, ?string $mediaId): void
+    {
+        if ($mediaId !== null && ! $this->media->belongsToBrand($mediaId, $brandId)) {
+            throw ValidationException::withMessages([
+                'bannerMediaId' => __('That file belongs to a different brand.'),
+            ]);
+        }
     }
 
     private function guardSlugUnique(string $brandId, string $slug): void

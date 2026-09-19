@@ -109,9 +109,9 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 
 | Event | Emitted when | Payload |
 |---|---|---|
-| `ResourceBookingHeld` | A provisional hold is placed; nothing irreversible may react to it | `bookingId`, `resourceId`, `brandId`, `eventId`, `resourceTypeId`, `holderType`, `holderId`, `registrationId?`, `claimId?`, `label`, `ref`, `quantity`, `startsAt`, `endsAt`, `holdExpiresAt?` |
-| `ResourceBookingConfirmed` | A hold becomes firm — **the event other modules act on** (a badge, a bill) | as above plus `confirmedAt`, without `holdExpiresAt` |
-| `ResourceBookingReleased` | A booking gives its interval back | `bookingId`, `resourceId`, `brandId`, `eventId`, `resourceTypeId`, `holderType`, `holderId`, `registrationId?`, `claimId?`, `label`, `ref`, `reason`, `releasedAt`; reasons `registration_cancelled`, `registration_rejected`, `plan_conflict`, `repicked`, `operator_released`, `expired` |
+| `ResourceBookingHeld` | A provisional hold is placed; nothing irreversible may react to it | `bookingId`, `resourceId`, `brandId`, `eventId`, `resourceTypeId`, `holderType`, `holderId`, `registrationId?`, `claimId?`, `label`, `ref`, `quantity`, `startsAt`, `endsAt`, `holdExpiresAt?`, `admissionId` (nullable, #292 §6.2 — the admission this place seats) |
+| `ResourceBookingConfirmed` | A hold becomes firm — **the event other modules act on** (a badge, a bill) | as above plus `confirmedAt`, without `holdExpiresAt`, `admissionId` (nullable, #292 §6.2 — the admission this place seats) |
+| `ResourceBookingReleased` | A booking gives its interval back | `bookingId`, `resourceId`, `brandId`, `eventId`, `resourceTypeId`, `holderType`, `holderId`, `registrationId?`, `claimId?`, `label`, `ref`, `reason`, `releasedAt`; reasons `registration_cancelled`, `registration_rejected`, `plan_conflict`, `repicked`, `operator_released`, `expired`, `admissionId` (nullable, #292 §6.2 — the admission this place seats) |
 | `PlanSaved` | A plan save committed | `planId`, `eventId`, `brandId`, `version`, `changedPlaceIds` |
 | `PlanPublished` / `PlanUnpublished` | A plan reaches or leaves the picker | `planId`, `eventId`, `brandId` |
 | `SeatClaimCreated` | A confirmed registration with a `seating` grant may pick | `claimId`, `registrationId`, `eventId`, `brandId` |
@@ -140,6 +140,8 @@ Not part of the cross-module contract; other modules must not listen to them.
 | `RegistrationCancelled` | Registration | `ReleaseBookingsOnRegistrationCancelled`, **ungated** (see Activation): every active booking of the registration released with `registration_cancelled`, claims → `released` |
 | `RegistrationRejected` | Registration | `ReleaseBookingsOnRegistrationRejected`, ungated, reason `registration_rejected` |
 | `EventCreated`, `EventRescheduled`, `EventDetailsUpdated` | Event | `ProjectEventWindow`, ungated: upsert of `resource_event_windows` by `(brand_id, event_id)` with timezone-aware instants (ADR-0027), name and slug; `event:replay-details` backfills existing events |
+| `AdmissionRevoked` | Admission | `ReleaseBookingOnAdmissionRevoked`, ungated like the other release listeners (#292 §6.5): releases the booking bound to the admission (`admission_revoked`). A holder change (`AdmissionHolderUnassigned`) deliberately keeps the seat — the next holder inherits it |
+| `AdmissionIssued`, `AdmissionHolderAssigned`, `AdmissionHolderUnassigned`, `AdmissionRevoked`, `AdmissionOwnershipAnnounced` | Admission | `ProjectAdmission`, ungated (#292 §6.1): upsert of `resource_admissions` by the admission's own id — registration, event, holder, buyer, state — so the per-admission seat picker knows who may seat a ticket without reading Admission's table; `admission:announce-ownership` backfills rows older than the table |
 | `DataExportRequested` / `UserDeletionRequested` | Compliance | `ResourcesGdprHandler` via the registry: exports claims, bookings, operator reservations, the plans the subject created and the versions they saved; erasure nulls `registrant_user_id`, `created_by` on plans and versions, and the `holder_id` of the subject's operator reservations |
 
 Resources does **not** listen to Commerce: payment reaches Registration, which
@@ -159,7 +161,20 @@ read model of people — a holder is a ULID plus a holder type.
   `GET|POST /my/registrations/{registration}/seat` and the availability poll.
   Ownership of the claim authorises (`registrant_user_id === auth()->id()`);
   no capability is needed. Only published plans reach the picker.
-- **Slots**: `registration.mine.show` → `SeatSummarySlot`;
+  **Per ticket** (#292 §6.4): `GET|POST|DELETE /my/admissions/{admission}/seat`
+  and its availability poll render the same page for one admission of
+  `resource_admissions` — one place, bound through
+  `resource_bookings.admission_id` by `AssignPlaceToAdmission` — for the
+  claim's registrant (the buyer who manages the group) or the admission's
+  holder (`FindSeatClaimForAdmission`), 404 for anybody else; DELETE gives
+  the seat up. The registration-level picker stays for a claim whose
+  registration has no admissions in the read model. The claim's `quantity`
+  caps the group across bound and unbound bookings; picking a place the
+  group already holds unbound rebinds it.
+- **Slots**: `registration.mine.show` → `SeatSummarySlot` (with a row per
+  ticket once admissions exist); `admission.ticket.show` →
+  `TicketSeatSlot` (the way into the per-ticket picker, when the viewer may
+  act on the ticket's claim);
   `registration.type-editor.seating-fields` → `SeatingGrantFields`;
   `registration.quota-form.categories` (design §12b, #282) → props only, the
   quota console's own category select reads them and renders no foreign

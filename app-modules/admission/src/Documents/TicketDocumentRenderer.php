@@ -4,14 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Admission\Documents;
 
-use BaconQrCode\Renderer\Image\SvgImageBackEnd;
-use BaconQrCode\Renderer\ImageRenderer;
-use BaconQrCode\Renderer\RendererStyle\RendererStyle;
-use BaconQrCode\Writer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Collection;
 use Konventix\Admission\Actions\IssueAdmissionToken;
 use Konventix\Admission\Models\Admission;
+use Konventix\Admission\Models\AdmissionSeat;
 use Konventix\Admission\Models\EventSummary;
 use Konventix\Admission\Models\Person;
 use Konventix\Platform\Documents\DocumentWatermark;
@@ -54,14 +51,13 @@ use Konventix\Platform\Operators\OperatorSettings;
  */
 final class TicketDocumentRenderer
 {
-    private const int QR_SIZE_PX = 320;
-
     public function __construct(
         private readonly MediaLibrary $mediaLibrary,
         private readonly OperatorDateTimeFormat $dates,
         private readonly IssueAdmissionToken $issueAdmissionToken,
         private readonly DocumentWatermark $watermark,
         private readonly OperatorSettings $operatorSettings,
+        private readonly TicketQr $qr,
     ) {}
 
     /**
@@ -75,6 +71,14 @@ final class TicketDocumentRenderer
 
         $eventSummaries = $this->eventSummariesFor($admissions, $brandId);
         $people = $this->peopleFor($admissions);
+        $seats = $this->seatsFor($admissions);
+        // One resolution per distinct banner, not per page: a group's
+        // twenty tickets share one event and one picture (#292 §5a).
+        $banners = $eventSummaries
+            ->pluck('banner_media_id')
+            ->filter()
+            ->unique()
+            ->mapWithKeys(fn (string $mediaId): array => [$mediaId => $this->mediaLibrary->dataUriFor($mediaId)]);
 
         $pages = $admissions->map(fn (Admission $admission): array => $this->pageDataFor(
             $admission,
@@ -82,6 +86,8 @@ final class TicketDocumentRenderer
             $operatorLegalName,
             $eventSummaries->get($admission->event_id),
             $admission->holder_user_id === null ? null : $people->get($admission->holder_user_id),
+            $seats->get($admission->id),
+            $banners->get($eventSummaries->get($admission->event_id)->banner_media_id ?? ''),
         ))->all();
 
         return Pdf::loadView('admission::tickets.document', ['pages' => $pages])
@@ -122,9 +128,20 @@ final class TicketDocumentRenderer
     }
 
     /**
+     * @param  Collection<int, Admission>  $admissions
+     * @return Collection<string, string> place label keyed by admission id
+     */
+    private function seatsFor(Collection $admissions): Collection
+    {
+        return AdmissionSeat::withoutBrandScope()
+            ->whereIn('admission_id', $admissions->pluck('id'))
+            ->pluck('place_label', 'admission_id');
+    }
+
+    /**
      * @return array<string, mixed>
      */
-    private function pageDataFor(Admission $admission, ?Brand $brand, ?string $operatorLegalName, ?EventSummary $event, ?Person $holder): array
+    private function pageDataFor(Admission $admission, ?Brand $brand, ?string $operatorLegalName, ?EventSummary $event, ?Person $holder, ?string $seatLabel, ?string $banner): array
     {
         $holderName = $holder->display_name ?? 'Unassigned';
         $role = str_replace('_', ' ', $admission->role);
@@ -150,8 +167,12 @@ final class TicketDocumentRenderer
             'holderName' => $holderName,
             'role' => $role,
             'validRange' => $this->validRangeFor($admission),
+            // The seat (#292 §5) and the banner (§5a): both from this
+            // module's own read models, both optional, both merely printed.
+            'seatLabel' => $seatLabel,
+            'banner' => $banner,
             'doorCode' => $this->doorCode($admission->id),
-            'qr' => $this->qrDataUri($this->issueAdmissionToken->current($admission)),
+            'qr' => $this->qr->dataUri($this->issueAdmissionToken->current($admission)),
             'operatorLegalName' => $operatorLegalName,
             'brandName' => $brand?->name,
             'admissionId' => $admission->id,
@@ -199,12 +220,5 @@ final class TicketDocumentRenderer
         $tail = strtoupper(substr($admissionId, -8));
 
         return substr($tail, 0, 4).'-'.substr($tail, 4, 4);
-    }
-
-    private function qrDataUri(string $token): string
-    {
-        $writer = new Writer(new ImageRenderer(new RendererStyle(self::QR_SIZE_PX, 0), new SvgImageBackEnd));
-
-        return 'data:image/svg+xml;base64,'.base64_encode($writer->writeString($token));
     }
 }

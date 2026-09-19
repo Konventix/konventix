@@ -8,6 +8,8 @@ use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Konventix\Identity\Models\SocialIdentity;
 use Konventix\Identity\Models\User;
+use Laravel\Socialite\Contracts\Factory;
+use SocialiteProviders\Steam\Provider as SteamDriver;
 
 /**
  * The Steam handshake itself.
@@ -146,6 +148,17 @@ it('sends people to Steam with a callback on the brand they came from', function
 
     // The nonce was issued and remembered, or the callback could never match.
     expect(session('identity.social.steam.nonce'))->toBeString()->not->toBeEmpty();
+});
+
+it('still knows the Steam driver on a factory resolved after Octane flushed it', function (): void {
+    // config/octane.php flushes Socialite's factory before every request, so
+    // the instance the boot-time `SocialiteWasCalled` extended is gone by the
+    // time the first login arrives. Every login on the dev cluster answered
+    // "Driver [steam] not supported" while this suite was green (2026-09-18).
+    app(Factory::class)->driver('steam');
+    app()->forgetInstance(Factory::class);
+
+    expect(app(Factory::class)->driver('steam'))->toBeInstanceOf(SteamDriver::class);
 });
 
 it('404s a provider nobody registered', function (): void {

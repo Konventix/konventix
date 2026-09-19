@@ -70,6 +70,21 @@
             box-sizing: border-box;
             border-bottom: 0.75pt solid #d1d5db;
         }
+        /* The event banner (#292 §5a): a strip across the top of the event
+           band, the text below it. Same absolute band, less room for text. */
+        .event-band.with-banner { padding-top: 26mm; }
+        .event-band .banner {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 22mm;
+            overflow: hidden;
+        }
+        .event-band .banner img { width: 100%; height: 22mm; object-fit: cover; display: block; }
+        .event-band.with-banner .event-name { font-size: 16pt; margin-bottom: 2mm; }
+        .event-band.with-banner .event-when, .event-band.with-banner .venue { font-size: 10pt; }
+        .seat-line { font-size: 11pt; color: #111827; margin-bottom: 3mm; }
         .event-band .info { width: 122mm; }
         .event-band .event-name { font-size: 20pt; font-weight: bold; margin: 0 0 4mm; }
         .event-band .event-when { font-size: 11pt; color: #374151; margin: 0 0 2mm; }
@@ -147,7 +162,11 @@
         <div class="testsystem-layer">{!! $page['testSystemHtml'] !!}</div>
 
         <div class="content">
-            <div class="event-band">
+            <div class="event-band{{ $page['banner'] !== null ? ' with-banner' : '' }}">
+                @if ($page['banner'] !== null)
+                    <div class="banner"><img src="{{ $page['banner'] }}" alt=""></div>
+                @endif
+
                 <div class="info">
                     <div class="event-name">{{ $page['eventName'] ?? __('Event details unavailable') }}</div>
 
@@ -177,6 +196,9 @@
                 @endif
 
                 <div class="role-badge">{{ $page['role'] }}</div>
+                @if ($page['seatLabel'] !== null)
+                    <div class="seat-line">{{ __('Seat') }}: {{ $page['seatLabel'] }}</div>
+                @endif
                 <div class="valid-range">{{ $page['validRange'] }}</div>
                 <div class="door-code">{{ __('Door code') }}: {{ $page['doorCode'] }}</div>
             </div>

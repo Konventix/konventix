@@ -104,7 +104,10 @@ it('emits AdmissionIssued with the SPEC scalar payload for every admission it cr
             && $issued->eventId === $event->eventId
             && $issued->brandId === $event->brandId
             && $issued->role === 'visitor'
-            && $issued->holderUserId === null,
+            && $issued->holderUserId === null
+            // The buyer rides along (#292) so Resources' admission read
+            // model knows who may seat the ticket.
+            && $issued->buyerUserId === $event->registrantUserId,
     );
 });
 

@@ -190,3 +190,51 @@ it('an event with no venue leaves the label null, and a stray venue event for an
 
     expect(EventSummary::where('event_id', $eventId)->firstOrFail()->venue_label)->toBeNull();
 });
+
+// The banner (#292): carried by both events, and unlike the other columns
+// null is a fact — the picture was removed — so a details update clears it.
+it('projects the banner from EventCreated, patches it on EventDetailsUpdated and clears it on null', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $first = (string) Str::ulid();
+    $second = (string) Str::ulid();
+
+    $created = admissionEventCreatedEvent($eventId, $brand->id);
+    event(new EventCreated(
+        eventId: $created->eventId,
+        brandId: $created->brandId,
+        slug: $created->slug,
+        name: $created->name,
+        startsAt: $created->startsAt,
+        endsAt: $created->endsAt,
+        timezone: $created->timezone,
+        predecessorEventId: null,
+        bannerMediaId: $first,
+    ));
+
+    expect(EventSummary::where('event_id', $eventId)->firstOrFail()->banner_media_id)->toBe($first);
+
+    event(new EventDetailsUpdated(
+        eventId: $eventId,
+        brandId: $brand->id,
+        slug: 'sxlan-2026',
+        name: 'SXLan 2026',
+        bannerMediaId: $second,
+    ));
+
+    $summary = EventSummary::where('event_id', $eventId)->firstOrFail();
+
+    expect($summary->banner_media_id)->toBe($second)
+        // A details update still leaves the schedule alone.
+        ->and($summary->starts_at->format('Y-m-d H:i:s'))->toBe('2027-06-15 10:00:00');
+
+    event(new EventDetailsUpdated(
+        eventId: $eventId,
+        brandId: $brand->id,
+        slug: 'sxlan-2026',
+        name: 'SXLan 2026',
+        bannerMediaId: null,
+    ));
+
+    expect(EventSummary::where('event_id', $eventId)->firstOrFail()->banner_media_id)->toBeNull();
+});

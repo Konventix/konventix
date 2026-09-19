@@ -11,16 +11,74 @@ declare namespace Konventix {
                 readonly showQrCode: boolean;
                 readonly footerText: string | null;
             };
+            export type ClaimLandingData = {
+                readonly linkId: string;
+                readonly eventName: string | null;
+                readonly role: string;
+                readonly managerName: string | null;
+                readonly intendedEmail: string | null;
+                readonly expiresAt: string;
+                readonly alreadyHolderOfAnother: boolean;
+                readonly claimUrl: string;
+            };
+            export type InviteData = {
+                readonly email: string | null;
+            };
+            export type InviteStateData = {
+                readonly intendedEmail: string | null;
+                readonly expiresAt: string;
+                readonly url: string;
+            };
+            export type ManagedAdmissionData = {
+                readonly id: string;
+                readonly role: string;
+                readonly state: string;
+                readonly holderUserId: string | null;
+                readonly holderName: string | null;
+                readonly isSelf: boolean;
+                readonly checkedIn: boolean;
+                readonly invite: Konventix.Admission.Data.InviteStateData | null;
+                readonly seat: Konventix.Admission.Data.TicketSeatData | null;
+            };
             export type MyTicketData = {
                 readonly id: string;
                 readonly eventId: string;
                 readonly eventName: string;
                 readonly role: string;
                 readonly state: string;
+                readonly holderName: string | null;
             };
-            export type TicketLinkData = {
+            export type TicketManagerData = {
                 readonly registrationId: string;
                 readonly ticketCount: number;
+                readonly holdsOne: boolean;
+                readonly admissions: Konventix.Admission.Data.ManagedAdmissionData[];
+            };
+            export type TicketPageData = {
+                readonly id: string;
+                readonly eventId: string;
+                readonly eventName: string | null;
+                readonly eventSlug: string | null;
+                readonly eventWhen: string | null;
+                readonly venueLabel: string | null;
+                readonly bannerUrl: string | null;
+                readonly bannerAlt: string | null;
+                readonly role: string;
+                readonly state: string;
+                readonly validRange: string;
+                readonly holderName: string;
+                readonly isHolder: boolean;
+                readonly isManager: boolean;
+                readonly checkedIn: boolean;
+                readonly qrSvg: string;
+                readonly doorCode: string;
+                readonly seat: Konventix.Admission.Data.TicketSeatData | null;
+                readonly registrationId: string | null;
+            };
+            export type TicketSeatData = {
+                readonly bookingId: string;
+                readonly placeRef: string | null;
+                readonly placeLabel: string;
             };
         }
         namespace Enums {
@@ -503,6 +561,7 @@ declare namespace Konventix {
                 readonly visibility: Konventix.Event.Enums.EventVisibility;
                 readonly reentryPolicy: Konventix.Event.Enums.ReentryPolicy;
                 readonly predecessorEventId: string | null;
+                readonly bannerMediaId: string | null;
             };
             namespace Blocks {
                 export type CountdownBlockData = {
@@ -1147,6 +1206,12 @@ declare namespace Konventix {
     }
     namespace Resources {
         namespace Data {
+            export type AdmissionSeatRowData = {
+                readonly admissionId: string;
+                readonly number: number;
+                readonly placeRef: string | null;
+                readonly isHeld: boolean;
+            };
             export type BackgroundData = {
                 readonly mediaId: string;
                 readonly scaleMmPerPx: number;
@@ -1343,6 +1408,8 @@ declare namespace Konventix {
                 readonly plans: Konventix.Resources.Data.PlanViewData[];
                 readonly availability: Konventix.Resources.Data.PlanAvailabilityData;
                 readonly currentPlaceIds: string[];
+                readonly admissionId: string | null;
+                readonly maxPlaces: number | null;
             };
             export type SeatSummaryData = {
                 readonly registrationId: string;
@@ -1351,6 +1418,7 @@ declare namespace Konventix {
                 readonly placeRefs: string[];
                 readonly noFreePlaces: boolean;
                 readonly seatingMode: Konventix.Resources.Enums.SeatingMode;
+                readonly admissions: Konventix.Resources.Data.AdmissionSeatRowData[];
             };
             export type ShapeData = {
                 readonly type: Konventix.Resources.Enums.ShapeKind;
@@ -1360,6 +1428,12 @@ declare namespace Konventix {
                 readonly rx: number | null;
                 readonly ry: number | null;
                 readonly points: number[][] | null;
+            };
+            export type TicketSeatActionData = {
+                readonly admissionId: string;
+                readonly placeLabel: string | null;
+                readonly seatingMode: string;
+                readonly noFreePlaces: boolean;
             };
         }
         namespace Enums {

@@ -143,6 +143,9 @@ return [
         // social login in a worker would verify the first one's parameters.
         // `Identity\Social\SteamProvider` re-sets the request defensively as
         // well; this covers anything else that reaches for Socialite directly.
+        // The flushed-and-rebuilt factory must learn the Steam driver again,
+        // which is why `IdentityServiceProvider` registers it `afterResolving`
+        // rather than on the one-shot `SocialiteWasCalled` event.
         Factory::class,
     ],
 

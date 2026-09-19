@@ -11,6 +11,7 @@ use Konventix\Admission\Data\MyTicketData;
 use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\EventSummary;
+use Konventix\Admission\Models\Person;
 
 /**
  * The holder's own tickets (design §4.1, §7): every admission whose
@@ -21,21 +22,44 @@ final class MyTicketsController
 {
     public function index(Request $request): Response
     {
+        $userId = (string) $request->user()->getAuthIdentifier();
+
         $admissions = Admission::query()
-            ->where('holder_user_id', (string) $request->user()->getAuthIdentifier())
+            ->where('holder_user_id', $userId)
+            ->where('state', '!=', AdmissionState::Revoked)
+            ->orderByDesc('created_at')
+            ->get();
+
+        // The tickets this person bought but does not hold (#292 §4.5):
+        // a manager who holds none of their group's tickets still needs a
+        // way in, and this is it.
+        $managed = Admission::query()
+            ->where('buyer_user_id', $userId)
+            ->where(fn ($query) => $query->whereNull('holder_user_id')->orWhere('holder_user_id', '!=', $userId))
             ->where('state', '!=', AdmissionState::Revoked)
             ->orderByDesc('created_at')
             ->get();
 
         $eventNames = EventSummary::query()
-            ->whereIn('event_id', $admissions->pluck('event_id')->unique())
+            ->whereIn('event_id', $admissions->pluck('event_id')->merge($managed->pluck('event_id'))->unique())
             ->pluck('name', 'event_id');
+
+        $holderNames = Person::query()
+            ->whereIn('id', $managed->pluck('holder_user_id')->filter()->unique())
+            ->pluck('display_name', 'id');
 
         return Inertia::render('admission/tickets/Index', [
             'tickets' => $admissions
                 ->map(fn (Admission $admission): array => MyTicketData::ofModel(
                     $admission,
                     $eventNames->get($admission->event_id),
+                )->toArray())
+                ->all(),
+            'managed' => $managed
+                ->map(fn (Admission $admission): array => MyTicketData::ofModel(
+                    $admission,
+                    $eventNames->get($admission->event_id),
+                    $admission->holder_user_id === null ? null : $holderNames->get($admission->holder_user_id),
                 )->toArray())
                 ->all(),
         ]);

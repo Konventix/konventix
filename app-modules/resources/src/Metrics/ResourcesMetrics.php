@@ -38,6 +38,10 @@ final class ResourcesMetrics
     {
         return [
             new MetricDefinition('resource_bookings_total', MetricKind::Counter, 'Bookings by outcome: held, confirmed, released, expired, refused.', ['brand', 'outcome']),
+            // #292 §9: the per-ticket half of the same story — a booking that
+            // names an admission, confirmed (placed) or released (given up,
+            // moved, revoked). Refusals stay on resource_bookings_total.
+            new MetricDefinition('resource_admission_seats_total', MetricKind::Counter, 'Seats bound to a ticket, by outcome: placed, released.', ['brand', 'outcome']),
             new MetricDefinition('resource_plan_saves_total', MetricKind::Counter, 'Plan saves by outcome: saved, conflict, invalid, stale.', ['brand', 'outcome']),
             new MetricDefinition('resource_seat_claims_unplaced', MetricKind::Gauge, 'Seat claims whose registrant has not picked a place yet, by event.', ['brand', 'event']),
             new MetricDefinition('resource_hold_sweep_last_run_timestamp_seconds', MetricKind::Gauge, 'When resources:expire-holds last finished a run.'),

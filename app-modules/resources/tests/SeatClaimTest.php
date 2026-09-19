@@ -105,12 +105,16 @@ it('keys an amendment claim on the amendment and ignores its replay', function (
     $amendmentId = seatingAmend($eventId, $brand->id, $registrationId, [seatingGrantPayload([$type->id], seatingMode: 'assign')]);
     seatingAmend($eventId, $brand->id, $registrationId, [seatingGrantPayload([$type->id], seatingMode: 'assign')], $amendmentId);
 
-    $claims = ResourceClaim::query()->where('registration_id', $registrationId)->orderBy('created_at')->get();
+    // Both claims can share a created_at second, so the order is asserted
+    // through the key that distinguishes them, not through the clock.
+    $claims = ResourceClaim::query()->where('registration_id', $registrationId)->get();
+    $confirmation = $claims->firstWhere('amendment_id', null);
+    $amendment = $claims->firstWhere('amendment_id', $amendmentId);
 
     expect($claims)->toHaveCount(2)
-        ->and($claims->first()->amendment_id)->toBeNull()
-        ->and($claims->last()->amendment_id)->toBe($amendmentId)
-        ->and($claims->last()->seating_mode)->toBe(SeatingMode::Assign);
+        ->and($confirmation)->not->toBeNull()
+        ->and($amendment)->not->toBeNull()
+        ->and($amendment->seating_mode)->toBe(SeatingMode::Assign);
 });
 
 it('releases the claims when the registration is cancelled', function (): void {

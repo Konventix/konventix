@@ -22,6 +22,9 @@ type Props = {
     event: {
         name: string;
         description: string | null;
+        /** The event's banner from the media library, null for none (#292). */
+        bannerUrl: string | null;
+        bannerAlt: string | null;
         state: string;
         startsAt: string;
         endsAt: string;
@@ -57,6 +60,15 @@ const props = defineProps<Props>();
         class="mx-auto flex w-full max-w-3xl flex-col gap-10 p-6 text-text lg:p-8"
     >
         <header class="flex flex-col gap-3">
+            <!-- The hero (#292): the same picture the ticket and the mails
+                 wear. A plain <img>, not a background, so it has alt text
+                 and prints. -->
+            <img
+                v-if="props.event.bannerUrl"
+                :src="props.event.bannerUrl"
+                :alt="props.event.bannerAlt ?? props.event.name"
+                class="aspect-[3/1] w-full rounded-xl object-cover"
+            />
             <p
                 v-if="props.event.state === 'cancelled'"
                 class="self-start rounded-full bg-danger/15 px-3 py-1 text-sm font-medium text-danger"

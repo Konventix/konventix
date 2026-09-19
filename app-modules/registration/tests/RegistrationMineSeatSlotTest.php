@@ -181,3 +181,36 @@ it('does not flag the slot while a place in the claim\'s categories is still fre
             expect($summary['noFreePlaces'])->toBeFalse();
         });
 });
+
+// Per ticket (#292 §6.4): with admissions in Resources' read model the
+// summary lists one row per ticket and the place bound to it; the bag of
+// refs and the registration-level picker are for a claim with none.
+it('lists a row per ticket with the place bound to it', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources', $brand);
+    $user = User::factory()->create();
+    $registration = Registration::factory()->confirmed()->create(['registrant_user_id' => $user->getKey()]);
+    $window = seatingWindow($registration->event_id, $brand->getKey());
+    $type = seatingCategory($registration->event_id);
+    ['places' => $places] = seatingPublishedPlan($registration->event_id, $type, 3);
+    $claim = seatingClaim($registration->event_id, $registration->getKey(), (string) $user->getKey(), [$type->getKey()], quantity: 2, state: ClaimState::Placed);
+    $first = seatingAdmission($registration->getKey(), $registration->event_id, (string) $user->getKey(), (string) $user->getKey());
+    $second = seatingAdmission($registration->getKey(), $registration->event_id, null, (string) $user->getKey());
+    $booking = seatingBooking($places[2], $window, $registration->getKey(), $claim);
+    $booking->forceFill(['admission_id' => $first->id])->save();
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertInertia(function (AssertableInertia $page) use ($first, $second): void {
+            $summary = seatSlotProps($page);
+
+            expect($summary['admissions'])->toHaveCount(2)
+                ->and($summary['admissions'][0]['admissionId'])->toBe($first->id)
+                ->and($summary['admissions'][0]['number'])->toBe(1)
+                ->and($summary['admissions'][0]['placeRef'])->toBe('A-03')
+                ->and($summary['admissions'][0]['isHeld'])->toBeTrue()
+                ->and($summary['admissions'][1]['admissionId'])->toBe($second->id)
+                ->and($summary['admissions'][1]['placeRef'])->toBeNull()
+                ->and($summary['admissions'][1]['isHeld'])->toBeFalse();
+        });
+});

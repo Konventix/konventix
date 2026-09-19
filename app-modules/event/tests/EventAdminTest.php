@@ -11,6 +11,8 @@ use Konventix\Event\Models\EventDay;
 use Konventix\Event\Models\Venue;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\MediaItem;
+use Konventix\Platform\Models\MediaUsage;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
@@ -255,4 +257,72 @@ it('defaults the brand filter to the console selection and lets the list clear i
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('filters.brand', null)
             ->count('events.data', 2));
+});
+
+// The event banner (#292): a media-library ULID owned by the event's brand,
+// its usage recorded so the library refuses to delete a picture in use.
+it("saves a banner from the brand's library, records its usage and hands the editor the candidates", function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+    $banner = MediaItem::factory()->create(['brand_id' => $event->brand_id]);
+
+    $this->actingAs($admin)
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'bannerMediaId' => $banner->id])
+        ->assertRedirect();
+
+    expect($event->fresh()->banner_media_id)->toBe($banner->id)
+        ->and(MediaUsage::withoutBrandScope()
+            ->where('media_item_id', $banner->id)
+            ->where('module', 'event')
+            ->where('entity_type', 'event')
+            ->where('entity_id', $event->id)
+            ->exists())->toBeTrue();
+
+    $this->actingAs($admin)
+        ->get("http://admin.eventsadmin.test/admin/events/{$event->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/events/Edit')
+            ->where('event.bannerMediaId', $banner->id)
+            ->where('event.brandId', $event->brand_id)
+            ->has('media', 1)
+            ->where('media.0.id', $banner->id));
+});
+
+it("releases the old banner's usage when the banner changes or is cleared", function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+    $first = MediaItem::factory()->create(['brand_id' => $event->brand_id]);
+    $second = MediaItem::factory()->create(['brand_id' => $event->brand_id]);
+
+    $usages = fn (string $mediaId): int => MediaUsage::withoutBrandScope()
+        ->where('media_item_id', $mediaId)->where('entity_id', $event->id)->count();
+
+    $this->actingAs($admin)
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'bannerMediaId' => $first->id])
+        ->assertRedirect();
+    $this->actingAs($admin)
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'bannerMediaId' => $second->id])
+        ->assertRedirect();
+
+    expect($usages($first->id))->toBe(0)
+        ->and($usages($second->id))->toBe(1);
+
+    $this->actingAs($admin)
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'bannerMediaId' => null])
+        ->assertRedirect();
+
+    expect($usages($second->id))->toBe(0)
+        ->and($event->fresh()->banner_media_id)->toBeNull();
+});
+
+it('refuses a banner that belongs to another brand', function (): void {
+    [$admin, $event, $payload] = eventsAdminEditable();
+    $other = Brand::factory()->withDomain('other-banner.test')->create(['slug' => 'other-banner']);
+    $foreign = MediaItem::factory()->create(['brand_id' => $other->id]);
+
+    $this->actingAs($admin)
+        ->from("http://admin.eventsadmin.test/admin/events/{$event->id}/edit")
+        ->put("http://admin.eventsadmin.test/admin/events/{$event->id}", [...$payload, 'bannerMediaId' => $foreign->id])
+        ->assertSessionHasErrors('bannerMediaId');
+
+    expect($event->fresh()->banner_media_id)->toBeNull();
 });

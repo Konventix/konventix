@@ -1,32 +1,23 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
-import { FileDown } from '@lucide/vue';
-import TicketDownloadController from '@/actions/Konventix/Admission/Http/Controllers/TicketDownloadController';
+import { Head, Link } from '@inertiajs/vue3';
+import { ChevronRight } from '@lucide/vue';
+import TicketPageController from '@/actions/Konventix/Admission/Http/Controllers/TicketPageController';
 import Heading from '@/components/Heading.vue';
 
 /**
  * "What can I get into" — the holder's own tickets, reached from the
- * account menu (design §4.1, §7). An admission nobody has claimed through
- * the existing claim links never appears here for anybody — its ticket
- * reaches its buyer through the buyer's own combined file instead.
- *
- * Each row downloads on its own: there is no detail page between the list
- * and the PDF, so the whole row is the download link — a plain anchor, not
- * an Inertia `<Link>`, the same reasoning `RegistrationSettlement.vue`'s
- * invoice download follows (it streams a PDF; an Inertia visit expects a
- * page component back).
+ * account menu (design §7), and beneath them the tickets this person
+ * bought for others (#292 §4.5): a manager who holds none of their group's
+ * tickets still has an entry point. Every row opens the ticket page; the
+ * PDF lives there, not here, since the page is where the scan code, the
+ * seat and the calendar file are too.
  */
 type Ticket = Konventix.Admission.Data.MyTicketData;
 
 const props = defineProps<{
     tickets: Ticket[];
+    managed: Ticket[];
 }>();
-
-const stateTone: Record<string, string> = {
-    issued: 'bg-success/15 text-success',
-    assigned: 'bg-success/15 text-success',
-    expired: 'bg-subtle text-text-muted',
-};
 </script>
 
 <template>
@@ -45,8 +36,10 @@ const stateTone: Record<string, string> = {
 
         <ul v-else class="flex flex-col gap-3">
             <li v-for="ticket in props.tickets" :key="ticket.id">
-                <a
-                    :href="TicketDownloadController.holder.url(ticket.id)"
+                <Link
+                    :href="
+                        TicketPageController.show.url({ admission: ticket.id })
+                    "
                     class="flex items-center gap-4 rounded-xl border border-border bg-surface-raised p-4 transition hover:border-accent"
                 >
                     <span class="flex min-w-0 flex-1 flex-col gap-1">
@@ -55,23 +48,62 @@ const stateTone: Record<string, string> = {
                         </span>
                         <span class="flex flex-wrap items-center gap-2 pt-1">
                             <span
-                                class="rounded-full px-2 py-0.5 text-xs font-medium capitalize"
-                                :class="
-                                    stateTone[ticket.state] ??
-                                    'bg-subtle text-text'
-                                "
+                                class="rounded-full bg-subtle px-2 py-0.5 text-xs font-medium text-text capitalize"
                             >
                                 {{ ticket.role }}
                             </span>
                         </span>
                     </span>
 
-                    <FileDown
+                    <ChevronRight
                         class="size-4 shrink-0 text-text-muted"
                         aria-hidden="true"
                     />
-                </a>
+                </Link>
             </li>
         </ul>
+
+        <section
+            v-if="props.managed.length > 0"
+            class="mt-10 flex flex-col gap-3"
+            aria-labelledby="managed-tickets"
+        >
+            <h2 id="managed-tickets" class="text-lg font-medium">
+                Tickets you manage
+            </h2>
+            <p class="text-sm text-text-muted">
+                Bought by you, held by somebody else or nobody yet. Assign them
+                from the registration they belong to.
+            </p>
+            <ul class="flex flex-col gap-3">
+                <li v-for="ticket in props.managed" :key="ticket.id">
+                    <Link
+                        :href="
+                            TicketPageController.show.url({
+                                admission: ticket.id,
+                            })
+                        "
+                        class="flex items-center gap-4 rounded-xl border border-border bg-surface-raised p-4 transition hover:border-accent"
+                    >
+                        <span class="flex min-w-0 flex-1 flex-col gap-1">
+                            <span class="font-medium text-text">
+                                {{ ticket.eventName }}
+                            </span>
+                            <span class="text-sm text-text-muted">
+                                {{ ticket.holderName ?? 'Not yet assigned' }}
+                                ·
+                                <span class="capitalize">{{
+                                    ticket.role
+                                }}</span>
+                            </span>
+                        </span>
+                        <ChevronRight
+                            class="size-4 shrink-0 text-text-muted"
+                            aria-hidden="true"
+                        />
+                    </Link>
+                </li>
+            </ul>
+        </section>
     </div>
 </template>

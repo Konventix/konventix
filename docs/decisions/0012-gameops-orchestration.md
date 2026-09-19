@@ -7,6 +7,11 @@
 > LanBrackets is absorbed into the Competition module. Everything else in this
 > ADR stands unchanged.
 
+> **Amended by ADR-0062.** D-GOP-04 below is narrowed: `Discipline` is the
+> source of record for contest defaults (durations, team size, draws,
+> eligibility); GameOps' catalogue event carries identity and operational
+> fields only. The ownership split itself stands.
+
 ## Context
 
 Game server provisioning and match handling for competitions. This was the one

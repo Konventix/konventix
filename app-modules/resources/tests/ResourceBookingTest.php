@@ -494,3 +494,58 @@ it('sets the brand context from the booking while confirming, so a downstream li
     expect($seen)->toBe([$brand->id])
         ->and(app(BrandContext::class)->current())->toBeNull();
 });
+
+// A place per ticket (#292 §6.2): the booking names the admission it seats,
+// every event carries it, and a second occupying booking for the same
+// admission is refused by the partial unique index — the database, not the
+// Action, as with the overlap.
+it('names the admission a booking seats, on the row and on the three events', function (): void {
+    $this->withBrand();
+    $admissionId = (string) Str::ulid();
+
+    Event::fake([ResourceBookingHeld::class, ResourceBookingConfirmed::class, ResourceBookingReleased::class]);
+
+    $booking = app(HoldResourceBooking::class)->handle(
+        resource: bookingTestUnitResource(),
+        holderType: ResourceBooking::HOLDER_REGISTRATION,
+        holderId: (string) Str::ulid(),
+        startsAt: now()->startOfHour()->addHour(),
+        endsAt: now()->startOfHour()->addHours(3),
+        admissionId: $admissionId,
+    );
+
+    expect($booking->admission_id)->toBe($admissionId);
+    Event::assertDispatched(ResourceBookingHeld::class, fn (ResourceBookingHeld $e): bool => $e->admissionId === $admissionId);
+
+    app(ConfirmResourceBooking::class)->handle($booking);
+    Event::assertDispatched(ResourceBookingConfirmed::class, fn (ResourceBookingConfirmed $e): bool => $e->admissionId === $admissionId);
+
+    app(ReleaseResourceBooking::class)->handle($booking->fresh(), BookingState::Released, 'repicked');
+    Event::assertDispatched(ResourceBookingReleased::class, fn (ResourceBookingReleased $e): bool => $e->admissionId === $admissionId);
+});
+
+it('is the database that refuses a second occupying place for the same admission, and a released one no longer counts', function (): void {
+    $this->withBrand();
+    $admissionId = (string) Str::ulid();
+    $first = bookingTestUnitResource();
+    $second = bookingTestUnitResource();
+
+    $hold = fn (Resource $resource): ResourceBooking => app(HoldResourceBooking::class)->handle(
+        resource: $resource,
+        holderType: ResourceBooking::HOLDER_REGISTRATION,
+        holderId: (string) Str::ulid(),
+        startsAt: now()->startOfHour()->addHour(),
+        endsAt: now()->startOfHour()->addHours(3),
+        admissionId: $admissionId,
+    );
+
+    $booking = $hold($first);
+
+    // Two different places, one ticket: the partial index says no, inside
+    // the Action's own savepoint so the transaction survives to assert on.
+    expect(fn () => $hold($second))->toThrow(QueryException::class);
+
+    app(ReleaseResourceBooking::class)->handle($booking, BookingState::Released, 'repicked');
+
+    expect($hold($second)->admission_id)->toBe($admissionId);
+});

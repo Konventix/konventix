@@ -18,6 +18,7 @@ use Konventix\Event\Models\Event;
 use Konventix\Event\Models\EventDay;
 use Konventix\Event\Models\Venue;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
+use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Platform\Slots\SlotRegistry;
@@ -125,7 +126,7 @@ class EventAdminController
         ]);
     }
 
-    public function edit(string $event): Response
+    public function edit(string $event, MediaLibrary $library): Response
     {
         Gate::authorize(Permission::UpdateEvent->value);
 
@@ -135,8 +136,12 @@ class EventAdminController
             'event' => [
                 'id' => $model->getKey(),
                 'state' => $model->state->value,
+                'brandId' => $model->brand_id,
                 ...EventData::fromModel($model)->toArray(),
             ],
+            // The banner picker's candidates (#292), through Platform's own
+            // doorway rather than a MediaItem query of this module's.
+            'media' => $library->pickableImages($model->brand_id),
             // Relation loads re-apply BrandScope on the related model, which
             // hardens to zero rows on the admin host (.ai/rules) — escape it
             // per relation or the page renders empty day/venue lists.

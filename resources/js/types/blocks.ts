@@ -1,5 +1,7 @@
 export type BlockEditorContext = {
     media: Konventix.Platform.Data.MediaItemData[];
+    /** The brand the page belongs to; lets the picker upload into it (#292). */
+    brandId?: string | null;
     events: { id: string; name: string; brandId: string }[];
 };
 
