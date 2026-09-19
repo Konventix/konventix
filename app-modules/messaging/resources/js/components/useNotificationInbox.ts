@@ -97,6 +97,13 @@ function follow(userId: string | null): void {
         });
     subscribedTo = userId;
 
+    // A browser fetch of a fixed same-origin Wayfinder route. The advanced
+    // SAST analyzer traces the XSRF cookie from `requestInit()` into the
+    // request headers and reports the call as a server-side request with a
+    // user-controlled URL (v0.6.4, pipeline 1828); there is no server and
+    // no URL a value could steer, so the rule is excluded at all three
+    // call sites and nowhere else.
+    // gitlab-advanced-sast-exclude: javascript-node-ssrf-generic-taint
     void fetch(notificationsFeed().url, requestInit('get'))
         .then(parseJson)
         .then((data) => {
@@ -125,6 +132,7 @@ async function markRead(id: string): Promise<void> {
     }
 
     try {
+        // gitlab-advanced-sast-exclude: javascript-node-ssrf-generic-taint — see the feed fetch
         await fetch(
             notificationsRead({ notification: id }).url,
             requestInit('post'),
@@ -138,6 +146,7 @@ async function markAllRead(): Promise<void> {
     applyMarkAllRead(state);
 
     try {
+        // gitlab-advanced-sast-exclude: javascript-node-ssrf-generic-taint — see the feed fetch
         await fetch(notificationsReadAll().url, requestInit('post')).then(
             parseJson,
         );
