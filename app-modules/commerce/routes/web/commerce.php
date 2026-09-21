@@ -131,6 +131,17 @@ Route::get('/my/credit-notes/{creditNote}/document', MyCreditNoteDocumentControl
 // The payer's own orders (ADR-0044). `auth` only — no `require-consent`,
 // for the reason Registration gives on `/my/registrations`: reading back what
 // you already owe is not a new contract.
+//
+// `/my/orders/{order}` is one order on its own page — where every hosted
+// checkout lands afterwards, whichever way it ended (bugfix round
+// 2026-09-21, Task 3). The cart used to be the return URL, and a cart is
+// `checked_out` by then, so the payer came back from paying to "Your cart
+// is empty". As on `/pay/order/{order}`, the ULID addresses the order and
+// the order's own payer authorizes it (#185): `MyOrdersController::show()`
+// 404s everyone else.
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/my/orders', [MyOrdersController::class, 'index'])->name('commerce.mine.index');
+    Route::get('/my/orders/{order}', [MyOrdersController::class, 'show'])
+        ->whereUlid('order')
+        ->name('commerce.mine.show');
 });

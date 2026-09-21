@@ -264,6 +264,32 @@ it('refuses an order that is already settled or no longer awaiting payment', fun
             ->where('refusalReason', 'This order is no longer awaiting payment.'));
 });
 
+/**
+ * Bugfix round 2026-09-21, Task 3: this page had no paid branch, so a
+ * provider returning a successful payer here greeted them with the red
+ * "already settled" refusal. Checkouts return to `/my/orders/{order}` now,
+ * but a mailed link still lands here, and a paid order reads as the
+ * confirmation the page derives from `order.status`.
+ */
+it('shows a paid order as settled rather than refused', function (): void {
+    orderRepayBrand();
+    $payer = User::factory()->create();
+    [$order] = orderRepayFailedCartOrder($payer);
+    orderRepayAccount();
+
+    Payment::factory()->succeeded()->create(['order_id' => $order->getKey()]);
+    $order->forceFill(['status' => OrderStatus::Paid, 'paid_at' => now()])->save();
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('pay/Order')
+            ->where('order.status', 'paid')
+            ->where('payable', false)
+            ->where('refusalReason', 'This order is no longer awaiting payment.'));
+});
+
 it('sends the payer to the consent screen before the form when a contract text is outstanding', function (): void {
     orderRepayBrand();
     $payer = User::factory()->create();

@@ -4,6 +4,7 @@ import { FileText } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
+import { show as showOrder } from '@/routes/commerce/mine';
 import { show as showRegistration } from '@/routes/registration/mine';
 
 /**
@@ -125,6 +126,16 @@ function formatPlacedOn(value: string): string {
                 <div
                     class="flex shrink-0 flex-wrap items-center justify-end gap-2"
                 >
+                    <!--
+                        The order's own page (bugfix round 2026-09-21, Task
+                        3) — the same page a hosted checkout returns to, so
+                        what the payer saw after paying is reachable again
+                        from here. A real link, so it is keyboard-reachable
+                        (.ai/rules/js.md).
+                    -->
+                    <Button as-child variant="outline" size="sm">
+                        <Link :href="showOrder(order.id).url">Details</Link>
+                    </Button>
                     <Button v-if="order.payUrl" as-child size="sm">
                         <a :href="order.payUrl">Pay now</a>
                     </Button>

@@ -192,6 +192,11 @@ it('starts a hosted checkout with a pending payment and the snapshotted line amo
 
     expect($params['mode'])->toBe('payment')
         ->and($params['client_reference_id'])->toBe($payment->id)
+        // One return URL for every outcome (`ProvidesHostedCheckout`): the
+        // page it names branches on the order's state, so success and
+        // cancel are the same address.
+        ->and($params['success_url'])->toBe('https://brand.test/pay/order/'.$order->id.'/return')
+        ->and($params['cancel_url'])->toBe('https://brand.test/pay/order/'.$order->id.'/return')
         // Tax is computed by the domain, per line, half-up (ADR-0030):
         // Stripe gets finished gross amounts and is never asked to tax.
         ->and($params['line_items'])->toHaveCount(2)

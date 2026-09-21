@@ -116,6 +116,16 @@ declare namespace Konventix {
                 readonly variantId: string;
                 readonly quantity: number;
             };
+            export type BillingPartyData = {
+                readonly organizationName: string | null;
+                readonly recipientName: string | null;
+                readonly email: string | null;
+                readonly addressLine: string | null;
+                readonly postalCode: string | null;
+                readonly city: string | null;
+                readonly countryCode: string | null;
+                readonly vatId: string | null;
+            };
             export type CartData = {
                 readonly lines: Konventix.Commerce.Data.CartLineData[];
                 readonly totalNet: string;
@@ -181,6 +191,28 @@ declare namespace Konventix {
                 readonly documentUrl: string | null;
                 readonly lines: Konventix.Commerce.Data.MyOrderLineData[];
                 readonly creditNotes: Konventix.Commerce.Data.MyCreditNoteData[];
+            };
+            export type MyOrderDetailData = {
+                readonly id: string;
+                readonly placedAt: string;
+                readonly settlesType: string;
+                readonly settlesId: string;
+                readonly settlesLabel: string;
+                readonly status: Konventix.Commerce.Enums.OrderStatus;
+                readonly currency: string;
+                readonly totalNet: string;
+                readonly totalTax: string;
+                readonly totalGross: string;
+                readonly invoiceNumber: string | null;
+                readonly invoicePaid: boolean;
+                readonly payUrl: string | null;
+                readonly documentUrl: string | null;
+                readonly lines: Konventix.Commerce.Data.MyOrderLineData[];
+                readonly creditNotes: Konventix.Commerce.Data.MyCreditNoteData[];
+                readonly paymentStatus: Konventix.Commerce.Enums.PaymentStatus | null;
+                readonly paidAt: string | null;
+                readonly billingParty: Konventix.Commerce.Data.BillingPartyData | null;
+                readonly repayDueOn: string | null;
             };
             export type MyOrderLineData = {
                 readonly label: string;
@@ -652,7 +684,7 @@ declare namespace Konventix {
                 readonly validMinutes: number;
             };
             export type PasswordUpdateData = {
-                readonly current_password: string;
+                readonly current_password: string | null;
                 readonly password: string;
             };
             export type ProfileUpdateData = {

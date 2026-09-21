@@ -158,6 +158,16 @@ it('starts the hosted checkout and hard-redirects to the provider', function ():
         ->assertRedirect('https://checkout.stripe.test/session');
 
     expect(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+
+    // Bugfix round 2026-09-21, Task 3: the provider sends the payer back to
+    // the order's own page — success, cancel and failure alike — not to
+    // this pay page, so every hosted checkout lands in one place.
+    /** @var CheckoutPageTestFakeStripe $stripe */
+    $stripe = app(StripeApi::class);
+
+    expect($stripe->sessions[0]['success_url'])->toStartWith('http')
+        ->and($stripe->sessions[0]['success_url'])->toEndWith('/my/orders/'.$order->id)
+        ->and($stripe->sessions[0]['cancel_url'])->toBe($stripe->sessions[0]['success_url']);
 });
 
 it('refuses to start a checkout for a settled order', function (): void {

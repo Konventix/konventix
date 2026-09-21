@@ -29,6 +29,7 @@ use Konventix\Commerce\Exceptions\CartCheckoutRefusedException;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
+use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Commerce\Models\SettlementAccount;
@@ -289,8 +290,21 @@ final class CartController
         // caught here — a real adapter failure past that point must reach
         // the payer the way `CheckoutController::start()` lets it, not
         // disguised as a 409 domain refusal.
+        //
+        // The provider sends the payer back to the order's own page
+        // (`commerce.mine.show`, Task 3 of the 2026-09-21 bugfix round),
+        // never to this cart: it is `checked_out` by then and the page
+        // greeted a payer who had just paid with "Your cart is empty". A
+        // closure, because the order does not exist yet — the Action
+        // resolves it once it has placed or reused one. Absolute on
+        // purpose: the URL leaves this host for the provider's session.
         try {
-            $redirect = app(PlaceOrderFromCart::class)->handle($cart, $account, route('commerce.cart.show'), $billingParty);
+            $redirect = app(PlaceOrderFromCart::class)->handle(
+                $cart,
+                $account,
+                fn (Order $order): string => route('commerce.mine.show', ['order' => $order->getKey()]),
+                $billingParty,
+            );
         } catch (CartCheckoutRefusedException $e) {
             abort(409, $e->getMessage());
         }

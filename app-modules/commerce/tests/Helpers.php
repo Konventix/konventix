@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Konventix\Commerce\Data\BillingPartyData;
+use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
@@ -96,6 +97,20 @@ function cartCheckoutBillingParty(
     ?string $countryCode = null,
 ): BillingPartyData {
     return BillingPartyData::ofAccount($user->name, $user->email, $addressLine, $postalCode, $city, $countryCode);
+}
+
+/**
+ * The return URL `CartController::checkout()` hands `PlaceOrderFromCart`
+ * (bugfix round 2026-09-21, Task 3): a closure over the placed order, since
+ * the order does not exist when the call is made. The controller's own
+ * closure resolves `commerce.mine.show`; `CartCheckoutTest` pins that
+ * through the controller, and every direct Action call uses this one.
+ *
+ * @return Closure(Order): string
+ */
+function cartCheckoutReturnUrl(): Closure
+{
+    return fn (Order $order): string => 'https://brand.test/my/orders/'.$order->getKey();
 }
 
 function orderMailsRecipient(string $brandId, ?string $locale = null): User

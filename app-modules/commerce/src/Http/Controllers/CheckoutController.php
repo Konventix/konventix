@@ -266,10 +266,17 @@ class CheckoutController
         // this — unreachable in practice, but narrows the type for PHPStan.
         abort_unless($adapter instanceof ProvidesHostedCheckout, 409, 'This brand takes no online payment.');
 
+        // Back to the order's own page afterwards (`commerce.mine.show`,
+        // bugfix round 2026-09-21, Task 3) — success, cancel and failure
+        // alike, since every adapter takes one URL for all three. That page
+        // branches on the order's state and still offers the way back here
+        // while the order is payable; the cart checkout and `startOrder()`
+        // hand the provider the same page, so every hosted checkout lands in
+        // one place.
         $redirect = $adapter->startCheckout(
             $account,
             $order,
-            route('commerce.pay.show', ['registration' => $registration]),
+            route('commerce.mine.show', ['order' => $order->getKey()]),
         );
 
         // A hard redirect out of the SPA to the provider's hosted page.
@@ -418,10 +425,13 @@ class CheckoutController
 
         abort_unless($adapter instanceof ProvidesHostedCheckout, 409, 'This brand takes no online payment.');
 
+        // The order's own page, as in `start()` (Task 3 of the 2026-09-21
+        // bugfix round): this repay page has no paid state to land on and
+        // used to greet a successful payer with the "already settled" refusal.
         $redirectToProvider = $adapter->startCheckout(
             $account,
             $model,
-            route('commerce.pay.order.show', ['order' => $model->getKey()]),
+            route('commerce.mine.show', ['order' => $model->getKey()]),
         );
 
         return Inertia::location($redirectToProvider->url);

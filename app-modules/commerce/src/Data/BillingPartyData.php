@@ -5,13 +5,18 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Data;
 
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * The billing party as it arrived in the settlement request's scalar
  * payload (ADR-0004) — snapshotted onto the invoice at issuance, because
  * the document must stay renderable exactly as issued (ADR-0031) even when
  * the registrant's live data changes later.
+ *
+ * `#[TypeScript]` since the payer's own order page renders the party the
+ * invoice will address (`MyOrderDetailData`, ADR-0009).
  */
+#[TypeScript]
 final class BillingPartyData extends Data
 {
     public function __construct(

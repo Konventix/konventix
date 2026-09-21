@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Commerce\Actions;
 
+use Closure;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -60,6 +61,14 @@ use Konventix\Platform\Operators\OperatorSettings;
  * enforces it. The snapshot on the line stays for audit and reconciliation
  * only — nothing renders it.
  *
+ * **The return URL is a `Closure(Order): string`, not a string** (bugfix
+ * round 2026-09-21, Task 3): the page every adapter sends the payer back to
+ * — for success, cancel and failure alike, that is the `ProvidesHostedCheckout`
+ * contract — is the *order's* own page, and the order does not exist when
+ * the controller calls this. `sendToProvider()` resolves it once the order
+ * is placed or reused. The cart page it used to be is `checked_out` by the
+ * time the payer returns and greeted them with "Your cart is empty".
+ *
  * `TaxCalculator::calculate()` runs with no billing party at all
  * (`billingVatId`/`billingCountryCode` both null): a cart has no invoice
  * recipient the way an `invoice`-settled registration does, so this always
@@ -87,7 +96,10 @@ final class PlaceOrderFromCart
         private readonly SettlementAdapterRegistry $registry,
     ) {}
 
-    public function handle(Cart $cart, SettlementAccount $account, string $returnUrl, BillingPartyData $billingParty): CheckoutRedirect
+    /**
+     * @param  Closure(Order): string  $returnUrl  Where the provider sends the payer back to, built from the placed (or reused) order
+     */
+    public function handle(Cart $cart, SettlementAccount $account, Closure $returnUrl, BillingPartyData $billingParty): CheckoutRedirect
     {
         $reusableOrder = $this->reusableCheckedOutOrder($cart);
 
@@ -286,7 +298,10 @@ final class PlaceOrderFromCart
         return $offered;
     }
 
-    private function sendToProvider(SettlementAccount $offered, Order $order, string $returnUrl): CheckoutRedirect
+    /**
+     * @param  Closure(Order): string  $returnUrl
+     */
+    private function sendToProvider(SettlementAccount $offered, Order $order, Closure $returnUrl): CheckoutRedirect
     {
         $adapter = $this->registry->forProvider($offered->provider);
 
@@ -299,6 +314,6 @@ final class PlaceOrderFromCart
 
         // Deliberately uncaught by this Action: a real adapter failure past
         // this point is not a domain refusal (see class docblock).
-        return $adapter->startCheckout($offered, $order, $returnUrl);
+        return $adapter->startCheckout($offered, $order, $returnUrl($order));
     }
 }

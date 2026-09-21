@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { CreditCard, RotateCcw, XCircle } from '@lucide/vue';
+import { CheckCircle2, CreditCard, RotateCcw, XCircle } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -92,8 +92,19 @@ function pay(accountId: string): void {
     );
 }
 
+/**
+ * The paid branch this page lacked (bugfix round 2026-09-21, Task 3): a
+ * provider used to send a successful payer back here, and the page greeted
+ * them with the red "already settled" refusal. Checkouts return to
+ * `/my/orders/{order}` now, but this page is still reachable from a mail
+ * or a bookmark, so a paid order reads as a confirmation here too.
+ */
+const paid = computed(() => props.order.status === 'paid');
+
 const lastAttemptFailed = computed(
-    () => props.paymentStatus === 'failed' || props.paymentStatus === 'expired',
+    () =>
+        !paid.value &&
+        (props.paymentStatus === 'failed' || props.paymentStatus === 'expired'),
 );
 
 const reversed = computed(() => props.order.status === 'payment_reversed');
@@ -146,7 +157,16 @@ const holdUntilLabel = computed(() =>
         </Card>
 
         <div
-            v-if="reversed"
+            v-if="paid"
+            role="status"
+            class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-success"
+        >
+            <CheckCircle2 class="size-5" />
+            <span>Payment received — you are all set.</span>
+        </div>
+
+        <div
+            v-else-if="reversed"
             role="status"
             class="flex items-center gap-3 rounded-md border border-border bg-surface p-4 text-danger"
         >
@@ -187,7 +207,7 @@ const holdUntilLabel = computed(() =>
         </p>
 
         <p
-            v-if="!props.payable"
+            v-if="!props.payable && !paid"
             role="status"
             class="rounded-md border border-border bg-surface p-4 text-sm text-danger"
         >

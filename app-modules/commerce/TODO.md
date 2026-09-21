@@ -160,9 +160,31 @@
       published copy in step with Pulse's own default on every upgrade.
 - [ ] Refunding a cart order leaves its product lines' stock_consumed raised on purpose (SPEC, Cart) — if operators keep raising capacity by hand after refunds, give RefundOrder an explicit "return to shelf" option per product line.
 - [x] The shop renders a product's net amount even when price_display is gross. Fixed (PAngV): `ShopProductData.unitAmountGross`, `ShopVariantData.unitAmountGross` and `CartLineData.unitAmountGross` are all computed server-side through `TaxCalculator` (#3). The order button reads "Order with obligation to pay" and the delivery statement is shown on the cart and pay pages (#75) — still open: a separate confirmation step in the cart is a product decision, not built here.
-- [ ] `/my/orders` shows no deadline beside a pay link, for a cart order or a
-      registration order — the only surface `Settlement\PaymentWindow`
-      does not reach (`MyOrderData`).
+- [ ] `/my/orders` and `/my/orders/{order}` show no deadline beside a pay
+      link, for a cart order or a registration order — the only surfaces
+      `Settlement\PaymentWindow` does not reach (`MyOrderData`,
+      `MyOrderDetailData`). The detail page is where a payer lands back from
+      the provider, so it is the better of the two to say "held until …".
+- [x] Every hosted checkout lands on the order's own page (bugfix round
+      2026-09-21, Task 3): `GET /my/orders/{order}` (`commerce.mine.show`,
+      `MyOrdersController::show()`, `MyOrderDetailData`,
+      `commerce/my/Show.vue`), payer-only as a 404 like `/pay/order/{order}`
+      (#185). The cart checkout used to hand every adapter the cart page as
+      the one return URL, and the cart is `checked_out` by then — so paying
+      ended on "Your cart is empty"; the repay page `pay/Order.vue` had no
+      paid branch and greeted a successful payer with the "already settled"
+      refusal. `PlaceOrderFromCart::handle()` now takes a
+      `Closure(Order): string` for the return URL (the order does not exist
+      when the controller calls it) and `CheckoutController::start()`/
+      `startOrder()` return to the same page, so success, cancel and failure
+      all land in one place that branches on the order's state: "Payment
+      received", "Waiting for the payment confirmation from the provider"
+      while the attempt is pending (the cancel path — a provider never
+      reports a cancelled session), or "Pay now". `pay/Order.vue` gained the
+      paid banner anyway, since a mailed link still reaches it. Follow-up:
+      the page reads the order's state once; a payer back before the webhook
+      landed sees "waiting" until they reload — polling the page (Inertia
+      `usePoll`) while `paymentStatus` is pending would close that gap.
 - [ ] Print the refund reason and note on the credit note document. Both are
       recorded on the audit trail and on the refund record today; the
       credit note itself always says "Grund: Erstattung" (#73).

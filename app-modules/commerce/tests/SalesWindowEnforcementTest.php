@@ -144,7 +144,7 @@ it('checks out a registration line whose sale has ended since it was placed', fu
     $redirect = app(PlaceOrderFromCart::class)->handle(
         $cart->fresh(),
         $account,
-        'https://brand.test/cart',
+        cartCheckoutReturnUrl(),
         cartCheckoutBillingParty($user),
     );
 

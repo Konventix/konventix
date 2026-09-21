@@ -147,17 +147,51 @@ it('refuses every signed-in user an order that names no payer (#185)', function 
     expect(Payment::withoutBrandScope()->where('order_id', $order->getKey())->count())->toBe(0);
 });
 
+/**
+ * `/my/orders/{order}` (bugfix round 2026-09-21, Task 3) is the page every
+ * hosted checkout returns to, so its id travels to the provider and back;
+ * it applies the same rule as both pay pages — the order's own payer, or
+ * 404.
+ */
+it('refuses another signed-in user the order page of an order they do not owe', function (): void {
+    $this->withBrand();
+    $payer = User::factory()->create();
+    [, $order] = checkoutAuthOrder($payer->getKey());
+
+    $this->actingAs(User::factory()->create())
+        ->get('/my/orders/'.$order->getKey())
+        ->assertNotFound();
+
+    $this->actingAs(User::factory()->create())
+        ->get('/my/orders/'.(string) Str::ulid())
+        ->assertNotFound();
+
+    $this->actingAs($payer)
+        ->get('/my/orders/'.$order->getKey())
+        ->assertOk();
+});
+
+it('refuses every signed-in user the order page of an order that names no payer', function (): void {
+    $this->withBrand();
+    [, $order] = checkoutAuthOrder(null);
+
+    $this->actingAs(User::factory()->create())
+        ->get('/my/orders/'.$order->getKey())
+        ->assertNotFound();
+});
+
 it('still sends a guest to sign in rather than answering 404', function (): void {
     // The route's `auth` middleware runs before the controller (#2), so a
     // guest keeps meeting the login redirect that carries a mailed pay link
     // back to this page — the ownership check never sees them.
     $this->withBrand();
     $payer = User::factory()->create();
-    [$registrationId, , $account] = checkoutAuthOrder($payer->getKey());
+    [$registrationId, $order, $account] = checkoutAuthOrder($payer->getKey());
 
     $this->get('/pay/registration/'.$registrationId)->assertRedirect('/login');
     $this->post('/pay/registration/'.$registrationId.'/start', ['account' => $account->getKey()])
         ->assertRedirect('/login');
+    $this->get('/my/orders/'.$order->getKey())->assertRedirect('/login');
 });
 
 it('serves and starts the payment for the payer who owes the order', function (): void {
