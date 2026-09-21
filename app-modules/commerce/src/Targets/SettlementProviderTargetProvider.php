@@ -56,7 +56,7 @@ final class SettlementProviderTargetProvider implements TargetProvider
         $providers = array_keys($this->registry->registered());
         sort($providers);
 
-        return array_values(array_map(
+        return array_map(
             fn (string $provider): TargetOptionData => new TargetOptionData(
                 kind: self::KIND,
                 id: $provider,
@@ -64,7 +64,7 @@ final class SettlementProviderTargetProvider implements TargetProvider
                 group: __('Payment providers'),
             ),
             $providers,
-        ));
+        );
     }
 
     public function labelFor(string $kind, string $id): ?string
