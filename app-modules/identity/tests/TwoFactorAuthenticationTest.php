@@ -115,13 +115,51 @@ test('a confirmed user can disable two-factor authentication', function () {
 });
 
 /**
- * Bugfix round 2026-09-21, Task 13: the codes are shown once, right after
- * confirmation or regeneration, and regeneration invalidates the old set.
- * Fortify's GET route stays — the page fetches the fresh set through it the
- * moment the regeneration succeeds, and the "I saved my recovery codes"
- * checkbox in front of it is a nudge, not a new security boundary.
+ * Round 4, Task 26 (D-IDP-18): the recovery codes are served once and the
+ * enforcement is on the server. Fortify's `GET two-factor.recovery-codes`
+ * answered the full set on every call for the life of the session; it now
+ * needs a grant, minted by the confirmation or the regeneration and consumed
+ * on first read (`EnsureRecoveryCodesGrant`, `MintRecoveryCodesGrant`). The
+ * "I saved my recovery codes" checkbox in front of the dialog stays a nudge.
+ *
+ * Every case chains its requests on one session, because that is where the
+ * grant lives, and reads the session only after the fetch it belongs to
+ * (`.ai/rules/tests.md`).
  */
-test('regenerating recovery codes returns a different set, served by the GET route', function () {
+test('confirming the enrolment reveals the recovery codes exactly once', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->withSession(['auth.password_confirmed_at' => time()])
+        ->post(route('two-factor.enable'));
+
+    $secret = Fortify::currentEncrypter()->decrypt($user->fresh()->two_factor_secret);
+    $code = app(Google2FA::class)->getCurrentOtp($secret);
+
+    $this->post(route('two-factor.confirm'), ['code' => $code])
+        ->assertSessionHasNoErrors();
+
+    $codes = $user->fresh()->recoveryCodes();
+
+    $this->getJson(route('two-factor.recovery-codes'))
+        ->assertOk()
+        ->assertExactJson($codes)
+        // The grant is pulled, not read: nothing is left for a second ask.
+        ->assertSessionMissing('two-factor.recovery-codes.reveal');
+
+    $this->getJson(route('two-factor.recovery-codes'))->assertNotFound();
+});
+
+test('an ordinary visit cannot ask for the recovery codes', function () {
+    $user = User::factory()->withTwoFactor()->create();
+
+    $this->actingAs($user)
+        ->withSession(['auth.password_confirmed_at' => time()])
+        ->getJson(route('two-factor.recovery-codes'))
+        ->assertNotFound();
+});
+
+test('regenerating recovery codes returns a different set, revealed once', function () {
     $user = User::factory()->withTwoFactor()->create();
 
     $before = $user->recoveryCodes();
@@ -136,9 +174,9 @@ test('regenerating recovery codes returns a different set, served by the GET rou
     expect($after)->toHaveCount(count($before))
         ->and(array_intersect($before, $after))->toBe([]);
 
-    $this->actingAs($user)
-        ->withSession(['auth.password_confirmed_at' => time()])
-        ->getJson(route('two-factor.recovery-codes'))
+    $this->getJson(route('two-factor.recovery-codes'))
         ->assertOk()
         ->assertExactJson($after);
+
+    $this->getJson(route('two-factor.recovery-codes'))->assertNotFound();
 });

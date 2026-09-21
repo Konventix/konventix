@@ -66,7 +66,16 @@ keeps as its own read model.
   so without that join the notice could name another operator's brand on
   this operator's auth page (ADR-0054, #184).
 - **Two-factor authentication**: enrolment, confirmation, recovery codes, reset
-  by an administrator.
+  by an administrator. A set of recovery codes is **served once** (D-IDP-18):
+  Fortify's `GET two-factor.recovery-codes` answers only against a one-time
+  grant that `Listeners\MintRecoveryCodesGrant` writes into the session at the
+  two moments a fresh set exists — `TwoFactorAuthenticationConfirmed` and
+  `RecoveryCodesGenerated` — and that `Http\Middleware\EnsureRecoveryCodesGrant`
+  pulls, names the account for and expires after 60 seconds. Everything else
+  is 404, not 403: the route simply is not there for a reload, a second tab or
+  a later visit. Whoever lost their codes regenerates, which mints a new grant
+  and invalidates the old set. The "I saved my recovery codes" checkbox in
+  front of the dialog stays what it was, a nudge.
 - **Sessions**: the list of a user's active sessions and their revocation.
   Sessions are brand-scoped, but the scoping mechanism belongs to Platform:
   `ResolveBrand` gives each brand its own session cookie name, so a browser

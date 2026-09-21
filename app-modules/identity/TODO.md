@@ -506,3 +506,34 @@ person behind it. The value here is in what is left out.
       enrols one passkey per site. A cross-brand passkey would need every
       brand under one shared registrable domain and a `related origins`
       well-known document; it is out of scope until a customer asks.
+
+- [x] Recovery codes are served once, enforced server-side (round 4, Task 26,
+      D-IDP-18). `Http\Middleware\EnsureRecoveryCodesGrant` on Fortify's
+      `GET two-factor.recovery-codes` — wrapped on in
+      `IdentityServiceProvider::throttleUnhookedFortifyRoutes()`, the third
+      reason that walk exists — plus `Listeners\MintRecoveryCodesGrant` on
+      `TwoFactorAuthenticationConfirmed` and `RecoveryCodesGenerated`, the
+      only two moments a genuinely fresh set exists (enabling writes the
+      first set inline and dispatches neither). The grant is
+      `session()->pull()`ed, so the first read consumes it; it names the
+      account and is good for 60 seconds, the gap between the redirect and
+      the page's own `fetch()`. Anything else answers 404 rather than 403,
+      for the reason `PasskeyController::destroy()` says 404. No frontend
+      logic changed: the page already fired exactly one GET per moment and
+      none on reload.
+
+      Rejected: replacing the route with our own controller (last
+      registration wins in `RouteCollection`, so it would work) and
+      `Fortify::ignoreRoutes()` with a hand-written set — both buy a copy of
+      the vendor controller to maintain and enforce nothing a middleware
+      does not. Rejected too: a one-time token in the URL (the redirect that
+      carries it is the thing that gets replayed) and dropping the GET route
+      for an Inertia prop on the confirmation redirect (the codes would then
+      sit in the page's props and the history entry).
+
+- [ ] The grant lives in the session, so the reveal is bound to the browser
+      that confirmed. An operator resetting someone's second factor from the
+      console mints nothing — correct today, because that path hands over no
+      codes — but if administrative reset ever grows a "show them to the
+      person" step it needs a grant of its own rather than a second reader of
+      this key.

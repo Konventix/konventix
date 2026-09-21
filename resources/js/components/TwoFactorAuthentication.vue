@@ -27,8 +27,14 @@ const qrCodeSvg = ref<string | null>(null);
  * The recovery codes are never fetched on mount and never listed on the page:
  * they are on screen exactly once, right after the enrolment is confirmed or
  * a regeneration, in a dialog that closes only past the "I saved them"
- * checkbox (`recoveryCodesReveal.ts`). Fortify's GET route still answers, so
- * the checkbox is a nudge, not a security boundary.
+ * checkbox (`recoveryCodesReveal.ts`).
+ *
+ * The checkbox is a nudge; the one-shot is enforced on the server since
+ * D-IDP-18 (round 4, Task 26). Each of the two moments below mints a grant
+ * that the very next GET of `two-factor.recovery-codes` spends, and any
+ * further GET — a reload, a second tab — is a 404. That is why this component
+ * fires exactly one fetch per moment and never one on mount: an extra call
+ * would not re-show the codes, it would burn the grant the dialog needs.
  */
 const reveal = ref<RecoveryCodesReveal>(noCodesRevealed);
 

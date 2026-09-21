@@ -32,11 +32,13 @@ use Konventix\Identity\Http\Controllers\AccountRegistrationController;
 use Konventix\Identity\Http\Controllers\PasskeyController;
 use Konventix\Identity\Http\Middleware\BindPasskeyRelyingParty;
 use Konventix\Identity\Http\Middleware\EnsureCredentialsAreStrings;
+use Konventix\Identity\Http\Middleware\EnsureRecoveryCodesGrant;
 use Konventix\Identity\Http\Middleware\EnsureSignupsOpen;
 use Konventix\Identity\Http\Responses\ConsentAwareLoginResponse;
 use Konventix\Identity\Http\Responses\ConsentAwarePasskeyLoginResponse;
 use Konventix\Identity\Http\Responses\ConsentAwareTwoFactorLoginResponse;
 use Konventix\Identity\Http\Responses\GenericPasswordResetLinkResponse;
+use Konventix\Identity\Listeners\MintRecoveryCodesGrant;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Listeners\SendWelcomeOnVerified;
 use Konventix\Identity\Models\Passkey;
@@ -60,6 +62,8 @@ use Laravel\Fortify\Contracts\FailedPasswordResetLinkRequestResponse as FailedPa
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
 use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse as SuccessfulPasswordResetLinkRequestResponseContract;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
+use Laravel\Fortify\Events\RecoveryCodesGenerated;
+use Laravel\Fortify\Events\TwoFactorAuthenticationConfirmed;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
 use Laravel\Passkeys\Contracts\PasskeyLoginResponse as PasskeyLoginResponseContract;
@@ -137,6 +141,12 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
         // ADR-0048 point 5: the welcome that follows the first verification.
         Event::listen(Verified::class, SendWelcomeOnVerified::class);
+
+        // D-IDP-18: the two moments a fresh set of recovery codes exists are
+        // the only two that may reveal one — each mints the one-time grant
+        // `EnsureRecoveryCodesGrant` spends on the GET route below.
+        Event::listen(TwoFactorAuthenticationConfirmed::class, MintRecoveryCodesGrant::class);
+        Event::listen(RecoveryCodesGenerated::class, MintRecoveryCodesGrant::class);
     }
 
     /**
@@ -522,6 +532,13 @@ class IdentityServiceProvider extends ModuleServiceProvider
      * docblock). `Route::uses()` swaps only the action array; the name, URI,
      * and every middleware — including the two lines just added to it —
      * stay exactly as Fortify registered them.
+     *
+     * D-IDP-18 rides it for a third: `two-factor.recovery-codes` hands the
+     * decrypted set to every GET for the life of the session, and Fortify
+     * offers no hook for that controller either. Replacing the route (last
+     * registration wins in `RouteCollection`) or `Fortify::ignoreRoutes()`
+     * would buy nothing a middleware does not — `EnsureRecoveryCodesGrant`
+     * turns the GET into a one-shot and leaves the vendor controller alone.
      */
     private function throttleUnhookedFortifyRoutes(): void
     {
@@ -544,6 +561,11 @@ class IdentityServiceProvider extends ModuleServiceProvider
             // Already throttled through `fortify.limiters.login`; it joins the
             // list for the credential guard alone (review finding 6).
             'login.store' => [$credentials],
+            // D-IDP-18: the reveal needs a grant minted moments earlier by
+            // `MintRecoveryCodesGrant`, and spends it. Only the GET — the
+            // POST that regenerates is how a person who lost the codes gets
+            // a new set, and it mints the grant this one then consumes.
+            'two-factor.recovery-codes' => [EnsureRecoveryCodesGrant::class],
             // Task 16: the relying party follows the request host on every
             // passkey route — `BindPasskeyRelyingParty`'s docblock has the
             // why. `passkey.destroy` also swaps its controller below.

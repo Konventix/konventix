@@ -6,9 +6,15 @@
  * there permanently, which made "recovery codes" a thing to glance at rather
  * than a thing to put away. Now they appear exactly once — right after the
  * enrolment is confirmed, or right after a regeneration — in a dialog that
- * cannot be dismissed until the person says they saved them. The checkbox is
- * a nudge, not a security boundary: Fortify's GET route for the codes stays,
- * so a person who lied to the checkbox can still ask for them by regenerating.
+ * cannot be dismissed until the person says they saved them.
+ *
+ * The checkbox is a nudge and nothing more; since D-IDP-18 (round 4, Task 26)
+ * the boundary is on the server. Fortify's GET route answers exactly one
+ * request per fresh set, against a grant minted by the confirmation or the
+ * regeneration and consumed on first read
+ * (`Identity\Http\Middleware\EnsureRecoveryCodesGrant`), so a reload or a
+ * second tab gets a 404. Someone who ticked the box without saving anything
+ * gets codes again by regenerating, which invalidates the set they lost.
  *
  * Vitest here runs plain TypeScript with no Vue and no DOM (`vitest.config.ts`),
  * which is why the gate lives in a pure module (`recoveryCodesReveal.test.ts`).
