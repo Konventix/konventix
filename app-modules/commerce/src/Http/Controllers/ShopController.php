@@ -7,7 +7,6 @@ namespace Konventix\Commerce\Http\Controllers;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Commerce\Data\ShopProductData;
-use Konventix\Commerce\Enums\TaxClass;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Platform\Brands\BrandContext;
@@ -48,6 +47,9 @@ final class ShopController
             // the calculator puts no VAT on any line, so a card that said
             // "incl. VAT" would claim a tax the invoice does not carry.
             'smallBusinessScheme' => $smallBusinessScheme,
+            // The brand's own (#234): a public page prints no hardcoded
+            // currency symbol, here or in a contributed offer's end price.
+            'currency' => $this->operatorSettings->currencyForBrand($this->brandId($brandContext)),
             'products' => $products
                 ->map(fn (Product $product): array => ShopProductData::ofModel(
                     $product,
@@ -62,11 +64,19 @@ final class ShopController
             // Event's landing page, and the slot applies the per-brand
             // activation gate on the way out (ADR-0003 point 3). Commerce
             // never queries a registration table (ADR-0004).
+            //
+            // The props pass through untouched since #234: this controller
+            // used to fill `unitAmountGross` into every contributed offer on
+            // its way out, which is why `/shop` was the one public surface
+            // with an end price on it. A contributor now asks Platform's
+            // `Pricing\\EndPriceCalculator` for its own — the same Commerce
+            // arithmetic, reachable from a landing page and a static page
+            // too — and this slot has no payload rule left to enforce.
             'slots' => $this->slots->for('shop.index')
                 ->map(fn (array $entry): array => [
                     'module' => $entry['module'],
                     'component' => $entry['component'],
-                    'props' => $this->withGrossPrices($entry['props'], $smallBusinessScheme),
+                    'props' => $entry['props'],
                 ])
                 ->all(),
         ]);
@@ -88,6 +98,7 @@ final class ShopController
 
         return Inertia::render('shop/Show', [
             'smallBusinessScheme' => $smallBusinessScheme,
+            'currency' => $this->operatorSettings->currencyForBrand($this->brandId($brandContext)),
             'product' => ShopProductData::ofModel(
                 $product,
                 $this->imageUrl($product),
@@ -95,109 +106,6 @@ final class ShopController
                 $smallBusinessScheme,
             )->toArray(),
         ]);
-    }
-
-    /**
-     * The `shop.index` slot's one payload rule, and the whole of ADR-0017 in
-     * five lines (GitLab #240, review finding 8).
-     *
-     * A contributing module declares what its offer costs — a net amount and
-     * a tax *class*, plain scalars — and Commerce computes the end price. So
-     * a contribution's props may carry `offers[]`, each with an optional
-     * `price` of `{unitAmountNet, taxClass, display}`, and this fills in
-     * `unitAmountGross` on the way out, through the very `TaxCalculator` the
-     * product cards, the cart preview and the invoice run through. The
-     * contributor learns no tax rate and Commerce reads no foreign table:
-     * the boundary is crossed by scalars, which is what ADR-0004 asks and
-     * what the settlement event payload already does.
-     *
-     * PAngV (#3) is why it has to happen at all: `/shop` is a consumer sales
-     * page, so a `gross` price display owes the end price rather than a net
-     * amount with a label. `includesTax` travels back with the amount for
-     * the same reason: under the §19 election the amount contains no VAT,
-     * and only Commerce knows that.
-     *
-     * One calculator pass for every offer in the contribution, in order —
-     * the same shape `ShopProductData::ofModel()` uses for a product and its
-     * variants. No billing party exists on a public shop page (ADR-0030), so
-     * only the §19 election can move the rate.
-     *
-     * @param  array<string, mixed>  $props
-     * @return array<string, mixed>
-     */
-    private function withGrossPrices(array $props, bool $smallBusinessScheme): array
-    {
-        if (! is_array($props['offers'] ?? null)) {
-            return $props;
-        }
-
-        /** @var list<array<string, mixed>> $offers */
-        $offers = array_values($props['offers']);
-
-        /** @var list<int> $pricedIndexes */
-        $pricedIndexes = [];
-        /** @var list<array{label: string, quantity: int, unit_amount_net: numeric-string, tax_class: string}> $lines */
-        $lines = [];
-
-        foreach ($offers as $index => $offer) {
-            $price = $offer['price'] ?? null;
-
-            if (! is_array($price)) {
-                continue;
-            }
-
-            $unitAmountNet = $price['unitAmountNet'] ?? null;
-
-            // A contribution that declares a price owes a decimal string and
-            // a tax class (ADR-0017's own shape). Anything else is skipped
-            // rather than fed to bcmath: this payload crosses a module
-            // boundary, and a malformed offer must cost that offer its
-            // price, not the whole page.
-            if (! is_string($unitAmountNet) || ! is_numeric($unitAmountNet) || ! is_string($price['taxClass'] ?? null)) {
-                continue;
-            }
-
-            // `tryFrom`, not `from` (branch review finding 11): the
-            // calculator does `TaxClass::from()` and an unknown string
-            // there is an uncaught `ValueError` that 500s the whole shop.
-            // The two modules' enums happen to agree today; this is the
-            // cross-module scalar boundary and the guard is the point.
-            $taxClass = TaxClass::tryFrom($price['taxClass']);
-
-            if ($taxClass === null) {
-                continue;
-            }
-
-            $pricedIndexes[] = $index;
-            $lines[] = [
-                'label' => is_string($offer['name'] ?? null) ? $offer['name'] : '',
-                'quantity' => 1,
-                'unit_amount_net' => $unitAmountNet,
-                'tax_class' => $taxClass->value,
-            ];
-        }
-
-        if ($lines === []) {
-            return $props;
-        }
-
-        $calculation = $this->taxCalculator->calculate(
-            lines: $lines,
-            operatorSmallBusinessScheme: $smallBusinessScheme,
-            billingVatId: null,
-            billingCountryCode: null,
-        );
-
-        foreach ($pricedIndexes as $position => $index) {
-            $offers[$index]['price']['unitAmountGross'] = $calculation->lines[$position]->lineGross;
-            // What the label may claim (finding 12): under §19 there is no
-            // VAT in this amount and the card has to say so.
-            $offers[$index]['price']['includesTax'] = ! $smallBusinessScheme;
-        }
-
-        $props['offers'] = $offers;
-
-        return $props;
     }
 
     /**
@@ -209,11 +117,22 @@ final class ShopController
      */
     private function smallBusinessScheme(BrandContext $brandContext): bool
     {
+        return $this->operatorSettings->sellerForBrand($this->brandId($brandContext))->smallBusinessScheme;
+    }
+
+    /**
+     * The brand this shop belongs to. Never null in practice — the route
+     * resolves on a brand host — but `BrandContext` answers null on the
+     * admin host (ADR-0029), and a 404 is the honest answer there rather
+     * than a type error two frames deeper.
+     */
+    private function brandId(BrandContext $brandContext): string
+    {
         $brand = $brandContext->current();
 
         abort_if($brand === null, 404);
 
-        return $this->operatorSettings->sellerForBrand($brand->id)->smallBusinessScheme;
+        return $brand->id;
     }
 
     private function imageUrl(Product $product): ?string

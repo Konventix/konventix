@@ -11,7 +11,10 @@ use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Models\Event;
+use Konventix\Platform\Data\EndPriceData;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
+use Konventix\Platform\Pricing\EndPriceCalculator;
 use Konventix\Registration\Data\PriceDeclarationData;
 use Konventix\Registration\Enums\PriceDisplay;
 use Konventix\Registration\Enums\RegistrationVisibility;
@@ -103,6 +106,11 @@ it('carries the declared price and the approval warning a visitor decides on', f
             $offer = landingOffers($page)[0];
 
             expect($offer['price']['unitAmountNet'])->toBe('249.00')
+                // The declaration travels with what it actually costs
+                // (#234): one is Registration's intention, the other
+                // Commerce's answer (ADR-0017).
+                ->and($offer['endPrice']['unitAmountNet'])->toBe('249.00')
+                ->and($offer['endPrice']['unitAmountGross'])->toBe('296.31')
                 ->and($offer['requiresApproval'])->toBeTrue();
         });
 });
@@ -115,7 +123,132 @@ it('reports no price for a free type rather than a zero one', function (): void 
     RegistrationType::factory()->forEvent($event->getKey())->create();
 
     $this->get('/events/'.$event->slug)
-        ->assertInertia(fn (AssertableInertia $page) => expect(landingOffers($page)[0]['price'])->toBeNull());
+        ->assertInertia(function (AssertableInertia $page): void {
+            $offer = landingOffers($page)[0];
+
+            // And no end price either: a free type has no price at all,
+            // never a zero one (ADR-0017), and the card says "Free".
+            expect($offer['price'])->toBeNull()
+                ->and($offer['endPrice'])->toBeNull();
+        });
+});
+
+/**
+ * #234 (D-COM-20): the defect this whole task exists for. A Commerce card
+ * on the event landing page printed the PAngV end price with "incl. VAT"
+ * while Registration's card three inches beside it printed the *net*
+ * amount with no note at all — for a `display: gross` type the visitor
+ * read an amount lower than the one they would pay.
+ *
+ * The end price arrives computed now, through Platform's
+ * `Pricing\EndPriceCalculator`, which Commerce binds to the very
+ * `TaxCalculator` the cart and the invoice run through: 19.00 at the
+ * standard rate is 22.61 and 10.00 at the reduced one is 10.70, the same
+ * arithmetic `GrossPricesTest` pins for products and the shop slot pins
+ * below. ADR-0006 is untouched — a `net` type still shows its net amount,
+ * labelled, because that is the honest one for a B2B audience.
+ */
+it('carries the Commerce-computed end price of every priced offer on the landing page', function (): void {
+    $this->withBrand();
+
+    $event = Event::factory()->published()->create();
+
+    RegistrationType::factory()->forEvent($event->getKey())->create([
+        'name' => 'Weekend Ticket',
+        'price_declaration' => new PriceDeclarationData('19.00', TaxClass::Standard, PriceDisplay::Gross),
+    ]);
+    RegistrationType::factory()->forEvent($event->getKey())->create([
+        'name' => 'Exhibitor Pass',
+        'price_declaration' => new PriceDeclarationData('10.00', TaxClass::Reduced, PriceDisplay::Net),
+    ]);
+
+    $this->get('/events/'.$event->slug)
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            $offers = collect(landingOffers($page))->keyBy('name');
+
+            expect($offers['Weekend Ticket']['price']['display'])->toBe('gross')
+                ->and($offers['Weekend Ticket']['endPrice'])->toMatchArray([
+                    'unitAmountNet' => '19.00',
+                    'unitAmountGross' => '22.61',
+                    'taxRate' => '19.00',
+                    'currency' => 'EUR',
+                    // What the note may claim: this amount does contain VAT.
+                    'includesTax' => true,
+                ])
+                ->and($offers['Exhibitor Pass']['price']['display'])->toBe('net')
+                ->and($offers['Exhibitor Pass']['endPrice'])->toMatchArray([
+                    'unitAmountNet' => '10.00',
+                    'unitAmountGross' => '10.70',
+                    'taxRate' => '7.00',
+                ]);
+        });
+});
+
+/**
+ * ADR-0030: under the operator's §19 UStG election the calculator puts no
+ * VAT on any line, so the end price equals the net amount and the card must
+ * say "no VAT (§ 19 UStG)" rather than "incl. VAT" — §19 (1) sentence 4
+ * UStG wants the absence stated, and `taxNote()` owns the wording.
+ */
+it('shows an end price with no VAT in it for an operator on the small-business scheme', function (): void {
+    $brand = $this->withBrand();
+    $brand->operator()->associate(Operator::factory()->smallBusinessScheme()->create())->save();
+
+    $event = Event::factory()->published()->create();
+    RegistrationType::factory()->forEvent($event->getKey())->create([
+        'price_declaration' => new PriceDeclarationData('19.00', TaxClass::Standard, PriceDisplay::Gross),
+    ]);
+
+    $this->get('/events/'.$event->slug)
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            expect(landingOffers($page)[0]['endPrice'])->toMatchArray([
+                'unitAmountGross' => '19.00',
+                'taxRate' => '0.00',
+                'includesTax' => false,
+            ]);
+        });
+});
+
+/**
+ * Fail soft (the contract's own rule, and the asymmetry to
+ * `Pages\RegistrantAudience`): an offer Commerce cannot price — an unknown
+ * tax class crossing the scalar boundary, a brand with no settlement
+ * identity — loses its end price and nothing else. The card then prints the
+ * declared net amount with "excl. VAT", which is what this page did before
+ * #234. The guard itself lives at the boundary and is pinned by
+ * `commerce/tests/EndPriceCalculatorBindingTest`; what matters here is that
+ * a `null` entry reaches the page instead of a 500.
+ */
+it('leaves an offer the calculator cannot price with its declaration and no end price', function (): void {
+    $this->withBrand();
+
+    app()->bind(EndPriceCalculator::class, fn (): EndPriceCalculator => new class implements EndPriceCalculator
+    {
+        /**
+         * @param  list<array{unitAmountNet: string, taxClass: string}>  $lines
+         * @return list<EndPriceData|null>
+         */
+        public function endPricesFor(string $brandId, array $lines): array
+        {
+            return array_fill(0, count($lines), null);
+        }
+    });
+
+    $event = Event::factory()->published()->create();
+    RegistrationType::factory()->forEvent($event->getKey())->create([
+        'price_declaration' => new PriceDeclarationData('19.00', TaxClass::Standard, PriceDisplay::Gross),
+    ]);
+
+    $this->get('/events/'.$event->slug)
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            $offer = landingOffers($page)[0];
+
+            expect($offer['price']['unitAmountNet'])->toBe('19.00')
+                ->and($offer['endPrice'])->toBeNull();
+        });
 });
 
 /**
@@ -469,6 +602,12 @@ it('lists the offers of a merely announced event', function (): void {
  * declares a net amount and a tax class as plain scalars, Commerce computes
  * the end price PAngV requires (#3) through the same `TaxCalculator` the
  * product cards on this very page run through.
+ *
+ * #234 moved *where*: `ShopController` used to fill `unitAmountGross` into
+ * this payload on its way out, which is why `/shop` was the only public
+ * surface with an end price on it. The slot computes its own now, behind
+ * Platform's contract, and the amounts are unchanged — that is the point of
+ * asserting them here and on the landing page above.
  */
 it('carries a Commerce-computed gross amount for every priced offer on the shop', function (): void {
     $brand = $this->withBrand();
@@ -500,9 +639,13 @@ it('carries a Commerce-computed gross amount for every priced offer on the shop'
             // 19.00 net at the standard 19% rate, and 10.00 at the reduced
             // 7% — the same arithmetic `GrossPricesTest` pins for products.
             expect($offers['Weekend Ticket']['price'])
-                ->toMatchArray(['unitAmountNet' => '19.00', 'unitAmountGross' => '22.61', 'display' => 'gross'])
+                ->toMatchArray(['unitAmountNet' => '19.00', 'display' => 'gross'])
+                ->and($offers['Weekend Ticket']['endPrice'])
+                ->toMatchArray(['unitAmountGross' => '22.61', 'currency' => 'EUR', 'includesTax' => true])
                 ->and($offers['Reduced Ticket']['price'])
-                ->toMatchArray(['unitAmountNet' => '10.00', 'unitAmountGross' => '10.70', 'display' => 'net']);
+                ->toMatchArray(['unitAmountNet' => '10.00', 'display' => 'net'])
+                ->and($offers['Reduced Ticket']['endPrice'])
+                ->toMatchArray(['unitAmountGross' => '10.70']);
         });
 });
 
@@ -522,7 +665,10 @@ it('leaves a free offer without a price untouched on the shop', function (): voi
 
     $this->get('/shop')
         ->assertOk()
-        ->assertInertia(fn (AssertableInertia $page) => expect(shopIndexOffers($page)[0]['price'])->toBeNull());
+        ->assertInertia(function (AssertableInertia $page): void {
+            expect(shopIndexOffers($page)[0]['price'])->toBeNull()
+                ->and(shopIndexOffers($page)[0]['endPrice'])->toBeNull();
+        });
 });
 
 /**

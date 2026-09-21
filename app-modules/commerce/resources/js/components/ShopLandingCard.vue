@@ -27,6 +27,12 @@ const props = defineProps<{
      * an older payload reaches it; the slot always sends it.
      */
     smallBusinessScheme?: boolean;
+    /**
+     * The brand's currency (#234). Optional for the same reason, and the
+     * card simply prints the amount without one if an older payload
+     * reaches it — never a symbol nobody chose.
+     */
+    currency?: string;
 }>();
 </script>
 
@@ -59,7 +65,7 @@ const props = defineProps<{
                     <span
                         class="shrink-0 text-sm whitespace-nowrap text-text-muted"
                     >
-                        {{ displayUnitAmount(product) }} €
+                        {{ displayUnitAmount(product) }} {{ props.currency }}
                         {{
                             taxNote(
                                 product.priceDisplay,

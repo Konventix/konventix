@@ -56,6 +56,16 @@ way.
   reverse charge, §19 UStG exemption — is applied in Commerce. Nobody can answer
   "where does VAT live" with a single module name, so both SPECs have to state
   the split or it will be re-argued on every tax ticket.
+- A public page that must print an end price therefore needs Commerce in the
+  request, which a landing page and a static-page block do not have. The
+  answer (#234, D-COM-20, 2026-09-21) is a contract rather than an exception:
+  Platform owns `Pricing\EndPriceCalculator`, Commerce binds the one
+  implementation over its own `TaxCalculator`, and a declaring module passes
+  net amounts and tax *classes* as scalars and gets amounts back. It fails
+  soft — nothing bound, or a line Commerce cannot price, answers null and the
+  surface prints the declared net amount with its label — because the
+  declaration alone is still an honest thing to show, which is what this
+  decision said in the first place.
 - Reverse charge requires the billing party's VAT ID, which Registration does not
   have when a type is configured. The declared rate is therefore a default that
   the Commerce calculation may legitimately override on evidence Registration

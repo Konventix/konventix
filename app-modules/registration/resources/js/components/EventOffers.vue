@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
 import { useId } from 'vue';
 import { formatDateTime } from '@/lib/datetime';
+import OfferPrice from './OfferPrice.vue';
 
 /**
  * Registration's contribution to Event's `event.landing` slot: what a
@@ -35,6 +36,14 @@ import { formatDateTime } from '@/lib/datetime';
  * renders the same markup with its own heading, so the heading is a prop
  * defaulting to the landing page's "Register", and the heading id comes
  * from `useId()` — a composed page may carry the block twice.
+ *
+ * #234: the price is `OfferPrice`, once, for both branches. Until it was
+ * extracted this component printed `unitAmountNet` with a tax note only
+ * where the type said `net` — so a `gross` type (the B2C default) showed a
+ * bare amount that was *lower* than what the visitor would pay, beside a
+ * Commerce card on the same page showing the real end price with "incl.
+ * VAT". The offers carry `endPrice` now, computed by Commerce behind
+ * Platform's contract (`PublicOfferData::$endPrice`).
  */
 type Offer = Konventix.Registration.Data.PublicOfferData;
 
@@ -76,16 +85,11 @@ const headingId = useId();
                         </span>
                     </span>
 
-                    <span
-                        v-if="offer.price"
+                    <OfferPrice
+                        :price="offer.price"
+                        :end-price="offer.endPrice"
                         class="shrink-0 text-sm whitespace-nowrap text-text-muted"
-                    >
-                        {{ offer.price.unitAmountNet }} €
-                        {{ offer.price.display === 'net' ? 'excl. VAT' : '' }}
-                    </span>
-                    <span v-else class="shrink-0 text-sm text-text-muted">
-                        Free
-                    </span>
+                    />
 
                     <ArrowRight class="size-4 shrink-0 text-text-muted" />
                 </Link>
@@ -113,16 +117,11 @@ const headingId = useId();
                         </span>
                     </span>
 
-                    <span
-                        v-if="offer.price"
+                    <OfferPrice
+                        :price="offer.price"
+                        :end-price="offer.endPrice"
                         class="shrink-0 text-sm whitespace-nowrap text-text-muted"
-                    >
-                        {{ offer.price.unitAmountNet }} €
-                        {{ offer.price.display === 'net' ? 'excl. VAT' : '' }}
-                    </span>
-                    <span v-else class="shrink-0 text-sm text-text-muted">
-                        Free
-                    </span>
+                    />
                 </div>
             </li>
         </ul>

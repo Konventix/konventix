@@ -9,10 +9,12 @@ import EventOffers from '../EventOffers.vue';
  * Props are resolved server-side by
  * `Konventix\Registration\Blocks\TicketsForEventBlock::resolve()` and are
  * the very list the event landing page's `event.landing` slot renders, so
- * the markup is `EventOffers` itself — net amount and "excl. VAT" exactly as
- * the landing page prints them. A Commerce-computed gross amount (what
- * `/shop` shows) is not available in the block pipeline; see the module's
- * TODO.md against #234.
+ * the markup is `EventOffers` itself — and since #234 that includes the
+ * end price: `PublicOffers::forEvent()` computes it behind Platform's
+ * `Pricing\EndPriceCalculator`, so a block on a static page prints the same
+ * amount as the landing page and `/shop`. The block pipeline needed no
+ * post-processing hook for it, which is why the contract lives in Platform
+ * rather than in `ShopController`.
  *
  * `found: false` — the event is gone, another brand's, or not listable —
  * renders nothing rather than failing the page; so does an event with no

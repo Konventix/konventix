@@ -28,6 +28,8 @@ const props = defineProps<{
      * contains no VAT and the label must say so (branch review finding 12).
      */
     smallBusinessScheme: boolean;
+    /** The brand's currency (#234) — never a hardcoded symbol. */
+    currency: string;
 }>();
 
 const page = usePage();
@@ -107,7 +109,7 @@ function addToCart(): void {
             </p>
 
             <p class="text-lg font-medium text-text">
-                {{ displayUnitAmount(props.product) }} €
+                {{ displayUnitAmount(props.product) }} {{ props.currency }}
                 <span class="text-sm font-normal text-text-muted">
                     {{
                         taxNote(
@@ -141,7 +143,8 @@ function addToCart(): void {
                             — sold out
                         </template>
                         <template v-else>
-                            — {{ variantAmount(variant) }} €
+                            — {{ variantAmount(variant) }}
+                            {{ props.currency }}
                             {{
                                 taxNote(
                                     props.product.priceDisplay,

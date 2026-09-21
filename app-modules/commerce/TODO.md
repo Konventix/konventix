@@ -119,9 +119,23 @@
       (Task 3) is skipped by name in `DryRunTest` rather than walked — a real
       gap, not a "not a screen" skip. Have the seed refund one paid order per
       archetype once a natural spot for it exists in the seeding flow.
-- [ ] Partial credit notes. `IssueCreditNote` accepts a `$totalGross`
-      override, but the tax split is still the invoice's — a genuine partial
-      needs its own line-level calculation through `TaxCalculator`.
+- [x] Partial credit notes with their own tax split (round 4, Task 23,
+      D-REG-15, #7). `IssueCreditNote` takes explicit net/tax/gross instead
+      of copying the invoice's, so the rate
+      `CreditNoteDocumentRenderer` derives from those totals is the one that
+      was charged, and it guards "the sum of an invoice's credit notes never
+      exceeds its gross". `RefundUnitsOnRegistrationQuantityReduced` computes
+      the amounts from the order line's snapshotted `unit_amount_net` and
+      `tax_rate` with `TaxCalculator`'s formula;
+      `RecordRefund`'s partial branch keeps the order `paid`, allows a
+      second partial, emits no `OrderLineCancelled` and is idempotent on
+      `credit_notes.reduction_key`. #7's three acceptance criteria are met
+      for the case this flow produces — **still open**, and why #7 is not
+      closed by itself: a general per-line allocation across an order with
+      *mixed* tax rates, which needs a caller that names which lines a
+      partial refund touches. #73's remaining console work (a partial-refund
+      form on the order page) is untouched — the console button still
+      refunds whole.
 - [x] Cancellation as a domain flow (distinct from refund, which was
       already built): `OrderCancelled` now has a producer,
       `CancelOrderForUnpaidReversal` (ADR-0057 point 4) — reached from the
@@ -211,10 +225,6 @@
 - [ ] #233 — `cart_lines` deadlock risk: an FK `KEY SHARE` → `NO KEY UPDATE`
       lock escalation on `carts` at four sites, plus two unordered
       multi-row lock sites. Filed, code untouched.
-- [ ] #234 — gross/net mismatch on the event landing page: the Registration
-      card cannot show the gross amount without a new cross-module tax
-      contract (ADR-0004 forbids importing `Commerce\Tax\*`). Filed, needs
-      a design decision, not a fix.
 - [ ] PlaceRegistrationLineInCart's read-then-insert can lose a race to cart_lines_request_key_unique and throw a QueryException out of a listener, the same shape PlaceOrderFromSettlementRequest carries. The 2026-08-27 rush never surfaced it (0 × 5xx across 754 arrivals), so this stays a converge-on-conflict cleanup — catch the violation and re-read the line the winner created, as OpenCart::for() already does.
 - [ ] The reversal mail still sends a cart order the neutral interim text
       rather than a pay link, though the link works since #186 — see
@@ -230,6 +240,19 @@
       cart's line row.
 
 ## Done
+
+- [x] #234 / D-COM-20 — one end price on every public surface (round 4,
+      Task 21): `Pricing\TaxCalculatorEndPrices` answers Platform's
+      `Pricing\EndPriceCalculator` (bound beside `WaitingRoomGate`), one
+      `TaxCalculator::calculate()` pass per batch with the §19 election and
+      the currency read through `OperatorSettings`, a `null` entry for a
+      line it cannot price. Commerce still computes every end price on the
+      instance; what moved is the *caller* — `ShopController::withGrossPrices()`
+      is gone and the `shop.index` slot no longer post-processes a
+      contributor's payload, so a landing page and a static-page block get
+      the same amount without a Commerce controller in the request.
+      `smallBusinessScheme` stays a page prop, and the shop pages now name
+      the brand's `currency` instead of a hardcoded symbol.
 
 - [x] Every displayed entity links to its page on the payer's surfaces
       (bugfix round 2026-09-21, Task 17b): `commerce/my/Show.vue`'s heading

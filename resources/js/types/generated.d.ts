@@ -427,6 +427,7 @@ declare namespace Konventix {
                 | 'payment-reversed'
                 | 'dispute-opened'
                 | 'payment-unapplied'
+                | 'unit-refund-failed'
                 | 'sweep-cancelled-unsettled';
             export type OrderStatus =
                 | 'pending'
@@ -1034,6 +1035,13 @@ declare namespace Konventix {
                 readonly slug: string;
                 readonly brandId: string | null;
             };
+            export type EndPriceData = {
+                readonly unitAmountNet: string;
+                readonly unitAmountGross: string;
+                readonly taxRate: string;
+                readonly currency: string;
+                readonly includesTax: boolean;
+            };
             export type EnvironmentRibbonData = {
                 name: string;
                 label: string;
@@ -1284,6 +1292,7 @@ declare namespace Konventix {
                 readonly salesStart: string | null;
                 readonly eventName: string | null;
                 readonly eventSlug: string | null;
+                readonly endPrice: Konventix.Platform.Data.EndPriceData | null;
             };
             export type QuotaData = {
                 readonly name: string;
@@ -1297,6 +1306,7 @@ declare namespace Konventix {
                 readonly settlement: string;
                 readonly confirmationGate: string;
                 readonly price: Konventix.Registration.Data.PriceDeclarationData | null;
+                readonly endPrice: Konventix.Platform.Data.EndPriceData | null;
                 readonly termsDays: number;
                 readonly maxQuantity: number;
             };
@@ -1311,6 +1321,8 @@ declare namespace Konventix {
                 readonly wasPaid: boolean;
                 readonly cartUrl: string | null;
                 readonly cartHoldExpiresAt: string | null;
+                readonly removedUnits: number | null;
+                readonly newQuantity: number | null;
             };
             export type RegistrationTypeData = {
                 readonly eventId: string;
@@ -1361,9 +1373,15 @@ declare namespace Konventix {
                 | 'registration.approve-registrations'
                 | 'registration.reject-registrations'
                 | 'registration.cancel-registrations'
+                | 'registration.reduce-registration-quantity'
                 | 'registration.issue-invitation-tokens'
                 | 'registration.export-registrations';
             export type PriceDisplay = 'net' | 'gross';
+            export type QuantityReductionReason =
+                | 'registrant-request'
+                | 'duplicate-booking'
+                | 'operator-correction'
+                | 'goodwill';
             export type RegistrationApproval = 'none' | 'required';
             export type RegistrationSettlement =
                 'free' | 'instant' | 'invoice' | 'external';

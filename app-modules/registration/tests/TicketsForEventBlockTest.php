@@ -12,8 +12,10 @@ use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\StaticPage;
 use Konventix\Registration\Blocks\TicketsForEventBlock;
+use Konventix\Registration\Data\PriceDeclarationData;
 use Konventix\Registration\Enums\PriceDisplay;
 use Konventix\Registration\Enums\RegistrationVisibility;
+use Konventix\Registration\Enums\TaxClass;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
 
@@ -159,7 +161,7 @@ it('yields no offers for a draft, an unlisted or an archived event', function ()
     }
 });
 
-it('renders the block through the full static-page pipeline with the landing page\'s net price', function (): void {
+it('renders the block through the full static-page pipeline with the landing page\'s declared price', function (): void {
     $this->withBrand();
     $summary = ticketsBlockSummary(['name' => 'Xpertise Con']);
     RegistrationType::factory()
@@ -184,4 +186,40 @@ it('renders the block through the full static-page pipeline with the landing pag
             ->where('blocks.0.props.offers.0.name', 'Weekend Ticket')
             ->where('blocks.0.props.offers.0.price.unitAmountNet', '30.00')
             ->where('blocks.0.props.offers.0.price.display', 'net'));
+});
+
+/**
+ * #234 (D-COM-20): the end price reaches a *static page* too, which is the
+ * reason the contract lives in Platform rather than in `ShopController`.
+ * The block pipeline has no post-processing hook a controller could hang a
+ * Commerce pass off — `PublicOffers` asks Platform's
+ * `Pricing\EndPriceCalculator` itself, so the block inherits the amount
+ * without knowing Commerce exists.
+ *
+ * 19.00 at the standard rate is 22.61 here, on `/shop`, on the landing page
+ * and on a product card: one calculator, one answer.
+ */
+it('carries the Commerce-computed end price through the static-page pipeline', function (): void {
+    $this->withBrand();
+    $summary = ticketsBlockSummary(['name' => 'Xpertise Con']);
+    RegistrationType::factory()->forEvent($summary->event_id)->create([
+        'name' => 'Weekend Ticket',
+        'price_declaration' => new PriceDeclarationData('19.00', TaxClass::Standard, PriceDisplay::Gross),
+    ]);
+
+    StaticPage::factory()->published()->create([
+        'slug' => 'tickets',
+        'blocks' => [
+            ['type' => 'tickets-for-event', 'data' => ['eventId' => $summary->event_id, 'heading' => null]],
+        ],
+    ]);
+
+    $this->get('/pages/tickets')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('blocks.0.props.offers.0.price.display', 'gross')
+            ->where('blocks.0.props.offers.0.endPrice.unitAmountNet', '19.00')
+            ->where('blocks.0.props.offers.0.endPrice.unitAmountGross', '22.61')
+            ->where('blocks.0.props.offers.0.endPrice.currency', 'EUR')
+            ->where('blocks.0.props.offers.0.endPrice.includesTax', true));
 });

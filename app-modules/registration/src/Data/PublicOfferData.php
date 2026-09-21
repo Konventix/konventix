@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Data;
 
+use Konventix\Platform\Data\EndPriceData;
 use Konventix\Registration\Enums\RegistrationApproval;
 use Konventix\Registration\Models\RegistrationType;
 use Spatie\LaravelData\Data;
@@ -44,6 +45,16 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * 17c): set from the same summary row on `/shop`, where the card links the
  * event's name to its page, and null on the landing page, which is that
  * page already.
+ *
+ * `endPrice` is what the offer actually costs (#234, D-COM-20): `price` is
+ * Registration's *declaration* — a net amount, a tax class and a display
+ * choice — and only Commerce can turn that into money (ADR-0017). It
+ * arrives computed, through Platform's `Pricing\EndPriceCalculator`, which
+ * the caller resolves once for the whole list; this class takes a value and
+ * never reaches into the container (`.ai/rules/data.md`). Null where no end
+ * price could be computed — nothing bound, a brand with no settlement
+ * identity — and the surface then prints the declared net amount with its
+ * "excl. VAT" label, which is what every one of these cards did before.
  */
 #[TypeScript]
 final class PublicOfferData extends Data
@@ -58,6 +69,7 @@ final class PublicOfferData extends Data
         public readonly ?string $salesStart = null,
         public readonly ?string $eventName = null,
         public readonly ?string $eventSlug = null,
+        public readonly ?EndPriceData $endPrice = null,
     ) {}
 
     /**
@@ -65,8 +77,12 @@ final class PublicOfferData extends Data
      * public static `from*` method through its magic-creation resolver
      * (.ai/rules/data.md).
      */
-    public static function ofType(RegistrationType $registrationType, ?string $eventName = null, ?string $eventSlug = null): self
-    {
+    public static function ofType(
+        RegistrationType $registrationType,
+        ?string $eventName = null,
+        ?string $eventSlug = null,
+        ?EndPriceData $endPrice = null,
+    ): self {
         return new self(
             registrationTypeId: $registrationType->id,
             name: $registrationType->name,
@@ -85,6 +101,7 @@ final class PublicOfferData extends Data
             salesStart: $registrationType->sales_start?->toIso8601String(),
             eventName: $eventName,
             eventSlug: $eventSlug,
+            endPrice: $endPrice,
         );
     }
 }

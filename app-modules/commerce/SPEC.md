@@ -289,7 +289,13 @@ BaFin/ZAG licensing.
   already paid.
 - **Pricing and tax calculation** — line totals, tax rates, and the net-vs-gross
   *display* decision, which Commerce applies from the flag declared on the
-  `RegistrationType` (ADR-0006).
+  `RegistrationType` (ADR-0006). Every public end price on the instance is
+  still computed here (#234, D-COM-20): what changed is who asks.
+  `Pricing\TaxCalculatorEndPrices` answers Platform's
+  `Pricing\EndPriceCalculator`, so a landing page, a static-page block and
+  `/shop` get the same amount from the same `TaxCalculator` without a
+  Commerce controller in the request — `ShopController` no longer
+  post-processes a `shop.index` contributor's payload.
 - **`Invoice`, credit notes, and cancellations** — including **per-brand
   invoice number ranges**, which are legally cleaner when brands appear as
   separate identities (ADR-0001).
@@ -378,8 +384,38 @@ BaFin/ZAG licensing.
   `POST /admin/orders/{order}/refund`, capability `commerce.issue-refunds`,
   reason from `RefundReason` plus a free-text note, both recorded in the
   audit trail. Neither is printed on the credit note, which always says
-  "Grund: Erstattung". Partial refunds stay Action-only until #7 splits the
-  tax correctly. A whole-order refund releases the seat for both kinds of
+  "Grund: Erstattung". Partial refunds stay out of the console's own form —
+  the button refunds the whole order — but they are no longer Action-only
+  guesswork: **the per-unit refund** (D-REG-15, #7) is driven by
+  Registration and computed exactly. `RefundUnitsOnRegistrationQuantityReduced`
+  finds the order line by `settles_kind = 'registration'` and `settles_ref`
+  (both order shapes write the pair), takes `removed_units × unit_amount_net`
+  plus tax at the **line's own snapshotted rate** through `TaxCalculator`'s
+  formula, and hands all three amounts to `IssueCreditNote`, which since then
+  writes the caller's net/tax/gross instead of copying the invoice's — so the
+  VAT rate `CreditNoteDocumentRenderer` derives from those two totals is the
+  rate that was actually charged (#7's first two criteria). The sum of an
+  invoice's credit notes can never exceed its gross (#7's third), guarded
+  inside the transaction that draws the number, since a credit note is
+  immutable (ADR-0031). On that branch the **order stays `paid`**: the sale
+  still stands for the units the buyer kept, a second reduction of the same
+  order is legitimate, and no `OrderLineCancelled` goes out because
+  Registration has already released what it released. Every money write is
+  idempotent on the reduction's ULID (`credit_notes.reduction_key`, unique
+  per brand), read before the provider is called and again under the order
+  lock. The check-in guard is **per admission** there rather than per
+  registration — ADR-0037's own consequence — so one attendee among five no
+  longer blocks the money for four people who never came; what is refused is
+  a refund of more units than the registration has admissions nobody used.
+  The listener is queued with `$afterCommit`, which is load-bearing:
+  Admission's synchronous listener on the same event throws when too few
+  admissions are free, and the rollback that follows drops this job's push.
+  A provider or guard refusal after that point reaches nobody's request, so
+  it becomes a `commerce.operations` notice (`unit-refund-failed`, ADR-0057
+  point 8) and the money is sent back by hand; the refund that did go through
+  writes a `commerce.order.units-refunded` audit entry carrying the units and
+  the amount. #7's *general* per-line allocation across mixed rates stays
+  open: one line at one rate is the only case this flow can produce. A whole-order refund releases the seat for both kinds of
   order: a direct registration order through `OrderRefunded` with
   `whole: true`, a cart order through one `OrderLineCancelled` per
   registration-kind line with reason `order_refunded`. A partial refund
@@ -605,6 +641,7 @@ maintains from them.
 |---|---|---|
 | `RegistrationSettlementRequested` | Registration | Create the order (and, for `settlement: invoice`, the invoice) from the lines and billing party in the payload — without reading a single Registration model. Lines carry the declared tax *class*; the rate and treatment (reverse charge, §19 UStG) are resolved here at settlement time (ADR-0017, ADR-0030) and snapshotted onto the order lines. **Cart line when shop + instant, else order (ADR-0047, Task 10):** an `instant` settlement on a brand with `commerce:shop` active becomes one `registration`-kind `CartLine` in the registrant's own cart instead — the registration already exists and already holds its quota, only where the money settles changes; every other case (`invoice`, or the feature off) still gets the direct order this listener always produced |
 | `RegistrationCancelled` (proposed) | Registration | Cancel the open order, or issue a credit note if an invoice was already issued |
+| `RegistrationQuantityReduced` (D-REG-15) | Registration | The registration bought fewer units, so the money for exactly those goes back — see the refund section above. Queued `afterCommit` so a refusal in Admission, whose listener runs synchronously inside Registration's transaction, drops this job before it is pushed. No order (a `free` or `external` registration, ADR-0026) and an order that is not `paid` are both no-ops: the reduction stands either way |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler, which must reconcile deletion with statutory invoice retention |
 | `BrandCreated` (proposed) | Platform | Initialize the brand's invoice number range and its (unconnected) settlement account |
 | `EventPublished` (proposed) | Event | Maintain the event read model used to group and report revenue |

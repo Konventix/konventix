@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import OfferPrice from '../../components/OfferPrice.vue';
 
 /**
  * Props are `Konventix\Registration\Data\RegistrationFormData` (ADR-0009) —
@@ -19,6 +20,12 @@ import { Label } from '@/components/ui/label';
  * its own and cannot see an ambient global namespace — the build fails with
  * "Unresolvable type reference". The generated type is usable one level
  * down (see the type editor's `type:` prop), never as the root.
+ *
+ * #234: this is the page where the consumer concludes the contract, so the
+ * amount beside the button is the end price PAngV (#3) means — rendered by
+ * `OfferPrice`, the same component and the same wording the landing page
+ * and `/shop` use. It printed a hardcoded "… € net" before, whatever the
+ * type declared.
  */
 type Props = {
     registrationTypeId: string;
@@ -27,6 +34,7 @@ type Props = {
     settlement: string;
     confirmationGate: string;
     price: Konventix.Registration.Data.PriceDeclarationData | null;
+    endPrice: Konventix.Platform.Data.EndPriceData | null;
     termsDays: number;
     maxQuantity: number;
 };
@@ -233,18 +241,16 @@ const offersQuantity = props.maxQuantity > 1;
                             <template v-if="props.settlement === 'free'"
                                 >This registration is free.</template
                             >
-                            <template
-                                v-else-if="
-                                    props.price !== null &&
-                                    props.settlement === 'invoice'
-                                "
-                            >
-                                {{ props.price.unitAmountNet }} € net —
-                                invoiced, payable within
-                                {{ props.termsDays }} days.
-                            </template>
                             <template v-else-if="props.price !== null">
-                                {{ props.price.unitAmountNet }} € net.
+                                <OfferPrice
+                                    :price="props.price"
+                                    :end-price="props.endPrice"
+                                />
+                                <template v-if="props.settlement === 'invoice'">
+                                    — invoiced, payable within
+                                    {{ props.termsDays }} days.
+                                </template>
+                                <template v-else>.</template>
                             </template>
                         </p>
                     </div>

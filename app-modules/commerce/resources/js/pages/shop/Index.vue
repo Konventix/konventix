@@ -35,6 +35,12 @@ const props = defineProps<{
      * one (branch review finding 12).
      */
     smallBusinessScheme: boolean;
+    /**
+     * The brand's currency (#234): a public price names it rather than
+     * assuming a symbol, the same way every order, cart and invoice line
+     * on this instance already does.
+     */
+    currency: string;
 }>();
 </script>
 
@@ -92,7 +98,7 @@ const props = defineProps<{
                     </p>
 
                     <span class="mt-auto text-sm font-medium text-text">
-                        {{ displayUnitAmount(product) }} €
+                        {{ displayUnitAmount(product) }} {{ props.currency }}
                         <span class="font-normal text-text-muted">
                             {{
                                 taxNote(

@@ -40,6 +40,8 @@ use Konventix\Platform\Operators\ConsoleEventSources;
 use Konventix\Platform\Operators\OperatorContext;
 use Konventix\Platform\Pages\PageAccess;
 use Konventix\Platform\Permissions\DefaultRole;
+use Konventix\Platform\Pricing\EndPriceCalculator;
+use Konventix\Platform\Pricing\NoEndPrices;
 use Konventix\Platform\Realtime\BrandApplicationProvider;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Platform\Storage\DiskResolver;
@@ -166,6 +168,15 @@ class PlatformServiceProvider extends ModuleServiceProvider
         // with no implementation at all would make `OperatorPresence` throw
         // rather than say "no link".
         $this->app->singletonIf(PublicLegalTexts::class, NoPublicLegalTexts::class);
+
+        // And the default answer to "what does this offer actually cost?" is
+        // "nobody here can say" (#234, D-COM-20). Commerce binds the real
+        // calculator in its own provider; `singletonIf` for the reason above,
+        // so provider order cannot overwrite it. Unlike
+        // `Pages\RegistrantAudience`, which fails closed, this one fails soft:
+        // the surface then prints the declared net amount with its
+        // "excl. VAT" label rather than an end price.
+        $this->app->singletonIf(EndPriceCalculator::class, NoEndPrices::class);
 
         // Config-derived and request-free: which kind of instance this is
         // does not change between two requests a worker serves.

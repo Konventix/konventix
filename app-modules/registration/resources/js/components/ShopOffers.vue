@@ -2,8 +2,8 @@
 import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
 import { formatDateTime } from '@/lib/datetime';
-import { displayUnitAmount, taxNote } from '@/lib/purchaseTexts';
 import { show as showEvent } from '@/routes/event';
+import OfferPrice from './OfferPrice.vue';
 
 /**
  * Registration's contribution to Commerce's `shop.index` slot (#240): what
@@ -36,44 +36,22 @@ import { show as showEvent } from '@/routes/event';
  *
  * The amount follows ADR-0017 to the letter (#240, review finding 8):
  * Registration declares a net amount and a tax *class*, and Commerce — which
- * owns money (ADR-0006) — computes the end price and writes `unitAmountGross`
- * back into the payload on its way out of `ShopController`. Nothing here does
- * arithmetic on a price, and the wording comes from the shared
- * `@/lib/purchaseTexts` the product cards on this page use, because a PAngV
- * end price that read differently three inches apart is exactly what #3 was
- * filed about.
+ * owns money (ADR-0006) — computes the end price. Since #234 it arrives as
+ * `PublicOfferData::$endPrice`, computed behind Platform's
+ * `Pricing\EndPriceCalculator` by the very `TaxCalculator` the product cards
+ * on this page run through, instead of being patched into this payload by
+ * `ShopController` on its way out — which is why this component needed a
+ * hand-written intersection type for a field the generator did not know
+ * about, and why the landing page could not have one at all. Nothing here
+ * does arithmetic on a price, and the wording is `OfferPrice`'s, shared with
+ * the landing page and the registration form, because a PAngV end price that
+ * read differently three inches apart is exactly what #3 was filed about.
  */
-/**
- * `unitAmountGross` is not on `PriceDeclarationData` — Registration cannot
- * compute it — so it is declared here as what Commerce adds to the payload
- * for this page.
- */
-type OfferPrice = Konventix.Registration.Data.PriceDeclarationData & {
-    unitAmountGross: string;
-    /**
-     * False under the operator's §19 UStG election (ADR-0030), where the
-     * amount contains no VAT at all — only Commerce knows that, so it says
-     * so in the payload (branch review finding 12).
-     */
-    includesTax: boolean;
-};
-
-type Offer = Omit<Konventix.Registration.Data.PublicOfferData, 'price'> & {
-    price: OfferPrice | null;
-};
+type Offer = Konventix.Registration.Data.PublicOfferData;
 
 const props = defineProps<{
     offers: Offer[];
 }>();
-
-/** Which of the two amounts this brand's `price_display` says to print (#3). */
-function amount(price: OfferPrice): string {
-    return displayUnitAmount({
-        unitAmountNet: price.unitAmountNet,
-        unitAmountGross: price.unitAmountGross,
-        priceDisplay: price.display,
-    });
-}
 </script>
 
 <template>
@@ -111,18 +89,10 @@ function amount(price: OfferPrice): string {
                     <span
                         class="mt-auto flex items-center gap-2 pt-2 text-sm font-medium text-text"
                     >
-                        <template v-if="offer.price">
-                            {{ amount(offer.price) }} €
-                            <span class="font-normal text-text-muted">
-                                {{
-                                    taxNote(
-                                        offer.price.display,
-                                        offer.price.includesTax,
-                                    )
-                                }}
-                            </span>
-                        </template>
-                        <template v-else>Free</template>
+                        <OfferPrice
+                            :price="offer.price"
+                            :end-price="offer.endPrice"
+                        />
                         <span class="flex-1" />
                         <Link
                             :href="offer.url"
@@ -166,20 +136,11 @@ function amount(price: OfferPrice): string {
                         <template v-else>Not on sale</template>
                     </span>
 
-                    <span class="mt-auto pt-2 text-sm font-medium text-text">
-                        <template v-if="offer.price">
-                            {{ amount(offer.price) }} €
-                            <span class="font-normal text-text-muted">
-                                {{
-                                    taxNote(
-                                        offer.price.display,
-                                        offer.price.includesTax,
-                                    )
-                                }}
-                            </span>
-                        </template>
-                        <template v-else>Free</template>
-                    </span>
+                    <OfferPrice
+                        :price="offer.price"
+                        :end-price="offer.endPrice"
+                        class="mt-auto pt-2 text-sm font-medium text-text"
+                    />
                 </div>
             </li>
         </ul>

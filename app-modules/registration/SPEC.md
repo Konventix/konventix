@@ -43,7 +43,20 @@ is entitled to what*; other modules materialize those entitlements.
   `max_quantity_per_registration` (nullable, null means one, so a type opts
   in) and by what the type's quotas still have left. It multiplies the quota
   units held, the settlement line's quantity and every grant's own
-  multiplicity.
+  multiplicity. It is edited in exactly one direction and by exactly one
+  Action: `ReduceRegistrationQuantity` (D-REG-15) takes `1 <= N < quantity`
+  units back off a **confirmed** registration, releases that many units to
+  every quota the type draws on one at a time (so the waitlist, which stays
+  one unit per entry, makes N offers rather than one), writes a
+  `RegistrationQuantityReduction` row whose ULID is the idempotency key
+  every other module keys on, and emits `RegistrationQuantityReduced`.
+  Removing the last unit is refused — that is a cancellation, and
+  `CancelRegistration` owns it — and a reduction never touches an
+  amendment's own units, so a later cancellation still releases each unit
+  exactly once. The capability is `registration.reduce-registration-quantity`,
+  deliberately not part of `registration.desk`: the reduction moves money
+  through Commerce without the operator ever opening the order. Buyer
+  self-service is a later item.
   `registrant_user_id` is required, never nullable: **D-REG-08**
   (`docs/inventory/decision-log.md` Round 5) settled that registrants must
   hold an account in Phase 1 — guest registration (a registrant with no
@@ -101,6 +114,13 @@ is entitled to what*; other modules materialize those entitlements.
 - The **price and tax-treatment declaration** on the `RegistrationType`,
   including the net-vs-gross display flag, which hangs on the type and not on a
   global setting (ADR-0006). Registration declares it; Commerce applies it.
+  Every public surface of this module — the `event.landing` slot, the
+  `tickets-for-event` block, the `shop.index` slot and the registration form —
+  shows what the offer *costs* beside what it declares (#234, D-COM-20):
+  `PublicOffers::endPricesFor()` asks Platform's
+  `Pricing\EndPriceCalculator`, which Commerce binds, and nothing here
+  imports `Commerce\Tax\*` or learns a tax rate. Where nothing answers, the
+  declared net amount is shown with its "excl. VAT" label.
 
 ## Does not own
 
@@ -132,6 +152,7 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 | `RegistrationSettlementRequested` | A registration on a `settlement` of `instant` or `invoice` needs an order. **Gate-dependent emission:** `on_payment` types emit at submission (paying must precede confirming), all other gates emit at confirmation — the two points partition, no double emission. A priced amendment emits a third time, keyed on itself. `external` never emits: money moves off-platform, and door payment is a Commerce POS concern (ADR-0018) | `registration_id`, `registration_type_id`, `event_id`, `brand_id`, `settlement`, `billing_party` (scalars incl. address, `country_code`, `vat_id`), `lines` (list of `{label, quantity, unit_amount_net, tax_class}` — the declared tax *class*, never a rate: Commerce resolves the rate and treatment, ADR-0017/ADR-0030. The initial request is one line at the registration's own `quantity` and the type's **per-unit** net, so the cart and the order both multiply; an amendment sends the delta's own lines), `price_display` (`net` / `gross`), `terms_days`, `requested_at`, `request_key` (the ULID of whatever requested settlement — the registration for the initial request, the amendment for a delta; Commerce's order idempotency key, ADR-0036), `saleStartsAt`/`saleEndsAt` (nullable ISO-8601 instants. Null means *not window-bound*: the window travels only with a fresh registration, never with a waitlist conversion, a post-approval confirmation or a priced amendment, #218) |
 | `RegistrationAmended` | Grants are added to an already-confirmed registration (ADR-0036). Always emitted; the money side is separate and conditional, so a free amendment — crew that comes with an exhibitor's package — emits only this | `registration_id`, `amendment_id`, `registration_type_id`, `event_id`, `brand_id`, `registrant_user_id`, `grants` (**only the added** grants, same scalar shape as `RegistrationConfirmed`), `amended_at` |
 | `RegistrationCancelled` | The contractual act is cancelled by organizer or registrant | `registration_id`, `cancelled_by_user_id`, `reason_code`, `cancelled_at` |
+| `RegistrationQuantityReduced` | An operator took units off a **confirmed** registration (D-REG-15) — the subtractive counterpart of `RegistrationAmended`, and the only partial cancellation there is | `registration_id`, `reduction_id` (the idempotency key downstream modules key on), `registration_type_id`, `event_id`, `brand_id`, `registrant_user_id`, `removed_units`, `previous_quantity`, `new_quantity`, `removed_grants` (**only what is taken away**, same scalar shape as `RegistrationConfirmed.grants` and already multiplied by `removed_units`), `reason_code`, `reduced_by_user_id`, `reduced_at`. **Consumer ordering is part of the contract:** Admission's listener is synchronous and throws when fewer than `removed_units` admissions are free, Commerce's is queued `afterCommit` — so a refused revocation rolls the whole reduction back and refunds nothing |
 | `RegistrationPaymentStatusChanged` | The independent payment status field moves | `registration_id`, `brand_id`, `previous_status`, `status`, `changed_at` |
 | `QuotaExhausted` | The last unit of a quota is consumed | `quota_id`, `event_id`, `brand_id`, `exhausted_at` |
 | `QuotaReleased` | Units return to a quota after cancellation or expiry | `quota_id`, `released_units`, `released_at` |
@@ -165,7 +186,8 @@ data, not code (ADR-0013).
 
 The catalog covers: viewing registrations, managing `RegistrationType`
 definitions, managing quotas, approving and rejecting submissions, cancelling
-registrations, issuing invitation tokens, and exporting registration lists.
+registrations, reducing a confirmed registration's quantity (D-REG-15),
+issuing invitation tokens, and exporting registration lists.
 Registration never references another module's `Permission` enum.
 
 ## Mail
@@ -191,6 +213,7 @@ contractual act's own lifecycle, not a notification a recipient can mute.
 | `registration.rejected` | `Listeners\MailOnRegistrationRejected` on `RegistrationRejected` | The registrant | — |
 | `registration.confirmed` | `Listeners\MailOnRegistrationConfirmed` on `RegistrationConfirmed` | The registrant | — |
 | `registration.cancelled` | `Listeners\MailOnRegistrationCancelled` on `RegistrationCancelled` | The registrant | — |
+| `registration.quantity-reduced` | `Listeners\MailOnRegistrationQuantityReduced` on `RegistrationQuantityReduced` (D-REG-15) — the one lifecycle mail whose subject is not an end state, so it names what remains as well as what went | The registrant | — |
 
 An `on_approval`-gated type still sends both `registration.approved` and
 `registration.confirmed` for the same approval — two mails in one request

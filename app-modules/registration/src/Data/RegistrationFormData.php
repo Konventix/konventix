@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Data;
 
+use Konventix\Platform\Data\EndPriceData;
 use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\RegistrationType;
+use Konventix\Registration\Offers\PublicOffers;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -15,6 +17,13 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * /events/{event}/register/{type}`, ADR-0009). The single source for what
  * the page is allowed to know about the offer it renders — never an inline
  * `->map(fn ...)` array in the controller.
+ *
+ * `price` is the declaration and `endPrice` what it actually costs (#234,
+ * D-COM-20) — the same pair `PublicOfferData` carries, computed by the same
+ * Commerce arithmetic behind Platform's `Pricing\EndPriceCalculator`. This
+ * is the page where a consumer concludes the contract, so PAngV (#3) wants
+ * the end price here most of all; until #234 it printed "… € net" in hard
+ * markup whatever the type declared.
  */
 #[TypeScript]
 final class RegistrationFormData extends Data
@@ -26,6 +35,7 @@ final class RegistrationFormData extends Data
         public readonly string $settlement,
         public readonly string $confirmationGate,
         public readonly ?PriceDeclarationData $price,
+        public readonly ?EndPriceData $endPrice,
         public readonly int $termsDays,
 
         /**
@@ -48,6 +58,14 @@ final class RegistrationFormData extends Data
             // The declared price is an intention, not a guarantee (ADR-0017):
             // the invoice's actual treatment is resolved by Commerce.
             price: $registrationType->price_declaration,
+            // Through the same helper the landing page and `/shop` use, so
+            // the three surfaces cannot print three different amounts for
+            // one type — a batch of one. It resolves the calculator at call
+            // time (`app()->bound()`), never holding it: this factory is
+            // already the page's own read of the type (see
+            // `maxQuantityFor()` below), and a constructor-injected
+            // calculator would pin Commerce into every caller.
+            endPrice: PublicOffers::endPricesFor([$registrationType])[0],
             termsDays: $registrationType->terms_days,
             maxQuantity: self::maxQuantityFor($registrationType),
         );

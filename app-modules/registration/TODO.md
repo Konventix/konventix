@@ -6,6 +6,21 @@
 
 ## Next
 
+- [x] Partial cancellation with a per-unit refund (round 4, Task 23,
+      D-REG-15): `registration_quantity_reductions` (ULID = the idempotency
+      key every other module keys on), `Actions\ReduceRegistrationQuantity`
+      (confirmed only, `1 <= N < quantity`, releases N units one at a time so
+      the waitlist makes N one-unit offers, leaves `amendedUnits()` alone),
+      `Events\RegistrationQuantityReduced`,
+      `Permission::ReduceRegistrationQuantity` (**not** in
+      `registration.desk`), `POST /admin/registrations/{registration}/reduce-quantity`
+      with a dialog on the list row, audit `registration.quantity-reduced`,
+      and the sixth lifecycle mail `registration.quantity-reduced`. The
+      ordering that keeps a used ticket's money from going back is carried by
+      listener semantics alone — Admission's listener is synchronous and
+      throws, Commerce's is queued `afterCommit` — and is documented in the
+      Action's docblock. Not built: buyer self-service (a later item), and
+      *raising* a quantity, which is still an amendment's job.
 - [x] Quantity on the registration form (bugfix round 2026-09-21, Task 19):
       `registrations.quantity` (default 1) and
       `registration_types.max_quantity_per_registration` (nullable, null
@@ -31,15 +46,18 @@
       name beside — never around — the row's own link. `EventOffers.vue`
       stays unlinked on purpose: it renders on the event's landing page and
       inside the `tickets-for-event` block, which names its event itself.
-- [ ] The `tickets-for-event` block prints the landing page's net amount
-      with "excl. VAT" (`EventOffers.vue`), never a gross end price: the
-      gross figure is Commerce's (ADR-0006/ADR-0017) and `ShopController`
-      writes it into the `shop.index` payload on its way out, while the
-      static-page block pipeline (`BlockCompositionRenderer`) has no such
-      hook. A visitor-facing PAngV end price on a composed page needs the
-      same enrichment Commerce does for `/shop` — the gross-display gap
-      #234 is about — and until then the block says exactly what the
-      landing page says.
+- [x] #234 / D-COM-20 — one end price on every public surface (round 4,
+      Task 21): `PublicOfferData` and `RegistrationFormData` carry
+      `endPrice` (`Platform\Data\EndPriceData`), computed by
+      `PublicOffers::endPricesFor()` through Platform's
+      `Pricing\EndPriceCalculator` — one resolution per list, at call time
+      (`app()->bound()`), never injected into the slot closures the
+      `SlotRegistry` singleton outlives the request with. The landing slot,
+      the `tickets-for-event` block, the `shop.index` slot and the
+      registration form all render it through one `OfferPrice.vue`
+      (`displayUnitAmount()` + `taxNote()`), falling back to the declared
+      net amount with "excl. VAT" where nothing could be computed. ADR-0006
+      is unchanged: a `net` type still shows its labelled net amount.
 - [x] Category-quota ceiling, the consumer half (design §12b, #282):
       `quotas.resource_type_id` (nullable ULID, no FK) links a quota to a
       Resources category, set from the quota form's category select
