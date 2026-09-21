@@ -30,6 +30,20 @@
 
 ## Done
 
+- [x] `CountdownBlock` links the event name (bugfix round 2026-09-21,
+      Task 17b): `CountdownResolvedData.slug` under the hero's rule —
+      set only when `isVisibleOnLanding()`, so a draft's countdown never
+      links to a landing page that 404s; `CountdownBlock.vue` links through
+      Wayfinder's `event.show`. `BlockTypesTest`.
+- [x] The per-event attendee-list switch (bugfix round 2026-09-21, Task
+      15, ADR-0064): `events.attendee_list_visibility`
+      (`Enums\AttendeeListVisibility`, `off`/`members`/`public`, default
+      off) in the event editor beside the re-entry policy, and
+      `Events\EventAttendeeListPolicyChanged` emitted at creation and on
+      every change with the complete current value — the shape of
+      `EventReentryPolicyChanged`, for the same ADR-0004 reason.
+      `event:replay-details` does not re-fire it; Registration's summary
+      column was backfilled once by its own migration instead.
 - [x] The event hero links to the event (2026-09-21 bugfix round, task 8):
       `Data\Blocks\EventHeroResolvedData` gained `slug`, set only when the
       event `isVisibleOnLanding()` (null when not found, cross-brand, or a

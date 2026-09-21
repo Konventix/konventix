@@ -25,6 +25,11 @@ import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
  * it in the cart", not "nothing to pay". Exactly one of the two props is
  * ever set — the server picks — and both null still renders nothing, which
  * is the right answer for a free registration.
+ *
+ * `orderUrl` on either prop is the order's own page (bugfix round
+ * 2026-09-21, Task 17b): the invoice number and an "Order details" link
+ * lead there, and a cart that became an order links that order rather than
+ * only the list.
  */
 type Settlement = Konventix.Commerce.Data.RegistrationSettlementData;
 type CartSettlement = Konventix.Commerce.Data.RegistrationCartSettlementData;
@@ -104,7 +109,8 @@ const reversed = computed(
                 class="text-sm text-text-muted"
                 role="status"
             >
-                Checkout started — finish it from your orders.
+                Checkout started — finish it from your
+                {{ props.cart.orderUrl ? 'order' : 'orders' }}.
             </p>
             <p v-else class="text-sm text-text-muted" role="status">
                 Your cart reservation ran out before this registration was paid,
@@ -120,6 +126,14 @@ const reversed = computed(
             >
                 <ShoppingCart class="size-4" />
                 Pay now in the cart
+            </Link>
+            <Link
+                v-else-if="props.cart.orderUrl"
+                :href="props.cart.orderUrl"
+                class="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-subtle"
+            >
+                <CreditCard class="size-4" />
+                Go to your order
             </Link>
             <Link
                 v-else-if="props.cart.ordersUrl"
@@ -173,6 +187,13 @@ const reversed = computed(
             >
                 {{ props.settlement.status.replace('_', ' ') }}
             </span>
+            <Link
+                v-if="props.settlement.orderUrl"
+                :href="props.settlement.orderUrl"
+                class="text-sm text-text-muted underline underline-offset-4 hover:text-text"
+            >
+                Order details
+            </Link>
 
             <span class="flex-1" />
 
@@ -191,7 +212,16 @@ const reversed = computed(
             class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[10rem_1fr]"
         >
             <dt class="text-text-muted">Invoice</dt>
-            <dd>{{ props.settlement.invoiceNumber }}</dd>
+            <dd>
+                <Link
+                    v-if="props.settlement.orderUrl"
+                    :href="props.settlement.orderUrl"
+                    class="underline-offset-4 hover:underline"
+                >
+                    {{ props.settlement.invoiceNumber }}
+                </Link>
+                <template v-else>{{ props.settlement.invoiceNumber }}</template>
+            </dd>
             <dt class="text-text-muted">Issued</dt>
             <dd>{{ formatCalendarDate(props.settlement.issuedOn) }}</dd>
             <dt class="text-text-muted">Due</dt>

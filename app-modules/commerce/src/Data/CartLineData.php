@@ -33,6 +33,12 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * remaining stock *plus* what this line already holds — the ceiling a
  * quantity increase may reach, not the remaining stock alone — and is
  * `null` for a registration line, which has no stock of its own.
+ *
+ * `url` is where the label links (bugfix round 2026-09-21, Task 17b): the
+ * registration's own page for a registration line, the shop product page
+ * for a product line whose product is still published
+ * (`Cart\ProductPageUrls`), null otherwise — resolved by the controller,
+ * which already holds the variants, and rendered as plain text when null.
  */
 #[TypeScript]
 final class CartLineData extends Data
@@ -47,9 +53,10 @@ final class CartLineData extends Data
         public readonly string $lineGross,
         public readonly bool $canChangeQuantity,
         public readonly ?int $maxQuantity,
+        public readonly ?string $url,
     ) {}
 
-    public static function ofLine(CartLine $line, string $lineGross, ?int $maxQuantity): self
+    public static function ofLine(CartLine $line, string $lineGross, ?int $maxQuantity, ?string $url = null): self
     {
         return new self(
             id: $line->getKey(),
@@ -61,6 +68,7 @@ final class CartLineData extends Data
             lineGross: $lineGross,
             canChangeQuantity: $line->kind === CartLineKind::Product,
             maxQuantity: $maxQuantity,
+            url: $url,
         );
     }
 }

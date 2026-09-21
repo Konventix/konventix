@@ -21,6 +21,7 @@ use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\SeatingMode;
 use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\ResourceBooking;
+use Konventix\Resources\Models\ResourceEventWindow;
 use Konventix\Resources\Models\ResourceType;
 
 /**
@@ -88,7 +89,7 @@ final class SeatPickController
 
         $data = new SeatPickerData(
             registrationId: $registration,
-            claim: SeatClaimData::fromModel($claim),
+            claim: SeatClaimData::fromModel($claim, ResourceEventWindow::forEvent($claim->brand_id, $claim->event_id)),
             categories: $categories,
             plans: $plans,
             availability: $availability->handle($claim),

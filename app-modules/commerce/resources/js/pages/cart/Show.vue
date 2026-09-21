@@ -180,7 +180,14 @@ const expiresInMinutes = computed<number | null>(() => {
                     class="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised p-4"
                 >
                     <div class="flex min-w-0 flex-1 flex-col gap-1">
-                        <span class="font-medium text-text">{{
+                        <Link
+                            v-if="line.url"
+                            :href="line.url"
+                            class="font-medium text-text underline-offset-4 hover:underline"
+                        >
+                            {{ line.label }}
+                        </Link>
+                        <span v-else class="font-medium text-text">{{
                             line.label
                         }}</span>
                         <span class="text-sm text-text-muted">

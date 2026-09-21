@@ -4,8 +4,8 @@ import { ArrowLeft } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import AdmissionSeatController from '@/actions/Konventix/Resources/Http/Controllers/AdmissionSeatController';
 import SeatAvailabilityController from '@/actions/Konventix/Resources/Http/Controllers/SeatAvailabilityController';
-import Heading from '@/components/Heading.vue';
 import { show as showTicket } from '@/routes/admission/tickets';
+import { show as showEvent } from '@/routes/event';
 import { show as showRegistration } from '@/routes/registration/mine';
 import type { Reason } from '../../components/plan/eligibility';
 import {
@@ -44,7 +44,9 @@ import { useAvailabilityPoll } from '../../components/plan/useAvailabilityPoll';
  * 2026-09-21 bugfix round: a click on another place at the cap swaps
  * (`selectWithSwap`, the oldest selection leaves) instead of refusing;
  * the list of places as buttons is off by default behind the panel's
- * Accessibility toggle.
+ * Accessibility toggle. Task 17b of the same round: the heading names the
+ * event (`claim.eventName`, projected from Event's contract events) and
+ * links it to the landing page when a slug is known.
  */
 // A bare `type Props = Konventix.Resources.Data.SeatPickerData;` fails the
 // SFC compiler's macro type resolver ("Unresolvable type reference"); every
@@ -198,11 +200,23 @@ watch(availability, (places) => {
                 {{ perTicket ? 'Your ticket' : 'Your registration' }}
             </Link>
 
-            <Heading
-                as="h1"
-                :title="pageTitle"
-                :description="pageDescription"
-            />
+            <header class="mb-8 space-y-0.5">
+                <h1 class="text-xl font-semibold tracking-tight">
+                    {{ pageTitle
+                    }}<template v-if="props.claim.eventName">
+                        —
+                        <Link
+                            v-if="props.claim.eventSlug"
+                            :href="showEvent(props.claim.eventSlug).url"
+                            class="underline-offset-4 hover:underline"
+                        >
+                            {{ props.claim.eventName }}
+                        </Link>
+                        <template v-else>{{ props.claim.eventName }}</template>
+                    </template>
+                </h1>
+                <p class="text-sm text-text-muted">{{ pageDescription }}</p>
+            </header>
         </div>
 
         <!-- An `assign`-mode claim is the organiser's to place: no picker at

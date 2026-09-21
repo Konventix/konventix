@@ -103,6 +103,14 @@
       than blocking the slice on it, but the entry itself was never
       written until now.
 
+- [ ] The picker's event link (Task 17b) is not gated on landing-page
+      visibility the way Event's own hero and countdown blocks are
+      (`isVisibleOnLanding()`): Resources projects name and slug from
+      `EventCreated`/`EventRenamed` and hears nothing about publication
+      state. A confirmed registrant's event is practically always visible,
+      so this stays a note until Event emits a visibility change worth
+      projecting.
+
 ## Backlog
 
 Tracked in the "Nach Event" issue (design 2026-09-10 §14): floors and
@@ -119,6 +127,12 @@ event (#90).
 
 ## Done
 
+- [x] The seat picker names and links its event (bugfix round 2026-09-21,
+      Task 17b): `SeatClaimData.eventName`/`eventSlug` from
+      `ResourceEventWindow` (Resources' own projection, ADR-0004), both
+      controllers pass the window, `seating/Pick.vue`'s heading links the
+      name to the landing page when a slug is known. `SeatPickPageTest`,
+      `AdmissionSeatControllerTest`.
 - [x] Seating (#80, S0–S6, 2026-09-10). S0 refactors: per-booking idempotency
       and `n` unit bookings in `FulfilResourceClaims`, unit-mode quantity guard,
       cancellation and rejection listeners (ungated, ADR-0060), amendment

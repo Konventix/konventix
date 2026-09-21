@@ -102,7 +102,9 @@ it('offers the archived invoice, and downloads the sealed copy', function (): vo
     $user = User::factory()->create();
     $registration = Registration::factory()->create(['registrant_user_id' => $user->getKey()]);
 
-    $order = Order::factory()->settles('registration', $registration->getKey())->paid()->create();
+    // The registrant is the payer (ADR-0044); the order link below is
+    // withheld for a payer-less order, which `/my/orders/{order}` 404s.
+    $order = Order::factory()->settles('registration', $registration->getKey())->forPayer($user->getKey())->paid()->create();
 
     $invoice = Invoice::factory()->create([
         'order_id' => $order->getKey(),
@@ -115,10 +117,12 @@ it('offers the archived invoice, and downloads the sealed copy', function (): vo
 
     $this->actingAs($user)
         ->get('/my/registrations/'.$registration->getKey())
-        ->assertInertia(function (AssertableInertia $page) use (&$url, $invoice): void {
+        ->assertInertia(function (AssertableInertia $page) use (&$url, $invoice, $order): void {
             $settlement = settlementProps($page);
 
-            expect($settlement['invoiceNumber'])->toBe('KVX-2026-00042');
+            // Task 17b (2026-09-21): the slot links the order's own page.
+            expect($settlement['invoiceNumber'])->toBe('KVX-2026-00042')
+                ->and($settlement['orderUrl'])->toBe('/my/orders/'.$order->getKey());
 
             $url = $settlement['documentUrl'];
 
@@ -240,7 +244,7 @@ it('says the reservation lapsed while the sweep has not caught up with it yet', 
         ->assertInertia(fn (AssertableInertia $page) => expect(cartSettlementProps($page)['status'])->toBe('expired'));
 });
 
-it('points a checked-out cart line at the payer\'s orders', function (): void {
+it('points a checked-out cart line at the order it became, and at the payer\'s orders', function (): void {
     $this->withBrand();
 
     $user = User::factory()->create();
@@ -248,18 +252,21 @@ it('points a checked-out cart line at the payer\'s orders', function (): void {
 
     $cart = Cart::factory()->forPayer($user->getKey())->create();
     CartLine::factory()->forCart($cart)->registration()->create(['ref_id' => $registration->getKey()]);
+    $order = Order::factory()->create(['settles_type' => 'cart', 'settles_id' => $cart->getKey()]);
     $cart->forceFill([
         'status' => CartStatus::CheckedOut,
-        'checked_out_order_id' => Order::factory()->create(['settles_type' => 'cart', 'settles_id' => $cart->getKey()])->getKey(),
+        'checked_out_order_id' => $order->getKey(),
     ])->save();
 
     $this->actingAs($user)
         ->get('/my/registrations/'.$registration->getKey())
-        ->assertInertia(function (AssertableInertia $page): void {
+        ->assertInertia(function (AssertableInertia $page) use ($order): void {
             $cartSettlement = cartSettlementProps($page);
 
             expect($cartSettlement['status'])->toBe('checkout_started')
                 ->and($cartSettlement['ordersUrl'])->toBe('/my/orders')
+                // Task 17b (2026-09-21): the order's own page, not only the list.
+                ->and($cartSettlement['orderUrl'])->toBe('/my/orders/'.$order->getKey())
                 ->and($cartSettlement['cartUrl'])->toBeNull();
         });
 });

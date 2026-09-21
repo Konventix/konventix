@@ -134,6 +134,10 @@ it('renders the picker with SeatPickerData for the claim owner', function (): vo
             ->where('claim.id', $scene['claim']->getKey())
             ->where('claim.quantity', 2)
             ->where('claim.resourceTypeIds', [$scene['type']->getKey()])
+            // Task 17b (2026-09-21): the heading names and links the event,
+            // read from Resources' own window projection (ADR-0004).
+            ->where('claim.eventName', $scene['window']->name)
+            ->where('claim.eventSlug', $scene['window']->slug)
             ->where('categories.0.id', $scene['type']->getKey())
             ->where('categories.0.token', 'chart-1')
             ->where('categories.0.symbol', 'armchair')

@@ -57,6 +57,7 @@ final class CountdownBlock implements BlockType, HasBlockEditor, ResolvesBlockPr
             label: $payload->label,
             eventName: $event?->name,
             targetIso: $event?->startsAtInstant()->toIso8601String(),
+            slug: $event !== null && $event->isVisibleOnLanding() ? $event->slug : null,
         )->toArray();
     }
 

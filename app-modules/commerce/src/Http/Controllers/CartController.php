@@ -16,6 +16,7 @@ use Konventix\Commerce\Actions\ChangeCartLineQuantity;
 use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\PlaceOrderFromCart;
 use Konventix\Commerce\Actions\RemoveCartLine;
+use Konventix\Commerce\Cart\ProductPageUrls;
 use Konventix\Commerce\Data\AddToCartData;
 use Konventix\Commerce\Data\BillingPartyData;
 use Konventix\Commerce\Data\CartData;
@@ -102,8 +103,9 @@ final class CartController
             ->whereIn('id', $lines->where('kind', CartLineKind::Product)->pluck('ref_id'))
             ->get()
             ->keyBy('id');
+        $productUrls = app(ProductPageUrls::class)->forVariantIds($variantsById->keys());
 
-        $lineData = array_values($lines->values()->map(function (CartLine $line, int $index) use ($calculation, $variantsById): CartLineData {
+        $lineData = array_values($lines->values()->map(function (CartLine $line, int $index) use ($calculation, $variantsById, $productUrls): CartLineData {
             $calculatedLine = $calculation === null ? null : $calculation->lines[$index];
             $variant = $line->kind === CartLineKind::Product ? $variantsById->get($line->ref_id) : null;
 
@@ -111,6 +113,10 @@ final class CartController
                 $line,
                 $calculatedLine !== null ? $calculatedLine->lineGross : $line->unit_amount_net,
                 $variant === null ? null : $variant->remaining() + $line->quantity,
+                url: match ($line->kind) {
+                    CartLineKind::Product => $productUrls[$line->ref_id] ?? null,
+                    CartLineKind::Registration => route('registration.mine.show', ['registration' => $line->ref_id], absolute: false),
+                },
             );
         })->all());
 

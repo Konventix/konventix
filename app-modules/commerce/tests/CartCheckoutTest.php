@@ -823,3 +823,26 @@ it('checks out and records nothing on an instance whose purchase texts are unpub
     expect(Order::query()->count())->toBe(1)
         ->and(Consent::query()->count())->toBe(0);
 });
+
+/**
+ * Task 17b (2026-09-21): every line on the cart page links to its page —
+ * the registration line to the registration, the product line to the shop
+ * product page (`Cart\ProductPageUrls`).
+ */
+it('links each cart line to its registration or its shop product page', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    $registrationId = (string) Str::ulid();
+    cartCheckoutMixedCart($brand, $user->getKey(), $registrationId);
+    $slug = Product::query()->sole()->slug;
+
+    test()->actingAs($user)
+        ->get('/cart')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('cart.lines.0.kind', 'product')
+            ->where('cart.lines.0.url', '/shop/'.$slug)
+            ->where('cart.lines.1.kind', 'registration')
+            ->where('cart.lines.1.url', '/my/registrations/'.$registrationId));
+});

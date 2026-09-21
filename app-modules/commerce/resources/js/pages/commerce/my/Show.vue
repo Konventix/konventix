@@ -9,12 +9,12 @@ import {
     XCircle,
 } from '@lucide/vue';
 import { computed } from 'vue';
-import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { taxNote } from '@/lib/purchaseTexts';
 import { index as myOrders } from '@/routes/commerce/mine';
+import { show as showRegistration } from '@/routes/registration/mine';
 
 /**
  * One order on its own page — where every hosted checkout lands afterwards,
@@ -29,6 +29,10 @@ import { index as myOrders } from '@/routes/commerce/mine';
  * the same sentence `pay/Show.vue` uses — rather than guessing. A payer who
  * cancelled at the provider sees the same state plus the "Pay now" button
  * the list already offers, which is what keeps the cancel path working.
+ *
+ * Task 17b of the same round: the heading links the registration an order
+ * settles (as the list does), and every line links to its registration or
+ * its shop product page when the server resolved a URL for it.
  */
 type Order = Konventix.Commerce.Data.MyOrderDetailData;
 
@@ -85,11 +89,21 @@ const billingLines = computed(() => {
             My orders
         </Link>
 
-        <Heading
-            as="h1"
-            :title="props.order.settlesLabel"
-            :description="`Placed ${formatDateTime(props.order.placedAt)}`"
-        />
+        <header class="mb-2 space-y-0.5">
+            <h1 class="text-xl font-semibold tracking-tight">
+                <Link
+                    v-if="props.order.settlesType === 'registration'"
+                    :href="showRegistration(props.order.settlesId).url"
+                    class="underline-offset-4 hover:underline"
+                >
+                    {{ props.order.settlesLabel }}
+                </Link>
+                <template v-else>{{ props.order.settlesLabel }}</template>
+            </h1>
+            <p class="text-sm text-text-muted">
+                Placed {{ formatDateTime(props.order.placedAt) }}
+            </p>
+        </header>
 
         <div
             v-if="paid"
@@ -173,8 +187,10 @@ const billingLines = computed(() => {
                     <span>
                         {{ line.quantity }}×
                         <Link
-                            v-if="line.registrationUrl"
-                            :href="line.registrationUrl"
+                            v-if="line.registrationUrl ?? line.productUrl"
+                            :href="
+                                line.registrationUrl ?? line.productUrl ?? ''
+                            "
                             class="underline-offset-4 hover:underline"
                         >
                             {{ line.label }}

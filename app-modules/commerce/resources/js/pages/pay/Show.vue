@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import {
     CheckCircle2,
     Clock3,
@@ -45,7 +45,7 @@ type Props = {
         totalNet: string;
         totalTax: string;
         totalGross: string;
-        lines: { label: string; quantity: number; lineGross: string }[];
+        lines: Konventix.Commerce.Data.MyOrderLineData[];
     };
     accounts: Konventix.Commerce.Data.CheckoutAccountData[];
     paymentStatus: string | null;
@@ -143,7 +143,19 @@ const lastAttemptFailed = computed(
                     :key="index"
                     class="flex items-center justify-between"
                 >
-                    <span>{{ line.quantity }}× {{ line.label }}</span>
+                    <span>
+                        {{ line.quantity }}×
+                        <Link
+                            v-if="line.registrationUrl ?? line.productUrl"
+                            :href="
+                                line.registrationUrl ?? line.productUrl ?? ''
+                            "
+                            class="underline-offset-4 hover:underline"
+                        >
+                            {{ line.label }}
+                        </Link>
+                        <template v-else>{{ line.label }}</template>
+                    </span>
                     <span>{{ line.lineGross }} {{ props.order.currency }}</span>
                 </div>
                 <div

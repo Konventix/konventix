@@ -216,8 +216,28 @@
       needs an owner).
 - [ ] Reverb connection and broadcast metrics once Reverb offers a hook (#173).
 
+- [ ] `pay/Show.vue` (309 lines) and `cart/Show.vue` (428) are over the
+      ~300-line guideline (CLAUDE_extra.md); the cart page was already there
+      before Task 17b added its line links. Extract the order-summary card
+      the three pay/order pages share (`pay/Show.vue`, `pay/Order.vue`,
+      `commerce/my/Show.vue` render the same `MyOrderLineData` list) and the
+      cart's line row.
+
 ## Done
 
+- [x] Every displayed entity links to its page on the payer's surfaces
+      (bugfix round 2026-09-21, Task 17b): `commerce/my/Show.vue`'s heading
+      links the registration an order settles (as the list does);
+      `RegistrationSettlementData` and `RegistrationCartSettlementData`
+      carry `orderUrl` (`/my/orders/{order}`, withheld for a payer-less
+      order the page would 404) so the `registration.mine.show` slot links
+      the invoice number, an "Order details" link and a checked-out cart's
+      order; `MyOrderLineData.productUrl` beside `registrationUrl`, resolved
+      by `Cart\ProductPageUrls` (published product, `commerce:shop` on —
+      the two conditions `shop.show` answers under), and both pay pages now
+      render that Data shape instead of inline line arrays; `CartLineData.url`
+      links each cart line. `MyOrderDetailTest`, `RegistrationSettlementSlotTest`,
+      `CheckoutPageTest`, `OrderRepayPageTest`, `CartCheckoutTest`.
 - [x] Every operator notice links absolutely and the payer mails land on the
       order (bugfix round 2026-09-21, Task 9): `Operations\AdminUrl` is the
       one rule behind the six `commerce.operations` producers (the four

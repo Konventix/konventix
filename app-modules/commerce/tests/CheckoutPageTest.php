@@ -99,6 +99,8 @@ function checkoutPageOrder(bool $stripeConnected = true): array
         'order_id' => $order->id,
         'label' => 'Weekend ticket',
         'line_gross' => '119.00',
+        'settles_kind' => 'registration',
+        'settles_ref' => $registrationId,
     ]);
 
     $account = null;
@@ -128,6 +130,8 @@ it('shows the order summary for a registration ULID', function (): void {
             ->component('pay/Show')
             ->where('order.totalGross', '119.00')
             ->where('order.lines.0.label', 'Weekend ticket')
+            // Task 17b (2026-09-21): the line links its registration.
+            ->where('order.lines.0.registrationUrl', '/my/registrations/'.$registrationId)
             ->has('accounts', 1)
             ->where('accounts.0.provider', 'stripe')
             ->where('paymentStatus', null));

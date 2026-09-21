@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Commerce\Data;
 
 use Illuminate\Support\Facades\URL;
+use Konventix\Commerce\Cart\ProductPageUrls;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
@@ -84,6 +85,9 @@ final class MyOrderData extends Data
             : str_replace('_', ' ', ucfirst($order->settles_type));
 
         $payLink = app(PayLink::class)->forOrder($order);
+        $productUrls = app(ProductPageUrls::class)->forVariantIds(
+            $order->lines->where('settles_kind', 'product')->pluck('settles_ref'),
+        );
 
         return new self(
             id: $order->getKey(),
@@ -111,7 +115,7 @@ final class MyOrderData extends Data
                 ['invoice' => $invoice->getKey()],
                 absolute: false,
             ),
-            lines: array_values($order->lines->map(fn (OrderLine $line): MyOrderLineData => MyOrderLineData::ofLine($line))->all()),
+            lines: array_values($order->lines->map(fn (OrderLine $line): MyOrderLineData => MyOrderLineData::ofLine($line, $productUrls))->all()),
             creditNotes: array_map(
                 fn (CreditNote $creditNote): MyCreditNoteData => MyCreditNoteData::ofCreditNote($creditNote),
                 $creditNotes,

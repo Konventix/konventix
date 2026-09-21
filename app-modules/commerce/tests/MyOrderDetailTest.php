@@ -13,8 +13,11 @@ use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\Product;
+use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
+use Laravel\Pennant\Feature;
 
 /**
  * `/my/orders/{order}` — one order on its own page (bugfix round
@@ -202,4 +205,42 @@ it('offers "Pay now" on a pending order that nobody has tried to pay yet', funct
             ->where('order.paymentStatus', null)
             ->where('order.repayDueOn', null)
             ->where('order.payUrl', '/pay/registration/'.$order->settles_id));
+});
+
+/**
+ * Task 17b of the same round: a product line links to its shop page — but
+ * only to one that answers. `Cart\ProductPageUrls` resolves the variant's
+ * product slug when the product is still published and the brand has the
+ * shop on; an unpublished product, or a brand with the shop off, leaves the
+ * line as plain text rather than a link to a 404.
+ */
+it('links a product line to its shop page only while that page answers', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $me = User::factory()->create();
+    $published = ProductVariant::factory()
+        ->for(Product::factory()->published()->create(['slug' => 'event-shirt']), 'product')
+        ->create();
+    $draft = ProductVariant::factory()
+        ->for(Product::factory()->create(['slug' => 'not-yet']), 'product')
+        ->create();
+
+    $order = Order::factory()->forPayer($me->getKey())->create(['settles_type' => 'cart', 'settles_id' => (string) Str::ulid()]);
+    OrderLine::factory()->forOrder($order)->create(['settles_kind' => 'product', 'settles_ref' => $published->getKey()]);
+    OrderLine::factory()->forOrder($order)->create(['position' => 2, 'settles_kind' => 'product', 'settles_ref' => $draft->getKey()]);
+
+    $this->actingAs($me)
+        ->get('/my/orders/'.$order->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('order.lines.0.productUrl', '/shop/event-shirt')
+            ->where('order.lines.0.registrationUrl', null)
+            ->where('order.lines.1.productUrl', null));
+
+    Feature::for($brand)->deactivate('commerce:shop');
+
+    $this->actingAs($me)
+        ->get('/my/orders/'.$order->getKey())
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('order.lines.0.productUrl', null));
 });

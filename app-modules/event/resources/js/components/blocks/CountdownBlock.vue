@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
+import { show as showEvent } from '@/routes/event';
 import CountdownTimer from '../countdown/CountdownTimer.vue';
 
 /**
@@ -8,13 +10,16 @@ import CountdownTimer from '../countdown/CountdownTimer.vue';
  * hands it straight to `CountdownTimer` without any timezone math of its
  * own. `found` is false when the stored event ULID no longer resolves
  * (deleted, or a different brand); the block then renders nothing rather
- * than a broken countdown.
+ * than a broken countdown. `slug` is set only when the event is visible on
+ * its landing page (the hero's rule); the event name links there then and
+ * stays plain text otherwise (bugfix round 2026-09-21, Task 17b).
  */
 defineProps<{
     found: boolean;
     label: string | null;
     eventName: string | null;
     targetIso: string | null;
+    slug: string | null;
 }>();
 </script>
 
@@ -25,7 +30,17 @@ defineProps<{
     >
         <p class="text-sm font-medium tracking-wide text-text-muted uppercase">
             {{ label ?? 'Countdown'
-            }}<template v-if="eventName"> — {{ eventName }}</template>
+            }}<template v-if="eventName">
+                —
+                <Link
+                    v-if="slug"
+                    :href="showEvent(slug).url"
+                    class="underline-offset-4 hover:underline"
+                >
+                    {{ eventName }}
+                </Link>
+                <template v-else>{{ eventName }}</template>
+            </template>
         </p>
         <CountdownTimer :target-iso="targetIso" />
     </section>

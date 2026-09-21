@@ -73,6 +73,18 @@ it('resolves event-hero without a slug for a draft event, so the hero never link
     expect($props['slug'])->toBeNull();
 });
 
+it('resolves countdown without a slug for a draft event, the same rule as the hero', function (): void {
+    $this->withBrand();
+
+    $event = Event::factory()->create(['name' => 'Not yet announced']);
+
+    $props = (new CountdownBlock)->resolve(['eventId' => $event->getKey()]);
+
+    expect($props['found'])->toBeTrue();
+    expect($props['eventName'])->toBe('Not yet announced');
+    expect($props['slug'])->toBeNull();
+});
+
 it('resolves event-hero to a graceful not-found shape when the event does not exist', function (): void {
     $this->withBrand();
 
@@ -97,6 +109,8 @@ it('resolves countdown props to the event\'s starting instant, not the raw wall-
     expect($props['found'])->toBeTrue();
     expect($props['label'])->toBe('Doors open in');
     expect($props['targetIso'])->toBe($event->startsAtInstant()->toIso8601String());
+    // Task 17b (2026-09-21): a visible event's slug, so the block links its name.
+    expect($props['slug'])->toBe($event->slug);
     // A real instant, unlike EventHeroBlock's raw wall-clock strings: its UTC
     // reading is offset from the naive "10:00" once converted through
     // Europe/Berlin's summer (CEST, UTC+2) offset (ADR-0027).
@@ -142,5 +156,6 @@ it('renders event-hero and countdown blocks through the full static-page pipelin
             ->where('blocks.0.props.name', 'Xpertise Con')
             ->where('blocks.0.props.slug', $event->slug)
             ->where('blocks.1.component', 'event/blocks/CountdownBlock')
+            ->where('blocks.1.props.slug', $event->slug)
             ->where('blocks.1.props.targetIso', $event->startsAtInstant()->toIso8601String()));
 });

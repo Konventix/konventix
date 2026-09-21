@@ -16,6 +16,8 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
+use Konventix\Commerce\Models\Product;
+use Konventix\Commerce\Models\ProductVariant;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeCheckoutSession;
@@ -118,7 +120,18 @@ function orderRepayFailedCartOrder(User $payer, bool $held = true): array
         'total_gross' => '35.70',
         'currency' => 'EUR',
     ]);
-    OrderLine::factory()->forOrder($order)->create(['label' => 'Con Shirt', 'quantity' => 1, 'line_gross' => '35.70']);
+    // A product line of a published product (Task 17b, 2026-09-21): the
+    // page links it to the shop page.
+    $variant = ProductVariant::factory()
+        ->for(Product::factory()->published()->create(['slug' => 'con-shirt']), 'product')
+        ->create();
+    OrderLine::factory()->forOrder($order)->create([
+        'label' => 'Con Shirt',
+        'quantity' => 1,
+        'line_gross' => '35.70',
+        'settles_kind' => 'product',
+        'settles_ref' => $variant->getKey(),
+    ]);
 
     $cart = Cart::factory()->create([
         'payer_user_id' => $payer->getKey(),
@@ -148,6 +161,7 @@ it('shows the order, its hold and the failed attempt to the buyer', function ():
             ->where('order.totalGross', '35.70')
             ->has('order.lines', 1)
             ->where('order.lines.0.label', 'Con Shirt')
+            ->where('order.lines.0.productUrl', '/shop/con-shirt')
             ->where('paymentStatus', 'failed')
             ->where('payable', true)
             ->where('refusalReason', null)

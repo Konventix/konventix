@@ -31,6 +31,13 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * both mails, all three reading `PayLink`, still offered it. Four surfaces,
  * one rule. `repayDueOn` is the day that money is owed back by (point 4);
  * a link without it does not say when the seat goes away.
+ *
+ * `orderUrl` is the order's own page, `/my/orders/{order}` (bugfix round
+ * 2026-09-21, Task 17b): the slot used to print the invoice number as text
+ * and leave the reader to find the order in the list. It is set only when
+ * the order has a payer — `MyOrdersController::show()` 404s an order whose
+ * `payer_user_id` is null (a manual booking, or one placed before
+ * ADR-0044), and a link to a 404 is worse than none.
  */
 #[TypeScript]
 final class RegistrationSettlementData extends Data
@@ -46,6 +53,7 @@ final class RegistrationSettlementData extends Data
         public readonly ?string $issuedOn,
         public readonly ?string $dueOn,
         public readonly ?string $documentUrl,
+        public readonly ?string $orderUrl,
     ) {}
 
     /**
@@ -72,6 +80,9 @@ final class RegistrationSettlementData extends Data
             issuedOn: $invoice?->issued_on->toDateString(),
             dueOn: $invoice?->due_on->toDateString(),
             documentUrl: $documentUrl,
+            orderUrl: $order->payer_user_id === null
+                ? null
+                : route('commerce.mine.show', ['order' => $order->getKey()], absolute: false),
         );
     }
 }

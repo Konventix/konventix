@@ -57,6 +57,7 @@ it('opens the per-ticket picker for the holder and for the manager, capped at on
                 ->where('admissionId', $scene['admission']->id)
                 ->where('maxPlaces', 1)
                 ->where('registrationId', $scene['registrationId'])
+                ->where('claim.eventName', 'Seating test event')
                 ->where('currentPlaceIds', []));
     }
 });

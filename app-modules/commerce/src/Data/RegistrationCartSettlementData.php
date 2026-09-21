@@ -31,7 +31,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * - `checkout_started` — the cart became an order (ADR-0047 point 4). That
  *   order settles the *cart*, not this registration, so it is reachable
  *   through `/my/orders` rather than through this registration's own pay
- *   page.
+ *   page — `orderUrl` names that order's own page directly (bugfix round
+ *   2026-09-21, Task 17b), `ordersUrl` stays as the list fallback.
  */
 #[TypeScript]
 final class RegistrationCartSettlementData extends Data
@@ -49,6 +50,7 @@ final class RegistrationCartSettlementData extends Data
         public readonly ?string $expiresAt,
         public readonly ?string $cartUrl,
         public readonly ?string $ordersUrl,
+        public readonly ?string $orderUrl,
     ) {}
 
     /**
@@ -67,6 +69,9 @@ final class RegistrationCartSettlementData extends Data
             expiresAt: $status === self::STATUS_IN_CART ? $cart->expires_at->toIso8601String() : null,
             cartUrl: $status === self::STATUS_IN_CART ? route('commerce.cart.show', absolute: false) : null,
             ordersUrl: $status === self::STATUS_CHECKOUT_STARTED ? route('commerce.mine.index', absolute: false) : null,
+            orderUrl: $status === self::STATUS_CHECKOUT_STARTED && $cart->checked_out_order_id !== null
+                ? route('commerce.mine.show', ['order' => $cart->checked_out_order_id], absolute: false)
+                : null,
         );
     }
 

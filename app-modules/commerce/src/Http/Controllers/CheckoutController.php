@@ -12,7 +12,9 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Commerce\Cart\ProductPageUrls;
 use Konventix\Commerce\Data\CheckoutAccountData;
+use Konventix\Commerce\Data\MyOrderLineData;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
@@ -118,11 +120,7 @@ class CheckoutController
                 'totalNet' => $order->total_net,
                 'totalTax' => $order->total_tax,
                 'totalGross' => $order->total_gross,
-                'lines' => $order->lines->map(fn (OrderLine $line): array => [
-                    'label' => $line->label,
-                    'quantity' => $line->quantity,
-                    'lineGross' => $line->line_gross,
-                ])->all(),
+                'lines' => self::lineProps($order),
             ],
             'accounts' => $this->offeredAccounts($order)->map(fn (SettlementAccount $account): array => CheckoutAccountData::ofAccount(
                 $account,
@@ -329,11 +327,7 @@ class CheckoutController
                 'totalNet' => $model->total_net,
                 'totalTax' => $model->total_tax,
                 'totalGross' => $model->total_gross,
-                'lines' => $model->lines->map(fn (OrderLine $line): array => [
-                    'label' => $line->label,
-                    'quantity' => $line->quantity,
-                    'lineGross' => $line->line_gross,
-                ])->all(),
+                'lines' => self::lineProps($model),
             ],
             'accounts' => $this->offeredAccounts($model)->map(fn (SettlementAccount $account): array => CheckoutAccountData::ofAccount(
                 $account,
@@ -724,6 +718,25 @@ class CheckoutController
         Inertia::flash('toast', ['type' => 'info', 'message' => __('This registration is waiting in your cart — check out there.')]);
 
         return redirect()->route('commerce.cart.show');
+    }
+
+    /**
+     * The order's lines as both pay pages show them — the same
+     * `MyOrderLineData` shape "my orders" renders, so a registration line
+     * links to its registration and a product line to its shop page
+     * (bugfix round 2026-09-21, Task 17b) instead of printing plain labels.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function lineProps(Order $order): array
+    {
+        $productUrls = app(ProductPageUrls::class)->forVariantIds(
+            $order->lines->where('settles_kind', 'product')->pluck('settles_ref'),
+        );
+
+        return array_values($order->lines->map(
+            fn (OrderLine $line): array => MyOrderLineData::ofLine($line, $productUrls)->toArray(),
+        )->all());
     }
 
     /**
