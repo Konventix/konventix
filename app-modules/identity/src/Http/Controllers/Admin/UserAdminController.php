@@ -11,9 +11,11 @@ use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Identity\Actions\LockUserAccount;
+use Konventix\Identity\Actions\MergeUserAccounts;
 use Konventix\Identity\Actions\UnlockUserAccount;
 use Konventix\Identity\Actions\UpdateUserAccount;
 use Konventix\Identity\Data\AdminUpdateUserData;
+use Konventix\Identity\Data\MergeUserAccountData;
 use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
@@ -105,6 +107,21 @@ class UserAdminController
             ->whereIn('id', $roles->pluck('brand_id'))
             ->pluck('name', 'id');
 
+        // #81: the two merge-adjacent facts the edit page needs — whether
+        // this account was itself closed into another one, and which
+        // accounts this one has absorbed. Both are plain queries against
+        // Identity's own table, not a relation on `User` (its class docblock
+        // asks that every such addition be justified, and a one-off lookup
+        // used in exactly one place does not earn a permanent method).
+        $mergedInto = $user->merged_into_user_id === null
+            ? null
+            : User::query()->find($user->merged_into_user_id, ['id', 'email']);
+
+        $mergedAccounts = User::query()
+            ->where('merged_into_user_id', $user->getKey())
+            ->orderByDesc('updated_at')
+            ->get(['id', 'email', 'updated_at']);
+
         return Inertia::render('admin/users/Edit', [
             'user' => [
                 'id' => $user->getKey(),
@@ -116,7 +133,21 @@ class UserAdminController
                 'verified' => $user->email_verified_at !== null,
                 'twoFactor' => $user->two_factor_confirmed_at !== null,
                 'createdAt' => $user->created_at?->toDateString(),
+                'mergedInto' => $mergedInto === null ? null : [
+                    'id' => $mergedInto->getKey(),
+                    'email' => $mergedInto->email,
+                ],
             ],
+            'mergedAccounts' => $mergedAccounts
+                ->map(fn (User $merged): array => [
+                    'id' => $merged->getKey(),
+                    'email' => $merged->email,
+                    // Best available marker: merging is the last write a
+                    // closed account's row gets under ordinary operation.
+                    'mergedAt' => $merged->updated_at?->toIso8601String(),
+                ])
+                ->values()
+                ->all(),
             'memberships' => $memberships
                 ->map(fn (BrandMembership $membership): array => [
                     'brand' => $brandNames[$membership->brand_id] ?? $membership->brand_id,
@@ -167,6 +198,32 @@ class UserAdminController
         $action->handle($user);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Account unlocked.')]);
+
+        return to_route('admin.users.edit', $user);
+    }
+
+    /**
+     * #81: `$user` is the account that survives — see `MergeUserAccounts`'s
+     * docblock for why the direction is "whichever account this page is
+     * open on" rather than something this method infers. `ManageUsers` is
+     * the same capability `update()`/`lock()` already gate; merging two
+     * accounts is account administration, not a new capability of its own.
+     */
+    public function merge(User $user, MergeUserAccountData $data, MergeUserAccounts $action, Request $request): RedirectResponse
+    {
+        Gate::authorize(Permission::ManageUsers->value);
+
+        /** @var User $operator */
+        $operator = $request->user();
+
+        $action->handle(
+            $user,
+            $data->email,
+            $operator,
+            acknowledgedClosedAccountHistoryStaysBehind: $data->acknowledgedClosedAccountHistoryStaysBehind,
+        );
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Accounts merged.')]);
 
         return to_route('admin.users.edit', $user);
     }

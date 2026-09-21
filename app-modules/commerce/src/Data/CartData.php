@@ -30,6 +30,16 @@ final class CartData extends Data
         public readonly string $currency,
         public readonly ?string $expiresAt,
         public readonly array $accounts,
+        /**
+         * §33 UStDV vs §14 Abs. 4 UStG (#4,
+         * `GermanVat::requiresBillingAddress()`): whether checkout will
+         * refuse to complete without a billing address. The page reads
+         * this to ask for the address up front rather than only after a
+         * 422 — the authoritative check still lives server-side in
+         * `PlaceOrderFromCart::guardBillingAddress()`, since the cart can
+         * still change between this render and the submit.
+         */
+        public readonly bool $billingAddressRequired,
     ) {}
 
     /**
@@ -46,6 +56,7 @@ final class CartData extends Data
         string $totalGross,
         string $currency,
         array $accounts,
+        bool $billingAddressRequired,
     ): self {
         return new self(
             lines: $lines,
@@ -55,6 +66,7 @@ final class CartData extends Data
             currency: $currency,
             expiresAt: $cart?->expires_at->toIso8601String(),
             accounts: $accounts,
+            billingAddressRequired: $billingAddressRequired,
         );
     }
 }

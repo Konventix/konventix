@@ -11,9 +11,11 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Commerce\Actions\AddBillingAddressToOrder;
 use Konventix\Commerce\Actions\BookManualPayment;
 use Konventix\Commerce\Actions\CancelOrderForUnpaidReversal;
 use Konventix\Commerce\Actions\RefundOrder;
+use Konventix\Commerce\Data\AddOrderBillingAddressData;
 use Konventix\Commerce\Data\OrderReversalData;
 use Konventix\Commerce\Data\RefundOrderData;
 use Konventix\Commerce\Data\UnappliedPaymentData;
@@ -29,6 +31,7 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
+use Konventix\Commerce\Tax\GermanVat;
 use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
@@ -208,6 +211,23 @@ class OrderAdminController
                 'provider' => $provider,
                 'paidAt' => $model->paid_at?->toIso8601String(),
                 'createdAt' => $model->created_at?->toIso8601String(),
+                // #4: whether §14 Abs. 4 UStG applies to this order at all
+                // (`GermanVat::requiresBillingAddress()`) — the console
+                // shows the retrofit form only where it could possibly be
+                // needed, the same check `PlaceOrderFromCart` and
+                // `IssueInvoiceOnOrderPaid` already make.
+                'billingAddressRequired' => GermanVat::requiresBillingAddress($model->total_gross),
+                'billingParty' => $model->billing_party === null ? null : [
+                    'organizationName' => $model->billing_party->organizationName,
+                    'recipientName' => $model->billing_party->recipientName,
+                    'email' => $model->billing_party->email,
+                    'addressLine' => $model->billing_party->addressLine,
+                    'postalCode' => $model->billing_party->postalCode,
+                    'city' => $model->billing_party->city,
+                    'countryCode' => $model->billing_party->countryCode,
+                    'vatId' => $model->billing_party->vatId,
+                    'hasPostalAddress' => $model->billing_party->hasPostalAddress(),
+                ],
             ],
             'lines' => OrderLine::withoutBrandScope()
                 ->where('order_id', $model->getKey())
@@ -328,6 +348,34 @@ class OrderAdminController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Payment booked.')]);
 
         // Back to wherever the booking happened — index dialog or detail page.
+        return back();
+    }
+
+    /**
+     * The operator's retrofit for a paid cart order the small-amount
+     * threshold caught with no address (#4, `IssueInvoiceOnOrderPaid`'s own
+     * docblock): completes the billing party and, since an issued invoice
+     * is immutable (ADR-0031), issues the Rechnung right here rather than
+     * waiting for a replay of `OrderPaid` that will never come for an order
+     * that has already settled. Gated on `IssueInvoices`, not
+     * `ViewOrders`/`BookManualPayment`: submitting this form is what
+     * actually produces the invoice for an already-paid order, the same
+     * capability that names issuance everywhere else in this module.
+     */
+    public function addBillingAddress(
+        string $order,
+        AddOrderBillingAddressData $data,
+        AddBillingAddressToOrder $addBillingAddressToOrder,
+    ): RedirectResponse {
+        Gate::authorize(Permission::IssueInvoices->value);
+
+        /** @var Order $model */
+        $model = Order::withoutBrandScope()->findOrFail($order);
+
+        $addBillingAddressToOrder->handle($model, $data);
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Billing address saved.')]);
+
         return back();
     }
 

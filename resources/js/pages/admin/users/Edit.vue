@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
 import { Lock, LockOpen } from '@lucide/vue';
+import { computed } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import InputError from '@/components/InputError.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
-import { formatCalendarDate } from '@/lib/datetime';
+import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
+import { index as registrationsForAddress } from '@/routes/admin/registrations';
 import {
+    edit as editUser,
     lock as lockUser,
+    merge as mergeUser,
     unlock as unlockUser,
     update as updateUser,
 } from '@/routes/admin/users';
@@ -20,6 +25,12 @@ import {
  * One account, operator-wide (ADR-0016): profile fields, account state
  * with lock/unlock, and the brands and roles this person touches. A lock
  * takes effect at the next login attempt — sessions are not revoked here.
+ *
+ * `mergedInto`/`mergedAccounts` are #81's account-merge trail: which
+ * account absorbed this one, if any, and which accounts this one has
+ * absorbed. Merging only ever combines login methods — see the "Merge
+ * accounts" card's own copy for what it does not move, in the same words
+ * `Actions\MergeUserAccounts`'s docblock uses.
  */
 type Props = {
     user: {
@@ -32,9 +43,11 @@ type Props = {
         verified: boolean;
         twoFactor: boolean;
         createdAt: string | null;
+        mergedInto: { id: string; email: string } | null;
     };
     memberships: { brand: string; firstSeenAt: string }[];
     roles: { name: string; brand: string }[];
+    mergedAccounts: { id: string; email: string; mergedAt: string | null }[];
 };
 
 const props = defineProps<Props>();
@@ -47,8 +60,24 @@ const form = useForm({
 });
 
 const lockForm = useForm({ reason: '' });
+const mergeForm = useForm({
+    email: '',
+    acknowledgedClosedAccountHistoryStaysBehind: false,
+});
 
 useUnsavedChanges(() => form.isDirty);
+
+/**
+ * A quick, honest check before an irreversible merge (correction on #81):
+ * Registration's admin list is the one module with a live search by email
+ * already (`RegistrationAdminController::index()`'s free-text `search`).
+ * Commerce and Admission have no equivalent admin search yet, so this link
+ * covers registrations only — it is a partial check, not a full "what does
+ * this account hold" view, and nothing here claims otherwise.
+ */
+const registrationsForEmailHref = computed(() =>
+    registrationsForAddress.url({ query: { search: mergeForm.email } }),
+);
 
 function submit(): void {
     form.put(updateUser(props.user.id).url, { preserveScroll: true });
@@ -64,6 +93,13 @@ function submitLock(): void {
 function submitUnlock(): void {
     lockForm.post(unlockUser(props.user.id).url, { preserveScroll: true });
 }
+
+function submitMerge(): void {
+    mergeForm.post(mergeUser(props.user.id).url, {
+        preserveScroll: true,
+        onSuccess: () => mergeForm.reset(),
+    });
+}
 </script>
 
 <template>
@@ -75,7 +111,11 @@ function submitUnlock(): void {
             :description="`Account since ${user.createdAt ?? 'unknown'}`"
         >
             <Badge
-                :variant="user.state === 'locked' ? 'destructive' : 'secondary'"
+                :variant="
+                    user.state === 'locked' || user.state === 'merged'
+                        ? 'destructive'
+                        : 'secondary'
+                "
             >
                 {{ user.state }}
             </Badge>
@@ -161,7 +201,23 @@ function submitUnlock(): void {
                         <CardTitle>Account state</CardTitle>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
-                        <template v-if="user.state !== 'locked'">
+                        <template v-if="user.state === 'merged'">
+                            <p class="text-sm text-text-muted">
+                                This account was merged into another one —
+                                signing in with it no longer works.
+                            </p>
+                            <Button
+                                v-if="user.mergedInto"
+                                as-child
+                                variant="outline"
+                                class="self-start"
+                            >
+                                <a :href="editUser(user.mergedInto.id).url">
+                                    Go to {{ user.mergedInto.email }}
+                                </a>
+                            </Button>
+                        </template>
+                        <template v-else-if="user.state !== 'locked'">
                             <p class="text-sm text-text-muted">
                                 Locking refuses the next login attempt. Existing
                                 sessions are not revoked here.
@@ -206,6 +262,121 @@ function submitUnlock(): void {
                                 Unlock account
                             </Button>
                         </template>
+                    </CardContent>
+                </Card>
+
+                <Card v-if="user.state !== 'merged'">
+                    <CardHeader>
+                        <CardTitle>Merge accounts</CardTitle>
+                    </CardHeader>
+                    <CardContent class="flex flex-col gap-4">
+                        <p class="text-sm text-text-muted">
+                            Combines a duplicate account's Steam or password
+                            sign-in into this one — the shape most migrated
+                            accounts hit if they sign in with Steam before being
+                            recognised. This account is kept; the other one
+                            closes and can no longer sign in.
+                        </p>
+                        <p class="text-sm text-text-muted">
+                            Only sign-in methods move. Brand memberships and
+                            roles are not moved either. Only run this after the
+                            person has asked for it, you have confirmed they
+                            control both addresses, and you are sure which
+                            account should survive — this cannot be undone from
+                            here.
+                        </p>
+                        <form
+                            class="flex flex-col gap-3"
+                            @submit.prevent="submitMerge"
+                        >
+                            <div class="grid gap-2">
+                                <Label for="merge-email">
+                                    Other account's email
+                                </Label>
+                                <Input
+                                    id="merge-email"
+                                    v-model="mergeForm.email"
+                                    type="email"
+                                    placeholder="other-account@example.test"
+                                />
+                                <InputError :message="mergeForm.errors.email" />
+                                <a
+                                    v-if="mergeForm.email"
+                                    :href="registrationsForEmailHref"
+                                    target="_blank"
+                                    rel="noopener"
+                                    class="text-xs text-accent underline underline-offset-2"
+                                >
+                                    Check this address's registrations before
+                                    merging
+                                </a>
+                            </div>
+                            <div class="flex items-start gap-2">
+                                <Checkbox
+                                    id="merge-acknowledge"
+                                    class="mt-0.5"
+                                    aria-describedby="merge-acknowledge-error"
+                                    :model-value="
+                                        mergeForm.acknowledgedClosedAccountHistoryStaysBehind
+                                    "
+                                    @update:model-value="
+                                        (value: boolean | 'indeterminate') =>
+                                            (mergeForm.acknowledgedClosedAccountHistoryStaysBehind =
+                                                value === true)
+                                    "
+                                />
+                                <Label
+                                    for="merge-acknowledge"
+                                    class="text-sm font-normal"
+                                >
+                                    I understand the closed account's
+                                    registrations, orders, admissions and
+                                    consent records will not move — they'll stay
+                                    behind and become unreachable.
+                                </Label>
+                            </div>
+                            <InputError
+                                id="merge-acknowledge-error"
+                                :message="
+                                    mergeForm.errors
+                                        .acknowledgedClosedAccountHistoryStaysBehind
+                                "
+                            />
+                            <Button
+                                type="submit"
+                                variant="destructive"
+                                class="self-start"
+                                :disabled="
+                                    mergeForm.processing ||
+                                    !mergeForm.acknowledgedClosedAccountHistoryStaysBehind
+                                "
+                            >
+                                Merge into this account
+                            </Button>
+                        </form>
+                    </CardContent>
+                </Card>
+
+                <Card v-if="mergedAccounts.length > 0">
+                    <CardHeader>
+                        <CardTitle>Accounts merged into this one</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <ul class="flex flex-col gap-1 text-sm">
+                            <li
+                                v-for="merged in mergedAccounts"
+                                :key="merged.id"
+                                class="flex justify-between"
+                            >
+                                <span>{{ merged.email }}</span>
+                                <span
+                                    v-if="merged.mergedAt"
+                                    class="text-text-muted"
+                                >
+                                    {{ formatDateTime(merged.mergedAt) }}
+                                </span>
+                            </li>
+                        </ul>
                     </CardContent>
                 </Card>
 

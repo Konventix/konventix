@@ -15,12 +15,18 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
 import { document as creditNoteDocument } from '@/routes/admin/credit-notes';
 import { document as invoiceDocument } from '@/routes/admin/invoices';
-import { bookPayment, cancelReversed, refund } from '@/routes/admin/orders';
+import {
+    billingAddress,
+    bookPayment,
+    cancelReversed,
+    refund,
+} from '@/routes/admin/orders';
 import type { OrderReversal, UnappliedPayment } from './reversals';
 import {
     canBookPayment,
@@ -50,6 +56,19 @@ type Props = {
         provider: string | null;
         paidAt: string | null;
         createdAt: string | null;
+        /** #4: §14 Abs. 4 UStG applies above GermanVat's small-amount ceiling. */
+        billingAddressRequired: boolean;
+        billingParty: {
+            organizationName: string | null;
+            recipientName: string | null;
+            email: string | null;
+            addressLine: string | null;
+            postalCode: string | null;
+            city: string | null;
+            countryCode: string | null;
+            vatId: string | null;
+            hasPostalAddress: boolean;
+        } | null;
     };
     lines: {
         id: string;
@@ -138,6 +157,42 @@ function paymentVariant(
 
 function submitBookPayment(): void {
     router.post(bookPayment(props.order.id).url, {}, { preserveScroll: true });
+}
+
+/**
+ * #4: the retrofit for an order the small-amount threshold caught with no
+ * address (`IssueInvoiceOnOrderPaid`'s own docblock) — shown only where it
+ * could possibly apply, and never once an invoice already exists, since an
+ * issued one is frozen for good (ADR-0031). Pre-filled from whatever the
+ * order's own party already carries (name and email survive from the
+ * account, ADR-0048), so this reads as completing the party, not starting
+ * one from nothing.
+ */
+const showBillingAddressForm = computed(
+    () =>
+        props.order.billingAddressRequired &&
+        !props.order.billingParty?.hasPostalAddress &&
+        props.invoice === null,
+);
+
+const billingAddressForm = useForm({
+    organizationName: props.order.billingParty?.organizationName ?? null,
+    recipientName: props.order.billingParty?.recipientName ?? null,
+    addressLine: props.order.billingParty?.addressLine ?? null,
+    postalCode: props.order.billingParty?.postalCode ?? null,
+    city: props.order.billingParty?.city ?? null,
+    countryCode: props.order.billingParty?.countryCode ?? 'DE',
+    vatId: props.order.billingParty?.vatId ?? null,
+});
+
+useUnsavedChanges(
+    () => showBillingAddressForm.value && billingAddressForm.isDirty,
+);
+
+function submitBillingAddress(): void {
+    billingAddressForm.post(billingAddress(props.order.id).url, {
+        preserveScroll: true,
+    });
 }
 
 /**
@@ -642,6 +697,219 @@ function returnFocusAfterRefund(): void {
                         </template>
                         <p v-else class="text-text-muted">
                             No invoice — this order settles without one.
+                        </p>
+                    </CardContent>
+                </Card>
+
+                <!--
+                    #4: above the 250 € small-amount ceiling (§33 UStDV),
+                    §14 Abs. 4 UStG needs the recipient's postal address on
+                    the invoice — IssueInvoiceOnOrderPaid withholds the
+                    Rechnung rather than issue one missing it. This is the
+                    operator's retrofit: complete the party, and for an
+                    already-paid order the invoice is issued the moment
+                    this form is saved.
+                -->
+                <Card v-if="order.billingAddressRequired">
+                    <CardHeader>
+                        <CardTitle>Billing address</CardTitle>
+                    </CardHeader>
+                    <CardContent class="flex flex-col gap-3 text-sm">
+                        <template v-if="showBillingAddressForm">
+                            <Alert>
+                                <AlertCircle class="size-4" />
+                                <AlertTitle>Address needed</AlertTitle>
+                                <AlertDescription>
+                                    This order is over 250 € and has no billing
+                                    address, so no invoice has been issued yet.
+                                    Complete it below to produce the invoice.
+                                </AlertDescription>
+                            </Alert>
+                            <form
+                                class="flex flex-col gap-3"
+                                @submit.prevent="submitBillingAddress"
+                            >
+                                <div class="grid gap-2">
+                                    <Label for="billing-recipient"
+                                        >Recipient or organization</Label
+                                    >
+                                    <Input
+                                        id="billing-recipient"
+                                        v-model="
+                                            billingAddressForm.recipientName
+                                        "
+                                        placeholder="Recipient name"
+                                        :aria-invalid="
+                                            billingAddressForm.errors
+                                                .recipientName
+                                                ? true
+                                                : undefined
+                                        "
+                                    />
+                                    <Input
+                                        id="billing-organization"
+                                        v-model="
+                                            billingAddressForm.organizationName
+                                        "
+                                        placeholder="Organization (optional)"
+                                    />
+                                    <InputError
+                                        :message="
+                                            billingAddressForm.errors
+                                                .recipientName
+                                        "
+                                    />
+                                </div>
+                                <div class="grid gap-2">
+                                    <Label for="billing-address-line"
+                                        >Street and number</Label
+                                    >
+                                    <Input
+                                        id="billing-address-line"
+                                        v-model="billingAddressForm.addressLine"
+                                        :aria-invalid="
+                                            billingAddressForm.errors
+                                                .addressLine
+                                                ? true
+                                                : undefined
+                                        "
+                                    />
+                                    <InputError
+                                        :message="
+                                            billingAddressForm.errors
+                                                .addressLine
+                                        "
+                                    />
+                                </div>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <div class="grid gap-2">
+                                        <Label for="billing-postal-code"
+                                            >Postal code</Label
+                                        >
+                                        <Input
+                                            id="billing-postal-code"
+                                            v-model="
+                                                billingAddressForm.postalCode
+                                            "
+                                            :aria-invalid="
+                                                billingAddressForm.errors
+                                                    .postalCode
+                                                    ? true
+                                                    : undefined
+                                            "
+                                        />
+                                        <InputError
+                                            :message="
+                                                billingAddressForm.errors
+                                                    .postalCode
+                                            "
+                                        />
+                                    </div>
+                                    <div class="col-span-2 grid gap-2">
+                                        <Label for="billing-city">City</Label>
+                                        <Input
+                                            id="billing-city"
+                                            v-model="billingAddressForm.city"
+                                            :aria-invalid="
+                                                billingAddressForm.errors.city
+                                                    ? true
+                                                    : undefined
+                                            "
+                                        />
+                                        <InputError
+                                            :message="
+                                                billingAddressForm.errors.city
+                                            "
+                                        />
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div class="grid gap-2">
+                                        <Label for="billing-country-code"
+                                            >Country code</Label
+                                        >
+                                        <Input
+                                            id="billing-country-code"
+                                            v-model="
+                                                billingAddressForm.countryCode
+                                            "
+                                            maxlength="2"
+                                            class="uppercase"
+                                            :aria-invalid="
+                                                billingAddressForm.errors
+                                                    .countryCode
+                                                    ? true
+                                                    : undefined
+                                            "
+                                        />
+                                        <InputError
+                                            :message="
+                                                billingAddressForm.errors
+                                                    .countryCode
+                                            "
+                                        />
+                                    </div>
+                                    <div class="grid gap-2">
+                                        <Label for="billing-vat-id"
+                                            >VAT ID (optional)</Label
+                                        >
+                                        <Input
+                                            id="billing-vat-id"
+                                            v-model="billingAddressForm.vatId"
+                                        />
+                                        <InputError
+                                            :message="
+                                                billingAddressForm.errors.vatId
+                                            "
+                                        />
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <Button
+                                        type="submit"
+                                        :disabled="
+                                            billingAddressForm.processing
+                                        "
+                                    >
+                                        Save billing address
+                                    </Button>
+                                    <span
+                                        v-if="billingAddressForm.isDirty"
+                                        role="status"
+                                        class="text-sm text-warning"
+                                    >
+                                        Unsaved changes
+                                    </span>
+                                </div>
+                            </form>
+                        </template>
+                        <template v-else-if="order.billingParty">
+                            <p>
+                                {{
+                                    order.billingParty.organizationName ??
+                                    order.billingParty.recipientName ??
+                                    '—'
+                                }}
+                            </p>
+                            <p class="text-text-muted">
+                                {{
+                                    [
+                                        order.billingParty.addressLine,
+                                        [
+                                            order.billingParty.postalCode,
+                                            order.billingParty.city,
+                                        ]
+                                            .filter(Boolean)
+                                            .join(' '),
+                                        order.billingParty.countryCode,
+                                    ]
+                                        .filter(Boolean)
+                                        .join(', ') || '—'
+                                }}
+                            </p>
+                        </template>
+                        <p v-else class="text-text-muted">
+                            No billing party on this order.
                         </p>
                     </CardContent>
                 </Card>

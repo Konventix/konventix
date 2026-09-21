@@ -6,16 +6,19 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Actions\AddProductToCart;
 use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\PlaceOrderFromCart;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
+use Konventix\Commerce\Actions\RemoveCartLine;
 use Konventix\Commerce\Actions\SendInvoiceMail;
 use Konventix\Commerce\Documents\InvoiceDocumentRenderer;
 use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\CartCheckedOut;
+use Konventix\Commerce\Events\CartLineRemoved;
 use Konventix\Commerce\Events\OrderLineSettled;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderPlaced;
@@ -218,6 +221,191 @@ it('issues a Rechnung with the cart\'s billing party once the checkout is paid, 
     app(RecordPaymentSuccess::class)->handle($payment->fresh());
 
     expect(Invoice::query()->where('order_id', $order->id)->count())->toBe(1);
+});
+
+/*
+|--------------------------------------------------------------------------
+| The 250 € billing-address threshold (#4, §33 UStDV vs §14 Abs. 4 UStG)
+|--------------------------------------------------------------------------
+|
+| Below GermanVat::SMALL_AMOUNT_INVOICE_THRESHOLD_GROSS a cart checkout still
+| gathers nothing beyond account identity (see the mixed-cart tests above,
+| all comfortably under it). These exercise the two sides of the boundary
+| PlaceOrderFromCart::guardBillingAddress() enforces, and both directions a
+| cart can move across it before checkout — not just a value pinned at
+| exactly 250.
+|
+*/
+
+/**
+ * One registration line at the given net amount — enough to drive the
+ * order's computed gross to a specific figure without the mixed cart's
+ * product line complicating the arithmetic.
+ */
+function cartCheckoutSingleLineCart(Brand $brand, string $payerUserId, string $unitAmountNet): Cart
+{
+    $cart = OpenCart::for($brand->getKey(), $payerUserId);
+    CartLine::factory()->forCart($cart)->registration()->create([
+        'ref_id' => (string) Str::ulid(),
+        'label' => 'Season Pass',
+        'unit_amount_net' => $unitAmountNet,
+        'quantity' => 1,
+        'position' => 1,
+    ]);
+
+    return $cart->fresh();
+}
+
+it('refuses to check out a cart whose gross exceeds 250 € with no billing address, naming the missing fields', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    // net 211.00 * 1.19 = 251.09 gross — one cent over the ceiling.
+    $cart = cartCheckoutSingleLineCart($brand, $user->getKey(), '211.00');
+    $account = cartCheckoutAccount();
+
+    expect(fn () => app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', cartCheckoutBillingParty($user)))
+        ->toThrow(ValidationException::class);
+
+    expect(Order::query()->count())->toBe(0);
+});
+
+it('checks out a cart over 250 € once a billing address is given', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    $cart = cartCheckoutSingleLineCart($brand, $user->getKey(), '211.00');
+    $account = cartCheckoutAccount();
+    $billingParty = cartCheckoutBillingParty($user, 'Hauptstraße 1', '10115', 'Berlin', 'DE');
+
+    app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', $billingParty);
+
+    $order = Order::query()->where('settles_type', 'cart')->where('settles_id', $cart->id)->sole();
+
+    expect($order->total_gross)->toBe('251.09')
+        ->and($order->billing_party->addressLine)->toBe('Hauptstraße 1')
+        ->and($order->billing_party->postalCode)->toBe('10115')
+        ->and($order->billing_party->city)->toBe('Berlin')
+        ->and($order->billing_party->countryCode)->toBe('DE');
+});
+
+it('stays exempt from the address requirement at exactly 250 € gross', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    // net 210.08 * 1.19, rounded to cents = 250.00 gross exactly.
+    $cart = cartCheckoutSingleLineCart($brand, $user->getKey(), '210.08');
+    $account = cartCheckoutAccount();
+
+    app(PlaceOrderFromCart::class)->handle($cart, $account, 'https://brand.test/cart', cartCheckoutBillingParty($user));
+
+    $order = Order::query()->where('settles_type', 'cart')->where('settles_id', $cart->id)->sole();
+    expect($order->total_gross)->toBe('250.00');
+});
+
+it('demands a billing address once a second line pushes a cart past 250 €, even though the first line alone would not', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    $cart = cartCheckoutSingleLineCart($brand, $user->getKey(), '150.00');
+    CartLine::factory()->forCart($cart)->registration()->create([
+        'ref_id' => (string) Str::ulid(),
+        'label' => 'Add-on Pass',
+        'unit_amount_net' => '100.00',
+        'quantity' => 1,
+        'position' => 2,
+    ]);
+    $account = cartCheckoutAccount();
+
+    expect(fn () => app(PlaceOrderFromCart::class)->handle($cart->fresh(), $account, 'https://brand.test/cart', cartCheckoutBillingParty($user)))
+        ->toThrow(ValidationException::class);
+
+    expect(Order::query()->count())->toBe(0);
+});
+
+it('drops the address requirement once a line is removed and the cart falls back under 250 €', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    Event::fake([CartLineRemoved::class]);
+    $user = User::factory()->create();
+    $cart = cartCheckoutSingleLineCart($brand, $user->getKey(), '150.00');
+    $secondLine = CartLine::factory()->forCart($cart)->registration()->create([
+        'ref_id' => (string) Str::ulid(),
+        'label' => 'Add-on Pass',
+        'unit_amount_net' => '100.00',
+        'quantity' => 1,
+        'position' => 2,
+    ]);
+    // Combined net 250.00 -> gross 297.50 demands an address; removing the
+    // add-on brings the cart back to net 150.00 -> gross 178.50, well under.
+    app(RemoveCartLine::class)->handle($secondLine);
+    $account = cartCheckoutAccount();
+
+    app(PlaceOrderFromCart::class)->handle($cart->fresh(), $account, 'https://brand.test/cart', cartCheckoutBillingParty($user));
+
+    $order = Order::query()->where('settles_type', 'cart')->where('settles_id', $cart->id)->sole();
+    expect($order->total_gross)->toBe('178.50');
+});
+
+it('422s a cart checkout over 250 € with no billing address, and places no order', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    cartCheckoutSingleLineCart($brand, $user->getKey(), '211.00');
+    $account = cartCheckoutAccount();
+
+    test()->actingAs($user)
+        ->post('/cart/checkout', ['account' => $account->id])
+        ->assertRedirect()
+        ->assertSessionHasErrors('billingAddressLine');
+
+    expect(Order::query()->count())->toBe(0);
+});
+
+it('checks out over 250 € through the controller once the billing address fields are submitted', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    cartCheckoutSingleLineCart($brand, $user->getKey(), '211.00');
+    $account = cartCheckoutAccount();
+
+    test()->actingAs($user)
+        ->post('/cart/checkout', [
+            'account' => $account->id,
+            'billingAddressLine' => 'Hauptstraße 1',
+            'billingPostalCode' => '10115',
+            'billingCity' => 'Berlin',
+            'billingCountryCode' => 'DE',
+        ])
+        ->assertRedirect('https://checkout.stripe.test/cart-session');
+
+    $order = Order::query()->where('settles_type', 'cart')->sole();
+    expect($order->billing_party->addressLine)->toBe('Hauptstraße 1')
+        ->and($order->billing_party->city)->toBe('Berlin');
+});
+
+it('shows billingAddressRequired on the cart page once the total passes 250 €', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    cartCheckoutSingleLineCart($brand, $user->getKey(), '211.00');
+
+    test()->actingAs($user)
+        ->get('/cart')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('cart.billingAddressRequired', true));
+});
+
+it('leaves billingAddressRequired false on the cart page under 250 €', function (): void {
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    cartCheckoutMixedCart($brand, $user->getKey());
+
+    test()->actingAs($user)
+        ->get('/cart')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('cart.billingAddressRequired', false));
 });
 
 it('reuses the pending order on a second checkout of the same cart', function (): void {

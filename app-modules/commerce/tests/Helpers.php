@@ -84,11 +84,18 @@ function cartCheckoutAccount(): SettlementAccount
 /**
  * The billing party `CartController::checkout()` builds from the payer's own
  * account (ADR-0048) — `PlaceOrderFromCart::handle()` needs one for every
- * checkout, direct-Action calls included.
+ * checkout, direct-Action calls included. Address fields stay optional
+ * (#4): most tests exercise a cart well under the small-amount threshold and
+ * pass none at all, exactly as an ordinary shop checkout does.
  */
-function cartCheckoutBillingParty(User $user): BillingPartyData
-{
-    return BillingPartyData::ofAccount($user->name, $user->email);
+function cartCheckoutBillingParty(
+    User $user,
+    ?string $addressLine = null,
+    ?string $postalCode = null,
+    ?string $city = null,
+    ?string $countryCode = null,
+): BillingPartyData {
+    return BillingPartyData::ofAccount($user->name, $user->email, $addressLine, $postalCode, $city, $countryCode);
 }
 
 function orderMailsRecipient(string $brandId, ?string $locale = null): User

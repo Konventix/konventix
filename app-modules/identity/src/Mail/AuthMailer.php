@@ -7,8 +7,11 @@ namespace Konventix\Identity\Mail;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
+use Konventix\Identity\Data\AccountMergedClosedMailData;
+use Konventix\Identity\Data\AccountMergedSurvivorMailData;
 use Konventix\Identity\Data\EmailMissingNoticeData;
 use Konventix\Identity\Data\PasswordResetMailData;
+use Konventix\Identity\Data\RegistrationAttemptMailData;
 use Konventix\Identity\Data\VerifyEmailMailData;
 use Konventix\Identity\Data\WelcomeMailData;
 use Konventix\Identity\Models\BrandMembership;
@@ -102,6 +105,78 @@ final class AuthMailer
                 'email' => $user->getEmailForPasswordReset(),
             ], Brand::query()->find($brandId)),
             validMinutes: $validMinutes,
+        ));
+    }
+
+    /**
+     * ADR-0016/#18: what carries the *existing* account forward when
+     * somebody names its address on the registration form or the Steam
+     * signup completion, instead of the "already taken" validation error
+     * those two forms used to show the requester. No token is minted here —
+     * the mail points at the ordinary forgot-password form
+     * (`password.request`), so the real owner re-proves ownership the usual
+     * way rather than this class handing out a second, un-throttled reset
+     * link. Silent (`logSkipped`) rather than thrown when no brand can be
+     * resolved, the same shape every other method here uses — an account
+     * this mail cannot reach is not a reason to fail the registration
+     * attempt it is answering.
+     */
+    public function sendRegistrationAttemptNotice(User $user): void
+    {
+        $brandId = $this->resolveBrandId($user);
+
+        if ($brandId === null) {
+            $this->logSkipped('Registration attempt notice', $user);
+
+            return;
+        }
+
+        $this->send($user, $brandId, 'identity.registration-attempt', new RegistrationAttemptMailData(
+            resetUrl: $this->absoluteRouteUrl('password.request', [], Brand::query()->find($brandId)),
+        ));
+    }
+
+    /**
+     * #81: the receipt for the account an operator-performed merge kept.
+     * Silent (`logSkipped`) when no brand can be resolved, the same shape
+     * every other method here uses — a merge that already happened is not
+     * undone because a courtesy mail could not find an address to send from.
+     */
+    public function sendAccountMergedSurvivorNotice(User $survivor, string $otherEmail): void
+    {
+        $brandId = $this->resolveBrandId($survivor);
+
+        if ($brandId === null) {
+            $this->logSkipped('Account merged (survivor) notice', $survivor);
+
+            return;
+        }
+
+        $this->send($survivor, $brandId, 'identity.account-merged-survivor', new AccountMergedSurvivorMailData(
+            otherEmail: $otherEmail,
+        ));
+    }
+
+    /**
+     * #81: the notice for the address an operator-performed merge closed —
+     * the one safety net a merge that skips self-service proof-of-control
+     * still gets. Sent to `$closed` by its own id/address, which is still
+     * the account's true address at send time: `MergeUserAccounts` scrubs
+     * credentials, never `email`, precisely so this call (and any later
+     * audit) still reaches the right inbox.
+     */
+    public function sendAccountMergedClosedNotice(User $closed, string $survivorEmail): void
+    {
+        $brandId = $this->resolveBrandId($closed);
+
+        if ($brandId === null) {
+            $this->logSkipped('Account merged (closed) notice', $closed);
+
+            return;
+        }
+
+        $this->send($closed, $brandId, 'identity.account-merged-closed', new AccountMergedClosedMailData(
+            survivorEmail: $survivorEmail,
         ));
     }
 

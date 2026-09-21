@@ -16,3 +16,4 @@ Route::get('/users/{user}/edit', [UserAdminController::class, 'edit'])->name('ad
 Route::put('/users/{user}', [UserAdminController::class, 'update'])->name('admin.users.update');
 Route::post('/users/{user}/lock', [UserAdminController::class, 'lock'])->name('admin.users.lock');
 Route::post('/users/{user}/unlock', [UserAdminController::class, 'unlock'])->name('admin.users.unlock');
+Route::post('/users/{user}/merge', [UserAdminController::class, 'merge'])->name('admin.users.merge');

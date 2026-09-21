@@ -85,6 +85,17 @@ class HandleInertiaRequests extends Middleware
                     'timezone' => $request->user()->timezone,
                 ],
             ],
+            // #81: whether the signed-in account still owes address
+            // confirmation — null for a guest. Deliberately its own top-level
+            // prop rather than a sixth field on `auth.user`: Identity's SPEC
+            // fixes that shape at five (ULID, display name, avatar URL,
+            // locale, timezone) precisely so nothing has to ask "does this
+            // belong there" again. `EmailVerificationBanner.vue` is the one
+            // consumer — the `verified` route middleware already gates the
+            // handful of security-sensitive pages, but everywhere else (the
+            // shop, profile settings, a Steam signup's very first page) an
+            // unconfirmed address was identifiable and unprompted.
+            'emailVerified' => $request->user()?->hasVerifiedEmail(),
             // The current brand's Reverb app key (ADR-0025). Echo is
             // configured from this, because the key differs per brand and
             // therefore cannot be a build-time VITE constant.

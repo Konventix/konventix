@@ -96,6 +96,26 @@ class UserFactory extends Factory
     }
 
     /**
+     * Indicate that the account was closed by an operator-performed merge
+     * (`Actions\MergeUserAccounts`, #81) into the given survivor — or a
+     * throwaway one if the caller does not care which. Credentials cleared,
+     * exactly as the Action leaves them, so `hasPassword()` reads false here
+     * the same way it would after a real merge.
+     */
+    public function merged(?User $into = null): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'state' => AccountState::Merged,
+            'merged_into_user_id' => ($into ?? User::factory()->create())->getKey(),
+            'password' => null,
+            'remember_token' => null,
+            'two_factor_secret' => null,
+            'two_factor_recovery_codes' => null,
+            'two_factor_confirmed_at' => null,
+        ]);
+    }
+
+    /**
      * Indicate that the model has two-factor authentication configured and
      * confirmed — mirrors what `EnableTwoFactorAuthentication` +
      * `ConfirmTwoFactorAuthentication` leave on the row (vendor/laravel/

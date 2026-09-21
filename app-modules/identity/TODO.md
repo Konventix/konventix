@@ -97,19 +97,14 @@ person behind it. The value here is in what is left out.
       `MediaLibrary` is resolved at call time, never captured at boot
       (.ai/rules/providers.md). `tests/SocialIdentityTest.php` (Task 10 cases)
       and Compliance's `GdprSweepTest`.
-- [ ] ADR-0016 gap, flagged rather than worked around (`RegisterData`'s
-      docblock): a duplicate email on the registration form surfaces as an
-      ordinary "already taken" validation error, not the "indistinguishable
-      from success" response the ADR requires. Closing this means replacing
-      Fortify's stock `RegisteredUserController`/`RegisterResponse` — it
-      cannot auto-login on a duplicate — which is a bigger change than this
-      PR's scope. The same gap already existed for password reset before this
-      PR and is unchanged here. **GitLab #18, Phase 2** (ADR-0054 §6): the
-      "check your inbox" mail also names the operator and the brand the
-      account was first used on — it is where a person with two brands
-      learns they have one account. The sign-up page half of this point is
-      done (#241, `OperatorPresenceNotice`); the mail half and
-      enumeration-safe registration are what remains open here.
+- [ ] ADR-0054 §6, still open (was called "GitLab #18, Phase 2" while the
+      enumeration gap below was open too — that half is now closed, this one
+      is not): the notice mail a duplicate registration/signup sends
+      (`identity.registration-attempt`, below) does not yet name the
+      operator or the brand the account was first used on — it is where a
+      person with two brands would learn they have one account. The sign-up
+      page half of this point is done (#241, `OperatorPresenceNotice`); the
+      mail half is what remains.
 - [ ] "Leave brand B, keep the account" has no path (ADR-0054 consequences):
       deletion spans the operator (ADR-0050), and nothing removes a single
       membership with its brand-scoped rows. Not a go-live concern; design
@@ -129,15 +124,134 @@ person behind it. The value here is in what is left out.
       default provider already covers `Features::resetPasswords()` and manual
       password changes.
 
-- [ ] No "Sign in with Steam" button exists on the login page yet — Steam
-      sign-in today only starts from `LinkedAccounts.vue`, which links an
-      account and does not authenticate. When one lands, it must pass the
-      login form's own remember checkbox through the redirect:
-      `{ query: { remember: form.remember ? 1 : 0 } }`, matching what
-      `SocialAuthController::redirect()` now reads.
+- [ ] Cross-module data move for `AccountsMerged` (#81): Registration,
+      Commerce, Admission and Compliance each need a listener that
+      reassigns their own owned rows (registrations, orders, admissions,
+      consent records) from `merged_user_id` to `surviving_user_id` when
+      this event fires. None exists yet, so a merged account's history stays
+      on the closed account today — the admin "Merge accounts" card says so
+      in the same words. Commerce was another agent's territory while this
+      slice was built; the other three are equally untouched. Until a
+      listener lands, `MergeUserAccounts::handle()` refuses to run at all
+      without an explicit `acknowledgedClosedAccountHistoryStaysBehind`
+      acknowledgement, and the console makes the operator tick it before
+      the submit button unlocks — a correction on the first cut of #81,
+      which let an operator close the wrong-direction account with no
+      warning at all. The "Merge accounts" card also links to Registration's
+      admin search for the address being closed, the one module with a live
+      per-email lookup today — Commerce and Admission have none, so that
+      check is partial, not a full "what does this account hold" view. A
+      real one is `GdprHandlerRegistry::exportFor()` reached honestly,
+      through Compliance's own subject-request/export flow once an operator
+      workflow exists for it, not a direct read from Identity — see that
+      registry's own docblock and `SubjectRequestController`'s: it is
+      Compliance's internal orchestration tool for the statutory fan-out,
+      gated by three capabilities separate from `ManageUsers`
+      (`ViewSubjectRequests`/`HandleSubjectRequests`/`DownloadSubjectExport`,
+      the last one because "an operator reading one person's entire record
+      across every module is the most privileged read in the application"),
+      and every other module only ever writes into it. Identity reading
+      from it here would be the first read from outside Compliance and
+      would hand a `ManageUsers`-only operator that privileged a read with
+      none of that gating or audit trail — wrong boundary to cross for this
+      correction.
+- [ ] `brand_memberships` and role grants are not moved by a merge either
+      (`Actions\MergeUserAccounts`'s docblock has the reasoning) — the
+      survivor may not show membership on a brand only the closed account
+      visited, and inherits none of its roles. Worth a follow-up once the
+      cross-module listeners above exist and de-duplication rules
+      (a shared brand on both accounts, `MediaUsage` reassignment) can be
+      designed alongside them rather than bolted on later.
+- [ ] Self-service account merging (a person proving control of both
+      accounts, e.g. an emailed confirmation to the other address) was the
+      first design considered for #81 and is still the right shape for a
+      person to request on their own — this slice built the operator-console
+      version instead (`MergeUserAccounts`'s docblock has the full
+      reasoning). Worth reconsidering once the cross-module data move above
+      exists, since a self-service merge that cannot honestly say "your
+      history moved too" is not much of an improvement on asking support.
+- [ ] Importing Steam identifiers from the LanCore migration is blocked on
+      #87 and untouched by #81 — a migrated account still gets recognised by
+      Steam only after it first signs in that way, same as before.
 
 ## Done
 
+- [x] A "Sign in with Steam" button on the login page (#81) — Steam sign-in
+      used to start only from `LinkedAccounts.vue`, reachable only after
+      signing in some other way, which was backwards for a deployment where
+      most migrated accounts sign in *by* Steam. The link carries the login
+      form's own remember tick through the redirect exactly as this note
+      specified.
+- [x] An operator-performed account merge (#81, `Actions\MergeUserAccounts`)
+      for the duplicate a migrated account gets if it signs in with Steam
+      before ever being recognised — a password account and a Steam-only
+      account that both belong to the same person. See the Backlog entries
+      above for what it deliberately leaves undone.
+- [x] Required, informed acknowledgement before a merge can close an account
+      (#81 correction): `MergeUserAccounts::handle()` refuses without
+      `acknowledgedClosedAccountHistoryStaysBehind`, the console's checkbox
+      states plainly what does not move, the submit button stays disabled
+      until it is ticked, and the "Other account's email" field links out to
+      a check of Registration's admin search for that address. See the
+      Backlog entry above for why that check is partial and why this does
+      not reach `GdprHandlerRegistry` directly.
+- [x] An unconfirmed address is now prompted for everywhere, not only on the
+      handful of pages the `verified` route middleware already gates (#81):
+      `emailVerified`, a new shared Inertia prop kept off `auth.user` (its
+      shape stays fixed at five fields), and `EmailVerificationBanner.vue` in
+      `AppTopbarLayout.vue`. Most Steam signups hit this from their very
+      first page, since Steam asserts no address for Fortify to have
+      verified in the first place.
+
+- [x] ADR-0016 email-enumeration gap closed (GitLab #18) on all three paths
+      the issue named: registration (`register.store`), the forgot-password
+      request (`password.email`), and the Steam signup completion
+      (`auth/{provider}/complete`). None of the three tells a requester an
+      address is already in use.
+      Registration and Steam signup share the shape: `RegisterData`/
+      `CompleteSocialSignupData` validate the address's format only
+      (`ProfileValidationRules::emailFormatRules()`, no `Rule::unique`), and
+      `Actions\CreateNewUser`/`Actions\CompleteSocialSignup` answer the
+      "does this address already exist" question themselves — a real
+      account for a new address, `null` for a duplicate, and a notice mail
+      (`AuthMailer::sendRegistrationAttemptNotice()`,
+      `identity.registration-attempt`) to the *existing* account either
+      way, offering the ordinary forgot-password form rather than a token
+      this class minted itself. `null` had nowhere to go through Fortify's
+      stock `RegisteredUserController` (it unconditionally logs in whatever
+      `CreatesNewUsers::create()` returns), so `register.store` now answers
+      through this module's own `Http\Controllers\
+      AccountRegistrationController` instead —
+      `IdentityServiceProvider::throttleUnhookedFortifyRoutes()` swaps the
+      route's action onto it post-boot, the same "walk `Route::getRoutes()`
+      in a `booted()` callback" trick that method already used for
+      middleware, so the route's name, URI and throttling are untouched and
+      `Features::registration()` stays enabled (tests gate on it).
+      `SocialAuthController::store()` needed no such replacement — it was
+      already this module's own controller — just to skip `Auth::login()`
+      on `null` and answer with the same redirect either way.
+      Password reset needed no Action changes at all: Fortify's own
+      `PasswordResetLinkController` already calls a broker whose
+      `INVALID_USER` and `RESET_LINK_SENT` differ only in which response
+      contract gets built, so `Http\Responses\GenericPasswordResetLinkResponse`
+      binds to *both* (`IdentityServiceProvider::configureFortifyResponses()`)
+      and answers the same message regardless — no controller or route
+      changed.
+      Timing: `Illuminate\Auth\Passwords\PasswordBroker::sendResetLink()`
+      already wraps its whole body in a fixed-floor `Illuminate\Support\
+      Timebox` (its own, pre-existing behaviour — nothing added here), which
+      is what password reset relies on. Registration and Steam signup had no
+      such floor — a real signup hashes a password (registration) or writes
+      a second row and fires two more events (both) that a duplicate never
+      pays for — so `CreateNewUser`/`CompleteSocialSignup` each wrap their
+      branch decision in the same `Timebox`, 200ms, matching the broker's
+      own default rather than inventing a second number.
+      `tests/EmailEnumerationTest.php` compares each duplicate branch
+      directly against a genuine one made in the same test (status code,
+      redirect target, session status message) rather than against a
+      hard-coded expectation. `tests/RegistrationTest.php` and
+      `tests/SocialSignupTest.php` carry the path-specific shape (no account
+      created, existing one untouched beyond the mail).
 - [x] Signups can be closed (hotfix 2026-09-13): `EnsureSignupsOpen` on
       Fortify's `register`/`register.store` (wrapped on in
       `throttleUnhookedFortifyRoutes()`, like the limiters) and as the

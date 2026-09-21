@@ -81,12 +81,13 @@ test('registration requires the password confirmation to match', function () {
     $this->assertGuest();
 });
 
-test('registration rejects an email already used on another brand', function () {
-    // ADR-0016: email is unique operator-wide. Documented deviation
-    // (RegisterData's docblock, TODO.md): this surfaces as an ordinary
-    // validation error rather than the "indistinguishable from success"
-    // response the ADR asks for.
-    User::factory()->create(['email' => 'taken@example.com']);
+test('registration with an email already used on another brand answers exactly like a fresh signup', function () {
+    // ADR-0016/#18: no validation error, no new account, nobody logged in —
+    // and the same redirect a genuine registration gets. EmailEnumerationTest
+    // covers the byte-for-byte comparison against a real signup and the
+    // notice mail; this test is the registration-specific shape: no account
+    // was created, and the existing one was not touched beyond the mail.
+    $existing = User::factory()->create(['email' => 'taken@example.com']);
 
     $response = $this->post(route('register.store'), [
         'name' => 'Test User',
@@ -96,8 +97,13 @@ test('registration rejects an email already used on another brand', function () 
         'password_confirmation' => 'password',
     ]);
 
-    $response->assertSessionHasErrors('email');
+    $response->assertSessionHasNoErrors();
+    $response->assertRedirect(route('dashboard', absolute: false));
     $this->assertGuest();
+
+    expect(User::where('email', 'taken@example.com')->count())->toBe(1)
+        ->and(User::where('username', 'test-user')->exists())->toBeFalse()
+        ->and($existing->fresh()->name)->toBe($existing->name);
 });
 
 test('registration explains the username shape and refuses reserved or taken handles', function () {

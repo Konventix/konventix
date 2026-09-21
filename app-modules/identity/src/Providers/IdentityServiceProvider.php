@@ -26,10 +26,12 @@ use Konventix\Identity\Console\ReplayProfilesCommand;
 use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Gdpr\IdentitySubjectResolver;
+use Konventix\Identity\Http\Controllers\AccountRegistrationController;
 use Konventix\Identity\Http\Middleware\EnsureCredentialsAreStrings;
 use Konventix\Identity\Http\Middleware\EnsureSignupsOpen;
 use Konventix\Identity\Http\Responses\ConsentAwareLoginResponse;
 use Konventix\Identity\Http\Responses\ConsentAwareTwoFactorLoginResponse;
+use Konventix\Identity\Http\Responses\GenericPasswordResetLinkResponse;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Listeners\SendWelcomeOnVerified;
 use Konventix\Identity\Models\User;
@@ -48,7 +50,9 @@ use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\OperatorPresence;
 use Konventix\Platform\Operators\OperatorSettings;
+use Laravel\Fortify\Contracts\FailedPasswordResetLinkRequestResponse as FailedPasswordResetLinkRequestResponseContract;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
+use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse as SuccessfulPasswordResetLinkRequestResponseContract;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
@@ -238,6 +242,13 @@ class IdentityServiceProvider extends ModuleServiceProvider
     {
         $this->app->bind(LoginResponseContract::class, ConsentAwareLoginResponse::class);
         $this->app->bind(TwoFactorLoginResponseContract::class, ConsentAwareTwoFactorLoginResponse::class);
+
+        // ADR-0016/#18: one class answers both contracts, so "address not
+        // found" and "reset link sent" produce the identical response —
+        // see GenericPasswordResetLinkResponse's own docblock for why this
+        // has to happen here and not by editing Fortify's stock responses.
+        $this->app->bind(SuccessfulPasswordResetLinkRequestResponseContract::class, GenericPasswordResetLinkResponse::class);
+        $this->app->bind(FailedPasswordResetLinkRequestResponseContract::class, GenericPasswordResetLinkResponse::class);
     }
 
     /**
@@ -441,6 +452,14 @@ class IdentityServiceProvider extends ModuleServiceProvider
      * caps per address of origin and per account. `EnsureCredentialsAreStrings`
      * rides along on the routes whose vendor controller reads the submitted
      * address before validating it (review finding 6).
+     *
+     * ADR-0016/#18 rides the same walk for a second reason: `register.store`
+     * needs a different *controller*, not just extra middleware — Fortify's
+     * stock `RegisteredUserController` cannot answer "this succeeded, but
+     * there is no user to log in" (`AccountRegistrationController`'s
+     * docblock). `Route::uses()` swaps only the action array; the name, URI,
+     * and every middleware — including the two lines just added to it —
+     * stay exactly as Fortify registered them.
      */
     private function throttleUnhookedFortifyRoutes(): void
     {
@@ -474,6 +493,10 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
                 if ($middleware !== null) {
                     $route->middleware($middleware);
+                }
+
+                if ($route->getName() === 'register.store') {
+                    $route->uses([AccountRegistrationController::class, 'store']);
                 }
             }
         });
@@ -546,6 +569,108 @@ class IdentityServiceProvider extends ModuleServiceProvider
             ],
             defaultLocale: 'de',
             sample: ['resetUrl' => 'https://example.test/reset/abc123', 'validMinutes' => 60],
+        ));
+
+        // ADR-0016/#18: sent to the *existing* account, never to whoever
+        // submitted the form — the requester sees the same response a fresh
+        // registration gets (`AccountRegistrationController`,
+        // `Actions\CreateNewUser`, `Actions\CompleteSocialSignup`). No
+        // topic, like the two above: security-relevant, not something a
+        // preference can turn off.
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.registration-attempt',
+            subjects: [
+                'de' => 'Registrierungsversuch mit Ihrer E-Mail-Adresse',
+                'en' => 'Someone tried to register with your email address',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Jemand hat soeben versucht, mit dieser E-Mail-Adresse ein
+                    neues Konto anzulegen — Sie haben bei uns aber bereits eines.</p>
+                    <p>Waren Sie das und haben Ihr Passwort vergessen, können Sie
+                    es hier zurücksetzen: <a href="{{ $resetUrl }}">Passwort
+                    zurücksetzen</a>.</p>
+                    <p>Waren Sie es nicht, müssen Sie nichts tun: Ihr Konto ist
+                    unverändert, und es wurde kein neues Konto angelegt.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Somebody just tried to create a new account using this
+                    email address, but you already have one with us.</p>
+                    <p>If that was you and you have forgotten your password,
+                    you can reset it here: <a href="{{ $resetUrl }}">Reset
+                    password</a>.</p>
+                    <p>If it was not you, no action is needed — your account
+                    is unaffected, and no new account was created.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: ['resetUrl' => 'https://example.test/forgot-password'],
+        ));
+
+        // #81: two keys, not one branching on which side of the merge the
+        // reader is — `.ai/rules/app-modules-src.md` prefers that shape, the
+        // same call `commerce.invoice-issued`/`commerce.invoice-paid` made.
+        // Neither carries a topic: like `identity.registration-attempt`, an
+        // account-security notice is not something a preference can suppress.
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.account-merged-survivor',
+            subjects: [
+                'de' => 'Ihre Konten wurden zusammengeführt',
+                'en' => 'Your accounts have been merged',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Ein Administrator hat das Konto mit der E-Mail-Adresse
+                    {{ $otherEmail }} mit diesem Konto zusammengeführt, weil
+                    beide Ihnen gehören.</p>
+                    <p>Sie können sich weiterhin genau wie bisher bei diesem
+                    Konto anmelden — mit Passwort oder über Steam, je nachdem,
+                    was vorher mit welchem Konto verbunden war.</p>
+                    <p>War das nicht auf Ihre Anfrage hin, wenden Sie sich
+                    bitte umgehend an den Support.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>An administrator merged the account at
+                    {{ $otherEmail }} into this one, because both belonged to
+                    you.</p>
+                    <p>You can keep signing in to this account exactly as
+                    before — by password or through Steam, whichever was
+                    connected to which account.</p>
+                    <p>If you did not ask for this, please contact support
+                    right away.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: ['otherEmail' => 'old-account@example.test'],
+        ));
+
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.account-merged-closed',
+            subjects: [
+                'de' => 'Dieses Konto wurde zusammengeführt',
+                'en' => 'This account has been merged',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Ein Administrator hat dieses Konto mit dem Konto
+                    {{ $survivorEmail }} zusammengeführt, weil beide Ihnen
+                    gehören. Eine Anmeldung mit diesem Konto ist ab sofort
+                    nicht mehr möglich — melden Sie sich stattdessen bei
+                    {{ $survivorEmail }} an.</p>
+                    <p>War das nicht auf Ihre Anfrage hin, wenden Sie sich
+                    bitte umgehend an den Support.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>An administrator merged this account into the account
+                    at {{ $survivorEmail }}, because both belonged to you.
+                    Signing in with this account no longer works — sign in
+                    at {{ $survivorEmail }} instead.</p>
+                    <p>If you did not ask for this, please contact support
+                    right away.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: ['survivorEmail' => 'kept-account@example.test'],
         ));
 
         $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(

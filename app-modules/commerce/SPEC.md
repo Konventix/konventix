@@ -263,11 +263,24 @@ BaFin/ZAG licensing.
   cast) — who an invoice for this order would address, snapshotted at
   placement: `PlaceOrderFromSettlementRequest` stores the settlement
   request's own party for every settlement kind, not only `invoice`;
-  `PlaceOrderFromCart` stores `BillingPartyData::ofAccount()` — the payer's
-  account name and email, nothing more, since a shop checkout gathers
-  nothing else. Null on an order placed before ADR-0048, or one an
-  operator books manually with no billing information — `IssueInvoiceOnOrderPaid`
-  treats that as nothing to issue, logged, not guessed at.
+  `PlaceOrderFromCart` stores `BillingPartyData::ofAccount()` — always the
+  payer's account name and email, plus a postal address whenever the
+  cart's computed gross exceeds `GermanVat::requiresBillingAddress()`'s
+  250 € small-amount ceiling (§33 UStDV vs §14 Abs. 4 UStG, #4):
+  `guardBillingAddress()` refuses the checkout with a `ValidationException`
+  on the missing address fields when it is over that ceiling and none was
+  given, checked against the cart's actual computed total at submit time,
+  not a page-load estimate. Null on an order placed before ADR-0048, or one
+  an operator books manually with no billing information — `IssueInvoiceOnOrderPaid`
+  treats that as nothing to issue, logged, not guessed at — and the same
+  listener withholds the Rechnung (logged, distinguishably) for any order
+  paid over the threshold whose party still carries no address, since an
+  issued invoice can never be corrected in place (ADR-0031). The operator's
+  retrofit is `OrderAdminController::addBillingAddress()` /
+  `AddBillingAddressToOrder` (`POST /admin/orders/{order}/billing-address`,
+  `commerce.issue-invoices`): a whole-party edit, refused once an invoice
+  already exists, that issues the Rechnung immediately when the order is
+  already paid.
 - **Pricing and tax calculation** — line totals, tax rates, and the net-vs-gross
   *display* decision, which Commerce applies from the flag declared on the
   `RegistrationType` (ADR-0006).

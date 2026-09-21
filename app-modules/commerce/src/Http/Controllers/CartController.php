@@ -35,6 +35,7 @@ use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\CheckoutConsentSlots;
 use Konventix\Commerce\Settlement\ProvidesHostedCheckout;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
+use Konventix\Commerce\Tax\GermanVat;
 use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Operators\OperatorSettings;
@@ -130,6 +131,11 @@ final class CartController
                     $account,
                     $this->registry->forProvider($account->provider),
                 ))->all()),
+                // §33 UStDV vs §14 Abs. 4 UStG (#4): the same figure
+                // `PlaceOrderFromCart::guardBillingAddress()` checks at
+                // submit time, shown here so the page can ask for the
+                // address up front rather than only after a 422.
+                GermanVat::requiresBillingAddress($totalGross),
             )->toArray(),
         ]);
     }
@@ -214,9 +220,29 @@ final class CartController
         // there is something to declare: an instance with no published texts
         // renders no control, and a checkout that insisted on one anyway
         // could never be completed.
-        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
-            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
-            : ['account' => ['required', 'ulid']]);
+        //
+        // Billing address fields stay nullable here regardless of the
+        // order's total (#4): whether they are actually required depends on
+        // the cart's *computed* gross, which is not known until
+        // `PlaceOrderFromCart` runs the same tax calculation this
+        // controller cannot repeat without risking the two ever disagreeing
+        // — `PlaceOrderFromCart::guardBillingAddress()` is the one place
+        // that refuses a submission missing them. Deliberately not a Data
+        // object for this whole form (unlike `storeLine()`/`AddToCartData`):
+        // injecting one validates before the method body runs, the same as
+        // a `FormRequest`, which would run it *before* the outstandingUrl
+        // gate above — exactly the ordering GitLab #205 fixed.
+        $validated = $request->validate(array_merge(
+            $this->consentSlots->declarationRequired($consentSlots)
+                ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
+                : ['account' => ['required', 'ulid']],
+            [
+                'billingAddressLine' => ['nullable', 'string', 'max:255'],
+                'billingPostalCode' => ['nullable', 'string', 'max:16'],
+                'billingCity' => ['nullable', 'string', 'max:255'],
+                'billingCountryCode' => ['nullable', 'string', 'size:2'],
+            ],
+        ));
 
         $cart = $this->cartForCheckout($request);
 
@@ -232,12 +258,18 @@ final class CartController
         }
 
         // ADR-0048: a cart order needs a billing party to invoice against
-        // once it is paid. The account is all a shop checkout gathers —
-        // name and email, never a postal address or a VAT id
-        // (`BillingPartyData::ofAccount`'s own docblock).
+        // once it is paid. Name and email always come from the account; the
+        // address fields above ride along only when the payer filled them
+        // in — required or not is `PlaceOrderFromCart`'s own call, once it
+        // knows the cart's actual computed total (#4,
+        // `BillingPartyData::ofAccount`'s own docblock).
         $billingParty = BillingPartyData::ofAccount(
             (string) $request->user()->name,
             (string) $request->user()->email,
+            $validated['billingAddressLine'] ?? null,
+            $validated['billingPostalCode'] ?? null,
+            $validated['billingCity'] ?? null,
+            $validated['billingCountryCode'] ?? null,
         );
 
         // Recorded before the order is placed: the declaration is what

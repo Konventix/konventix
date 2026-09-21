@@ -124,6 +124,7 @@ declare namespace Konventix {
                 readonly currency: string;
                 readonly expiresAt: string | null;
                 readonly accounts: Konventix.Commerce.Data.CheckoutAccountData[];
+                readonly billingAddressRequired: boolean;
             };
             export type CartLineData = {
                 readonly id: string;
@@ -613,6 +614,12 @@ declare namespace Konventix {
     }
     namespace Identity {
         namespace Data {
+            export type AccountMergedClosedMailData = {
+                readonly survivorEmail: string;
+            };
+            export type AccountMergedSurvivorMailData = {
+                readonly otherEmail: string;
+            };
             export type AccountPreferencesData = {
                 readonly emailNotifications: boolean;
             };
@@ -635,6 +642,10 @@ declare namespace Konventix {
                 readonly avatarUrl: string | null;
                 readonly linkedAt: string | null;
                 readonly canUnlink: boolean;
+            };
+            export type MergeUserAccountData = {
+                readonly email: string;
+                readonly acknowledgedClosedAccountHistoryStaysBehind: boolean;
             };
             export type PasswordResetMailData = {
                 readonly resetUrl: string;
@@ -660,6 +671,9 @@ declare namespace Konventix {
                 readonly email: string;
                 readonly password: string;
             };
+            export type RegistrationAttemptMailData = {
+                readonly resetUrl: string;
+            };
             export type SessionData = {
                 readonly id: string;
                 readonly ipAddress: string | null;
@@ -678,7 +692,8 @@ declare namespace Konventix {
             };
         }
         namespace Enums {
-            export type AccountState = 'active' | 'locked' | 'anonymized';
+            export type AccountState =
+                'active' | 'locked' | 'anonymized' | 'merged';
             export type Permission =
                 | 'identity.view-users'
                 | 'identity.manage-users'

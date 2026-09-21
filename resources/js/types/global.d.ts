@@ -38,6 +38,12 @@ declare module '@inertiajs/core' {
             environment: Konventix.Platform.Data.EnvironmentRibbonData | null;
             auth: Auth;
             /**
+             * Whether the signed-in account has confirmed its email address;
+             * `null` for a guest. Kept off `Auth` on purpose — see
+             * `HandleInertiaRequests::share()`.
+             */
+            emailVerified: boolean | null;
+            /**
              * How this operator writes a date and a time (#242) — the
              * vocabulary of `Konventix.Platform.Enums.DateFormat` and
              * `TimeFormat`, applied by `resources/js/lib/datetime.ts`.

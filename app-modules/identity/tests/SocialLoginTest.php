@@ -84,6 +84,27 @@ it('refuses an anonymized account even with a valid assertion', function (): voi
     expect(auth()->check())->toBeFalse();
 });
 
+/**
+ * #81: `MergeUserAccounts` moves every SocialIdentity row off a merged
+ * account, so this attaches one directly rather than through the Action —
+ * exercising the belt-and-braces branch `logIn()` carries for the same
+ * reason its Anonymized check above does, in case that invariant is ever
+ * broken.
+ */
+it('refuses a merged account even with a valid assertion', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->merged()->create();
+    SocialIdentity::factory()->for($user)->create([
+        'provider' => 'steam',
+        'provider_user_id' => '76561198000000149',
+    ]);
+
+    identityCallbackFrom($this, '76561198000000149')->assertRedirect(route('login'));
+
+    expect(auth()->check())->toBeFalse();
+});
+
 it('links a new identity for somebody already signed in', function (): void {
     $this->withBrand();
     Event::fake([SocialIdentityLinked::class]);
