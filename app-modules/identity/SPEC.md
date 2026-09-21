@@ -76,13 +76,25 @@ keeps as its own read model.
   a later visit. Whoever lost their codes regenerates, which mints a new grant
   and invalidates the old set. The "I saved my recovery codes" checkbox in
   front of the dialog stays what it was, a nudge.
-- **Sessions**: the list of a user's active sessions and their revocation.
+- **Sessions**: the list of a user's active sessions and their revocation,
+  read through `Sessions\SessionRepository` so the page does not care which
+  driver stores them (D-IDP-17). On `database` that is the `sessions` table
+  (`Queries\ActiveSessionsQuery` and two deletes); on `redis` it is a
+  per-user index that `Sessions\IndexedRedisSessionHandler` — bound over
+  the stock `createRedisDriver()` — writes beside each payload: a meta hash
+  per session id (`ip_address`, `user_agent`, `user_id`, `last_activity`)
+  and a set per user, both re-expired with `session.lifetime` on every
+  write, so expiry needs no garbage collector and no job. On `array`,
+  `file` and `cookie` there is nothing to list, and the page says so rather
+  than showing an empty list. Sessions from before the handler was deployed
+  carry no index entry and appear from their next request onwards; nothing
+  backfills them.
   Sessions are brand-scoped, but the scoping mechanism belongs to Platform:
   `ResolveBrand` gives each brand its own session cookie name, so a browser
-  only ever carries one brand's session id. The `sessions` table itself has
-  no `brand_id` column (it is Laravel's own table, not one this module
-  defines), so `Queries\ActiveSessionsQuery` lists every session for the
-  account operator-wide rather than filtering server-side — see TODO.md.
+  only ever carries one brand's session id. Neither store carries a
+  `brand_id` (the `sessions` table is Laravel's own, not one this module
+  defines), so the list is operator-wide rather than filtered server-side —
+  see TODO.md.
 - **Account lifecycle**: locking, unlocking, and the anonymization of the
   account's own data when Compliance requests it.
 - **The minimal shared Inertia props for the authenticated user**: ULID, display

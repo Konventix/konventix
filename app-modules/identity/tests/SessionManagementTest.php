@@ -5,22 +5,37 @@ declare(strict_types=1);
 use Inertia\Testing\AssertableInertia as Assert;
 use Konventix\Identity\Models\Session;
 use Konventix\Identity\Models\User;
+use Konventix\Identity\Sessions\IndexedRedisSessionHandler;
+use Konventix\Identity\Sessions\RedisSessionIndexRepository;
+use Konventix\Identity\Sessions\SessionRepository;
 
 /**
- * The session list + revocation on the Security settings page (task scope
- * item 4). `SESSION_DRIVER=array` in phpunit.xml (unlike production's
- * database driver), so the framework never writes a `sessions` row for the
- * test request itself — these tests insert rows directly, the same shape
- * `Illuminate\Session\DatabaseSessionHandler` would write.
+ * The session list + revocation on the Security settings page, on the
+ * **database** driver — the coverage that existed before D-IDP-17 gave the
+ * page a `Sessions\SessionRepository` and a second store behind it. The
+ * redis half lives in `SessionIndexRepositoryTest` (contract),
+ * `IndexedRedisSessionHandlerTest` (handler) and
+ * `IndexedRedisSessionHandlerRedisTest` (a real Redis).
+ *
+ * `SESSION_DRIVER=array` in phpunit.xml, so the driver is named here rather
+ * than in the environment; that also means the framework now writes a real
+ * `sessions` row for each test request itself, after the controller has
+ * rendered. `makeSessionRow()` therefore updates-or-creates instead of
+ * inserting, and the "revoke all others" assertion names the rows it expects
+ * gone rather than counting to zero.
  *
  * "This device" needs the page's request to carry a known session id. The
  * test client keeps no cookie jar, and a request without a session cookie is
  * handed a fresh id, so the id is read back from the cookie a first request
  * sets and replayed with `withCookie()` on the request under test.
  */
+beforeEach(function (): void {
+    config()->set('session.driver', 'database');
+});
+
 function makeSessionRow(string $id, User $user, string $userAgent = 'Other Browser', ?int $lastActivity = null): Session
 {
-    return Session::create([
+    return Session::updateOrCreate(['id' => $id], [
         'id' => $id,
         'user_id' => $user->getKey(),
         'ip_address' => '10.0.0.1',
@@ -115,25 +130,48 @@ test('each session carries a readable device line beside the raw user agent', fu
         );
 });
 
-test('the page says whether a session list exists on this installation', function () {
+test('a driver that stores nothing tells the page there is no list', function () {
     $user = User::factory()->create();
 
-    // phpunit.xml runs the array driver, on which no row is ever written and
-    // the list would be an empty promise; the page is told so.
+    // The array driver writes nothing a list could be read from, and an
+    // empty list would read as "no other sessions"; the page is told so and
+    // says it instead.
+    config()->set('session.driver', 'array');
+
     $this->actingAs($user)
         ->get(route('security.edit'))
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/Security')
-            ->where('sessionsAvailable', false),
+            ->where('sessionsAvailable', false)
+            ->where('sessions', []),
         );
+});
 
-    config()->set('session.driver', 'database');
+test('the database driver tells the page a list exists', function () {
+    // A test of its own rather than a second request after the array case:
+    // `Illuminate\Routing\Route::getController()` memoises the controller
+    // instance on the route, so a second request in one test would re-use
+    // the first one's injected repository however the config had changed.
+    $user = User::factory()->create();
 
     $this->actingAs($user)
         ->get(route('security.edit'))
         ->assertInertia(fn (Assert $page) => $page
+            ->component('settings/Security')
             ->where('sessionsAvailable', true),
         );
+});
+
+test('the redis driver promises a list once the indexed handler is in front of it', function () {
+    // No HTTP request: resolving the repository builds the redis session
+    // driver, which is construction only — nothing here talks to a Redis.
+    config()->set('session.driver', 'redis');
+
+    $repository = app(SessionRepository::class);
+
+    expect($repository)->toBeInstanceOf(RedisSessionIndexRepository::class)
+        ->and($repository->available())->toBeTrue()
+        ->and(session()->getHandler())->toBeInstanceOf(IndexedRedisSessionHandler::class);
 });
 
 test('a session can be revoked once the password is confirmed', function () {
@@ -186,9 +224,11 @@ test('every other session can be revoked at once', function () {
 
     $response->assertRedirect(route('security.edit'));
 
-    // Every stored session of THIS user is gone (the request's own session id
-    // is excluded by the controller, but under the array test driver it never
-    // has a row to begin with); other users' sessions are untouched.
-    expect(Session::query()->where('user_id', $user->getKey())->count())->toBe(0)
+    // Every stored session of THIS user is gone; other users' sessions are
+    // untouched. The request writes its own row after the controller has run
+    // (the excluded, current one), so the assertion names the two rows it
+    // expects deleted rather than counting the user's rows to zero.
+    expect(Session::query()->whereKey('other-session-one')->exists())->toBeFalse()
+        ->and(Session::query()->whereKey('other-session-two')->exists())->toBeFalse()
         ->and(Session::query()->whereKey('stranger-session')->exists())->toBeTrue();
 });

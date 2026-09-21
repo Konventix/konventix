@@ -9,11 +9,13 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Cache\RedisStore;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -43,6 +45,14 @@ use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Listeners\SendWelcomeOnVerified;
 use Konventix\Identity\Models\Passkey;
 use Konventix\Identity\Models\User;
+use Konventix\Identity\Sessions\CacheSessionIndex;
+use Konventix\Identity\Sessions\DatabaseSessionRepository;
+use Konventix\Identity\Sessions\IndexedRedisSessionHandler;
+use Konventix\Identity\Sessions\NullSessionRepository;
+use Konventix\Identity\Sessions\RedisSessionIndex;
+use Konventix\Identity\Sessions\RedisSessionIndexRepository;
+use Konventix\Identity\Sessions\SessionIndex;
+use Konventix\Identity\Sessions\SessionRepository;
 use Konventix\Identity\Social\SocialProviderRegistry;
 use Konventix\Identity\Social\SteamProvider;
 use Konventix\Messaging\Enums\Channel;
@@ -201,6 +211,72 @@ class IdentityServiceProvider extends ModuleServiceProvider
         // account without ever importing Identity's User model (ADR-0004) —
         // see SubjectResolver's docblock.
         $this->app->bind(SubjectResolver::class, IdentitySubjectResolver::class);
+
+        $this->registerSessionIndex();
+    }
+
+    /**
+     * The session list works on the redis driver too (D-IDP-17).
+     *
+     * Laravel 13 has no `RedisSessionHandler`:
+     * `Illuminate\Session\SessionManager::createRedisDriver()` builds a plain
+     * `CacheBasedSessionHandler` over the redis cache store, which stores an
+     * opaque blob per id and records nothing about who owns it — so the
+     * Security page could only ever offer a list on the database driver. The
+     * creator below repeats that method's store wiring verbatim
+     * (`session.store` falling back to the `redis` cache store,
+     * `session.connection`, `session.prefix`) and swaps in
+     * `Sessions\IndexedRedisSessionHandler`; `SessionManager::callCustomCreator()`
+     * still wraps the result in `buildSession()`, so encryption and the
+     * configured serialization are untouched and no env value or chart value
+     * moves. `extend()` outranks the stock creator for the same name.
+     *
+     * The handler is a worker-lifetime object under Octane and gets no new
+     * container between requests: `GiveNewApplicationInstanceToSessionManager`
+     * is an empty method and `GiveNewApplicationInstanceToDatabaseSessionHandler`
+     * re-containers a `DatabaseSessionHandler` only. It therefore resolves
+     * request, user and IP per call and captures nothing at construction.
+     *
+     * Both bindings are `bind()`, never `singleton()`: each reads
+     * `config('session.driver')`, and a test switches that between two
+     * requests of one process (`.ai/rules/providers.md` — a boot-time
+     * singleton freezes whatever it was built from).
+     */
+    private function registerSessionIndex(): void
+    {
+        Session::extend('redis', function (Container $app): IndexedRedisSessionHandler {
+            $cache = clone $app->make('cache')->store(config('session.store') ?: 'redis');
+
+            $store = $cache->getStore();
+
+            // Stock `createRedisDriver()` calls these unconditionally; they
+            // only exist on the redis store, and `session.store` can name any
+            // store at all, so a misconfiguration produces the driver without
+            // the connection override rather than a fatal error.
+            if ($store instanceof RedisStore) {
+                $store->setConnection(config('session.connection'));
+
+                if ($prefix = config('session.prefix')) {
+                    $store->setPrefix($prefix);
+                }
+            }
+
+            return new IndexedRedisSessionHandler(
+                $cache,
+                (int) config('session.lifetime'),
+                $app->make(SessionIndex::class),
+            );
+        });
+
+        $this->app->bind(SessionIndex::class, fn (Container $app): SessionIndex => config('session.driver') === 'redis'
+            ? $app->make(RedisSessionIndex::class)
+            : $app->make(CacheSessionIndex::class));
+
+        $this->app->bind(SessionRepository::class, fn (Container $app): SessionRepository => match ((string) config('session.driver')) {
+            'database' => $app->make(DatabaseSessionRepository::class),
+            'redis' => $app->make(RedisSessionIndexRepository::class),
+            default => $app->make(NullSessionRepository::class),
+        });
     }
 
     /**

@@ -452,15 +452,44 @@ person behind it. The value here is in what is left out.
       `layouts/settings/Layout.vue` now declares the `breadcrumbs` prop the
       pages were already sending; `SettingsLayoutTest` pins it.
 
-- [ ] `.env.example` says `SESSION_DRIVER=redis` while `config/session.php`
-      defaults to `database` and the session list only exists on the database
-      driver. A deployment copied from the example gets a Security page that
-      says "no list on this installation" — which is honest, but a surprise.
-      Either the example moves to `database` (with the `sessions` table's
-      write on every request priced in) or the redis choice is documented
-      beside the settings page's notice. `.env.example` is under
-      `.ai/rules/general.md`, outside this module's files, so it is recorded
-      here rather than changed.
+- [x] The session list works on redis too (D-IDP-17, round 4 Task 25), which
+      closes the `.env.example` / `config/session.php` mismatch above: a
+      deployment copied from the example (`SESSION_DRIVER=redis`) now gets a
+      real list instead of "no list on this installation".
+      `Sessions\IndexedRedisSessionHandler` extends the
+      `CacheBasedSessionHandler` that `SessionManager::createRedisDriver()`
+      builds (Laravel 13 has no `RedisSessionHandler`) and keeps a per-user
+      index beside the payloads — a meta hash per session id and a set per
+      user, re-expired with `session.lifetime` on every write, so there is no
+      gc and no job. It is registered with `Session::extend('redis', …)` in
+      `IdentityServiceProvider::registerBindings()`, repeating the stock
+      store wiring, so encryption, serialization and every env and chart
+      value stay as they are. `Sessions\SessionRepository` (database, redis
+      index, null) is what `SecurityController` and `SessionController`
+      depend on, `SessionData::fromSummary()` replaced `fromModel()`, and
+      `sessionsAvailable` is now the repository's own answer — on redis it is
+      true only while the indexed handler really is in front of the store.
+      `config/identity.php` carries `sessions.index_prefix` and
+      `sessions.connection` (no env, no chart value); the index relies on
+      `maxmemory-policy=noeviction`.
+      Not backfilled: sessions established before the deploy carry no index
+      entry and appear on the list from their next request onwards.
+
+- [ ] Nothing scopes the redis index to a brand either — the same gap the
+      `sessions` table has (see above). The meta hash has room for a brand id
+      if a brand-scoped list ever turns out to matter; it would have to be
+      written from `BrandContext` at `write()` time and the database half
+      would still need its column.
+
+- [ ] `Illuminate\Routing\Route::getController()` memoises the controller
+      instance on the route object, which outlives a request under Octane and
+      across two requests of one Pest test. Nothing is stale in production
+      today (every binding a controller here injects is config-shaped only at
+      construction and config does not move at runtime), but a test that
+      flips `session.driver` between two requests silently keeps the first
+      repository — `SessionManagementTest` now asserts each driver in a test
+      of its own and says why. Worth a `.ai/rules/tests.md` entry, which is
+      outside this module's files.
 
 - [x] Passkeys as a sign-in method (bugfix round 2026-09-21, Task 16).
       `Features::passkeys()` over the vendored `laravel/passkeys`, with

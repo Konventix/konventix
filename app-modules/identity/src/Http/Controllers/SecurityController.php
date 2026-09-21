@@ -13,13 +13,20 @@ use Konventix\Identity\Data\PasskeyData;
 use Konventix\Identity\Data\PasswordUpdateData;
 use Konventix\Identity\Data\SessionData;
 use Konventix\Identity\Http\Requests\TwoFactorAuthenticationRequest;
-use Konventix\Identity\Queries\ActiveSessionsQuery;
+use Konventix\Identity\Sessions\SessionRepository;
+use Konventix\Identity\Sessions\SessionSummary;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
 
 class SecurityController
 {
-    public function __construct(private readonly ActiveSessionsQuery $sessions) {}
+    /**
+     * The session list comes from `Sessions\SessionRepository`, not from the
+     * `sessions` table directly (D-IDP-17): which store is behind it is the
+     * binding's business, and this page only asks whether there is one
+     * (`available()`) and what is in it.
+     */
+    public function __construct(private readonly SessionRepository $sessions) {}
 
     /**
      * Show the user's security settings page: password, two-factor
@@ -38,14 +45,15 @@ class SecurityController
             'hasPassword' => $user->hasPassword(),
             'passwordRules' => Password::defaults()->toPasswordRulesString(),
             'canManageTwoFactor' => Features::canManageTwoFactorAuthentication(),
-            'sessions' => $this->sessions->for($user)
-                ->map(fn ($session) => SessionData::fromModel($session, $request->session()->getId()))
+            'sessions' => collect($this->sessions->activeFor($user))
+                ->map(fn (SessionSummary $session) => SessionData::fromSummary($session, $request->session()->getId()))
                 ->values(),
-            // Only the database driver keeps rows a list can be read from;
-            // on redis or file there is nothing to show or to revoke, and the
-            // page says so rather than presenting an empty list as "no other
-            // sessions".
-            'sessionsAvailable' => config('session.driver') === 'database',
+            // The database driver keeps rows, and the redis driver keeps the
+            // per-user index `Sessions\IndexedRedisSessionHandler` writes; on
+            // array, file or cookie there is nothing to show or to revoke, and
+            // the page says so rather than presenting an empty list as "no
+            // other sessions".
+            'sessionsAvailable' => $this->sessions->available(),
             'canManagePasskeys' => Features::canManagePasskeys(),
         ];
 

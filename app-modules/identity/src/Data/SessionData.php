@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Identity\Data;
 
 use Illuminate\Support\Carbon;
-use Konventix\Identity\Models\Session;
+use Konventix\Identity\Sessions\SessionSummary;
 use Konventix\Identity\Support\UserAgent;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -32,14 +32,20 @@ final class SessionData extends Data
         public readonly bool $isCurrentDevice,
     ) {}
 
-    public static function fromModel(Session $session, string $currentSessionId): self
+    /**
+     * Built from a `Sessions\SessionSummary` rather than the `sessions` row
+     * it used to read (D-IDP-17): on the redis driver there is no row, only
+     * the meta hash `Sessions\IndexedRedisSessionHandler` writes, and both
+     * storages hand the page the identical four facts.
+     */
+    public static function fromSummary(SessionSummary $session, string $currentSessionId): self
     {
         return new self(
             id: $session->id,
-            ipAddress: $session->ip_address,
-            userAgent: $session->user_agent,
-            device: UserAgent::describe($session->user_agent),
-            lastActiveAt: Carbon::createFromTimestamp($session->last_activity)->toIso8601String(),
+            ipAddress: $session->ipAddress,
+            userAgent: $session->userAgent,
+            device: UserAgent::describe($session->userAgent),
+            lastActiveAt: Carbon::createFromTimestamp($session->lastActivity)->toIso8601String(),
             isCurrentDevice: $session->id === $currentSessionId,
         );
     }
