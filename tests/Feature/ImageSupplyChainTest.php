@@ -51,23 +51,35 @@ it('publishes the image from no workflow but the gitlab pipeline', function (): 
 });
 
 /**
- * #256: the container scan could never block a release. `allow_failure: true`
- * meant a report full of CVEs was a green job, and `release:image` carried
- * `needs: [build:image]` — under a DAG the release tag was promoted without
- * the scan's result having been looked at at all.
- *
- * The fix mirrors what the other four scanners already have: the analyzer
- * stays advisory and a gate job goes red. It cannot be `scan:gate` itself,
- * because `build:image` needs that job and container scanning needs the image
- * — so it is a sibling on the release tier.
+ * #256 made the container scan able to block a release: `scan:gate:image`
+ * read the report and `release:image` waited for it. That held until the
+ * v0.6.4 release spent two days behind the scanners (pipelines 1828 and
+ * 1833), and the trade was reversed: every scanner and both gates are manual
+ * and advisory, and nothing in the publishing chain waits for one. The gate
+ * itself stays — pressing `container_scanning` and then this job gives the
+ * old verdict — but it must be *unable* to block: `when: manual` on every
+ * rule and an explicit `allow_failure: true`, because the security templates
+ * set `false` and a manual job that may not fail holds the pipeline while
+ * it waits to be played.
  */
-it('gates the release on the container scan', function (): void {
+it('keeps the container gate manual and advisory', function (): void {
     $ci = (string) file_get_contents(base_path('.gitlab-ci.yml'));
 
-    expect($ci)->toContain('scan:gate:image:')
-        // Release tier: a dev tag stays advisory, a candidate or release tag
-        // does not.
-        ->and($ci)->toMatch('/scan:gate:image:.*\n(?:.*\n)*?\s+rules: \*tier-release\b/')
+    expect($ci)->toContain('scan:gate:image:');
+
+    $gate = substr($ci, (int) strpos($ci, 'scan:gate:image:'));
+    $gate = substr($gate, 0, (int) strpos($gate, "\n\n########## "));
+
+    preg_match('/\n  rules:\n((?:    .*\n)+)/', $gate, $rules);
+
+    expect($rules)->not->toBeEmpty('scan:gate:image has no rules block')
+        ->and($rules[1])->toMatch('/- if: \$CI_COMMIT_TAG\n\s+when: manual/')
+        ->and($rules[1])->not->toMatch('/- if: (?!\$PIPELINE_SHAPE)[^\n]*\n(?!\s+when: manual)/')
+        ->and($gate)->toMatch('/^  allow_failure: true$/m')
+        // The report is read by stage order, not `needs:` — a job that needs
+        // an unplayed manual job is skipped and can never be played.
+        ->and($gate)->toMatch('/^  dependencies:\n\s+- container_scanning/m')
+        ->and($gate)->not->toMatch('/^  needs:/m')
         // The report has to be downloadable, or the gate reads nothing.
         ->and($ci)->toContain('- gl-container-scanning-report.json');
 });
@@ -130,10 +142,21 @@ it('applies the same unfixed rule to the dependency report and leaves sast alone
         ->and($gate)->toContain('gl-sast-report.json');
 });
 
-it('makes the release promotion wait for that gate', function (): void {
+it('lets no scan job into the publishing chain', function (): void {
     $ci = (string) file_get_contents(base_path('.gitlab-ci.yml'));
 
-    $release = substr($ci, (int) strpos($ci, 'release:image:'));
+    $publish = substr($ci, (int) strpos($ci, "\npublish:image:"));
+    $publish = substr($publish, 0, (int) strpos($publish, "\n  script:"));
+    $release = substr($ci, (int) strpos($ci, "\nrelease:image:"));
+    $release = substr($release, 0, (int) strpos($release, "\n  script:"));
+    // The comments may say what the job no longer waits for; the keys may not.
+    $release = (string) preg_replace('/^\s*#.*\n/m', '', $release);
+    $publish = (string) preg_replace('/^\s*#.*\n/m', '', $publish);
 
-    expect($release)->toMatch('/needs:(?:.*\n)*?\s+- job: scan:gate:image/');
+    expect($publish)->toMatch('/needs:(?:.*\n)*?\s+- test:php/')
+        ->and($publish)->toMatch('/needs:(?:.*\n)*?\s+- build:image/')
+        ->and($publish)->not->toMatch('/needs:(?:.*\n)*?\s+- (?:job: )?scan:gate\b/')
+        ->and($release)->toMatch('/needs:(?:.*\n)*?\s+- job: publish:image/')
+        ->and($release)->not->toContain('scan:gate:image')
+        ->and($release)->not->toContain('container_scanning');
 });
