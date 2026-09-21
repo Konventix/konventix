@@ -2131,11 +2131,415 @@
     {
       "id": 40,
       "type": "row",
-      "title": "Runtime",
+      "title": "Support",
       "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 87,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Reports (range)",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 0,
+        "y": 88
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_support_requests_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Counted once per selected category, so a report that ticks two boxes counts twice here (design §10.6).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 41
+    },
+    {
+      "type": "stat",
+      "title": "Purchase affected (range)",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 4,
+        "y": 88
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_support_requests_total{job=\"$release\", category=\"purchase_affected\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "KonventixSupportPurchaseAffected fires on the first one in ten minutes (D-SUP-06).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 42
+    },
+    {
+      "type": "stat",
+      "title": "Open reports",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 8,
+        "y": 88
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(konventix_support_requests_open{job=\"$release\"})",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Received, seen or in progress.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 43
+    },
+    {
+      "type": "stat",
+      "title": "Oldest unopened",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 12,
+        "y": 88
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "konventix_support_requests_unseen_oldest_age_seconds{job=\"$release\"}",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "KonventixSupportUnseen fires at an hour. 0 when nothing is waiting.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 3600
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 44
+    },
+    {
+      "type": "timeseries",
+      "title": "Reports per hour by category",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 16,
+        "y": 88
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (category) (increase(konventix_support_requests_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{category}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 45
+    },
+    {
+      "type": "timeseries",
+      "title": "Open reports by brand",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 0,
+        "y": 96
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "konventix_support_requests_open{job=\"$release\"}",
+          "legendFormat": "{{brand}}",
+          "range": true
+        }
+      ],
+      "description": "The brand host the report came in on; `console` is a report filed on the operator console, which has no brand (ADR-0063).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 46
+    },
+    {
+      "type": "timeseries",
+      "title": "State changes per hour",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 8,
+        "y": 96
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (state) (increase(konventix_support_request_transitions_total{job=\"$release\"}[1h]))",
+          "legendFormat": "into {{state}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 47
+    },
+    {
+      "id": 48,
+      "type": "row",
+      "title": "Runtime",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 104,
         "w": 24,
         "h": 1
       },
@@ -2148,7 +2552,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 88
+        "y": 105
       },
       "targets": [
         {
@@ -2193,7 +2597,7 @@
           "sort": "desc"
         }
       },
-      "id": 41
+      "id": 49
     },
     {
       "type": "timeseries",
@@ -2202,7 +2606,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 88
+        "y": 105
       },
       "targets": [
         {
@@ -2247,7 +2651,7 @@
           "sort": "desc"
         }
       },
-      "id": 42
+      "id": 50
     },
     {
       "type": "timeseries",
@@ -2256,7 +2660,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 96
+        "y": 113
       },
       "targets": [
         {
@@ -2301,7 +2705,7 @@
           "sort": "desc"
         }
       },
-      "id": 43
+      "id": 51
     },
     {
       "type": "timeseries",
@@ -2310,7 +2714,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 96
+        "y": 113
       },
       "targets": [
         {
@@ -2355,16 +2759,16 @@
           "sort": "desc"
         }
       },
-      "id": 44
+      "id": 52
     },
     {
-      "id": 45,
+      "id": 53,
       "type": "row",
       "title": "Database",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 104,
+        "y": 121,
         "w": 24,
         "h": 1
       },
@@ -2377,7 +2781,7 @@
         "w": 6,
         "h": 4,
         "x": 0,
-        "y": 105
+        "y": 122
       },
       "targets": [
         {
@@ -2431,7 +2835,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 46
+      "id": 54
     },
     {
       "type": "stat",
@@ -2440,7 +2844,7 @@
         "w": 6,
         "h": 4,
         "x": 6,
-        "y": 105
+        "y": 122
       },
       "targets": [
         {
@@ -2490,7 +2894,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 47
+      "id": 55
     },
     {
       "type": "timeseries",
@@ -2499,7 +2903,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 105
+        "y": 122
       },
       "targets": [
         {
@@ -2544,7 +2948,7 @@
           "sort": "desc"
         }
       },
-      "id": 48
+      "id": 56
     }
   ]
 }

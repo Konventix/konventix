@@ -160,6 +160,23 @@ groups:
           summary: "The door at {{ $labels.brand }} is refusing entry conditions"
           runbook: "docs/operations.md#konventixentryconditionrefusalsatdoor"
 
+      - alert: KonventixSupportPurchaseAffected
+        expr: |
+          sum by (brand) (increase(konventix_support_requests_total{job="__RELEASE__", category="purchase_affected"}[10m])) > 0
+        for: 0m
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "A visitor at {{ $labels.brand }} reports a purchase problem"
+          runbook: "docs/operations.md#konventixsupportpurchaseaffected"
+
+      - alert: KonventixSupportUnseen
+        expr: |
+          konventix_support_requests_unseen_oldest_age_seconds{job="__RELEASE__"} > 3600
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "A support report has been waiting unopened for more than an hour"
+          runbook: "docs/operations.md#konventixsupportunseen"
+
   - name: konventix.platform
     rules:
       - alert: KonventixDatabaseBackupMissing

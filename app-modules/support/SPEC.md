@@ -38,6 +38,11 @@ and the context attached.
   reference (`subject_module`, `subject_id`) for ADR-0022's "ask about this".
   `filed_on_brand_id` is provenance, never a scope (ADR-0050): the console
   lists across brands and a request filed on the operator host has none.
+  The model therefore carries **no** `BelongsToBrand` — the one model in
+  the codebase that deliberately does not — and scoping is explicit
+  (`scopeFiledOnBrand()`). A global `BrandScope` would have hidden the
+  console-filed rows entirely and, on the admin host where the inbox is
+  read, hardened every query to `WHERE 1=0`.
 - **`SupportRequestMessage`**: the thread after the original message, each
   entry `internal` (staff note) or `external` (reporter sees it, may write
   one).
@@ -109,6 +114,40 @@ in context, must carry the launcher too, which a Pennant gate cannot allow
 (`ModuleGate::isActive()` reads "no brand" as inactive). If a later helpdesk
 half needs a per-brand opt-in, it is a per-brand feature beside the module
 (ADR-0047's shape), not a module gate.
+
+## Observability
+
+ADR-0059. Catalogue in `src/Metrics/SupportMetrics.php`, counters written
+by `src/Listeners/Metrics/RecordSupportMetrics.php` from this module's own
+events, gauges answered by `src/Metrics/SupportGauges.php` at scrape time,
+panels in the platform dashboard's **Support** row.
+
+| Metric | Kind | Labels |
+|---|---|---|
+| `support_requests_total` | counter | `brand`, `category` — one increment per *selected* category |
+| `support_request_transitions_total` | counter | `brand`, `state` (the state moved into) |
+| `support_requests_open` | gauge | `brand` — received + seen + in progress, every brand and `console`, zero included |
+| `support_requests_unseen_oldest_age_seconds` | gauge | none — 0 when nothing is waiting |
+
+`brand` is a slug, or the literal `console` for a report filed on the
+operator host, which has no brand (ADR-0063). Nothing unbounded is ever a
+label: the request id and the reference belong in the `support.request` log
+record, not in a series.
+
+Alerts: `KonventixSupportPurchaseAffected` (a report in that category in
+the last ten minutes — D-SUP-06's "purchase affected reaches the alert
+channel", never Commerce's topic key) and `KonventixSupportUnseen` (the
+oldest unopened report is over an hour old). Both have runbook sections in
+`docs/operations.md` and vmalert-tool unit tests.
+
+## Retention
+
+`support:purge-requests`, daily and `withoutOverlapping()`, deletes closed
+requests and their threads once `support.retention.days`
+(`config/support.php`, 180) has passed since `closed_at`. Only a terminal
+state sets `closed_at`, so an **open** report is never purged however old
+it is — that is a triage problem, and the unseen-age gauge is what reports
+it. A window below one day is refused by the sweep rather than obeyed.
 
 ## Open questions
 

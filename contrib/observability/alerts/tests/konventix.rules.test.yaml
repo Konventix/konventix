@@ -363,3 +363,51 @@ tests:
             exp_annotations:
               summary: "The door at sxlan is refusing entry conditions"
               runbook: "docs/operations.md#konventixentryconditionrefusalsatdoor"
+
+  # Design §10.6, D-SUP-06: a report in the "purchase affected" category is
+  # the one thing on this dashboard that means somebody is standing in front
+  # of a broken checkout right now, so it pages on the first one rather than
+  # on a rate. A report counts once per selected category, so the series is
+  # per category and the two other reports in the fixture must not raise it.
+  - interval: 1m
+    input_series:
+      - series: 'konventix_support_requests_total{job="konventix", brand="sxlan", category="purchase_affected"}'
+        values: '0 0 0 0 0 1 1 1 1 1 1 1'
+      - series: 'konventix_support_requests_total{job="konventix", brand="sxlan", category="suggestion"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11'
+      - series: 'konventix_support_requests_total{job="konventix", brand="console", category="display"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11'
+    alert_rule_test:
+      - eval_time: 3m
+        groupname: konventix.app
+        alertname: KonventixSupportPurchaseAffected
+        exp_alerts: []
+      - eval_time: 7m
+        groupname: konventix.app
+        alertname: KonventixSupportPurchaseAffected
+        exp_alerts:
+          - exp_labels: {brand: sxlan, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "A visitor at sxlan reports a purchase problem"
+              runbook: "docs/operations.md#konventixsupportpurchaseaffected"
+
+  # Design §10.6: a report nobody has opened for an hour. The gauge reports
+  # 0 when nothing is waiting, so the series always exists and the rule has
+  # something to evaluate rather than a gap.
+  - interval: 1m
+    input_series:
+      - series: 'konventix_support_requests_unseen_oldest_age_seconds{job="konventix"}'
+        values: '0 0 1800 2400 3000 3600 4200 4800 5400 6000'
+    alert_rule_test:
+      - eval_time: 4m
+        groupname: konventix.app
+        alertname: KonventixSupportUnseen
+        exp_alerts: []
+      - eval_time: 7m
+        groupname: konventix.app
+        alertname: KonventixSupportUnseen
+        exp_alerts:
+          - exp_labels: {job: konventix, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "A support report has been waiting unopened for more than an hour"
+              runbook: "docs/operations.md#konventixsupportunseen"

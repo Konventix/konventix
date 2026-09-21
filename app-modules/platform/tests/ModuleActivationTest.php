@@ -17,11 +17,14 @@ use Laravel\Pennant\Feature;
  * per brand, enforced at four points — routes, navigation, UI slots, listeners.
  */
 it('treats kernel and core modules as always active', function (string $module): void {
+    // `support` joined this list with ADR-0063: the report channel is
+    // kernel-style, because `ModuleGate::isActive()` reads the console's
+    // "no brand" as inactive and the launcher has to be there too.
     $gate = app(ModuleGate::class);
 
     expect($gate->isGateable($module))->toBeFalse()
         ->and($gate->isActive($module))->toBeTrue();
-})->with(['platform', 'identity', 'event', 'compliance', 'messaging', 'registration', 'admission', 'commerce', 'content']);
+})->with(['platform', 'identity', 'event', 'compliance', 'messaging', 'registration', 'admission', 'commerce', 'content', 'support']);
 
 it('treats the third tier as gateable and off until a brand opts in', function (string $module): void {
     $brand = Brand::factory()->create();
@@ -35,7 +38,7 @@ it('treats the third tier as gateable and off until a brand opts in', function (
     Feature::for($brand)->activate($gate->featureName($module));
 
     expect($gate->isActive($module))->toBeTrue();
-})->with(['staffing', 'resources', 'competition', 'game-ops', 'agenda', 'community', 'sponsoring', 'newsletter', 'extensibility', 'support']);
+})->with(['staffing', 'resources', 'competition', 'game-ops', 'agenda', 'community', 'sponsoring', 'newsletter', 'extensibility']);
 
 it('activates a module for one brand without activating it for another', function (): void {
     $enabled = Brand::factory()->create();
@@ -60,8 +63,10 @@ it('reports a gateable module as inactive when no brand is resolved', function (
 
 it('discovers every installed module without a central list', function (): void {
     expect(app(ModuleGate::class)->gateableModuleNames())
-        ->toHaveCount(10)
-        ->toContain('game-ops');
+        ->toHaveCount(9)
+        ->toContain('game-ops')
+        // Nine, not ten: Support stopped being gateable with ADR-0063.
+        ->not->toContain('support');
 });
 
 it('404s a route in a module the brand has not activated', function (): void {

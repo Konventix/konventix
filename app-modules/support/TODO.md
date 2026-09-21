@@ -6,10 +6,6 @@
 
 ## Next
 
-- [ ] S0 Foundation (#304, #88): ADR-0063, migrations, enums, models, Data objects,
-      events, `Permission` + `support.desk`, `SupportGdprHandler`,
-      `SupportMetrics` + panel + alert rules, `support:purge-requests`,
-      `config/support.php`.
 - [ ] S1 Report channel (#305, #88): `SupportLauncher`, `SupportRequestDialog`,
       `components/ui/textarea`, `useSupportContext`, `POST /support/requests`
       on both hosts, `throttle:support-report`, honeypot, `CaptchaVerifier`,
@@ -23,6 +19,10 @@
 
 ## Backlog
 
+- [ ] Wire `docs/architecture/module-map.md` (row "Support") and ROADMAP's
+      Support entries from "post-release" to "report channel at go-live
+      (#88), helpdesk half after the event (#48)" — ADR-0063's last
+      consequence, left for the slice that touches those documents.
 - [ ] Typed "ask about this" reference through a Platform UI slot
       (ADR-0022); `subject_module`/`subject_id` are reserved for it.
 - [ ] Attachments through Platform media (needs a brand-host upload route).
@@ -35,3 +35,17 @@
 
 - [x] Write `SPEC.md` — purpose, scope ceiling, ownership boundary, event
       contract (design 2026-09-21, this branch).
+- [x] S0 Foundation (#304, #88): `$gateable = false` (ADR-0063), migrations
+      `support_requests` / `support_request_messages` with the reserved
+      `external_reference` and typed subject reference, enums
+      (`SupportCategory`, `SupportRequestState`, `MessageVisibility`,
+      `Permission`), models without `BelongsToBrand`, factories, Data
+      objects (`SupportContextData` as the Eloquent cast,
+      `SupportClientContextData`, `SupportRequestInputData`, the two read
+      models), the four `AuditableEvent`s, `TransitionSupportRequest`,
+      `support.desk`, `SupportGdprHandler`, `SupportMetrics` +
+      `SupportGauges` + the platform dashboard's Support row + both alert
+      rules with vmalert unit tests and runbook sections,
+      `support:purge-requests` daily with `withoutOverlapping()`, and
+      `config/support.php` (retention, the captcha seam, the logs deep
+      link).

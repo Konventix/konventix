@@ -243,6 +243,59 @@ behind it had never reached. Setting a brand's timezone still moves its
 quiet hours and its own day; it moves the daily mail budget only once the
 brand has its own SMTP transport.
 
+## Support requests
+
+Since Round 4 (#88, #304, ADR-0063) a visitor can say that something is
+wrong from any page, and the operator console can too. The report is a
+`support_requests` row: what the person typed, one or more of the five
+categories (*purchase affected*, *not visible*, *does not work*, *looks
+wrong*, *suggestion*), and the technical context they could not be expected
+to quote — **both correlation ids**, the route, the release, the brand, the
+previous page and the last five visits, the viewport, and the last
+JavaScript error the page produced. No IP address is stored anywhere, no
+cookies, no form contents of the page being reported, no screenshot; the
+dialog lists what goes along before it is sent.
+
+The two correlation ids are the point of the whole feature. `pageCorrelationId`
+belongs to the request that misbehaved and is what to paste into the Logs
+dashboard; `submitCorrelationId` belongs to the POST that filed the report.
+A report therefore arrives already carrying the key to its own log lines
+(ADR-0056).
+
+**Where a report lives.** `filed_on_brand_id` records which brand host it
+came in on and is *provenance, not a scope*: the console inbox lists across
+every brand, and a report filed on the operator console has no brand at all
+— it appears under `console` on the dashboards and in the alert
+annotations. `support.view-requests` sees the inbox,
+`support.triage-requests` moves it, and `support.view-reporter-contact` is
+needed to see an unmasked address; every unmasked view is in the audit
+trail. `permissions:sync` materializes the **Support Desk** role for every
+brand — Support is always on and cannot be switched off per brand
+(ADR-0063).
+
+**States.** `received` → `seen` (set automatically the first time somebody
+opens it in the console) → `in_progress` → `resolved` or `wont_fix`, with a
+reopen from either terminal state back to `in_progress`. Only a terminal
+state sets `closed_at`, and `closed_at` is the only retention clock.
+
+**Retention.** `support:purge-requests` runs daily at 03:20 and deletes
+closed reports — with their threads — once
+`support.retention.days` (`SUPPORT_RETENTION_DAYS`, 180 by default) has
+passed since they closed. An **open** report is never purged however old it
+is: its age is a triage problem, not a retention one, and
+`KonventixSupportUnseen` is what reports it. A window of zero or less is
+refused by the sweep rather than obeyed. Compliance's retention-rules UI is
+deliberately not wired to this yet; the window is config.
+
+**Privacy.** A subject request reaches Support's own GDPR handler, which
+answers for an account **and** for a bare e-mail address — a guest report
+is personal data about somebody who never had an account. Erasure nulls the
+account id and the address, replaces what the person wrote (in the report
+and in their own replies) with `[removed on request]`, and drops the user
+agent, the viewport, the visit buffer and the captured client error. The
+row itself stays: it is the operator's record that something was broken on
+a given release, and what is left says nothing about who reported it.
+
 ## Alerts
 
 ### KonventixMetricsDown
@@ -478,6 +531,56 @@ person is let in is the operator's decision at the door, and an operator
 who wants a *blocking* check sets `approval: required` on the registration
 type instead, which is decided before the event rather than at the
 entrance.
+
+### KonventixSupportPurchaseAffected
+
+Somebody has just reported a problem in the **purchase affected** category
+(D-SUP-06). This is not a rate and not a threshold: it fires on the first
+one in ten minutes, because the category means a person is standing in
+front of a checkout that is not working for them right now, and nothing
+else on this dashboard can tell you that. A quiet day with one of these is
+the system working as intended.
+
+`{{ $labels.brand }}` names the brand host the report came in on, or
+`console` for a report filed on the operator console.
+
+What to do, in order. **Open the console inbox**
+(`/admin/support-requests`, filtered on the category) and read the newest
+report: the reference is its last eight characters, upper-cased, and it is
+the word the reporter has as well. **Paste the page correlation id into the
+Logs dashboard** — the report carries the id of the request that
+misbehaved, not only of its own submission, so the log lines behind the
+problem are one query away and need no guessing about timestamps. **Check
+whether it is already known**: the platform dashboard's Support row, the
+payment panels of the sale dashboard and `KonventixPaymentFailureRate` say
+whether this is one person's browser or everybody's checkout. If it is
+everybody's, mark the report as a known issue with a notice — the dialog
+then shows that notice to the next person about to report the same thing,
+which is both kinder and quieter.
+
+If several of these arrive within minutes of each other, treat it as a
+payment incident and not as support volume: the reports are the symptom,
+and `KonventixWebhookSilence` / `KonventixPaymentFailureRate` are where the
+cause usually shows.
+
+### KonventixSupportUnseen
+
+A support report has been sitting in `received` — nobody has opened it in
+the console — for more than an hour. The gauge is the age of the *oldest*
+unopened report and reads 0 when there is none, so the alert resolves the
+moment somebody opens the oldest one.
+
+This is a staffing signal, not a fault: nothing is broken, somebody is
+simply not reading the inbox. On a sale day or during the event that is
+worth fixing within minutes, because the reports arriving then are the ones
+that say the door or the checkout is broken. Off-season an hour is
+harmless and the alert can be acknowledged.
+
+Opening a report sets `seen` automatically, which is what ends the clock —
+there is no separate "acknowledge" control to forget. If the inbox looks
+empty while this is firing, check the brand filter: the gauge counts every
+brand *and* the console-filed reports, and the console ones appear under no
+brand at all.
 
 ### KonventixRoleUnavailable
 

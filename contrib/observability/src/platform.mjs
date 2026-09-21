@@ -75,6 +75,15 @@ export default dashboard({
                 prom(`sum by (state, source) (increase(konventix_entry_condition_decisions_total{${J}}[1h]))`, '{{state}} at the {{source}}'),
             ], { w: 8 }),
         ]),
+        row('Support', [
+            stat('Reports (range)', [prom(`sum(increase(konventix_support_requests_total{${J}}[$__range]))`)], { description: 'Counted once per selected category, so a report that ticks two boxes counts twice here (design §10.6).' }),
+            stat('Purchase affected (range)', [prom(`sum(increase(konventix_support_requests_total{${J}, category="purchase_affected"}[$__range]))`)], { thresholds: thresholds('green', [1, 'orange']), description: 'KonventixSupportPurchaseAffected fires on the first one in ten minutes (D-SUP-06).' }),
+            stat('Open reports', [prom(`sum(konventix_support_requests_open{${J}})`)], { description: 'Received, seen or in progress.' }),
+            stat('Oldest unopened', [prom(`konventix_support_requests_unseen_oldest_age_seconds{${J}}`)], { unit: 's', thresholds: thresholds('green', [3600, 'orange']), description: 'KonventixSupportUnseen fires at an hour. 0 when nothing is waiting.' }),
+            timeseries('Reports per hour by category', [prom(`sum by (category) (increase(konventix_support_requests_total{${J}}[1h]))`, '{{category}}')], { w: 8 }),
+            timeseries('Open reports by brand', [prom(`konventix_support_requests_open{${J}}`, '{{brand}}')], { w: 8, description: 'The brand host the report came in on; `console` is a report filed on the operator console, which has no brand (ADR-0063).' }),
+            timeseries('State changes per hour', [prom(`sum by (state) (increase(konventix_support_request_transitions_total{${J}}[1h]))`, 'into {{state}}')], { w: 8 }),
+        ]),
         row('Runtime', [
             timeseries('CPU per role', [prom(`sum by (container) (rate(container_cpu_usage_seconds_total{${K}, container!="", container!="POD"}[5m]))`, '{{container}}')], { unit: 'short' }),
             timeseries('Memory per role', [prom(`sum by (container) (container_memory_working_set_bytes{${K}, container!="", container!="POD"})`, '{{container}}')], { unit: 'bytes' }),
