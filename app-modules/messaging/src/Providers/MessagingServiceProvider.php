@@ -310,12 +310,23 @@ class MessagingServiceProvider extends ModuleServiceProvider
                 'en' => '{{ $count }} new notifications',
             ],
             bodies: [
+                // Round 4 Task 27: an item is `{subject, url}`, so a digested
+                // message keeps its own link. `@if` over the item's `url` is
+                // inside `TemplateOverrideGuard`'s allow-list (a payload
+                // field with index access), which is what lets an operator
+                // round-trip this default through the template editor.
                 'de' => <<<'BLADE'
                     <p>Guten Tag,</p>
                     <p>während Sie nicht online waren, gab es {{ $count }} neue Benachrichtigungen:</p>
                     <ul>
                     @foreach ($items as $item)
-                        <li>{{ $item }}</li>
+                        <li>
+                        @if ($item['url'])
+                        <a href="{{ $item['url'] }}">{{ $item['subject'] }}</a>
+                        @else
+                        {{ $item['subject'] }}
+                        @endif
+                        </li>
                     @endforeach
                     </ul>
                     BLADE,
@@ -324,7 +335,13 @@ class MessagingServiceProvider extends ModuleServiceProvider
                     <p>while you were away there were {{ $count }} new notifications:</p>
                     <ul>
                     @foreach ($items as $item)
-                        <li>{{ $item }}</li>
+                        <li>
+                        @if ($item['url'])
+                        <a href="{{ $item['url'] }}">{{ $item['subject'] }}</a>
+                        @else
+                        {{ $item['subject'] }}
+                        @endif
+                        </li>
                     @endforeach
                     </ul>
                     BLADE,
@@ -333,9 +350,9 @@ class MessagingServiceProvider extends ModuleServiceProvider
             sample: [
                 'count' => 3,
                 'items' => [
-                    'Neue Ankündigung: Programm steht',
-                    'Zahlungserinnerung RE-2026-0142',
-                    'Ihre Anmeldung ist bestätigt',
+                    ['subject' => 'Neue Ankündigung: Programm steht', 'url' => 'https://sxlan.example/news/programm-steht'],
+                    ['subject' => 'Zahlungserinnerung RE-2026-0142', 'url' => null],
+                    ['subject' => 'Ihre Anmeldung ist bestätigt', 'url' => null],
                 ],
             ],
         ));

@@ -36,9 +36,15 @@ use Konventix\Platform\Observability\Metrics;
  * leaves a counter without an expiry.
  *
  * **Windows.** The hourly window is the UTC clock hour. The daily window
- * runs midnight to midnight in the brand's mail-settings timezone where
- * the row has one, else UTC — the same zone the hold is computed in, so
- * the counter and the release never disagree about when a day ends.
+ * runs midnight to midnight in the scope's timezone — the same zone the
+ * hold is computed in, so the counter and the release never disagree about
+ * when a day ends. That zone is the brand's mail-settings timezone only
+ * where the brand has a budget of its own; the shared `default` budget's
+ * day is a UTC day (Round 4 Task 24, D-MSG-10). A shared budget belongs to
+ * one mailbox account, and the provider counts that account's day once —
+ * keying it per brand let two brands in different zones spend overlapping
+ * days against the same 500, and a hold taken by one of them reopened at a
+ * midnight the counter behind it had never reached.
  */
 final class MailQuota
 {
@@ -65,7 +71,10 @@ final class MailQuota
             key: $shared ? self::SHARED_SCOPE : $brandId,
             perHour: max(1, $settings->mail_quota_per_hour ?? (int) config('messaging.mail_quota.per_hour')),
             perDay: max(1, $settings->mail_quota_per_day ?? (int) config('messaging.mail_quota.per_day')),
-            timezone: $settings->timezone ?? 'UTC',
+            // The shared budget's day is a UTC day whatever the brand's own
+            // timezone says (Task 24): one account, one day, counted once.
+            // A brand with its own transport keeps its own midnight.
+            timezone: $shared ? 'UTC' : ($settings->timezone ?? 'UTC'),
             shared: $shared,
         );
     }

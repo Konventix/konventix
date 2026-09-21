@@ -54,7 +54,11 @@ scalars and ULIDs, which is exactly what the rule asks for.
   settings then the application timezone as fallbacks) push it to 08:00. The
   `messaging:flush-held` sweep (every minute) sends one due hold as itself and
   coalesces several into one `messaging.digest` message listing each item's
-  rendered subject; member rows keep `digest_message_id` so "did they get it"
+  rendered subject, linked to that member's own payload `url` where it had
+  one (`Data\DigestItemData`, Round 4 Task 27 / D-MSG-11 — a digested
+  announcement keeps the `/news/{slug}` link the urgent path carries; the
+  digest itself has no single `url`, so an in-app digest row's action URL
+  stays null); member rows keep `digest_message_id` so "did they get it"
   stays answerable. `urgent` bypasses both.
 - **Mail quota** (bugfix round 2026-09-21, Task 14): how much mail one
   SMTP account may send per hour and per day before the provider refuses
@@ -62,16 +66,19 @@ scalars and ULIDs, which is exactly what the rule asks for.
   allows 100 recipients an hour and 500 a day (`config/messaging.php`,
   `MAIL_QUOTA_PER_HOUR` / `MAIL_QUOTA_PER_DAY`). `Mail\MailQuota` counts
   mail the transport accepted per budget and window in cache counters
-  (`h:<YmdH>` in UTC, `d:<Ymd>` in the brand's mail-settings timezone or
-  UTC), and `SendMessage` holds a non-urgent mail envelope that would
+  (`h:<YmdH>` in UTC, `d:<Ymd>` in the budget's own timezone), and
+  `SendMessage` holds a non-urgent mail envelope that would
   cross either limit — `held`, `hold_reason = mail_quota`, `hold_until` at
   the start of the next free window — beside the digest hold; the
   `messaging:flush-held` sweep releases quota holds as themselves, never
   coalesced, and re-checks the quota as it releases any mail so an
   exhausted window re-holds instead of bursting. A brand with its own
-  transport has its own budget (overridable on its settings row); brands
-  on the application's default mailer share one. In-app and push never
-  wait; `urgent` bypasses the hold but still counts. Observed as
+  transport has its own budget (overridable on its settings row) and with
+  it its own midnight, its mail-settings timezone; brands on the
+  application's default mailer share one budget, whose day is a UTC day
+  (Round 4 Task 24, D-MSG-10) — one mailbox account, one day, so brands in
+  different zones cannot count overlapping days against it. In-app and
+  push never wait; `urgent` bypasses the hold but still counts. Observed as
   `mail_quota_held_total`, `mail_quota_used` and `mail_quota_limit` (per
   brand and window, every brand on every scrape) and the
   `KonventixMailQuotaExhausted` alert (ADR-0059).
@@ -310,7 +317,7 @@ never reachable from a domain event.
 |---|---|---|---|
 | `messaging.announcement` | `Listeners\SendAnnouncementNotifications` on `AnnouncementPublished` (Content) | Every known recipient (fan-out; per-brand narrowing waits on an Identity signal, TODO.md) | `content.announcements` |
 | `messaging.dunning-notice` | `Listeners\SendDunningNotice` on `DunningLevelRaised` (Commerce) | The invoice's billing contact, by address (no account required) | `commerce.dunning` |
-| `messaging.digest` | `Actions\FlushHeldMessages`, run by the `messaging:flush-held` sweep, coalescing a recipient/channel's due holds into one send | The recipient whose held sends coalesced | — (meta; carries the coalesced topics' own subjects, not one of its own) |
+| `messaging.digest` | `Actions\FlushHeldMessages`, run by the `messaging:flush-held` sweep, coalescing a recipient/channel's due holds into one send | The recipient whose held sends coalesced | — (meta; carries the coalesced topics' own subjects and links, not one of its own) |
 | `messaging.test-mail` | `Actions\SendTestMail`, the "Send test mail to me" button on the mail-settings edit page | The signed-in operator's own account email | — (never a domain event, gated `ManageSenderIdentity`) |
 
 ## Activation

@@ -9,17 +9,26 @@ use Illuminate\Support\Str;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Actions\FlushHeldMessages;
 use Konventix\Messaging\Actions\SendMessage;
+use Konventix\Messaging\Channels\InAppChannel;
+use Konventix\Messaging\Data\DigestData;
+use Konventix\Messaging\Data\DigestItemData;
+use Konventix\Messaging\Data\RehydratedPayload;
+use Konventix\Messaging\Data\SendMessageData;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Messaging\Digests\HoldPolicy;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Enums\MessageStatus;
 use Konventix\Messaging\Events\MessageQueued;
+use Konventix\Messaging\Events\NotificationReceived;
 use Konventix\Messaging\Mail\MailQuota;
 use Konventix\Messaging\Models\BrandMailSettings;
+use Konventix\Messaging\Models\InboxNotification;
 use Konventix\Messaging\Models\MessageRecord;
 use Konventix\Messaging\Models\Recipient;
 use Konventix\Messaging\Templates\MessageTemplate;
+use Konventix\Messaging\Templates\RenderedMessage;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Messaging\Templates\TemplateRenderer;
 use Konventix\Messaging\Topics\Topic;
 use Konventix\Messaging\Topics\TopicRegistry;
 use Spatie\LaravelData\Data;
@@ -31,7 +40,10 @@ use Spatie\LaravelData\Data;
  */
 final class DigestQuietHoursTestPayload extends Data
 {
-    public function __construct(public readonly string $name = 'Erika') {}
+    public function __construct(
+        public readonly string $name = 'Erika',
+        public readonly ?string $url = null,
+    ) {}
 }
 
 function digestQuietHoursSetup(bool $digestable = true): string
@@ -63,12 +75,12 @@ function digestQuietHoursSetup(bool $digestable = true): string
     return $userId;
 }
 
-function digestQuietHoursSend(string $userId, bool $urgent = false, string $name = 'Erika'): void
+function digestQuietHoursSend(string $userId, bool $urgent = false, string $name = 'Erika', ?string $url = null): void
 {
     app(SendMessage::class)->handle(new SendMessageRequest(
         recipientId: $userId,
         templateKey: 'test.digest',
-        payload: new DigestQuietHoursTestPayload($name),
+        payload: new DigestQuietHoursTestPayload($name, $url),
         topicKey: 'test.digest-topic',
         urgent: $urgent,
     ));
@@ -197,8 +209,13 @@ it('coalesces several due holds into one digest in the recipient locale', functi
     expect($result)->toBe(['flushed' => 1, 'digests' => 1, 'reheld' => 0]);
 
     $digest = MessageRecord::withoutBrandScope()->where('template_key', 'messaging.digest')->sole();
+    // `toEqual`, not `toBe`: the payload comes back out of a jsonb column,
+    // which does not keep the key order it went in with.
     expect($digest->status)->toBe(MessageStatus::Sent)
-        ->and($digest->payload)->toBe(['count' => 2, 'items' => ['About One', 'About Two']])
+        ->and($digest->payload)->toEqual(['count' => 2, 'items' => [
+            ['subject' => 'About One', 'url' => null],
+            ['subject' => 'About Two', 'url' => null],
+        ]])
         ->and($digest->recipient_locale)->toBe('en');
 
     $members = MessageRecord::withoutBrandScope()->where('template_key', 'test.digest')->get();
@@ -208,6 +225,83 @@ it('coalesces several due holds into one digest in the recipient locale', functi
 
     // The digest is a new acceptance; its members had theirs already.
     Event::assertDispatchedTimes(MessageQueued::class, 3);
+});
+
+it('carries each member\'s own link into the digest and renders it as a link in both languages', function (): void {
+    // Round 4 Task 27 (D-MSG-11): a digested announcement used to arrive as
+    // a bare title, while the same message sent urgently, or read in the
+    // inbox, carried its `/news/{slug}` link.
+    $this->withBrand();
+    $this->travelTo(Carbon::parse('2026-08-17 12:00:00', 'UTC'));
+    $userId = digestQuietHoursSetup();
+
+    Mail::fake();
+
+    digestQuietHoursSend($userId, name: 'One', url: 'https://sxlan.example/news/one');
+    digestQuietHoursSend($userId, name: 'Two');
+
+    $this->travelTo(Carbon::parse('2026-08-17 12:31:00', 'UTC'));
+    expect(app(FlushHeldMessages::class)->handle())->toBe(['flushed' => 1, 'digests' => 1, 'reheld' => 0]);
+
+    $digest = MessageRecord::withoutBrandScope()->where('template_key', 'messaging.digest')->sole();
+
+    // A member whose payload had no `url` keeps a null one; the item shape
+    // is `{subject, url}` either way.
+    expect($digest->payload['items'])->toEqual([
+        ['subject' => 'About One', 'url' => 'https://sxlan.example/news/one'],
+        ['subject' => 'About Two', 'url' => null],
+    ]);
+
+    // Both shipped locales link the subject where there is a URL and print
+    // it as text where there is none — the template is the same in each.
+    foreach (['de', 'en'] as $locale) {
+        $rendered = app(TemplateRenderer::class)->render(new SendMessageData(
+            messageId: $digest->id,
+            brandId: $digest->brand_id,
+            recipientId: $digest->recipient_id,
+            recipientEmail: (string) $digest->recipient_email,
+            recipientLocale: $locale,
+            templateKey: 'messaging.digest',
+            payload: new RehydratedPayload($digest->payload),
+            channel: Channel::Mail->value,
+        ));
+
+        expect($rendered->locale)->toBe($locale)
+            ->and($rendered->body)->toContain('<a href="https://sxlan.example/news/one">About One</a>')
+            ->and($rendered->body)->toContain('About Two')
+            ->and($rendered->body)->not->toContain('<a href="">About Two</a>');
+    }
+});
+
+it('gives a digest in-app row no single action url', function (): void {
+    // A digest points at several things at once, so the row's action URL
+    // stays null and the links live per item in the body (Task 27).
+    $brand = $this->withBrand();
+    Event::fake([NotificationReceived::class]);
+
+    app(InAppChannel::class)->send(
+        new SendMessageData(
+            messageId: (string) Str::ulid(),
+            brandId: $brand->getKey(),
+            recipientId: (string) Str::ulid(),
+            recipientEmail: 'erika@example.test',
+            recipientLocale: 'en',
+            templateKey: 'messaging.digest',
+            payload: new DigestData(count: 1, items: [
+                new DigestItemData(subject: 'About One', url: 'https://sxlan.example/news/one'),
+            ]),
+            channel: Channel::InApp->value,
+        ),
+        new RenderedMessage(
+            subject: '1 new notification',
+            body: '<ul><li><a href="https://sxlan.example/news/one">About One</a></li></ul>',
+            locale: 'en',
+        ),
+    );
+
+    $notification = InboxNotification::withoutBrandScope()->sole();
+    expect($notification->url)->toBeNull()
+        ->and($notification->body)->toContain('https://sxlan.example/news/one');
 });
 
 it('does not hold sends on a non-digestable topic', function (): void {

@@ -10,6 +10,12 @@ namespace Konventix\Messaging\Mail;
  * window. `shared` says the brand sends through the application's default
  * mailer and therefore shares `key` — and the count behind it — with every
  * other brand that does.
+ *
+ * `timezone` is the *budget's* zone, not necessarily the brand's: a shared
+ * budget is always `UTC` (Round 4 Task 24, D-MSG-10), because brands in
+ * different zones would otherwise count overlapping days against the one
+ * mailbox account the provider is metering. Only a brand with its own
+ * transport carries its own mail-settings timezone here.
  */
 final readonly class MailQuotaScope
 {

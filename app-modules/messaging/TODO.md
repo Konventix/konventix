@@ -55,18 +55,6 @@
       window's worth. Bounded by the sweep interval and queue latency;
       a reservation at release time would close it at the cost of
       counting twice on a failed send.
-- [ ] Mail quota shared scope and timezones: brands on the default mailer
-      share one count, but the daily window closes at midnight in each
-      brand's own mail-settings timezone, so two brands in different zones
-      count the shared budget in overlapping days. One timezone per shared
-      scope (the operator's) would be exact; today the operator's brands
-      are all in one zone.
-- [ ] A digested announcement keeps no per-item link: `messaging.digest`
-      lists each coalesced member's rendered subject only, so a normal
-      (non-urgent) announcement that reaches a recipient inside a digest
-      shows its title without the `/news/{slug}` link the urgent path and
-      the inbox row carry (bugfix round 2026-09-21, Task 11). Carrying a
-      URL per digest member means widening `DigestData`'s item shape.
 - [ ] `TemplateOverrideGuard` refuses a literal email address in an override:
       its `@word` scan matches `@example` inside `info@example.com` and the
       glued-directive check then rejects it, even though Blade renders it
@@ -139,6 +127,21 @@
 
 ## Done
 
+- [x] The shared mail budget's day rolls over at UTC midnight (Round 4,
+      Task 24, D-MSG-10): `MailQuota::scopeFor()` gives the shared
+      `default` scope the timezone `UTC`, so its `d:<Ymd>` counter and the
+      daily hold it computes both close at UTC midnight however the brands
+      on it have set their own. A brand with its own transport keeps its
+      mail-settings timezone for both. `MailQuotaTest` covers each side;
+      `docs/operations.md` "Mail quota" says which brand a timezone still
+      moves.
+- [x] Digest items carry their links (Round 4, Task 27, D-MSG-11):
+      `DigestData`'s items are `Data\DigestItemData` (`{subject, url}`),
+      `FlushHeldMessages::coalesce()` reads each member payload's `url`,
+      and the `messaging.digest` template links the subject where there is
+      one in both languages. The digest keeps no single `url`, so an in-app
+      digest row's action URL stays null — both asserted in
+      `DigestAndQuietHoursTest`.
 - [x] Mail quota per hour and per day (bugfix round 2026-09-21, Task 14):
       `config/messaging.php`, two nullable overrides on the settings row
       and `hold_reason` on the log row, `Mail\MailQuota` (scope, cache

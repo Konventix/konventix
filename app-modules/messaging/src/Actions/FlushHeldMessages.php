@@ -8,6 +8,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Konventix\Messaging\Data\DigestData;
+use Konventix\Messaging\Data\DigestItemData;
 use Konventix\Messaging\Data\RehydratedPayload;
 use Konventix\Messaging\Data\SendMessageData;
 use Konventix\Messaging\Enums\Channel;
@@ -23,7 +24,9 @@ use Konventix\Messaging\Templates\TemplateRenderer;
  * The digest sweep (ADR-0041 point 5): flushes every held row whose
  * `hold_until` has passed. One held message per (brand, recipient, channel)
  * sends as itself; several coalesce into one `messaging.digest` message
- * listing each item's rendered subject in the recipient's locale.
+ * listing each item's rendered subject — linked to that member's own
+ * payload `url` where it had one (Round 4 Task 27) — in the recipient's
+ * locale.
  *
  * Coalesced member rows are marked `sent` with `digest_message_id` pointing
  * at the digest that carried their content — their disposition is decided
@@ -205,9 +208,11 @@ final class FlushHeldMessages
      * Several held messages become one digest: a fresh log row (and a fresh
      * MessageQueued — the members had theirs at accept time) whose payload
      * lists each member's subject rendered exactly as an immediate send
-     * would have. The digest row is the one that travels, so it is the one
-     * the quota may hold: then it is written `held` under `mail_quota` and
-     * a later sweep sends it as itself.
+     * would have, beside the `url` that member's own payload carried (Task
+     * 27) — null for a template that points nowhere. The digest row is the
+     * one that travels, so it is the one the quota may hold: then it is
+     * written `held` under `mail_quota` and a later sweep sends it as
+     * itself.
      *
      * @param  list<MessageRecord>  $rows
      * @return array{0: SendMessageData|null, 1: MessageQueued}
@@ -218,7 +223,18 @@ final class FlushHeldMessages
         $digestId = (string) Str::ulid();
 
         $items = array_map(
-            fn (MessageRecord $row): string => $this->renderer->render($this->envelopeFor($row))->subject,
+            function (MessageRecord $row): DigestItemData {
+                $envelope = $this->envelopeFor($row);
+                // The link is the member's own, read off the payload the log
+                // kept — the same key `InAppChannel` and the announcement
+                // template read. A non-string or an empty value is no link.
+                $url = $envelope->payload->toArray()['url'] ?? null;
+
+                return new DigestItemData(
+                    subject: $this->renderer->render($envelope)->subject,
+                    url: is_string($url) && $url !== '' ? $url : null,
+                );
+            },
             $rows,
         );
 

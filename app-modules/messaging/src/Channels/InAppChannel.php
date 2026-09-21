@@ -18,7 +18,10 @@ use RuntimeException;
  * over Reverb so the bell updates without a page load.
  *
  * A payload carrying a string `url` key becomes the notification's action
- * URL; everything else about the payload stays in the delivery log.
+ * URL; everything else about the payload stays in the delivery log. A
+ * digest has no such key and never gets one (Round 4 Task 27): it points at
+ * several things at once, so its row's action URL stays null and the links
+ * live per item inside the rendered body.
  */
 final class InAppChannel implements MessageChannel
 {
