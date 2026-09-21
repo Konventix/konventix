@@ -1219,6 +1219,16 @@ declare namespace Konventix {
                 readonly billingCountryCode: string | null;
                 readonly billingVatId: string | null;
             };
+            export type TicketsForEventBlockData = {
+                readonly eventId: string;
+                readonly heading: string | null;
+            };
+            export type TicketsForEventResolvedData = {
+                readonly found: boolean;
+                readonly heading: string | null;
+                readonly eventName: string | null;
+                readonly offers: Konventix.Registration.Data.PublicOfferData[];
+            };
         }
         namespace Enums {
             export type ConfirmationGate =

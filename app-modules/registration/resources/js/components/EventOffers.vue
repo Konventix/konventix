@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
+import { useId } from 'vue';
 import { formatDateTime } from '@/lib/datetime';
 
 /**
@@ -29,21 +30,32 @@ import { formatDateTime } from '@/lib/datetime';
  * link so it never takes focus, and the date sits in a `<time>` element with
  * the machine-readable instant beside the human wording. An offer whose sale
  * has ended never reaches this component at all.
+ *
+ * The `tickets-for-event` static-page block (`blocks/TicketsForEventBlock.vue`)
+ * renders the same markup with its own heading, so the heading is a prop
+ * defaulting to the landing page's "Register", and the heading id comes
+ * from `useId()` — a composed page may carry the block twice.
  */
 type Offer = Konventix.Registration.Data.PublicOfferData;
 
-const props = defineProps<{
-    offers: Offer[];
-}>();
+const props = withDefaults(
+    defineProps<{
+        offers: Offer[];
+        heading?: string;
+    }>(),
+    { heading: 'Register' },
+);
+
+const headingId = useId();
 </script>
 
 <template>
     <section
         v-if="props.offers.length > 0"
         class="flex flex-col gap-3"
-        aria-labelledby="event-offers"
+        :aria-labelledby="headingId"
     >
-        <h2 id="event-offers" class="text-lg font-medium">Register</h2>
+        <h2 :id="headingId" class="text-lg font-medium">{{ props.heading }}</h2>
 
         <ul class="flex flex-col gap-3">
             <li v-for="offer in props.offers" :key="offer.registrationTypeId">

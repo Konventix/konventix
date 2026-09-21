@@ -31,16 +31,17 @@ use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
+use Konventix\Registration\Blocks\TicketsForEventBlock;
 use Konventix\Registration\Console\AnnounceRegistrationOwnershipCommand;
 use Konventix\Registration\Console\ExpireWaitlistOffersCommand;
 use Konventix\Registration\Data\PublicOfferData;
 use Konventix\Registration\Enums\Permission;
-use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Events\QuotaReleased;
 use Konventix\Registration\Events\RegistrationApproved;
 use Konventix\Registration\Events\RegistrationCancelled;
@@ -68,6 +69,7 @@ use Konventix\Registration\Listeners\RecordReversalOnOrderLineReversed;
 use Konventix\Registration\Listeners\RecordReversalOnPaymentReversed;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
+use Konventix\Registration\Offers\PublicOffers;
 use Konventix\Resources\Events\PlaceSupplyChanged;
 
 /**
@@ -598,6 +600,17 @@ class RegistrationServiceProvider extends ModuleServiceProvider
     }
 
     /**
+     * Registration's static-page block (bugfix round 2026-09-21, Task 7):
+     * one event's public offers on any composed page. Same hook Platform's
+     * own `text`/`hero`/`cards` blocks and Event's `event-hero` use, so
+     * Platform never learns Registration exists (ADR-0003).
+     */
+    protected function registerBlockTypes(): void
+    {
+        $this->app->make(BlockRegistry::class)->register(new TicketsForEventBlock);
+    }
+
+    /**
      * Two contributions to Event's UI slots (ADR-0003 enforcement point 3,
      * docs/decisions/0003). Event never queries this module's models in
      * either case — it hands over a slot and a context, and what comes back
@@ -630,24 +643,14 @@ class RegistrationServiceProvider extends ModuleServiceProvider
             slot: 'event.landing',
             module: 'registration',
             component: 'registration/EventOffers',
+            // The rule itself — `Public` types only (D-COM-02), sale not
+            // over (#218), by name — lives in `PublicOffers`, shared with
+            // the `tickets-for-event` block so the two cannot drift.
             props: static fn (array $context): array => [
-                'offers' => RegistrationType::query()
-                    // Only `Public` types: `Link` and `InviteOnly` are
-                    // reachable with a token and must not be advertised to
-                    // someone who does not hold one (D-COM-02).
-                    ->where('event_id', $context['eventId'])
-                    ->where('visibility', RegistrationVisibility::Public)
-                    // #218: a sale that is over drops off the page entirely —
-                    // linking to a form `SubmitRegistration` now refuses is
-                    // worse than saying nothing. A sale that has not started
-                    // stays, announced rather than linked, so the page can
-                    // carry the "sale starts" date a visitor came for. The
-                    // rule itself lives on the model, next to `isOnSale()`.
-                    ->saleNotOver()
-                    ->orderBy('name')
-                    ->get()
-                    ->map(fn (RegistrationType $type): array => PublicOfferData::ofType($type)->toArray())
-                    ->all(),
+                'offers' => array_map(
+                    fn (PublicOfferData $offer): array => $offer->toArray(),
+                    PublicOffers::forEvent($context['eventId']),
+                ),
             ],
             order: 10,
         );
@@ -687,25 +690,19 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 // finding 1 — an event this module cannot name, or cannot
                 // confirm is public, is exactly the one `/shop` must not
                 // advertise.
-                $listable = EventSummary::query()
-                    ->whereNotNull('public_since')
-                    // Blocker 2: a listing surface owes
-                    // `Event::scopeListedPublicly()`, not
-                    // `isVisibleOnLanding()`. An `Unlisted` event is
-                    // reachable by its own link and never enumerated — an
-                    // invite-only track had its name, its ticket names and
-                    // its prices on `/shop` until this line.
-                    ->where('visibility', EventSummary::VISIBILITY_PUBLIC)
-                    ->whereNull('archived_at');
+                //
+                // Blocker 2: a listing surface owes
+                // `Event::scopeListedPublicly()`, not `isVisibleOnLanding()`
+                // — an `Unlisted` event is reachable by its own link and
+                // never enumerated. The rule is `EventSummary::scopeListedPublicly()`,
+                // shared with the `tickets-for-event` block.
+                $listable = EventSummary::query()->listedPublicly();
 
                 $eventNames = (clone $listable)->pluck('name', 'event_id');
 
                 return [
-                    'offers' => RegistrationType::query()
-                        ->where('visibility', RegistrationVisibility::Public)
+                    'offers' => PublicOffers::query()
                         ->whereIn('event_id', (clone $listable)->select('event_id'))
-                        ->saleNotOver()
-                        ->orderBy('name')
                         ->get()
                         ->map(fn (RegistrationType $type): array => PublicOfferData::ofType(
                             $type,

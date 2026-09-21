@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -69,6 +70,29 @@ class EventSummary extends Model
     public const string VISIBILITY_PUBLIC = 'public';
 
     protected $fillable = ['event_id', 'name', 'slug', 'visibility', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id', 'banner_media_id', 'public_since', 'archived_at'];
+
+    /**
+     * This module's projection of `Event::scopeListedPublicly()` — the rule
+     * a *listing* surface owes before it names an event it was not
+     * addressed by: out of `Draft` (`public_since`), `Public` rather than
+     * `Unlisted` (`visibility`), and not archived. Each of the three was a
+     * real leak on `/shop` (#240): next year's unannounced convention, an
+     * invite-only track, last year's edition. The `shop.index` slot and the
+     * `tickets-for-event` block share it so the two cannot drift.
+     *
+     * A row that has never been told its visibility stays null, which
+     * reads as "not listable" — the safe direction.
+     *
+     * @param  Builder<EventSummary>  $query
+     * @return Builder<EventSummary>
+     */
+    public function scopeListedPublicly(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('public_since')
+            ->where('visibility', self::VISIBILITY_PUBLIC)
+            ->whereNull('archived_at');
+    }
 
     /**
      * @return array<string, string>

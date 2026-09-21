@@ -6,6 +6,15 @@
 
 ## Next
 
+- [ ] The `tickets-for-event` block prints the landing page's net amount
+      with "excl. VAT" (`EventOffers.vue`), never a gross end price: the
+      gross figure is Commerce's (ADR-0006/ADR-0017) and `ShopController`
+      writes it into the `shop.index` payload on its way out, while the
+      static-page block pipeline (`BlockCompositionRenderer`) has no such
+      hook. A visitor-facing PAngV end price on a composed page needs the
+      same enrichment Commerce does for `/shop` — the gross-display gap
+      #234 is about — and until then the block says exactly what the
+      landing page says.
 - [x] Category-quota ceiling, the consumer half (design §12b, #282):
       `quotas.resource_type_id` (nullable ULID, no FK) links a quota to a
       Resources category, set from the quota form's category select
@@ -78,6 +87,16 @@
 
 ## Done
 
+- [x] `tickets-for-event` static-page block (bugfix round 2026-09-21,
+      Task 7): `Blocks\TicketsForEventBlock` puts one event's public offers
+      on any composed page, registered through `registerBlockTypes()` like
+      Event's `event-hero`. The offers query moved into
+      `Offers\PublicOffers`, shared with the `event.landing` slot, and the
+      shop's listing guard into `EventSummary::scopeListedPublicly()`,
+      shared with the block — so neither pair can drift. The block answers
+      `found: false` for an unknown, cross-brand, draft, unlisted or
+      archived event. `EventOffers.vue` grew a `heading` prop and a
+      `useId()` heading id so the block can reuse it.
 - [x] A successful submit leaves the registration form (bugfix round
       2026-09-21, Task 4): `RegistrationController::store()` used to answer
       every non-cart success with `registration.show`, which re-rendered the

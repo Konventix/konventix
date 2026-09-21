@@ -19,7 +19,7 @@ it('offers every built-in type to the editor with a label and an editor componen
     $this->withBrand();
     $editable = app(BlockRegistry::class)->editable();
 
-    foreach (['text', 'hero', 'cards', 'event-hero', 'countdown', 'latest-news'] as $key) {
+    foreach (['text', 'hero', 'cards', 'event-hero', 'countdown', 'latest-news', 'tickets-for-event'] as $key) {
         expect($editable)->toHaveKey($key)
             ->and($editable[$key])->toBeInstanceOf(HasBlockEditor::class)
             ->and($editable[$key]->label())->not->toBe('')
