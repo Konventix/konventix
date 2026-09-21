@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Inertia\Testing\AssertableInertia;
+use Konventix\Event\Data\OpeningPeriodData;
 use Konventix\Event\Models\Venue;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
@@ -257,4 +258,75 @@ it('refuses a slug another venue of the brand already uses', function (): void {
         ->from("http://admin.venuesadmin.test/admin/venues/{$venue->id}/edit")
         ->put("http://admin.venuesadmin.test/admin/venues/{$venue->id}", [...$payload, 'slug' => 'taken'])
         ->assertSessionHasErrors('slug');
+});
+
+/**
+ * Round 4, Task 28: the edit page gained an "Opening times" card, so the
+ * form now posts what used to only ride along untouched. `openingTimes` is
+ * a list of `OpeningPeriodData` behind `OpeningTimesCast` — a list rather
+ * than a seven-row grid because a site that closes for lunch says so with
+ * two rows on the same day.
+ */
+it('round-trips a set of opening times through the edit form', function (): void {
+    [$admin, $venue, $payload] = venuesAdminEditable();
+
+    $this->actingAs($admin)
+        ->put("http://admin.venuesadmin.test/admin/venues/{$venue->id}", [
+            ...$payload,
+            'openingTimes' => [
+                ['dayOfWeek' => 1, 'opensAt' => '09:00', 'closesAt' => '12:00'],
+                ['dayOfWeek' => 1, 'opensAt' => '13:00', 'closesAt' => '18:00'],
+                ['dayOfWeek' => 6, 'opensAt' => '10:00', 'closesAt' => '16:00'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $periods = Venue::withoutBrandScope()->findOrFail($venue->id)->opening_times;
+
+    expect($periods)->toHaveCount(3)
+        ->and($periods[0])->toBeInstanceOf(OpeningPeriodData::class)
+        ->and($periods[0]->dayOfWeek)->toBe(1)
+        ->and($periods[0]->closesAt)->toBe('12:00')
+        ->and($periods[1]->opensAt)->toBe('13:00')
+        ->and($periods[2]->dayOfWeek)->toBe(6);
+
+    // And back out to the page the operator reloads.
+    $this->actingAs($admin)
+        ->get("http://admin.venuesadmin.test/admin/venues/{$venue->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('venue.openingTimes', 3)
+            ->where('venue.openingTimes.1.opensAt', '13:00'));
+});
+
+it('reports an opening-times error on the row that carries it', function (): void {
+    [$admin, $venue, $payload] = venuesAdminEditable();
+
+    $this->actingAs($admin)
+        ->from("http://admin.venuesadmin.test/admin/venues/{$venue->id}/edit")
+        ->put("http://admin.venuesadmin.test/admin/venues/{$venue->id}", [
+            ...$payload,
+            'openingTimes' => [
+                ['dayOfWeek' => 1, 'opensAt' => '09:00', 'closesAt' => '18:00'],
+                ['dayOfWeek' => 9, 'opensAt' => 'noon', 'closesAt' => '18:00'],
+            ],
+        ])
+        ->assertSessionHasErrors(['openingTimes.1.dayOfWeek', 'openingTimes.1.opensAt'])
+        ->assertSessionDoesntHaveErrors(['openingTimes.0.opensAt']);
+
+    expect(Venue::withoutBrandScope()->findOrFail($venue->id)->opening_times)->toHaveCount(0);
+});
+
+it('clears the opening times when the form sends none', function (): void {
+    [$admin, $venue, $payload] = venuesAdminEditable();
+
+    $venue->forceFill(['opening_times' => [
+        new OpeningPeriodData(dayOfWeek: 1, opensAt: '09:00', closesAt: '18:00'),
+    ]])->save();
+
+    $this->actingAs($admin)
+        ->put("http://admin.venuesadmin.test/admin/venues/{$venue->id}", $payload)
+        ->assertRedirect();
+
+    expect(Venue::withoutBrandScope()->findOrFail($venue->id)->opening_times)->toHaveCount(0);
 });

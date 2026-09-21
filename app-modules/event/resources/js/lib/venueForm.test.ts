@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { emptyPlace, moveImage, resolvePrimary, setImageAt } from './venueForm';
+import {
+    emptyOpeningPeriod,
+    emptyPlace,
+    moveImage,
+    resolvePrimary,
+    setImageAt,
+    WEEKDAYS,
+} from './venueForm';
 
 describe('moveImage', () => {
     it('moves a picture one place and leaves the rest in order', () => {
@@ -54,5 +61,39 @@ describe('emptyPlace', () => {
 
         expect(emptyPlace().label).toBe('');
         expect(emptyPlace().latitude).toBeNull();
+    });
+});
+
+describe('emptyOpeningPeriod', () => {
+    it('starts the first period on Monday', () => {
+        expect(emptyOpeningPeriod()).toEqual({
+            dayOfWeek: 1,
+            opensAt: '09:00',
+            closesAt: '18:00',
+        });
+    });
+
+    it("carries the previous row's times onto the next day", () => {
+        expect(
+            emptyOpeningPeriod([
+                { dayOfWeek: 3, opensAt: '10:00', closesAt: '16:00' },
+            ]),
+        ).toEqual({ dayOfWeek: 4, opensAt: '10:00', closesAt: '16:00' });
+    });
+
+    it('does not wrap past Sunday', () => {
+        expect(
+            emptyOpeningPeriod([
+                { dayOfWeek: 7, opensAt: '10:00', closesAt: '16:00' },
+            ]).dayOfWeek,
+        ).toBe(7);
+    });
+});
+
+describe('WEEKDAYS', () => {
+    it('offers the seven ISO-8601 day numbers, Monday first', () => {
+        expect(WEEKDAYS.map((day) => day.value)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+        expect(WEEKDAYS[0].label).toBe('Monday');
+        expect(WEEKDAYS[6].label).toBe('Sunday');
     });
 });

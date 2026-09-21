@@ -671,3 +671,15 @@ depends on brand resolution and gating working.
       with the resolved brand's app on both the request path (ResolveBrand)
       and the queue restore path; the per-brand key reaches Echo via Inertia
       shared props.
+- [x] `media:regenerate-variants` — the backfill for a variant invented
+      after the uploads it applies to (round 4, Task 28; `ticket_banner` is
+      the first, hence the 0.7.0 post-deploy step in `docs/operations.md`).
+      `Console\Commands\RegenerateMediaVariantsCommand` walks
+      `MediaItem::withoutBrandScope()` over the raster rows — a console run
+      resolves no brand (ADR-0029) — and creates nothing: every row is
+      rewritten in the brand it already belongs to. `--only=` (validated
+      against `ThumbnailGenerator::VARIANTS`, which is now what `generate()`
+      takes a subset of), `--brand=` by ULID or slug, `--missing` on by
+      default. Idempotent at the row: only the absent variants are cut, and
+      a map that does not change leaves `variants_generated_at` alone, so a
+      picture too small for the band is not re-encoded on every pass.

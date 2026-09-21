@@ -175,6 +175,36 @@ Two commands, safe to re-run, neither one specific to a single event:
   count every admission on the dashboards a second time. Run it once after
   the deploy that brings the table, after `event:replay-details`.
 
+### Backfilling the media library's variants — the post-deploy step for 0.7.0
+
+A variant is cut when a picture is uploaded, so every picture already in a
+brand's library predates any variant invented afterwards. `ticket_banner`
+(0.7.0) is the first such case: without it the ticket PDF falls back to the
+original and base64-inlines the whole picture on every page, which is what
+made a multi-page ticket slow. Run it once after the 0.7.0 deploy:
+
+```
+vendor/bin/sail artisan media:regenerate-variants
+```
+
+It walks the library across every brand — a console run resolves no brand
+(ADR-0029), so the walk deliberately escapes the brand scope and rewrites
+each row in the brand it already belongs to; it creates nothing. It is safe
+to re-run: by default only the variants an item is actually missing are
+cut, and a row whose map does not change is not touched at all, so a second
+pass reports "Nothing to backfill" and writes no bytes. A picture too small
+for a variant gets none and is skipped on every later pass too —
+`ThumbnailGenerator` never upscales, and the consumers fall back to the
+original.
+
+`--brand=<ulid|slug>` narrows the walk to one brand, which is how to spread
+a large library over several runs. `--only=thumb,ticket_banner` narrows it
+to named variants — the flag is validated against what the generator knows,
+so a typo stops the run instead of quietly backfilling nothing.
+`--missing=false` re-cuts variants an item already has; that is a rewrite,
+not a backfill, and it invalidates whatever a reader has cached, so it is
+for a changed generator and nothing else.
+
 ## Mail quota
 
 The default mail transport sits behind a mailbox provider that refuses
@@ -186,13 +216,12 @@ budget and window (`Mail\MailQuota`, `config/messaging.php`,
 `MAIL_QUOTA_PER_HOUR` / `MAIL_QUOTA_PER_DAY`) and holds a non-urgent mail
 that would cross either limit: the delivery log shows it `held` with
 `hold_reason = mail_quota` and a `hold_until` at the start of the next
-free window — the next UTC clock hour, or midnight in the brand's
-mail-settings timezone (UTC when it has none) — and the every-minute
-`messaging:flush-held` sweep releases it, checking the quota again as it
-does so an exhausted window re-holds instead of bursting. Nothing is
-dropped; in-app and push rows are not mail and never wait; an urgent send
-(a console resend, an urgent announcement) is never held but still
-counts.
+free window — the next UTC clock hour, or the budget's next midnight —
+and the every-minute `messaging:flush-held` sweep releases it, checking
+the quota again as it does so an exhausted window re-holds instead of
+bursting. Nothing is dropped; in-app and push rows are not mail and never
+wait; an urgent send (a console resend, an urgent announcement) is never
+held but still counts.
 
 Budgets follow the account the provider is counting: a brand with its own
 SMTP transport has its own hourly and daily count, keyed by its brand id;
@@ -202,6 +231,17 @@ quota"; blank keeps the configured default) and the index shows the
 effective pair per brand. The sale dashboard's Messages row shows the
 share of each window already used and the mails held per hour;
 `KonventixMailQuotaExhausted` fires when a window is full.
+
+A budget's day is a day in the budget's own timezone, and since 2026-09-21
+(Round 4, D-MSG-10) that is the brand's mail-settings timezone only for a
+brand with its own transport. The shared `default` budget rolls over at
+**UTC midnight** whatever timezone the brands on it have set: the provider
+counts the one mailbox account's day once, and keying it per brand let two
+brands in different zones spend overlapping days against the same 500 —
+and let a hold taken by one of them reopen at a midnight the counter
+behind it had never reached. Setting a brand's timezone still moves its
+quiet hours and its own day; it moves the daily mail budget only once the
+brand has its own SMTP transport.
 
 ## Alerts
 
@@ -368,8 +408,10 @@ A brand's mail sending quota for the hour or the day has been fully used
 for five minutes (see "Mail quota" above): the count Messaging keeps of
 mail the transport accepted has reached the limit, so every further
 non-urgent mail is being held with `hold_reason = mail_quota` and will be
-released when the window reopens — the next UTC hour, or midnight in the
-brand's mail-settings timezone. Nothing needs rescuing: the delivery log
+released when the window reopens — the next UTC hour, or the budget's
+next midnight (UTC for the shared budget, the brand's own timezone for a
+brand with its own transport; see "Mail quota" above). Nothing needs
+rescuing: the delivery log
 (`/admin/messages`, status *held*) lists what waits and until when, and
 the sale dashboard's "Mail held for quota per hour" panel shows the
 backlog forming. What to decide is whether the limit is right. For a

@@ -46,18 +46,37 @@ class ThumbnailGenerator
 
     public const int TICKET_BANNER_BAND_HEIGHT_MM = 22;
 
-    private const array RASTER_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    /**
+     * Every variant this generator knows how to cut, in the order it cuts
+     * them. The backfill command (`media:regenerate-variants`) validates
+     * `--only` against this list, so a new variant becomes backfillable by
+     * being added here and nowhere else.
+     *
+     * @var list<string>
+     */
+    public const array VARIANTS = ['thumb', 'ticket_banner'];
+
+    /** The mime types a variant can be cut from at all. */
+    public const array RASTER_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
     /**
      * Takes a resolved filesystem rather than a disk name: media may live on
      * a brand's own bucket, which only `DiskResolver` knows how to build
      * (ADR-0043 point 6).
      *
+     * `$only` narrows the run to the named variants — what the backfill
+     * command passes so an item that already carries a `thumb` is not
+     * re-encoded just to gain a `ticket_banner`. Null means "all of them",
+     * which is what the upload path wants.
+     *
+     * @param  list<string>|null  $only
      * @return array<string, string> variant name => storage path
      */
-    public function generate(Filesystem $disk, string $path, string $mimeType): array
+    public function generate(Filesystem $disk, string $path, string $mimeType, ?array $only = null): array
     {
-        if (! in_array($mimeType, self::RASTER_MIMES, true)) {
+        $wanted = $only === null ? self::VARIANTS : array_values(array_intersect(self::VARIANTS, $only));
+
+        if ($wanted === [] || ! in_array($mimeType, self::RASTER_MIMES, true)) {
             return [];
         }
 
@@ -69,7 +88,12 @@ class ThumbnailGenerator
 
         $variants = [];
 
-        foreach (['thumb' => $this->thumb($source), 'ticket_banner' => $this->ticketBanner($source)] as $name => $image) {
+        foreach ($wanted as $name) {
+            $image = match ($name) {
+                'thumb' => $this->thumb($source),
+                'ticket_banner' => $this->ticketBanner($source),
+            };
+
             if ($image === null) {
                 continue;
             }

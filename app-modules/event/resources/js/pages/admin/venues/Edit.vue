@@ -13,8 +13,11 @@ import {
     update as updateVenue,
 } from '@/routes/admin/venues';
 import { show as showVenue } from '@/routes/venue';
+import VenueAddressFields from '../../../components/admin/VenueAddressFields.vue';
 import VenueImageList from '../../../components/admin/VenueImageList.vue';
+import VenueOpeningTimesFields from '../../../components/admin/VenueOpeningTimesFields.vue';
 import VenuePlacesFields from '../../../components/admin/VenuePlacesFields.vue';
+import VenueTextArea from '../../../components/admin/VenueTextArea.vue';
 import type { VenueForm } from '../../../lib/venueForm';
 
 /**
@@ -24,8 +27,8 @@ import type { VenueForm } from '../../../lib/venueForm';
  * plan, and the pictures its public page shows.
  *
  * The shape is `VenueData` (ADR-0009) — the page hand-writes no payload
- * type. Opening times ride along untouched: they have no editor yet, and
- * dropping them from the form would delete them on the first save.
+ * type. Every repeatable list on it is its own component: the two place
+ * lists, the pictures, and the opening times of the site.
  */
 type Props = {
     venue: { id: string; brandId: string } & Konventix.Event.Data.VenueData;
@@ -55,7 +58,7 @@ const form = useForm<VenueForm>({
     loadingZones: props.venue.loadingZones.map((place) => ({ ...place })),
     imageMediaIds: [...props.venue.imageMediaIds],
     primaryMediaId: props.venue.primaryMediaId,
-    openingTimes: props.venue.openingTimes,
+    openingTimes: props.venue.openingTimes.map((period) => ({ ...period })),
 });
 
 useUnsavedChanges(() => form.isDirty);
@@ -101,99 +104,30 @@ function textOrNull(value: string | number | null): string | null {
         <form class="flex flex-col gap-6" @submit.prevent="submit">
             <Card class="border-border bg-surface">
                 <CardHeader><CardTitle>Details</CardTitle></CardHeader>
-                <CardContent class="flex flex-col gap-4">
-                    <div class="grid gap-4 sm:grid-cols-2">
-                        <div class="grid gap-2">
-                            <Label for="venue-name">Name</Label>
-                            <Input id="venue-name" v-model="form.name" />
-                            <InputError :message="form.errors.name" />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="venue-slug">Slug</Label>
-                            <Input
-                                id="venue-slug"
-                                :model-value="form.slug ?? ''"
-                                aria-describedby="venue-slug-hint"
-                                @update:model-value="
-                                    form.slug = textOrNull($event)
-                                "
-                            />
-                            <p
-                                id="venue-slug-hint"
-                                class="text-xs text-text-muted"
-                            >
-                                The venue's public address. Left empty, it is
-                                derived from the name.
-                            </p>
-                            <InputError :message="form.errors.slug" />
-                        </div>
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="venue-address1">Street and number</Label>
-                        <Input
-                            id="venue-address1"
-                            v-model="form.addressLine1"
-                        />
-                        <InputError :message="form.errors.addressLine1" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="venue-address2">
-                            Address line 2 (optional)
-                        </Label>
-                        <Input
-                            id="venue-address2"
-                            :model-value="form.addressLine2 ?? ''"
-                            @update:model-value="
-                                form.addressLine2 = textOrNull($event)
-                            "
-                        />
-                        <InputError :message="form.errors.addressLine2" />
-                    </div>
-                    <div class="grid gap-4 sm:grid-cols-3">
-                        <div class="grid gap-2">
-                            <Label for="venue-postal">Postal code</Label>
-                            <Input
-                                id="venue-postal"
-                                v-model="form.postalCode"
-                            />
-                            <InputError :message="form.errors.postalCode" />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="venue-city">City</Label>
-                            <Input id="venue-city" v-model="form.city" />
-                            <InputError :message="form.errors.city" />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="venue-country">Country code</Label>
-                            <Input
-                                id="venue-country"
-                                v-model="form.countryCode"
-                                maxlength="2"
-                            />
-                            <InputError :message="form.errors.countryCode" />
-                        </div>
-                    </div>
+                <CardContent>
+                    <VenueAddressFields
+                        v-model:name="form.name"
+                        v-model:slug="form.slug"
+                        v-model:address-line1="form.addressLine1"
+                        v-model:address-line2="form.addressLine2"
+                        v-model:postal-code="form.postalCode"
+                        v-model:city="form.city"
+                        v-model:country-code="form.countryCode"
+                        :errors="form.errors"
+                    />
                 </CardContent>
             </Card>
 
             <Card class="border-border bg-surface">
                 <CardHeader><CardTitle>Description</CardTitle></CardHeader>
-                <CardContent class="grid gap-2">
-                    <Label for="venue-description">
-                        What this place is, in the visitor's words
-                    </Label>
-                    <textarea
+                <CardContent>
+                    <VenueTextArea
                         id="venue-description"
-                        :value="form.description ?? ''"
-                        rows="5"
-                        class="rounded-md border border-border bg-surface p-3 text-sm"
-                        @input="
-                            form.description = textOrNull(
-                                ($event.target as HTMLTextAreaElement).value,
-                            )
-                        "
-                    ></textarea>
-                    <InputError :message="form.errors.description" />
+                        v-model="form.description"
+                        label="What this place is, in the visitor's words"
+                        :rows="5"
+                        :error="form.errors.description"
+                    />
                 </CardContent>
             </Card>
 
@@ -240,38 +174,28 @@ function textOrNull(value: string | number | null): string | null {
             <Card class="border-border bg-surface">
                 <CardHeader><CardTitle>Getting there</CardTitle></CardHeader>
                 <CardContent class="flex flex-col gap-4">
-                    <div class="grid gap-2">
-                        <Label for="venue-transport">Public transport</Label>
-                        <textarea
-                            id="venue-transport"
-                            :value="form.publicTransport ?? ''"
-                            rows="3"
-                            class="rounded-md border border-border bg-surface p-3 text-sm"
-                            @input="
-                                form.publicTransport = textOrNull(
-                                    ($event.target as HTMLTextAreaElement)
-                                        .value,
-                                )
-                            "
-                        ></textarea>
-                        <InputError :message="form.errors.publicTransport" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="venue-access">Access notes</Label>
-                        <textarea
-                            id="venue-access"
-                            :value="form.accessNotes ?? ''"
-                            rows="3"
-                            class="rounded-md border border-border bg-surface p-3 text-sm"
-                            @input="
-                                form.accessNotes = textOrNull(
-                                    ($event.target as HTMLTextAreaElement)
-                                        .value,
-                                )
-                            "
-                        ></textarea>
-                        <InputError :message="form.errors.accessNotes" />
-                    </div>
+                    <VenueTextArea
+                        id="venue-transport"
+                        v-model="form.publicTransport"
+                        label="Public transport"
+                        :error="form.errors.publicTransport"
+                    />
+                    <VenueTextArea
+                        id="venue-access"
+                        v-model="form.accessNotes"
+                        label="Access notes"
+                        :error="form.errors.accessNotes"
+                    />
+                </CardContent>
+            </Card>
+
+            <Card class="border-border bg-surface">
+                <CardHeader><CardTitle>Opening times</CardTitle></CardHeader>
+                <CardContent>
+                    <VenueOpeningTimesFields
+                        v-model="form.openingTimes"
+                        :errors="form.errors"
+                    />
                 </CardContent>
             </Card>
 

@@ -236,3 +236,18 @@
       picture rendered as a picture with no controls (ADR-0055). Its
       arithmetic is pure in `resources/js/lib/carousel.ts` with a vitest
       beside it, as is the image list's in `lib/venueForm.ts`.
+- [x] The venue edit page has an "Opening times" card (round 4, Task 28):
+      `components/admin/VenueOpeningTimesFields.vue` — repeatable rows on
+      the existing `Data\OpeningPeriodData` / `Models\Casts\OpeningTimesCast`
+      with a weekday select, `TimeField` for open and close (a wall clock on
+      the site's own door, so deliberately not `zoned`), add/remove and a
+      per-row error (`openingTimes.0.opensAt`). A list rather than a
+      seven-row grid, so a site that closes for lunch is two rows on one
+      day. `lib/venueForm.ts` gained `WEEKDAYS` and `emptyOpeningPeriod()`
+      (next day, previous row's times, no wrap past Sunday) with vitest
+      beside it; `VenueAdminTest` round-trips a set, pins the per-row error
+      and pins that an empty list clears. Nothing else on the page changed
+      in behaviour — the Details card's fields moved into
+      `components/admin/VenueAddressFields.vue` and the three textareas into
+      `components/admin/VenueTextArea.vue` only to keep `Edit.vue` under the
+      ~300-line mark it had already passed.

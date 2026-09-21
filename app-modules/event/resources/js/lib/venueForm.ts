@@ -12,17 +12,55 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 export type VenuePlaceForm = Mutable<Konventix.Event.Data.VenuePlaceData>;
 
+export type OpeningPeriodForm = Mutable<Konventix.Event.Data.OpeningPeriodData>;
+
 export type VenueForm = Omit<
     Mutable<Konventix.Event.Data.VenueData>,
-    'parkingSpots' | 'loadingZones'
+    'parkingSpots' | 'loadingZones' | 'openingTimes'
 > & {
     parkingSpots: VenuePlaceForm[];
     loadingZones: VenuePlaceForm[];
+    openingTimes: OpeningPeriodForm[];
 };
 
 /** A blank row for the repeatable place lists. */
 export function emptyPlace(): VenuePlaceForm {
     return { label: '', address: null, latitude: null, longitude: null };
+}
+
+/**
+ * The weekdays an opening period can fall on, in the order they are
+ * offered. `dayOfWeek` is the ISO-8601 number `OpeningPeriodData` validates
+ * (1 Monday through 7 Sunday), so Monday leads and Sunday closes the week —
+ * not the Sunday-first order a `Date` would give.
+ */
+export const WEEKDAYS: ReadonlyArray<{ value: number; label: string }> = [
+    { value: 1, label: 'Monday' },
+    { value: 2, label: 'Tuesday' },
+    { value: 3, label: 'Wednesday' },
+    { value: 4, label: 'Thursday' },
+    { value: 5, label: 'Friday' },
+    { value: 6, label: 'Saturday' },
+    { value: 7, label: 'Sunday' },
+];
+
+/**
+ * A blank opening period. It starts on the day after the last one in the
+ * list — a site is usually opened for a run of days, and typing Tuesday
+ * over a prefilled Monday is cheaper than picking every day from scratch.
+ * The week does not wrap: past Sunday the new row is Sunday again, and the
+ * operator moves it.
+ */
+export function emptyOpeningPeriod(
+    periods: readonly OpeningPeriodForm[] = [],
+): OpeningPeriodForm {
+    const previous = periods[periods.length - 1];
+
+    return {
+        dayOfWeek: previous ? Math.min(previous.dayOfWeek + 1, 7) : 1,
+        opensAt: previous?.opensAt ?? '09:00',
+        closesAt: previous?.closesAt ?? '18:00',
+    };
 }
 
 /**
