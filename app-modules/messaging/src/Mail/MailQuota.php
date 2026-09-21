@@ -63,9 +63,9 @@ final class MailQuota
 
         return new MailQuotaScope(
             key: $shared ? self::SHARED_SCOPE : $brandId,
-            perHour: max(1, $settings?->mail_quota_per_hour ?? (int) config('messaging.mail_quota.per_hour')),
-            perDay: max(1, $settings?->mail_quota_per_day ?? (int) config('messaging.mail_quota.per_day')),
-            timezone: $settings?->timezone ?? 'UTC',
+            perHour: max(1, $settings->mail_quota_per_hour ?? (int) config('messaging.mail_quota.per_hour')),
+            perDay: max(1, $settings->mail_quota_per_day ?? (int) config('messaging.mail_quota.per_day')),
+            timezone: $settings->timezone ?? 'UTC',
             shared: $shared,
         );
     }

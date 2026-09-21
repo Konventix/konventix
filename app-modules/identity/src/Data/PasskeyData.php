@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Identity\Data;
 
-use Konventix\Identity\Models\Passkey;
+use Laravel\Passkeys\Passkey;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -26,10 +26,18 @@ final class PasskeyData extends Data
         public readonly string $createdAt,
     ) {}
 
+    /**
+     * Typed to the package's base model on purpose: the `PasskeyUser`
+     * contract fixes the relation to that type, and Identity's own
+     * `Models\Passkey` (the row `Passkeys::usePasskeyModel()` delivers)
+     * extends it.
+     */
     public static function fromModel(Passkey $passkey): self
     {
         return new self(
-            id: $passkey->id,
+            // The base model documents `$id` as an int; Identity's table
+            // keys by ULID (ADR-0014), so the key is read as the string it is.
+            id: (string) $passkey->getKey(),
             name: $passkey->name,
             authenticator: $passkey->authenticator,
             lastUsedAt: $passkey->last_used_at?->toIso8601String(),
