@@ -222,5 +222,5 @@ it('does not redirect to the cart when the type settles instantly but confirms o
             'billingRecipientName' => 'Ada Lovelace',
             'billingEmail' => 'ada@example.test',
         ])
-        ->assertRedirect(route('registration.show', ['event_ulid' => $type->event_id, 'type' => $type->id]));
+        ->assertRedirect(route('registration.mine.show', ['registration' => Registration::sole()->id]));
 });

@@ -16,6 +16,7 @@ use Konventix\Registration\Events\WaitlistEntryConverted;
 use Konventix\Registration\Events\WaitlistEntryQueued;
 use Konventix\Registration\Events\WaitlistOfferExpired;
 use Konventix\Registration\Events\WaitlistOfferMade;
+use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
@@ -165,8 +166,32 @@ it('waitlists through the public form when the quota is full', function (): void
         ->post("/events/{$type->event_id}/register/{$type->id}", [
             'billingRecipientName' => 'Ada Lovelace',
         ])
-        ->assertRedirect();
+        // No projected event summary, so no landing page to name: the
+        // registrant's own list is the fallback — never the form itself.
+        ->assertRedirect(route('registration.mine.index'));
 
     expect(WaitlistEntry::query()->where('registrant_user_id', $user->id)->exists())->toBeTrue()
         ->and(Registration::query()->count())->toBe(0);
+});
+
+it('sends a waitlisted registrant to the event landing page, which still shows the offer they queued for', function (): void {
+    $this->withBrand();
+    [$type] = typeWithQuota(0);
+    EventSummary::query()->create([
+        'event_id' => $type->event_id,
+        'name' => 'Wintercon',
+        'slug' => 'wintercon',
+        'visibility' => EventSummary::VISIBILITY_PUBLIC,
+        'public_since' => now()->subWeek(),
+    ]);
+
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post("/events/{$type->event_id}/register/{$type->id}", [
+            'billingRecipientName' => 'Ada Lovelace',
+        ])
+        ->assertRedirect(route('event.show', ['event' => 'wintercon']));
+
+    expect(WaitlistEntry::query()->where('registrant_user_id', $user->id)->exists())->toBeTrue();
 });

@@ -78,6 +78,26 @@
 
 ## Done
 
+- [x] A successful submit leaves the registration form (bugfix round
+      2026-09-21, Task 4): `RegistrationController::store()` used to answer
+      every non-cart success with `registration.show`, which re-rendered the
+      empty form under a toast — and since `commerce:shop` defaults to off
+      per brand, an `instant`/`on_payment` type on sxlan.dev never showed
+      the payer their pay page. Now: the cart branch stays; an `instant`
+      settlement whose request has gone out (`settlementRequested()`, the
+      per-gate rule formerly `settlementReachedTheCart()`) redirects to
+      Commerce's `commerce.pay.show` for the registration when the shop is
+      off (`Route::has()`, no import — its controller hands off to the cart
+      or to `registration.mine.show` itself when no direct order exists);
+      everything else (free, invoice, external, approval-gated) lands on
+      `registration.mine.show`. A waitlisted submission goes to the event
+      landing page via the `EventSummary` slug (`event.show`), or to
+      `registration.mine.index` when nothing is projected — `/my/registrations`
+      lists `Registration` rows only, so a `WaitlistEntry` is invisible there.
+      Follow-up: neither surface shows the queue *position*; a "waitlisted"
+      row on `/my/registrations` (read from `waitlist_entries`, with the
+      position and the offer state) would give the waitlist its own page.
+
 - [x] Type-editor slot for seating (seating design §7.1/§9.3, #S4, #275): the
       grants card is its own component,
       `resources/js/components/RegistrationTypeGrantsCard.vue`, and a

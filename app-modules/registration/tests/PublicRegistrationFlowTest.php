@@ -91,7 +91,9 @@ it('submits a free on_submit registration end to end: confirmed, admissions issu
             'billingRecipientName' => null,
             'billingEmail' => null,
         ])
-        ->assertRedirect();
+        // The form is a full page, so a successful submit leaves it for the
+        // registrant's own record — never back to `registration.show`.
+        ->assertRedirect(route('registration.mine.show', ['registration' => Registration::sole()->id]));
 
     $registration = Registration::sole();
 
