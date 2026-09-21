@@ -726,7 +726,9 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 // shared with the `tickets-for-event` block.
                 $listable = EventSummary::query()->listedPublicly();
 
-                $eventNames = (clone $listable)->pluck('name', 'event_id');
+                // Name and slug together (Task 17c): the card links the
+                // event's name to its page.
+                $summaries = (clone $listable)->get(['event_id', 'name', 'slug'])->keyBy('event_id');
 
                 return [
                     'offers' => PublicOffers::query()
@@ -737,7 +739,8 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                             // Never null here: the subquery above already
                             // dropped every type whose event has no listable
                             // summary (review finding 3).
-                            (string) $eventNames->get($type->event_id),
+                            (string) $summaries->get($type->event_id)?->name,
+                            $summaries->get($type->event_id)?->slug,
                         )->toArray())
                         ->all(),
                 ];

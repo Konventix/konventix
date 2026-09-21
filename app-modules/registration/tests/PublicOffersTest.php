@@ -241,6 +241,8 @@ it('offers a public registration type on the shop, named by its event', function
             expect($offers)->toHaveCount(1)
                 ->and($offers[0]['name'])->toBe('Weekend Ticket')
                 ->and($offers[0]['eventName'])->toBe('Wintercon')
+                // Task 17c: the card links the event's name to its page.
+                ->and($offers[0]['eventSlug'])->toBe('wintercon')
                 ->and($offers[0]['onSale'])->toBeTrue()
                 // ADR-0047 point 3: a registration joins the cart by
                 // submitting first, so the card links to the form, never to

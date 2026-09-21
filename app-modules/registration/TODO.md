@@ -6,6 +6,14 @@
 
 ## Next
 
+- [x] Every event a registrant sees links to its page (bugfix round
+      2026-09-21, Task 17c): `MyRegistrationData` and `PublicOfferData`
+      carry `eventSlug` from this module's own `EventSummary` (null until
+      the summary has arrived, and on the landing page, which is that page
+      already); `my/Index.vue`, `my/Show.vue` and `ShopOffers.vue` link the
+      name beside — never around — the row's own link. `EventOffers.vue`
+      stays unlinked on purpose: it renders on the event's landing page and
+      inside the `tickets-for-event` block, which names its event itself.
 - [ ] The `tickets-for-event` block prints the landing page's net amount
       with "excl. VAT" (`EventOffers.vue`), never a gross end price: the
       gross figure is Commerce's (ADR-0006/ADR-0017) and `ShopController`

@@ -1,5 +1,5 @@
 import type { Auth } from '@/types/auth';
-import type { BrandNavItem } from '@/types/navigation';
+import type { BrandMenuEntry, BrandNavItem } from '@/types/navigation';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {
@@ -20,6 +20,8 @@ declare module '@inertiajs/core' {
             name: string;
             brand: Konventix.Platform.Data.BrandIdentityData;
             nav: BrandNavItem[];
+            /** The brand's own entries, rendered after `nav` (Task 20). */
+            brandMenu: BrandMenuEntry[];
             accountNav: BrandNavItem[];
             cart: { count: number };
             footer: {

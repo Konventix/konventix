@@ -694,6 +694,13 @@ declare namespace Konventix {
                 readonly email: string;
                 readonly acknowledgedClosedAccountHistoryStaysBehind: boolean;
             };
+            export type PasskeyData = {
+                readonly id: string;
+                readonly name: string;
+                readonly authenticator: string | null;
+                readonly lastUsedAt: string | null;
+                readonly createdAt: string;
+            };
             export type PasswordResetMailData = {
                 readonly resetUrl: string;
                 readonly validMinutes: number;
@@ -920,6 +927,33 @@ declare namespace Konventix {
                 logoAlt: string | null;
                 faviconUrl: string | null;
             };
+            export type BrandMenuData = {
+                brandId: string;
+                items: Konventix.Platform.Data.BrandMenuItemData[];
+            };
+            export type BrandMenuEntryData = {
+                readonly label: string;
+                readonly url: string | null;
+                readonly external: boolean;
+                readonly newTab: boolean;
+                readonly children: Konventix.Platform.Data.BrandMenuEntryData[];
+            };
+            export type BrandMenuItemData = {
+                key: string;
+                kind: Konventix.Platform.Enums.BrandMenuItemKind;
+                label: string | null;
+                pageId: string | null;
+                url: string | null;
+                parentKey: string | null;
+                opensInNewTab: boolean;
+            };
+            export type BrandMenuPageOptionData = {
+                readonly id: string;
+                readonly title: string;
+                readonly slug: string;
+                readonly published: boolean;
+                readonly visibility: Konventix.Platform.Enums.PageVisibility;
+            };
             export type BrandStorageSettingsData = {
                 useOwnStorage: boolean;
                 bucket: string | null;
@@ -1040,6 +1074,8 @@ declare namespace Konventix {
                 readonly title: string;
                 readonly slug: string;
                 readonly published: boolean;
+                readonly visibility: Konventix.Platform.Enums.PageVisibility;
+                readonly inMenu: boolean;
                 readonly publicUrl: string | null;
                 readonly blocks: Konventix.Platform.Data.Blocks.BlockData[];
             };
@@ -1084,6 +1120,8 @@ declare namespace Konventix {
                 readonly slug: string;
                 readonly published: boolean;
                 readonly blocks: Konventix.Platform.Data.Blocks.BlockData[];
+                readonly visibility: Konventix.Platform.Enums.PageVisibility;
+                readonly showInMenu: boolean | null;
             };
             namespace Blocks {
                 export type BlockData = {
@@ -1135,9 +1173,11 @@ declare namespace Konventix {
             }
         }
         namespace Enums {
+            export type BrandMenuItemKind = 'page' | 'url' | 'parent';
             export type CookieCategory = 'necessary' | 'functional';
             export type DateFormat = 'DD.MM.YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
             export type FooterLinkKind = 'url' | 'dialog';
+            export type PageVisibility = 'public' | 'members' | 'registrants';
             export type Permission =
                 | 'platform.access-admin'
                 | 'platform.view-brands'
@@ -1154,6 +1194,7 @@ declare namespace Konventix {
                 | 'platform.manage-storage-settings'
                 | 'platform.manage-operator'
                 | 'platform.manage-footer-links'
+                | 'platform.manage-brand-menu'
                 | 'platform.view-diagnostics'
                 | 'platform.view-request-log';
             export type TimeFormat = '24h' | '12h';
@@ -1187,6 +1228,7 @@ declare namespace Konventix {
                 readonly id: string;
                 readonly eventId: string;
                 readonly eventName: string;
+                readonly eventSlug: string | null;
                 readonly typeName: string;
                 readonly status: string;
                 readonly paymentStatus: string;
@@ -1208,6 +1250,7 @@ declare namespace Konventix {
                 readonly onSale: boolean;
                 readonly salesStart: string | null;
                 readonly eventName: string | null;
+                readonly eventSlug: string | null;
             };
             export type QuotaData = {
                 readonly name: string;

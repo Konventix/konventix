@@ -127,10 +127,14 @@ final class MyRegistrationsController
     {
         // Two lookups for the whole page rather than two per row: the names
         // live in this module's own read model and in its own type table,
-        // and the list is short enough that a keyed fetch beats a join.
-        $eventNames = EventSummary::query()
+        // and the list is short enough that a keyed fetch beats a join. The
+        // summary's slug travels with its name so the page can link the
+        // event (Task 17c); a registration whose summary has not arrived
+        // renders the name fallback with no link.
+        $summaries = EventSummary::query()
             ->whereIn('event_id', $registrations->pluck('event_id')->unique())
-            ->pluck('name', 'event_id');
+            ->get(['event_id', 'name', 'slug'])
+            ->keyBy('event_id');
 
         $typeNames = RegistrationType::query()
             ->whereIn('id', $registrations->pluck('registration_type_id')->unique())
@@ -139,8 +143,9 @@ final class MyRegistrationsController
         return $registrations
             ->map(fn (Registration $registration): array => MyRegistrationData::ofModel(
                 $registration,
-                $eventNames->get($registration->event_id),
+                $summaries->get($registration->event_id)?->name,
                 $typeNames->get($registration->registration_type_id),
+                $summaries->get($registration->event_id)?->slug,
             )->toArray())
             ->all();
     }

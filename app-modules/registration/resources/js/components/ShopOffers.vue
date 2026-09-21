@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/vue3';
 import { ArrowRight } from '@lucide/vue';
 import { formatDateTime } from '@/lib/datetime';
 import { displayUnitAmount, taxNote } from '@/lib/purchaseTexts';
+import { show as showEvent } from '@/routes/event';
 
 /**
  * Registration's contribution to Commerce's `shop.index` slot (#240): what
@@ -21,6 +22,11 @@ import { displayUnitAmount, taxNote } from '@/lib/purchaseTexts';
  * questions and the quota live. So the card links to the form, and the
  * heading says "Register" where the goods above say "Add to cart" —
  * clicking either has to promise what actually happens next.
+ *
+ * The event's name is its own link to the event's page (Task 17c), on both
+ * the on-sale and the announced card: the register link sits beside it as
+ * the card's action rather than around it, because a link inside a link is
+ * not markup a browser or a screen reader can honour.
  *
  * #218: an offer whose sale has not opened is announced, not linked, as a
  * plain `<li>` that never takes focus; one whose sale is over never reaches
@@ -80,14 +86,20 @@ function amount(price: OfferPrice): string {
 
         <ul class="grid gap-4 sm:grid-cols-2">
             <li v-for="offer in props.offers" :key="offer.registrationTypeId">
-                <Link
+                <div
                     v-if="offer.onSale"
-                    :href="offer.url"
-                    class="flex h-full flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4 transition hover:border-accent"
+                    class="flex h-full flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4"
                 >
                     <span class="font-medium text-text">{{ offer.name }}</span>
                     <span class="text-sm text-text-muted">
-                        {{ offer.eventName }}
+                        <Link
+                            v-if="offer.eventSlug"
+                            :href="showEvent(offer.eventSlug).url"
+                            class="underline-offset-4 hover:text-text hover:underline"
+                        >
+                            {{ offer.eventName }}
+                        </Link>
+                        <template v-else>{{ offer.eventName }}</template>
                     </span>
                     <span
                         v-if="offer.requiresApproval"
@@ -112,12 +124,18 @@ function amount(price: OfferPrice): string {
                         </template>
                         <template v-else>Free</template>
                         <span class="flex-1" />
-                        <ArrowRight
-                            class="size-4 shrink-0 text-text-muted"
-                            aria-hidden="true"
-                        />
+                        <Link
+                            :href="offer.url"
+                            class="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-3 text-sm font-medium text-text hover:border-accent"
+                        >
+                            Register
+                            <ArrowRight
+                                class="size-4 shrink-0 text-text-muted"
+                                aria-hidden="true"
+                            />
+                        </Link>
                     </span>
-                </Link>
+                </div>
 
                 <div
                     v-else
@@ -125,7 +143,14 @@ function amount(price: OfferPrice): string {
                 >
                     <span class="font-medium text-text">{{ offer.name }}</span>
                     <span class="text-sm text-text-muted">
-                        {{ offer.eventName }}
+                        <Link
+                            v-if="offer.eventSlug"
+                            :href="showEvent(offer.eventSlug).url"
+                            class="underline-offset-4 hover:text-text hover:underline"
+                        >
+                            {{ offer.eventName }}
+                        </Link>
+                        <template v-else>{{ offer.eventName }}</template>
                     </span>
                     <span class="text-sm text-text-muted">
                         <template v-if="offer.salesStart">

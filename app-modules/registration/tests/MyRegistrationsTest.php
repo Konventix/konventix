@@ -36,7 +36,10 @@ it('lists the signed-in account\'s own registrations', function (): void {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('registration/my/Index')
             ->where('registrations.0.id', $mine->getKey())
-            ->where('registrations.0.typeName', 'Player'));
+            ->where('registrations.0.typeName', 'Player')
+            // No summary has been projected for the factory's event, so
+            // there is nothing to link the name to (Task 17c).
+            ->where('registrations.0.eventSlug', null));
 });
 
 it('lists nobody else\'s', function (): void {
@@ -91,7 +94,12 @@ it('shows a registration only on the brand it was made with', function (): void 
         ->assertNotFound();
 });
 
-it('names the event rather than printing its ULID', function (): void {
+/**
+ * Task 17c: the slug travels beside the name so the list and the page link
+ * the event, and a registration whose summary has not arrived prints the
+ * ULID unlinked rather than not at all.
+ */
+it('names the event rather than printing its ULID, and links it by slug', function (): void {
     $brand = $this->withBrand();
 
     $user = User::factory()->create();
@@ -112,13 +120,23 @@ it('names the event rather than printing its ULID', function (): void {
 
     $type = RegistrationType::factory()->create(['event_id' => $event->getKey()]);
 
-    Registration::factory()->forType($type)->create([
+    $registration = Registration::factory()->forType($type)->create([
         'registrant_user_id' => $user->getKey(),
     ]);
 
     $this->actingAs($user)
         ->get('/my/registrations')
-        ->assertInertia(fn (AssertableInertia $page) => $page->where('registrations.0.eventName', 'Winter LAN'));
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('registrations.0.eventName', 'Winter LAN')
+            ->where('registrations.0.eventSlug', 'winter-lan'));
+
+    $this->actingAs($user)
+        ->get('/my/registrations/'.$registration->getKey())
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('registration/my/Show')
+            ->where('registration.eventName', 'Winter LAN')
+            ->where('registration.eventSlug', 'winter-lan'));
 });
 
 it('shows the billing block only when there is one', function (): void {

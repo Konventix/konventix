@@ -39,6 +39,11 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * public and unarchived, so an offer whose event this module cannot name is
  * not listed at all instead of rendering an unlabelled card. The nullability
  * of the field is the landing page's, not a degraded shop card.
+ *
+ * `eventSlug` follows `eventName` exactly (bugfix round 2026-09-21, Task
+ * 17c): set from the same summary row on `/shop`, where the card links the
+ * event's name to its page, and null on the landing page, which is that
+ * page already.
  */
 #[TypeScript]
 final class PublicOfferData extends Data
@@ -52,6 +57,7 @@ final class PublicOfferData extends Data
         public readonly bool $onSale = true,
         public readonly ?string $salesStart = null,
         public readonly ?string $eventName = null,
+        public readonly ?string $eventSlug = null,
     ) {}
 
     /**
@@ -59,7 +65,7 @@ final class PublicOfferData extends Data
      * public static `from*` method through its magic-creation resolver
      * (.ai/rules/data.md).
      */
-    public static function ofType(RegistrationType $registrationType, ?string $eventName = null): self
+    public static function ofType(RegistrationType $registrationType, ?string $eventName = null, ?string $eventSlug = null): self
     {
         return new self(
             registrationTypeId: $registrationType->id,
@@ -78,6 +84,7 @@ final class PublicOfferData extends Data
             onSale: $registrationType->isOnSale(),
             salesStart: $registrationType->sales_start?->toIso8601String(),
             eventName: $eventName,
+            eventSlug: $eventSlug,
         );
     }
 }

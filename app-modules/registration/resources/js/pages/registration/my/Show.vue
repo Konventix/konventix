@@ -2,9 +2,10 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { ArrowLeft } from '@lucide/vue';
 import { computed } from 'vue';
-import Heading from '@/components/Heading.vue';
 import { formatDateTime } from '@/lib/datetime';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+import { show as showEvent } from '@/routes/event';
+import { index as myRegistrations } from '@/routes/registration/mine';
 
 /**
  * One of the registrant's own registrations. Deliberately a record rather
@@ -18,6 +19,10 @@ import { resolveRegisteredComponent } from '@/lib/moduleComponents';
  * through the `registration.mine.show` slot (ADR-0003 enforcement point 3),
  * which is also how the pay link and the invoice PDF reach the person who
  * owes for them.
+ *
+ * The heading is the event's name, linked to the event's page when the
+ * summary knows the slug (Task 17c) — hand-rolled rather than `Heading`,
+ * whose title is a string, with the same classes so the two read alike.
  */
 type SlotContribution = {
     module: string;
@@ -82,18 +87,30 @@ const confirmedLabel = computed(() =>
     <div class="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-6">
         <div>
             <Link
-                href="/my/registrations"
+                :href="myRegistrations().url"
                 class="mb-4 inline-flex items-center gap-2 text-sm text-text-muted hover:text-text"
             >
                 <ArrowLeft class="size-4" />
                 My registrations
             </Link>
 
-            <Heading
-                as="h1"
-                :title="props.registration.eventName"
-                :description="props.registration.typeName"
-            />
+            <header class="mb-8 space-y-0.5">
+                <h1 class="text-xl font-semibold tracking-tight">
+                    <Link
+                        v-if="props.registration.eventSlug"
+                        :href="showEvent(props.registration.eventSlug).url"
+                        class="underline-offset-4 hover:underline"
+                    >
+                        {{ props.registration.eventName }}
+                    </Link>
+                    <template v-else>
+                        {{ props.registration.eventName }}
+                    </template>
+                </h1>
+                <p class="text-sm text-muted-foreground">
+                    {{ props.registration.typeName }}
+                </p>
+            </header>
 
             <div class="flex flex-wrap items-center gap-2">
                 <span

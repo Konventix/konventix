@@ -3,6 +3,11 @@ import { Head, Link } from '@inertiajs/vue3';
 import { ChevronRight } from '@lucide/vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
+import { show as showEvent } from '@/routes/event';
+import {
+    index as myRegistrations,
+    show as showRegistration,
+} from '@/routes/registration/mine';
 import { registrationListSummary } from './listSummary';
 
 /**
@@ -19,6 +24,11 @@ import { registrationListSummary } from './listSummary';
  * nothing with — and the toggle is a real link to `?show=all` rather than
  * client state: it is keyboard-reachable without any wiring, and a reload or
  * a back button keeps the choice, which a `ref` would silently drop.
+ *
+ * The event name is its own link to the event's page when the summary knows
+ * the slug (Task 17c), so a row carries two links side by side — the event
+ * and the registration — rather than one nested in the other, the shape the
+ * ticket list settled on.
  */
 type Registration = Konventix.Registration.Data.MyRegistrationData;
 
@@ -31,7 +41,9 @@ const props = defineProps<{
 }>();
 
 const toggleUrl = computed(() =>
-    props.showAll ? '/my/registrations' : '/my/registrations?show=all',
+    props.showAll
+        ? myRegistrations().url
+        : myRegistrations({ query: { show: 'all' } }).url,
 );
 
 /**
@@ -112,44 +124,53 @@ const paymentTone: Record<string, string> = {
             <li
                 v-for="registration in props.registrations"
                 :key="registration.id"
+                class="flex items-center gap-4 rounded-xl border border-border bg-surface-raised p-4"
             >
-                <Link
-                    :href="`/my/registrations/${registration.id}`"
-                    class="flex items-center gap-4 rounded-xl border border-border bg-surface-raised p-4 transition hover:border-accent"
-                >
-                    <span class="flex min-w-0 flex-1 flex-col gap-1">
-                        <span class="font-medium text-text">
-                            {{ registration.eventName }}
+                <span class="flex min-w-0 flex-1 flex-col gap-1">
+                    <Link
+                        v-if="registration.eventSlug"
+                        :href="showEvent(registration.eventSlug).url"
+                        class="font-medium text-text hover:text-accent"
+                    >
+                        {{ registration.eventName }}
+                    </Link>
+                    <span v-else class="font-medium text-text">
+                        {{ registration.eventName }}
+                    </span>
+                    <span class="text-sm text-text-muted">
+                        {{ registration.typeName
+                        }}<template v-if="registration.organizationName">
+                            — {{ registration.organizationName }}
+                        </template>
+                    </span>
+                    <span class="flex flex-wrap items-center gap-2 pt-1">
+                        <span
+                            class="rounded-full px-2 py-0.5 text-xs font-medium capitalize"
+                            :class="
+                                statusTone[registration.status] ??
+                                'bg-subtle text-text'
+                            "
+                        >
+                            {{ registration.status }}
                         </span>
-                        <span class="text-sm text-text-muted">
-                            {{ registration.typeName
-                            }}<template v-if="registration.organizationName">
-                                — {{ registration.organizationName }}
-                            </template>
-                        </span>
-                        <span class="flex flex-wrap items-center gap-2 pt-1">
-                            <span
-                                class="rounded-full px-2 py-0.5 text-xs font-medium capitalize"
-                                :class="
-                                    statusTone[registration.status] ??
-                                    'bg-subtle text-text'
-                                "
-                            >
-                                {{ registration.status }}
-                            </span>
-                            <span
-                                v-if="registration.paymentStatus !== 'none'"
-                                class="rounded-full px-2 py-0.5 text-xs font-medium capitalize"
-                                :class="
-                                    paymentTone[registration.paymentStatus] ??
-                                    'bg-subtle text-text'
-                                "
-                            >
-                                {{ registration.paymentStatus }}
-                            </span>
+                        <span
+                            v-if="registration.paymentStatus !== 'none'"
+                            class="rounded-full px-2 py-0.5 text-xs font-medium capitalize"
+                            :class="
+                                paymentTone[registration.paymentStatus] ??
+                                'bg-subtle text-text'
+                            "
+                        >
+                            {{ registration.paymentStatus }}
                         </span>
                     </span>
+                </span>
 
+                <Link
+                    :href="showRegistration(registration.id).url"
+                    class="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-3 text-sm font-medium text-text hover:border-accent"
+                >
+                    Details
                     <ChevronRight
                         class="size-4 shrink-0 text-text-muted"
                         aria-hidden="true"

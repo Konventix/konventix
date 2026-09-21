@@ -17,6 +17,9 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * from Event's tables (ADR-0004) — and falls back to the ULID rather than to
  * an empty string, because a registration whose event summary has not
  * arrived yet is still the registrant's, and still has to render.
+ * `eventSlug` comes from the same row and links the name to the event's
+ * page (bugfix round 2026-09-21, Task 17c); it stays null until the
+ * summary has arrived, and the pages then print the name unlinked.
  */
 #[TypeScript]
 final class MyRegistrationData extends Data
@@ -25,6 +28,7 @@ final class MyRegistrationData extends Data
         public readonly string $id,
         public readonly string $eventId,
         public readonly string $eventName,
+        public readonly ?string $eventSlug,
         public readonly string $typeName,
         public readonly string $status,
         public readonly string $paymentStatus,
@@ -38,12 +42,13 @@ final class MyRegistrationData extends Data
      * static `from*` method through its magic-creation resolver
      * (.ai/rules/data.md).
      */
-    public static function ofModel(Registration $registration, ?string $eventName, ?string $typeName): self
+    public static function ofModel(Registration $registration, ?string $eventName, ?string $typeName, ?string $eventSlug = null): self
     {
         return new self(
             id: $registration->getKey(),
             eventId: $registration->event_id,
             eventName: $eventName ?? $registration->event_id,
+            eventSlug: $eventSlug,
             typeName: $typeName ?? '—',
             status: $registration->status->value,
             paymentStatus: $registration->payment_status->value,

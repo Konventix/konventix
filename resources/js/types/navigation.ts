@@ -31,3 +31,11 @@ export type BrandNavItem = {
      */
     external: boolean;
 };
+
+/**
+ * One entry of the brand's own menu (Task 20), as the shared `brandMenu`
+ * prop carries it: already resolved for the viewer on the server, so the
+ * shell renders what it is given and holds no visibility rule. A parent
+ * has `url: null` and children; a leaf has a URL and none.
+ */
+export type BrandMenuEntry = Konventix.Platform.Data.BrandMenuEntryData;
