@@ -7,13 +7,29 @@ import { store as storeConsent } from '@/routes/consents';
 import { show as showPolicy } from '@/routes/policies';
 
 /**
- * Where the `require-consent` gate lands: every policy this account still
- * owes agreement to, its full text inline, and one checkbox each.
+ * Where both consent gates land — `require-consent` at a route, and
+ * `require-contract-consent` in front of a contract-creating act (ADR-0066
+ * §6.5, D-CPL-15): every policy this account still owes agreement to, its
+ * full text inline, and one checkbox each.
  *
  * One checkbox per policy, never one for all of them — consent under
  * Art. 7(2) GDPR has to be specific, and a bundled "I agree to everything"
  * is exactly what the article rules out. Submit stays disabled until each is
  * ticked, so the button cannot record an agreement nobody made.
+ *
+ * `actLabel` is what the gate said the person was about to do, as a plain
+ * string the owning module's route put there — "your registration for
+ * Summer LAN 2026". Compliance never queries Registration to build it, and
+ * it is absent for the login case, where there is no act to name.
+ *
+ * **"Not now" is a real way out**, and it increments nothing. The refusal
+ * rate is derived on the dashboard from `consent_prompts_total` against
+ * `consent_grants_total` (D-CPL-17) — a counter that only counted refusals
+ * would invite treating a legal screen as a funnel. What it says instead is
+ * what is actually true: the gated act cannot go ahead until the text is
+ * agreed to, and everything else — the account, the tickets, the order
+ * history — stays reachable. A modal was rejected outright: a legal text
+ * behind a dismissible overlay is not an agreement.
  *
  * `v-html` on the rendered text: see `policies/Show.vue` for why that is
  * safe here.
@@ -27,7 +43,16 @@ type PolicyVersionRow = {
     html: string;
 };
 
-const props = defineProps<{ versions: PolicyVersionRow[] }>();
+const props = withDefaults(
+    defineProps<{
+        versions: PolicyVersionRow[];
+        /** What the gate said this is standing in front of, or null. */
+        actLabel?: string | null;
+        /** Where "Not now" leaves to — the brand's own front page. */
+        notNowUrl?: string;
+    }>(),
+    { actLabel: null, notNowUrl: '/' },
+);
 
 const accepted = ref<Record<string, boolean>>(
     Object.fromEntries(props.versions.map((version) => [version.id, false])),
@@ -55,7 +80,12 @@ function submit(): void {
         class="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6 text-text lg:p-8"
     >
         <header class="flex flex-col gap-2">
-            <h1 class="text-2xl font-semibold">Before you continue</h1>
+            <h1 class="text-2xl font-semibold">
+                <template v-if="props.actLabel"
+                    >Before you continue with {{ props.actLabel }}</template
+                >
+                <template v-else>Before you continue</template>
+            </h1>
             <p class="text-sm text-text-muted">
                 These documents changed, or you have not agreed to them yet.
                 Please read and confirm each one.
@@ -115,6 +145,30 @@ function submit(): void {
                 </span>
             </div>
         </form>
+
+        <section class="flex flex-col gap-1 border-t border-border pt-4">
+            <Link
+                :href="props.notNowUrl"
+                class="text-sm underline underline-offset-4"
+                data-test="consent-not-now"
+            >
+                Not now
+            </Link>
+            <p class="text-sm text-text-muted">
+                <template v-if="props.actLabel"
+                    >You can leave this here — but {{ props.actLabel }} cannot
+                    go ahead until you have agreed to the documents
+                    above.</template
+                >
+                <template v-else
+                    >You can leave this here — but nothing that needs your
+                    agreement can go ahead until you have agreed to the
+                    documents above.</template
+                >
+                Your account, your tickets and your order history stay reachable
+                either way.
+            </p>
+        </section>
     </div>
 </template>
 

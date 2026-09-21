@@ -27,6 +27,7 @@ use Konventix\Compliance\Events\SubjectRequestRefused;
 use Konventix\Compliance\Events\UserDeletionRequested;
 use Konventix\Compliance\Gdpr\ComplianceGdprHandler;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Compliance\Http\Middleware\EnsureContractConsent;
 use Konventix\Compliance\Http\Middleware\EnsurePoliciesAccepted;
 use Konventix\Compliance\Legal\PolicyPublicLegalTexts;
 use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
@@ -117,8 +118,15 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // The consent gate as an opt-in alias other modules apply to their
         // own routes (see EnsurePoliciesAccepted). Compliance registers the
         // alias and wires nothing centrally — ADR-0003.
-        $this->app->make(Router::class)
-            ->aliasMiddleware('require-consent', EnsurePoliciesAccepted::class);
+        $router = $this->app->make(Router::class);
+
+        $router->aliasMiddleware('require-consent', EnsurePoliciesAccepted::class);
+
+        // The narrow second alias (ADR-0066 §6.5, D-CPL-13): an outstanding
+        // *contract* text asked for before the next contract-creating act,
+        // and nowhere else. Same opt-in shape — Compliance offers the alias,
+        // the module that owns a route decides the route needs it.
+        $router->aliasMiddleware('require-contract-consent', EnsureContractConsent::class);
     }
 
     /**

@@ -35,12 +35,19 @@ use Konventix\Admission\Http\Middleware\RecordTicketRenderMetrics;
 Route::middleware(['auth'])->group(function (): void {
     // The landing page (#292 §4.3) on the same path as the POST, so one
     // signed URL serves both: `signed` covers path and query, not method.
+    // `require-contract-consent` (ADR-0066 §6.5, D-CPL-14): accepting a
+    // ticket makes the accepting account the holder of an access right, on
+    // the brand's terms — a contract-creating act, and the last one in the
+    // list the owning modules gate. Compliance offers the alias; this
+    // module decides its own routes need it (ADR-0003), and the parameter
+    // is the short label the interstitial prints. After `signed`, so a
+    // dead link says so rather than asking for an agreement first.
     Route::get('/admissions/claim/{link}', [ClaimController::class, 'show'])
-        ->middleware('signed')
+        ->middleware(['signed', 'require-contract-consent:accepting your ticket'])
         ->name('admission.claim.show');
 
     Route::post('/admissions/claim/{link}', [ClaimController::class, 'store'])
-        ->middleware('signed')
+        ->middleware(['signed', 'require-contract-consent:accepting your ticket'])
         ->name('admission.claim');
 });
 

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Actions\Concerns\ConsumesQuotas;
+use Konventix\Registration\Consent\RegistrationConsentSlots;
 use Konventix\Registration\Data\SubmitRegistrationData;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\EntryConditionAssertionState;
@@ -61,6 +62,7 @@ final class SubmitRegistration
     public function __construct(
         private readonly ConfirmRegistration $confirmRegistration,
         private readonly RequestSettlement $requestSettlement,
+        private readonly RegistrationConsentSlots $consentSlots,
     ) {}
 
     public function handle(
@@ -88,6 +90,7 @@ final class SubmitRegistration
 
             if ($fromWaitlist === null) {
                 $this->guardEntryConditions($conditions, $data);
+                $this->guardLegalTexts($registrationType, $data);
             }
 
             // A waitlist offer held exactly one unit (D-REG-12), so a
@@ -392,6 +395,40 @@ final class SubmitRegistration
         if ($missing !== []) {
             throw ValidationException::withMessages($missing);
         }
+    }
+
+    /**
+     * A text the form demanded a tick for was not ticked (ADR-0066 §6.2,
+     * D-CPL-08).
+     *
+     * The same shape as the checkout's gate and for the same reason: the
+     * page asked Compliance which texts apply to this act and whether any of
+     * them requires consent, and the Action asks the identical question
+     * again under lock, because a disabled submit button is never the guard.
+     * `required: false` — information-only texts, or none at all — demands
+     * nothing, so a brand with no published contract text still sells.
+     *
+     * Keyed `acceptedLegalTexts`, the field the control posts from, so the
+     * message lands on the checkbox that raised it (ADR-0055) rather than at
+     * the top of a form nobody can fix from.
+     *
+     * Registration learns no more here than the checkout does: a boolean
+     * comes back from a slot, and this module never learns that a policy
+     * exists (ADR-0004).
+     */
+    private function guardLegalTexts(RegistrationType $registrationType, SubmitRegistrationData $data): void
+    {
+        if ($data->acceptedLegalTexts) {
+            return;
+        }
+
+        if (! $this->consentSlots->declarationRequired($registrationType)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'acceptedLegalTexts' => __('Please confirm the documents shown above.'),
+        ]);
     }
 
     /**

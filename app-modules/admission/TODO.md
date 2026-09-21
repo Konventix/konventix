@@ -6,6 +6,25 @@
 
 ## Next (Phase 1 PoC — admissions produced by the one registration flow)
 
+- [x] Entry conditions at the door (round 4, Task 33, ADR-0066 slice B3;
+      D-ADM-06/07). `admissions.entry_conditions` (json, nullable, no
+      backfill) stamped by `IssueAdmissionsForRegistration` from
+      `RegistrationConfirmed`'s `entry_condition_keys` as opaque scalars; an
+      `entry_conditions` delta entry per admission for the
+      `document_at_door` ones, so an offline device knows before the queue
+      arrives and the feed stays PII-free; the offline client keeps them in
+      an IndexedDB store of their own (the delta store is keyed by admission
+      id, so a revocation would otherwise overwrite them), shows
+      *Document check — Student ID* under an accepted scan with
+      confirmed/refused, and holds that scan back from the upload until it
+      is answered or the next person is scanned — the outcome rides on the
+      scan itself, through `conditions_checked` on `POST /api/entrance/scans`
+      → `SynchronizeScanBatch` → `RecordScan` → `AdmissionCheckedIn`, and a
+      replayed batch is a no-op because `RecordScan` is idempotent per
+      `client_scan_id`. The ticket prints the condition name and its
+      document hint; `BadgeDocumentRenderer` and the badge templates are
+      untouched, pinned by a test. Nothing here reads a Registration table
+      or learns that an assertion exists.
 - [x] Partial revocation for a reduced registration (round 4, Task 23,
       D-REG-15): `Actions\RevokeUnitsForRegistration` +
       `RevokeUnitsOnRegistrationQuantityReduced`, idempotent per

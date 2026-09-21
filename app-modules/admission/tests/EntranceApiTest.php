@@ -13,36 +13,19 @@ use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Admission\Events\CheckInBatchSynchronized;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\CheckIn;
-use Konventix\Admission\Models\Checkpoint;
 use Konventix\Admission\Models\EntranceDevice;
 use Konventix\Admission\Models\EntranceEventProfile;
 use Konventix\Admission\Models\EntranceSigningKey;
 
 /**
- * The entrance API and its device credential (ADR-0033). Helper names are
- * prefixed: Pest helpers are process-global across modules
- * (.ai/rules/tests.md).
+ * The entrance API and its device credential (ADR-0033).
  *
- * @return array{device: EntranceDevice, checkpoint: Checkpoint, token: string, eventId: string}
+ * `entranceTestLane()` and `entranceTestHeaders()` moved to this module's
+ * `tests/Helpers.php` when `EntryConditionsAtTheDoorTest` became a second
+ * caller: under `--parallel` each worker loads only the files it was handed,
+ * so a helper declared in one test file does not exist in the worker running
+ * another (.ai/rules/tests.md).
  */
-function entranceTestLane(?string $eventId = null): array
-{
-    $eventId ??= (string) Str::ulid();
-
-    $checkpoint = Checkpoint::factory()->forEvent($eventId)->create();
-    $plain = Str::random(48);
-    $device = EntranceDevice::factory()
-        ->withToken($plain)
-        ->create(['checkpoint_id' => $checkpoint->id]);
-
-    return ['device' => $device, 'checkpoint' => $checkpoint, 'token' => $plain, 'eventId' => $eventId];
-}
-
-function entranceTestHeaders(string $plainToken): array
-{
-    return ['Authorization' => 'Bearer '.$plainToken, 'Accept' => 'application/json'];
-}
-
 it('rejects a request with no bearer token', function (): void {
     $this->withBrand();
 

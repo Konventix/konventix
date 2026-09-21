@@ -6,6 +6,7 @@ namespace Konventix\Registration\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Commerce\Events\CartLineExpired;
 use Konventix\Commerce\Events\CartLineRemoved;
 use Konventix\Commerce\Events\InvoiceIssued;
@@ -77,6 +78,7 @@ use Konventix\Registration\Listeners\ProjectRegistrant;
 use Konventix\Registration\Listeners\PromoteOnQuotaReleased;
 use Konventix\Registration\Listeners\PruneEntryConditionAssertions;
 use Konventix\Registration\Listeners\RecordCartHoldOnLinePlaced;
+use Konventix\Registration\Listeners\RecordDoorVerification;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderLineSettled;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
 use Konventix\Registration\Listeners\RecordReversalOnOrderLineReversed;
@@ -249,6 +251,13 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // publishes the rule and never touches this module's table; the
         // listener ignores every category but its own.
         Event::listen(RetentionPeriodElapsed::class, PruneEntryConditionAssertions::class);
+
+        // ADR-0066 §6.4, D-ADM-06: the door's answer, written back onto the
+        // declaration it was checking. Admission's own event, which is the
+        // only thing that crosses (ADR-0004) — it carries `{key, outcome}`
+        // and this module is the one that knows what a key means. A refusal
+        // records a fact and revokes nothing (T-8, ADR-0005).
+        Event::listen(AdmissionCheckedIn::class, [RecordDoorVerification::class, 'handle']);
     }
 
     protected function registerGdprExporters(): void

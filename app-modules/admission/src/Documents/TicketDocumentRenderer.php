@@ -205,6 +205,14 @@ final class TicketDocumentRenderer
             // The seat (#292 §5) and the banner (§5a): both from this
             // module's own read models, both optional, both merely printed.
             'seatLabel' => $seatLabel,
+            // ADR-0066 §9.3, D-ADM-06/07: what the door will ask for, so
+            // nobody arrives without it. The condition's own name and the
+            // hint that names the document — never the assertion sentence
+            // the registrant ticked, which is a statement about a person and
+            // belongs in their own export, not on a sheet of paper handed to
+            // a stranger (spec §11). **The badge carries none of this**
+            // (D-ADM-07); `BadgeDocumentRenderer` is untouched.
+            'entryConditions' => $this->entryConditionLinesFor($admission),
             'banner' => $banner,
             'doorCode' => $this->doorCode($admission->id),
             'qr' => $this->qr->dataUri($this->issueAdmissionToken->current($admission)),
@@ -221,6 +229,33 @@ final class TicketDocumentRenderer
             // `app.env` or calls `env()` (ADR-0053).
             'testSystemHtml' => $this->watermark->testSystemBanner(),
         ];
+    }
+
+    /**
+     * The stamped list as the page prints it. Opaque scalars in, two strings
+     * out: this renderer reads no Registration table and knows nothing about
+     * an assertion. A row with no label is dropped rather than printed as a
+     * gap, exactly as the forensic lines are.
+     *
+     * @return list<array{label: string, documentHint: string|null}>
+     */
+    private function entryConditionLinesFor(Admission $admission): array
+    {
+        $lines = [];
+
+        foreach ($admission->entry_conditions ?? [] as $condition) {
+            $label = trim($condition['label']);
+
+            if ($label === '') {
+                continue;
+            }
+
+            $hint = trim($condition['document_hint'] ?? '');
+
+            $lines[] = ['label' => $label, 'documentHint' => $hint === '' ? null : $hint];
+        }
+
+        return $lines;
     }
 
     private function eventWhenFor(?EventSummary $event): ?string

@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import OfferPrice from '../../components/OfferPrice.vue';
+import RegistrationBillingFields from '../../components/RegistrationBillingFields.vue';
 import RegistrationEntryConditions from '../../components/RegistrationEntryConditions.vue';
 
 /**
@@ -42,6 +44,18 @@ type Props = {
     entryConditions: Konventix.Registration.Data.PublicEntryConditionData[];
     alternativeRegistrationTypeId: string | null;
     alternativeRegistrationTypeName: string | null;
+    /**
+     * Compliance's contributions to this page's own `registration.consent`
+     * slot (ADR-0066 §6.2, §7.1) — the legal texts this registration is
+     * under. Rendered by component name, never by import: the page does not
+     * know which module answered, and Registration never learns that a
+     * policy exists (ADR-0004).
+     */
+    consentSlots: Array<{
+        module: string;
+        component: string;
+        props: Record<string, unknown>;
+    }>;
 };
 
 const props = defineProps<Props>();
@@ -64,6 +78,21 @@ const offersQuantity = props.maxQuantity > 1;
  * exactly as it did before the feature existed.
  */
 const conditionsSatisfied = ref(props.entryConditions.length === 0);
+
+/**
+ * The one declaration the legal texts ask for (D-CPL-08), posted as
+ * `acceptedLegalTexts` through a hidden field: the contribution's control is
+ * a component with a `v-model`, and Inertia's `<Form>` reads the DOM.
+ *
+ * `required` on a contribution is what decides whether a tick is owed at
+ * all; a page under information-only texts, or under none, submits exactly
+ * as it did before this feature. `SubmitRegistration::guardLegalTexts()`
+ * asks the same question again under lock.
+ */
+const acceptedLegalTexts = ref(false);
+const consentRequired = props.consentSlots.some(
+    (slot) => slot.props.required === true,
+);
 </script>
 
 <template>
@@ -132,114 +161,10 @@ const conditionsSatisfied = ref(props.entryConditions.length === 0);
                         />
                     </div>
 
-                    <div class="grid gap-2">
-                        <Label for="organizationName"
-                            >Organization (optional)</Label
-                        >
-                        <Input
-                            id="organizationName"
-                            name="organizationName"
-                            autocomplete="organization"
-                            placeholder="Company or organization name"
-                        />
-                        <InputError :message="errors.organizationName" />
-                    </div>
-
-                    <div class="grid gap-2">
-                        <Label for="billingRecipientName"
-                            >Billing recipient (optional)</Label
-                        >
-                        <Input
-                            id="billingRecipientName"
-                            name="billingRecipientName"
-                            autocomplete="name"
-                            placeholder="Who should the invoice be addressed to"
-                        />
-                        <InputError :message="errors.billingRecipientName" />
-                    </div>
-
-                    <div class="grid gap-2">
-                        <Label for="billingEmail"
-                            >Billing email
-                            {{ needsBillingAddress ? '' : '(optional)' }}</Label
-                        >
-                        <Input
-                            id="billingEmail"
-                            type="email"
-                            name="billingEmail"
-                            autocomplete="email"
-                            placeholder="billing@example.com"
-                        />
-                        <InputError :message="errors.billingEmail" />
-                    </div>
-
-                    <template v-if="needsBillingAddress">
-                        <div class="grid gap-2">
-                            <Label for="billingAddressLine"
-                                >Street and number</Label
-                            >
-                            <Input
-                                id="billingAddressLine"
-                                name="billingAddressLine"
-                                autocomplete="street-address"
-                            />
-                            <InputError :message="errors.billingAddressLine" />
-                        </div>
-
-                        <div class="grid grid-cols-3 gap-2">
-                            <div class="grid gap-2">
-                                <Label for="billingPostalCode"
-                                    >Postal code</Label
-                                >
-                                <Input
-                                    id="billingPostalCode"
-                                    name="billingPostalCode"
-                                    autocomplete="postal-code"
-                                />
-                                <InputError
-                                    :message="errors.billingPostalCode"
-                                />
-                            </div>
-                            <div class="col-span-2 grid gap-2">
-                                <Label for="billingCity">City</Label>
-                                <Input
-                                    id="billingCity"
-                                    name="billingCity"
-                                    autocomplete="address-level2"
-                                />
-                                <InputError :message="errors.billingCity" />
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-2">
-                            <div class="grid gap-2">
-                                <Label for="billingCountryCode"
-                                    >Country code</Label
-                                >
-                                <Input
-                                    id="billingCountryCode"
-                                    name="billingCountryCode"
-                                    autocomplete="country"
-                                    placeholder="DE"
-                                    maxlength="2"
-                                />
-                                <InputError
-                                    :message="errors.billingCountryCode"
-                                />
-                            </div>
-                            <div class="grid gap-2">
-                                <Label for="billingVatId"
-                                    >VAT ID (optional)</Label
-                                >
-                                <Input
-                                    id="billingVatId"
-                                    name="billingVatId"
-                                    placeholder="DE123456789"
-                                />
-                                <InputError :message="errors.billingVatId" />
-                            </div>
-                        </div>
-                    </template>
+                    <RegistrationBillingFields
+                        :needs-billing-address="needsBillingAddress"
+                        :errors="errors"
+                    />
 
                     <RegistrationEntryConditions
                         v-if="props.entryConditions.length > 0"
@@ -257,11 +182,34 @@ const conditionsSatisfied = ref(props.entryConditions.length === 0);
                         "
                     />
 
+                    <template
+                        v-for="slot in props.consentSlots"
+                        :key="slot.component"
+                    >
+                        <component
+                            :is="resolveRegisteredComponent(slot.component)"
+                            v-if="resolveRegisteredComponent(slot.component)"
+                            v-model="acceptedLegalTexts"
+                            v-bind="slot.props"
+                            :error="errors.acceptedLegalTexts"
+                        />
+                    </template>
+
+                    <input
+                        type="hidden"
+                        name="acceptedLegalTexts"
+                        :value="acceptedLegalTexts ? '1' : '0'"
+                    />
+
                     <div
                         class="flex items-center gap-4 border-t border-border pt-4"
                     >
                         <Button
-                            :disabled="processing || !conditionsSatisfied"
+                            :disabled="
+                                processing ||
+                                !conditionsSatisfied ||
+                                (consentRequired && !acceptedLegalTexts)
+                            "
                             data-test="submit-registration-button"
                         >
                             Submit registration

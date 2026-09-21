@@ -11,11 +11,28 @@
  */
 
 const DB_NAME = 'konventix-entrance';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const STORE_STATE = 'state';
 export const STORE_DELTA = 'delta';
 export const STORE_SCANS = 'scans';
+export const STORE_CONDITIONS = 'conditions';
+
+/**
+ * One document check this admission owes at the door (ADR-0066 §6.4). The
+ * label and the hint are what staff read — "Document check — Student ID" —
+ * and the key is what the outcome is reported under.
+ */
+export type DoorCondition = {
+    key: string;
+    label: string;
+    document_hint: string | null;
+};
+
+export type ConditionOutcome = {
+    key: string;
+    outcome: 'confirmed' | 'refused';
+};
 
 export type BufferedScan = {
     client_scan_id: string;
@@ -25,6 +42,19 @@ export type BufferedScan = {
     /** What the door decided locally, so a reconciliation mismatch is visible. */
     local_result: 'accepted' | 'rejected';
     local_reason: string | null;
+    /**
+     * What staff answered to this scan's document checks, uploaded with the
+     * scan itself (ADR-0066 §6.4). Empty for every scan that checks nothing.
+     */
+    conditions_checked: ConditionOutcome[];
+    /**
+     * 1 while a check is still on screen waiting for an answer. Such a row
+     * is buffered but deliberately NOT uploaded yet: the outcome belongs to
+     * the scan, and `RecordScan` is idempotent per `client_scan_id`, so a
+     * scan sent before the answer exists could never carry it afterwards.
+     * The next scan, or an answer, releases it.
+     */
+    awaiting_conditions: 0 | 1;
     synced: 0 | 1;
 };
 
@@ -51,6 +81,16 @@ function open(): Promise<IDBDatabase> {
                     keyPath: 'client_scan_id',
                 });
                 scans.createIndex('synced', 'synced');
+            }
+
+            // Its own store rather than a fourth kind in STORE_DELTA, which
+            // is keyed by admission id: a later `revoked` row for the same
+            // admission would otherwise overwrite the conditions, and the
+            // conditions would resurrect a revoked admission.
+            if (!db.objectStoreNames.contains(STORE_CONDITIONS)) {
+                db.createObjectStore(STORE_CONDITIONS, {
+                    keyPath: 'admission_id',
+                });
             }
         };
 
@@ -108,16 +148,73 @@ export function allDeltaEntries(): Promise<
     );
 }
 
+export function putConditions(entry: {
+    admission_id: string;
+    conditions: DoorCondition[];
+}): Promise<IDBValidKey> {
+    return tx(STORE_CONDITIONS, 'readwrite', (s) => s.put(entry));
+}
+
+export function allConditions(): Promise<
+    Array<{ admission_id: string; conditions: DoorCondition[] }>
+> {
+    return tx(
+        STORE_CONDITIONS,
+        'readonly',
+        (s) =>
+            s.getAll() as IDBRequest<
+                Array<{ admission_id: string; conditions: DoorCondition[] }>
+            >,
+    );
+}
+
 export function bufferScan(scan: BufferedScan): Promise<IDBValidKey> {
     return tx(STORE_SCANS, 'readwrite', (s) => s.put(scan));
 }
 
+/**
+ * Ready to upload: never synced, and not still waiting for a door staffer to
+ * answer its document check.
+ */
 export function pendingScans(): Promise<BufferedScan[]> {
     return tx(
         STORE_SCANS,
         'readonly',
         (s) => s.getAll() as IDBRequest<BufferedScan[]>,
-    ).then((scans) => scans.filter((scan) => scan.synced === 0));
+    ).then((scans) =>
+        scans.filter(
+            (scan) => scan.synced === 0 && scan.awaiting_conditions !== 1,
+        ),
+    );
+}
+
+/**
+ * Attaches what staff answered and releases the scan for upload. A scan the
+ * device has already sent is left alone: the server decided it, and
+ * `RecordScan` would answer a second delivery with the check-in it already
+ * wrote rather than with the outcome.
+ */
+export async function resolveConditions(
+    clientScanId: string,
+    outcomes: ConditionOutcome[],
+): Promise<void> {
+    const existing = await tx<BufferedScan | undefined>(
+        STORE_SCANS,
+        'readonly',
+        (s) => s.get(clientScanId) as IDBRequest<BufferedScan | undefined>,
+    );
+
+    if (existing === undefined || existing.synced === 1) {
+        return;
+    }
+
+    await tx(STORE_SCANS, 'readwrite', (s) =>
+        s.put({
+            ...existing,
+            conditions_checked: outcomes,
+            awaiting_conditions: 0,
+        }),
+    );
 }
 
 /**

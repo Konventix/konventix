@@ -42,6 +42,10 @@ final class IssueAdmissionsOnRegistrationConfirmed
             brandId: $event->brandId,
             registrantUserId: $event->registrantUserId,
             grants: $event->grants,
+            // ADR-0066 §6.4: beside the grants, never inside one. The
+            // listener unpacks it like every other scalar in the payload and
+            // the Action below never learns where it came from.
+            entryConditions: $event->entryConditionKeys,
         );
     }
 }

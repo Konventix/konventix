@@ -81,6 +81,15 @@ final class EntranceController
      * database (`VerifyAdmissionToken::isSuperseded()`) and is exact, so
      * this asymmetry is bounded to the door, never the server's own
      * decision.
+     *
+     * An `entry_conditions` entry's payload is the fourth kind (ADR-0066
+     * §6.4): `['conditions' => [{key, label, document_hint}]]`, written once
+     * when the admission was issued, so a device knows before the queue
+     * arrives what this holder will be asked to show. It is still PII-free —
+     * a condition's label beside an opaque admission ULID says what was
+     * bought and never who bought it (spec §11) — and it is a separate kind
+     * rather than a field on the revocation stream precisely so neither can
+     * overwrite the other.
      */
     public function delta(Request $request): JsonResponse
     {
@@ -143,9 +152,17 @@ final class EntranceController
             'scans.*.client_scan_id' => ['required', 'string', 'max:64'],
             'scans.*.scanned_at' => ['nullable', 'date'],
             'scans.*.direction' => ['nullable', Rule::in(['in', 'out'])],
+            // ADR-0066 §6.4: what the door decided about this holder's
+            // entry conditions, keyed by the condition's own key. Bounded
+            // outcomes — the door confirms or refuses, and nothing else is
+            // accepted; a sentence about a person would end up in a metric
+            // label or an export (spec §11).
+            'scans.*.conditions_checked' => ['nullable', 'array', 'max:20'],
+            'scans.*.conditions_checked.*.key' => ['required', 'string', 'max:64'],
+            'scans.*.conditions_checked.*.outcome' => ['required', Rule::in(['confirmed', 'refused'])],
         ]);
 
-        /** @var list<array{token: string, client_scan_id: string, scanned_at?: string|null, direction?: string|null}> $scans */
+        /** @var list<array{token: string, client_scan_id: string, scanned_at?: string|null, direction?: string|null, conditions_checked?: list<array{key: string, outcome: string}>|null}> $scans */
         $scans = $validated['scans'];
 
         return response()->json($synchronize->handle($device, $checkpoint, $scans));

@@ -44,6 +44,20 @@ final class RecordScan
         private readonly EvaluateAdmissionValidity $evaluateValidity,
     ) {}
 
+    /**
+     * `$conditionsChecked` is what the door decided about this holder's
+     * entry conditions (ADR-0066 §6.4): `[{key, outcome}]`, empty for every
+     * scan that checks nothing. It rides on the accepted scan and on
+     * `AdmissionCheckedIn`; a rejected scan carries none, because a person
+     * who is not being let in is not being asked for a document either.
+     *
+     * It changes nothing about the decision. The door decides access, the
+     * outcome records a fact, and a refusal never revokes the admission
+     * (T-8, ADR-0005) — which is also why it is read after every other
+     * check rather than before any of them.
+     *
+     * @param  list<array{key: string, outcome: string}>  $conditionsChecked
+     */
     public function handle(
         string $token,
         string $brandId,
@@ -53,10 +67,11 @@ final class RecordScan
         ?Checkpoint $checkpoint = null,
         ?EntranceDevice $device = null,
         string $direction = 'in',
+        array $conditionsChecked = [],
     ): CheckIn {
         $scannedAt ??= now();
 
-        return DB::transaction(function () use ($token, $brandId, $eventId, $clientScanId, $scannedAt, $checkpoint, $device, $direction): CheckIn {
+        return DB::transaction(function () use ($token, $brandId, $eventId, $clientScanId, $scannedAt, $checkpoint, $device, $direction, $conditionsChecked): CheckIn {
             $existing = CheckIn::withoutBrandScope()
                 ->where('brand_id', $brandId)
                 ->where('client_scan_id', $clientScanId)
@@ -128,7 +143,7 @@ final class RecordScan
                 return $this->reject($brandId, $eventId, $admission->id, $dayId, $clientScanId, $scannedAt, $checkpoint, $device, $direction, CheckInRejectionReason::ReentryNotPermitted);
             }
 
-            return $this->accept($admission, $brandId, $eventId, $dayId, $clientScanId, $scannedAt, $checkpoint, $device, $direction);
+            return $this->accept($admission, $brandId, $eventId, $dayId, $clientScanId, $scannedAt, $checkpoint, $device, $direction, $conditionsChecked);
         });
     }
 
@@ -155,6 +170,9 @@ final class RecordScan
         ));
     }
 
+    /**
+     * @param  list<array{key: string, outcome: string}>  $conditionsChecked
+     */
     private function accept(
         Admission $admission,
         string $brandId,
@@ -165,6 +183,7 @@ final class RecordScan
         ?Checkpoint $checkpoint,
         ?EntranceDevice $device,
         string $direction,
+        array $conditionsChecked = [],
     ): CheckIn {
         $checkIn = $this->record(
             brandId: $brandId,
@@ -203,6 +222,7 @@ final class RecordScan
             checkpointId: $checkpoint?->id,
             direction: $direction,
             scannedAt: $scannedAt->toIso8601String(),
+            conditionsChecked: $conditionsChecked,
         ));
 
         return $checkIn;

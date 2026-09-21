@@ -19,10 +19,24 @@ namespace Konventix\Admission\Events;
  * all; a scan that fell outside a defined calendar is rejected and never
  * reaches this event (D-ADM-04).
  *
+ * `conditionsChecked` is what the door decided about this holder's entry
+ * conditions (ADR-0066 §6.4, D-ADM-06): a list of `{key, outcome}`, empty
+ * for every scan that checks nothing — which is every scan on every event
+ * that declares no `document_at_door` condition. Registration's
+ * `RecordDoorVerification` is the only listener that reads it, and it reads
+ * the key it itself put on the admission at confirmation. A refusal records
+ * a fact and nothing more: it never revokes the admission and never reaches
+ * Commerce (T-8, ADR-0005).
+ *
  * Payload is scalars/ULIDs only (ADR-0004).
+ *
+ * @phpstan-type ConditionOutcome array{key: string, outcome: string}
  */
 final readonly class AdmissionCheckedIn
 {
+    /**
+     * @param  list<ConditionOutcome>  $conditionsChecked
+     */
     public function __construct(
         public string $checkInId,
         public string $admissionId,
@@ -33,5 +47,6 @@ final readonly class AdmissionCheckedIn
         public ?string $checkpointId,
         public string $direction,
         public string $scannedAt,
+        public array $conditionsChecked = [],
     ) {}
 }

@@ -6,6 +6,16 @@
 
 ## Next (Phase 1 PoC — no payment; keep Commerce dormant and prove the boundary)
 
+- [x] The checkout's contract-consent gate is a route alias now (round 4,
+      Task 33, ADR-0066; D-CPL-13/14). The six routes that conclude a
+      purchase — `cart.choose`/`cart.confirm`/`cart.checkout` and the two
+      pay triples — carry Compliance's `require-contract-consent` with the
+      confirmation step named as the page to come back to, so agreeing lands
+      the payer back where they were and no POST is ever replayed. The
+      controllers' own `consentRedirect()` stays: it is what still guards
+      the ungated step-one pages (`/cart`, `/pay/registration/{id}`,
+      `/pay/order/{id}`), which are a basket and an offer rather than a
+      contract.
 - [x] The two-step checkout and the opaque binding bag (round 4, Task 32,
       ADR-0066; D-CPL-06/07). `binding_context` json on `order_lines` **and**
       `cart_lines` — no backfill, no index, and no branch in this module

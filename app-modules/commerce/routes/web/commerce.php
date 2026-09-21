@@ -69,9 +69,24 @@ Route::middleware(['ensure-feature:commerce:shop', 'ensure-waiting-room', 'auth'
     // text. The texts may depend on the provider, so the provider is chosen
     // first and the list is shown after; coming back to `/cart` clears the
     // choice, and with it any acceptance made against it.
-    Route::post('/cart/choose', [CartController::class, 'choose'])->name('commerce.cart.choose');
-    Route::get('/cart/confirm', [CartController::class, 'confirm'])->name('commerce.cart.confirm');
-    Route::post('/cart/checkout', [CartController::class, 'checkout'])->name('commerce.cart.checkout');
+    //
+    // The three that conclude the purchase carry Compliance's narrow
+    // `require-contract-consent` alias (ADR-0066 §6.5, D-CPL-13/14):
+    // an outstanding *contract* text is asked for before the act, not
+    // after it. The cart page itself does not — it is a basket, and a
+    // basket is not a contract — and `/my/orders` does not either, for
+    // the reason Registration gives on `/my/registrations`. The GET
+    // `…/confirm` carries it so `url.intended` has somewhere to come back
+    // to; the parameter is the act's short label, a scalar this module
+    // supplies and Compliance only prints.
+    // The second parameter is the page to come back to after agreeing:
+    // these POSTs are sent from the confirmation step, which is a different
+    // URL, and a consent screen may never replay a POST.
+    Route::middleware(['require-contract-consent:your order,commerce.cart.confirm'])->group(function (): void {
+        Route::post('/cart/choose', [CartController::class, 'choose'])->name('commerce.cart.choose');
+        Route::get('/cart/confirm', [CartController::class, 'confirm'])->name('commerce.cart.confirm');
+        Route::post('/cart/checkout', [CartController::class, 'checkout'])->name('commerce.cart.checkout');
+    });
 });
 
 // Checkout for `instant` settlement (ADR-0039), addressed by the registration
@@ -96,15 +111,22 @@ Route::middleware(['auth'])->group(function (): void {
     // the texts that apply through it with the one accept control, and
     // `…/start` validates both against the recorded provider. A brand with a
     // single account never sees step one — `show()` redirects past it.
-    Route::post('/pay/registration/{registration}/choose', [CheckoutController::class, 'choose'])
-        ->whereUlid('registration')
-        ->name('commerce.pay.choose');
-    Route::get('/pay/registration/{registration}/confirm', [CheckoutController::class, 'confirm'])
-        ->whereUlid('registration')
-        ->name('commerce.pay.confirm');
-    Route::post('/pay/registration/{registration}/start', [CheckoutController::class, 'start'])
-        ->whereUlid('registration')
-        ->name('commerce.pay.start');
+    //
+    // `require-contract-consent` on the three that conclude the purchase,
+    // for the reason the cart group above gives. `show()` stays ungated:
+    // it is the order and the accounts on offer, and a brand with a single
+    // account redirects from it straight to `…/confirm`, which is gated.
+    Route::middleware(['require-contract-consent:your order,commerce.pay.confirm'])->group(function (): void {
+        Route::post('/pay/registration/{registration}/choose', [CheckoutController::class, 'choose'])
+            ->whereUlid('registration')
+            ->name('commerce.pay.choose');
+        Route::get('/pay/registration/{registration}/confirm', [CheckoutController::class, 'confirm'])
+            ->whereUlid('registration')
+            ->name('commerce.pay.confirm');
+        Route::post('/pay/registration/{registration}/start', [CheckoutController::class, 'start'])
+            ->whereUlid('registration')
+            ->name('commerce.pay.start');
+    });
 
     // The order-addressed pair (GitLab #5): the way back to a cart order
     // whose payment failed, which has no registration ULID to be addressed
@@ -119,15 +141,17 @@ Route::middleware(['auth'])->group(function (): void {
     Route::get('/pay/order/{order}', [CheckoutController::class, 'showOrder'])
         ->whereUlid('order')
         ->name('commerce.pay.order.show');
-    Route::post('/pay/order/{order}/choose', [CheckoutController::class, 'chooseOrder'])
-        ->whereUlid('order')
-        ->name('commerce.pay.order.choose');
-    Route::get('/pay/order/{order}/confirm', [CheckoutController::class, 'confirmOrder'])
-        ->whereUlid('order')
-        ->name('commerce.pay.order.confirm');
-    Route::post('/pay/order/{order}/start', [CheckoutController::class, 'startOrder'])
-        ->whereUlid('order')
-        ->name('commerce.pay.order.start');
+    Route::middleware(['require-contract-consent:your order,commerce.pay.order.confirm'])->group(function (): void {
+        Route::post('/pay/order/{order}/choose', [CheckoutController::class, 'chooseOrder'])
+            ->whereUlid('order')
+            ->name('commerce.pay.order.choose');
+        Route::get('/pay/order/{order}/confirm', [CheckoutController::class, 'confirmOrder'])
+            ->whereUlid('order')
+            ->name('commerce.pay.order.confirm');
+        Route::post('/pay/order/{order}/start', [CheckoutController::class, 'startOrder'])
+            ->whereUlid('order')
+            ->name('commerce.pay.order.start');
+    });
 });
 
 // The registrant's own invoice PDF. `signed` is the authorization — see

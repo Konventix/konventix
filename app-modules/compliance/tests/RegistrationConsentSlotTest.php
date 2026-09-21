@@ -11,6 +11,7 @@ use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Identity\Models\User;
 use Konventix\Registration\Events\RegistrationConsentGiven;
 use Konventix\Registration\Models\EntryCondition;
+use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
 
 /**
@@ -208,4 +209,61 @@ it('records nothing for a text bound to something this registration is not', fun
     ));
 
     expect(Consent::query()->where('subject_id', $user->getKey())->count())->toBe(0);
+});
+
+it('refuses a submission that did not confirm a text the form demanded', function (): void {
+    // The B2 leftover, closed in B3: the form renders the contribution and
+    // the Action refuses without the tick, exactly as the checkout's
+    // `accept_terms` gate does (ADR-0066 §6.2, D-CPL-08). Keyed on the field
+    // the control posts from, so the message lands on the checkbox that
+    // raised it (ADR-0055).
+    $this->withBrand();
+    registrationConsentPolicy('terms', 'Terms of Participation');
+
+    $type = RegistrationType::factory()->create();
+    $user = User::factory()->create();
+    registrationConsentSettleGate($user);
+
+    $this->actingAs($user)
+        ->post("/events/{$type->event_id}/register/{$type->id}", [])
+        ->assertSessionHasErrors('acceptedLegalTexts');
+
+    expect(Registration::withoutBrandScope()->count())->toBe(0);
+});
+
+it('accepts the same submission once the documents are confirmed', function (): void {
+    $this->withBrand();
+    registrationConsentPolicy('terms', 'Terms of Participation');
+
+    $type = RegistrationType::factory()->create();
+    $user = User::factory()->create();
+    registrationConsentSettleGate($user);
+
+    $this->actingAs($user)
+        ->post("/events/{$type->event_id}/register/{$type->id}", ['acceptedLegalTexts' => '1'])
+        ->assertSessionHasNoErrors();
+
+    expect(Registration::withoutBrandScope()->count())->toBe(1);
+});
+
+it('never blocks a submission on an information-only text', function (): void {
+    // `requires_consent: false` puts a text in `notices`, which is read
+    // rather than agreed to (D-CPL-08) — so nothing is owed and the form
+    // submits exactly as it did before this feature existed.
+    $this->withBrand();
+
+    $policy = Policy::factory()->create(['slug' => 'house-rules', 'name' => 'House rules']);
+    PolicyVersion::factory()->for($policy)->published()->create([
+        'version' => 'house-rules-v1',
+        'requires_consent' => false,
+    ]);
+
+    $type = RegistrationType::factory()->create();
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post("/events/{$type->event_id}/register/{$type->id}", [])
+        ->assertSessionHasNoErrors();
+
+    expect(Registration::withoutBrandScope()->count())->toBe(1);
 });

@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace Konventix\Registration\Actions;
 
 use Illuminate\Support\Facades\DB;
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Actions\Concerns\LoadsRegistrationType;
 use Konventix\Registration\Data\GrantData;
 use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Exceptions\IllegalRegistrationStateTransitionException;
+use Konventix\Registration\Models\EntryCondition;
 use Konventix\Registration\Models\Registration;
+use Konventix\Registration\Models\RegistrationType;
 
 /**
  * The one Action that materializes entitlements (ADR-0005, SPEC.md "Public
@@ -104,10 +107,50 @@ final class ConfirmRegistration
                         'quantity' => $grant->quantity * $registration->quantity,
                     ])
                     ->all()),
+                // ADR-0066 §6.4, D-ADM-06: what the door will have to ask
+                // for, beside the grants and not inside them. Scalars only
+                // — Admission stamps them and never reads a Registration
+                // table (ADR-0004).
+                entryConditionKeys: $this->entryConditionKeysOf($registrationType),
             ));
 
             return $registration->refresh();
         });
+    }
+
+    /**
+     * The type's conditions as the door and the ticket need them: the
+     * condition's own `key` (the door's idempotency handle and the
+     * assertion's match), the `name` it is called by, how it is verified,
+     * and the hint that tells the holder what to bring.
+     *
+     * `assertion_text` is deliberately **not** here. That sentence is the
+     * declaration the registrant made and belongs in the assertion row and
+     * the subject's own export; a door does not need somebody's wording to
+     * look at a student card, and a ticket printing it would put a
+     * declaration about a person on a piece of paper they hand to a
+     * stranger (spec §11).
+     *
+     * `withoutGlobalScope(BrandScope::class)` on the relation: this Action
+     * is reached from a Commerce listener that may run inside a console
+     * request, where the scope hardens a brand-owned relation query to zero
+     * rows and the list would silently come back empty
+     * (.ai/rules/app-modules-src.md, #236).
+     *
+     * @return list<array{key: string, label: string, verification: string, document_hint: string|null}>
+     */
+    private function entryConditionKeysOf(RegistrationType $registrationType): array
+    {
+        return array_values($registrationType->entryConditions()
+            ->withoutGlobalScope(BrandScope::class)
+            ->get()
+            ->map(fn (EntryCondition $condition): array => [
+                'key' => $condition->key,
+                'label' => $condition->name,
+                'verification' => $condition->verification->value,
+                'document_hint' => $condition->document_hint,
+            ])
+            ->all());
     }
 
     private function guardTransition(Registration $registration): void

@@ -10,8 +10,9 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
  * One entry in the PII-free delta feed (ADR-0033): an admission ID that a
- * device must now treat as revoked, as already checked in, or — since
- * design doc §5 (Task 6) — as holding a superseded token.
+ * device must now treat as revoked, as already checked in, as holding a
+ * superseded token (design doc §5, Task 6), or — since ADR-0066 — as owing
+ * a document check at the entrance.
  *
  * Positive decisions come from the signature; these are the negative ones a
  * signature cannot make. `revoked` and `checked_in` carry nothing but the
@@ -42,6 +43,19 @@ class EntranceDeltaEntry extends Model
     public const string KIND_CHECKED_IN = 'checked_in';
 
     public const string KIND_TOKEN_SUPERSEDED = 'token_superseded';
+
+    /**
+     * What this admission's holder will be asked to show at the door
+     * (ADR-0066 §6.4, D-ADM-06). `payload = ['conditions' => [{key, label,
+     * document_hint}]]`, written once at issuance rather than on a change,
+     * because the fact is born with the admission.
+     *
+     * Still PII-free: a condition's label beside an opaque admission ULID
+     * says what was bought, never who bought it. The device keeps these in
+     * a store of their own — a `revoked` row for the same admission must
+     * not overwrite them, and they must not resurrect a revocation.
+     */
+    public const string KIND_ENTRY_CONDITIONS = 'entry_conditions';
 
     protected $primaryKey = 'sequence';
 

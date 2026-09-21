@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Konventix\Admission\Actions\RotateEntranceSigningKey;
 use Konventix\Admission\Models\Admission;
+use Konventix\Admission\Models\Checkpoint;
+use Konventix\Admission\Models\EntranceDevice;
 use Konventix\Admission\Models\EntranceSigningKey;
 use Konventix\Admission\Models\EventSummary;
 use Konventix\Admission\Models\Person;
@@ -139,6 +141,9 @@ function ticketPageFixture(array $overrides = []): array
         'role' => 'crew',
         'validRange' => 'All event days',
         'seatLabel' => null,
+        // ADR-0066 §9.3: what the door will ask for, printed beside the
+        // holder. Empty by default — most tickets carry no condition.
+        'entryConditions' => [],
         'banner' => null,
         'doorCode' => 'ABCD-1234',
         'qr' => 'data:image/svg+xml;base64,',
@@ -177,4 +182,29 @@ function admissionUserWithPermission(string $brandId, string $permission): User
     ]);
 
     return $user;
+}
+
+/**
+ * One enrolled door: a checkpoint on an event, a device holding a plain
+ * bearer token, and the event's id (ADR-0033). Prefixed and here rather than
+ * in a test file because two files call it (.ai/rules/tests.md).
+ *
+ * @return array{device: EntranceDevice, checkpoint: Checkpoint, token: string, eventId: string}
+ */
+function entranceTestLane(?string $eventId = null): array
+{
+    $eventId ??= (string) Str::ulid();
+
+    $checkpoint = Checkpoint::factory()->forEvent($eventId)->create();
+    $plain = Str::random(48);
+    $device = EntranceDevice::factory()
+        ->withToken($plain)
+        ->create(['checkpoint_id' => $checkpoint->id]);
+
+    return ['device' => $device, 'checkpoint' => $checkpoint, 'token' => $plain, 'eventId' => $eventId];
+}
+
+function entranceTestHeaders(string $plainToken): array
+{
+    return ['Authorization' => 'Bearer '.$plainToken, 'Accept' => 'application/json'];
 }

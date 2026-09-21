@@ -31,7 +31,15 @@ final class SynchronizeScanBatch
     ) {}
 
     /**
-     * @param  list<array{token: string, client_scan_id: string, scanned_at?: string|null, direction?: string|null}>  $scans
+     * `conditions_checked` rides with the scan that produced it (ADR-0066
+     * §6.4): the door shows the check under an accepted scan, staff answer
+     * it, and the buffered row is uploaded with the answer attached. A
+     * replay is a no-op for the same reason every other replay is —
+     * `RecordScan` is idempotent per `client_scan_id` and returns the
+     * check-in it already wrote, so no second `AdmissionCheckedIn` goes out
+     * and no assertion is stamped twice.
+     *
+     * @param  list<array{token: string, client_scan_id: string, scanned_at?: string|null, direction?: string|null, conditions_checked?: list<array{key: string, outcome: string}>|null}>  $scans
      * @return array{results: list<array{client_scan_id: string, result: string, reason_code: string|null, duplicate: bool}>, accepted: int, rejected: int, duplicates: int}
      */
     public function handle(EntranceDevice $device, Checkpoint $checkpoint, array $scans): array
@@ -60,6 +68,7 @@ final class SynchronizeScanBatch
                 checkpoint: $checkpoint,
                 device: $device,
                 direction: $scan['direction'] ?? 'in',
+                conditionsChecked: $scan['conditions_checked'] ?? [],
             );
 
             if ($alreadyRecorded) {

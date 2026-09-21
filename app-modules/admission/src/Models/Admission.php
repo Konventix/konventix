@@ -34,6 +34,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $holder_user_id
  * @property string|null $buyer_user_id
  * @property string $role
+ * @property list<array{key: string, label: string, verification: string, document_hint: string|null}>|null $entry_conditions
  * @property Carbon|null $valid_from
  * @property Carbon|null $valid_until
  * @property AdmissionState $state
@@ -58,6 +59,7 @@ class Admission extends Model
         'holder_user_id',
         'buyer_user_id',
         'role',
+        'entry_conditions',
         'valid_from',
         'valid_until',
         'state',
@@ -69,6 +71,9 @@ class Admission extends Model
     protected function casts(): array
     {
         return [
+            // Opaque scalars stamped at issuance (ADR-0066 D-ADM-06) —
+            // this module never interprets a condition, it carries one.
+            'entry_conditions' => 'array',
             'valid_from' => 'datetime',
             'valid_until' => 'datetime',
             'state' => AdmissionState::class,

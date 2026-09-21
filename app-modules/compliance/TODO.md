@@ -28,6 +28,21 @@
       through the new path yet**: the binding console, the
       `registration.consent` slot and the two-step checkout are Task 32, the
       re-consent gate is Task 33.
+- [x] Re-consent to a contract and the door (round 4, Task 33, ADR-0066
+      slice B3; D-CPL-12/13/14/15/17). The second alias
+      `require-contract-consent` (`Http\Middleware\EnsureContractConsent`)
+      beside `require-consent`: the narrow `subjectHasOutstandingContract()`
+      question, guests through, `ConsentPromptRaised(route_gate, contract)`,
+      a redirect to `policies.required`, and `url.intended` that is never a
+      POST — a GET remembers itself and a POST remembers the GET page its
+      own route named as the middleware's second parameter. Applied by the
+      owning modules to the fourteen contract-creating routes and to none of
+      the escape hatches (SPEC.md has the list; `ContractReconsentGateTest`
+      pins it). `policies/Required.vue` gains the act's label, fed from the
+      session key `compliance.consent_act` the gate writes and
+      `ConsentController::store()` clears, and a **"Not now"** control that
+      counts nothing. Identity's `RedirectsOutstandingContractConsent` and
+      `compliance.consent_redirect` are untouched.
 - [x] The bindings console and the consent slots (round 4, Task 32,
       ADR-0066; D-CPL-06/07/08/10/11/16). The *Where this applies* card on
       the policy editor behind `ManagePolicyBindings`

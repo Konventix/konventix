@@ -99,6 +99,7 @@
         .event-band.with-banner .event-name { font-size: 16pt; margin-bottom: 2mm; }
         .event-band.with-banner .event-when, .event-band.with-banner .venue { font-size: 10pt; }
         .seat-line { font-size: 11pt; color: #111827; margin-bottom: 3mm; }
+        .condition-line { font-size: 10pt; color: #374151; margin-bottom: 2mm; }
         .event-band .info { width: 122mm; }
         .event-band .event-name { font-size: 20pt; font-weight: bold; margin: 0 0 4mm; }
         .event-band .event-when { font-size: 11pt; color: #374151; margin: 0 0 2mm; }
@@ -215,6 +216,17 @@
                 @if ($page['seatLabel'] !== null)
                     <div class="seat-line">{{ __('Seat') }}: {{ $page['seatLabel'] }}</div>
                 @endif
+
+                {{-- ADR-0066 §9.3: what the door will ask this holder for.
+                     The condition's name and its document hint, nothing
+                     else — the declaration the registrant made stays in
+                     their own record (spec §11). The badge prints none of
+                     this (D-ADM-07). --}}
+                @foreach ($page['entryConditions'] as $condition)
+                    <div class="condition-line">
+                        {{ $condition['label'] }}@if ($condition['documentHint'] !== null) &mdash; {{ $condition['documentHint'] }} @endif
+                    </div>
+                @endforeach
                 <div class="valid-range">{{ $page['validRange'] }}</div>
                 <div class="door-code">{{ __('Door code') }}: {{ $page['doorCode'] }}</div>
             </div>

@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Compliance\Http\Middleware\EnsureContractConsent;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Compliance\Support\OutstandingConsents;
@@ -80,6 +81,14 @@ final class PolicyController
      * With nothing outstanding it sends the visitor on rather than showing an
      * empty form — that is also what makes the post-agreement redirect land
      * correctly when two tabs answer the same gate.
+     *
+     * Since ADR-0066 it also serves the mid-session gate
+     * (`require-contract-consent`), which is why it carries two more props:
+     * `actLabel`, the short scalar the gate's middleware parameter left in
+     * the session naming what the person was about to do, and `notNowUrl`,
+     * where the "Not now" control leaves to. One page for both cases
+     * (D-CPL-15) — a second interstitial would be a second place to get a
+     * legal screen wrong.
      */
     public function required(Request $request, PolicyMarkdown $markdown, OutstandingConsents $outstanding): Response|RedirectResponse
     {
@@ -91,7 +100,20 @@ final class PolicyController
             return redirect()->intended('/');
         }
 
+        // ADR-0066 D-CPL-15: what the person was about to do, as the gate's
+        // own middleware parameter left it in the session. A scalar, never a
+        // Registration query from Compliance — this module does not know
+        // that an event or a registration type exists, and must not learn.
+        $act = $request->session()->get(EnsureContractConsent::ACT_SESSION_KEY);
+
         return Inertia::render('policies/Required', [
+            'actLabel' => is_string($act) && $act !== '' ? $act : null,
+            // Where "Not now" leaves to (D-CPL-15). The brand's front page:
+            // the account, the tickets and the order history stay reachable,
+            // because only the *act* is gated, never the person's own
+            // records. Root-relative — a brand answers on several domains
+            // (ADR-0001).
+            'notNowUrl' => '/',
             'versions' => $versions->map(fn (PolicyVersion $version): array => [
                 'id' => $version->getKey(),
                 'name' => $version->policy->name,

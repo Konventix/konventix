@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Events\AdmissionIssued;
 use Konventix\Admission\Models\Admission;
+use Konventix\Admission\Models\EntranceDeltaEntry;
 
 /**
  * Issues one `Admission` per granted admission entry on a confirmed
@@ -51,7 +52,15 @@ final class IssueAdmissionsForRegistration
     private const string ADMISSION_GRANT_KIND = 'admission';
 
     /**
+     * Written as a literal for the reason `ADMISSION_GRANT_KIND` is: this
+     * module does not import `Konventix\Registration\Enums\
+     * EntryConditionVerification`, so the string is the contract.
+     */
+    private const string VERIFICATION_DOCUMENT_AT_DOOR = 'document_at_door';
+
+    /**
      * @param  list<array{kind: string, role: string, quantity: int, resource_type_id: string|null}>  $grants
+     * @param  list<array{key: string, label: string, verification: string, document_hint: string|null}>  $entryConditions
      * @return list<Admission>
      */
     public function handle(
@@ -61,6 +70,7 @@ final class IssueAdmissionsForRegistration
         string $registrantUserId,
         array $grants,
         ?string $amendmentId = null,
+        array $entryConditions = [],
     ): array {
         $alreadyIssued = Admission::withoutBrandScope()
             ->where('brand_id', $brandId)
@@ -72,7 +82,7 @@ final class IssueAdmissionsForRegistration
             return [];
         }
 
-        return DB::transaction(function () use ($registrationId, $eventId, $brandId, $registrantUserId, $grants, $amendmentId): array {
+        return DB::transaction(function () use ($registrationId, $eventId, $brandId, $registrantUserId, $grants, $amendmentId, $entryConditions): array {
             $issued = [];
 
             foreach ($grants as $grant) {
@@ -83,7 +93,7 @@ final class IssueAdmissionsForRegistration
                 $quantity = $grant['quantity'];
 
                 for ($unit = 0; $unit < $quantity; $unit++) {
-                    $issued[] = $this->issueOne($brandId, $registrationId, $eventId, $registrantUserId, $grant['role'], $amendmentId);
+                    $issued[] = $this->issueOne($brandId, $registrationId, $eventId, $registrantUserId, $grant['role'], $amendmentId, $entryConditions);
                 }
             }
 
@@ -91,6 +101,9 @@ final class IssueAdmissionsForRegistration
         });
     }
 
+    /**
+     * @param  list<array{key: string, label: string, verification: string, document_hint: string|null}>  $entryConditions
+     */
     private function issueOne(
         string $brandId,
         string $registrationId,
@@ -98,6 +111,7 @@ final class IssueAdmissionsForRegistration
         string $registrantUserId,
         string $role,
         ?string $amendmentId,
+        array $entryConditions = [],
     ): Admission {
         // brand_id comes from the event payload rather than the resolved
         // context, so a replay outside any brand context issues into the
@@ -110,12 +124,20 @@ final class IssueAdmissionsForRegistration
             'holder_user_id' => null,
             'buyer_user_id' => $registrantUserId,
             'role' => $role,
+            // ADR-0066 D-ADM-06: stamped as handed over, never interpreted
+            // and never looked up again. Null rather than an empty array
+            // where the confirmation named none, so "this admission predates
+            // the feature" and "this type asks for nothing" read alike at
+            // the door: nothing to check.
+            'entry_conditions' => $entryConditions === [] ? null : $entryConditions,
             'valid_from' => null,
             'valid_until' => null,
             'state' => AdmissionState::Issued,
         ]);
 
         $admission->forceFill(['brand_id' => $brandId])->save();
+
+        $this->announceDoorChecks($admission, $entryConditions);
 
         event(new AdmissionIssued(
             admissionId: $admission->id,
@@ -129,5 +151,48 @@ final class IssueAdmissionsForRegistration
         ));
 
         return $admission;
+    }
+
+    /**
+     * Tells the door what this admission will have to show, through the same
+     * PII-free delta feed it already walks (ADR-0033, spec §11).
+     *
+     * Only `document_at_door` conditions: those are the ones somebody at an
+     * entrance can decide. An `operator_checked` condition fills a worklist
+     * in the console and has no business travelling to a scanner, and a
+     * `self_declared` one was answered by the tick on the form.
+     *
+     * A condition label beside an opaque admission ULID is the minimum the
+     * feature needs to work and carries no name, no address and no id of a
+     * person — the feed stays what ADR-0033 made it. The entry is written
+     * once, at issuance, so a device that has walked the feed already knows
+     * before the queue arrives; it is not part of the revocation stream and
+     * does not overwrite one (the client keeps it in its own store).
+     *
+     * @param  list<array{key: string, label: string, verification: string, document_hint: string|null}>  $entryConditions
+     */
+    private function announceDoorChecks(Admission $admission, array $entryConditions): void
+    {
+        $atDoor = array_values(array_filter(
+            $entryConditions,
+            static fn (array $condition): bool => $condition['verification'] === self::VERIFICATION_DOCUMENT_AT_DOOR,
+        ));
+
+        if ($atDoor === []) {
+            return;
+        }
+
+        $entry = new EntranceDeltaEntry([
+            'event_id' => $admission->event_id,
+            'admission_id' => $admission->id,
+            'kind' => EntranceDeltaEntry::KIND_ENTRY_CONDITIONS,
+            'payload' => ['conditions' => array_map(static fn (array $condition): array => [
+                'key' => $condition['key'],
+                'label' => $condition['label'],
+                'document_hint' => $condition['document_hint'],
+            ], $atDoor)],
+        ]);
+
+        $entry->forceFill(['brand_id' => $admission->brand_id])->save();
     }
 }

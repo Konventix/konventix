@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
+use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Compliance\Events\RetentionPeriodElapsed;
 use Konventix\Identity\Models\User;
 use Konventix\Registration\Actions\SubmitRegistration;
@@ -234,4 +235,106 @@ it('prunes declarations on the registration clock and ignores other categories',
     expect(EntryConditionAssertion::withoutBrandScope()->count())->toBe(0)
         // The condition itself is not retention data — it is configuration.
         ->and(EntryCondition::withoutBrandScope()->whereKey($condition->id)->exists())->toBeTrue();
+});
+
+/**
+ * A scan at a door, as Admission reports it (ADR-0066 §6.4, D-ADM-06). Only
+ * the event crosses — this module never sees an `Admission` row, and
+ * Admission never sees an assertion.
+ */
+function doorScanOf(string $registrationId, string $brandId, array $conditionsChecked, string $checkInId = 'check-in-1'): AdmissionCheckedIn
+{
+    return new AdmissionCheckedIn(
+        checkInId: $checkInId,
+        admissionId: (string) Str::ulid(),
+        registrationId: $registrationId,
+        eventId: (string) Str::ulid(),
+        brandId: $brandId,
+        eventDayId: null,
+        checkpointId: null,
+        direction: 'in',
+        scannedAt: now()->toIso8601String(),
+        conditionsChecked: $conditionsChecked,
+    );
+}
+
+it('verifies a declaration from the door and says where the decision came from', function (): void {
+    $this->withBrand();
+    [$condition, $registration] = entryConditionVerificationFixture();
+
+    Event::fake([RegistrationEntryConditionDecided::class]);
+
+    event(doorScanOf($registration->id, $registration->brand_id, [
+        ['key' => $condition->key, 'outcome' => 'confirmed'],
+    ]));
+
+    $assertion = EntryConditionAssertion::withoutBrandScope()->sole();
+
+    expect($assertion->state)->toBe(EntryConditionAssertionState::Verified)
+        ->and($assertion->decided_via)->toBe(EntryConditionDecisionSource::Door)
+        // Nobody signs in at a door; the device is the actor (ADR-0033).
+        ->and($assertion->decided_by_user_id)->toBeNull();
+
+    Event::assertDispatched(RegistrationEntryConditionDecided::class, fn (RegistrationEntryConditionDecided $event): bool => $event->decidedVia === 'door'
+        && $event->state === 'verified'
+        && $event->entryConditionKey === $condition->key);
+});
+
+it('records a door refusal with a bounded code and revokes nothing', function (): void {
+    $this->withBrand();
+    [$condition, $registration] = entryConditionVerificationFixture();
+
+    $statusBefore = $registration->status;
+
+    event(doorScanOf($registration->id, $registration->brand_id, [
+        ['key' => $condition->key, 'outcome' => 'refused'],
+    ]));
+
+    $assertion = EntryConditionAssertion::withoutBrandScope()->sole();
+
+    expect($assertion->state)->toBe(EntryConditionAssertionState::Refused)
+        // A bounded code, never a sentence about a person (spec §11).
+        ->and($assertion->reason_code)->toBe(EntryConditionReasonCode::DocumentMissing)
+        // T-8, ADR-0005: the door decides access, not money. The
+        // registration is untouched and nothing reaches Commerce.
+        ->and($registration->fresh()->status)->toBe($statusBefore)
+        ->and($registration->fresh()->cancelled_at)->toBeNull();
+});
+
+it('is a no-op when a device replays the same scan', function (): void {
+    $this->withBrand();
+    [$condition, $registration] = entryConditionVerificationFixture();
+
+    $scan = doorScanOf($registration->id, $registration->brand_id, [
+        ['key' => $condition->key, 'outcome' => 'confirmed'],
+    ]);
+
+    event($scan);
+
+    $decidedAt = EntryConditionAssertion::withoutBrandScope()->sole()->decided_at;
+
+    Event::fake([RegistrationEntryConditionDecided::class]);
+
+    $this->travel(1)->minutes();
+
+    event($scan);
+
+    Event::assertNotDispatched(RegistrationEntryConditionDecided::class);
+
+    expect(EntryConditionAssertion::withoutBrandScope()->sole()->decided_at->equalTo($decidedAt))->toBeTrue();
+});
+
+it('writes nothing for a condition the registration never declared', function (): void {
+    // D-REG-19: a condition added to a live type has no row, and a door may
+    // not invent a declaration — only an operator's deliberate waive can.
+    $this->withBrand();
+    [, $registration] = entryConditionVerificationFixture();
+
+    $added = EntryCondition::factory()->create(['key' => 'press', 'name' => 'Press pass']);
+
+    event(doorScanOf($registration->id, $registration->brand_id, [
+        ['key' => $added->key, 'outcome' => 'confirmed'],
+    ]));
+
+    expect(EntryConditionAssertion::withoutBrandScope()->where('entry_condition_id', $added->getKey())->count())->toBe(0);
 });

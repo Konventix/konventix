@@ -29,6 +29,24 @@
       `registration.consent` slot and Compliance's `RecordConsentDeclaration`
       are Task 32; the door (`entry_condition_keys` on
       `RegistrationConfirmed`, `RecordDoorVerification`) is Task 33.
+- [x] The form's legal texts and the door (round 4, Task 33, ADR-0066 slice
+      B3; D-CPL-08, D-ADM-06). `Register.vue` renders the
+      `registration.consent` contributions and posts `acceptedLegalTexts`
+      through a hidden field beside them (the billing block moved into
+      `components/RegistrationBillingFields.vue` to keep the page under the
+      size rule); `Consent\RegistrationConsentSlots` is the one reader the
+      page and the Action share, and
+      `SubmitRegistration::guardLegalTexts()` refuses on
+      `acceptedLegalTexts` when a contribution says a tick is owed — an
+      information-only text, or none at all, blocks nothing.
+      `ConfirmRegistration` puts `entry_condition_keys` on
+      `RegistrationConfirmed` beside the grants (`key`, `label`,
+      `verification`, `document_hint`; never the assertion sentence), and
+      `Listeners\RecordDoorVerification` stamps the matching assertion
+      `verified`/`refused` from Admission's `AdmissionCheckedIn` with
+      `decided_via: door` and a bounded `reason_code` — idempotent per scan,
+      silent for a condition the registration never declared, and **it
+      revokes nothing** (T-8, ADR-0005).
 - [ ] A waitlist conversion declares nothing (spec §15, noticed in Task 31):
       `WaitlistEntry` holds a billing snapshot, not a tick, so converting an
       offer for a type with entry conditions writes no assertion and the

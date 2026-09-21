@@ -10,6 +10,7 @@ use Inertia\Inertia;
 use Konventix\Compliance\Actions\GrantConsent;
 use Konventix\Compliance\Actions\WithdrawConsent;
 use Konventix\Compliance\Enums\PolicyVersionState;
+use Konventix\Compliance\Http\Middleware\EnsureContractConsent;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\Policy;
@@ -71,6 +72,11 @@ final class ConsentController
         foreach ($versions as $version) {
             $grantConsent($subjectId, $version, $context);
         }
+
+        // The act the gate was raised on is answered; its label has no
+        // business heading an interstitial somebody reaches later for an
+        // unrelated reason (ADR-0066 D-CPL-15).
+        $request->session()->forget(EnsureContractConsent::ACT_SESSION_KEY);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Thank you — your agreement is recorded.')]);
 

@@ -1,4 +1,5 @@
 import type { EventDay, ReentryPolicy } from './evaluate';
+import type { ConditionOutcome, DoorCondition } from './store';
 import type { SigningKey } from './token';
 
 /**
@@ -14,7 +15,19 @@ import type { SigningKey } from './token';
 export type DeltaResponse = {
     since: number;
     next: number;
-    entries: Array<{ admission_id: string; kind: string }>;
+    entries: Array<{
+        admission_id: string;
+        kind: string;
+        /**
+         * Carried by `token_superseded` (`{hash}`) and, since ADR-0066
+         * §6.4, by `entry_conditions` (`{conditions}`). The other kinds
+         * need none.
+         */
+        payload?: {
+            hash?: string;
+            conditions?: DoorCondition[];
+        } | null;
+    }>;
     reentry_policy: ReentryPolicy;
     days: EventDay[];
     poll_seconds: number;
@@ -26,6 +39,8 @@ export type ScanSubmission = {
     client_scan_id: string;
     scanned_at: string;
     direction: 'in' | 'out';
+    /** What the door answered to this scan's document checks (ADR-0066 §6.4). */
+    conditions_checked: ConditionOutcome[];
 };
 
 export type ScanResult = {

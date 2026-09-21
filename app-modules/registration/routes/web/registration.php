@@ -45,7 +45,16 @@ Route::middleware(['auth'])->group(function (): void {
     // point 5) sits beside it: Platform owns the alias and the gate
     // contract, Commerce the queue — this module imports neither, it only
     // names the alias string, the same way it names `require-consent`.
-    Route::middleware(['require-consent', 'ensure-waiting-room'])->group(function (): void {
+    //
+    // `require-contract-consent` (ADR-0066 §6.5, D-CPL-13/14) is the narrow
+    // second alias, and it runs FIRST: the wider gate would otherwise
+    // swallow the contract case and the prompt would be counted as
+    // `reason: required` with no act named. Its parameter is the act's own
+    // short label, a scalar this module supplies and Compliance only prints
+    // — "Before you continue with your registration" (D-CPL-15). It sits on
+    // the GET as well as the POST so `url.intended` has a page to come back
+    // to; a POST never sets one.
+    Route::middleware(['require-contract-consent:your registration', 'require-consent', 'ensure-waiting-room'])->group(function (): void {
         Route::get('/events/{event_ulid}/register/{type}', [RegistrationController::class, 'show'])
             ->name('registration.show');
 
@@ -66,7 +75,11 @@ Route::middleware(['auth'])->group(function (): void {
     // Waitlist offer claim (D-REG-12): the offer mail's temporary signed
     // link — signature expiry equals the offer's own; the controller
     // additionally checks the claimant IS the queued registrant.
+    // Converting a waitlist offer concludes the registration the queue
+    // promised, so it is a contract-creating act and carries the narrow
+    // gate (D-CPL-14). After `signed`: an expired offer answers with that
+    // fact rather than with a consent screen it would fail behind anyway.
     Route::post('/waitlist/{entry}/claim', [WaitlistController::class, 'claim'])
-        ->middleware('signed')
+        ->middleware(['signed', 'require-contract-consent:claiming your waitlist offer'])
         ->name('registration.waitlist.claim');
 });

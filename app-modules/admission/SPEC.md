@@ -119,6 +119,24 @@ reading either.
   pre-existing rows by Registration's `registration:announce-ownership`.
   Distinct from `holder_user_id`: a registration-derived admission is born
   with a buyer and no holder, and stays that way until someone claims it.
+- **`admissions.entry_conditions`** — what the door will have to ask this
+  holder for (ADR-0066 §6.4, D-ADM-06): the list `RegistrationConfirmed`
+  carries beside its grants, stamped as **opaque scalars** on every admission
+  the confirmation issues — `key`, `label`, `verification`, `document_hint`
+  and nothing else. Admission reads no Registration table and learns of no
+  assertion: it carries four fields to the entrance payload and the ticket
+  and never looks them up again, so a condition reworded tomorrow does not
+  rewrite a ticket already in somebody's pocket. Null on every admission
+  issued before the feature — there is no backfill, and the door then asks
+  for nothing. The `document_at_door` ones also get an `entry_conditions`
+  entry in the delta feed (`EntranceDeltaEntry::KIND_ENTRY_CONDITIONS`,
+  payload `{conditions: [{key, label, document_hint}]}`), which is how an
+  offline device knows before the queue arrives. That stays PII-free: a
+  label beside an opaque admission ULID says what was bought, never who
+  bought it. The condition's **name and document hint print on the ticket**
+  ("Student ticket — bring a valid student ID"); the **badge carries none of
+  it** (D-ADM-07), and the registrant's own assertion sentence reaches
+  neither.
 - **Check-in and check-out records** — every scan, accepted or rejected, with
   checkpoint, device, operator, and timestamp. This is the audit trail of who
   was in the building. `scanned_at` and `synced_at` are separate: an offline
@@ -190,7 +208,7 @@ firm up while the first flow is built.
 | `AdmissionRevoked` | An admission stops being valid before its window ends — emitted by `Actions\RevokeAdmissionsForRegistration` when the registration behind it is cancelled (ADR-0057 point 6) | `admission_id`, `registration_id` (nullable — a crew admission has none, D-STF-01), `event_id`, `brand_id`, `revoked_by_user_id` (nullable — the sweep-driven cancellation has none), `reason_code`, `revoked_at` |
 | `TicketTokenIssued` (proposed) | A scannable token is minted or rotated | `admission_id`, `token_id`, `issued_at`, `supersedes_token_id` (nullable) |
 | `BadgeIssued` | A badge is produced or reprinted at the venue. `reprint` is derived from the issuance ledger, not supplied by the caller. Carries no holder name — a run of reprints is the shape of a lost badge and worth seeing, but the payload stays PII-free | `issuance_id`, `admission_id`, `event_id`, `brand_id`, `badge_template_id` (nullable), `issued_by_user_id` (nullable), `reprint`, `issued_at` | implemented |
-| `AdmissionCheckedIn` | A scan is accepted at a checkpoint. **`registration_id` is load-bearing beyond this module**: ADR-0037 blocks a refund on a checked-in admission, and D-COM-15 settles that Commerce answers that from its own read model fed by this event — never by reading Admission's tables. Slice 7's refunds were blocked until this shipped | `check_in_id`, `admission_id`, `registration_id`, `event_id`, `brand_id`, `event_day_id` (nullable), `checkpoint_id` (nullable), `direction`, `scanned_at` | implemented |
+| `AdmissionCheckedIn` | A scan is accepted at a checkpoint. **`registration_id` is load-bearing beyond this module**: ADR-0037 blocks a refund on a checked-in admission, and D-COM-15 settles that Commerce answers that from its own read model fed by this event — never by reading Admission's tables. Slice 7's refunds were blocked until this shipped. `conditions_checked` is what door staff answered to this holder's document checks (ADR-0066 §6.4): `[{key, outcome}]` with `outcome ∈ confirmed\|refused`, empty for every scan that checks nothing. Registration stamps its own assertion from it and **a refusal revokes nothing** (T-8, ADR-0005) | `check_in_id`, `admission_id`, `registration_id`, `event_id`, `brand_id`, `event_day_id` (nullable), `checkpoint_id` (nullable), `direction`, `scanned_at`, `conditions_checked` | implemented |
 | `CheckInRejected` | A presented token is refused. A first-class event, not a swallowed error — the audit trail records why | `check_in_id`, `admission_id` (nullable — a bad signature never resolves to one), `event_id`, `brand_id`, `checkpoint_id` (nullable), `reason_code`, `scanned_at` | implemented |
 | `CheckInBatchSynchronized` | A device delivered its buffered scans. `duplicates` counts scans already recorded — the normal shape of a reconnection replay, not a fault | `device_id`, `event_id`, `brand_id`, `accepted`, `rejected`, `duplicates`, `synchronized_at` | implemented |
 | `AdmissionCheckedOut` (proposed) | A holder is scanned out. Recorded today as a `direction: out` check-in; a distinct event only if a consumer needs one | `admission_id`, `checkpoint_id`, `device_id`, `checked_out_at` |
@@ -202,7 +220,7 @@ maintains from them.
 
 | Event | Owning module | Why |
 |---|---|---|
-| `RegistrationConfirmed` (proposed) | Registration | The trigger: issue one admission per granted admission in the payload, with the granted role |
+| `RegistrationConfirmed` (proposed) | Registration | The trigger: issue one admission per granted admission in the payload, with the granted role — and, since ADR-0066, stamp `entry_condition_keys` on each of them as opaque scalars (D-ADM-06) |
 | `RegistrationAmended` | Registration | Grants were added to an already-confirmed registration (ADR-0036): issue **exactly the delta**. Idempotency is keyed on `amendment_id` (null for the original confirmation) rather than "does this registration have any admissions?", which would swallow every amendment |
 | `EventDaysChanged` | Event | Projects the event-day calendar into `EntranceEventProfile` so a door can resolve the current day locally (D-ADM-04, ADR-0033). Replaces rather than patches — the payload always carries the complete set |
 | `EventReentryPolicyChanged` | Event | Projects the re-entry knob into the same read model (D-ADM-03). Without it the door could not evaluate re-entry offline, and Admission may not read Event's models (ADR-0004) |

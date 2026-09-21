@@ -8,14 +8,18 @@ import type {
     ReentryPolicy,
 } from './lib/evaluate';
 import {
+    allConditions,
     allDeltaEntries,
     bufferScan,
     getState,
     markSynced,
     pendingScans,
+    putConditions,
     putDeltaEntry,
     putState,
+    resolveConditions,
 } from './lib/store';
+import type { ConditionOutcome, DoorCondition } from './lib/store';
 import { EntranceApi, isStale } from './lib/sync';
 import type { SigningKey } from './lib/token';
 
@@ -24,7 +28,10 @@ import type { SigningKey } from './lib/token';
  *
  * Three things it deliberately does NOT do:
  * - show a holder's name: the delta is PII-free by design, so the device has
- *   no name to show and must not acquire one;
+ *   no name to show and must not acquire one. Since ADR-0066 it does show
+ *   what this admission owes at the door — "Document check — Student ID" —
+ *   which is a label beside an opaque id and still says nothing about a
+ *   person (spec §11);
  * - take payment: ADR-0018 keeps door payment a Commerce point-of-sale
  *   operation that requires connectivity, on its own separately authorized
  *   screen;
@@ -53,6 +60,22 @@ const now = ref(new Date());
 const pendingCount = ref(0);
 const manualToken = ref('');
 const lastDecision = ref<Decision | null>(null);
+
+/**
+ * The document checks per admission, from the feed's `entry_conditions`
+ * entries (ADR-0066 §6.4), and the one scan currently waiting for an answer.
+ *
+ * A scan with checks is buffered but held back from the upload until staff
+ * answer or the next person is scanned: the outcome belongs to the scan, and
+ * the server is idempotent per `client_scan_id`, so a scan uploaded before
+ * the answer existed could never carry it afterwards. Nothing is ever lost —
+ * the row is in IndexedDB from the moment it is scanned; only its upload
+ * waits.
+ */
+const conditionsByAdmission = ref<Map<string, DoorCondition[]>>(new Map());
+const pendingChecks = ref<DoorCondition[]>([]);
+const pendingScanId = ref<string | null>(null);
+const pendingOutcomes = ref<Record<string, 'confirmed' | 'refused'>>({});
 
 const stale = computed(() =>
     isStale(lastSyncedAt.value, staleAfterSeconds.value, now.value),
@@ -99,6 +122,13 @@ async function hydrate(): Promise<void> {
             .map((e) => e.admission_id),
     );
 
+    conditionsByAdmission.value = new Map(
+        (await allConditions()).map((row) => [
+            row.admission_id,
+            row.conditions,
+        ]),
+    );
+
     pendingCount.value = (await pendingScans()).length;
 }
 
@@ -123,11 +153,25 @@ async function sync(): Promise<void> {
         const delta = await api.value.delta(cursor.value);
 
         for (const entry of delta.entries) {
+            // Each kind into its own place. `entry_conditions` deliberately
+            // never reaches the delta store: that store is keyed by
+            // admission id, so the two would overwrite each other.
+            if (entry.kind === 'entry_conditions') {
+                const conditions = entry.payload?.conditions ?? [];
+                await putConditions({
+                    admission_id: entry.admission_id,
+                    conditions,
+                });
+                conditionsByAdmission.value.set(entry.admission_id, conditions);
+
+                continue;
+            }
+
             await putDeltaEntry(entry);
 
             if (entry.kind === 'revoked') {
                 revoked.value.add(entry.admission_id);
-            } else {
+            } else if (entry.kind === 'checked_in') {
                 checkedIn.value.add(entry.admission_id);
             }
         }
@@ -169,6 +213,7 @@ async function flush(): Promise<void> {
                 client_scan_id: scan.client_scan_id,
                 scanned_at: scan.scanned_at,
                 direction: scan.direction,
+                conditions_checked: scan.conditions_checked ?? [],
             })),
         );
 
@@ -189,6 +234,11 @@ async function scan(
     token: string,
     direction: 'in' | 'out' = 'in',
 ): Promise<void> {
+    // Whoever was on screen a moment ago is behind the person now at the
+    // door: release their scan with whatever was answered, so a check nobody
+    // got round to never holds a buffer back.
+    await releasePendingScan();
+
     const at = new Date();
     const decision = evaluateScan(token, localState(), at);
 
@@ -206,15 +256,71 @@ async function scan(
         );
     }
 
+    const checks = decision.accepted
+        ? (conditionsByAdmission.value.get(decision.admissionId) ?? [])
+        : [];
+    const clientScanId = crypto.randomUUID();
+
     await bufferScan({
-        client_scan_id: crypto.randomUUID(),
+        client_scan_id: clientScanId,
         token,
         scanned_at: at.toISOString(),
         direction,
         local_result: decision.accepted ? 'accepted' : 'rejected',
         local_reason: decision.accepted ? null : decision.reason,
+        conditions_checked: [],
+        awaiting_conditions: checks.length > 0 ? 1 : 0,
         synced: 0,
     });
+
+    pendingChecks.value = checks;
+    pendingScanId.value = checks.length > 0 ? clientScanId : null;
+    pendingOutcomes.value = {};
+
+    pendingCount.value = (await pendingScans()).length;
+
+    void flush();
+}
+
+/** Door staff answered one check. The last answer releases the scan. */
+async function answerCheck(
+    key: string,
+    outcome: 'confirmed' | 'refused',
+): Promise<void> {
+    pendingOutcomes.value = { ...pendingOutcomes.value, [key]: outcome };
+
+    if (
+        pendingChecks.value.every(
+            (check) => pendingOutcomes.value[check.key] !== undefined,
+        )
+    ) {
+        await releasePendingScan();
+    }
+}
+
+/**
+ * Hands the answers to the buffered scan and lets it upload. Called when the
+ * checks are all answered and again when the next person is scanned — a
+ * check left unanswered uploads as "nothing was checked", which is the
+ * honest record of a door that moved on.
+ */
+async function releasePendingScan(): Promise<void> {
+    const clientScanId = pendingScanId.value;
+
+    pendingScanId.value = null;
+    pendingChecks.value = [];
+
+    if (clientScanId === null) {
+        return;
+    }
+
+    const outcomes: ConditionOutcome[] = Object.entries(
+        pendingOutcomes.value,
+    ).map(([key, outcome]) => ({ key, outcome }));
+
+    pendingOutcomes.value = {};
+
+    await resolveConditions(clientScanId, outcomes);
 
     pendingCount.value = (await pendingScans()).length;
 
@@ -299,6 +405,35 @@ onUnmounted(() => {
                 <span v-if="lastDecision.admissionId" class="ref">{{
                     lastDecision.admissionId
                 }}</span>
+            </div>
+
+            <!-- ADR-0066 §6.4: what this holder still has to show. Only a
+                 `document_at_door` condition ever reaches a device, and a
+                 refusal records a fact — it never turns the ADMIT above
+                 into a REFUSE (T-8, ADR-0005). -->
+            <div v-for="check in pendingChecks" :key="check.key" class="check">
+                <strong>Document check — {{ check.label }}</strong>
+                <span v-if="check.document_hint" class="hint">{{
+                    check.document_hint
+                }}</span>
+                <div class="check-actions">
+                    <button
+                        class="btn btn-ok"
+                        :aria-pressed="
+                            pendingOutcomes[check.key] === 'confirmed'
+                        "
+                        @click="answerCheck(check.key, 'confirmed')"
+                    >
+                        Confirmed
+                    </button>
+                    <button
+                        class="btn btn-no"
+                        :aria-pressed="pendingOutcomes[check.key] === 'refused'"
+                        @click="answerCheck(check.key, 'refused')"
+                    >
+                        Refused
+                    </button>
+                </div>
             </div>
 
             <input
@@ -409,5 +544,40 @@ onUnmounted(() => {
     margin-top: 0.5rem;
     font-size: 0.7rem;
     opacity: 0.7;
+}
+/* The document check, read at the same arm's length as the verdict. */
+.check {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-raised);
+}
+.check strong {
+    display: block;
+    font-size: 1.1rem;
+}
+.check .hint {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+.check-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+.check-actions .btn {
+    width: auto;
+    flex: 1;
+}
+.btn-ok {
+    background: var(--success);
+    color: var(--success-contrast);
+}
+.btn-no {
+    background: var(--danger);
+    color: var(--danger-contrast);
 }
 </style>

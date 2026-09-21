@@ -89,6 +89,45 @@ what comes back (ADR-0004).
   every brand to `policies.required`. Publishing the operator's real AGB
   with `requires_consent` is what raises the gate, once, for a text that
   deserves it (#91, #200).
+- **The mid-session re-consent gate** (ADR-0066 §6.5, D-CPL-12/13/14): a
+  **second middleware alias**, `require-contract-consent`
+  (`Http\Middleware\EnsureContractConsent`), registered beside
+  `require-consent` and applied by the module that owns a route, never
+  centrally (ADR-0003). It asks the narrow
+  `subjectHasOutstandingContract()`, passes guests through, raises
+  `ConsentPromptRaised(surface: route_gate, reason: contract)` and redirects
+  to `policies.required`. It never puts a POST in `url.intended`; a GET
+  remembers itself, and a POST remembers the GET page the owning module
+  named as its second parameter (`require-contract-consent:your
+  order,commerce.cart.confirm`) — a page to come back to is not a POST to
+  replay. The first parameter is the act's own short label, which the
+  interstitial heads the page with ("Before you continue with your
+  registration"); Compliance never queries another module to build it
+  (D-CPL-15).
+
+  **The routes that carry it**, and they are the whole list —
+  `registration.show`, `registration.store`,
+  `registration.waitlist.claim`, `commerce.cart.choose`,
+  `commerce.cart.confirm`, `commerce.cart.checkout`,
+  `commerce.pay.choose`, `commerce.pay.confirm`, `commerce.pay.start`,
+  `commerce.pay.order.choose`, `commerce.pay.order.confirm`,
+  `commerce.pay.order.start`, `admission.claim.show`, `admission.claim`.
+  There is no amendment route to gate: `AmendRegistration` has no HTTP
+  surface yet, and the alias goes on it the day it gets one.
+
+  **Never** on `policies.*`, the login routes, `/my/*` or Support's report
+  channel (ADR-0063, T-9) — a gate in front of the channel by which
+  somebody reports that the gate is broken is the worst possible loop.
+  `tests/ContractReconsentGateTest.php` pins both halves of that list by
+  route name.
+
+  The interstitial is `policies.required` for both gates (D-CPL-15), with a
+  **"Not now"** control that leaves the gated act, says plainly what cannot
+  go ahead until the text is agreed to, and keeps the account, the tickets
+  and the order history reachable. It **increments no counter of its own**:
+  the refusal rate is derived from `consent_prompts_total` against
+  `consent_grants_total` (D-CPL-17). A modal was rejected outright — a legal
+  text behind a dismissible overlay is not an agreement.
 - **The data subject request workflow**: a request entity with a type (export,
   deletion, rectification), a state (received, in progress, fulfilled, refused),
   the statutory deadline, and the record of which modules have responded.
