@@ -6,8 +6,8 @@ import {
     isSelectable,
     placeReason,
     reconcileSelection,
+    selectWithSwap,
     stateText,
-    toggleSelection,
 } from './eligibility';
 
 const base = {
@@ -34,9 +34,25 @@ describe('placeReason', () => {
             'unavailable',
         );
         expect(placeReason({ ...base, state: undefined })).toBe('unavailable');
+    });
+
+    it('offers a free place at the cap as a swap, which stays selectable and unhatched', () => {
         expect(
             placeReason({ ...base, state: 'free', selectedIds: ['p9'] }),
-        ).toBe('limit-reached');
+        ).toBe('swap');
+        expect(
+            placeReason({
+                ...base,
+                state: 'free',
+                selectedIds: ['p8', 'p9'],
+                quantity: 2,
+            }),
+        ).toBe('swap');
+        expect(isSelectable('swap')).toBe(true);
+        // A taken or foreign place at the cap still names its own reason.
+        expect(
+            placeReason({ ...base, state: 'booked', selectedIds: ['p9'] }),
+        ).toBe('taken');
     });
 
     it("keeps a selected place and the registrant's own place selectable", () => {
@@ -52,18 +68,15 @@ describe('placeReason', () => {
 
 describe('hints and state text', () => {
     it('tells taken, wrong category and limit apart in words', () => {
-        expect(hintFor('taken', 2)).toBe('This place is already taken.');
-        expect(hintFor('not-in-category', 2)).toBe(
+        expect(hintFor('taken')).toBe('This place is already taken.');
+        expect(hintFor('not-in-category')).toBe(
             'This place is not in your category.',
         );
-        expect(hintFor('limit-reached', 2)).toBe(
-            'You can choose 2 places. Unselect one first.',
-        );
-        expect(hintFor('limit-reached', 1)).toBe(
-            'You can choose 1 place. Unselect it first.',
-        );
-        expect(hintFor('unavailable', 1)).toBe('This place is not available.');
-        expect(hintFor('free', 1)).toBeNull();
+        expect(hintFor('unavailable')).toBe('This place is not available.');
+        expect(hintFor('free')).toBeNull();
+        // A swap needs no hint: the click succeeds, the announcement says what changed.
+        expect(hintFor('swap')).toBeNull();
+        expect(hintFor('swap')).toBeNull();
     });
 
     it('has a short state word for every reason', () => {
@@ -73,16 +86,30 @@ describe('hints and state text', () => {
         expect(stateText('taken')).toBe('Taken');
         expect(stateText('not-in-category')).toBe('Not in your category');
         expect(stateText('unavailable')).toBe('Unavailable');
-        expect(stateText('limit-reached')).toBe('Limit reached');
+        expect(stateText('swap')).toBe('Free, swaps');
     });
 });
 
-describe('toggleSelection', () => {
-    it('adds up to the quantity and removes on a second toggle', () => {
-        expect(toggleSelection([], 'a', 2)).toEqual(['a']);
-        expect(toggleSelection(['a'], 'b', 2)).toEqual(['a', 'b']);
-        expect(toggleSelection(['a', 'b'], 'c', 2)).toEqual(['a', 'b']);
-        expect(toggleSelection(['a', 'b'], 'a', 2)).toEqual(['b']);
+describe('selectWithSwap', () => {
+    it('replaces the one selected place when the cap is 1', () => {
+        expect(selectWithSwap([], 'a', 1)).toEqual(['a']);
+        expect(selectWithSwap(['a'], 'b', 1)).toEqual(['b']);
+    });
+
+    it('drops the oldest selection at a cap of 2 and appends the new one', () => {
+        expect(selectWithSwap(['a'], 'b', 2)).toEqual(['a', 'b']);
+        expect(selectWithSwap(['a', 'b'], 'c', 2)).toEqual(['b', 'c']);
+        expect(selectWithSwap(['b', 'c'], 'd', 2)).toEqual(['c', 'd']);
+    });
+
+    it('deselects a place that is clicked again, at or under the cap', () => {
+        expect(selectWithSwap(['a', 'b'], 'a', 2)).toEqual(['b']);
+        expect(selectWithSwap(['a'], 'a', 2)).toEqual([]);
+        expect(selectWithSwap(['a'], 'a', 1)).toEqual([]);
+    });
+
+    it('selects nothing at a cap of zero', () => {
+        expect(selectWithSwap([], 'a', 0)).toEqual([]);
     });
 });
 

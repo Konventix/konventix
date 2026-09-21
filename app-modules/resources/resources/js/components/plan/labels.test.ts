@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { labelsVisible, placeLabel, selectionAnnouncement } from './labels';
+import {
+    CONTAINER_LABEL_MM,
+    containerLabel,
+    labelsVisible,
+    placeLabel,
+    selectionAnnouncement,
+} from './labels';
 
 describe('labelsVisible', () => {
     it('hides labels once a 250 mm label would render below 9 px', () => {
@@ -7,6 +13,26 @@ describe('labelsVisible', () => {
         expect(labelsVisible(1, 0.05)).toBe(true);
         expect(labelsVisible(0.5, 0.05)).toBe(false);
         expect(labelsVisible(1, 0)).toBe(false);
+    });
+
+    it('keeps a 400 mm group or fixture label visible further out than a place label', () => {
+        // 400 mm at 0.05 px/mm is 20 px at zoom 1, 10 px at 0.5, 8 px at 0.4.
+        expect(CONTAINER_LABEL_MM).toBe(400);
+        expect(labelsVisible(0.5, 0.05, CONTAINER_LABEL_MM)).toBe(true);
+        expect(labelsVisible(0.5, 0.05)).toBe(false);
+        expect(labelsVisible(0.4, 0.05, CONTAINER_LABEL_MM)).toBe(false);
+    });
+});
+
+describe('containerLabel', () => {
+    it('prefers the label, then the ref, then the given fallback', () => {
+        expect(containerLabel({ label: 'Row A', ref: 'A' }, 'Group')).toBe(
+            'Row A',
+        );
+        expect(containerLabel({ label: null, ref: 'A' }, 'Group')).toBe('A');
+        expect(containerLabel({ label: null, ref: null }, 'Group')).toBe(
+            'Group',
+        );
     });
 });
 

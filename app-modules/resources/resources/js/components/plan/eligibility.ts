@@ -1,10 +1,17 @@
 /**
  * Whether a place can be picked, and why not (design §7.4: "taken" versus
- * "not in your category" versus "limit reached", inline, never a modal —
- * LanCore Picker.vue:348-408 drew that distinction and users understood
- * it). Mirrors the server's rules in `AssignPlacesToRegistration` so the
- * page refuses first and the Action refuses last; the constraint decides
- * a race the page could not see.
+ * "not in your category", inline, never a modal — LanCore Picker.vue:348-408
+ * drew that distinction and users understood it). Mirrors the server's
+ * rules in `AssignPlacesToRegistration` so the page refuses first and the
+ * Action refuses last; the constraint decides a race the page could not
+ * see.
+ *
+ * A free place at the selection cap is `swap`, not a refusal (2026-09-21
+ * bugfix round): clicking it drops the oldest selection and takes this one
+ * (`selectWithSwap`), the way a person expects "click another seat" to
+ * work. Nothing is persisted until the "Save my seat" form posts the whole
+ * set, and the Action releases the old bookings as `repicked` — so the
+ * swap costs the page nothing it did not already do on a re-pick.
  */
 type PlaceState = Konventix.Resources.Enums.PlaceState;
 
@@ -15,7 +22,7 @@ export type Reason =
     | 'taken'
     | 'not-in-category'
     | 'unavailable'
-    | 'limit-reached';
+    | 'swap';
 
 export type PlaceContext = {
     placeId: string;
@@ -46,7 +53,7 @@ export function placeReason(context: PlaceContext): Reason {
             return 'taken';
         case 'free':
             return context.selectedIds.length >= context.quantity
-                ? 'limit-reached'
+                ? 'swap'
                 : 'free';
         default:
             return 'unavailable';
@@ -54,7 +61,12 @@ export function placeReason(context: PlaceContext): Reason {
 }
 
 export function isSelectable(reason: Reason): boolean {
-    return reason === 'free' || reason === 'selected' || reason === 'mine';
+    return (
+        reason === 'free' ||
+        reason === 'selected' ||
+        reason === 'mine' ||
+        reason === 'swap'
+    );
 }
 
 const STATE_TEXT: Record<Reason, string> = {
@@ -64,14 +76,14 @@ const STATE_TEXT: Record<Reason, string> = {
     taken: 'Taken',
     'not-in-category': 'Not in your category',
     unavailable: 'Unavailable',
-    'limit-reached': 'Limit reached',
+    swap: 'Free, swaps',
 };
 
 export function stateText(reason: Reason): string {
     return STATE_TEXT[reason];
 }
 
-export function hintFor(reason: Reason, quantity: number): string | null {
+export function hintFor(reason: Reason): string | null {
     switch (reason) {
         case 'taken':
             return 'This place is already taken.';
@@ -79,16 +91,19 @@ export function hintFor(reason: Reason, quantity: number): string | null {
             return 'This place is not in your category.';
         case 'unavailable':
             return 'This place is not available.';
-        case 'limit-reached':
-            return quantity === 1
-                ? 'You can choose 1 place. Unselect it first.'
-                : `You can choose ${quantity} places. Unselect one first.`;
         default:
             return null;
     }
 }
 
-export function toggleSelection(
+/**
+ * The next selection after activating `placeId`: present → removed; under
+ * the cap → appended; at the cap → the oldest selection leaves and this
+ * one is appended (`quantity` 1 is a plain replace). Order is selection
+ * order, which is what "oldest" means here. A cap of zero or less selects
+ * nothing.
+ */
+export function selectWithSwap(
     selected: string[],
     placeId: string,
     quantity: number,
@@ -97,11 +112,15 @@ export function toggleSelection(
         return selected.filter((id) => id !== placeId);
     }
 
-    if (selected.length >= quantity) {
+    if (quantity <= 0) {
         return selected;
     }
 
-    return [...selected, placeId];
+    if (selected.length < quantity) {
+        return [...selected, placeId];
+    }
+
+    return [...selected.slice(selected.length - quantity + 1), placeId];
 }
 
 /**

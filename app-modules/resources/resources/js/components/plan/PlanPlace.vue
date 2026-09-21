@@ -2,7 +2,6 @@
 import { computed } from 'vue';
 import type { Reason } from './eligibility';
 import { isSelectable } from './eligibility';
-import { placeLabel } from './labels';
 import PlanShape from './PlanShape.vue';
 import { STATE_FILL, tokenVar } from './tokens';
 import type { Bbox, Point } from './transform';
@@ -13,12 +12,16 @@ import type { Bbox, Point } from './transform';
  * check badge for "mine" (state is never colour-only, ADR-0055 — "mine" is
  * selectable so it gets no hatch, and its fill alone was the one state
  * this component conveyed by colour only until the review that flagged
- * it), the category's `<use>` symbol, its label once labels are visible,
- * and the invisible enlarged circle that keeps it a 44 px touch target at
- * any zoom. Split out purely to keep the scene's own file near the
- * project's size guideline — the click target, cursor and
- * `data-place-id`/`data-state` attributes Task 40's `SeatPickPageTest`
- * reads stay on the `<g>` the scene renders around this component.
+ * it), and the category's `<use>` symbol. Split out purely to keep the
+ * scene's own file near the project's size guideline — the cursor, the
+ * `<title>` tooltip and the `data-place-id`/`data-state` attributes
+ * `SeatPickPageTest` reads stay on the `<g>` the scene renders around this
+ * component.
+ *
+ * No per-seat `<text>` and no enlarged invisible hit circle any more
+ * (2026-09-21 bugfix round): the label is the `<title>` tooltip on the
+ * `<g>`, and the 44 px target is `hitTestPlaces` in the scene — a circle
+ * per place swallowed its neighbours' taps by paint order in dense rows.
  */
 type Element = Konventix.Resources.Data.PlanElementData;
 type Category = Konventix.Resources.Data.CategoryData;
@@ -30,8 +33,6 @@ const props = defineProps<{
     center: Point;
     category?: Category;
     reason: Reason;
-    showLabel: boolean;
-    hitRadius: number;
 }>();
 
 const fill = computed(() => {
@@ -71,17 +72,6 @@ const badgeCenter = computed(() => ({
     x: props.box.maxX - badgeRadius.value * 1.15,
     y: props.box.minY + badgeRadius.value * 1.15,
 }));
-
-/** Never smaller than the shape's own half-diagonal, so a large place is not under-targeted. */
-const hitR = computed(() => {
-    const half =
-        Math.hypot(
-            props.box.maxX - props.box.minX,
-            props.box.maxY - props.box.minY,
-        ) / 2;
-
-    return Math.max(props.hitRadius, half);
-});
 </script>
 
 <template>
@@ -131,16 +121,4 @@ const hitR = computed(() => {
             class="text-success-contrast"
         />
     </g>
-    <text
-        v-if="showLabel"
-        :x="center.x"
-        :y="box.maxY + 280"
-        text-anchor="middle"
-        font-size="250"
-        :fill="STATE_FILL.text"
-        class="pointer-events-none"
-    >
-        {{ placeLabel(element) }}
-    </text>
-    <circle :cx="center.x" :cy="center.y" :r="hitR" fill="transparent" />
 </template>

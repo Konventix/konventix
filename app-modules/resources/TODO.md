@@ -14,6 +14,31 @@
       `AdmissionSeatController`, `Pick.vue`'s per-ticket mode (`maxPlaces`),
       per-ticket rows in `SeatSummarySlot`, and `TicketSeatSlot` on the
       ticket page.
+- [x] Seat picker usable by mouse, swap on click, list behind an
+      Accessibility toggle, hover labels (2026-09-21 bugfix round, Task 1):
+      `useScenePointer` reports an undragged primary `pointerup` as a world
+      point and the scene resolves it with the pure `hitTestPlaces`
+      (nearest centre within the 44 px radius, or inside a large place's
+      box) — the per-place `@click` never fired under the svg's pointer
+      capture, and the enlarged invisible hit circles let the last-painted
+      seat swallow a dense row's taps. A free place at the cap is the
+      `swap` reason (`selectWithSwap`: oldest out, quantity 1 replaces);
+      `limit-reached` and `toggleSelection` are gone. The list of places as
+      buttons is off by default behind `SeatPickPanel.vue`'s
+      `aria-pressed` "Accessibility" button before the scene in DOM order,
+      focus moving into the list when revealed. Per-seat `<text>` replaced
+      by a `<title>` tooltip and `aria-label` per place `<g>`; groups and
+      fixtures get labels in `PlanBackdrop.vue` above the
+      `CONTAINER_LABEL_MM` threshold. `Pick.vue` split into
+      `SeatPickPanel`, `SeatPickForm` and `useAvailabilityPoll`;
+      `SceneZoomControls` out of the scene. Swap guarded in
+      `SeatPickPageTest` and `AdmissionSeatControllerTest`.
+- [ ] Follow-ups from that round: `PlanBackdrop`'s group and fixture
+      labels sit on the unrotated bbox (`geometry.ts` docblock), so a
+      rotated row's name lands beside, not above, it; the editor's
+      `PlanCanvas.vue` still gets a `toggle` emit from the scene on a tap
+      with the pan tool (harmless, unbound) — a `claim`-less scene could
+      skip the hit test entirely.
 - [ ] Extract the eligibility query and race handling shared by
       `AssignPlacesToRegistration` and `AssignPlaceToAdmission` into a
       concern (#292 follow-up; the plan asked for it, the two copies are

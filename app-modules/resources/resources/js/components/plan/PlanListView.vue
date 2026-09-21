@@ -65,7 +65,7 @@ function describe(element: Element): string {
         ? categoryName.value.get(element.resourceTypeId)
         : undefined;
 
-    return [category, stateText(reason), hintFor(reason, props.claim.quantity)]
+    return [category, stateText(reason), hintFor(reason)]
         .filter(Boolean)
         .join('. ');
 }

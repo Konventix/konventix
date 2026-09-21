@@ -1,23 +1,18 @@
 <script setup lang="ts">
-import { Form, Head, Link, useHttp } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { ArrowLeft } from '@lucide/vue';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AdmissionSeatController from '@/actions/Konventix/Resources/Http/Controllers/AdmissionSeatController';
 import SeatAvailabilityController from '@/actions/Konventix/Resources/Http/Controllers/SeatAvailabilityController';
-import SeatPickController from '@/actions/Konventix/Resources/Http/Controllers/SeatPickController';
 import Heading from '@/components/Heading.vue';
-import InputError from '@/components/InputError.vue';
-import { Button } from '@/components/ui/button';
 import { show as showTicket } from '@/routes/admission/tickets';
 import { show as showRegistration } from '@/routes/registration/mine';
-import CategoryLegend from '../../components/plan/CategoryLegend.vue';
 import type { Reason } from '../../components/plan/eligibility';
 import {
     categoriesHaveFreePlace,
-    firstPlaceIdsError,
     hintFor,
     reconcileSelection,
-    toggleSelection,
+    selectWithSwap,
 } from '../../components/plan/eligibility';
 import {
     ASSIGNED_BY_ORGANISER_MESSAGE,
@@ -25,29 +20,31 @@ import {
     placeLabel,
     selectionAnnouncement,
 } from '../../components/plan/labels';
-import PlanListView from '../../components/plan/PlanListView.vue';
 import PlanTabs from '../../components/plan/PlanTabs.vue';
-import SeatPlanScene from '../../components/plan/SeatPlanScene.vue';
-import SelectionHints from '../../components/plan/SelectionHints.vue';
+import SeatPickPanel from '../../components/plan/SeatPickPanel.vue';
+import { useAvailabilityPoll } from '../../components/plan/useAvailabilityPoll';
 
 /**
- * Choose your seat (design §7.4). One tab per published plan, the SVG
- * scene and the list view side by side over the same selection, hints in
- * a live region, and a plain form post of `placeIds[]` to
- * `SeatPickController@store` — the Action and the exclusion constraint
- * decide, the page only refuses what it can already see.
+ * Choose your seat (design §7.4). One tab per published plan; each plan's
+ * panel (`SeatPickPanel.vue`) holds the SVG scene and — behind the
+ * Accessibility toggle — the list view over the same selection, hints in
+ * a live region, and a plain form post of `placeIds[]`
+ * (`SeatPickForm.vue`) — the Action and the exclusion constraint decide,
+ * the page only refuses what it can already see.
  *
- * Availability polls every 15 s through `useHttp` against the JSON
- * endpoint while the tab is visible; a selected place somebody else took
- * meanwhile leaves the selection with a spoken hint, so the submit does
- * not fail on something the person could not know.
- *
- * The "nothing free" banner (`soldOut`, 2026-09-10 review fix) is derived
- * from that same polled `availability` map (`categoriesHaveFreePlace`),
- * not a flag computed once at render — that stayed "sold out" after a
- * held place actually freed up. `SeatSummarySlot.vue` has no poll of its
+ * Availability polls every 15 s (`useAvailabilityPoll.ts`); a selected
+ * place somebody else took meanwhile leaves the selection with a spoken
+ * hint, so the submit does not fail on something the person could not
+ * know. The "nothing free" banner (`soldOut`, 2026-09-10 review fix) is
+ * derived from that same polled map (`categoriesHaveFreePlace`), not a
+ * flag computed once at render. `SeatSummarySlot.vue` has no poll of its
  * own and keeps reading the server's `SeatSummaryData.noFreePlaces`; both
  * render the same `NO_FREE_PLACES_MESSAGE` so the wording cannot drift.
+ *
+ * 2026-09-21 bugfix round: a click on another place at the cap swaps
+ * (`selectWithSwap`, the oldest selection leaves) instead of refusing;
+ * the list of places as buttons is off by default behind the panel's
+ * Accessibility toggle.
  */
 // A bare `type Props = Konventix.Resources.Data.SeatPickerData;` fails the
 // SFC compiler's macro type resolver ("Unresolvable type reference"); every
@@ -64,8 +61,6 @@ type Props = {
     admissionId?: string | null;
     maxPlaces?: number | null;
 };
-type Availability = Konventix.Resources.Data.PlanAvailabilityData;
-type PlaceState = Konventix.Resources.Enums.PlaceState;
 
 const props = defineProps<Props>();
 
@@ -86,21 +81,12 @@ const pickerClaim = computed(() => ({
 /**
  * Item 1 of the 2026-09-10 fix wave (#278): an `assign`-mode claim is the
  * organiser's to place, not the registrant's — the picker itself must not
- * render, only the explanatory state below.
+ * render, only the explanatory state below. The title, heading and
+ * description follow the same branch (re-review fix, #278).
  */
 const assignedByOrganiser = computed(
     () => props.claim.seatingMode === 'assign',
 );
-
-/**
- * The title, heading and description all sat outside the branch above and
- * kept saying "Choose your seat" / "Pick one place…" over the explanatory
- * state (re-review fix ahead of merge, #278): three claims contradicting
- * the one true thing `ASSIGNED_BY_ORGANISER_MESSAGE` already said below
- * them. `pageTitle` covers the `<Head>` title and the `<Heading>` title
- * alike; the description reuses the same shared constant rather than a
- * third wording of the same fact.
- */
 const pageTitle = computed(() =>
     assignedByOrganiser.value ? 'Your seat' : 'Choose your seat',
 );
@@ -119,9 +105,16 @@ const activePlan = computed(
     () => props.plans.find((plan) => plan.id === activePlanId.value) ?? null,
 );
 
-const availability = ref<Record<string, PlaceState>>({
-    ...props.availability.places,
-});
+const { availability } = useAvailabilityPoll(
+    props.availability.places,
+    () =>
+        props.admissionId
+            ? AdmissionSeatController.availability.url({
+                  admission: props.admissionId,
+              })
+            : SeatAvailabilityController.show.url(props.registrationId),
+    !assignedByOrganiser.value,
+);
 const selected = ref<string[]>([...props.currentPlaceIds]);
 const hint = ref<string | null>(null);
 
@@ -166,52 +159,12 @@ const announcement = computed(() =>
 
 function onToggle(placeId: string): void {
     hint.value = null;
-    selected.value = toggleSelection(selected.value, placeId, maxPlaces.value);
+    selected.value = selectWithSwap(selected.value, placeId, maxPlaces.value);
 }
 
 function onHint(reason: Reason): void {
-    hint.value = hintFor(reason, maxPlaces.value);
+    hint.value = hintFor(reason);
 }
-
-const http = useHttp<Record<string, never>, Availability>();
-let timer: ReturnType<typeof setInterval> | undefined;
-
-function refreshAvailability(): void {
-    if (document.hidden || http.processing) {
-        return;
-    }
-
-    const url = props.admissionId
-        ? AdmissionSeatController.availability.url({
-              admission: props.admissionId,
-          })
-        : SeatAvailabilityController.show.url(props.registrationId);
-
-    http.get(url, {
-        onSuccess: (response) => {
-            availability.value = response.places;
-        },
-    }).catch(() => undefined);
-}
-
-onMounted(() => {
-    // An assign-mode page renders no picker to keep fresh (re-review fix
-    // ahead of merge, #278): starting the poll here would just fetch
-    // availability that nothing on the page ever reads.
-    if (assignedByOrganiser.value) {
-        return;
-    }
-
-    timer = setInterval(refreshAvailability, 15_000);
-});
-
-onBeforeUnmount(() => {
-    if (timer) {
-        clearInterval(timer);
-    }
-
-    http.cancel();
-});
 
 watch(availability, (places) => {
     const result = reconcileSelection(selected.value, places);
@@ -297,78 +250,20 @@ watch(availability, (places) => {
                             ? `plan-tab-${activePlan.id}`
                             : undefined
                     "
-                    class="flex flex-col gap-6"
                 >
-                    <CategoryLegend
-                        :categories="props.categories"
-                        :claim-resource-type-ids="props.claim.resourceTypeIds"
-                    />
-
-                    <SeatPlanScene
+                    <SeatPickPanel
                         :plan="activePlan"
                         :categories="props.categories"
                         :claim="pickerClaim"
                         :availability="availability"
-                        :selected-ids="selected"
+                        :selected="selected"
+                        :announcement="announcement"
+                        :hint="hint"
+                        :registration-id="props.registrationId"
+                        :admission-id="props.admissionId ?? null"
                         @toggle="onToggle"
                         @hint="onHint"
                     />
-
-                    <SelectionHints :announcement="announcement" :hint="hint" />
-
-                    <Form
-                        v-bind="
-                            props.admissionId
-                                ? AdmissionSeatController.store.form({
-                                      admission: props.admissionId,
-                                  })
-                                : SeatPickController.store.form(
-                                      props.registrationId,
-                                  )
-                        "
-                        #default="{ errors, processing }"
-                        class="flex flex-col gap-4"
-                    >
-                        <input
-                            v-for="id in selected"
-                            :key="id"
-                            type="hidden"
-                            name="placeIds[]"
-                            :value="id"
-                        />
-
-                        <InputError :message="firstPlaceIdsError(errors)" />
-
-                        <div class="flex flex-wrap items-center gap-3">
-                            <Button
-                                type="submit"
-                                :disabled="processing || selected.length === 0"
-                            >
-                                {{ processing ? 'Saving…' : 'Save my seat' }}
-                            </Button>
-                            <span class="text-sm text-text-muted">{{
-                                announcement
-                            }}</span>
-                        </div>
-                    </Form>
-
-                    <section
-                        class="flex flex-col gap-3"
-                        aria-labelledby="plan-list-heading"
-                    >
-                        <h2 id="plan-list-heading" class="text-lg font-medium">
-                            Choose from the list
-                        </h2>
-                        <PlanListView
-                            :plan="activePlan"
-                            :categories="props.categories"
-                            :claim="pickerClaim"
-                            :availability="availability"
-                            :selected-ids="selected"
-                            @toggle="onToggle"
-                            @hint="onHint"
-                        />
-                    </section>
                 </div>
             </template>
         </template>

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Identity\Models\User;
@@ -11,6 +12,7 @@ use Konventix\Resources\Enums\BookingState;
 use Konventix\Resources\Enums\ClaimState;
 use Konventix\Resources\Enums\PlaceState;
 use Konventix\Resources\Enums\SeatingMode;
+use Konventix\Resources\Events\ResourceBookingReleased;
 use Konventix\Resources\Models\Plan;
 // Aliased: an unqualified "Resource" in a docblock generic collides with
 // PHP's `resource` pseudo-type and pint's docblock fixer silently lowercases
@@ -283,6 +285,46 @@ it('saves the pick and returns to the registration page', function (): void {
         ->and($booking->registration_id)->toBe($scene['registrationId'])
         ->and($booking->claim_id)->toBe($scene['claim']->getKey())
         ->and($scene['claim']->fresh()->state)->toBe(ClaimState::Placed);
+});
+
+/**
+ * The picker's swap-on-click (2026-09-21 bugfix round): the page lets a
+ * click on another place replace the selection and posts the new set as a
+ * whole, so the guard that matters is here — the old booking is released
+ * as `repicked`, the new one confirmed, and the registration never holds
+ * two occupying bookings for a claim of one.
+ */
+it('swaps the confirmed place for the posted one, releasing the old booking as repicked', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('resources', $brand);
+    $scene = seatPickScene($brand, places: 2);
+    [$a, $b] = $scene['places'];
+    $old = seatingBooking($a, $scene['window'], $scene['registrationId'], $scene['claim']);
+    $scene['claim']->forceFill(['state' => ClaimState::Placed])->save();
+
+    Event::fake([ResourceBookingReleased::class]);
+
+    $this->actingAs($scene['user'])
+        ->from('/my/registrations/'.$scene['registrationId'].'/seat')
+        ->post('/my/registrations/'.$scene['registrationId'].'/seat', ['placeIds' => [$b->getKey()]])
+        ->assertRedirect('/my/registrations/'.$scene['registrationId'])
+        ->assertSessionHasNoErrors();
+
+    $new = ResourceBooking::query()->where('resource_id', $b->getKey())->sole();
+
+    expect($new->state)->toBe(BookingState::Confirmed)
+        ->and($new->claim_id)->toBe($scene['claim']->getKey())
+        ->and($old->fresh()->state)->toBe(BookingState::Released)
+        ->and(ResourceBooking::query()
+            ->where('registration_id', $scene['registrationId'])
+            ->whereIn('state', BookingState::occupyingValues())
+            ->count())->toBe(1)
+        ->and($scene['claim']->fresh()->state)->toBe(ClaimState::Placed);
+
+    Event::assertDispatched(
+        ResourceBookingReleased::class,
+        fn (ResourceBookingReleased $event): bool => $event->bookingId === $old->getKey() && $event->reason === 'repicked',
+    );
 });
 
 it('reports a place taken meanwhile as a placeIds error and books nothing', function (): void {

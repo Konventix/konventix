@@ -393,3 +393,43 @@ export function planTree(document: Document): PlanZoneNode[] {
 
     return tree;
 }
+
+/**
+ * The place a tap on the picker's scene means, or `null` for the floor
+ * (2026-09-21 bugfix round). The scene takes pointer capture on the
+ * `<svg>` for pan and pinch, which retargets the browser's derived `click`
+ * to the svg itself — a per-place `@click` never fires under capture — so
+ * the scene resolves the tap on `pointerup` from the world point instead.
+ * Pure so the choice is testable: the nearest centre wins among every
+ * place within `radius` (the 44 px target of `hitRadiusWorld`) or whose
+ * box contains the point (a large place is hit anywhere inside it); paint
+ * order plays no part, unlike the enlarged invisible circles this replaced,
+ * where the last-painted place swallowed a tap in a dense row.
+ */
+export function hitTestPlaces<T extends { center: Point; box: Bbox }>(
+    places: readonly T[],
+    point: Point,
+    radius: number,
+): T | null {
+    let best: T | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const place of places) {
+        const distance = Math.hypot(
+            place.center.x - point.x,
+            place.center.y - point.y,
+        );
+        const insideBox =
+            point.x >= place.box.minX &&
+            point.x <= place.box.maxX &&
+            point.y >= place.box.minY &&
+            point.y <= place.box.maxY;
+
+        if ((distance <= radius || insideBox) && distance < bestDistance) {
+            best = place;
+            bestDistance = distance;
+        }
+    }
+
+    return best;
+}

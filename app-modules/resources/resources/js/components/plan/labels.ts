@@ -7,6 +7,14 @@
  */
 export const LABEL_MIN_PX = 9;
 export const DEFAULT_LABEL_MM = 250;
+/**
+ * Group and fixture labels in `PlanBackdrop.vue` (2026-09-21 bugfix round):
+ * places carry no `<text>` any more — their label is the native `<title>`
+ * tooltip and `aria-label` on the place `<g>` — so the containers around
+ * them name the rows and tables instead, at a size that stays legible one
+ * zoom step further out than a place label would.
+ */
+export const CONTAINER_LABEL_MM = 400;
 
 /**
  * 2026-09-10 batch amendment, ahead of design §12b/#282's quota mechanism:

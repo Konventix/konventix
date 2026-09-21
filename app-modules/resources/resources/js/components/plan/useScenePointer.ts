@@ -19,6 +19,18 @@ import type { Point, View, Viewport } from './transform';
  * wheel zooms anchored at the cursor. `view` is the caller's reactive
  * object, mutated in place so the caller's own template keeps working
  * without extra plumbing.
+ *
+ * A tap is reported from `pointerup`, not from `click` (2026-09-21 bugfix
+ * round): `onPointerDown` takes pointer capture on the `<svg>` so pan and
+ * pinch keep receiving moves outside it, and under capture the browser
+ * retargets the derived `click` to the capturing element — a `@click` on
+ * a child `<g>` never fired, which is why the picker could not be used by
+ * mouse. `onTap` receives the world point of a primary-button pointer the
+ * composable itself tracked from its down to its up, that never became a
+ * pinch and never moved past the drag threshold; the host hit-tests it
+ * (`geometry.ts`'s `hitTestPlaces`). A pointer whose down a wrapping host
+ * stopped before it reached here (the editor's `PlanCanvas.vue` selects on
+ * its own `pointerdown.capture`) is not tracked and reports no tap.
  */
 export function useScenePointer(
     svgRef: Ref<SVGSVGElement | null>,
@@ -26,6 +38,7 @@ export function useScenePointer(
     viewport: Ref<Viewport>,
     minZoom: Ref<number>,
     pxPerUnit: Ref<number>,
+    onTap?: (point: Point, event: PointerEvent) => void,
 ) {
     const pointers = new Map<number, Point>();
     let pan: {
@@ -42,6 +55,7 @@ export function useScenePointer(
         ids: [number, number];
     } | null = null;
     let moved = false;
+    let pinched = false;
 
     function svgPointRaw(event: { clientX: number; clientY: number }): Point {
         const svg = svgRef.value;
@@ -95,6 +109,7 @@ export function useScenePointer(
         moved = false;
 
         if (pointers.size === 1) {
+            pinched = false;
             pinchStart = null;
             pan = {
                 startSvg: svgPointRaw(event),
@@ -109,6 +124,7 @@ export function useScenePointer(
 
         if (pointers.size === 2) {
             stopPan();
+            pinched = true;
             const [[idA, a], [idB, b]] = [...pointers.entries()];
             pinchStart = { view: { ...view }, a, b, ids: [idA, idB] };
         }
@@ -165,7 +181,7 @@ export function useScenePointer(
     }
 
     function onPointerUp(event: PointerEvent): void {
-        pointers.delete(event.pointerId);
+        const tracked = pointers.delete(event.pointerId);
 
         try {
             svgRef.value?.releasePointerCapture(event.pointerId);
@@ -175,6 +191,18 @@ export function useScenePointer(
 
         stopPan();
         pinchStart = null;
+
+        if (
+            tracked &&
+            pointers.size === 0 &&
+            !pinched &&
+            !moved &&
+            event.type === 'pointerup' &&
+            event.button === 0 &&
+            onTap
+        ) {
+            onTap(svgPoint(event.clientX, event.clientY), event);
+        }
     }
 
     function onWheel(event: WheelEvent): void {

@@ -8,6 +8,7 @@ import {
     elementIndex,
     hitRadiusWorld,
     hitTest,
+    hitTestPlaces,
     planTree,
     polygonPoints,
     shapeBbox,
@@ -319,5 +320,54 @@ describe('planTree', () => {
             'A-2',
             'A-10',
         ]);
+    });
+});
+
+describe('hitTestPlaces', () => {
+    const box = (cx: number, cy: number, half: number) => ({
+        minX: cx - half,
+        minY: cy - half,
+        maxX: cx + half,
+        maxY: cy + half,
+    });
+    const first = {
+        id: 'first',
+        center: { x: 1000, y: 1000 },
+        box: box(1000, 1000, 400),
+    };
+    const second = {
+        id: 'second',
+        center: { x: 1700, y: 1000 },
+        box: box(1700, 1000, 400),
+    };
+
+    it('picks the nearest centre regardless of paint order', () => {
+        // Both 44 px radii cover the point; the earlier-painted place is nearer.
+        expect(
+            hitTestPlaces([first, second], { x: 1200, y: 1000 }, 600)?.id,
+        ).toBe('first');
+        expect(
+            hitTestPlaces([first, second], { x: 1500, y: 1000 }, 600)?.id,
+        ).toBe('second');
+    });
+
+    it('returns null when the point is outside every radius and every box', () => {
+        expect(
+            hitTestPlaces([first, second], { x: 1000, y: 3000 }, 440),
+        ).toBeNull();
+        expect(hitTestPlaces([], { x: 1000, y: 1000 }, 440)).toBeNull();
+    });
+
+    it('hits a large place anywhere inside its box, even far from its centre', () => {
+        const stage = {
+            id: 'stage',
+            center: { x: 5000, y: 5000 },
+            box: box(5000, 5000, 3000),
+        };
+
+        expect(hitTestPlaces([stage], { x: 2200, y: 7800 }, 100)?.id).toBe(
+            'stage',
+        );
+        expect(hitTestPlaces([stage], { x: 8200, y: 5000 }, 100)).toBeNull();
     });
 });

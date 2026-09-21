@@ -1,21 +1,22 @@
 <script setup lang="ts">
-import { Minus, Plus, Scan } from '@lucide/vue';
 import { useElementSize } from '@vueuse/core';
 import { computed, reactive, ref, watch } from 'vue';
 import type { Reason } from './eligibility';
-import { isSelectable, placeReason } from './eligibility';
+import { isSelectable, placeReason, stateText } from './eligibility';
 import {
     absoluteOrigin,
     contentBbox,
     elementIndex,
     hitRadiusWorld,
+    hitTestPlaces,
     shapeBbox,
     shapeCenter,
 } from './geometry';
-import { labelsVisible } from './labels';
+import { CONTAINER_LABEL_MM, labelsVisible, placeLabel } from './labels';
 import PlanBackdrop from './PlanBackdrop.vue';
 import PlanDefs from './PlanDefs.vue';
 import PlanPlace from './PlanPlace.vue';
+import SceneZoomControls from './SceneZoomControls.vue';
 import type { Bbox, Point, View } from './transform';
 import { fitToBbox, minZoomFor, worldTransform } from './transform';
 import { useScenePointer } from './useScenePointer';
@@ -24,14 +25,24 @@ import { useScenePointer } from './useScenePointer';
  * The plan as an SVG scene (design §7.4): a fixed viewBox of the plan's
  * size in mm, one world `<g transform>`, pointer pan/pinch/wheel zoom
  * (`useScenePointer.ts`), a static backdrop (`PlanBackdrop.vue`) under the
- * interactive places (`PlanPlace.vue`), labels only above a legibility
- * threshold, and an invisible enlarged hit shape so a place stays a 44 px
- * target at any zoom. The math is transform.ts / geometry.ts; this file
- * wires props and events to it.
+ * interactive places (`PlanPlace.vue`), and group and fixture labels only
+ * above a legibility threshold. The math is transform.ts / geometry.ts;
+ * this file wires props and events to it.
  *
- * Not the keyboard path: the SVG is an image with a pointer, the list view
- * beside it is the same choice as buttons. Every ineligible place still
- * renders, hatched and with a text state in the list.
+ * A tap chooses a place by hit test, not by a listener per place
+ * (2026-09-21 bugfix round): the composable takes pointer capture for pan
+ * and pinch, which retargets the browser's `click` to the `<svg>`, so the
+ * per-place `@click` this replaced never fired. `useScenePointer` reports
+ * an undragged primary-button `pointerup` as a world point and
+ * `hitTestPlaces` picks the nearest place within the 44 px radius
+ * (`hitRadiusWorld`) or under the point — no enlarged invisible hit
+ * circles, whose paint order let one seat swallow its neighbours' taps.
+ * Hovering a place shows its label as the native `<title>` tooltip.
+ *
+ * Not the keyboard path: the SVG is an image with a pointer; the list the
+ * picker's Accessibility button reveals is the same choice as buttons.
+ * Every ineligible place still renders, hatched and with a text state in
+ * the list.
  */
 type Plan = Konventix.Resources.Data.PlanViewData;
 type Category = Konventix.Resources.Data.CategoryData;
@@ -117,11 +128,12 @@ const {
     onWheel,
     zoomStep,
     svgPoint,
-    wasDragged,
-} = useScenePointer(svgRef, view, viewport, minZoom, pxPerUnit);
+} = useScenePointer(svgRef, view, viewport, minZoom, pxPerUnit, onTap);
 
 const transform = computed(() => worldTransform(view, viewport.value));
-const showLabels = computed(() => labelsVisible(view.zoom, pxPerUnit.value));
+const showLabels = computed(() =>
+    labelsVisible(view.zoom, pxPerUnit.value, CONTAINER_LABEL_MM),
+);
 const hitRadius = computed(() => hitRadiusWorld(pxPerUnit.value, view.zoom));
 const categoryById = computed(
     () => new Map(props.categories.map((category) => [category.id, category])),
@@ -183,8 +195,10 @@ const places = computed<RenderedPlace[]>(() =>
         }),
 );
 
-function onPlaceClick(item: RenderedPlace): void {
-    if (wasDragged()) {
+function onTap(point: Point): void {
+    const item = hitTestPlaces(places.value, point, hitRadius.value);
+
+    if (item === null) {
         return;
     }
 
@@ -195,6 +209,13 @@ function onPlaceClick(item: RenderedPlace): void {
     }
 
     emit('hint', item.reason);
+}
+
+/** The hover tooltip and accessible name of one place: its label, and with a claim its state. */
+function placeTitle(item: RenderedPlace): string {
+    const label = placeLabel(item.element);
+
+    return props.claim === null ? label : `${label}: ${stateText(item.reason)}`;
 }
 
 function resetView(): void {
@@ -222,7 +243,7 @@ defineExpose({ svgPoint, fitToBbox: fitToBboxExposed });
             preserveAspectRatio="xMidYMid meet"
             class="block h-[60vh] w-full touch-none select-none"
             role="img"
-            :aria-label="`Seat plan ${plan.name}. Drag to pan, pinch or scroll to zoom. Use the list below to choose by keyboard.`"
+            :aria-label="`Seat plan ${plan.name}. Click or tap a place to choose it; drag to pan, pinch or scroll to zoom. The Accessibility button above lists every place as a button for keyboard use.`"
             @pointerdown="onPointerDown"
             @pointermove="onPointerMove"
             @pointerup="onPointerUp"
@@ -232,20 +253,24 @@ defineExpose({ svgPoint, fitToBbox: fitToBboxExposed });
             <PlanDefs :categories="categories" />
 
             <g :transform="transform">
-                <PlanBackdrop :document="plan.document" />
+                <PlanBackdrop
+                    :document="plan.document"
+                    :show-labels="showLabels"
+                />
 
                 <g
                     v-for="item in places"
                     :key="item.element.id"
                     :data-place-id="item.element.id"
                     :data-state="item.reason"
+                    :aria-label="placeTitle(item)"
                     :class="
                         isSelectable(item.reason)
                             ? 'cursor-pointer'
                             : 'cursor-not-allowed'
                     "
-                    @click="onPlaceClick(item)"
                 >
+                    <title>{{ placeTitle(item) }}</title>
                     <PlanPlace
                         :element="item.element"
                         :origin="item.origin"
@@ -253,8 +278,6 @@ defineExpose({ svgPoint, fitToBbox: fitToBboxExposed });
                         :center="item.center"
                         :category="item.category"
                         :reason="item.reason"
-                        :show-label="showLabels"
-                        :hit-radius="hitRadius"
                     />
                 </g>
 
@@ -269,31 +292,10 @@ defineExpose({ svgPoint, fitToBbox: fitToBboxExposed });
             </g>
         </svg>
 
-        <div class="absolute right-3 bottom-3 flex flex-col gap-1">
-            <button
-                type="button"
-                class="inline-flex size-11 items-center justify-center rounded-md border border-border bg-surface text-text hover:bg-subtle"
-                aria-label="Zoom in"
-                @click="zoomStep(1.25)"
-            >
-                <Plus class="size-4" />
-            </button>
-            <button
-                type="button"
-                class="inline-flex size-11 items-center justify-center rounded-md border border-border bg-surface text-text hover:bg-subtle"
-                aria-label="Zoom out"
-                @click="zoomStep(0.8)"
-            >
-                <Minus class="size-4" />
-            </button>
-            <button
-                type="button"
-                class="inline-flex size-11 items-center justify-center rounded-md border border-border bg-surface text-text hover:bg-subtle"
-                aria-label="Show the whole plan"
-                @click="resetView"
-            >
-                <Scan class="size-4" />
-            </button>
-        </div>
+        <SceneZoomControls
+            @zoom-in="zoomStep(1.25)"
+            @zoom-out="zoomStep(0.8)"
+            @reset="resetView"
+        />
     </div>
 </template>
