@@ -4,9 +4,11 @@ import { computed } from 'vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 
 /**
- * The resolved brand's mark. Every asset is optional and the bundled icon
- * stands in for a brand that has uploaded nothing — the normal state for a
- * new brand, not an error.
+ * The resolved brand's mark. Every asset is optional and the bundled Konventix
+ * mark stands in for a brand that has uploaded nothing — the normal state for
+ * a new brand, not an error. The mark is rendered plain in the text colour, no
+ * tile: the brand rules allow it only in Ink on light or light on dark, with
+ * no bounding shape around it.
  *
  * Light and dark variants are swapped by CSS rather than by reading the
  * appearance state in JavaScript, so the right mark is already in the markup
@@ -51,12 +53,13 @@ const logoAlt = computed(() =>
                 class="hidden h-8 w-auto max-w-40 object-contain dark:block"
             />
         </template>
-        <span
+        <AppLogoIcon
             v-else
-            class="flex aspect-square size-8 shrink-0 items-center justify-center rounded-md bg-accent text-on-accent"
-        >
-            <AppLogoIcon class="size-5 fill-current" />
-        </span>
+            class="h-8 w-auto shrink-0 text-foreground"
+            :role="showName ? undefined : 'img'"
+            :aria-label="showName ? undefined : logoAlt"
+            :aria-hidden="showName ? 'true' : undefined"
+        />
         <span v-if="showName" class="truncate text-sm font-semibold">
             {{ brand.name }}
         </span>

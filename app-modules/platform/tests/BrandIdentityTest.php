@@ -107,7 +107,10 @@ it('puts the brand\'s favicon and name in the document head', function (): void 
         // `name` prop (see resources/js/app.ts), which the first test in
         // this file covers; what is asserted here is the head element the
         // root template owns.
-        ->assertSee('<link rel="apple-touch-icon" href="'.$url.'">', escape: false);
+        ->assertSee('<link rel="apple-touch-icon" href="'.$url.'">', escape: false)
+        // The manifest names Konventix and its icons; a brand wearing its
+        // own favicon is not offered a Konventix install.
+        ->assertDontSee('rel="manifest"', escape: false);
 });
 
 it('falls back to the bundled icons when the brand has no favicon', function (): void {
@@ -115,7 +118,10 @@ it('falls back to the bundled icons when the brand has no favicon', function ():
 
     $this->get('/')
         ->assertOk()
-        ->assertSee('<link rel="icon" href="/favicon.ico" sizes="any">', escape: false);
+        ->assertSee('<link rel="icon" href="/favicon.svg" type="image/svg+xml">', escape: false)
+        ->assertSee('<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">', escape: false)
+        ->assertSee('<link rel="apple-touch-icon" href="/apple-touch-icon.png">', escape: false)
+        ->assertSee('<link rel="manifest" href="/manifest.json">', escape: false);
 });
 
 it('wears the operator\'s name and no brand assets on the admin host', function (): void {

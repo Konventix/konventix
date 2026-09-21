@@ -78,19 +78,23 @@
 
         {{--
             The resolved brand's favicon when it has uploaded one, the bundled
-            artwork otherwise. `$brandIdentity` is shared by ResolveBrand; the
-            null guard covers responses rendered before it runs (an early
-            error page), which fall back to the bundled set.
-
-            TODO(brand): the bundled icons are still starter-kit artwork.
+            Konventix set otherwise (konventix-brand, assets/export/web: the
+            SVG swaps Ink for Travertine under a dark colour scheme, the .ico
+            carries 16/32/48 for browsers without SVG favicon support).
+            `$brandIdentity` is shared by ResolveBrand; the null guard covers
+            responses rendered before it runs (an early error page), which
+            fall back to the bundled set. The manifest names Konventix and its
+            icons, so it goes with the bundled set only: a brand that wears its
+            own favicon is not offered a Konventix install.
         --}}
         @if (($brandIdentity->faviconUrl ?? null) !== null)
             <link rel="icon" href="{{ $brandIdentity->faviconUrl }}">
             <link rel="apple-touch-icon" href="{{ $brandIdentity->faviconUrl }}">
         @else
-            <link rel="icon" href="/favicon.ico" sizes="any">
             <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+            <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
             <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+            <link rel="manifest" href="/manifest.json">
         @endif
 
         @fonts
