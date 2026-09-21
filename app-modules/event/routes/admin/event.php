@@ -37,4 +37,5 @@ Route::delete('/events/{event}/venues/{venue}', [EventVenueController::class, 'd
 // Brand-owned reusable venues.
 Route::get('/venues', [VenueAdminController::class, 'index'])->name('admin.venues.index');
 Route::post('/venues', [VenueAdminController::class, 'store'])->name('admin.venues.store');
+Route::get('/venues/{venue}/edit', [VenueAdminController::class, 'edit'])->name('admin.venues.edit');
 Route::put('/venues/{venue}', [VenueAdminController::class, 'update'])->name('admin.venues.update');

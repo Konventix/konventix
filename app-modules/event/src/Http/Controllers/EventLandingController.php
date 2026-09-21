@@ -111,13 +111,26 @@ final class EventLandingController
                 'sequence' => $day->sequence,
                 'label' => $day->label,
             ])->all(),
-            'venues' => $event->venues->map(fn (Venue $venue): array => [
-                'name' => $venue->name,
-                'addressLine1' => $venue->address_line1,
-                'postalCode' => $venue->postal_code,
-                'city' => $venue->city,
-                'isPrimary' => (bool) $venue->pivot?->getAttribute('is_primary'),
-            ])->all(),
+            // Each venue links to its own public page and wears its primary
+            // picture (Task 18). The link always resolves from here: a venue
+            // is publicly reachable exactly while an event of this kind is,
+            // and this one is, or the page would have 404'd above.
+            'venues' => $event->venues->map(function (Venue $venue) use ($media): array {
+                $picture = $venue->primary_media_id === null
+                    ? null
+                    : $media->referenceFor($venue->primary_media_id);
+
+                return [
+                    'slug' => $venue->slug,
+                    'name' => $venue->name,
+                    'addressLine1' => $venue->address_line1,
+                    'postalCode' => $venue->postal_code,
+                    'city' => $venue->city,
+                    'isPrimary' => (bool) $venue->pivot?->getAttribute('is_primary'),
+                    'imageUrl' => $picture['url'] ?? null,
+                    'imageAlt' => $picture['altText'] ?? null,
+                ];
+            })->all(),
             // What a visitor can actually *do* here. Event owns none of it
             // and knows none of it: Registration contributes the offers
             // through the `event.landing` slot, and the slot applies the

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { CalendarDays, MapPin } from '@lucide/vue';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+import { show as showVenue } from '@/routes/venue';
 
 /**
  * Public event landing page. Times are the organizer's promised wall-clock
@@ -32,11 +33,16 @@ type Props = {
     };
     days: { date: string; sequence: number; label: string | null }[];
     venues: {
+        /** Links to the venue's own public page (Task 18). */
+        slug: string;
         name: string;
         addressLine1: string;
         postalCode: string;
         city: string;
         isPrimary: boolean;
+        /** The venue's primary picture, null when it has none. */
+        imageUrl: string | null;
+        imageAlt: string | null;
     }[];
     slots: SlotContribution[];
 };
@@ -126,13 +132,24 @@ const props = defineProps<Props>();
             <ul class="flex flex-col gap-3">
                 <li
                     v-for="venue in props.venues"
-                    :key="venue.name"
-                    class="flex items-start gap-2"
+                    :key="venue.slug"
+                    class="flex items-start gap-3"
                 >
-                    <MapPin class="mt-1 size-4 text-text-muted" />
+                    <img
+                        v-if="venue.imageUrl"
+                        :src="venue.imageUrl"
+                        :alt="venue.imageAlt ?? venue.name"
+                        class="size-16 shrink-0 rounded-md object-cover"
+                    />
+                    <MapPin v-else class="mt-1 size-4 text-text-muted" />
                     <div>
                         <p class="font-medium">
-                            {{ venue.name }}
+                            <Link
+                                :href="showVenue(venue.slug).url"
+                                class="hover:underline"
+                            >
+                                {{ venue.name }}
+                            </Link>
                             <span
                                 v-if="
                                     venue.isPrimary && props.venues.length > 1

@@ -151,6 +151,25 @@ class Event extends Model
     }
 
     /**
+     * `isVisibleOnLanding()` as a query, for the places that ask it about a
+     * set of events rather than one — a venue is publicly reachable when
+     * any event assigned to it is (`Venue::isPubliclyReachable()`). Keep the
+     * two in step: the method is the rule, this is its SQL.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeVisibleOnLanding(Builder $query): Builder
+    {
+        // Qualified: this scope is also called through
+        // `Venue::events()`, whose query joins `event_venues`.
+        return $query->where(function (Builder $inner): void {
+            $inner->where($inner->qualifyColumn('visibility'), EventVisibility::Unlisted)
+                ->orWhere($inner->qualifyColumn('state'), '!=', EventLifecycleState::Draft);
+        });
+    }
+
+    /**
      * The events the public index (`event.index`) may enumerate. Stricter
      * than `isVisibleOnLanding()` on purpose, in both directions:
      *

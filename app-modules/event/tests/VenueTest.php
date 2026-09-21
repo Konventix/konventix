@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Str;
+use Konventix\Event\Actions\AssignVenue;
 use Konventix\Event\Data\OpeningPeriodData;
+use Konventix\Event\Data\VenuePlaceData;
+use Konventix\Event\Models\Event;
 use Konventix\Event\Models\Venue;
 
 /**
@@ -48,4 +52,83 @@ it('stamps brand_id and keeps address and geo fields', function (): void {
     expect($venue->brand_id)->toBe($brand->getKey())
         ->and($venue->city)->toBe('Hamburg')
         ->and($venue->country_code)->toBe('DE');
+});
+
+// Task 18: a venue carries the details its public page renders — parking
+// spots and loading zones behind one typed cast, an ordered list of media
+// ULIDs with one primary, and a per-brand slug.
+it('round-trips parking spots and loading zones as typed VenuePlaceData', function (): void {
+    $venue = Venue::factory()->create([
+        'parking_spots' => [
+            new VenuePlaceData(label: 'Lot A', address: 'Hafenstr. 1', latitude: 53.5, longitude: 10.0),
+            ['label' => 'Lot B'],
+        ],
+        'loading_zones' => [
+            new VenuePlaceData(label: 'Ramp North'),
+        ],
+    ]);
+
+    $fresh = $venue->fresh();
+
+    expect($fresh->parking_spots)->toHaveCount(2)
+        ->and($fresh->parking_spots->first())->toBeInstanceOf(VenuePlaceData::class)
+        ->and($fresh->parking_spots->first()->label)->toBe('Lot A')
+        ->and($fresh->parking_spots->first()->latitude)->toBe(53.5)
+        ->and($fresh->parking_spots->last()->label)->toBe('Lot B')
+        ->and($fresh->parking_spots->last()->address)->toBeNull()
+        ->and($fresh->loading_zones)->toHaveCount(1)
+        ->and($fresh->loading_zones->first()->label)->toBe('Ramp North');
+});
+
+it('drops blanks and duplicates from the image list on write', function (): void {
+    $first = (string) Str::ulid();
+    $second = (string) Str::ulid();
+
+    $venue = Venue::factory()->create([
+        'image_media_ids' => [$first, '', $second, $first],
+    ]);
+
+    expect($venue->fresh()->image_media_ids)->toBe([$first, $second]);
+});
+
+it('shows the primary picture first and keeps the operator order behind it', function (): void {
+    [$first, $second, $third] = [(string) Str::ulid(), (string) Str::ulid(), (string) Str::ulid()];
+
+    $venue = Venue::factory()->create([
+        'image_media_ids' => [$first, $second, $third],
+        'primary_media_id' => $second,
+    ]);
+
+    expect($venue->orderedImageMediaIds())->toBe([$second, $first, $third]);
+});
+
+it('falls back to the first picture when the primary is not one of them', function (): void {
+    [$kept, $gone] = [(string) Str::ulid(), (string) Str::ulid()];
+
+    $venue = Venue::factory()->create([
+        'image_media_ids' => [$kept],
+        'primary_media_id' => $gone,
+    ]);
+
+    expect($venue->fresh()->primary_media_id)->toBe($kept);
+
+    $venue->update(['image_media_ids' => []]);
+
+    expect($venue->fresh()->primary_media_id)->toBeNull();
+});
+
+it('is publicly reachable only through an event that is itself visible', function (): void {
+    $venue = Venue::factory()->create();
+
+    expect($venue->isPubliclyReachable())->toBeFalse();
+
+    $draft = Event::factory()->create();
+    app(AssignVenue::class)->handle($draft, $venue, isPrimary: true);
+
+    expect($venue->isPubliclyReachable())->toBeFalse();
+
+    $published = Event::factory()->published()->create();
+    app(AssignVenue::class)->handle($published, $venue);
+
+    expect($venue->isPubliclyReachable())->toBeTrue();
 });

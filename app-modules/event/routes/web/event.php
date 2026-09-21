@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Event\Http\Controllers\EventLandingController;
+use Konventix\Event\Http\Controllers\VenueLandingController;
 use Konventix\Event\Http\Middleware\RecordCalendarDownloadMetrics;
 
 // The brand's public event list — the topbar's "Events" entry (registered in
@@ -42,3 +43,11 @@ Route::get('/events/{event:slug}', [EventLandingController::class, 'show'])
 Route::get('/events/{event:slug}/calendar.ics', [EventLandingController::class, 'calendar'])
     ->middleware(RecordCalendarDownloadMetrics::class)
     ->name('event.calendar');
+
+// The public venue page (Task 18). `{venue:slug}` binds by slug, per brand,
+// for the same readable-URL reason `event.show` does — the primary key
+// stays the ULID (ADR-0014). The page resolves only while at least one
+// publicly visible event happens here (`Venue::isPubliclyReachable()`): a
+// venue is public *through* an event, never on its own.
+Route::get('/venues/{venue:slug}', [VenueLandingController::class, 'show'])
+    ->name('venue.show');

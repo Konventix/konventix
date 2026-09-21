@@ -23,11 +23,26 @@ models (lessons-from-lancore #1); this one imports none.
 - **Event lifecycle** as explicit states with transitions modelled as Actions:
   draft, announced, published, running, concluded, archived — plus cancellation
   as a first-class transition with a reason, not a soft delete.
-- **Venue** as a sub-concept of Event: postal address, geo coordinates, access
-  and arrival notes, opening times of the site. A venue is brand-owned and
-  reusable across that brand's events.
+- **Venue** as a sub-concept of Event: postal address, geo coordinates of the
+  building *and* of its entrance, access and arrival notes, how to get there by
+  public transport, opening times of the site, parking spots and loading zones
+  (each a label with an optional address and coordinate pair, behind one typed
+  cast), a seat plan reference, a description, and an ordered set of pictures
+  from the brand's media library (ADR-0035) with one primary — held as media
+  ULIDs with usage bookkeeping, never files. A venue is brand-owned and
+  reusable across that brand's events, and carries a per-brand unique `slug`
+  naming its public page.
 - **Event visibility**: whether an unpublished event is reachable by direct link,
-  and the public landing route resolved on the brand's own domain.
+  and the public landing route resolved on the brand's own domain. A **venue**
+  has no visibility of its own: `GET /venues/{venue:slug}` resolves exactly
+  while at least one event assigned to that venue is itself visible on its
+  landing page (`Venue::isPubliclyReachable()`, the query form of
+  `Event::isVisibleOnLanding()`), and 404s otherwise — a venue an operator
+  keeps for next year stays a console record. The page links back from each
+  event landing page's venue list, where the venue also wears its primary
+  picture. "Open in maps" is a plain OpenStreetMap link from the entrance's
+  coordinates, falling back to the building's; there is no embedded map and no
+  map dependency.
 - **The event's own descriptive metadata** used by other modules for display:
   name, dates, timezone, venue city. Modules keep this as read models built from
   Event's events rather than querying Event tables.

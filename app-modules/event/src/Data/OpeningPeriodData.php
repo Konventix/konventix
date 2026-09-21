@@ -9,12 +9,14 @@ use Spatie\LaravelData\Attributes\Validation\DateFormat;
 use Spatie\LaravelData\Attributes\Validation\IntegerType;
 use Spatie\LaravelData\Attributes\Validation\Required;
 use Spatie\LaravelData\Data;
+use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
 /**
  * One opening period of a venue's site (SPEC.md "Owns" — Venue's "opening
  * times of the site"). A venue's `opening_times` is a list of these,
  * decoded/encoded by `Konventix\Event\Models\Casts\OpeningTimesCast`.
  */
+#[TypeScript]
 final class OpeningPeriodData extends Data
 {
     public function __construct(

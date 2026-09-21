@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus } from '@lucide/vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import { computed, h, ref } from 'vue';
@@ -19,21 +19,17 @@ import { Label } from '@/components/ui/label';
 import type { DataTableFilters } from '@/composables/useDataTable';
 import { useDataTable } from '@/composables/useDataTable';
 import {
+    edit as editVenue,
     index as venuesIndex,
     store as storeVenue,
-    update as updateVenue,
 } from '@/routes/admin/venues';
+import type { VenueForm } from '../../../lib/venueForm';
 
-type VenueRow = {
-    id: string;
-    name: string;
-    addressLine1: string;
-    addressLine2: string | null;
-    postalCode: string;
-    city: string;
-    countryCode: string;
-    accessNotes: string | null;
-};
+/**
+ * A row is exactly what `VenueData` carries plus its id (ADR-0009) — the
+ * controller spreads the one into the other.
+ */
+type VenueRow = { id: string } & Konventix.Event.Data.VenueData;
 
 interface PaginatedVenues {
     data: VenueRow[];
@@ -75,41 +71,19 @@ const pagination = computed(() => ({
 }));
 
 const open = ref(false);
-const editing = ref<string | null>(null);
 
 /**
- * Declared rather than inferred. `openingTimes: [] as unknown[]` gave the
- * inferred shape a `never[] & unknown[]` field, which collapsed the whole form
- * type to `FormDataType<unknown>` — and with it every `form.name`,
- * `form.city`, `errors.postalCode` on this page. Twenty type errors from one
- * empty array.
+ * The create dialog asks for a name and an address and nothing else; the
+ * rest of a venue — pictures, coordinates, arrival, parking — is the edit
+ * page's, which is where a created venue lands. The shape is still the
+ * whole `VenueData` (ADR-0009, `lib/venueForm`), so the endpoint receives
+ * every key it validates, plus the brand the row is created in.
  */
-type VenueForm = {
-    brand_id: string;
-    name: string;
-    addressLine1: string;
-    addressLine2: string | null;
-    postalCode: string;
-    city: string;
-    countryCode: string;
-    latitude: number | null;
-    longitude: number | null;
-    accessNotes: string | null;
-    // The venue opening-times editor is not built yet; the field exists so the
-    // endpoint receives the key it validates. Mirrors Event's
-    // `Data\OpeningPeriodData`, spelled out here because that class carries no
-    // `#[TypeScript]` attribute — add one and point at the generated type when
-    // the editor lands, rather than letting these two drift.
-    openingTimes: Array<{
-        dayOfWeek: number;
-        opensAt: string;
-        closesAt: string;
-    }>;
-};
-
-const form = useForm<VenueForm>({
+const form = useForm<VenueForm & { brand_id: string }>({
     brand_id: props.brands[0]?.id ?? '',
     name: '',
+    slug: null,
+    description: null,
     addressLine1: '',
     addressLine2: null,
     postalCode: '',
@@ -117,41 +91,30 @@ const form = useForm<VenueForm>({
     countryCode: 'DE',
     latitude: null,
     longitude: null,
+    entryLatitude: null,
+    entryLongitude: null,
     accessNotes: null,
+    publicTransport: null,
+    seatPlanReference: null,
+    parkingSpots: [],
+    loadingZones: [],
+    imageMediaIds: [],
+    primaryMediaId: null,
     openingTimes: [],
 });
 
 function openCreate(): void {
-    editing.value = null;
     form.reset();
     open.value = true;
 }
 
-function openEdit(row: VenueRow): void {
-    editing.value = row.id;
-    form.name = row.name;
-    form.addressLine1 = row.addressLine1;
-    form.addressLine2 = row.addressLine2;
-    form.postalCode = row.postalCode;
-    form.city = row.city;
-    form.countryCode = row.countryCode;
-    form.accessNotes = row.accessNotes;
-    open.value = true;
-}
-
 function submit(): void {
-    const options = {
+    form.post(storeVenue().url, {
         onSuccess: () => {
             form.reset();
             open.value = false;
         },
-    };
-
-    if (editing.value === null) {
-        form.post(storeVenue().url, options);
-    } else {
-        form.put(updateVenue(editing.value).url, options);
-    }
+    });
 }
 
 const columns: ColumnDef<VenueRow>[] = [
@@ -160,7 +123,14 @@ const columns: ColumnDef<VenueRow>[] = [
         header: 'Name',
         enableSorting: true,
         cell: ({ row }) =>
-            h('span', { class: 'font-medium' }, row.getValue<string>('name')),
+            h(
+                Link,
+                {
+                    href: editVenue(row.original.id).url,
+                    class: 'font-medium hover:underline',
+                },
+                () => row.getValue<string>('name'),
+            ),
     },
     {
         id: 'address',
@@ -188,13 +158,16 @@ const columns: ColumnDef<VenueRow>[] = [
         id: 'actions',
         header: '',
         enableSorting: false,
+        // A real <Link>, not a click handler: the edit page must be
+        // reachable by keyboard (.ai/rules/js.md, WCAG 2.1.1), and an
+        // icon-only control needs an accessible name.
         cell: ({ row }) =>
             h(
-                Button,
+                Link,
                 {
-                    variant: 'ghost',
-                    size: 'sm',
-                    onClick: () => openEdit(row.original),
+                    href: editVenue(row.original.id).url,
+                    'aria-label': `Edit ${row.original.name}`,
+                    class: 'inline-flex size-8 items-center justify-center rounded-md text-text-muted hover:bg-subtle hover:text-text',
                 },
                 () => h(Pencil, { class: 'size-4' }),
             ),
@@ -241,12 +214,10 @@ const columns: ColumnDef<VenueRow>[] = [
         <Dialog v-model:open="open">
             <DialogContent class="max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>
-                        {{ editing === null ? 'Create venue' : 'Edit venue' }}
-                    </DialogTitle>
+                    <DialogTitle>Create venue</DialogTitle>
                 </DialogHeader>
                 <form class="flex flex-col gap-4" @submit.prevent="submit">
-                    <div v-if="editing === null" class="grid gap-2">
+                    <div class="grid gap-2">
                         <Label for="venue-brand">Brand</Label>
                         <select
                             id="venue-brand"
@@ -302,7 +273,7 @@ const columns: ColumnDef<VenueRow>[] = [
                         <InputError :message="form.errors.countryCode" />
                     </div>
                     <Button type="submit" :disabled="form.processing">
-                        {{ editing === null ? 'Create' : 'Save' }}
+                        Create
                     </Button>
                 </form>
             </DialogContent>

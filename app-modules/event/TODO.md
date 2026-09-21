@@ -197,3 +197,42 @@
       details, so a read model added after an event already has one — such
       as Admission's `admission_event_summaries` — can still backfill its
       location instead of shipping with a permanently-null `venue_label`.
+- [x] Venues carry what a public page needs, and have one (bugfix round
+      2026-09-21, Task 18). Migration
+      `add_details_images_and_slug_to_venues_table`: a per-brand unique
+      `slug` backfilled deterministically from the name (creation order
+      decides who keeps the bare slug, the later one gets `-2`),
+      `description`, `entry_latitude`/`entry_longitude`,
+      `seat_plan_reference`, `public_transport`, `parking_spots`,
+      `loading_zones`, `image_media_ids`, `primary_media_id`.
+      `Data\VenuePlaceData` behind `Models\Casts\VenuePlacesCast` for the
+      two place lists and `Models\Casts\MediaIdListCast` for the ordered
+      media ULIDs (ADR-0035: ULIDs, no foreign key, usages tracked) — a
+      JSON column only ever behind a typed cast, as `OpeningTimesCast`
+      already was (ADR-0009). `Venue` enforces on every save that the
+      primary picture is one of the venue's own, and
+      `isPubliclyReachable()` answers the public route's visibility
+      question through the new `Event::scopeVisibleOnLanding()`.
+      `VenueData` is `#[TypeScript]` and is now the console's only venue
+      form type; `CreateVenue`/`UpdateVenue` settle the slug, refuse a
+      picture from another brand's library and keep the media library's
+      usage rows in step (`Actions\Concerns\SavesVenueDetails`, modelled on
+      `UpdateEventDetails`).
+- [x] Console: `admin.venues.edit` (`VenueAdminController::edit()`) and
+      `resources/js/pages/admin/venues/Edit.vue` with cards for Details,
+      Description, Coordinates, Getting there, Parking spots, Loading
+      zones, Seat plan reference and Images —
+      `components/admin/VenueImageList.vue` (one `MediaPicker` per slot
+      plus an empty one, move up/down, a "Primary" radio) and one
+      `components/admin/VenuePlacesFields.vue` reused by both place lists.
+      The index's row action is a real `<Link>` to that page (keyboard
+      reachability, .ai/rules/js.md); the create dialog stays and now lands
+      on the edit page. Unsaved-changes guard per ADR-0038.
+- [x] Public: `venue.show` (`GET /venues/{venue:slug}`),
+      `VenueLandingController`, `pages/event/Venue.vue` and a hand-written
+      `components/VenueCarousel.vue` — `aria-roledescription`, labelled
+      slides, named prev/next buttons and dots, arrow/Home/End keys, an
+      `aria-live` status, reduced motion honoured in CSS, and a single
+      picture rendered as a picture with no controls (ADR-0055). Its
+      arithmetic is pure in `resources/js/lib/carousel.ts` with a vitest
+      beside it, as is the image list's in `lib/venueForm.ts`.

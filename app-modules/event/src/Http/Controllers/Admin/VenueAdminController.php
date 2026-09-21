@@ -15,11 +15,17 @@ use Konventix\Event\Data\VenueData;
 use Konventix\Event\Enums\Permission;
 use Konventix\Event\Models\Venue;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
+use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
 
 /**
  * Operator console: brand-owned, reusable venues (ADR-0029). Same
  * withoutBrandScope reasoning as EventAdminController.
+ *
+ * The index keeps the create dialog — a venue starts as a name and an
+ * address — and everything else about a venue (description, both pairs of
+ * coordinates, arrival, parking, loading zones, seat plan, pictures) lives
+ * on its own edit page, which is too much for a dialog.
  */
 class VenueAdminController
 {
@@ -62,24 +68,51 @@ class VenueAdminController
 
         $brandId = $request->validate(['brand_id' => ['required', 'ulid', 'exists:brands,id']])['brand_id'];
 
-        $createVenue->handle($brandId, VenueData::validateAndCreate($request->all()));
+        $venue = $createVenue->handle($brandId, VenueData::validateAndCreate($request->all()));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Venue created.')]);
 
-        return to_route('admin.venues.index');
+        // Straight into the edit page: the dialog asked for a name and an
+        // address, and everything a public venue page renders is on the
+        // other side of this redirect.
+        return to_route('admin.venues.edit', $venue->getKey());
+    }
+
+    public function edit(string $venue, MediaLibrary $library): Response
+    {
+        Gate::authorize(Permission::ManageVenues->value);
+
+        $model = $this->find($venue);
+
+        return Inertia::render('admin/venues/Edit', [
+            'venue' => [
+                'id' => $model->getKey(),
+                'brandId' => $model->brand_id,
+                ...VenueData::from($model)->toArray(),
+            ],
+            // The picture picker's candidates, through Platform's own
+            // doorway rather than a MediaItem query of this module's
+            // (ADR-0035).
+            'media' => $library->pickableImages($model->brand_id),
+        ]);
     }
 
     public function update(Request $request, string $venue, UpdateVenue $updateVenue): RedirectResponse
     {
         Gate::authorize(Permission::ManageVenues->value);
 
-        /** @var Venue $model */
-        $model = Venue::withoutBrandScope()->findOrFail($venue);
+        $model = $this->find($venue);
 
         $updateVenue->handle($model, VenueData::validateAndCreate($request->all()));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Venue updated.')]);
 
-        return to_route('admin.venues.index');
+        return to_route('admin.venues.edit', $model->getKey());
+    }
+
+    private function find(string $venue): Venue
+    {
+        /** @var Venue */
+        return Venue::withoutBrandScope()->findOrFail($venue);
     }
 }
