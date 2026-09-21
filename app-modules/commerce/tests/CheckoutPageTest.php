@@ -124,16 +124,24 @@ function checkoutPageOrder(bool $stripeConnected = true): array
 it('shows the order summary for a registration ULID', function (): void {
     [$registrationId] = checkoutPageOrder();
 
+    // ADR-0066 D-CPL-07: this brand offers exactly one settlement account,
+    // so there is no provider to choose and step one is skipped — the payer
+    // lands on the confirmation with that account already resolved.
     $this->get('/pay/registration/'.$registrationId)
+        ->assertRedirect('/pay/registration/'.$registrationId.'/confirm');
+
+    $this->get('/pay/registration/'.$registrationId.'/confirm')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->component('pay/Show')
+            ->component('pay/Confirm')
             ->where('order.totalGross', '119.00')
             ->where('order.lines.0.label', 'Weekend ticket')
             // Task 17b (2026-09-21): the line links its registration.
             ->where('order.lines.0.registrationUrl', '/my/registrations/'.$registrationId)
-            ->has('accounts', 1)
-            ->where('accounts.0.provider', 'stripe')
+            ->where('account.provider', 'stripe')
+            ->where('singleAccount', true)
+            // Nothing to go back to when there was no choice to make.
+            ->where('backUrl', null)
             ->where('paymentStatus', null));
 });
 
@@ -209,7 +217,10 @@ it('pays the latest order when an amendment added a second one', function (): vo
     ]);
     OrderLine::factory()->create(['order_id' => $delta->id, 'label' => 'Extra badge', 'line_gross' => '35.70']);
 
-    $this->get('/pay/registration/'.$registrationId)
+    // One account, so the pay page hands straight on to step two (D-CPL-07).
+    $this->get('/pay/registration/'.$registrationId)->assertRedirect();
+
+    $this->get('/pay/registration/'.$registrationId.'/confirm')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('order.id', $delta->id)
@@ -242,24 +253,31 @@ function checkoutPageLegalTexts(): void
     }
 }
 
-it('puts the purchase texts and the withdrawal exemption on the payment page', function (): void {
+it('puts the purchase texts and the withdrawal exemption on the confirmation step', function (): void {
     [$registrationId] = checkoutPageOrder();
     checkoutPageLegalTexts();
 
-    $this->get('/pay/registration/'.$registrationId)
+    // ADR-0066 §6.3: step one names no text at all — the list depends on the
+    // provider, so it is resolved after the choice and shown here.
+    $this->get('/pay/registration/'.$registrationId.'/confirm')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->has('consentSlots', 1)
             ->where('consentSlots.0.component', 'compliance/CheckoutConsent')
             ->where('consentSlots.0.props.required', true)
-            ->where('consentSlots.0.props.policies.1.url', '/policies/withdrawal')
+            // D-CPL-08: `requires_consent` alone decides agree versus
+            // inform. This fixture publishes `terms` as consent-requiring
+            // and `withdrawal` as information, so the accept control names
+            // the one and the notice lists the other.
+            ->where('consentSlots.0.props.policies.0.url', '/policies/terms')
+            ->where('consentSlots.0.props.notices.0.url', '/policies/withdrawal')
             ->where('consentSlots.0.props.exemptionNotice', CheckoutLegalTexts::EXEMPTION_NOTICE));
 });
 
-it('claims no agreement on the payment page of an instance with no published texts', function (): void {
+it('claims no agreement on the confirmation step of an instance with no published texts', function (): void {
     [$registrationId] = checkoutPageOrder();
 
-    $this->get('/pay/registration/'.$registrationId)
+    $this->get('/pay/registration/'.$registrationId.'/confirm')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('consentSlots.0.props.required', false)
@@ -380,11 +398,12 @@ it('states the payment window on the registration pay page (#131)', function ():
     $this->freezeTime();
     [$registrationId, $order] = checkoutPageOrder();
 
-    $this->get('/pay/registration/'.$registrationId)
+    // The deadline travels onto the confirmation step too (ADR-0066
+    // D-CPL-07): a single-account brand never sees step one, and the payer
+    // still has to be told when the place stops being held.
+    $this->get('/pay/registration/'.$registrationId.'/confirm')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('payable', true)
-            ->where('refusalReason', null)
             ->where('holdUntil', $order->created_at->copy()->addMinutes(Cart::CHECKOUT_GRACE_MINUTES)->toIso8601String()));
 });
 

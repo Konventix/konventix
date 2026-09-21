@@ -199,8 +199,10 @@ it('serves and starts the payment for the payer who owes the order', function ()
     $payer = User::factory()->create();
     [$registrationId, $order, $account] = checkoutAuthOrder($payer->getKey());
 
+    // One settlement account, so step one is skipped (ADR-0066 D-CPL-07)
+    // and the confirmation is what the payer is served.
     $this->actingAs($payer)
-        ->get('/pay/registration/'.$registrationId)
+        ->get('/pay/registration/'.$registrationId.'/confirm')
         ->assertOk();
 
     $this->actingAs($payer)

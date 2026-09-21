@@ -42,6 +42,7 @@ use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Pages\RegistrantAudience;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
+use Konventix\Platform\Targets\TargetDirectory;
 use Konventix\Registration\Audience\RegistrationRegistrantAudience;
 use Konventix\Registration\Blocks\TicketsForEventBlock;
 use Konventix\Registration\Console\AnnounceRegistrationOwnershipCommand;
@@ -84,6 +85,7 @@ use Konventix\Registration\Metrics\RegistrationMetrics;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
 use Konventix\Registration\Offers\PublicOffers;
+use Konventix\Registration\Targets\RegistrationTargetProvider;
 use Konventix\Resources\Events\PlaceSupplyChanged;
 
 /**
@@ -896,5 +898,16 @@ class RegistrationServiceProvider extends ModuleServiceProvider
             },
             order: 10,
         );
+    }
+
+    /**
+     * The `registration_type` and `entry_condition` kinds of Platform's
+     * target registry (ADR-0066 §7.3, D-CPL-11) — a boot-time contribution
+     * in `registerSlots()`'s shape. This module owns the rows; whoever needs
+     * one named for a picker asks Platform, never this module (ADR-0004).
+     */
+    protected function registerTargetProviders(): void
+    {
+        $this->app->make(TargetDirectory::class)->register(new RegistrationTargetProvider);
     }
 }

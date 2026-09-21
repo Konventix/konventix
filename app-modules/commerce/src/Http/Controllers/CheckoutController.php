@@ -19,6 +19,7 @@ use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
+use Konventix\Commerce\Http\Controllers\Concerns\ChoosesSettlementAccount;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
@@ -64,6 +65,11 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
  */
 class CheckoutController
 {
+    use ChoosesSettlementAccount;
+
+    /** The session scope both addressed pairs record their choice under. */
+    private const string CHOICE_SCOPE = 'order';
+
     public function __construct(
         private readonly SettlementAdapterRegistry $registry,
         private readonly CheckoutConsentSlots $consentSlots,
@@ -89,16 +95,24 @@ class CheckoutController
         // is an address, not a key.
         $this->abortUnlessPayer($request, $order);
 
-        $consentSlots = $this->consentSlots->contributions();
         $redirect = $this->consentRedirect(
             $request,
-            $consentSlots,
+            // The brand-wide question, deliberately: nothing legal is shown
+            // on step one, and the only thing read off the contribution here
+            // is whether this payer owes agreement to a contract text before
+            // any purchase at all (#205).
+            $this->consentSlots->contributions(),
             route('commerce.pay.show', ['registration' => $registration], absolute: false),
         );
 
         if ($redirect !== null) {
             return $redirect;
         }
+
+        // Step one is also where the choice is *un*made (D-CPL-07): coming
+        // back here clears the provider, and with it any acceptance the
+        // confirmation step had collected against it.
+        $this->forgetAccountChoice($request, self::CHOICE_SCOPE, (string) $order->getKey());
 
         $latestPayment = Payment::query()
             ->where('order_id', $order->id)
@@ -111,6 +125,19 @@ class CheckoutController
         $deadlineReversal = $this->payLink->deadlineReversalFor($order);
         $refusal = $this->refusalReason($order, $hold, deadlineReversal: $deadlineReversal);
 
+        $accounts = $this->offeredAccounts($order);
+
+        // A brand with one account has no choice to make, so there is no
+        // step one for it: the payer lands straight on the confirmation with
+        // that provider already resolved (D-CPL-07). Only while the order is
+        // actually payable — a refusal is a sentence this page shows, and
+        // skipping past it would hide it.
+        if ($refusal === null && $accounts->count() === 1) {
+            $this->rememberAccountId($request, self::CHOICE_SCOPE, (string) $order->getKey(), (string) $accounts->first()->getKey());
+
+            return redirect()->route('commerce.pay.confirm', ['registration' => $registration]);
+        }
+
         return Inertia::render('pay/Show', [
             'registrationId' => $registration,
             'order' => [
@@ -122,7 +149,7 @@ class CheckoutController
                 'totalGross' => $order->total_gross,
                 'lines' => self::lineProps($order),
             ],
-            'accounts' => $this->offeredAccounts($order)->map(fn (SettlementAccount $account): array => CheckoutAccountData::ofAccount(
+            'accounts' => $accounts->map(fn (SettlementAccount $account): array => CheckoutAccountData::ofAccount(
                 $account,
                 $this->registry->forProvider($account->provider),
             )->toArray())->values()->all(),
@@ -140,10 +167,74 @@ class CheckoutController
             // reversed order reads as "owed again until …" rather than as an
             // ordinary unpaid one. Null for every other status.
             'repayDueOn' => $deadlineReversal?->repay_due_on?->toDateString(),
-            // Compliance's consent control (GitLab #2) — see
-            // `Settlement\CheckoutConsentSlots` for why it arrives as a slot
-            // contribution rather than as props this controller computes.
-            'consentSlots' => $consentSlots,
+        ]);
+    }
+
+    /**
+     * Step one's submit: the payer picked a provider (ADR-0066 §6.3).
+     *
+     * It is not a declaration of anything — no text has been shown yet — so
+     * nothing is recorded and nothing is emitted. The choice is held for the
+     * confirmation step, which is where the texts that depend on it are
+     * resolved and where the one accept control lives.
+     */
+    public function choose(Request $request, string $registration): SymfonyResponse
+    {
+        $order = $this->orderFor($registration);
+
+        if ($order === null) {
+            return $this->cartHandoff($request, $registration);
+        }
+
+        $this->abortUnlessPayer($request, $order);
+
+        $this->chooseAccountFor($request, $order);
+
+        return redirect()->route('commerce.pay.confirm', ['registration' => $registration]);
+    }
+
+    /**
+     * Step two: the texts this purchase is actually under, through the
+     * provider chosen in step one, and the one control that accepts them
+     * (ADR-0066 §6.3, D-CPL-07).
+     */
+    public function confirm(Request $request, string $registration): Response|RedirectResponse
+    {
+        $order = $this->orderFor($registration);
+
+        if ($order === null) {
+            return $this->cartHandoff($request, $registration);
+        }
+
+        $this->abortUnlessPayer($request, $order);
+
+        $redirect = $this->consentRedirect(
+            $request,
+            $this->consentSlots->contributions(),
+            route('commerce.pay.confirm', ['registration' => $registration], absolute: false),
+        );
+
+        if ($redirect !== null) {
+            return $redirect;
+        }
+
+        $accounts = $this->offeredAccounts($order);
+        $account = $this->confirmedAccountFor($request, $order, $accounts);
+
+        // No provider chosen (a direct link, a cleared session), or one that
+        // is no longer offered: back to step one, where the choice is made.
+        // Also back there when the order cannot be paid at all, because that
+        // is the page that says why.
+        if ($account === null || $this->refusalReason($order, $this->holdFor($order)) !== null) {
+            return redirect()->route('commerce.pay.show', ['registration' => $registration]);
+        }
+
+        return Inertia::render('pay/Confirm', [
+            ...$this->confirmationProps($order, $account, single: $accounts->count() === 1),
+            'startUrl' => route('commerce.pay.start', ['registration' => $registration], absolute: false),
+            'backUrl' => $accounts->count() === 1
+                ? null
+                : route('commerce.pay.show', ['registration' => $registration], absolute: false),
         ]);
     }
 
@@ -162,17 +253,16 @@ class CheckoutController
         // from the answer whether it exists.
         $this->abortUnlessPayer($request, $order);
 
-        $consentSlots = $this->consentSlots->contributions();
-
         // GitLab #205: `show()` above is the gate a payer normally meets;
         // this is the one that holds when the version was published between
         // the render and the submit. Checked before validation, and the
-        // remembered intent is this order's own pay page rather than the
-        // POST — see `CartController::checkout()` for the same two reasons.
+        // remembered intent is this order's own confirmation page rather
+        // than the POST — see `CartController::checkout()` for the same two
+        // reasons.
         $redirect = $this->consentRedirect(
             $request,
-            $consentSlots,
-            route('commerce.pay.show', ['registration' => $registration], absolute: false),
+            $this->consentSlots->contributions(),
+            route('commerce.pay.confirm', ['registration' => $registration], absolute: false),
         );
 
         if ($redirect !== null) {
@@ -219,44 +309,31 @@ class CheckoutController
             throw ValidationException::withMessages(['account' => $refusal]);
         }
 
-        // The AGB and the Widerrufsbelehrung are confirmed before the order
-        // button, not after it (GitLab #2). `accepted` puts the error on
-        // `accept_terms`, which is the field the control raised it from
-        // (ADR-0055). Only demanded where something is published to accept.
-        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
-            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
-            : ['account' => ['required', 'ulid']]);
+        // The provider the confirmation step actually rendered its list
+        // against (D-CPL-07). Without one there is nothing this POST could
+        // be a declaration about, and the payer goes back to choose.
+        $account = $this->startingAccountFor($request, $order);
 
-        $account = $this->offeredAccounts($order)->firstWhere('id', $validated['account']);
-
-        // An id that is unknown, not offered, or another brand's all land
-        // here alike: refused with a validation error on `account`, the
-        // same as any other rejected form field (redirect-back-with-errors
-        // for a normal request; Inertia's XHR client surfaces it to the
-        // page's shared `errors` prop instead of following the redirect).
+        // Nothing usable on record: an account that is unknown, not offered,
+        // another brand's, or a choice this session never made. All of them
+        // are refused the same way any other rejected form field is — a
+        // redirect back with an error on `account`, which lands the payer on
+        // the page that can fix it.
         if ($account === null) {
             throw ValidationException::withMessages([
                 'account' => __('Choose one of the offered payment options.'),
             ]);
         }
 
-        // Recorded before the payer leaves for the provider: the declaration
-        // is what authorizes the payment, and a provider failure a moment
-        // later must not lose the record that it was made. Compliance decides
-        // which documents and which version — Commerce never writes a consent
-        // row (ADR-0004).
-        //
-        // `$request->user()` is never null here: the route carries `auth`
-        // since #2, precisely because a declaration that cannot be recorded
-        // against a subject is not a declaration (see the route file).
-        if ($this->consentSlots->declarationRequired($consentSlots)) {
-            event(new CheckoutConsentGiven(
-                brandId: $order->brand_id,
-                subjectId: (string) $request->user()->getAuthIdentifier(),
-                captureContext: 'checkout',
-                acceptedAt: now()->toIso8601String(),
-            ));
-        }
+        // Resolved with that provider, so `declarationRequired` and the
+        // versions `RecordCheckoutConsent` will write are the ones the
+        // confirmation step showed.
+        $context = $this->bindingContextForOrder($order, $account->provider);
+        $consentSlots = $this->consentSlots->contributions($context);
+
+        $this->validateDeclaration($request, $consentSlots, (string) $account->getKey());
+
+        $this->emitConsent($request, $order, $context, $consentSlots);
 
         $adapter = $this->registry->forProvider($account->provider);
 
@@ -276,6 +353,11 @@ class CheckoutController
             $order,
             route('commerce.mine.show', ['order' => $order->getKey()]),
         );
+
+        // The choice has done its work. A payer who comes back for another
+        // attempt chooses again and is shown the list again — which is the
+        // whole point of clearing it (D-CPL-07).
+        $this->forgetAccountChoice($request, self::CHOICE_SCOPE, (string) $order->getKey());
 
         // A hard redirect out of the SPA to the provider's hosted page.
         return Inertia::location($redirect->url);
@@ -300,16 +382,18 @@ class CheckoutController
             return $ownPage;
         }
 
-        $consentSlots = $this->consentSlots->contributions();
         $redirect = $this->consentRedirect(
             $request,
-            $consentSlots,
+            $this->consentSlots->contributions(),
             route('commerce.pay.order.show', ['order' => $model->getKey()], absolute: false),
         );
 
         if ($redirect !== null) {
             return $redirect;
         }
+
+        // Step one clears the choice, exactly as `show()` does.
+        $this->forgetAccountChoice($request, self::CHOICE_SCOPE, (string) $model->getKey());
 
         $latestPayment = $this->latestPaymentFor($model);
         $hold = $this->holdFor($model);
@@ -318,6 +402,16 @@ class CheckoutController
         // nothing.
         $deadlineReversal = $this->payLink->deadlineReversalFor($model);
         $refusal = $this->refusalReason($model, $hold, deadlineReversal: $deadlineReversal);
+
+        $accounts = $this->offeredAccounts($model);
+
+        // One account, nothing to choose: straight to the confirmation with
+        // it already resolved (D-CPL-07).
+        if ($refusal === null && $accounts->count() === 1) {
+            $this->rememberAccountId($request, self::CHOICE_SCOPE, (string) $model->getKey(), (string) $accounts->first()->getKey());
+
+            return redirect()->route('commerce.pay.order.confirm', ['order' => $model->getKey()]);
+        }
 
         return Inertia::render('pay/Order', [
             'order' => [
@@ -329,7 +423,7 @@ class CheckoutController
                 'totalGross' => $model->total_gross,
                 'lines' => self::lineProps($model),
             ],
-            'accounts' => $this->offeredAccounts($model)->map(fn (SettlementAccount $account): array => CheckoutAccountData::ofAccount(
+            'accounts' => $accounts->map(fn (SettlementAccount $account): array => CheckoutAccountData::ofAccount(
                 $account,
                 $this->registry->forProvider($account->provider),
             )->toArray())->values()->all(),
@@ -346,7 +440,63 @@ class CheckoutController
             'repayDueOn' => $deadlineReversal?->repay_due_on?->toDateString(),
             'payable' => $refusal === null,
             'refusalReason' => $refusal,
-            'consentSlots' => $consentSlots,
+        ]);
+    }
+
+    /**
+     * Step one's submit for the order-addressed pair (ADR-0066 §6.3).
+     */
+    public function chooseOrder(Request $request, string $order): SymfonyResponse
+    {
+        $model = $this->payableOrderFor($request, $order);
+
+        $ownPage = $this->registrationPageFor($model);
+
+        if ($ownPage !== null) {
+            return $ownPage;
+        }
+
+        $this->chooseAccountFor($request, $model);
+
+        return redirect()->route('commerce.pay.order.confirm', ['order' => $model->getKey()]);
+    }
+
+    /**
+     * Step two for the order-addressed pair.
+     */
+    public function confirmOrder(Request $request, string $order): Response|RedirectResponse
+    {
+        $model = $this->payableOrderFor($request, $order);
+
+        $ownPage = $this->registrationPageFor($model);
+
+        if ($ownPage !== null) {
+            return $ownPage;
+        }
+
+        $redirect = $this->consentRedirect(
+            $request,
+            $this->consentSlots->contributions(),
+            route('commerce.pay.order.confirm', ['order' => $model->getKey()], absolute: false),
+        );
+
+        if ($redirect !== null) {
+            return $redirect;
+        }
+
+        $accounts = $this->offeredAccounts($model);
+        $account = $this->confirmedAccountFor($request, $model, $accounts);
+
+        if ($account === null || $this->refusalReason($model, $this->holdFor($model)) !== null) {
+            return redirect()->route('commerce.pay.order.show', ['order' => $model->getKey()]);
+        }
+
+        return Inertia::render('pay/Confirm', [
+            ...$this->confirmationProps($model, $account, single: $accounts->count() === 1),
+            'startUrl' => route('commerce.pay.order.start', ['order' => $model->getKey()], absolute: false),
+            'backUrl' => $accounts->count() === 1
+                ? null
+                : route('commerce.pay.order.show', ['order' => $model->getKey()], absolute: false),
         ]);
     }
 
@@ -373,12 +523,10 @@ class CheckoutController
             return $ownPage;
         }
 
-        $consentSlots = $this->consentSlots->contributions();
-
         $redirect = $this->consentRedirect(
             $request,
-            $consentSlots,
-            route('commerce.pay.order.show', ['order' => $model->getKey()], absolute: false),
+            $this->consentSlots->contributions(),
+            route('commerce.pay.order.confirm', ['order' => $model->getKey()], absolute: false),
         );
 
         if ($redirect !== null) {
@@ -394,11 +542,7 @@ class CheckoutController
             throw ValidationException::withMessages(['account' => $refusal]);
         }
 
-        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
-            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
-            : ['account' => ['required', 'ulid']]);
-
-        $account = $this->offeredAccounts($model)->firstWhere('id', $validated['account']);
+        $account = $this->startingAccountFor($request, $model);
 
         if ($account === null) {
             throw ValidationException::withMessages([
@@ -406,14 +550,12 @@ class CheckoutController
             ]);
         }
 
-        if ($this->consentSlots->declarationRequired($consentSlots)) {
-            event(new CheckoutConsentGiven(
-                brandId: $model->brand_id,
-                subjectId: (string) $request->user()->getAuthIdentifier(),
-                captureContext: 'checkout',
-                acceptedAt: now()->toIso8601String(),
-            ));
-        }
+        $context = $this->bindingContextForOrder($model, $account->provider);
+        $consentSlots = $this->consentSlots->contributions($context);
+
+        $this->validateDeclaration($request, $consentSlots, (string) $account->getKey());
+
+        $this->emitConsent($request, $model, $context, $consentSlots);
 
         $adapter = $this->registry->forProvider($account->provider);
 
@@ -428,7 +570,184 @@ class CheckoutController
             route('commerce.mine.show', ['order' => $model->getKey()]),
         );
 
+        $this->forgetAccountChoice($request, self::CHOICE_SCOPE, (string) $model->getKey());
+
         return Inertia::location($redirectToProvider->url);
+    }
+
+    /**
+     * Step one's write: record which offered account the payer picked.
+     *
+     * A refusal is a validation error on `account`, the same as any other
+     * rejected form field — an id that is unknown, not offered, or another
+     * brand's all land here alike (redirect-back-with-errors for a normal
+     * request; Inertia's XHR client surfaces it on the page's shared
+     * `errors` prop instead of following the redirect).
+     */
+    private function chooseAccountFor(Request $request, Order $order): SettlementAccount
+    {
+        $validated = $request->validate(['account' => ['required', 'ulid']]);
+
+        $account = $this->offeredAccounts($order)->firstWhere('id', $validated['account']);
+
+        if ($account === null) {
+            throw ValidationException::withMessages([
+                'account' => __('Choose one of the offered payment options.'),
+            ]);
+        }
+
+        $this->rememberAccountId($request, self::CHOICE_SCOPE, (string) $order->getKey(), (string) $account->getKey());
+
+        return $account;
+    }
+
+    /**
+     * The account step one recorded, or null — no choice on record, or one
+     * that is no longer offered (an account disconnected between the two
+     * steps). Null sends the payer back to step one rather than resolving a
+     * list against a provider they did not pick.
+     *
+     * @param  Collection<int, SettlementAccount>  $accounts
+     */
+    private function confirmedAccountFor(Request $request, Order $order, Collection $accounts): ?SettlementAccount
+    {
+        $chosen = $this->rememberedAccountId($request, self::CHOICE_SCOPE, (string) $order->getKey());
+
+        if ($chosen !== null) {
+            return $accounts->firstWhere('id', $chosen);
+        }
+
+        // A brand that offers a single account **has no step one**
+        // (D-CPL-07), so there is nothing for it to have remembered and the
+        // only account it offers is the one this page resolves its list
+        // against. Demanding a session entry there would refuse a payer
+        // whose session was recycled between two requests, over a choice
+        // that never existed. With two or more accounts, nothing on record
+        // means nothing chosen.
+        return $accounts->count() === 1 ? $accounts->first() : null;
+    }
+
+    /**
+     * The same question at the moment the checkout starts. With two or more
+     * accounts the remembered one is the only answer: a POST naming another
+     * provider is a declaration about a list this payer was never shown.
+     */
+    private function startingAccountFor(Request $request, Order $order): ?SettlementAccount
+    {
+        return $this->confirmedAccountFor($request, $order, $this->offeredAccounts($order));
+    }
+
+    /**
+     * The props both confirmation panes share (ADR-0066 §6.3).
+     *
+     * The texts come from the slot, resolved with the chosen provider in the
+     * context, so the list is the one this purchase is actually under. The
+     * page renders what comes back and still learns nothing about policies.
+     *
+     * @return array<string, mixed>
+     */
+    private function confirmationProps(Order $order, SettlementAccount $account, bool $single): array
+    {
+        return [
+            'order' => [
+                'id' => $order->getKey(),
+                'status' => $order->status->value,
+                'currency' => $order->currency,
+                'totalNet' => $order->total_net,
+                'totalTax' => $order->total_tax,
+                'totalGross' => $order->total_gross,
+                'lines' => self::lineProps($order),
+            ],
+            'account' => CheckoutAccountData::ofAccount(
+                $account,
+                $this->registry->forProvider($account->provider),
+            )->toArray(),
+            'consentSlots' => $this->consentSlots->contributions(
+                $this->bindingContextForOrder($order, $account->provider),
+            ),
+            'singleAccount' => $single,
+            // Carried onto step two as well, because a brand with a single
+            // account never sees step one and the deadline is the payer's
+            // to know (#131, ADR-0055 point 4). Stated once, never ticking.
+            'holdUntil' => $this->holdFor($order)?->toIso8601String(),
+            'paymentStatus' => $this->latestPaymentFor($order)?->status->value,
+            // ADR-0057 point 4: a reversed order is owed back by a day, and
+            // that day is what a payer on this page needs, not the hold.
+            'repayDueOn' => $this->payLink->deadlineReversalFor($order)?->repay_due_on?->toDateString(),
+        ];
+    }
+
+    /**
+     * `account` + `accept_terms`, against the provider step one recorded
+     * (ADR-0066 §6.3 point 3).
+     *
+     * The posted account has to be the remembered one: a POST naming another
+     * provider is a declaration about a list this payer was never shown, and
+     * the answer is to go back and be shown it. `accepted` puts the error on
+     * `accept_terms`, which is the field the control raised it from
+     * (ADR-0055), and is demanded only where something applies to accept.
+     *
+     * @param  list<array{module: string, component: string, props: array<string, mixed>}>  $consentSlots
+     */
+    private function validateDeclaration(Request $request, array $consentSlots, string $expectedAccountId): void
+    {
+        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
+            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
+            : ['account' => ['required', 'ulid']]);
+
+        if ($validated['account'] !== $expectedAccountId) {
+            throw ValidationException::withMessages([
+                'account' => __('The payment option changed. Please confirm the documents for the option you picked.'),
+            ]);
+        }
+    }
+
+    /**
+     * Recorded before the payer leaves for the provider: the declaration is
+     * what authorizes the payment, and a provider failure a moment later
+     * must not lose the record that it was made. Compliance decides which
+     * documents and which version — Commerce never writes a consent row
+     * (ADR-0004) — and it resolves the very context this page rendered,
+     * which travels on the event (D-CPL-07 point 4).
+     *
+     * `$request->user()` is never null here: the route carries `auth` since
+     * #2, precisely because a declaration that cannot be recorded against a
+     * subject is not a declaration (see the route file).
+     *
+     * @param  array<string, mixed>  $context
+     * @param  list<array{module: string, component: string, props: array<string, mixed>}>  $consentSlots
+     */
+    private function emitConsent(Request $request, Order $order, array $context, array $consentSlots): void
+    {
+        if (! $this->consentSlots->declarationRequired($consentSlots)) {
+            return;
+        }
+
+        event(new CheckoutConsentGiven(
+            brandId: $order->brand_id,
+            subjectId: (string) $request->user()->getAuthIdentifier(),
+            captureContext: 'checkout',
+            acceptedAt: now()->toIso8601String(),
+            bindingContext: self::eventBindingContext($context),
+        ));
+    }
+
+    /**
+     * The slot context flattened into the bag the event carries: the lines'
+     * own scalars plus the provider and the order.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array<string, mixed>
+     */
+    private static function eventBindingContext(array $context): array
+    {
+        /** @var array<string, mixed> $bag */
+        $bag = is_array($context['bindingContext'] ?? null) ? $context['bindingContext'] : [];
+
+        $bag['settlement_provider'] = $context['settlementProvider'] ?? null;
+        $bag['order_id'] = $context['orderId'] ?? null;
+
+        return $bag;
     }
 
     /**

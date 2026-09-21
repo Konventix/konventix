@@ -60,6 +60,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerBlockTypes();
         $this->registerSlots();
         $this->registerConsoleEventSources();
+        $this->registerTargetProviders();
         $this->registerMessageTemplates();
         $this->registerMessageTopics();
         $this->registerSchedule();
@@ -266,6 +267,15 @@ abstract class ModuleServiceProvider extends ServiceProvider
      * because Platform owns the selector but may not read Event's tables.
      */
     protected function registerConsoleEventSources(): void {}
+
+    /**
+     * Options and labels for the console's binding-target pickers — see
+     * `Targets\TargetDirectory` (ADR-0066, D-CPL-11). Same unconditional
+     * boot-time pattern as `registerSlots()`: the module that owns a kind
+     * contributes it, because Platform owns the registry but may read no
+     * other module's tables.
+     */
+    protected function registerTargetProviders(): void {}
 
     /**
      * Per-module GDPR export/anonymization handlers, registered with Compliance.

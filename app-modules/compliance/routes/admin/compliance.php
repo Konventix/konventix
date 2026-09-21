@@ -12,6 +12,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Compliance\Http\Controllers\Admin\AuditLogController;
 use Konventix\Compliance\Http\Controllers\Admin\PolicyAdminController;
+use Konventix\Compliance\Http\Controllers\Admin\PolicyBindingController;
 use Konventix\Compliance\Http\Controllers\Admin\PolicyVersionController;
 use Konventix\Compliance\Http\Controllers\Admin\RetentionRuleController;
 use Konventix\Compliance\Http\Controllers\Admin\SubjectRequestController;
@@ -20,6 +21,12 @@ Route::get('/policies', [PolicyAdminController::class, 'index'])->name('admin.po
 Route::post('/policies', [PolicyAdminController::class, 'store'])->name('admin.policies.store');
 Route::get('/policies/{policy}/edit', [PolicyAdminController::class, 'edit'])->name('admin.policies.edit');
 Route::put('/policies/{policy}', [PolicyAdminController::class, 'update'])->name('admin.policies.update');
+
+// Where a text applies (ADR-0066, D-CPL-16). Its own capability again, for
+// the same kind of reason versions have one: binding a text to an event or a
+// payment provider changes who is bound by it without changing a word of it.
+Route::post('/policies/{policy}/bindings', [PolicyBindingController::class, 'store'])->name('admin.policy-bindings.store');
+Route::delete('/policy-bindings/{binding}', [PolicyBindingController::class, 'destroy'])->name('admin.policy-bindings.destroy');
 
 // Versions are their own capability split: drafting text and making it
 // binding are different acts (see PolicyVersionController).

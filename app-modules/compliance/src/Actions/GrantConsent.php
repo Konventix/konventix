@@ -23,16 +23,33 @@ use Konventix\Compliance\Models\PolicyVersion;
  * agree" ambiguous and notify listeners twice. A *re-grant after withdrawal*
  * is a different fact and does create a new row — the withdrawn one stays as
  * the record of the period in between.
+ *
+ * Since ADR-0066 the caller may also say *why* the text was asked for
+ * (D-CPL-09): `policyBindingId` names the binding that made it applicable and
+ * `bindingContext` snapshots the scalars the resolution ran on. Both are
+ * evidence, not a read model — read back on one row to answer "why was this
+ * person asked, and for which purchase", never queried to find
+ * registrations. Both default to null, which is what an unbound resolution
+ * passes and what every row written before that migration carries.
+ *
+ * The idempotent branch does **not** rewrite them: the row already records
+ * the moment somebody agreed, and a second click from another page is not a
+ * second agreement that may restate the reason for the first.
  */
 final class GrantConsent
 {
+    /**
+     * @param  array<string, mixed>|null  $bindingContext
+     */
     public function __invoke(
         string $subjectId,
         PolicyVersion $policyVersion,
         string $captureContext,
         ?CarbonInterface $grantedAt = null,
+        ?string $policyBindingId = null,
+        ?array $bindingContext = null,
     ): Consent {
-        return DB::transaction(function () use ($subjectId, $policyVersion, $captureContext, $grantedAt): Consent {
+        return DB::transaction(function () use ($subjectId, $policyVersion, $captureContext, $grantedAt, $policyBindingId, $bindingContext): Consent {
             $grantedAt ??= now();
 
             /** @var Consent|null $existing */
@@ -51,6 +68,8 @@ final class GrantConsent
                 'policy_version_id' => $policyVersion->id,
                 'capture_context' => $captureContext,
                 'granted_at' => $grantedAt,
+                'policy_binding_id' => $policyBindingId,
+                'binding_context' => $bindingContext,
             ]);
 
             event(new ConsentGranted(

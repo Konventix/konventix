@@ -83,6 +83,7 @@ final class PlaceRegistrationLineInCart
 {
     /**
      * @param  list<array{label: string, quantity: int, unit_amount_net: numeric-string, tax_class: string}>  $lines
+     * @param  array<string, mixed>  $bindingContext  opaque scalars from the request, stored and never read (ADR-0066 D-CPL-06)
      */
     public function handle(
         string $brandId,
@@ -92,6 +93,7 @@ final class PlaceRegistrationLineInCart
         array $lines,
         ?string $saleStartsAt = null,
         ?string $saleEndsAt = null,
+        array $bindingContext = [],
     ): CartLine {
         $cart = OpenCart::for($brandId, $registrantUserId);
 
@@ -110,7 +112,7 @@ final class PlaceRegistrationLineInCart
 
         $this->guardSaleWindow($registrationId, $saleStartsAt, $saleEndsAt);
 
-        $cartLine = DB::transaction(function () use ($cart, $registrationId, $requestKey, $lines, $saleStartsAt, $saleEndsAt): CartLine {
+        $cartLine = DB::transaction(function () use ($cart, $registrationId, $requestKey, $lines, $saleStartsAt, $saleEndsAt, $bindingContext): CartLine {
             $first = $lines[0];
 
             // One quantity for the whole line, and only when every request
@@ -142,6 +144,10 @@ final class PlaceRegistrationLineInCart
                 'position' => $cart->lines()->count(),
                 'sale_starts_at' => $saleStartsAt,
                 'sale_ends_at' => $saleEndsAt,
+                // ADR-0066 D-CPL-06: carried from the settlement request and
+                // copied onto the order line by `PlaceOrderFromCart`. Never
+                // read here — a product line carries none at all.
+                'binding_context' => $bindingContext === [] ? null : $bindingContext,
             ]);
             $cartLine->brand_id = $cart->brand_id;
             $cartLine->save();

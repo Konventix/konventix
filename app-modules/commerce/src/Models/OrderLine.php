@@ -42,6 +42,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property numeric-string $line_net
  * @property numeric-string $line_tax
  * @property numeric-string $line_gross
+ * @property array<string, mixed>|null $binding_context
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -51,6 +52,18 @@ class OrderLine extends Model
 
     /** @use HasFactory<OrderLineFactory> */
     use HasFactory, HasUlids;
+
+    /**
+     * An explicit null rather than an absent attribute: `shouldBeStrict()`
+     * refuses to read an attribute a freshly made instance never received,
+     * and every line placed by a path that carries no bag — every product
+     * line, and every registration line from before ADR-0066 — names none.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'binding_context' => null,
+    ];
 
     protected $fillable = [
         'order_id',
@@ -65,6 +78,7 @@ class OrderLine extends Model
         'line_net',
         'line_tax',
         'line_gross',
+        'binding_context',
     ];
 
     /**
@@ -92,6 +106,11 @@ class OrderLine extends Model
             'line_net' => 'decimal:2',
             'line_tax' => 'decimal:2',
             'line_gross' => 'decimal:2',
+            // ADR-0066 D-CPL-06: the settlement request's own scalars, cast
+            // back to an array and read by nobody in this module. Commerce
+            // carries it; Compliance is the only module that knows what any
+            // of its keys mean.
+            'binding_context' => 'array',
         ];
     }
 

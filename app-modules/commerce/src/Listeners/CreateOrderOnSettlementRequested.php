@@ -62,6 +62,11 @@ final class CreateOrderOnSettlementRequested
                 // checkout does not re-check it, and nothing renders it.
                 saleStartsAt: $event->saleStartsAt,
                 saleEndsAt: $event->saleEndsAt,
+                // ADR-0066 D-CPL-06: carried, never read. The bag rides to
+                // the cart line and from there to the order line at
+                // checkout, so the confirmation step can resolve the texts
+                // bound to what is actually being bought.
+                bindingContext: $event->bindingContext,
             );
 
             return;
@@ -77,6 +82,7 @@ final class CreateOrderOnSettlementRequested
             termsDays: $event->termsDays,
             requestKey: $event->requestKey,
             payerUserId: $event->registrantUserId,
+            bindingContext: $event->bindingContext,
         );
     }
 }

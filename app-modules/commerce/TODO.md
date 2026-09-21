@@ -6,6 +6,25 @@
 
 ## Next (Phase 1 PoC — no payment; keep Commerce dormant and prove the boundary)
 
+- [x] The two-step checkout and the opaque binding bag (round 4, Task 32,
+      ADR-0066; D-CPL-06/07). `binding_context` json on `order_lines` **and**
+      `cart_lines` — no backfill, no index, and no branch in this module
+      reads a key of it: `RegistrationSettlementRequested` carries the bag,
+      `PlaceOrderFromSettlementRequest` and `PlaceRegistrationLineInCart`
+      store it, `PlaceOrderFromCart` copies it on, and
+      `CheckoutConsentSlots::unionOfBags()` hands the union to the consent
+      slot with the chosen provider and the order id beside it. The checkout
+      itself split into *choose* and *confirm* on all three paths
+      (`Http/Controllers/Concerns/ChoosesSettlementAccount`,
+      `pay/Confirm.vue`, `cart/Confirm.vue`), with the choice held in the
+      session per checkout target and cleared on the way back and on the way
+      out. `tests/CheckoutBindingContextTest.php`, and
+      `CheckoutContractConsentGateTest` extended with the two-step cases.
+      **Known narrowing:** `unionOfBags()` is single-valued on `event_id`, so
+      a cart spanning two events resolves the first event's bindings only —
+      widening it is a change to Compliance's `BindingContext`, not to this
+      method.
+
 - [x] A registration cart line carries the registration's own quantity
       (bugfix round 2026-09-21, Task 19): `PlaceRegistrationLineInCart`
       takes it from the settlement request's lines — where they agree on

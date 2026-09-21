@@ -487,6 +487,17 @@ changed their mind. The sale has stopped and nothing else notices: no 5xx,
 no failed job, no queue backlog — the logs look healthy, which is exactly
 why this rule exists.
 
+**The checkout has had two steps since ADR-0066 (D-CPL-07)**, which is
+worth knowing before reading any of this. `/pay/registration/{id}`,
+`/pay/order/{id}` and `/cart` are step one: the order, the deadline and the
+settlement accounts, and **no legal text at all**. The texts and the one
+accept control live on `…/confirm`, resolved for the provider chosen in step
+one, and a brand with a single offered account is redirected past step one
+on both pay pages. So a report of "the checkout shows no terms" is the
+expected state of step one, and the page to look at is the confirmation.
+Going back to step one clears the recorded provider and the acceptance with
+it, by design — a payer may not be held to a list they never saw.
+
 Three causes, in the order they are worth checking. **An unpublished or
 un-effective text**: the interstitial and the checkout slot render nothing
 to agree to when the policy a gate asks for has no published version whose

@@ -57,6 +57,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property int $position
  * @property Carbon|null $sale_starts_at
  * @property Carbon|null $sale_ends_at
+ * @property array<string, mixed>|null $binding_context
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -66,6 +67,17 @@ class CartLine extends Model
 
     /** @use HasFactory<CartLineFactory> */
     use HasFactory, HasUlids;
+
+    /**
+     * An explicit null rather than an absent attribute, for the reason
+     * `OrderLine` gives: `shouldBeStrict()` refuses to read what a freshly
+     * made instance never received, and a product line carries no bag.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'binding_context' => null,
+    ];
 
     protected $fillable = [
         'cart_id',
@@ -79,6 +91,7 @@ class CartLine extends Model
         'position',
         'sale_starts_at',
         'sale_ends_at',
+        'binding_context',
     ];
 
     /**
@@ -125,6 +138,10 @@ class CartLine extends Model
             'position' => 'integer',
             'sale_starts_at' => 'datetime',
             'sale_ends_at' => 'datetime',
+            // ADR-0066 D-CPL-06: the settlement request's own scalars,
+            // carried to the order line at checkout and interpreted by
+            // nothing in this module.
+            'binding_context' => 'array',
         ];
     }
 

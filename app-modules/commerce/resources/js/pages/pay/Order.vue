@@ -6,13 +6,8 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
-import { resolveRegisteredComponent } from '@/lib/moduleComponents';
-import {
-    ORDER_WITH_OBLIGATION_TO_PAY,
-    fulfilmentNote,
-    taxNote,
-} from '@/lib/purchaseTexts';
-import { start as startOrderCheckout } from '@/routes/commerce/pay/order';
+import { fulfilmentNote, taxNote } from '@/lib/purchaseTexts';
+import { choose as chooseOrderAccount } from '@/routes/commerce/pay/order';
 
 /**
  * The way back to an order whose payment failed (GitLab #5) — a cart order
@@ -30,15 +25,12 @@ import { start as startOrderCheckout } from '@/routes/commerce/pay/order';
  * offering a button that cannot help — a payer holding a mail deserves the
  * sentence rather than an error page.
  *
- * The consent control before the pay button is not this page's to write
- * (GitLab #2): Compliance contributes it to the `checkout.consent` slot and
- * this page renders whatever comes back, exactly as `pay/Show.vue` does.
+ * Since ADR-0066 this is **step one of two** (D-CPL-07), exactly as
+ * `pay/Show.vue` is: the order and the settlement accounts, and nothing
+ * legal. The texts are listed on `pay/Confirm.vue` with the one accept
+ * control, because which of them apply may depend on the provider chosen
+ * here. A brand with a single account is redirected past this page.
  */
-type SlotContribution = {
-    module: string;
-    component: string;
-    props: Record<string, unknown>;
-};
 
 type Props = {
     order: {
@@ -62,32 +54,22 @@ type Props = {
     payable: boolean;
     /** Why not, in the payer's own words — null while `payable` is true. */
     refusalReason: string | null;
-    consentSlots: SlotContribution[];
 };
 
 const props = defineProps<Props>();
 
 const page = usePage();
 const accountError = computed(() => page.props.errors.account);
-const consentError = computed(() => page.props.errors.accept_terms);
-
-const acceptTerms = ref(false);
-const consentRequired = computed(() =>
-    props.consentSlots.some((slot) => slot.props.required === true),
-);
-const canPay = computed(
-    () => props.payable && (!consentRequired.value || acceptTerms.value),
-);
 
 // Only the account whose button was pressed disables, so a second attempt
 // on another account stays reachable — same rule as `pay/Show.vue`.
 const starting = ref<string | null>(null);
 
-function pay(accountId: string): void {
+function choose(accountId: string): void {
     starting.value = accountId;
     router.post(
-        startOrderCheckout(props.order.id).url,
-        { account: accountId, accept_terms: acceptTerms.value },
+        chooseOrderAccount(props.order.id).url,
+        { account: accountId },
         { onFinish: () => (starting.value = null) },
     );
 }
@@ -235,16 +217,6 @@ const holdUntilLabel = computed(() =>
                 {{ fulfilmentNote(props.accounts.length > 0) }}
             </p>
 
-            <template v-for="slot in props.consentSlots" :key="slot.component">
-                <component
-                    :is="resolveRegisteredComponent(slot.component)"
-                    v-if="resolveRegisteredComponent(slot.component)"
-                    v-model="acceptTerms"
-                    v-bind="slot.props"
-                    :error="consentError"
-                />
-            </template>
-
             <div
                 v-if="props.accounts.length > 0"
                 role="group"
@@ -257,20 +229,17 @@ const holdUntilLabel = computed(() =>
                 <Button
                     v-for="account in props.accounts"
                     :key="account.id"
-                    :disabled="starting === account.id || !canPay"
-                    @click="pay(account.id)"
+                    :disabled="starting === account.id || !props.payable"
+                    @click="choose(account.id)"
                 >
                     <CreditCard class="size-4" />
-                    {{
-                        lastAttemptFailed
-                            ? 'Try again'
-                            : ORDER_WITH_OBLIGATION_TO_PAY
-                    }}
+                    {{ lastAttemptFailed ? 'Try again' : 'Continue' }}
                     — {{ account.label }}
                 </Button>
 
-                <p v-if="!canPay" role="status" class="text-sm text-text-muted">
-                    Confirm the documents above to pay.
+                <p role="status" class="text-sm text-text-muted">
+                    You will see what you are agreeing to before the order is
+                    placed.
                 </p>
 
                 <!--

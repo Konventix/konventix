@@ -190,6 +190,12 @@ final class PlaceOrderFromCart
                 'line_net' => $calculatedLine->lineNet,
                 'line_tax' => $calculatedLine->lineTax,
                 'line_gross' => $calculatedLine->lineGross,
+                // ADR-0066 D-CPL-06: the cart line's opaque bag travels on
+                // to the order line, so the confirmation step resolves the
+                // same texts whichever path placed the order. Null for a
+                // product line and for every line placed before the column
+                // existed — there was no backfill.
+                'binding_context' => $cartLine->binding_context,
             ]);
             $orderLine->brand_id = $cart->brand_id;
             $orderLine->save();

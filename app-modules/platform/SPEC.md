@@ -65,6 +65,20 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
   is server-persisted so it follows them across browsers. Transient view state
   — which nav groups are expanded — stays client-side and is not data.
 - **UI slot registry.** Named slots modules render into, gated per brand.
+- **Target registry** (`Targets\TargetDirectory`, ADR-0066 §7.3,
+  D-CPL-11). A boot-time registry in `SlotRegistry`'s shape that answers
+  "name these ids for a picker": each owning module registers a
+  `Targets\TargetProvider` for the kinds it owns from its own
+  `registerTargetProviders()` hook — Event registers `event`, Registration
+  `registration_type` and `entry_condition`, Commerce
+  `settlement_provider`. It exists so a console can label a foreign entity
+  without reading its table (ADR-0004); Compliance's policy-binding editor
+  is the first caller. **Platform names no policy**: the kinds are generic,
+  the options are `Data\TargetOptionData` (kind, id, label, group), and an
+  id nobody can name answers null rather than throwing, because a target
+  that has been deleted must stay renderable and removable. Bound
+  `singletonIf` beside `Legal\PublicLegalTexts`, with the empty registry as
+  its own honest default.
 - **Block-based CMS for brand static pages.** Page and block models, publication
   state, and the block-type registry that modules register their own block types
   into. This covers a brand's own pages — landing page, imprint, info pages —

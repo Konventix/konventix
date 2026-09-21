@@ -43,6 +43,13 @@ type PolicyRow = {
     shadowedByBrands: number;
     /** Whether this brand row is such an override. */
     shadowsOperator: boolean;
+    /**
+     * ADR-0066 D-CPL-04: whether this text is bound to anything. Unbound —
+     * the default and the case for every text that existed before bindings
+     * did — means it applies everywhere the brand sells, so only the
+     * exception is marked.
+     */
+    bound: boolean;
     versions: number;
     publishedVersion: string | null;
     requiresConsent: boolean;
@@ -153,6 +160,14 @@ const columns: ColumnDef<PolicyRow>[] = [
                           'span',
                           { class: 'text-xs text-text-muted' },
                           'overrides the operator text',
+                      )
+                    : null,
+                // ADR-0066 §9.2: which texts are conditional, at a glance.
+                row.original.bound
+                    ? h(
+                          'span',
+                          { class: 'text-xs text-text-muted' },
+                          'bound — applies where its bindings match',
                       )
                     : null,
             ]),

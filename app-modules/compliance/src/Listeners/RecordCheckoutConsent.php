@@ -4,20 +4,24 @@ declare(strict_types=1);
 
 namespace Konventix\Compliance\Listeners;
 
-use Illuminate\Support\Carbon;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
-use Konventix\Compliance\Actions\GrantConsent;
-use Konventix\Compliance\Models\PolicyVersion;
-use Konventix\Compliance\Support\CheckoutLegalTexts;
+use Konventix\Compliance\Listeners\Concerns\RecordsResolvedConsents;
 
 /**
- * Turns a payer's declaration at checkout into Consent rows (GitLab #2).
+ * Turns a payer's declaration at checkout into Consent rows (GitLab #2,
+ * ADR-0066 §6.3).
  *
- * Commerce reports only that someone accepted the purchase terms; which
- * documents that covers is this module's answer, resolved from the same
- * `CheckoutLegalTexts` the checkout page rendered — so the row records the
- * version the payer actually saw, not whatever is current when a queue
- * worker gets around to it.
+ * Commerce reports only that someone accepted the purchase terms and under
+ * which circumstances — the opaque binding bag its order lines carried, plus
+ * the provider the payer chose in step one and the order itself. Which
+ * documents that covers is this module's answer.
+ *
+ * Since ADR-0066 the resolution runs on **that** context and no longer on
+ * the brand alone (D-CPL-07 point 4): the confirmation step listed the texts
+ * that apply to this purchase through this provider, and the rows have to be
+ * for exactly those. Re-deriving them from the brand is what would let the
+ * page and the record drift — a payer held to a text they were never shown,
+ * or a text they were shown going unrecorded.
  *
  * Nothing is recorded when a document has no published, effective version:
  * a Consent row pointing at a text nobody published would look like evidence
@@ -30,26 +34,16 @@ use Konventix\Compliance\Support\CheckoutLegalTexts;
  */
 final class RecordCheckoutConsent
 {
+    use RecordsResolvedConsents;
+
     public function handle(CheckoutConsentGiven $event): void
     {
-        // Resolved at call time rather than constructor-injected: the event
-        // dispatcher builds a listener with the container it was constructed
-        // with, which under Octane is the worker's, not the request's
-        // (.ai/rules/listeners.md).
-        $texts = app(CheckoutLegalTexts::class)->forBrand($event->brandId);
-        $grantConsent = app(GrantConsent::class);
-        $acceptedAt = Carbon::parse($event->acceptedAt);
-
-        foreach ($texts as $text) {
-            // Escapes BrandScope: an operator-wide text's version carries no
-            // brand at all (#76, ADR-0010).
-            $version = PolicyVersion::withoutBrandScope()->find($text['versionId']);
-
-            if ($version === null) {
-                continue;
-            }
-
-            $grantConsent($event->subjectId, $version, $event->captureContext, $acceptedAt);
-        }
+        $this->recordResolvedConsents(
+            $event->brandId,
+            $event->subjectId,
+            $event->captureContext,
+            $event->acceptedAt,
+            $event->bindingContext,
+        );
     }
 }

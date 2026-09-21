@@ -47,4 +47,33 @@ enum PolicyBindingKind: string
     {
         return $this !== self::SettlementProvider;
     }
+
+    /**
+     * What the console calls this kind, in the singular. Here rather than in
+     * the page, because the same words head the picker's groups, the chips
+     * and the `Unknown (event · 01HX…)` fallback (spec §9.2).
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::Event => __('Event'),
+            self::RegistrationType => __('Registration type'),
+            self::SettlementProvider => __('Payment provider'),
+            self::EntryCondition => __('Entry condition'),
+        };
+    }
+
+    /**
+     * The plural the rule sentence uses — *"applies when any of the events
+     * match and any of the types match …"* (D-CPL-03).
+     */
+    public function pluralLabel(): string
+    {
+        return match ($this) {
+            self::Event => __('events'),
+            self::RegistrationType => __('registration types'),
+            self::SettlementProvider => __('payment providers'),
+            self::EntryCondition => __('entry conditions'),
+        };
+    }
 }

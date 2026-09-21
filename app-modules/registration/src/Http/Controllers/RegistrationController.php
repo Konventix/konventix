@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Platform\Brands\BrandContext;
+use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Actions\JoinWaitlist;
 use Konventix\Registration\Actions\SubmitRegistration;
 use Konventix\Registration\Data\RegistrationFormData;
@@ -43,7 +44,44 @@ final class RegistrationController
         return Inertia::render('registration/Register', [
             ...RegistrationFormData::fromModel($type)->toArray(),
             'inviteToken' => $invite,
+            // ADR-0066 §6.2, §7.1: this page's own extension point. The
+            // slot is declared here — a page owns the places other modules
+            // may add to — and Compliance fills it with the legal texts this
+            // registration is under, resolved from a context of scalars this
+            // module builds and never interprets. Registration never learns
+            // that a policy exists (ADR-0004).
+            'consentSlots' => $this->consentSlots($type),
         ]);
+    }
+
+    /**
+     * The `registration.consent` slot for this type (ADR-0066 §6.2).
+     *
+     * Context: the event, the type being bought, and the entry conditions
+     * the type declares — the same three facts `RequestSettlement` puts in
+     * the bag that travels to the checkout, so the registrant meets the same
+     * texts at both ends of the purchase.
+     *
+     * `withoutGlobalScope(BrandScope::class)` on the related model is not
+     * needed here — the public form only ever runs on a brand host, where
+     * the scope resolves normally.
+     *
+     * @return list<array{module: string, component: string, props: array<string, mixed>}>
+     */
+    private function consentSlots(RegistrationType $type): array
+    {
+        return array_values(app(SlotRegistry::class)->for('registration.consent', [
+            'eventId' => $type->event_id,
+            'registrationTypeIds' => [(string) $type->getKey()],
+            'entryConditionIds' => array_values($type->entryConditions()
+                ->pluck('registration_entry_conditions.id')
+                ->map(strval(...))
+                ->all()),
+        ])->map(fn (array $entry): array => [
+            'module' => $entry['module'],
+            'component' => $entry['component'],
+            'props' => $entry['props'],
+        ])->all());
     }
 
     public function store(

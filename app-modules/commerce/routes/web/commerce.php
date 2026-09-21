@@ -63,6 +63,14 @@ Route::middleware(['ensure-feature:commerce:shop', 'ensure-waiting-room', 'auth'
     Route::post('/cart/lines', [CartController::class, 'storeLine'])->name('commerce.cart.lines.store');
     Route::patch('/cart/lines/{line}', [CartController::class, 'updateLine'])->name('commerce.cart.lines.update');
     Route::delete('/cart/lines/{line}', [CartController::class, 'destroyLine'])->name('commerce.cart.lines.destroy');
+    // Two-step checkout (ADR-0066 §6.3, D-CPL-07): the cart page is step
+    // one — the lines, the billing fields and the provider choice — and
+    // `/cart/confirm` is step two, which is the first page to name a legal
+    // text. The texts may depend on the provider, so the provider is chosen
+    // first and the list is shown after; coming back to `/cart` clears the
+    // choice, and with it any acceptance made against it.
+    Route::post('/cart/choose', [CartController::class, 'choose'])->name('commerce.cart.choose');
+    Route::get('/cart/confirm', [CartController::class, 'confirm'])->name('commerce.cart.confirm');
     Route::post('/cart/checkout', [CartController::class, 'checkout'])->name('commerce.cart.checkout');
 });
 
@@ -83,6 +91,17 @@ Route::middleware(['auth'])->group(function (): void {
     Route::get('/pay/registration/{registration}', [CheckoutController::class, 'show'])
         ->whereUlid('registration')
         ->name('commerce.pay.show');
+    // The same two steps as the cart (ADR-0066 §6.3): `/pay/registration/…`
+    // offers the accounts, `…/choose` records which one, `…/confirm` lists
+    // the texts that apply through it with the one accept control, and
+    // `…/start` validates both against the recorded provider. A brand with a
+    // single account never sees step one — `show()` redirects past it.
+    Route::post('/pay/registration/{registration}/choose', [CheckoutController::class, 'choose'])
+        ->whereUlid('registration')
+        ->name('commerce.pay.choose');
+    Route::get('/pay/registration/{registration}/confirm', [CheckoutController::class, 'confirm'])
+        ->whereUlid('registration')
+        ->name('commerce.pay.confirm');
     Route::post('/pay/registration/{registration}/start', [CheckoutController::class, 'start'])
         ->whereUlid('registration')
         ->name('commerce.pay.start');
@@ -100,6 +119,12 @@ Route::middleware(['auth'])->group(function (): void {
     Route::get('/pay/order/{order}', [CheckoutController::class, 'showOrder'])
         ->whereUlid('order')
         ->name('commerce.pay.order.show');
+    Route::post('/pay/order/{order}/choose', [CheckoutController::class, 'chooseOrder'])
+        ->whereUlid('order')
+        ->name('commerce.pay.order.choose');
+    Route::get('/pay/order/{order}/confirm', [CheckoutController::class, 'confirmOrder'])
+        ->whereUlid('order')
+        ->name('commerce.pay.order.confirm');
     Route::post('/pay/order/{order}/start', [CheckoutController::class, 'startOrder'])
         ->whereUlid('order')
         ->name('commerce.pay.order.start');

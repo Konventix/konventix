@@ -393,6 +393,12 @@ it('422s a cart checkout over 250 € with no billing address, and places no ord
     cartCheckoutSingleLineCart($brand, $user->getKey(), '211.00');
     $account = cartCheckoutAccount();
 
+    // ADR-0066 D-CPL-07: the address and the provider are step one's, and
+    // the order is placed from step two.
+    test()->actingAs($user)
+        ->post('/cart/choose', ['account' => $account->id])
+        ->assertRedirect('/cart/confirm');
+
     test()->actingAs($user)
         ->post('/cart/checkout', ['account' => $account->id])
         ->assertRedirect()
@@ -408,14 +414,21 @@ it('checks out over 250 € through the controller once the billing address fiel
     cartCheckoutSingleLineCart($brand, $user->getKey(), '211.00');
     $account = cartCheckoutAccount();
 
+    // The address is collected on step one and carried to step two, which
+    // is about the documents and the money rather than about re-typing it
+    // (ADR-0066 §6.3).
     test()->actingAs($user)
-        ->post('/cart/checkout', [
+        ->post('/cart/choose', [
             'account' => $account->id,
             'billingAddressLine' => 'Hauptstraße 1',
             'billingPostalCode' => '10115',
             'billingCity' => 'Berlin',
             'billingCountryCode' => 'DE',
         ])
+        ->assertRedirect('/cart/confirm');
+
+    test()->actingAs($user)
+        ->post('/cart/checkout', ['account' => $account->id])
         ->assertRedirect('https://checkout.stripe.test/cart-session');
 
     $order = Order::query()->where('settles_type', 'cart')->sole();
@@ -435,6 +448,8 @@ it('hands the provider the placed order\'s own page as the return URL', function
     $user = User::factory()->create();
     cartCheckoutMixedCart($brand, $user->getKey());
     $account = cartCheckoutAccount();
+
+    test()->actingAs($user)->post('/cart/choose', ['account' => $account->id]);
 
     test()->actingAs($user)
         ->post('/cart/checkout', ['account' => $account->id])
@@ -764,35 +779,55 @@ function cartCheckoutLegalTexts(): void
     }
 }
 
-it('puts the purchase texts and the withdrawal exemption on the cart page', function (): void {
+it('puts the purchase texts and the withdrawal exemption on the cart confirmation step', function (): void {
     $brand = cartCheckoutBrand();
     test()->activateFeature('commerce:shop', $brand);
     cartCheckoutLegalTexts();
     $user = User::factory()->create();
     cartCheckoutMixedCart($brand, $user->getKey());
 
+    $account = cartCheckoutAccount();
+
+    // ADR-0066 §6.3: the cart itself names no legal text — the list depends
+    // on the provider, which is chosen here — and the confirmation step
+    // lists exactly what this purchase is under.
     test()->actingAs($user)
         ->get('/cart')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('cart/Show')
+            ->missing('consentSlots'));
+
+    test()->actingAs($user)->post('/cart/choose', ['account' => $account->id]);
+
+    test()->actingAs($user)
+        ->get('/cart/confirm')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('cart/Confirm')
             ->has('consentSlots', 1)
             ->where('consentSlots.0.component', 'compliance/CheckoutConsent')
             ->where('consentSlots.0.props.required', true)
             ->where('consentSlots.0.props.policies.0.slug', 'terms')
             ->where('consentSlots.0.props.policies.0.url', '/policies/terms')
-            ->where('consentSlots.0.props.policies.1.slug', 'withdrawal')
+            // D-CPL-08: `requires_consent` alone decides agree versus
+            // inform, and this fixture publishes `withdrawal` as
+            // information — so it is read, not ticked.
+            ->where('consentSlots.0.props.notices.0.slug', 'withdrawal')
             ->where('consentSlots.0.props.exemptionNotice', CheckoutLegalTexts::EXEMPTION_NOTICE));
 });
 
-it('claims no agreement on the cart page of an instance with no published texts', function (): void {
+it('claims no agreement on the cart confirmation step of an instance with no published texts', function (): void {
     $brand = cartCheckoutBrand();
     test()->activateFeature('commerce:shop', $brand);
     $user = User::factory()->create();
     cartCheckoutMixedCart($brand, $user->getKey());
+    $account = cartCheckoutAccount();
+
+    test()->actingAs($user)->post('/cart/choose', ['account' => $account->id]);
 
     test()->actingAs($user)
-        ->get('/cart')
+        ->get('/cart/confirm')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('consentSlots.0.props.required', false)
@@ -806,6 +841,8 @@ it('refuses a cart checkout that did not accept the terms, and places no order',
     $user = User::factory()->create();
     cartCheckoutMixedCart($brand, $user->getKey());
     $account = cartCheckoutAccount();
+
+    test()->actingAs($user)->post('/cart/choose', ['account' => $account->id]);
 
     test()->actingAs($user)
         ->post('/cart/checkout', ['account' => $account->id])
@@ -823,6 +860,8 @@ it('records one consent per purchase text against the current version when the c
     $user = User::factory()->create();
     cartCheckoutMixedCart($brand, $user->getKey());
     $account = cartCheckoutAccount();
+
+    test()->actingAs($user)->post('/cart/choose', ['account' => $account->id]);
 
     test()->actingAs($user)
         ->post('/cart/checkout', ['account' => $account->id, 'accept_terms' => true])
@@ -854,6 +893,8 @@ it('checks out and records nothing on an instance whose purchase texts are unpub
     // No accept_terms in the payload: there is nothing to accept, and a
     // checkout that demanded agreement to a document nobody published would
     // be unusable on a fresh instance.
+    test()->actingAs($user)->post('/cart/choose', ['account' => $account->id]);
+
     test()->actingAs($user)
         ->post('/cart/checkout', ['account' => $account->id])
         ->assertRedirect('https://checkout.stripe.test/cart-session');

@@ -25,12 +25,14 @@ use Konventix\Event\Models\Venue;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Models\MessageRecord;
+use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\BrandDomain;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\Role;
 use Konventix\Platform\Models\StaticPage;
 use Konventix\Registration\Enums\RegistrationVisibility;
+use Konventix\Registration\Models\EntryCondition;
 use Konventix\Registration\Models\EventSummary as RegistrationEventSummary;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
@@ -145,6 +147,13 @@ function dryRunSkippedRoutes(): array
         // `OrderRepayPageTest` walks the page itself, both arms of the
         // ownership check included.
         'commerce.pay.order.show' => 'no order owned by the walking member after seeding',
+
+        // Step two of the same pair (ADR-0066 §6.3, D-CPL-07) — the
+        // confirmation pane behind `/pay/order/{order}`. Same seed gap and
+        // the same ownership check: there is no order this walk's member
+        // owns, so there is no URL the controller would serve.
+        // `CheckoutContractConsentGateTest` walks both steps.
+        'commerce.pay.order.confirm' => 'no order owned by the walking member after seeding',
     ];
 }
 
@@ -238,7 +247,11 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
     // as it does for a stranger. `DemoComplianceSeeder` prefers a payer when
     // it picks the subject this walk signs in as, so such a registration
     // exists for both archetypes.
-    if ($name === 'commerce.pay.show' && $member !== null) {
+    // Step two of the same path (ADR-0066 §6.3) answers for the same order
+    // and under the same ownership rule, so it takes the same binder. With
+    // no provider on record it redirects back to step one, which is a page
+    // and not an error.
+    if (in_array($name, ['commerce.pay.show', 'commerce.pay.confirm'], true) && $member !== null) {
         $own = Order::withoutBrandScope()
             ->where('brand_id', $brand->getKey())
             ->where('settles_type', 'registration')
@@ -452,6 +465,20 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             $parameter === 'registrationType' => RegistrationType::withoutBrandScope()
                 ->where('brand_id', $brand->getKey())
                 ->first(),
+            // The entry-condition editor (ADR-0066 §9.1). `konventix:seed`
+            // defines no condition — a reduced fare is an operator's own
+            // product decision, not something a demo should invent for two
+            // archetypes — so this walk mints one itself, the way the public
+            // walk claims an admission below rather than skipping the
+            // holder's download. Skipping instead would mean the editor is
+            // never walked at all.
+            $parameter === 'entryCondition' => EntryCondition::withoutBrandScope()
+                ->where('brand_id', $brand->getKey())
+                ->first()
+                ?? app(BrandContext::class)->withBrand(
+                    $brand,
+                    fn (): EntryCondition => EntryCondition::factory()->student()->create(),
+                ),
             // `{admission}` is only ever this route's — `admission.tickets.holder`
             // (the console's badge route resolves it without a `$member`) —
             // and `holder()` 403s unless `holder_user_id` names the signed-in

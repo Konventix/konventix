@@ -159,9 +159,9 @@ it('sends a cart checkout with an outstanding contract text to the consent scree
         ->post('/cart/checkout', ['account' => $account->id, 'accept_terms' => true])
         ->assertRedirect(route('policies.required', absolute: false))
         // The page the payer was on, not the POST they sent: agreeing has to
-        // land them back on the cart, and a consent screen may not replay a
-        // POST.
-        ->assertSessionHas('url.intended', route('commerce.cart.show', absolute: false));
+        // land them back on the confirmation step they were confirming from
+        // (ADR-0066 §6.3), and a consent screen may not replay a POST.
+        ->assertSessionHas('url.intended', route('commerce.cart.confirm', absolute: false));
 
     expect(Order::query()->count())->toBe(0)
         ->and(Consent::query()->count())->toBe(0);
@@ -175,6 +175,10 @@ it('lets a cart checkout through once the contract text is agreed', function ():
     $account = consentGateAccount();
 
     Consent::factory()->for($terms, 'policyVersion')->create(['subject_id' => $user->getKey()]);
+
+    // ADR-0066 D-CPL-07: the provider is chosen on the cart and the order
+    // is placed from the confirmation step.
+    test()->actingAs($user)->post('/cart/choose', ['account' => $account->id]);
 
     test()->actingAs($user)
         ->post('/cart/checkout', ['account' => $account->id, 'accept_terms' => true])
@@ -193,7 +197,7 @@ it('sends a payment start with an outstanding contract text to the consent scree
     test()->actingAs($user)
         ->post('/pay/registration/'.$registrationId.'/start', ['account' => $account->id, 'accept_terms' => true])
         ->assertRedirect(route('policies.required', absolute: false))
-        ->assertSessionHas('url.intended', route('commerce.pay.show', ['registration' => $registrationId], absolute: false));
+        ->assertSessionHas('url.intended', route('commerce.pay.confirm', ['registration' => $registrationId], absolute: false));
 
     expect(Payment::query()->count())->toBe(0)
         ->and(Consent::query()->count())->toBe(0);
@@ -227,6 +231,10 @@ it('keeps recording terms and withdrawal from the inline box on the checkout tha
         'capture_context' => 'consent_form',
     ]);
 
+    // ADR-0066 D-CPL-07: the provider is chosen on the cart and the order
+    // is placed from the confirmation step.
+    test()->actingAs($user)->post('/cart/choose', ['account' => $account->id]);
+
     test()->actingAs($user)
         ->post('/cart/checkout', ['account' => $account->id, 'accept_terms' => true])
         ->assertRedirect('https://checkout.stripe.test/gate-session');
@@ -254,6 +262,10 @@ it('does not block a checkout over a consent-based required text', function (): 
         'requires_consent' => true,
         'lawful_basis' => LawfulBasis::Consent,
     ]);
+
+    // ADR-0066 D-CPL-07: the provider is chosen on the cart and the order
+    // is placed from the confirmation step.
+    test()->actingAs($user)->post('/cart/choose', ['account' => $account->id]);
 
     test()->actingAs($user)
         ->post('/cart/checkout', ['account' => $account->id, 'accept_terms' => true])
@@ -317,9 +329,215 @@ it('lets a payer who just agreed at the consent screen straight through the chec
 
     test()->actingAs($user)->get('/cart')->assertOk();
 
+    // ADR-0066 D-CPL-07: the provider is chosen on the cart and the order
+    // is placed from the confirmation step.
+    test()->actingAs($user)->post('/cart/choose', ['account' => $account->getKey()]);
+
     test()->actingAs($user)
         ->post('/cart/checkout', ['account' => $account->getKey(), 'accept_terms' => true])
         ->assertRedirect('https://checkout.stripe.test/gate-session');
 
     expect(Order::query()->count())->toBe(1);
+});
+
+/*
+|--------------------------------------------------------------------------
+| The two-step checkout (ADR-0066 §6.3, D-CPL-07)
+|--------------------------------------------------------------------------
+|
+| Which texts apply may depend on the settlement provider, so the provider is
+| chosen first and the texts are shown after. A payer may not be held to have
+| agreed to a list they never saw — which is what makes going back clear the
+| acceptance, and what makes `RecordCheckoutConsent` resolve the context the
+| confirmation step rendered rather than re-deriving one from the brand.
+|
+*/
+
+/**
+ * A second offered account, so the brand has a choice to make and step one
+ * is a real page rather than a redirect.
+ */
+function consentGateSecondAccount(): SettlementAccount
+{
+    return SettlementAccount::factory()->create([
+        'provider' => SettlementAccount::PROVIDER_NULL,
+    ]);
+}
+
+it('names no legal text on step one of the registration checkout', function (): void {
+    consentGateBrand();
+    consentGateLegalTexts();
+    $user = User::factory()->create();
+    $registrationId = consentGateRegistrationOrder($user->getKey());
+    $account = consentGateAccount();
+    consentGateSecondAccount();
+
+    // The contract text is outstanding for this payer, so settle it first —
+    // the #205 gate is not what this case is about.
+    Consent::factory()->for(PolicyVersion::withoutBrandScope()->where('version', 'terms-v1')->sole(), 'policyVersion')
+        ->create(['subject_id' => $user->getKey()]);
+
+    test()->actingAs($user)
+        ->get('/pay/registration/'.$registrationId)
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('pay/Show')
+            ->has('accounts', 2)
+            // Nothing legal at all: the list depends on the choice this page
+            // is asking for.
+            ->missing('consentSlots'));
+
+    test()->actingAs($user)
+        ->post('/pay/registration/'.$registrationId.'/choose', ['account' => $account->getKey()])
+        ->assertRedirect('/pay/registration/'.$registrationId.'/confirm');
+
+    test()->actingAs($user)
+        ->get('/pay/registration/'.$registrationId.'/confirm')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('pay/Confirm')
+            ->where('account.id', $account->getKey())
+            ->where('singleAccount', false)
+            ->where('backUrl', '/pay/registration/'.$registrationId)
+            ->where('consentSlots.0.props.required', true)
+            ->where('consentSlots.0.props.policies.0.slug', 'terms')
+            // `requires_consent: false` on the withdrawal text, so it is
+            // read rather than agreed to (D-CPL-08).
+            ->where('consentSlots.0.props.notices.0.slug', 'withdrawal'));
+});
+
+it('sends a payer with no provider on record back to step one', function (): void {
+    consentGateBrand();
+    consentGateLegalTexts();
+    $user = User::factory()->create();
+    $registrationId = consentGateRegistrationOrder($user->getKey());
+    consentGateAccount();
+    consentGateSecondAccount();
+
+    Consent::factory()->for(PolicyVersion::withoutBrandScope()->where('version', 'terms-v1')->sole(), 'policyVersion')
+        ->create(['subject_id' => $user->getKey()]);
+
+    test()->actingAs($user)
+        ->get('/pay/registration/'.$registrationId.'/confirm')
+        ->assertRedirect('/pay/registration/'.$registrationId);
+});
+
+it('clears the recorded provider when the payer goes back to step one', function (): void {
+    consentGateBrand();
+    consentGateLegalTexts();
+    $user = User::factory()->create();
+    $registrationId = consentGateRegistrationOrder($user->getKey());
+    $stripe = consentGateAccount();
+    consentGateSecondAccount();
+
+    Consent::factory()->for(PolicyVersion::withoutBrandScope()->where('version', 'terms-v1')->sole(), 'policyVersion')
+        ->create(['subject_id' => $user->getKey()]);
+
+    test()->actingAs($user)->post('/pay/registration/'.$registrationId.'/choose', ['account' => $stripe->getKey()]);
+    test()->actingAs($user)->get('/pay/registration/'.$registrationId.'/confirm')->assertOk();
+
+    // The *Back* link. Landing on step one un-makes the choice, and with it
+    // any acceptance the confirmation step had collected against it — a new
+    // choice always re-resolves the list.
+    test()->actingAs($user)->get('/pay/registration/'.$registrationId)->assertOk();
+
+    test()->actingAs($user)
+        ->get('/pay/registration/'.$registrationId.'/confirm')
+        ->assertRedirect('/pay/registration/'.$registrationId);
+
+    // And a POST that names a provider nobody chose is refused rather than
+    // taken as a declaration.
+    test()->actingAs($user)
+        ->post('/pay/registration/'.$registrationId.'/start', [
+            'account' => $stripe->getKey(),
+            'accept_terms' => true,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasErrors('account');
+
+    expect(Payment::query()->count())->toBe(0);
+});
+
+it('refuses a start that names a provider other than the one on record', function (): void {
+    consentGateBrand();
+    consentGateLegalTexts();
+    $user = User::factory()->create();
+    $registrationId = consentGateRegistrationOrder($user->getKey());
+    $stripe = consentGateAccount();
+    $other = consentGateSecondAccount();
+
+    Consent::factory()->for(PolicyVersion::withoutBrandScope()->where('version', 'terms-v1')->sole(), 'policyVersion')
+        ->create(['subject_id' => $user->getKey()]);
+
+    test()->actingAs($user)->post('/pay/registration/'.$registrationId.'/choose', ['account' => $stripe->getKey()]);
+
+    test()->actingAs($user)
+        ->post('/pay/registration/'.$registrationId.'/start', [
+            'account' => $other->getKey(),
+            'accept_terms' => true,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasErrors('account');
+
+    expect(Payment::query()->count())->toBe(0);
+});
+
+it('lands a one-account brand on the confirmation step directly', function (): void {
+    consentGateBrand();
+    consentGateLegalTexts();
+    $user = User::factory()->create();
+    $registrationId = consentGateRegistrationOrder($user->getKey());
+    $account = consentGateAccount();
+
+    Consent::factory()->for(PolicyVersion::withoutBrandScope()->where('version', 'terms-v1')->sole(), 'policyVersion')
+        ->create(['subject_id' => $user->getKey()]);
+
+    test()->actingAs($user)
+        ->get('/pay/registration/'.$registrationId)
+        ->assertRedirect('/pay/registration/'.$registrationId.'/confirm');
+
+    test()->actingAs($user)
+        ->get('/pay/registration/'.$registrationId.'/confirm')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('account.id', $account->getKey())
+            ->where('singleAccount', true)
+            // Nothing to go back to: there was no choice.
+            ->where('backUrl', null));
+});
+
+it('records the versions the confirmation step rendered, with the chosen provider in the snapshot', function (): void {
+    $brand = consentGateBrand();
+    consentGateLegalTexts();
+    $user = User::factory()->create();
+    $registrationId = consentGateRegistrationOrder($user->getKey());
+    $account = consentGateAccount();
+
+    Consent::factory()->for(PolicyVersion::withoutBrandScope()->where('version', 'terms-v1')->sole(), 'policyVersion')
+        ->create(['subject_id' => $user->getKey()]);
+
+    test()->actingAs($user)->get('/pay/registration/'.$registrationId.'/confirm')->assertOk();
+
+    test()->actingAs($user)
+        ->post('/pay/registration/'.$registrationId.'/start', [
+            'account' => $account->getKey(),
+            'accept_terms' => true,
+        ])
+        ->assertRedirect('https://checkout.stripe.test/gate-session');
+
+    $consents = Consent::query()->where('subject_id', $user->getKey())->get();
+
+    // Two texts applied to this purchase and two rows exist: the
+    // pre-existing agreement to `terms-v1` is idempotent, and `withdrawal`
+    // is recorded now.
+    expect($consents)->toHaveCount(2)
+        ->and($consents->pluck('brand_id')->unique()->all())->toBe([$brand->getKey()]);
+
+    $withdrawal = $consents->first(fn (Consent $consent): bool => $consent->binding_context !== null);
+
+    // D-CPL-09: the snapshot names the provider the payer chose in step one,
+    // which is what makes "why was this person asked, and for which
+    // purchase" one row rather than a reconstruction.
+    expect($withdrawal->binding_context['settlement_provider'])->toBe('stripe')
+        ->and($withdrawal->binding_context['order_id'])->not->toBeNull();
 });

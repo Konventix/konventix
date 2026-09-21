@@ -41,6 +41,29 @@ what comes back (ADR-0004).
   `requires_consent` alone decides agreement versus information; there is no
   role column and no third role. `Support\CheckoutLegalTexts::forBrand()`
   stays the no-context call the #222 gap notice asks.
+- **The consent controls on every purchase path** (ADR-0066 §6.2, §6.3):
+  one builder, `Support\ConsentContribution`, fills both slots —
+  Commerce's `checkout.consent` and Registration's own
+  `registration.consent` — from a `BindingContext`. What crosses the
+  boundary is unchanged in kind: a boolean, a URL and two lists of names and
+  links (`policies` to agree to, `notices` to read, split by
+  `requires_consent`). Version ids stay on the server; which version an
+  agreement binds is resolved again when it is recorded. The asking module
+  still never learns that a policy exists (T-2).
+- **The console's binding editor** (§9.2): the *Where this applies* card on
+  the policy editor, behind `ManagePolicyBindings`. Bindings as chips
+  grouped by kind, a picker fed by Platform's `Targets\TargetDirectory`
+  (Compliance reads no foreign table, D-CPL-11), the empty-state sentence
+  *"No bindings: this text applies everywhere this brand sells"*, and — once
+  a second kind is bound — the matching rule in words. A target the registry
+  cannot name renders as `Unknown (event · 01HX…)` with *Remove*: a dangling
+  binding never matches and is not an error. The policy index marks a bound
+  text.
+- **The record behind the two-step checkout** (D-CPL-07):
+  `RecordCheckoutConsent` and `RecordConsentDeclaration` resolve the context
+  their surface rendered — carried on `CheckoutConsentGiven` and
+  `RegistrationConsentGiven` — and never re-derive a list from the brand.
+  That is what keeps the rows and the page the payer saw identical.
 - **Consent records**: subject, policy version, timestamp, the context the
   consent was captured in, the binding that made the text applicable and a
   snapshot of the scalars the resolution ran on (D-CPL-09 — evidence, never

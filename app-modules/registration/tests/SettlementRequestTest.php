@@ -13,6 +13,7 @@ use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
+use Konventix\Registration\Models\EntryCondition;
 use Konventix\Registration\Models\RegistrationType;
 
 function billedSubmission(): SubmitRegistrationData
@@ -131,3 +132,43 @@ it('refuses to request settlement for a priced settlement without a price declar
 
     app(SubmitRegistration::class)->handle($type, (string) Str::ulid(), billedSubmission());
 })->throws(RuntimeException::class, 'no price declaration');
+
+it('carries the binding context of what is being bought (ADR-0066, D-CPL-06)', function (): void {
+    // The bag Commerce persists on the order line and interprets no key of
+    // (spec §7.2). Registration builds it without knowing that a policy
+    // exists; Compliance is the only module that knows what the ids mean.
+    $this->withBrand();
+
+    $condition = EntryCondition::factory()->create(['key' => 'student']);
+    $type = RegistrationType::factory()->invoiceSettled()->create();
+    $type->entryConditions()->attach($condition->getKey(), ['position' => 0]);
+
+    Event::fake([RegistrationSettlementRequested::class]);
+
+    $submission = new SubmitRegistrationData(
+        organizationName: 'Musterfirma GmbH',
+        billingRecipientName: 'Erika Musterfrau',
+        billingEmail: 'rechnung@musterfirma.example',
+        billingAddressLine: 'Musterstraße 1',
+        billingPostalCode: '18439',
+        billingCity: 'Stralsund',
+        billingCountryCode: 'DE',
+        billingVatId: null,
+        acceptedEntryConditionIds: [(string) $condition->getKey()],
+    );
+
+    $registration = app(SubmitRegistration::class)->handle($type, (string) Str::ulid(), $submission);
+    app(ApproveRegistration::class)->handle($registration, (string) Str::ulid());
+
+    Event::assertDispatched(RegistrationSettlementRequested::class, function (RegistrationSettlementRequested $event) use ($condition, $registration, $type): bool {
+        return $event->bindingContext === [
+            'event_id' => $type->event_id,
+            // A list of one: the bag's shape is the resolver's own, so it
+            // arrives ready to read rather than needing a translation step
+            // in the module forbidden to understand it.
+            'registration_type_ids' => [(string) $type->getKey()],
+            'entry_condition_ids' => [(string) $condition->getKey()],
+            'registration_id' => (string) $registration->getKey(),
+        ];
+    });
+});

@@ -28,6 +28,7 @@ use Konventix\Commerce\Enums\CartStatus;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
 use Konventix\Commerce\Exceptions\CartCheckoutRefusedException;
 use Konventix\Commerce\Exceptions\StockExhaustedException;
+use Konventix\Commerce\Http\Controllers\Concerns\ChoosesSettlementAccount;
 use Konventix\Commerce\Models\Cart;
 use Konventix\Commerce\Models\CartLine;
 use Konventix\Commerce\Models\Order;
@@ -55,6 +56,14 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
  */
 final class CartController
 {
+    use ChoosesSettlementAccount;
+
+    /** The session scope this path records its choice under. */
+    private const string CHOICE_SCOPE = 'cart';
+
+    /** Where step one's billing fields wait for step two. */
+    private const string BILLING_SESSION = 'commerce.checkout.billing';
+
     public function __construct(
         private readonly TaxCalculator $taxCalculator,
         private readonly OperatorSettings $operatorSettings,
@@ -72,17 +81,27 @@ final class CartController
         // an account and ticked the box. Loop-free — `policies.required`
         // carries no gate of its own — and the intent it remembers brings
         // them straight back here.
-        $consentSlots = $this->consentSlots->contributions();
-        $outstandingUrl = $this->consentSlots->outstandingUrl($consentSlots);
+        $redirect = $this->outstandingConsentRedirect($request, route('commerce.cart.show', absolute: false));
 
-        if ($outstandingUrl !== null) {
-            $request->session()->put('url.intended', route('commerce.cart.show', absolute: false));
-
-            return redirect()->to($outstandingUrl);
+        if ($redirect !== null) {
+            return $redirect;
         }
 
         $cart = $this->openCartFor($request);
         $lines = $cart?->lines()->get() ?? new Collection;
+
+        // Step one is also where the choice is un-made (ADR-0066 D-CPL-07):
+        // coming back to the cart clears the provider and the billing
+        // fields, and with them any acceptance the confirmation step had
+        // collected against that provider.
+        //
+        // Unlike the pay page, this step is never skipped for a brand with a
+        // single account: step one here *is* the cart, which the payer has to
+        // see whatever the provider situation is. The choice is then a single
+        // "continue" button, which is the same thing D-CPL-07 asks for.
+        if ($cart !== null) {
+            $this->forgetCheckoutState($request, $cart);
+        }
 
         $calculation = $lines->isEmpty() ? null : $this->taxCalculator->calculate(
             lines: array_values($lines->map(fn (CartLine $line): array => [
@@ -120,13 +139,11 @@ final class CartController
             );
         })->all());
 
+        // No legal text on this page since ADR-0066: the list depends on the
+        // provider, and the provider is chosen here (spec §6.3). What the
+        // payer is agreeing to is named on `cart/Confirm`, together with the
+        // one accept control.
         return Inertia::render('cart/Show', [
-            // Compliance's consent control (GitLab #2). Commerce may not read
-            // a policy row, so the module that owns the legal texts computes
-            // its own props here through Platform's slot registry (ADR-0003
-            // enforcement point 3), exactly as Registration contributes to
-            // Event's landing page.
-            'consentSlots' => $consentSlots,
             'cart' => CartData::ofCart(
                 $cart,
                 $lineData,
@@ -201,94 +218,209 @@ final class CartController
         return back();
     }
 
-    public function checkout(Request $request): SymfonyResponse
+    /**
+     * Step one's submit (ADR-0066 §6.3, D-CPL-07): the payer picked a
+     * provider and, where the total needs one, filled in a billing address.
+     *
+     * Neither is a declaration of anything — no text has been shown yet — so
+     * nothing is recorded and nothing is emitted. Both wait in the session
+     * for the confirmation step, which is where the texts that depend on the
+     * provider are resolved and where the single accept control lives.
+     */
+    public function choose(Request $request): SymfonyResponse
     {
-        $consentSlots = $this->consentSlots->contributions();
-
-        // GitLab #205: the page gate above is the one a payer normally
-        // meets; this is the one that holds when the version was published
-        // between the render and the submit. Checked before validation so
-        // the payer is not first told to tick a box on a page they are
-        // about to be sent away from. The intent is the cart page,
-        // deliberately, not this POST: agreeing has to land them back where
-        // they were, and a consent screen may not replay a purchase.
-        $outstandingUrl = $this->consentSlots->outstandingUrl($consentSlots);
-
-        if ($outstandingUrl !== null) {
-            $request->session()->put('url.intended', route('commerce.cart.show', absolute: false));
-
-            return redirect()->to($outstandingUrl);
-        }
-
-        // "Zahlungspflichtig bestellen" concludes the contract, so the
-        // declaration is a field of this request, not a courtesy on the page
-        // (GitLab #2). `accepted` is what puts the error on `accept_terms`
-        // for the control that raised it (ADR-0055). Demanded only where
-        // there is something to declare: an instance with no published texts
-        // renders no control, and a checkout that insisted on one anyway
-        // could never be completed.
-        //
-        // Billing address fields stay nullable here regardless of the
-        // order's total (#4): whether they are actually required depends on
-        // the cart's *computed* gross, which is not known until
-        // `PlaceOrderFromCart` runs the same tax calculation this
-        // controller cannot repeat without risking the two ever disagreeing
-        // — `PlaceOrderFromCart::guardBillingAddress()` is the one place
-        // that refuses a submission missing them. Deliberately not a Data
-        // object for this whole form (unlike `storeLine()`/`AddToCartData`):
-        // injecting one validates before the method body runs, the same as
-        // a `FormRequest`, which would run it *before* the outstandingUrl
-        // gate above — exactly the ordering GitLab #205 fixed.
-        $validated = $request->validate(array_merge(
-            $this->consentSlots->declarationRequired($consentSlots)
-                ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
-                : ['account' => ['required', 'ulid']],
-            [
-                'billingAddressLine' => ['nullable', 'string', 'max:255'],
-                'billingPostalCode' => ['nullable', 'string', 'max:16'],
-                'billingCity' => ['nullable', 'string', 'max:255'],
-                'billingCountryCode' => ['nullable', 'string', 'size:2'],
-            ],
-        ));
+        $validated = $request->validate([
+            'account' => ['required', 'ulid'],
+            'billingAddressLine' => ['nullable', 'string', 'max:255'],
+            'billingPostalCode' => ['nullable', 'string', 'max:16'],
+            'billingCity' => ['nullable', 'string', 'max:255'],
+            'billingCountryCode' => ['nullable', 'string', 'size:2'],
+        ]);
 
         $cart = $this->cartForCheckout($request);
 
         $account = $this->offeredAccounts($cart->brand_id)->firstWhere('id', $validated['account']);
 
-        // An id that is unknown, not offered, or another brand's all land
-        // here alike: refused with a validation error on `account`, the
-        // same as `CheckoutController::start()`.
         if ($account === null) {
             throw ValidationException::withMessages([
                 'account' => __('Choose one of the offered payment options.'),
             ]);
         }
 
+        $this->rememberAccountId($request, self::CHOICE_SCOPE, (string) $cart->getKey(), (string) $account->getKey());
+        $request->session()->put($this->billingKey($cart), [
+            'billingAddressLine' => $validated['billingAddressLine'] ?? null,
+            'billingPostalCode' => $validated['billingPostalCode'] ?? null,
+            'billingCity' => $validated['billingCity'] ?? null,
+            'billingCountryCode' => $validated['billingCountryCode'] ?? null,
+        ]);
+
+        return redirect()->route('commerce.cart.confirm');
+    }
+
+    /**
+     * Step two: what is being bought, how it will be paid, the texts that
+     * apply to *this* purchase through *that* provider, and the one control
+     * that accepts them (ADR-0066 §6.3).
+     */
+    public function confirm(Request $request, BrandContext $brandContext): Response|RedirectResponse
+    {
+        $brand = $brandContext->current();
+        abort_if($brand === null, 404);
+
+        $redirect = $this->outstandingConsentRedirect($request, route('commerce.cart.confirm', absolute: false));
+
+        if ($redirect !== null) {
+            return $redirect;
+        }
+
+        $cart = $this->openCartFor($request);
+
+        if ($cart === null) {
+            return redirect()->route('commerce.cart.show');
+        }
+
+        $lines = $cart->lines()->get();
+        $account = $this->confirmedAccountFor($request, $cart);
+
+        // No provider on record (a direct link, a cleared session), or an
+        // empty cart: back to step one, which is where both are fixed.
+        if ($account === null || $lines->isEmpty()) {
+            return redirect()->route('commerce.cart.show');
+        }
+
+        $calculation = $this->taxCalculator->calculate(
+            lines: array_values($lines->map(fn (CartLine $line): array => [
+                'label' => $line->label,
+                'quantity' => $line->quantity,
+                'unit_amount_net' => $line->unit_amount_net,
+                'tax_class' => $line->tax_class->value,
+            ])->all()),
+            operatorSmallBusinessScheme: $this->operatorSettings->sellerForBrand($brand->id)->smallBusinessScheme,
+            billingVatId: null,
+            billingCountryCode: null,
+        );
+
+        return Inertia::render('cart/Confirm', [
+            'summary' => [
+                'currency' => $this->operatorSettings->currencyForBrand($brand->id),
+                'totalNet' => $calculation->totalNet,
+                'totalTax' => $calculation->totalTax,
+                'totalGross' => $calculation->totalGross,
+                'lines' => array_values($lines->values()->map(fn (CartLine $line, int $index): array => [
+                    'label' => $line->label,
+                    'quantity' => $line->quantity,
+                    'lineGross' => $calculation->lines[$index]->lineGross,
+                ])->all()),
+            ],
+            'account' => CheckoutAccountData::ofAccount(
+                $account,
+                $this->registry->forProvider($account->provider),
+            )->toArray(),
+            'consentSlots' => $this->consentSlots->contributions(
+                $this->bindingContextForCart($cart, $lines, $account->provider),
+            ),
+            'startUrl' => route('commerce.cart.checkout', absolute: false),
+            'backUrl' => route('commerce.cart.show', absolute: false),
+        ]);
+    }
+
+    public function checkout(Request $request): SymfonyResponse
+    {
+        // GitLab #205: the page gate is the one a payer normally meets; this
+        // is the one that holds when the version was published between the
+        // render and the submit. Checked before validation so the payer is
+        // not first told to tick a box on a page they are about to be sent
+        // away from. The intent is the confirmation page, deliberately, not
+        // this POST: agreeing has to land them back where they were, and a
+        // consent screen may not replay a purchase.
+        $redirect = $this->outstandingConsentRedirect($request, route('commerce.cart.confirm', absolute: false));
+
+        if ($redirect !== null) {
+            return $redirect;
+        }
+
+        $cart = $this->cartForCheckout($request);
+
+        // The provider the confirmation step actually rendered its list
+        // against (ADR-0066 §6.3 point 3). Without one there is nothing this
+        // POST could be a declaration about, and the payer goes back to the
+        // cart to choose.
+        $account = $this->confirmedAccountFor($request, $cart);
+
+        // Nothing usable on record: refused the way any other rejected form
+        // field is, with an error on `account` on the page that can fix it.
+        if ($account === null) {
+            throw ValidationException::withMessages([
+                'account' => __('Choose one of the offered payment options.'),
+            ]);
+        }
+
+        $lines = $cart->lines()->get();
+        $context = $this->bindingContextForCart($cart, $lines, $account->provider);
+        $consentSlots = $this->consentSlots->contributions($context);
+
+        // "Zahlungspflichtig bestellen" concludes the contract, so the
+        // declaration is a field of this request, not a courtesy on the page
+        // (GitLab #2). `accepted` is what puts the error on `accept_terms`
+        // for the control that raised it (ADR-0055). Demanded only where
+        // there is something to declare: an instance where nothing applies
+        // renders no control, and a checkout that insisted on one anyway
+        // could never be completed.
+        //
+        // Deliberately not a Data object for this form (unlike
+        // `storeLine()`/`AddToCartData`): injecting one validates before the
+        // method body runs, the same as a `FormRequest`, which would run it
+        // *before* the outstanding-consent gate above — exactly the ordering
+        // GitLab #205 fixed.
+        $validated = $request->validate($this->consentSlots->declarationRequired($consentSlots)
+            ? ['account' => ['required', 'ulid'], 'accept_terms' => ['accepted']]
+            : ['account' => ['required', 'ulid']]);
+
+        // The posted account has to be the remembered one: a POST naming
+        // another provider is a declaration about a list this payer was
+        // never shown (D-CPL-07).
+        if ($validated['account'] !== (string) $account->getKey()) {
+            throw ValidationException::withMessages([
+                'account' => __('The payment option changed. Please confirm the documents for the option you picked.'),
+            ]);
+        }
+
         // ADR-0048: a cart order needs a billing party to invoice against
         // once it is paid. Name and email always come from the account; the
-        // address fields above ride along only when the payer filled them
-        // in — required or not is `PlaceOrderFromCart`'s own call, once it
-        // knows the cart's actual computed total (#4,
-        // `BillingPartyData::ofAccount`'s own docblock).
+        // address fields come from step one, where they were collected —
+        // required or not is `PlaceOrderFromCart`'s own call, once it knows
+        // the cart's actual computed total (#4, `BillingPartyData::ofAccount`'s
+        // own docblock). They ride the session rather than this POST because
+        // the confirmation page is about the documents and the money, not
+        // about re-typing an address (ADR-0066 §6.3).
+        $billing = $this->rememberedBilling($request, $cart);
+
         $billingParty = BillingPartyData::ofAccount(
             (string) $request->user()->name,
             (string) $request->user()->email,
-            $validated['billingAddressLine'] ?? null,
-            $validated['billingPostalCode'] ?? null,
-            $validated['billingCity'] ?? null,
-            $validated['billingCountryCode'] ?? null,
+            $billing['billingAddressLine'],
+            $billing['billingPostalCode'],
+            $billing['billingCity'],
+            $billing['billingCountryCode'],
         );
 
         // Recorded before the order is placed: the declaration is what
         // authorizes it, and an adapter failure a moment later must not lose
         // the record that it was made. Compliance decides which documents
-        // and which version — Commerce never writes a consent row (ADR-0004).
+        // and which version — Commerce never writes a consent row (ADR-0004)
+        // — and it resolves the very context this page rendered, which
+        // travels on the event (D-CPL-07 point 4).
         if ($this->consentSlots->declarationRequired($consentSlots)) {
+            $bag = $context['bindingContext'];
+            $bag['settlement_provider'] = $account->provider;
+
             event(new CheckoutConsentGiven(
                 brandId: $cart->brand_id,
                 subjectId: (string) $request->user()->getAuthIdentifier(),
                 captureContext: 'checkout',
                 acceptedAt: now()->toIso8601String(),
+                bindingContext: $bag,
             ));
         }
 
@@ -315,8 +447,92 @@ final class CartController
             abort(409, $e->getMessage());
         }
 
+        // The choice and the address have done their work. A payer who
+        // comes back chooses again and is shown the list again — which is
+        // the whole point of clearing it (D-CPL-07).
+        $this->forgetCheckoutState($request, $cart);
+
         // A hard redirect out of the SPA to the provider's hosted page.
         return Inertia::location($redirect->url);
+    }
+
+    /**
+     * The consent screen when this payer owes agreement to a contract text,
+     * null when they do not (GitLab #205).
+     *
+     * `$intended` is a page, never a POST: agreeing has to land them back
+     * where they were, and a consent screen may not replay a purchase.
+     */
+    private function outstandingConsentRedirect(Request $request, string $intended): ?RedirectResponse
+    {
+        // The brand-wide question, which is what this gate has always asked:
+        // it is about a text somebody owes before *any* purchase, not about
+        // the texts this particular one is under.
+        $outstandingUrl = $this->consentSlots->outstandingUrl($this->consentSlots->contributions());
+
+        if ($outstandingUrl === null) {
+            return null;
+        }
+
+        $request->session()->put('url.intended', $intended);
+
+        return redirect()->to($outstandingUrl);
+    }
+
+    /**
+     * The account step one recorded for this cart, or null — nothing on
+     * record, or an account that is no longer offered (one disconnected
+     * between the two steps). Null sends the payer back to the cart rather
+     * than resolving a list against a provider they did not pick.
+     */
+    private function confirmedAccountFor(Request $request, Cart $cart): ?SettlementAccount
+    {
+        $chosen = $this->rememberedAccountId($request, self::CHOICE_SCOPE, (string) $cart->getKey());
+
+        if ($chosen === null) {
+            return null;
+        }
+
+        return $this->offeredAccounts($cart->brand_id)->firstWhere('id', $chosen);
+    }
+
+    private function billingKey(Cart $cart): string
+    {
+        return self::BILLING_SESSION.'.'.$cart->getKey();
+    }
+
+    /**
+     * The address step one collected, with every field defaulting to null —
+     * "present but blank" is missing as far as
+     * `BillingPartyData::hasPostalAddress()` is concerned (#4).
+     *
+     * @return array{billingAddressLine: string|null, billingPostalCode: string|null, billingCity: string|null, billingCountryCode: string|null}
+     */
+    private function rememberedBilling(Request $request, Cart $cart): array
+    {
+        $stored = $request->session()->get($this->billingKey($cart));
+        $stored = is_array($stored) ? $stored : [];
+
+        $value = static function (mixed $raw): ?string {
+            return is_string($raw) && $raw !== '' ? $raw : null;
+        };
+
+        return [
+            'billingAddressLine' => $value($stored['billingAddressLine'] ?? null),
+            'billingPostalCode' => $value($stored['billingPostalCode'] ?? null),
+            'billingCity' => $value($stored['billingCity'] ?? null),
+            'billingCountryCode' => $value($stored['billingCountryCode'] ?? null),
+        ];
+    }
+
+    /**
+     * Landing on step one, or finishing, clears both halves of what step one
+     * collected (D-CPL-07).
+     */
+    private function forgetCheckoutState(Request $request, Cart $cart): void
+    {
+        $this->forgetAccountChoice($request, self::CHOICE_SCOPE, (string) $cart->getKey());
+        $request->session()->forget($this->billingKey($cart));
     }
 
     /**

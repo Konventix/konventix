@@ -56,6 +56,7 @@ final class PlaceOrderFromSettlementRequest
      *     vat_id: string|null,
      * }  $billingParty
      * @param  list<array{label: string, quantity: int, unit_amount_net: numeric-string, tax_class: string}>  $lines
+     * @param  array<string, mixed>  $bindingContext  opaque scalars from the request, stored and never read (ADR-0066 D-CPL-06)
      */
     public function handle(
         string $registrationId,
@@ -67,6 +68,7 @@ final class PlaceOrderFromSettlementRequest
         int $termsDays,
         string $requestKey,
         ?string $payerUserId = null,
+        array $bindingContext = [],
     ): Order {
         $existing = Order::withoutBrandScope()
             ->where('brand_id', $brandId)
@@ -85,7 +87,7 @@ final class PlaceOrderFromSettlementRequest
             return $existing;
         }
 
-        return DB::transaction(function () use ($registrationId, $brandId, $settlement, $billingParty, $lines, $priceDisplay, $termsDays, $requestKey, $payerUserId): Order {
+        return DB::transaction(function () use ($registrationId, $brandId, $settlement, $billingParty, $lines, $priceDisplay, $termsDays, $requestKey, $payerUserId, $bindingContext): Order {
             $seller = $this->operatorSettings->sellerForBrand($brandId);
             $party = BillingPartyData::ofEventPayload($billingParty);
 
@@ -130,6 +132,11 @@ final class PlaceOrderFromSettlementRequest
                     'line_net' => $line->lineNet,
                     'line_tax' => $line->lineTax,
                     'line_gross' => $line->lineGross,
+                    // ADR-0066 D-CPL-06: the request's own bag, stored
+                    // opaquely on every line of the order it produced. Null
+                    // where the request carried none, which is what an
+                    // older queued payload replays as.
+                    'binding_context' => $bindingContext === [] ? null : $bindingContext,
                 ]);
                 $orderLine->brand_id = $brandId;
                 $orderLine->save();

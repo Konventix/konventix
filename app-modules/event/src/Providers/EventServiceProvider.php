@@ -11,6 +11,7 @@ use Konventix\Event\Console\ReplayEventDetailsCommand;
 use Konventix\Event\Enums\Permission;
 use Konventix\Event\Metrics\EventMetrics;
 use Konventix\Event\Models\Event;
+use Konventix\Event\Targets\EventTargetProvider;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
@@ -18,6 +19,7 @@ use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Operators\ConsoleEventSources;
 use Konventix\Platform\Slots\SlotRegistry;
+use Konventix\Platform\Targets\TargetDirectory;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -167,5 +169,16 @@ class EventServiceProvider extends ModuleServiceProvider
                     ->all(),
             ),
         );
+    }
+
+    /**
+     * The `event` kind of Platform's target registry (ADR-0066 §7.3,
+     * D-CPL-11) — the same boot-time contribution pattern as the console
+     * event source above, for a different registry. Event owns the rows;
+     * whoever needs one named asks Platform, never this module.
+     */
+    protected function registerTargetProviders(): void
+    {
+        $this->app->make(TargetDirectory::class)->register(new EventTargetProvider);
     }
 }

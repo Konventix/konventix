@@ -18,14 +18,18 @@ use Konventix\Compliance\Data\CheckoutLegalTextRoleData;
 use Konventix\Compliance\Data\PolicyData;
 use Konventix\Compliance\Data\PolicyVersionData;
 use Konventix\Compliance\Enums\Permission;
+use Konventix\Compliance\Enums\PolicyBindingKind;
 use Konventix\Compliance\Enums\PolicyVersionState;
 use Konventix\Compliance\Models\Consent;
 use Konventix\Compliance\Models\Policy;
+use Konventix\Compliance\Models\PolicyBinding;
 use Konventix\Compliance\Models\PolicyVersion;
 use Konventix\Compliance\Support\CheckoutLegalTexts;
 use Konventix\Compliance\Support\PolicyMarkdown;
+use Konventix\Platform\Data\TargetOptionData;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Targets\TargetDirectory;
 
 /**
  * Operator console: the policies a brand publishes and their versions
@@ -78,8 +82,18 @@ class PolicyAdminController
 
         $shadows = $this->shadowCounts($policies->getCollection());
 
+        // Which texts on this page are conditional at all (ADR-0066 §9.2).
+        // One query for the page, not one per row; the count itself never
+        // reaches the list — "bound" or "applies everywhere" is the whole
+        // distinction an operator scanning the list needs.
+        $boundPolicyIds = PolicyBinding::withoutBrandScope()
+            ->whereIn('policy_id', $ids)
+            ->distinct()
+            ->pluck('policy_id')
+            ->all();
+
         return Inertia::render('admin/policies/Index', [
-            'policies' => $policies->through(function (Policy $policy) use ($brandNames, $shadows, $versions): array {
+            'policies' => $policies->through(function (Policy $policy) use ($boundPolicyIds, $brandNames, $shadows, $versions): array {
                 /** @var Collection<int, PolicyVersion> $own */
                 $own = $versions->get($policy->getKey(), collect());
                 $published = $own->firstWhere('state', PolicyVersionState::Published);
@@ -104,6 +118,11 @@ class PolicyAdminController
                     // ... and, from the other side, whether this brand row is
                     // the override.
                     'shadowsOperator' => ! $operatorWide && in_array($policy->slug, $shadows['operatorSlugs'], true),
+                    // D-CPL-04: no binding means this text applies
+                    // everywhere the brand sells, which is the default and
+                    // needs no marker. A bound one is the exception, so the
+                    // list says so.
+                    'bound' => in_array((string) $policy->getKey(), $boundPolicyIds, true),
                     'versions' => $own->count(),
                     'publishedVersion' => $published?->version,
                     'requiresConsent' => (bool) $published?->requires_consent,
@@ -178,8 +197,13 @@ class PolicyAdminController
         return to_route('admin.policies.edit', $policy->getKey());
     }
 
-    public function edit(Request $request, string $policy, PolicyMarkdown $markdown, CheckoutLegalTexts $checkoutLegalTexts): Response
-    {
+    public function edit(
+        Request $request,
+        string $policy,
+        PolicyMarkdown $markdown,
+        CheckoutLegalTexts $checkoutLegalTexts,
+        TargetDirectory $targets,
+    ): Response {
         Gate::authorize(Permission::ViewPolicies->value);
 
         $model = $this->find($policy);
@@ -235,6 +259,28 @@ class PolicyAdminController
                         Brand::query()->whereKey($model->brand_id)->get(['id', 'name']),
                     ),
             ),
+            // ADR-0066 §9.2, the "Where this applies" card. Every label is
+            // resolved through Platform's registry and never by reading
+            // Event's or Registration's tables (ADR-0004, D-CPL-11); null
+            // means the target is gone, which the card renders as
+            // `Unknown (event · 01HX…)` with a *Remove* button rather than
+            // hiding it.
+            'bindings' => $this->bindingProps($model, $targets),
+            'bindingOptions' => array_map(
+                fn (TargetOptionData $option): array => $option->toArray(),
+                // An operator-wide policy carries no brand, and the registry
+                // then answers for the whole operator — which is exactly the
+                // set an operator-wide text may be bound to.
+                $targets->optionsFor($model->brand_id),
+            ),
+            'bindingKinds' => array_map(fn (PolicyBindingKind $kind): array => [
+                'value' => $kind->value,
+                'label' => $kind->label(),
+                'plural' => $kind->pluralLabel(),
+            ], PolicyBindingKind::cases()),
+            // D-CPL-16: binding a text is its own capability, separate from
+            // writing one. A reader without it sees the card and no controls.
+            'canManageBindings' => Gate::allows(Permission::ManagePolicyBindings->value),
             'versions' => $versions->map(fn (PolicyVersion $version): array => [
                 'id' => $version->getKey(),
                 'version' => $version->version,
@@ -266,6 +312,32 @@ class PolicyAdminController
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Policy saved.')]);
 
         return to_route('admin.policies.edit', $model->getKey());
+    }
+
+    /**
+     * The bindings of one policy, labelled for the console (ADR-0066 §9.2).
+     *
+     * `withoutBrandScope()` for the two reasons every read here has it: an
+     * operator-wide binding carries no `brand_id` at all (#76, D-CPL-05), and
+     * the admin host hardens the scope to zero rows (ADR-0029).
+     *
+     * @return list<array{id: string, kind: string, kindLabel: string, targetKey: string, label: string|null}>
+     */
+    private function bindingProps(Policy $policy, TargetDirectory $targets): array
+    {
+        return array_values(PolicyBinding::withoutBrandScope()
+            ->where('policy_id', $policy->getKey())
+            ->orderBy('kind')
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn (PolicyBinding $binding): array => [
+                'id' => (string) $binding->getKey(),
+                'kind' => $binding->kind->value,
+                'kindLabel' => $binding->kind->label(),
+                'targetKey' => $binding->target_key,
+                'label' => $targets->labelFor($binding->kind->value, $binding->target_key),
+            ])
+            ->all());
     }
 
     /**

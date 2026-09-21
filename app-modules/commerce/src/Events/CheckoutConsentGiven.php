@@ -17,6 +17,18 @@ namespace Konventix\Commerce\Events;
  * and Actions are not reachable from here (ADR-0004, enforced by
  * tests/Unit/ArchitectureTest.php).
  *
+ * `bindingContext` is the bag the confirmation step resolved its list from
+ * (ADR-0066 §6.3, D-CPL-06): the union of the order lines' opaque
+ * registration-side bags, plus the two facts Commerce owns — the provider
+ * the payer chose in step one and the order id. Commerce never interprets a
+ * key of it; Compliance is the only module that knows what any of them mean,
+ * and it resolves *this* context rather than re-deriving a list from the
+ * brand, which is what keeps the rows and the page the payer saw identical.
+ *
+ * Appended last with an empty default, so an existing named-argument
+ * emission keeps working and an older queued payload replays as
+ * "brand-wide", which is the behaviour it was recorded under.
+ *
  * Payload is scalars/ULIDs only (ADR-0004) — never an Eloquent model.
  */
 final readonly class CheckoutConsentGiven
@@ -27,5 +39,7 @@ final readonly class CheckoutConsentGiven
         /** Where the declaration was captured — `checkout` for both paths. */
         public string $captureContext,
         public string $acceptedAt,
+        /** @var array<string, mixed> */
+        public array $bindingContext = [],
     ) {}
 }

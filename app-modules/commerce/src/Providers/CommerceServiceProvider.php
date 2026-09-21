@@ -76,6 +76,7 @@ use Konventix\Commerce\Settlement\Unzer\SdkUnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Commerce\Settlement\Unzer\UnzerSettlementAdapter;
 use Konventix\Commerce\Storage\InvoiceStorageMigration;
+use Konventix\Commerce\Targets\SettlementProviderTargetProvider;
 use Konventix\Commerce\Tax\TaxCalculator;
 use Konventix\Commerce\WaitingRoom\ArrayWaitingRoomStore;
 use Konventix\Commerce\WaitingRoom\CommerceWaitingRoomGate;
@@ -104,6 +105,7 @@ use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Pricing\EndPriceCalculator;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
+use Konventix\Platform\Targets\TargetDirectory;
 use Konventix\Platform\WaitingRoom\WaitingRoomGate;
 use Konventix\Registration\Events\RegistrationQuantityReduced;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
@@ -1248,6 +1250,20 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 order: 20,
                 area: NavigationItem::AREA_ACCOUNT,
             ),
+        );
+    }
+
+    /**
+     * The `settlement_provider` kind of Platform's target registry
+     * (ADR-0066 §7.3, D-CPL-11), so a console picker can offer "Stripe"
+     * rather than `stripe` without anybody reading this module's tables
+     * (ADR-0004). The provider is built through the container because it
+     * takes the adapter registry, which is itself a boot-time singleton.
+     */
+    protected function registerTargetProviders(): void
+    {
+        $this->app->make(TargetDirectory::class)->register(
+            $this->app->make(SettlementProviderTargetProvider::class),
         );
     }
 }

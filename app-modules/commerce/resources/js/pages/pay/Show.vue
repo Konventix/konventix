@@ -12,13 +12,8 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
-import { resolveRegisteredComponent } from '@/lib/moduleComponents';
-import {
-    ORDER_WITH_OBLIGATION_TO_PAY,
-    fulfilmentNote,
-    taxNote,
-} from '@/lib/purchaseTexts';
-import { start as startCheckout } from '@/routes/commerce/pay';
+import { fulfilmentNote, taxNote } from '@/lib/purchaseTexts';
+import { choose as chooseAccount } from '@/routes/commerce/pay';
 
 /**
  * Public checkout for an `instant`-settled registration (ADR-0039). This
@@ -26,16 +21,13 @@ import { start as startCheckout } from '@/routes/commerce/pay';
  * webhook has written, and a pending state after returning from the
  * provider simply means the notification has not landed yet.
  *
- * The consent control before the pay button is not this page's to write
- * (GitLab #2): Compliance contributes it to the `checkout.consent` slot and
- * this page renders whatever comes back, the same way `cart/Show.vue` does.
+ * Since ADR-0066 this is **step one of two** (D-CPL-07): it names the order
+ * and offers the settlement accounts, and nothing legal at all. Which texts
+ * apply may depend on the provider, so the provider is chosen here and the
+ * texts are listed on `pay/Confirm.vue`, together with the one accept
+ * control. A brand with a single account never sees this page — the server
+ * redirects straight to the confirmation with that provider resolved.
  */
-type SlotContribution = {
-    module: string;
-    component: string;
-    props: Record<string, unknown>;
-};
-
 type Props = {
     registrationId: string;
     order: {
@@ -64,7 +56,6 @@ type Props = {
      * from the newest final reversal. Null for every other status.
      */
     repayDueOn: string | null;
-    consentSlots: SlotContribution[];
 };
 
 const props = defineProps<Props>();
@@ -74,15 +65,6 @@ const props = defineProps<Props>();
 // Inertia shares it on `errors.account` for the page that follows.
 const page = usePage();
 const accountError = computed(() => page.props.errors.account);
-const consentError = computed(() => page.props.errors.accept_terms);
-
-const acceptTerms = ref(false);
-const consentRequired = computed(() =>
-    props.consentSlots.some((slot) => slot.props.required === true),
-);
-const canPay = computed(
-    () => props.payable && (!consentRequired.value || acceptTerms.value),
-);
 
 /**
  * A visible, explained time limit rather than a ticking counter
@@ -98,11 +80,11 @@ const holdUntilLabel = computed(() =>
 // stays reachable.
 const starting = ref<string | null>(null);
 
-function pay(accountId: string): void {
+function choose(accountId: string): void {
     starting.value = accountId;
     router.post(
-        startCheckout(props.registrationId).url,
-        { account: accountId, accept_terms: acceptTerms.value },
+        chooseAccount(props.registrationId).url,
+        { account: accountId },
         { onFinish: () => (starting.value = null) },
     );
 }
@@ -248,19 +230,6 @@ const lastAttemptFailed = computed(
                     {{ fulfilmentNote(props.accounts.length > 0) }}
                 </p>
 
-                <template
-                    v-for="slot in props.consentSlots"
-                    :key="slot.component"
-                >
-                    <component
-                        :is="resolveRegisteredComponent(slot.component)"
-                        v-if="resolveRegisteredComponent(slot.component)"
-                        v-model="acceptTerms"
-                        v-bind="slot.props"
-                        :error="consentError"
-                    />
-                </template>
-
                 <div
                     v-if="props.accounts.length > 0"
                     role="group"
@@ -273,24 +242,21 @@ const lastAttemptFailed = computed(
                     <Button
                         v-for="account in props.accounts"
                         :key="account.id"
-                        :disabled="starting === account.id || !canPay"
-                        @click="pay(account.id)"
+                        :disabled="starting === account.id || !props.payable"
+                        @click="choose(account.id)"
                     >
                         <CreditCard class="size-4" />
                         {{
                             lastAttemptFailed || awaitingConfirmation
                                 ? 'Try again'
-                                : ORDER_WITH_OBLIGATION_TO_PAY
+                                : 'Continue'
                         }}
                         — {{ account.label }}
                     </Button>
 
-                    <p
-                        v-if="!canPay"
-                        role="status"
-                        class="text-sm text-text-muted"
-                    >
-                        Confirm the documents above to pay.
+                    <p role="status" class="text-sm text-text-muted">
+                        You will see what you are agreeing to before the order
+                        is placed.
                     </p>
 
                     <!--

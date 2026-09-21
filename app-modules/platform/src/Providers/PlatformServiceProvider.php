@@ -47,6 +47,7 @@ use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Platform\Storage\DiskResolver;
 use Konventix\Platform\Storage\MediaStorageMigration;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
+use Konventix\Platform\Targets\TargetDirectory;
 use Laravel\Pennant\Feature;
 use Laravel\Reverb\ApplicationManager;
 use Laravel\Telescope\Telescope;
@@ -177,6 +178,14 @@ class PlatformServiceProvider extends ModuleServiceProvider
         // the surface then prints the declared net amount with its
         // "excl. VAT" label rather than an end price.
         $this->app->singletonIf(EndPriceCalculator::class, NoEndPrices::class);
+
+        // And "who can name this id for a picker?" starts out as "nobody"
+        // (ADR-0066 §7.3, D-CPL-11). Each module registers a provider for the
+        // kinds it owns from its own `registerTargetProviders()`; the empty
+        // registry is the honest default for a build without them, and
+        // `singletonIf` keeps provider order from replacing a registry
+        // another provider has already filled.
+        $this->app->singletonIf(TargetDirectory::class);
 
         // Config-derived and request-free: which kind of instance this is
         // does not change between two requests a worker serves.

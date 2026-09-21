@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Actions;
 
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
@@ -104,6 +105,49 @@ final class RequestSettlement
             // are exempt and why.
             saleStartsAt: $enforcesSalesWindow ? $registrationType->sales_start?->toIso8601String() : null,
             saleEndsAt: $enforcesSalesWindow ? $registrationType->sales_end?->toIso8601String() : null,
+            // ADR-0066 §7.2, D-CPL-06: what this purchase is *under*, so the
+            // checkout's consent slot can resolve the texts bound to it.
+            // Scalars, snake_cased, in the shape Compliance's resolver reads
+            // — Commerce carries the bag from here to the order line and
+            // interprets no key of it, and this module never learns that a
+            // policy exists.
+            bindingContext: [
+                'event_id' => $registration->event_id,
+                'registration_type_ids' => [$registrationType->id],
+                'entry_condition_ids' => $this->entryConditionIdsFor($registrationType),
+                'registration_id' => $registration->id,
+            ],
         ));
+    }
+
+    /**
+     * The entry conditions this type declares, as ids (ADR-0066 §4.2).
+     *
+     * Read off the type rather than off the registration's assertions,
+     * because the bag describes *what is being bought*, which is a property
+     * of the type. The bag is then frozen on the order line: a condition
+     * added to the type afterwards does not retroactively change a purchase
+     * somebody already made, which is what a consent record should quote
+     * anyway.
+     *
+     * `withoutGlobalScope(BrandScope::class)` on the *related* model, not
+     * merely on the parent: a confirmation performed from the operator
+     * console runs on the admin host, where the scope hardens to zero rows
+     * and this would silently come back empty
+     * (.ai/rules/app-modules-src.md, #236).
+     *
+     * Empty for a type with no conditions — every type on every install that
+     * has not defined one — and the resolution is then exactly what it was
+     * before this existed.
+     *
+     * @return list<string>
+     */
+    private function entryConditionIdsFor(RegistrationType $registrationType): array
+    {
+        return array_values($registrationType->entryConditions()
+            ->withoutGlobalScope(BrandScope::class)
+            ->pluck('registration_entry_conditions.id')
+            ->map(strval(...))
+            ->all());
     }
 }

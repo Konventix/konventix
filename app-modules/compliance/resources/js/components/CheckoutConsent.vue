@@ -26,14 +26,29 @@ import type { ConsentPolicy } from './consentLabel';
  * Nr. 9 BGB removes a right the payer would otherwise have, and a payer who
  * has to open something to find that out has not been told.
  *
- * Renders nothing when nothing is published (`required` false) — a checkout
- * must never claim someone agreed to a document that does not exist.
+ * Renders nothing when nothing applies here — a checkout must never claim
+ * someone agreed to a document that does not exist.
+ *
+ * Since ADR-0066 the contribution also carries `notices`: the texts that
+ * apply to this purchase but whose published version does not require
+ * consent (D-CPL-08). `requires_consent` alone decides which list a text
+ * lands in — there is no role column and no third role — and the two lists
+ * keep the resolver's order (`terms`, `withdrawal`, then by name). A
+ * purchase under information-only texts is still completable: `required`
+ * stays false, no checkbox is shown, and the notice is read rather than
+ * agreed to.
  */
 const accepted = defineModel<boolean>({ default: false });
 
 const props = defineProps<{
     required: boolean;
     policies: ConsentPolicy[];
+    /**
+     * Texts that apply here but are not agreed to — the published version
+     * says `requires_consent: false` (D-CPL-08). Optional, because a
+     * contribution written before ADR-0066 carried none.
+     */
+    notices?: ConsentPolicy[];
     exemptionNotice: string;
     error?: string;
     /**
@@ -69,11 +84,18 @@ const describedBy = computed(() =>
 // verbatim, and the spacing is testable without rendering anything —
 // `consentLabel.test.ts`.
 const labelSegments = computed(() => consentLabelSegments(props.policies));
+
+const notices = computed<ConsentPolicy[]>(() => props.notices ?? []);
+
+// Rendered whenever *anything* applies: an information-only text still has
+// to be put in front of the payer, and only the checkbox depends on
+// `required`.
+const anything = computed(() => props.required || notices.value.length > 0);
 </script>
 
 <template>
-    <div v-if="props.required" class="flex flex-col gap-2">
-        <div class="flex items-start gap-2">
+    <div v-if="anything" class="flex flex-col gap-2">
+        <div v-if="props.required" class="flex items-start gap-2">
             <Checkbox
                 :id="checkboxId"
                 :model-value="accepted"
@@ -103,6 +125,19 @@ const labelSegments = computed(() => consentLabelSegments(props.policies));
                 </template>
             </label>
         </div>
+
+        <p v-if="notices.length > 0" class="text-sm text-text">
+            Please read:
+            <template v-for="(notice, index) in notices" :key="notice.slug">
+                <template v-if="index > 0">, </template>
+                <Link
+                    :href="notice.url"
+                    class="underline underline-offset-4"
+                    target="_blank"
+                    >{{ notice.name }}</Link
+                >
+            </template>
+        </p>
 
         <p :id="noticeId" class="text-xs text-text-muted">
             {{ props.exemptionNotice }}

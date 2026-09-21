@@ -28,6 +28,25 @@
       through the new path yet**: the binding console, the
       `registration.consent` slot and the two-step checkout are Task 32, the
       re-consent gate is Task 33.
+- [x] The bindings console and the consent slots (round 4, Task 32,
+      ADR-0066; D-CPL-06/07/08/10/11/16). The *Where this applies* card on
+      the policy editor behind `ManagePolicyBindings`
+      (`Admin\PolicyBindingController`, `POST /admin/policies/{policy}/bindings`
+      and `DELETE /admin/policy-bindings/{binding}`, the card itself in
+      `components/PolicyBindingsCard.vue` with the pure half in
+      `components/policyBindings.ts`), fed by Platform's `TargetDirectory`;
+      the empty-state sentence, the rule in words once a second kind is
+      bound, `Unknown (event · 01HX…)` with *Remove* for a dangling target,
+      and a "bound" marker on the policy index. `Support\ConsentContribution`
+      is the one builder behind both slots, splitting agree from inform on
+      `requires_consent`; `components/RegistrationConsent.vue` mirrors
+      `CheckoutConsent.vue` for Registration's `registration.consent` slot,
+      and `RecordConsentDeclaration` records `RegistrationConsentGiven` the
+      way `RecordCheckoutConsent` records the checkout — both resolving the
+      context the page rendered and never re-deriving one from the brand.
+      `GrantConsent` gained `policyBindingId` and `bindingContext`, both
+      defaulted and never rewritten by the idempotent branch.
+      `tests/{PolicyBindingConsoleTest,RegistrationConsentSlotTest}.php`.
       `ConsentGranted` gained `capture_context` and `ConsentWithdrawn` a
       nullable `brand_id`, both appended for the counters.
 - [ ] Two stores of personal data now sit outside the retention machinery:

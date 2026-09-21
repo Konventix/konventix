@@ -45,6 +45,25 @@ namespace Konventix\Registration\Events;
  * named-argument emission keeps working and an old queued payload replays as
  * "not window-bound" rather than as a refusal.
  *
+ * `bindingContext` is an opaque bag of scalars (ADR-0066 §7.2, D-CPL-06):
+ * the event, the registration type and the entry conditions this purchase is
+ * under. Commerce persists it on the order line and **interprets no key of
+ * it** — it exists so that the checkout's consent slot can resolve the texts
+ * bound to what is actually being bought, and Compliance is the only module
+ * that knows what any of the ids mean. Registration builds it without
+ * knowing that a policy exists.
+ *
+ * The keys are snake_case and the type id travels as a **list of one**,
+ * because the bag's shape is the resolver's own
+ * (`Compliance\Bindings\BindingContext::ofArray()`): a bag nobody in the
+ * middle interprets must arrive in the shape its reader expects, or a
+ * translation step would have to live in the module that is forbidden to
+ * understand it.
+ *
+ * Appended with an empty default, so an old queued payload replays as "no
+ * context", which resolves unbound policies only — today's behaviour, and
+ * the same thing the deliberate absence of a backfill produces.
+ *
  * `requestKey` is what makes Commerce idempotent, and it is deliberately not
  * the registration ULID: ADR-0036 lets one registration map to N orders over
  * its lifetime (the initial settlement plus one per priced amendment), so
@@ -83,5 +102,7 @@ final readonly class RegistrationSettlementRequested
         public string $requestKey,
         public ?string $saleStartsAt = null,
         public ?string $saleEndsAt = null,
+        /** @var array<string, mixed> */
+        public array $bindingContext = [],
     ) {}
 }

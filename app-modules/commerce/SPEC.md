@@ -702,10 +702,51 @@ ADR-0003 enforcement point 3):
   (ADR-0017) across a boundary crossed only by scalars.
 - `admin.settlement-accounts` — the settlement console's notice region.
   Compliance contributes its missing-checkout-text warning to it (#222).
+- `checkout.consent` — the legal control every purchase path renders before
+  its order button (#2). Since ADR-0066 it is asked **in context**
+  (D-CPL-06): `Settlement\CheckoutConsentSlots::contributions()` hands over
+  the union of the order's (or the cart's) lines' opaque `binding_context`
+  bags, plus the two facts Commerce owns — the provider the payer chose in
+  step one and the order id. Commerce interprets no key of any bag; it
+  carries foreign ULIDs, which ADR-0004 permits, and Compliance is the only
+  module that knows what they mean. A line with no bag (every line placed
+  before ADR-0066 — there was no backfill) contributes nothing and resolves
+  the unbound policies only.
 
 Slots this module **fills**: `registration.mine.show` (what a registration
 cost and whether it is settled) and `event.landing` (`ShopLandingCard`, what
 a visitor can buy for this edition).
+
+## The checkout has two steps (ADR-0066 §6.3, D-CPL-07)
+
+Which legal texts apply to a purchase may depend on the **settlement
+provider**, so the provider is chosen first and the texts are shown after.
+
+1. **Step one — choose.** `/pay/registration/{registration}`,
+   `/pay/order/{order}` and `/cart` name the order, its deadline and its
+   status, and offer the accounts. They name **no legal text at all**. The
+   choice posts to `…/choose` and is held in the session per checkout
+   target — not on a column, because the cart path has no order yet — and it
+   is not a declaration of anything.
+2. **Step two — confirm.** `…/confirm` (`pay/Confirm.vue`,
+   `cart/Confirm.vue`) renders the order summary, the chosen provider, the
+   texts that apply to this purchase *through that provider*, and the one
+   accept control. *Back* returns to step one, which un-makes the choice and
+   with it the acceptance — a payer may not be held to a list they never
+   saw.
+3. **Start.** `…/start` and `/cart/checkout` validate `account` against the
+   provider on record and `accept_terms` where something applies, emit
+   `CheckoutConsentGiven` with the full binding context, and hand the payer
+   to the provider.
+
+**A brand with a single offered account skips step one** on both pay pages:
+there is no choice to make, so the payer lands on the confirmation with that
+provider already resolved, and the page carries the deadline and the payment
+status step one would have shown. The cart is the exception — step one there
+*is* the basket, which the payer has to see regardless, so its single button
+simply leads straight on.
+
+`EXEMPTION_NOTICE` is unchanged and still not a policy.
 
 ## Activation
 

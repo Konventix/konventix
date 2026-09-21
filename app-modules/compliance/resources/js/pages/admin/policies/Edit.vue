@@ -37,6 +37,11 @@ import {
     update as updateVersion,
 } from '@/routes/admin/policy-versions';
 import CheckoutLegalTextGapNotice from '../../../components/CheckoutLegalTextGapNotice.vue';
+import type {
+    BindingKind,
+    BindingRow,
+} from '../../../components/policyBindings';
+import PolicyBindingsCard from '../../../components/PolicyBindingsCard.vue';
 import { toInstant, versionFormValues } from './versionForm';
 
 /**
@@ -78,6 +83,15 @@ type Props = {
      * own brand, or every brand for an operator-wide text.
      */
     checkoutGaps: Konventix.Compliance.Data.CheckoutLegalTextGapData[];
+    /**
+     * ADR-0066: what this text is bound to, what a picker may bind it to,
+     * and whether this reader may change either (D-CPL-16). A label is
+     * null when Platform's registry cannot name the target any more.
+     */
+    bindings: BindingRow[];
+    bindingOptions: Konventix.Platform.Data.TargetOptionData[];
+    bindingKinds: BindingKind[];
+    canManageBindings: boolean;
     versions: VersionRow[];
     selected:
         | (Konventix.Compliance.Data.PolicyVersionData & {
@@ -483,6 +497,14 @@ function openVersion(id: string): void {
                         </form>
                     </CardContent>
                 </Card>
+
+                <PolicyBindingsCard
+                    :policy-id="props.policy.id"
+                    :bindings="props.bindings"
+                    :options="props.bindingOptions"
+                    :kinds="props.bindingKinds"
+                    :can-manage="props.canManageBindings"
+                />
 
                 <Card>
                     <CardHeader>

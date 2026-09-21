@@ -9,6 +9,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
+use Konventix\Compliance\Bindings\BindingContext;
 use Konventix\Compliance\Bindings\PolicyResolver;
 use Konventix\Compliance\Console\ApplyRetentionRulesCommand;
 use Konventix\Compliance\Console\SweepUnverifiedRequestsCommand;
@@ -35,10 +36,12 @@ use Konventix\Compliance\Listeners\NotifySubjectOfRequestOutcome;
 use Konventix\Compliance\Listeners\PruneAuditTrail;
 use Konventix\Compliance\Listeners\RecordAuditableEvents;
 use Konventix\Compliance\Listeners\RecordCheckoutConsent;
+use Konventix\Compliance\Listeners\RecordConsentDeclaration;
 use Konventix\Compliance\Listeners\StartRetentionClock;
 use Konventix\Compliance\Metrics\ComplianceGauges;
 use Konventix\Compliance\Metrics\ComplianceMetrics;
 use Konventix\Compliance\Support\CheckoutLegalTexts;
+use Konventix\Compliance\Support\ConsentContribution;
 use Konventix\Compliance\Support\OutstandingConsents;
 use Konventix\Compliance\Support\PolicyMarkdown;
 use Konventix\Event\Events\EventConcluded;
@@ -51,6 +54,7 @@ use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Slots\SlotRegistry;
+use Konventix\Registration\Events\RegistrationConsentGiven;
 use Spatie\Prometheus\Facades\Prometheus;
 
 /**
@@ -172,6 +176,11 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // module's tables — events are the only contract between modules
         // (ADR-0004), and the architecture test allows nothing else.
         Event::listen(CheckoutConsentGiven::class, [RecordCheckoutConsent::class, 'handle']);
+
+        // ADR-0066 §6.2, D-CPL-10: the same act from Registration's form.
+        // Its own event rather than a shared Platform one, so each module
+        // keeps saying what it knows and nothing else.
+        Event::listen(RegistrationConsentGiven::class, [RecordConsentDeclaration::class, 'handle']);
 
         // ADR-0059 / ADR-0066 spec §10: the three consent counters. Prompts
         // and grants share one bounded surface set so the dashboard can
@@ -431,31 +440,61 @@ class ComplianceServiceProvider extends ModuleServiceProvider
             slot: 'checkout.consent',
             module: 'compliance',
             component: 'compliance/CheckoutConsent',
-            props: static function (): array {
+            props: static function (array $context): array {
                 $brandId = app(BrandContext::class)->id();
-                $texts = $brandId === null ? [] : app(CheckoutLegalTexts::class)->forBrand($brandId);
+
+                if ($brandId === null) {
+                    return [
+                        'outstandingUrl' => null,
+                        'required' => false,
+                        'policies' => [],
+                        'notices' => [],
+                        'exemptionNotice' => CheckoutLegalTexts::EXEMPTION_NOTICE,
+                    ];
+                }
 
                 $subjectId = auth()->id();
-                $outstanding = $subjectId !== null
-                    && app(OutstandingConsents::class)->subjectHasOutstandingContract((string) $subjectId);
 
                 return [
-                    'outstandingUrl' => $outstanding ? route('policies.required', absolute: false) : null,
-                    // False on an instance that has published neither text:
-                    // the control renders nothing rather than asking someone
-                    // to agree to documents that do not exist, and the
-                    // checkout stays usable.
-                    'required' => $texts !== [],
-                    // Version ids stay on the server. The page needs a name
-                    // and a link; which version a consent binds is resolved
-                    // again when it is recorded, so a client cannot name one.
-                    'policies' => array_map(static fn (array $text): array => [
-                        'slug' => $text['slug'],
-                        'name' => $text['name'],
-                        'url' => $text['url'],
-                    ], $texts),
+                    ...app(ConsentContribution::class)->propsFor(
+                        self::checkoutBindingContext($brandId, $context),
+                        $subjectId === null ? null : (string) $subjectId,
+                    ),
                     'exemptionNotice' => CheckoutLegalTexts::EXEMPTION_NOTICE,
                 ];
+            },
+            order: 10,
+        );
+
+        // Registration's own form declares `registration.consent` (its page,
+        // its extension point — spec §7.1) and this fills it, mirroring
+        // `checkout.consent` exactly. The context is the registration act's:
+        // the event, the type being bought and the entry conditions it
+        // carries. No exemption notice here — § 312g Abs. 2 Nr. 9 BGB is a
+        // statement about an *order*, and the checkout is where it belongs.
+        $this->app->make(SlotRegistry::class)->add(
+            slot: 'registration.consent',
+            module: 'compliance',
+            component: 'compliance/RegistrationConsent',
+            props: static function (array $context): array {
+                $brandId = app(BrandContext::class)->id();
+
+                if ($brandId === null) {
+                    return ['outstandingUrl' => null, 'required' => false, 'policies' => [], 'notices' => []];
+                }
+
+                $subjectId = auth()->id();
+
+                return app(ConsentContribution::class)->propsFor(
+                    new BindingContext(
+                        brandId: $brandId,
+                        eventId: is_string($context['eventId'] ?? null) ? $context['eventId'] : null,
+                        registrationTypeIds: self::stringList($context['registrationTypeIds'] ?? null),
+                        entryConditionIds: self::stringList($context['entryConditionIds'] ?? null),
+                        registrationId: is_string($context['registrationId'] ?? null) ? $context['registrationId'] : null,
+                    ),
+                    $subjectId === null ? null : (string) $subjectId,
+                );
             },
             order: 10,
         );
@@ -550,5 +589,42 @@ class ComplianceServiceProvider extends ModuleServiceProvider
     protected function registerGdprExporters(): void
     {
         $this->app->make(GdprHandlerRegistry::class)->register(new ComplianceGdprHandler);
+    }
+
+    /**
+     * The binding context a checkout's slot render runs on (D-CPL-06).
+     *
+     * Commerce hands over the union of its order lines' opaque bags — the
+     * registration-side facts frozen when the order was created — plus the
+     * two facts it owns: the provider the payer chose in step one and the
+     * order itself. Nothing in Commerce reads any of it; this is the first
+     * place the keys mean anything.
+     *
+     * Every key is optional. A line with no bag (every line that existed
+     * before this feature — there was no backfill) contributes nothing, and
+     * the resolution then returns the unbound policies only, which is
+     * exactly today's behaviour.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private static function checkoutBindingContext(string $brandId, array $context): BindingContext
+    {
+        /** @var array<string, mixed> $bag */
+        $bag = is_array($context['bindingContext'] ?? null) ? $context['bindingContext'] : [];
+
+        $bag['settlement_provider'] = is_string($context['settlementProvider'] ?? null)
+            ? $context['settlementProvider']
+            : null;
+        $bag['order_id'] = is_string($context['orderId'] ?? null) ? $context['orderId'] : null;
+
+        return BindingContext::ofArray($bag, $brandId);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function stringList(mixed $value): array
+    {
+        return is_array($value) ? array_values(array_filter($value, is_string(...))) : [];
     }
 }

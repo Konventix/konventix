@@ -6,6 +6,15 @@
 
 ## Next
 
+- [x] `Targets\TargetDirectory` beside `Legal\PublicLegalTexts` (round 4,
+      Task 32, ADR-0066 §7.3, D-CPL-11): a boot-time registry each owning
+      module contributes a `TargetProvider` to from its own
+      `registerTargetProviders()` hook, so a console can label a foreign
+      entity without reading its table. `Data\TargetOptionData` lives in
+      `src/Data/` rather than beside the registry, because that is the
+      directory `TypeScriptTransformerServiceProvider` scans (ADR-0009).
+      `tests/TargetDirectoryTest.php`.
+
 Phase 1 — Platform carries most of the PoC risk, since every other module
 depends on brand resolution and gating working.
 

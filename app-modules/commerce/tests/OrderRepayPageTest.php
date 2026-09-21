@@ -152,21 +152,28 @@ it('shows the order, its hold and the failed attempt to the buyer', function ():
     [$order, $cart] = orderRepayFailedCartOrder($payer);
     orderRepayAccount();
 
+    // ADR-0066 D-CPL-07: this brand offers one settlement account, so there
+    // is no provider to choose and step one is skipped — being handed on is
+    // itself the statement that the order is payable.
     test()->actingAs($payer)
         ->get('/pay/order/'.$order->getKey())
+        ->assertRedirect('/pay/order/'.$order->getKey().'/confirm');
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey().'/confirm')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->component('pay/Order')
+            ->component('pay/Confirm')
             ->where('order.id', $order->getKey())
             ->where('order.totalGross', '35.70')
             ->has('order.lines', 1)
             ->where('order.lines.0.label', 'Con Shirt')
             ->where('order.lines.0.productUrl', '/shop/con-shirt')
             ->where('paymentStatus', 'failed')
-            ->where('payable', true)
-            ->where('refusalReason', null)
+            ->where('singleAccount', true)
+            ->where('backUrl', null)
             ->where('holdUntil', $cart->expires_at->toIso8601String())
-            ->has('accounts', 1));
+            ->where('account.provider', 'stripe'));
 });
 
 it('404s the page for anyone but the order\'s own buyer', function (): void {
@@ -223,7 +230,7 @@ it('never renews the reservation the first placement fixed', function (): void {
     $account = orderRepayAccount();
     $deadline = $cart->expires_at;
 
-    test()->actingAs($payer)->get('/pay/order/'.$order->getKey())->assertOk();
+    test()->actingAs($payer)->get('/pay/order/'.$order->getKey().'/confirm')->assertOk();
 
     test()->actingAs($payer)
         ->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->getKey()])
@@ -343,13 +350,16 @@ it('takes a reversed cart order past the reservation the first payment used', fu
     Payment::factory()->create(['order_id' => $order->getKey(), 'status' => PaymentStatus::Reversed]);
     $order->forceFill(['status' => OrderStatus::PaymentReversed])->save();
 
+    // Payable, so step one hands the payer straight on (D-CPL-07).
     test()->actingAs($payer)
         ->get('/pay/order/'.$order->getKey())
+        ->assertRedirect('/pay/order/'.$order->getKey().'/confirm');
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey().'/confirm')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('order.status', 'payment_reversed')
-            ->where('payable', true)
-            ->where('refusalReason', null));
+            ->where('order.status', 'payment_reversed'));
 
     test()->actingAs($payer)
         ->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->getKey()])
@@ -379,8 +389,10 @@ it('names the day a reversed cart order is owed back by', function (): void {
         'repay_due_on' => now()->addDays(6)->toDateString(),
     ]);
 
+    // The deadline rides onto the confirmation step as well, because a
+    // single-account brand never sees step one (D-CPL-07).
     test()->actingAs($payer)
-        ->get('/pay/order/'.$order->getKey())
+        ->get('/pay/order/'.$order->getKey().'/confirm')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('repayDueOn', now()->addDays(6)->toDateString()));
@@ -412,10 +424,11 @@ it('stops taking a reversed order the day after the money was owed back', functi
         'repay_due_on' => now()->toDateString(),
     ]);
 
-    // On the day itself: still payable.
+    // On the day itself: still payable, so step one hands on rather than
+    // rendering the refusal (D-CPL-07).
     test()->actingAs($payer)
         ->get('/pay/order/'.$order->getKey())
-        ->assertInertia(fn (AssertableInertia $page) => $page->where('payable', true));
+        ->assertRedirect('/pay/order/'.$order->getKey().'/confirm');
 
     $reversal->forceFill(['repay_due_on' => now()->subDay()->toDateString()])->save();
 
@@ -481,12 +494,10 @@ it('keeps taking a lapsed reversal the sweep leaves as a receivable after check-
         'first_checked_in_at' => now()->subDays(15),
     ]);
 
+    // Payable again, which step one says by handing the payer on.
     test()->actingAs($payer)
         ->get('/pay/order/'.$order->getKey())
-        ->assertOk()
-        ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('payable', true)
-            ->where('refusalReason', null));
+        ->assertRedirect('/pay/order/'.$order->getKey().'/confirm');
 
     test()->actingAs($payer)
         ->post('/pay/order/'.$order->getKey().'/start', ['account' => $account->getKey()])
@@ -517,8 +528,11 @@ it('ignores an external refund when deciding the repayment deadline', function (
 
     test()->actingAs($payer)
         ->get('/pay/order/'.$order->getKey())
+        ->assertRedirect('/pay/order/'.$order->getKey().'/confirm');
+
+    test()->actingAs($payer)
+        ->get('/pay/order/'.$order->getKey().'/confirm')
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('payable', true)
             ->where('repayDueOn', null));
 });
