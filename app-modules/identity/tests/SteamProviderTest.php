@@ -6,6 +6,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
+use Illuminate\Contracts\Container\Container;
 use Konventix\Identity\Models\SocialIdentity;
 use Konventix\Identity\Models\User;
 use Laravel\Socialite\Contracts\Factory;
@@ -172,7 +173,14 @@ it('still knows the Steam driver on a factory the Octane sandbox resolved', func
     // the only container that must have learned the driver.
     app(Factory::class)->driver('steam');
 
+    // What Octane's Worker does per request (CurrentApplication::set, v2.19):
+    // the clone is bound as its own `app` and Container, so anything the
+    // sandbox builds that asks for the application gets the sandbox. Without
+    // those two lines the clone would still hand out the original, and the
+    // test would fail for a reason the worker never has.
     $sandbox = clone app();
+    $sandbox->instance('app', $sandbox);
+    $sandbox->instance(Container::class, $sandbox);
     $sandbox->forgetInstance(Factory::class);
 
     expect($sandbox->make(Factory::class)->driver('steam'))->toBeInstanceOf(SteamDriver::class);
