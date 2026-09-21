@@ -5,6 +5,12 @@ import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
 import sessionRoutes from '@/routes/sessions';
 
+/**
+ * One row per session the server still honours: the device line the
+ * backend derived from the user agent (the raw header rides along as the
+ * tooltip), the IP address named as an address — nothing resolves it to a
+ * place, so the list promises no "location" — and the last activity.
+ */
 defineProps<{
     sessions: Konventix.Identity.Data.SessionData[];
 }>();
@@ -26,8 +32,11 @@ defineProps<{
             >
                 <div class="space-y-0.5">
                     <div class="flex items-center gap-2">
-                        <span class="text-sm font-medium">
-                            {{ session.userAgent ?? 'Unknown device' }}
+                        <span
+                            class="text-sm font-medium"
+                            :title="session.userAgent ?? undefined"
+                        >
+                            {{ session.device }}
                         </span>
                         <Badge
                             v-if="session.isCurrentDevice"
@@ -37,8 +46,11 @@ defineProps<{
                         </Badge>
                     </div>
                     <p class="text-sm text-muted-foreground">
-                        {{ session.ipAddress ?? 'Unknown location' }} · last
-                        active
+                        <span v-if="session.ipAddress">
+                            IP address {{ session.ipAddress }}
+                        </span>
+                        <span v-else>IP address unknown</span>
+                        · Last active
                         {{ formatDateTime(session.lastActiveAt) }}
                     </p>
                 </div>

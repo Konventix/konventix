@@ -6,6 +6,7 @@ namespace Konventix\Identity\Data;
 
 use Illuminate\Support\Carbon;
 use Konventix\Identity\Models\Session;
+use Konventix\Identity\Support\UserAgent;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -13,6 +14,11 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * The Inertia props shape and generated TypeScript type for one row of the
  * session list on the Security settings page (ADR-0009, SPEC.md "Owns" —
  * "Sessions: the list of a user's active sessions and their revocation").
+ *
+ * `device` is the readable line ("Chrome on Windows", see `Support\UserAgent`)
+ * and `userAgent` the raw header it was read from, kept for the tooltip. The
+ * IP address is the only locality there is: nothing here resolves it to a
+ * place, so the UI labels it as an address and promises no "location".
  */
 #[TypeScript]
 final class SessionData extends Data
@@ -21,6 +27,7 @@ final class SessionData extends Data
         public readonly string $id,
         public readonly ?string $ipAddress,
         public readonly ?string $userAgent,
+        public readonly string $device,
         public readonly string $lastActiveAt,
         public readonly bool $isCurrentDevice,
     ) {}
@@ -31,6 +38,7 @@ final class SessionData extends Data
             id: $session->id,
             ipAddress: $session->ip_address,
             userAgent: $session->user_agent,
+            device: UserAgent::describe($session->user_agent),
             lastActiveAt: Carbon::createFromTimestamp($session->last_activity)->toIso8601String(),
             isCurrentDevice: $session->id === $currentSessionId,
         );

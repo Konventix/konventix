@@ -11,10 +11,12 @@ use Konventix\Identity\Models\User;
  * item 4). `SESSION_DRIVER=array` in phpunit.xml (unlike production's
  * database driver), so the framework never writes a `sessions` row for the
  * test request itself — these tests insert rows directly, the same shape
- * `Illuminate\Session\DatabaseSessionHandler` would write, and use the
- * request's own `session()->getId()` (captured after a first authenticated
- * request establishes it, since the test client's cookie jar then carries it
- * into later requests) to mark one of them "current".
+ * `Illuminate\Session\DatabaseSessionHandler` would write.
+ *
+ * "This device" needs the page's request to carry a known session id. The
+ * test client keeps no cookie jar, and a request without a session cookie is
+ * handed a fresh id, so the id is read back from the cookie a first request
+ * sets and replayed with `withCookie()` on the request under test.
  */
 function makeSessionRow(string $id, User $user, string $userAgent = 'Other Browser', ?int $lastActivity = null): Session
 {
@@ -28,20 +30,109 @@ function makeSessionRow(string $id, User $user, string $userAgent = 'Other Brows
     ]);
 }
 
+/**
+ * Establish a session for `$user` and hand back the cookie name and the
+ * session id the response set, for the next request to replay. The name is
+ * the store's own (`session()->getName()`), not `config('session.cookie')`:
+ * `ResolveBrand` renames the config per brand after the store was built.
+ *
+ * @return array{string, string}
+ */
+function establishSessionCookie(object $test, User $user): array
+{
+    $response = $test->actingAs($user)->get(route('security.edit'));
+    $cookie = session()->getName();
+
+    return [$cookie, $response->getCookie($cookie)->getValue()];
+}
+
 test('the security page lists the user\'s sessions and marks the current one', function () {
     $user = User::factory()->create();
 
-    // Establishes the session the test client's cookie jar carries into the
-    // next request, so its id is known before the assertion request.
-    $this->actingAs($user)->get(route('security.edit'));
-    makeSessionRow(session()->getId(), $user, 'Test Browser', now()->timestamp);
+    [$cookie, $sessionId] = establishSessionCookie($this, $user);
+    makeSessionRow($sessionId, $user, 'Test Browser', now()->timestamp);
     makeSessionRow('a-different-session-id', $user);
 
+    $this->actingAs($user)
+        ->withCookie($cookie, $sessionId)
+        ->get(route('security.edit'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('settings/Security')
+            ->has('sessions', 2)
+            ->where('sessions.0.id', $sessionId)
+            ->where('sessions.0.isCurrentDevice', true)
+            ->where('sessions.1.isCurrentDevice', false),
+        );
+});
+
+test('a session the handler would no longer honour is not listed', function () {
+    $user = User::factory()->create();
+
+    [$cookie, $sessionId] = establishSessionCookie($this, $user);
+    makeSessionRow($sessionId, $user, 'Test Browser', now()->timestamp);
+    makeSessionRow('still-active-session-id', $user);
+    // One minute past `session.lifetime`: the session handler refuses to read
+    // it and garbage collection will delete it, so a "Revoke" button for it
+    // would act on nothing.
+    makeSessionRow(
+        'expired-session-id',
+        $user,
+        lastActivity: now()->subMinutes((int) config('session.lifetime') + 1)->timestamp,
+    );
+
+    $this->actingAs($user)
+        ->withCookie($cookie, $sessionId)
+        ->get(route('security.edit'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('settings/Security')
+            ->has('sessions', 2)
+            ->where('sessions.0.id', $sessionId)
+            ->where('sessions.1.id', 'still-active-session-id'),
+        );
+});
+
+test('each session carries a readable device line beside the raw user agent', function () {
+    $user = User::factory()->create();
+
+    [$cookie, $sessionId] = establishSessionCookie($this, $user);
+    makeSessionRow(
+        $sessionId,
+        $user,
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        now()->timestamp,
+    );
+    makeSessionRow('a-scanner-session-id', $user, 'python-requests/2.32.3');
+
+    $this->actingAs($user)
+        ->withCookie($cookie, $sessionId)
+        ->get(route('security.edit'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('settings/Security')
+            ->where('sessions.0.device', 'Chrome on Windows')
+            ->where('sessions.0.isCurrentDevice', true)
+            ->where('sessions.0.ipAddress', '10.0.0.1')
+            ->where('sessions.1.device', 'Unknown device'),
+        );
+});
+
+test('the page says whether a session list exists on this installation', function () {
+    $user = User::factory()->create();
+
+    // phpunit.xml runs the array driver, on which no row is ever written and
+    // the list would be an empty promise; the page is told so.
     $this->actingAs($user)
         ->get(route('security.edit'))
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/Security')
-            ->has('sessions', 2),
+            ->where('sessionsAvailable', false),
+        );
+
+    config()->set('session.driver', 'database');
+
+    $this->actingAs($user)
+        ->get(route('security.edit'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('sessionsAvailable', true),
         );
 });
 

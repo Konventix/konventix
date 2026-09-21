@@ -18,6 +18,7 @@ type Props = {
     twoFactorConfirming?: boolean;
     requiresConfirmation?: boolean;
     sessions: Konventix.Identity.Data.SessionData[];
+    sessionsAvailable: boolean;
 };
 
 const props = defineProps<Props>();
@@ -132,7 +133,11 @@ defineOptions({
                 description="Manage and revoke your active sessions"
             />
 
-            <SessionList :sessions="sessions" />
+            <SessionList v-if="sessionsAvailable" :sessions="sessions" />
+            <p v-else class="text-sm text-muted-foreground" role="status">
+                This installation does not keep a list of sessions, so there is
+                nothing to show or revoke here.
+            </p>
         </div>
     </div>
 </template>

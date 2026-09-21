@@ -24,6 +24,11 @@ use Konventix\Identity\Models\User;
  * for the account across every brand it has ever logged into. The Security
  * page states "sessions on this brand" per the task brief, but that is a
  * simplification, not a guarantee this query enforces — see TODO.md.
+ *
+ * "Active" is measured the way the session handler measures it: a row whose
+ * `last_activity` is older than `session.lifetime` is one the handler would
+ * refuse to read and the garbage collector will delete, so it is not listed
+ * — listing it offered a "Revoke" button for a session that was already gone.
  */
 final class ActiveSessionsQuery
 {
@@ -34,7 +39,17 @@ final class ActiveSessionsQuery
     {
         return Session::query()
             ->where('user_id', $user->getKey())
+            ->where('last_activity', '>=', self::activeSince())
             ->orderByDesc('last_activity')
             ->get();
+    }
+
+    /**
+     * The oldest `last_activity` the session handler still honours, as the
+     * Unix timestamp the column stores.
+     */
+    private static function activeSince(): int
+    {
+        return now()->subMinutes((int) config('session.lifetime'))->getTimestamp();
     }
 }

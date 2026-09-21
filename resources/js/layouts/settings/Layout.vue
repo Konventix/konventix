@@ -1,11 +1,37 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { settingsSections } from '@/lib/settingsSections';
 import { toUrl } from '@/lib/utils';
+import { index as settingsIndex } from '@/routes/settings';
+import type { BreadcrumbItem } from '@/types';
+
+/**
+ * `breadcrumbs` are the page's own declaration
+ * (`defineOptions({ layout: { breadcrumbs } })`), merged in by Inertia's
+ * default-layout hook (see `layoutFor()` in app.ts). Without a prop of that
+ * name here the declaration was dropped on the floor, which is why no
+ * settings page showed a trail. The hub is prepended so every trail starts
+ * at "Settings", the one page that is not wrapped in this layout.
+ */
+const props = withDefaults(
+    defineProps<{
+        breadcrumbs?: BreadcrumbItem[];
+    }>(),
+    {
+        breadcrumbs: () => [],
+    },
+);
+
+const trail = computed<BreadcrumbItem[]>(() => [
+    { title: 'Settings', href: settingsIndex() },
+    ...props.breadcrumbs,
+]);
 
 // The same list the hub page at /settings renders (lib/settingsSections.ts).
 const sidebarNavItems = settingsSections;
@@ -15,6 +41,8 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
 
 <template>
     <div class="mx-auto w-full max-w-5xl px-4 py-6">
+        <Breadcrumbs :breadcrumbs="trail" class="mb-4" />
+
         <Heading
             title="Settings"
             description="Manage your profile and account settings"

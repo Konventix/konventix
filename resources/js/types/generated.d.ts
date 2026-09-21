@@ -14,8 +14,9 @@ declare namespace Konventix {
             export type ClaimLandingData = {
                 readonly linkId: string;
                 readonly eventName: string | null;
+                readonly eventSlug: string | null;
                 readonly role: string;
-                readonly managerName: string | null;
+                readonly managerUsername: string | null;
                 readonly intendedEmail: string | null;
                 readonly expiresAt: string;
                 readonly alreadyHolderOfAnother: boolean;
@@ -34,7 +35,7 @@ declare namespace Konventix {
                 readonly role: string;
                 readonly state: string;
                 readonly holderUserId: string | null;
-                readonly holderName: string | null;
+                readonly holderUsername: string | null;
                 readonly isSelf: boolean;
                 readonly checkedIn: boolean;
                 readonly invite: Konventix.Admission.Data.InviteStateData | null;
@@ -44,9 +45,10 @@ declare namespace Konventix {
                 readonly id: string;
                 readonly eventId: string;
                 readonly eventName: string;
+                readonly eventSlug: string | null;
                 readonly role: string;
                 readonly state: string;
-                readonly holderName: string | null;
+                readonly holderUsername: string | null;
             };
             export type TicketManagerData = {
                 readonly registrationId: string;
@@ -66,7 +68,7 @@ declare namespace Konventix {
                 readonly role: string;
                 readonly state: string;
                 readonly validRange: string;
-                readonly holderName: string;
+                readonly holderUsername: string | null;
                 readonly isHolder: boolean;
                 readonly isManager: boolean;
                 readonly checkedIn: boolean;
@@ -146,6 +148,7 @@ declare namespace Konventix {
                 readonly lineGross: string;
                 readonly canChangeQuantity: boolean;
                 readonly maxQuantity: number | null;
+                readonly url: string | null;
             };
             export type CartLineQuantityData = {
                 readonly quantity: number;
@@ -220,6 +223,7 @@ declare namespace Konventix {
                 readonly lineGross: string;
                 readonly kind: string | null;
                 readonly registrationUrl: string | null;
+                readonly productUrl: string | null;
             };
             export type OperationsNoticeData = {
                 readonly kind: Konventix.Commerce.Enums.OperationsNoticeKind;
@@ -318,6 +322,7 @@ declare namespace Konventix {
                 readonly expiresAt: string | null;
                 readonly cartUrl: string | null;
                 readonly ordersUrl: string | null;
+                readonly orderUrl: string | null;
             };
             export type RegistrationSettlementData = {
                 readonly orderId: string;
@@ -330,6 +335,7 @@ declare namespace Konventix {
                 readonly issuedOn: string | null;
                 readonly dueOn: string | null;
                 readonly documentUrl: string | null;
+                readonly orderUrl: string | null;
             };
             export type SaveProductData = {
                 readonly name: string;
@@ -548,7 +554,8 @@ declare namespace Konventix {
             export type PublicCommentData = {
                 readonly id: string;
                 readonly body: string;
-                readonly authorName: string;
+                readonly authorUsername: string | null;
+                readonly authorProfileUrl: string | null;
                 readonly postedAt: string;
                 readonly isMine: boolean;
                 readonly reactionCount: number;
@@ -561,7 +568,8 @@ declare namespace Konventix {
                 readonly teaser: string | null;
                 readonly body: string | null;
                 readonly urgency: Konventix.Content.Enums.Urgency | null;
-                readonly authorName: string | null;
+                readonly authorUsername: string | null;
+                readonly authorProfileUrl: string | null;
                 readonly publishedAt: string | null;
                 readonly commentsEnabled: boolean;
             };
@@ -609,6 +617,7 @@ declare namespace Konventix {
                     readonly label: string | null;
                     readonly eventName: string | null;
                     readonly targetIso: string | null;
+                    readonly slug: string | null;
                 };
                 export type EventHeroBlockData = {
                     readonly eventId: string;
@@ -700,6 +709,7 @@ declare namespace Konventix {
                 readonly socialLinks: Record<string, string> | null;
                 readonly visibility: string;
                 readonly timezone: string | null;
+                readonly listedInAttendees: boolean;
             };
             export type RegisterData = {
                 readonly name: string;
@@ -1470,6 +1480,8 @@ declare namespace Konventix {
                 readonly seatingMode: Konventix.Resources.Enums.SeatingMode;
                 readonly quantity: number;
                 readonly state: Konventix.Resources.Enums.ClaimState;
+                readonly eventName: string | null;
+                readonly eventSlug: string | null;
             };
             export type SeatPickerData = {
                 readonly registrationId: string;

@@ -40,6 +40,11 @@ class SecurityController
             'sessions' => $this->sessions->for($user)
                 ->map(fn ($session) => SessionData::fromModel($session, $request->session()->getId()))
                 ->values(),
+            // Only the database driver keeps rows a list can be read from;
+            // on redis or file there is nothing to show or to revoke, and the
+            // page says so rather than presenting an empty list as "no other
+            // sessions".
+            'sessionsAvailable' => config('session.driver') === 'database',
         ];
 
         if (Features::canManageTwoFactorAuthentication()) {
