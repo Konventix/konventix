@@ -15,6 +15,7 @@ use Konventix\Event\Actions\PublishEvent;
 use Konventix\Event\Actions\StartEvent;
 use Konventix\Event\Data\EventData;
 use Konventix\Event\Data\VenueData;
+use Konventix\Event\Enums\AttendeeListVisibility;
 use Konventix\Event\Enums\EventLifecycleState;
 use Konventix\Event\Enums\EventVisibility;
 use Konventix\Event\Enums\ReentryPolicy;
@@ -237,6 +238,13 @@ final class DemoEventSeeder
                 timezone: 'Europe/Berlin',
                 visibility: $visibility,
                 reentryPolicy: ReentryPolicy::Unlimited,
+                // The demo shows the attendee list on every public event so
+                // the card and the `/events/{slug}/attendees` page are
+                // reachable on seeded data (ADR-0064: off by default, the
+                // operator switches it on per event).
+                attendeeListVisibility: $visibility === EventVisibility::Public
+                    ? AttendeeListVisibility::Public
+                    : AttendeeListVisibility::Off,
             ),
             $this->days($startsAt, $archetype),
         );

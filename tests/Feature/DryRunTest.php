@@ -21,6 +21,7 @@ use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Content\Models\ContentEntry;
 use Konventix\Event\Models\Event;
+use Konventix\Event\Models\Venue;
 use Konventix\Identity\Models\BrandMembership;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Models\MessageRecord;
@@ -30,6 +31,7 @@ use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\Role;
 use Konventix\Platform\Models\StaticPage;
 use Konventix\Registration\Enums\RegistrationVisibility;
+use Konventix\Registration\Models\EventSummary as RegistrationEventSummary;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
 use Konventix\Resources\Enums\ClaimState;
@@ -399,6 +401,21 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
                 ->where('brand_id', $brand->getKey())
                 ->published()
                 ->value('slug'),
+            // The attendee list 404s while the event's switch is off
+            // (ADR-0064); `DemoEventSeeder` switches it on for every public
+            // event, and Registration's summary carries the projected value.
+            $parameter === 'slug' && $name === 'registration.attendees.index' => RegistrationEventSummary::withoutBrandScope()
+                ->where('brand_id', $brand->getKey())
+                ->where('attendee_list_visibility', 'public')
+                ->value('slug'),
+            // `venue.show` 404s unless the venue belongs to a publicly
+            // visible event; the seed assigns each brand's first venue to
+            // its public events, and the console's edit screen takes any.
+            $parameter === 'venue' => Venue::withoutBrandScope()
+                ->where('brand_id', $brand->getKey())
+                ->get()
+                ->first(fn (Venue $venue): bool => $venue->isPubliclyReachable())
+                ?? Venue::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
 
             $parameter === 'brand' => $brand,
             $parameter === 'event' => $eventQuery()->first(),
