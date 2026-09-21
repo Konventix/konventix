@@ -397,6 +397,10 @@ ADR-0066 is accepted. The build is Tasks 30–33 of
 | D-CPL-15 | The interstitial | **`policies.required`, reused** for login and mid-session, with one line naming the act. No modal — a legal text behind a dismissible overlay is not an agreement. | Task 33 |
 | D-CPL-16 | The binding capability | **Compliance's own `ManagePolicyBindings`**, separate from `ManagePolicies`: binding a text to a product changes who is bound by it without changing a word of it. | Task 30 |
 | D-CPL-17 | Measuring a refusal | **Derived** from prompts against grants, plus a **"Not now"** button on the interstitial **without its own counter** — a consent screen with only one way out is not a choice. | Task 33 |
+| D-SUP-11 | Support retention window | **`config/support.php` `retention.days = 180`**; Compliance's retention-rules UI stays unwired. (Interview 2026-09-21.) | plan Task 34 |
+| D-SUP-12 | Console-filed request notices | **Only accounts holding `platform.access-admin`** are notified for a request filed on the operator console (no brand). | plan Task 35 |
+| D-SUP-13 | Sidebar badge | **`NavigationRegistry` gains an optional per-item count resolved per request; Support shows its open requests there.** | plan Task 36 |
+| D-SUP-14 | Slices | **All four slices built now on `develop`, each commit closes its issue (#304–#307), milestone Phase 4 - Hypercare.** | plan Tasks 34–37 |
 
 ## Open
 
