@@ -2,55 +2,11 @@
 
 declare(strict_types=1);
 
-use Konventix\Identity\Models\User;
-use Konventix\Platform\Models\Brand;
-use Konventix\Platform\Models\Operator;
-use Konventix\Platform\Models\Permission as PermissionModel;
-use Konventix\Platform\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
-
 /**
  * ADR-0008 (BFSG contrast validation, refuse not warn) + ADR-0029 (admin
- * host). Mirrors OperatorHostTest's operatorWithAdmin() helper, under a
- * different name to avoid redeclaring it, and grants exactly the
- * capabilities each test needs so the 403 test proves platform.access-admin
- * alone is not enough.
- *
- * @param  array<int, string>  $capabilities
- * @return array{0: Operator, 1: User, 2: Brand}
+ * host). `operatorWithThemeAdmin()` lives in tests/Helpers.php since
+ * ThemeImportExportTest calls it too (.ai/rules/tests.md).
  */
-function operatorWithThemeAdmin(array $capabilities = ['platform.access-admin', 'platform.manage-brand-theme']): array
-{
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.theme.test'])->save();
-
-    $brand = Brand::factory()->withDomain('theme-brand.test')->create();
-
-    $registrar = app(PermissionRegistrar::class);
-    $registrar->setPermissionsTeamId($operator->getKey());
-
-    foreach ($capabilities as $name) {
-        PermissionModel::query()->firstOrCreate([
-            'name' => $name,
-            'guard_name' => 'web',
-        ]);
-    }
-
-    $role = Role::query()->create([
-        'name' => 'Theme Tester',
-        'guard_name' => 'web',
-        'brand_id' => $operator->getKey(),
-    ]);
-    $role->givePermissionTo($capabilities);
-
-    $admin = User::factory()->create();
-    $admin->assignRole($role);
-
-    $registrar->setPermissionsTeamId(null);
-
-    return [$operator, $admin, $brand];
-}
-
 it('shows the theme editor with the token catalog and the brand current tokens', function (): void {
     [, $admin, $brand] = operatorWithThemeAdmin();
     $brand->update(['theme_tokens' => ['accent' => 'hsl(210 90% 45%)']]);

@@ -18,7 +18,13 @@ import ThemePreview from '@/components/admin/theme/ThemePreview.vue';
 import ThemeTokenGrid from '@/components/admin/theme/ThemeTokenGrid.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import {
+    exportMethod as exportTheme,
+    importMethod as importTheme,
+    update as updateTheme,
+} from '@/routes/admin/brands/theme';
 
 const props = defineProps<{
     brand: Konventix.Platform.Data.BrandSummaryData;
@@ -88,8 +94,68 @@ function updateOverrides(next: Record<string, string>): void {
 }
 
 function submit(): void {
-    form.put(`/admin/brands/${props.brand.id}/theme`, {
+    form.put(updateTheme(props.brand.id).url, {
         preserveScroll: true,
+    });
+}
+
+// Export and import (Task 10 of the 2026-09-21 bugfix round). The export is
+// a plain anchor, not an Inertia link: it is a file, and an Inertia visit
+// would fetch it over XHR and show the JSON in the error modal. The import
+// is its own form with its own error bag, so a refused file never shows up
+// as an error under the token grid — and the other way round.
+const importForm = useForm<{ file: File | null }>({ file: null });
+const fileInput = ref<HTMLInputElement | null>(null);
+
+// The server refuses a file on `file` (not JSON), `format` (not a theme
+// export), `tokens`/`darkTokens` (unknown name, contrast) or
+// `tokens.<name>` (not a colour). The import control shows the first of
+// those; a keyed list is the editor's job, not a file control's.
+const importError = computed<string | undefined>(() => {
+    const errors = importForm.errors as Record<string, string | undefined>;
+    const key = Object.keys(errors).find((name) => errors[name]);
+
+    if (key === undefined) {
+        return undefined;
+    }
+
+    return key === 'file' ? errors[key] : `${key}: ${errors[key]}`;
+});
+
+function onImportFileChange(event: Event): void {
+    importForm.file = (event.target as HTMLInputElement).files?.[0] ?? null;
+}
+
+// An import replaces both maps, and the page shows them again through
+// `form`. ADR-0038: a dirty draft is never overwritten silently — the
+// operator either saves first or confirms losing it, exactly as the
+// navigation guard would ask.
+function submitImport(): void {
+    if (
+        form.isDirty &&
+        !confirm(
+            'You have unsaved changes. Importing a theme replaces them. Continue?',
+        )
+    ) {
+        return;
+    }
+
+    importForm.post(importTheme(props.brand.id).url, {
+        forceFormData: true,
+        errorBag: 'themeImport',
+        preserveScroll: true,
+        onSuccess: () => {
+            form.defaults({
+                tokens: { ...props.tokens },
+                darkTokens: { ...props.darkTokens },
+            });
+            form.reset();
+            importForm.reset();
+
+            if (fileInput.value) {
+                fileInput.value.value = '';
+            }
+        },
     });
 }
 </script>
@@ -164,6 +230,48 @@ function submit(): void {
                         Unsaved changes
                     </span>
                 </div>
+
+                <section
+                    aria-labelledby="theme-transfer-heading"
+                    class="space-y-3 rounded-lg border border-border p-4"
+                >
+                    <h2 id="theme-transfer-heading" class="text-sm font-medium">
+                        Export and import
+                    </h2>
+                    <p class="text-xs text-text-muted">
+                        The export is a
+                        <code>konventix.brand-theme/v1</code> file with both
+                        maps, ready to import into another brand. An import
+                        replaces both maps and is checked like a save.
+                    </p>
+                    <a
+                        :href="exportTheme(brand.id).url"
+                        download
+                        class="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm hover:bg-subtle"
+                    >
+                        Export
+                    </a>
+                    <div class="grid gap-2">
+                        <Label for="theme-import-file">Theme file (JSON)</Label>
+                        <input
+                            id="theme-import-file"
+                            ref="fileInput"
+                            type="file"
+                            accept="application/json,.json"
+                            class="text-sm"
+                            @change="onImportFileChange"
+                        />
+                        <InputError :message="importError" />
+                    </div>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        :disabled="importForm.processing || !importForm.file"
+                        @click="submitImport"
+                    >
+                        {{ importForm.processing ? 'Importing…' : 'Import' }}
+                    </Button>
+                </section>
             </div>
 
             <div class="space-y-6 lg:sticky lg:top-4 lg:self-start">

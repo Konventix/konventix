@@ -104,6 +104,29 @@ depends on brand resolution and gating working.
 
 ## Done
 
+- [x] Brand theme export and import (2026-09-21 bugfix round, Task 10).
+      `Data\BrandThemeExportData` (`konventix.brand-theme/v1` envelope:
+      `format` validated with `In`, both token maps, `exportedAt` and the
+      brand slug as provenance only; `ofBrand()`, `toThemeData()`),
+      `Theming\ThemeCanonicalJson` (keys sorted at every level, pretty,
+      unescaped, trailing newline, empty maps as `{}` — a module-local copy
+      of Resources' `PlanCanonicalJson`, since Platform cannot import it),
+      `Actions\ExportBrandTheme`. `ThemeAdminController::export()` streams
+      `<slug>-theme.json`; `import()` takes a `file` (no `mimes`, 256 KB),
+      refuses a non-object with a `file` error and runs the rest through
+      `BrandThemeExportData`, `BrandThemeData` and `UpdateBrandTheme`, so an
+      unknown name, a bad colour or a failing contrast pair 422s like a save
+      and the stored theme never changes on a refusal. Routes
+      `admin.brands.theme.export`/`.import` (Wayfinder emits them as
+      `exportMethod`/`importMethod`, reserved words). Host
+      `resources/js/pages/admin/themes/Edit.vue`: plain `<a download>` for
+      the export, an import file control on its own `useForm` with error bag
+      `themeImport` (a refused file never shows under the token grid), a
+      confirm before an import replaces a dirty draft (ADR-0038), and the
+      save form's defaults reset to the imported maps on success. Tests in
+      `ThemeImportExportTest`; `operatorWithThemeAdmin()` moved to
+      `tests/Helpers.php` since two files call it.
+
 - [x] "Operator Admin" follows the untouched-only re-sync rule (ADR-0045
       amendment 2026-09-13, hotfix): `MaterializeOperatorAdminRole`, run from
       `permissions:sync` for every operator and from `konventix:install`.

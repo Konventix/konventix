@@ -714,6 +714,7 @@ declare namespace Konventix {
                 readonly id: string;
                 readonly ipAddress: string | null;
                 readonly userAgent: string | null;
+                readonly device: string;
                 readonly lastActiveAt: string;
                 readonly isCurrentDevice: boolean;
             };
@@ -925,6 +926,13 @@ declare namespace Konventix {
             export type BrandThemeData = {
                 tokens: Record<string, string>;
                 darkTokens: Record<string, string>;
+            };
+            export type BrandThemeExportData = {
+                format: string;
+                tokens: Record<string, string>;
+                darkTokens: Record<string, string>;
+                exportedAt: string | null;
+                brand: string | null;
             };
             export type ConsoleSelectionData = {
                 readonly brandId: string | null;
