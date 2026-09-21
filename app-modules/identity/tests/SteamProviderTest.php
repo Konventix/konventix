@@ -6,6 +6,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
+use Illuminate\Contracts\Container\Container;
 use Konventix\Identity\Models\SocialIdentity;
 use Konventix\Identity\Models\User;
 use Laravel\Socialite\Contracts\Factory;
@@ -159,6 +160,30 @@ it('still knows the Steam driver on a factory resolved after Octane flushed it',
     app()->forgetInstance(Factory::class);
 
     expect(app(Factory::class)->driver('steam'))->toBeInstanceOf(SteamDriver::class);
+});
+
+it('still knows the Steam driver on a factory the Octane sandbox resolved', function (): void {
+    // Octane clones the worker's base application into a sandbox for every
+    // request (#142), flushes the factory, and the *sandbox* resolves it
+    // anew. The afterResolving callback that re-teaches the driver used to
+    // extend the factory of `$this->app` — the base application — so the
+    // sandbox's instance answered "Driver [steam] not supported" on every
+    // login of the staging cluster, on the release that carried the fix
+    // above (v0.6.4, 2026-09-21). Here the clone is the sandbox, and it is
+    // the only container that must have learned the driver.
+    app(Factory::class)->driver('steam');
+
+    // What Octane's Worker does per request (CurrentApplication::set, v2.19):
+    // the clone is bound as its own `app` and Container, so anything the
+    // sandbox builds that asks for the application gets the sandbox. Without
+    // those two lines the clone would still hand out the original, and the
+    // test would fail for a reason the worker never has.
+    $sandbox = clone app();
+    $sandbox->instance('app', $sandbox);
+    $sandbox->instance(Container::class, $sandbox);
+    $sandbox->forgetInstance(Factory::class);
+
+    expect($sandbox->make(Factory::class)->driver('steam'))->toBeInstanceOf(SteamDriver::class);
 });
 
 it('404s a provider nobody registered', function (): void {
