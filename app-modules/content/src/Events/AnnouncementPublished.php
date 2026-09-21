@@ -17,6 +17,10 @@ namespace Konventix\Content\Events;
  * announcement is still an entry, and a consumer listing content should not
  * have to know about notification semantics to see it.
  *
+ * `slug` is the address of the entry, not a delivery instruction: Messaging
+ * needs it to point the notification at `/news/{slug}`, and the entry's
+ * public page is Content's own to name.
+ *
  * Payload is scalars/ULIDs only (ADR-0004).
  */
 final readonly class AnnouncementPublished
@@ -25,6 +29,7 @@ final readonly class AnnouncementPublished
         public string $entryId,
         public string $brandId,
         public ?string $eventId,
+        public string $slug,
         public string $title,
         public string $urgency,
         public string $audience,

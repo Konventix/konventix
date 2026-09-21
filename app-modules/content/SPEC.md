@@ -77,7 +77,7 @@ firm up as the first content types are built.
 | `ContentEntryUpdated` (proposed) | A published entry is edited | `entry_id`, `brand_id`, `updated_by_user_id`, `updated_at` |
 | `ContentEntryUnpublished` (proposed) | A published entry is withdrawn from public view | `entry_id`, `brand_id`, `unpublished_by_user_id`, `unpublished_at` |
 | `ContentEntryArchived` (proposed) | An entry is retired from listings but kept | `entry_id`, `brand_id`, `archived_at` |
-| `AnnouncementPublished` | An entry of an announcement-style type is published — the signal Messaging acts on (its listener landed with ADR-0041 point 8) | `entry_id`, `brand_id`, `event_id` (nullable), `title`, `urgency`, `audience` (scalar selector), `published_at` |
+| `AnnouncementPublished` | An entry of an announcement-style type is published — the signal Messaging acts on (its listener landed with ADR-0041 point 8) | `entry_id`, `brand_id`, `event_id` (nullable), `slug` (the entry's public address, `/news/{slug}`), `title`, `urgency`, `audience` (scalar selector), `published_at` |
 | `CommentPosted` (proposed) | A comment is submitted, whether or not it is yet visible | `comment_id`, `entry_id`, `brand_id`, `author_user_id`, `requires_moderation`, `posted_at` |
 | `CommentApproved` (proposed) | A moderator releases a comment | `comment_id`, `entry_id`, `moderated_by_user_id`, `approved_at` |
 | `CommentRejected` (proposed) | A moderator refuses or hides a comment | `comment_id`, `entry_id`, `moderated_by_user_id`, `reason_code`, `rejected_at` |

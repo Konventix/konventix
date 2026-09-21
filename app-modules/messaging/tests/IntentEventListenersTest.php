@@ -10,6 +10,7 @@ use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Enums\MessageStatus;
 use Konventix\Messaging\Models\InboxNotification;
 use Konventix\Messaging\Models\MessageRecord;
+use Konventix\Platform\Models\BrandDomain;
 
 /**
  * The intent-event exception (ADR-0041 point 8): AnnouncementPublished and
@@ -87,6 +88,7 @@ it('holds a normal announcement for the digest window on every channel', functio
         entryId: (string) Str::ulid(),
         brandId: $brand->getKey(),
         eventId: null,
+        slug: 'doors-open-at-noon',
         title: 'Doors open at noon',
         urgency: 'normal',
         audience: 'everyone',
@@ -115,6 +117,7 @@ it('delivers an urgent announcement immediately, bell included', function (): vo
         entryId: (string) Str::ulid(),
         brandId: $brand->getKey(),
         eventId: null,
+        slug: 'hall-b-is-closed',
         title: 'Hall B is closed',
         urgency: 'urgent',
         audience: 'everyone',
@@ -129,4 +132,56 @@ it('delivers an urgent announcement immediately, bell included', function (): vo
     expect($inbox->recipient_id)->toBe($userId)
         ->and($inbox->title)->toBe('Hall B is closed')
         ->and($inbox->topic_key)->toBe('content.announcements');
+});
+
+it('links the announcement to the news entry on the brand\'s own host', function (): void {
+    $brand = $this->withBrand();
+    BrandDomain::factory()->for($brand)->create(['host' => 'sxlan.example', 'is_primary' => true]);
+    intentEventsRecipient();
+
+    Mail::fake();
+
+    event(new AnnouncementPublished(
+        entryId: (string) Str::ulid(),
+        brandId: $brand->getKey(),
+        eventId: null,
+        slug: 'hall-b-is-closed',
+        title: 'Hall B is closed',
+        urgency: 'urgent',
+        audience: 'everyone',
+        publishedAt: now()->toIso8601String(),
+    ));
+
+    // The listener runs on the queue with no request to derive a host from,
+    // so the stored inbox URL is composed against the brand's domain — never
+    // the application root — and every logged channel carries the same link.
+    $scheme = parse_url((string) config('app.url'), PHP_URL_SCHEME) ?: 'http';
+    $expected = $scheme.'://sxlan.example'.route('content.show', ['slug' => 'hall-b-is-closed'], absolute: false);
+
+    expect(InboxNotification::withoutBrandScope()->sole()->url)->toBe($expected);
+
+    $payloads = MessageRecord::withoutBrandScope()->pluck('payload');
+    expect($payloads->pluck('url')->unique()->all())->toBe([$expected]);
+});
+
+it('falls back to the application\'s absolute route for a brand with no domain', function (): void {
+    $brand = $this->withBrand();
+    intentEventsRecipient();
+
+    Mail::fake();
+
+    event(new AnnouncementPublished(
+        entryId: (string) Str::ulid(),
+        brandId: $brand->getKey(),
+        eventId: null,
+        slug: 'doors-open-at-noon',
+        title: 'Doors open at noon',
+        urgency: 'urgent',
+        audience: 'everyone',
+        publishedAt: now()->toIso8601String(),
+    ));
+
+    expect(InboxNotification::withoutBrandScope()->sole()->url)
+        ->toBe(route('content.show', ['slug' => 'doors-open-at-noon'], absolute: true))
+        ->toStartWith('http');
 });

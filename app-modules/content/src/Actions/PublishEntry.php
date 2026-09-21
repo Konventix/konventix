@@ -85,6 +85,7 @@ final class PublishEntry
             entryId: $entry->id,
             brandId: $entry->brand_id,
             eventId: $entry->event_id,
+            slug: $entry->slug,
             title: $entry->title,
             // Intent only — Messaging maps it to channels and timing.
             urgency: ($entry->urgency ?? Urgency::Normal)->value,

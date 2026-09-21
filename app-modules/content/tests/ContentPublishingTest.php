@@ -74,7 +74,7 @@ it('carries intent only, never a channel or a delivery time', function (): void 
     );
 
     expect($properties)->toEqualCanonicalizing([
-        'entryId', 'brandId', 'eventId', 'title', 'urgency', 'audience', 'publishedAt',
+        'entryId', 'brandId', 'eventId', 'slug', 'title', 'urgency', 'audience', 'publishedAt',
     ]);
 });
 
