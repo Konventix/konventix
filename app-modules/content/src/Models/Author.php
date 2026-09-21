@@ -18,8 +18,13 @@ use Illuminate\Support\Carbon;
  * No factory: rows exist only through the projection, so tests emit the
  * Identity event instead of inventing an author.
  *
+ * `username` is what the public pages print (ADR-0065); `display_name`
+ * stays for the console. Null until the replay reaches a row projected
+ * before the column existed, and again after a GDPR tombstone.
+ *
  * @property string $id
  * @property string $display_name
+ * @property string|null $username
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -31,5 +36,5 @@ class Author extends Model
 
     protected $keyType = 'string';
 
-    protected $fillable = ['id', 'display_name'];
+    protected $fillable = ['id', 'display_name', 'username'];
 }

@@ -43,6 +43,8 @@ it('projects UserRegistered into the person read model, idempotently', function 
 
     expect(Person::query()->count())->toBe(1)
         ->and($person->display_name)->toBe('Ada Lovelace')
+        // The handle travels too (ADR-0065): the pages print it.
+        ->and($person->username)->toBe('ada-lovelace')
         ->and($person->email)->toBe('ada@example.test');
 });
 
@@ -61,6 +63,7 @@ it('re-projects UserProfileUpdated over an existing row', function (): void {
         statusEmoji: null,
         socialLinks: [],
         visibility: 'internal',
+        listedInAttendees: false,
         locale: 'en',
         updatedAt: now()->toIso8601String(),
     ));
@@ -68,6 +71,7 @@ it('re-projects UserProfileUpdated over an existing row', function (): void {
     $person = Person::query()->findOrFail($userId);
 
     expect($person->display_name)->toBe('Countess of Lovelace')
+        ->and($person->username)->toBe('countess-lovelace')
         ->and($person->email)->toBe('countess@example.test');
 });
 

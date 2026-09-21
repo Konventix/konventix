@@ -14,6 +14,10 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * as inline SVG of the admission's *current* KVX1 token (ADR-0061 — the
  * same credential the PDF prints, never a second one).
  *
+ * The holder is a handle (ADR-0065): `@username` on screen, null for an
+ * unassigned ticket or a person the projection has no handle for yet.
+ * The PDF — a document — keeps the display name.
+ *
  * Dates arrive already formatted: the event's times are the organizer's
  * wall clock (ADR-0027), the validity range the operator's format, both
  * exactly as the PDF prints them.
@@ -33,7 +37,7 @@ final class TicketPageData extends Data
         public readonly string $role,
         public readonly string $state,
         public readonly string $validRange,
-        public readonly string $holderName,
+        public readonly ?string $holderUsername,
         public readonly bool $isHolder,
         public readonly bool $isManager,
         public readonly bool $checkedIn,

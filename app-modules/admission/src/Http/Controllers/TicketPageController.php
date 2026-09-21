@@ -30,6 +30,9 @@ use Konventix\Platform\Slots\SlotRegistry;
  *
  * `current()`, never `rotate()`: opening the page must not change the
  * code already printed (`.ai/rules/tickets.md`).
+ *
+ * The holder is a handle (ADR-0065): the page shows `@username`, the PDF
+ * the display name.
  */
 final class TicketPageController
 {
@@ -71,7 +74,7 @@ final class TicketPageController
             role: str_replace('_', ' ', $admission->role),
             state: $admission->state->value,
             validRange: $this->validRangeFor($admission),
-            holderName: $holder->display_name ?? 'Unassigned',
+            holderUsername: $holder?->username,
             isHolder: $isHolder,
             isManager: $isManager,
             checkedIn: $checkedIn,

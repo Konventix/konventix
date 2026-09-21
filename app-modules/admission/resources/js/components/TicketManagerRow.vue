@@ -28,6 +28,9 @@ import InviteForm from './InviteForm.vue';
  * `navigator.clipboard` is unavailable over plain HTTP and in older
  * browsers, so the link stays in a readable, selectable input and copying
  * is only the convenience on top of it (`StripeAccountCard.vue`'s stance).
+ *
+ * The holder is a handle (ADR-0065): `@username`, or "Assigned" for a
+ * person the projection has no handle for yet — never the display name.
  */
 type Row = Konventix.Admission.Data.ManagedAdmissionData;
 
@@ -63,10 +66,11 @@ const holderLabel = computed(() => {
         return 'You';
     }
 
-    return (
-        props.admission.holderName ??
-        (props.admission.holderUserId ? 'Assigned' : 'Not yet assigned')
-    );
+    if (props.admission.holderUsername) {
+        return `@${props.admission.holderUsername}`;
+    }
+
+    return props.admission.holderUserId ? 'Assigned' : 'Not yet assigned';
 });
 
 function run(request: () => void): void {

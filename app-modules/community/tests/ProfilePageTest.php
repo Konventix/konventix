@@ -42,6 +42,7 @@ function communityPageProfileUpdatedFor(string $userId, string $username, string
         statusEmoji: null,
         socialLinks: [],
         visibility: $visibility,
+        listedInAttendees: false,
         locale: 'en',
         updatedAt: now()->toIso8601String(),
     );

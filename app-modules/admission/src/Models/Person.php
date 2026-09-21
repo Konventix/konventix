@@ -24,8 +24,13 @@ use Illuminate\Support\Carbon;
  * and Messaging's `Recipient`. No factory: rows exist only through the
  * projection — tests emit the Identity event instead.
  *
+ * `username` is what the participant pages print (ADR-0065); the display
+ * name stays for the ticket PDF and the console. Null until the replay
+ * reaches a row projected before the column existed.
+ *
  * @property string $id
  * @property string $display_name
+ * @property string|null $username
  * @property string $email
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -38,5 +43,5 @@ class Person extends Model
 
     protected $keyType = 'string';
 
-    protected $fillable = ['id', 'display_name', 'email'];
+    protected $fillable = ['id', 'display_name', 'username', 'email'];
 }

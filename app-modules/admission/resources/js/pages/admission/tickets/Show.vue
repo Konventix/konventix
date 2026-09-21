@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { ArrowLeft, CalendarPlus, FileDown } from '@lucide/vue';
+import { ArrowLeft, CalendarPlus, ClipboardList, FileDown } from '@lucide/vue';
 import MyTicketsController from '@/actions/Konventix/Admission/Http/Controllers/MyTicketsController';
 import TicketDownloadController from '@/actions/Konventix/Admission/Http/Controllers/TicketDownloadController';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { calendar } from '@/routes/event';
+import { show as showRegistration } from '@/routes/registration/mine';
 import TicketEventBand from '../../../components/TicketEventBand.vue';
 import TicketHolderBand from '../../../components/TicketHolderBand.vue';
 
@@ -19,6 +20,10 @@ import TicketHolderBand from '../../../components/TicketHolderBand.vue';
  *
  * The two file links are plain anchors, not Inertia `<Link>`s — they
  * stream a download, and an Inertia visit would expect a page back.
+ *
+ * The manager also gets the way back to the registration the ticket came
+ * from — `registration.mine.show` is the registrant's own page, so a
+ * holder who did not buy it gets no link they could not open.
  */
 // Spelled out rather than `Konventix.Admission.Data.TicketPageData`: a bare
 // namespaced type fails the SFC compiler's macro type resolver (see
@@ -35,7 +40,7 @@ type Props = {
     role: string;
     state: string;
     validRange: string;
-    holderName: string;
+    holderUsername: string | null;
     isHolder: boolean;
     isManager: boolean;
     checkedIn: boolean;
@@ -81,7 +86,7 @@ const props = defineProps<Props>();
             <TicketHolderBand
                 :qr-svg="props.qrSvg"
                 :door-code="props.doorCode"
-                :holder-name="props.holderName"
+                :holder-username="props.holderUsername"
                 :role="props.role"
                 :valid-range="props.validRange"
                 :seat-label="props.seat?.placeLabel ?? null"
@@ -109,6 +114,14 @@ const props = defineProps<Props>();
                     <FileDown class="size-4" aria-hidden="true" />
                     Download all tickets (PDF)
                 </a>
+                <Link
+                    v-if="props.isManager && props.registrationId"
+                    :href="showRegistration(props.registrationId).url"
+                    class="inline-flex min-h-11 items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-text hover:border-accent"
+                >
+                    <ClipboardList class="size-4" aria-hidden="true" />
+                    Registration
+                </Link>
                 <a
                     v-if="props.eventSlug"
                     :href="calendar(props.eventSlug).url"

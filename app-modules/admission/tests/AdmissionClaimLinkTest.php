@@ -238,7 +238,7 @@ it('shows an invitee what they would claim, and 410s a dead link', function (): 
     $brand = $this->withBrand();
     $eventId = (string) Str::ulid();
     ticketEventSummary($brand, $eventId);
-    $manager = ticketPerson(['display_name' => 'Ada Lovelace']);
+    $manager = ticketPerson(['display_name' => 'Ada Lovelace', 'username' => 'ada']);
     $admission = Admission::factory()->forRegistration((string) Str::ulid())->create([
         'event_id' => $eventId,
         'holder_user_id' => null,
@@ -258,8 +258,11 @@ it('shows an invitee what they would claim, and 410s a dead link', function (): 
             ->component('admission/claim/Show')
             ->where('linkId', $link->id)
             ->where('eventName', 'Kon Fest 2026')
+            ->where('eventSlug', 'kon-fest-2026')
             ->where('role', 'visitor')
-            ->where('managerName', 'Ada Lovelace')
+            // The inviter as a handle, never the name (ADR-0065).
+            ->where('managerUsername', 'ada')
+            ->missing('managerName')
             ->where('intendedEmail', 'friend@example.test')
             ->where('alreadyHolderOfAnother', false)
             ->where('claimUrl', $url));

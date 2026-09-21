@@ -7,12 +7,13 @@ import { Armchair } from '@lucide/vue';
  * it for a hand-typed fallback, and who it admits as what. `qrSvg` is
  * server-rendered markup of the admission's current token (ADR-0061); the
  * box is `role="img"` named by the door code, since the SVG itself says
- * nothing a screen reader can use.
+ * nothing a screen reader can use. "Admits" is the holder's handle
+ * (ADR-0065) — the real name is on the PDF the door reads, not here.
  */
 const props = defineProps<{
     qrSvg: string;
     doorCode: string;
-    holderName: string;
+    holderUsername: string | null;
     role: string;
     validRange: string;
     seatLabel: string | null;
@@ -38,7 +39,13 @@ const props = defineProps<{
 
         <dl class="grid flex-1 grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
             <dt class="text-text-muted">Admits</dt>
-            <dd class="font-medium text-text">{{ props.holderName }}</dd>
+            <dd class="font-medium text-text">
+                {{
+                    props.holderUsername
+                        ? `@${props.holderUsername}`
+                        : 'Unassigned'
+                }}
+            </dd>
             <dt class="text-text-muted">As</dt>
             <dd class="capitalize">{{ props.role }}</dd>
             <dt class="text-text-muted">Valid</dt>

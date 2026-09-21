@@ -145,6 +145,7 @@ it('projects visibility from UserProfileUpdated into community_profiles', functi
         statusEmoji: null,
         socialLinks: [],
         visibility: 'public',
+        listedInAttendees: false,
         locale: 'en',
         updatedAt: now()->toIso8601String(),
     ));

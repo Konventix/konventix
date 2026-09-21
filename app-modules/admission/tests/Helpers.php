@@ -80,8 +80,9 @@ function ticketEventSummary(Brand $brand, string $eventId, array $overrides = []
  * A holder, projected the way Admission's own people read model is (§13
  * amendment "the holder-name fallback drops the billing recipient"). No
  * factory ships with the model, matching `Registrant`/`Recipient`. The
- * email is derived from the id rather than fixed, so a test creating
- * several people never collides on a possible unique index.
+ * email and the handle are derived from the id rather than fixed, so a
+ * test creating several people never collides on a possible unique
+ * index; a test asserting a handle passes its own.
  */
 function ticketPerson(array $overrides = []): Person
 {
@@ -90,6 +91,7 @@ function ticketPerson(array $overrides = []): Person
     return Person::query()->create(array_merge([
         'id' => $id,
         'display_name' => 'Erika Musterfrau',
+        'username' => 'holder-'.strtolower(substr($id, -8)),
         'email' => sprintf('holder+%s@example.test', strtolower($id)),
     ], $overrides));
 }

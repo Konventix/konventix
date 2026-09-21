@@ -16,7 +16,9 @@ use Konventix\Admission\Models\Person;
 /**
  * The holder's own tickets (design §4.1, §7): every admission whose
  * `holder_user_id` is the signed-in account, whichever registration — or
- * none, for a staff admission (D-STF-01) — produced it.
+ * none, for a staff admission (D-STF-01) — produced it. Events are named
+ * and linked from this module's own summary; holders are handles
+ * (ADR-0065).
  */
 final class MyTicketsController
 {
@@ -40,26 +42,29 @@ final class MyTicketsController
             ->orderByDesc('created_at')
             ->get();
 
-        $eventNames = EventSummary::query()
+        $events = EventSummary::query()
             ->whereIn('event_id', $admissions->pluck('event_id')->merge($managed->pluck('event_id'))->unique())
-            ->pluck('name', 'event_id');
+            ->get()
+            ->keyBy('event_id');
 
-        $holderNames = Person::query()
+        $holderUsernames = Person::query()
             ->whereIn('id', $managed->pluck('holder_user_id')->filter()->unique())
-            ->pluck('display_name', 'id');
+            ->pluck('username', 'id');
 
         return Inertia::render('admission/tickets/Index', [
             'tickets' => $admissions
                 ->map(fn (Admission $admission): array => MyTicketData::ofModel(
                     $admission,
-                    $eventNames->get($admission->event_id),
+                    $events->get($admission->event_id)?->name,
+                    $events->get($admission->event_id)?->slug,
                 )->toArray())
                 ->all(),
             'managed' => $managed
                 ->map(fn (Admission $admission): array => MyTicketData::ofModel(
                     $admission,
-                    $eventNames->get($admission->event_id),
-                    $admission->holder_user_id === null ? null : $holderNames->get($admission->holder_user_id),
+                    $events->get($admission->event_id)?->name,
+                    $events->get($admission->event_id)?->slug,
+                    $admission->holder_user_id === null ? null : $holderUsernames->get($admission->holder_user_id),
                 )->toArray())
                 ->all(),
         ]);

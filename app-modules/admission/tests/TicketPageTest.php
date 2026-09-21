@@ -24,7 +24,7 @@ it('shows the holder their ticket with the banner, the seat and the same code th
     $banner = MediaItem::factory()->create(['brand_id' => $brand->id, 'alt_text' => 'The hall']);
     ticketEventSummary($brand, $eventId, ['banner_media_id' => $banner->id]);
     $holder = User::factory()->create();
-    Person::query()->updateOrCreate(['id' => $holder->id], ['display_name' => 'Erika Musterfrau', 'email' => $holder->email]);
+    Person::query()->updateOrCreate(['id' => $holder->id], ['display_name' => 'Erika Musterfrau', 'username' => 'erika', 'email' => $holder->email]);
     $admission = Admission::factory()->create([
         'event_id' => $eventId,
         'holder_user_id' => $holder->id,
@@ -47,7 +47,9 @@ it('shows the holder their ticket with the banner, the seat and the same code th
             ->where('venueLabel', 'Halle 3, Musterstadt')
             ->where('bannerUrl', fn (?string $url): bool => is_string($url) && str_contains($url, $banner->path))
             ->where('bannerAlt', 'The hall')
-            ->where('holderName', 'Erika Musterfrau')
+            // The handle, never the name (ADR-0065) — the name is the PDF's.
+            ->where('holderUsername', 'erika')
+            ->missing('holderName')
             ->where('isHolder', true)
             ->where('isManager', false)
             ->where('checkedIn', false)
@@ -80,7 +82,7 @@ it('shows the manager an unclaimed ticket of theirs, and refuses everybody else'
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('isManager', true)
             ->where('isHolder', false)
-            ->where('holderName', 'Unassigned')
+            ->where('holderUsername', null)
             ->where('checkedIn', true)
             ->where('seat', null)
             ->where('registrationId', $admission->registration_id));

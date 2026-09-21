@@ -65,6 +65,7 @@ final class ContentGdprHandler implements GdprHandler
                 ])
                 ->all(),
             'display_name' => Author::query()->whereKey($subjectId)->value('display_name'),
+            'username' => Author::query()->whereKey($subjectId)->value('username'),
         ];
     }
 
@@ -77,8 +78,11 @@ final class ContentGdprHandler implements GdprHandler
         $subjectId = $subject->userId;
 
         // The read model row survives with its ULID so a comment still has an
-        // author to render — a tombstone, like everywhere else.
-        Author::query()->whereKey($subjectId)->update(['display_name' => 'Deleted account']);
+        // author to render — a tombstone, like everywhere else. The handle
+        // goes with it (ADR-0065 point 5): Identity frees it on
+        // anonymization, and a stale one here would print — or link to —
+        // whoever takes it next.
+        Author::query()->whereKey($subjectId)->update(['display_name' => 'Deleted account', 'username' => null]);
 
         // A reaction is an opinion, not retained data: gone in both modes,
         // and the comments it counted towards are recounted.

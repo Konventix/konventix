@@ -606,6 +606,7 @@ declare namespace Konventix {
                 readonly reentryPolicy: Konventix.Event.Enums.ReentryPolicy;
                 readonly predecessorEventId: string | null;
                 readonly bannerMediaId: string | null;
+                readonly attendeeListVisibility: Konventix.Event.Enums.AttendeeListVisibility;
             };
             namespace Blocks {
                 export type CountdownBlockData = {
@@ -634,6 +635,7 @@ declare namespace Konventix {
             }
         }
         namespace Enums {
+            export type AttendeeListVisibility = 'off' | 'members' | 'public';
             export type EventLifecycleState =
                 | 'draft'
                 | 'announced'
@@ -778,6 +780,8 @@ declare namespace Konventix {
                 smtpUsername: string | null;
                 smtpPassword: string | null;
                 smtpScheme: string | null;
+                mailQuotaPerHour: number | null;
+                mailQuotaPerDay: number | null;
             };
             export type MessageLogDetailData = {
                 readonly id: string;
@@ -1157,6 +1161,20 @@ declare namespace Konventix {
     }
     namespace Registration {
         namespace Data {
+            export type AttendeeData = {
+                readonly username: string;
+                readonly profileUrl: string | null;
+            };
+            export type EventAttendeesData = {
+                readonly eventName: string;
+                readonly eventUrl: string;
+                readonly url: string;
+                readonly visibility: string;
+                readonly count: number;
+                readonly namesVisible: boolean;
+                readonly namedCount: number;
+                readonly attendees: Konventix.Registration.Data.AttendeeData[];
+            };
             export type GrantData = {
                 readonly kind: Konventix.Registration.Enums.GrantKind;
                 readonly role: string;

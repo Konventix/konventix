@@ -90,16 +90,18 @@ it('404s an entry that is not live', function (): void {
     $this->get('/news/draft-piece')->assertNotFound();
 });
 
-it('bylines from the author read model rather than an account id', function (): void {
-    // ADR-0004: Content may not read Identity's tables, so the display name
-    // arrives by event and lives in Content's own projection.
-    $this->withBrand();
+it('bylines with the handle from the author read model, never the name or an account id', function (): void {
+    // ADR-0004: Content may not read Identity's tables, so the handle
+    // arrives by event and lives in Content's own projection. ADR-0065: the
+    // page gets the handle and nothing else about the person — no profile
+    // link while Community is off for this brand.
+    $brand = $this->withBrand();
 
     $user = User::factory()->create();
 
     event(new UserRegistered(
         userId: $user->id,
-        brandId: (string) $this->withBrand()->getKey(),
+        brandId: (string) $brand->getKey(),
         email: $user->email,
         displayName: 'Ada Editor',
         username: 'ada-editor',
@@ -112,14 +114,64 @@ it('bylines from the author read model rather than an account id', function (): 
         'author_user_id' => $user->id,
     ]);
 
-    expect(Author::query()->whereKey($user->id)->value('display_name'))->toBe('Ada Editor');
+    expect(Author::query()->whereKey($user->id)->value('display_name'))->toBe('Ada Editor')
+        ->and(Author::query()->whereKey($user->id)->value('username'))->toBe('ada-editor');
 
     $this->get("/news/{$entry->slug}")
         ->assertOk()
-        ->assertInertia(fn ($page) => $page->where('entry.authorName', 'Ada Editor'));
+        ->assertInertia(fn ($page) => $page
+            ->where('entry.authorUsername', 'ada-editor')
+            ->where('entry.authorProfileUrl', null)
+            ->missing('entry.authorName'));
+
+    $this->get('/news')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('entries.data.0.authorUsername', 'ada-editor')
+            ->where('entries.data.0.authorProfileUrl', null)
+            ->missing('entries.data.0.authorName'));
 });
 
-it('re-projects the author name when the profile changes', function (): void {
+it('links the byline to the profile only while Community is active for the brand', function (): void {
+    // The URL is the server's call (ADR-0065 point 2): `/u/{username}` on
+    // this host, and only when the module gate would let the page answer.
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
+
+    $user = User::factory()->create();
+
+    event(new UserRegistered(
+        userId: $user->id,
+        brandId: (string) $brand->getKey(),
+        email: $user->email,
+        displayName: 'Ada Editor',
+        username: 'ada-editor',
+        locale: 'de',
+        registeredAt: now()->toIso8601String(),
+    ));
+
+    $entry = ContentEntry::factory()->published()->withComments()->create([
+        'slug' => 'bylined',
+        'author_user_id' => $user->id,
+    ]);
+    ContentComment::factory()->create([
+        'content_entry_id' => $entry->id,
+        'author_user_id' => $user->id,
+    ]);
+
+    $this->get("/news/{$entry->slug}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('entry.authorProfileUrl', '/u/ada-editor')
+            ->where('comments.0.authorUsername', 'ada-editor')
+            ->where('comments.0.authorProfileUrl', '/u/ada-editor')
+            ->missing('comments.0.authorName'));
+
+    $this->get('/news')
+        ->assertInertia(fn ($page) => $page->where('entries.data.0.authorProfileUrl', '/u/ada-editor'));
+});
+
+it('re-projects the author name and handle when the profile changes', function (): void {
     $user = User::factory()->create();
 
     event(new UserRegistered(
@@ -136,17 +188,19 @@ it('re-projects the author name when the profile changes', function (): void {
         userId: $user->id,
         email: $user->email,
         displayName: 'Renamed',
-        username: 'original-name',
+        username: 'renamed',
         tagline: null,
         statusEmoji: null,
         socialLinks: [],
         visibility: 'internal',
+        listedInAttendees: false,
         locale: 'de',
         updatedAt: now()->toIso8601String(),
     ));
 
     expect(Author::query()->count())->toBe(1)
-        ->and(Author::query()->whereKey($user->id)->value('display_name'))->toBe('Renamed');
+        ->and(Author::query()->whereKey($user->id)->value('display_name'))->toBe('Renamed')
+        ->and(Author::query()->whereKey($user->id)->value('username'))->toBe('renamed');
 });
 
 it('shows approved comments only', function (): void {
@@ -172,7 +226,10 @@ it('shows approved comments only', function (): void {
         ->assertInertia(fn ($page) => $page
             ->has('comments', 1)
             ->where('comments.0.body', 'Visible one')
-            ->where('comments.0.authorName', 'Participant')
+            // An author the projection never saw: no handle, no link — the
+            // page says "Participant" (ADR-0065 point 3).
+            ->where('comments.0.authorUsername', null)
+            ->where('comments.0.authorProfileUrl', null)
             ->where('canComment', false));
 });
 

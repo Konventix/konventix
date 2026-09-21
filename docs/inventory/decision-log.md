@@ -334,6 +334,8 @@ tournament history in the Eventula dump. Full text:
 | D-SUP-07 | Reporter access | **"My support requests" for accounts; guests get the whole process by mail with 30-day signed links and a self-service re-issue that mails the stored address.** (User decision.) | spec (Support design §8) |
 | D-SUP-08 | Privacy and retention | **No screenshots, form contents or IP; 180 days after closing; GDPR export by user id and by address, erasure keeps the row.** | spec (Support design §11) |
 | D-SUP-10 | Operator notification | **Every new request notifies triage holders in-app and by mail; the monitoring alert is out of band and additional.** (User decision.) | spec (Support design §7) |
+| D-REG-13 | Attendee list on the event page | **Opt-in per person (`users.listed_in_attendees`, default off) and switched per event by the operator (`off`/`members`/`public`, default off); the count may show under the event switch alone, names need both; confirmed registrations only, one entry per person, username only — never display name, e-mail, billing fields or the user ULID; profile link only where Community is active.** (Bugfix round 2026-09-21, Task 15.) | adr → ADR-0064 |
+| D-IDP-14 | Names on participant surfaces | **The handle (`@username`) on every public and logged-in page, linked to `/u/{username}` when Community is active for the brand; the real name only in the console and on documents.** Person read models store `username` beside `display_name`. (User decision 2026-09-21.) | adr → ADR-0065 |
 
 ## Open
 

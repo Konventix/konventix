@@ -18,6 +18,7 @@ use Konventix\Content\Models\Author;
 use Konventix\Content\Models\ContentComment;
 use Konventix\Content\Models\ContentEntry;
 use Konventix\Content\Models\ContentReaction;
+use Konventix\Platform\Modules\ModuleGate;
 
 /**
  * The brand's public editorial surface, resolved on the brand's own domain.
@@ -34,6 +35,11 @@ use Konventix\Content\Models\ContentReaction;
  *   and 404s on direct access. Not a redirect to the login page: that would
  *   confirm the slug exists, and D-CNT-07 makes audience a visibility rule,
  *   not a paywall.
+ *
+ * People are handles (ADR-0065): a byline or a comment author is the
+ * `@username` from Content's own author read model, linked to the
+ * Community profile only when that module is active for this brand —
+ * decided here, once per request, never in the browser.
  */
 final class ContentController
 {
@@ -49,12 +55,13 @@ final class ContentController
             ->paginate(10)
             ->withQueryString();
 
-        $authors = $this->authorNames($entries->getCollection()->pluck('author_user_id')->all());
+        $authors = $this->authorsById($entries->getCollection()->pluck('author_user_id')->all());
 
         return Inertia::render('content/Index', [
             'entries' => $entries->through(fn (ContentEntry $entry): array => PublicEntryData::ofModel(
                 $entry,
-                $authors[$entry->author_user_id] ?? null,
+                $authors[$entry->author_user_id]['username'] ?? null,
+                $authors[$entry->author_user_id]['profileUrl'] ?? null,
                 withBody: false,
             )->toArray()),
         ]);
@@ -78,7 +85,7 @@ final class ContentController
                 ->get()
             : collect();
 
-        $authors = $this->authorNames([
+        $authors = $this->authorsById([
             $entry->author_user_id,
             ...$comments->pluck('author_user_id')->all(),
         ]);
@@ -94,11 +101,16 @@ final class ContentController
             ->all();
 
         return Inertia::render('content/Show', [
-            'entry' => PublicEntryData::ofModel($entry, $authors[$entry->author_user_id] ?? null)->toArray(),
+            'entry' => PublicEntryData::ofModel(
+                $entry,
+                $authors[$entry->author_user_id]['username'] ?? null,
+                $authors[$entry->author_user_id]['profileUrl'] ?? null,
+            )->toArray(),
             'comments' => $comments
                 ->map(fn (ContentComment $comment): array => PublicCommentData::ofModel(
                     $comment,
-                    $authors[$comment->author_user_id] ?? null,
+                    $authors[$comment->author_user_id]['username'] ?? null,
+                    $authors[$comment->author_user_id]['profileUrl'] ?? null,
                     $viewerId,
                     in_array($comment->getKey(), $reacted, true),
                 )->toArray())
@@ -148,10 +160,18 @@ final class ContentController
     }
 
     /**
+     * The handles behind a page's authors, one keyed lookup for the page
+     * (`ProfileController::authorsById()`'s shape). The display name is
+     * read too but stays on the server: it is the console's (ADR-0065).
+     * `profileUrl` is `/u/{username}` — brand-relative, the same host the
+     * page is on — only while Community is active for this brand; a row
+     * without a handle (projected before the column existed, or
+     * tombstoned) gets neither.
+     *
      * @param  array<int, string|null>  $userIds
-     * @return array<string, string>
+     * @return array<string, array{displayName: string, username: string|null, profileUrl: string|null}>
      */
-    private function authorNames(array $userIds): array
+    private function authorsById(array $userIds): array
     {
         $ids = array_values(array_unique(array_filter($userIds)));
 
@@ -159,7 +179,18 @@ final class ContentController
             return [];
         }
 
-        /** @var array<string, string> */
-        return Author::query()->whereKey($ids)->pluck('display_name', 'id')->all();
+        $profilesAvailable = app(ModuleGate::class)->isActive('community');
+
+        return Author::query()
+            ->whereKey($ids)
+            ->get()
+            ->mapWithKeys(fn (Author $author): array => [
+                $author->getKey() => [
+                    'displayName' => $author->display_name,
+                    'username' => $author->username,
+                    'profileUrl' => $profilesAvailable && $author->username !== null ? '/u/'.$author->username : null,
+                ],
+            ])
+            ->all();
     }
 }

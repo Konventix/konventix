@@ -20,6 +20,11 @@ import {
  * editors today, but an XSS sink on every brand's public pages is not the
  * place to rely on that; rich text arrives with a sanitizer, not before
  * (`TODO.md`).
+ *
+ * People are handles (ADR-0065): the byline and each comment author print
+ * `@username`, linked to the profile only when the server sent a URL —
+ * Community is active for this brand — and "Participant" for an account
+ * the read model has not seen. The display name is never in the props.
  */
 type Props = {
     entry: Konventix.Content.Data.PublicEntryData;
@@ -91,8 +96,18 @@ function toggleReaction(
                 <time :datetime="props.entry.publishedAt ?? undefined">
                     {{ formatDate(props.entry.publishedAt) }}
                 </time>
-                <span v-if="props.entry.authorName">
-                    · {{ props.entry.authorName }}
+                <span v-if="props.entry.authorUsername">
+                    ·
+                    <Link
+                        v-if="props.entry.authorProfileUrl"
+                        :href="props.entry.authorProfileUrl"
+                        class="hover:text-accent"
+                    >
+                        @{{ props.entry.authorUsername }}
+                    </Link>
+                    <template v-else
+                        >@{{ props.entry.authorUsername }}</template
+                    >
                 </span>
             </div>
 
@@ -134,8 +149,19 @@ function toggleReaction(
                     class="flex items-center justify-between gap-2 text-xs text-text-muted"
                 >
                     <span>
-                        <span class="font-medium text-text">
-                            {{ comment.authorName }}
+                        <Link
+                            v-if="comment.authorProfileUrl"
+                            :href="comment.authorProfileUrl"
+                            class="font-medium text-text hover:text-accent"
+                        >
+                            @{{ comment.authorUsername }}
+                        </Link>
+                        <span v-else class="font-medium text-text">
+                            {{
+                                comment.authorUsername
+                                    ? `@${comment.authorUsername}`
+                                    : 'Participant'
+                            }}
                         </span>
                         · {{ formatDate(comment.postedAt) }}
                         <span v-if="comment.isMine">· you</span>

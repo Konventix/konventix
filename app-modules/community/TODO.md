@@ -30,6 +30,14 @@ and the backlog below is still a starting point for that phase.
 
 ## Done
 
+- [x] Wall comments link the author's `@username` to their profile
+      (ADR-0065, bugfix round 2026-09-21 Task 17a) — Wayfinder's
+      `community.profile.show`, since this page only exists where the module
+      is active; whether the linked page answers is the profile's own
+      visibility rule (ADR-0052). The comment still shows the display name
+      beside the handle, as the profile heading itself does — ADR-0065's
+      handle-only rule for the wall is a follow-up to decide with the
+      profile page's own shape.
 - [x] Write `SPEC.md` — purpose, ownership boundary, event contract.
 - [x] `src/Gdpr/CommunityGdprHandler` (slice 25 tail, ADR-0051 §9): exports the
       profile read model, brand memberships, authored comments, reactions and

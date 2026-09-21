@@ -54,9 +54,10 @@ final class BuildTicketManager
 
         $ids = $admissions->pluck('id')->all();
 
+        // Handles, not names (ADR-0065): the page prints `@username`.
         $people = Person::query()
             ->whereIn('id', $admissions->pluck('holder_user_id')->filter()->unique()->all())
-            ->pluck('display_name', 'id');
+            ->pluck('username', 'id');
 
         $links = AdmissionClaimLink::query()
             ->whereIn('admission_id', $ids)
@@ -90,7 +91,7 @@ final class BuildTicketManager
                 role: $admission->role,
                 state: $admission->state->value,
                 holderUserId: $admission->holder_user_id,
-                holderName: $admission->holder_user_id === null ? null : ($people->get($admission->holder_user_id) ?? null),
+                holderUsername: $admission->holder_user_id === null ? null : ($people->get($admission->holder_user_id) ?? null),
                 isSelf: $admission->holder_user_id === $viewerUserId,
                 checkedIn: $checkedIn->has($admission->id),
                 invite: $link === null ? null : new InviteStateData(

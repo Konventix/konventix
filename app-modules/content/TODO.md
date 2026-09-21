@@ -55,6 +55,11 @@
 
 ## Done
 
+- [x] `AnnouncementPublished` carries the entry's `slug` beside its intent
+      (bugfix round 2026-09-21, Task 11) so Messaging can link the
+      notification to `/news/{slug}`. Still intent-only: the slug is the
+      entry's address, not a channel or a delivery time.
+
 - [x] Reactions (ROADMAP slice 22): `content_reactions` keyed by a `(module,
       entity_type, entity_id)` subject triple — the shape `media_usages`
       already uses, so a gallery item can react through the same table later

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Admission\Models\Admission;
 use Konventix\Identity\Models\User;
@@ -51,13 +52,13 @@ it('shows an unclaimed admission for nobody, including its own buyer', function 
             ->has('tickets', 0)
             // …but under "tickets you manage" it is theirs to assign (#292).
             ->has('managed', 1)
-            ->where('managed.0.holderName', null));
+            ->where('managed.0.holderUsername', null));
 });
 
-it('lists the tickets this person bought for others, named after their holders', function (): void {
+it('lists the tickets this person bought for others, named after their holders\' handles', function (): void {
     $this->withBrand();
     $buyer = User::factory()->create();
-    $holder = ticketPerson(['display_name' => 'Grace Hopper']);
+    $holder = ticketPerson(['display_name' => 'Grace Hopper', 'username' => 'grace']);
 
     Admission::factory()->create(['buyer_user_id' => $buyer->getKey(), 'holder_user_id' => $holder->id]);
     // Held by the buyer themselves: a ticket, not a managed one.
@@ -70,7 +71,30 @@ it('lists the tickets this person bought for others, named after their holders',
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->has('tickets', 1)
             ->has('managed', 1)
-            ->where('managed.0.holderName', 'Grace Hopper'));
+            // The handle, never the display name (ADR-0065).
+            ->where('managed.0.holderUsername', 'grace')
+            ->missing('managed.0.holderName'));
+});
+
+it('names and links the event from its own summary, and survives one that has not arrived', function (): void {
+    $brand = $this->withBrand();
+    $holder = User::factory()->create();
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    $unknownEventId = (string) Str::ulid();
+
+    Admission::factory()->create(['holder_user_id' => $holder->getKey(), 'event_id' => $eventId, 'created_at' => now()->subMinute()]);
+    Admission::factory()->create(['holder_user_id' => $holder->getKey(), 'event_id' => $unknownEventId]);
+
+    $this->actingAs($holder)
+        ->get('/my/tickets')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('tickets', 2)
+            ->where('tickets.1.eventName', 'Kon Fest 2026')
+            ->where('tickets.1.eventSlug', 'kon-fest-2026')
+            // No summary yet: the ULID names it and nothing links it.
+            ->where('tickets.0.eventName', $unknownEventId)
+            ->where('tickets.0.eventSlug', null));
 });
 
 it('lists a staff admission that carries no registration at all', function (): void {

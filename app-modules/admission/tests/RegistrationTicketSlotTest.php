@@ -31,7 +31,7 @@ it('lists every live admission with its holder, invitation and check-in state', 
     $registration = Registration::factory()->create(['registrant_user_id' => $user->getKey()]);
     $eventId = (string) Str::ulid();
     ticketEventSummary($brand, $eventId);
-    $friend = ticketPerson(['display_name' => 'Grace Hopper']);
+    $friend = ticketPerson(['display_name' => 'Grace Hopper', 'username' => 'grace']);
 
     $mine = Admission::factory()->create([
         'registration_id' => $registration->getKey(),
@@ -77,7 +77,9 @@ it('lists every live admission with its holder, invitation and check-in state', 
             expect($self['isSelf'])->toBeTrue()
                 ->and($self['invite'])->toBeNull()
                 ->and($self['checkedIn'])->toBeFalse()
-                ->and($held['holderName'])->toBe('Grace Hopper')
+                // The handle, never the display name (ADR-0065).
+                ->and($held['holderUsername'])->toBe('grace')
+                ->and($held)->not->toHaveKey('holderName')
                 ->and($held['isSelf'])->toBeFalse()
                 ->and($held['checkedIn'])->toBeTrue()
                 ->and($offered['holderUserId'])->toBeNull()

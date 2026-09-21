@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { Ticket as TicketIcon } from '@lucide/vue';
 import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
+import { show as showEvent } from '@/routes/event';
 
 /**
  * What an invitee is about to claim (#292 §4.5) — the event, the role, who
@@ -14,7 +15,8 @@ import { Button } from '@/components/ui/button';
  * A bound link names the address it is meant for so a person signed in
  * under another one understands the 410 they are about to get rather than
  * guessing. `alreadyHolderOfAnother` only informs: two tickets for one
- * person is the manager's call.
+ * person is the manager's call. The inviter is a handle (ADR-0065) and
+ * the event links to its page when the summary knows the slug.
  */
 // Spelled out rather than `Konventix.Admission.Data.ClaimLandingData`: a
 // bare namespaced type fails the SFC compiler's macro type resolver (see
@@ -22,8 +24,9 @@ import { Button } from '@/components/ui/button';
 type Props = {
     linkId: string;
     eventName: string | null;
+    eventSlug: string | null;
     role: string;
-    managerName: string | null;
+    managerUsername: string | null;
     intendedEmail: string | null;
     expiresAt: string;
     alreadyHolderOfAnother: boolean;
@@ -60,8 +63,8 @@ function claim(): void {
             as="h1"
             title="A ticket is waiting for you"
             :description="
-                props.managerName
-                    ? `${props.managerName} has reserved it for you.`
+                props.managerUsername
+                    ? `@${props.managerUsername} has reserved it for you.`
                     : 'It has been reserved for you.'
             "
         />
@@ -71,7 +74,16 @@ function claim(): void {
         >
             <dt class="text-text-muted">Event</dt>
             <dd class="font-medium text-text">
-                {{ props.eventName ?? 'This event' }}
+                <Link
+                    v-if="props.eventSlug"
+                    :href="showEvent(props.eventSlug).url"
+                    class="hover:text-accent"
+                >
+                    {{ props.eventName ?? 'This event' }}
+                </Link>
+                <template v-else>{{
+                    props.eventName ?? 'This event'
+                }}</template>
             </dd>
             <dt class="text-text-muted">Ticket</dt>
             <dd class="capitalize">{{ props.role }}</dd>

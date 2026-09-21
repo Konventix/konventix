@@ -8,7 +8,8 @@ import { show as showEntry } from '@/routes/content';
  * The brand's public news listing. Announcements appear here alongside news:
  * an announcement is still an entry, and someone who missed the banner should
  * be able to find it (D-CNT-08 keeps the two apart as *intent*, not as two
- * archives).
+ * archives). The byline is the author's handle (ADR-0065), linked to the
+ * profile when the server sent a URL.
  */
 type Entry = Konventix.Content.Data.PublicEntryData;
 
@@ -82,8 +83,16 @@ function goToPage(page: number): void {
                 {{ entry.teaser }}
             </p>
 
-            <p v-if="entry.authorName" class="text-xs text-text-muted">
-                by {{ entry.authorName }}
+            <p v-if="entry.authorUsername" class="text-xs text-text-muted">
+                by
+                <Link
+                    v-if="entry.authorProfileUrl"
+                    :href="entry.authorProfileUrl"
+                    class="hover:text-accent"
+                >
+                    @{{ entry.authorUsername }}
+                </Link>
+                <template v-else>@{{ entry.authorUsername }}</template>
             </p>
         </article>
 

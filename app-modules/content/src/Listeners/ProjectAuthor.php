@@ -19,7 +19,8 @@ use Konventix\Identity\Events\UserRegistered;
  * events are the public contract between modules (ADR-0004).
  *
  * The email in the payload is deliberately dropped — a byline needs a name,
- * not an address.
+ * not an address. The handle is kept beside the display name (ADR-0065):
+ * the public pages print `@username`, the console the name.
  */
 final class ProjectAuthor
 {
@@ -27,7 +28,7 @@ final class ProjectAuthor
     {
         Author::query()->updateOrCreate(
             ['id' => $event->userId],
-            ['display_name' => $event->displayName],
+            ['display_name' => $event->displayName, 'username' => $event->username],
         );
     }
 }

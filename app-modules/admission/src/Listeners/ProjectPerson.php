@@ -17,7 +17,8 @@ use Konventix\Identity\Events\UserRegistered;
  * `UserProfileUpdated`, which this listener already handles).
  *
  * The `Konventix\Identity\Events\` imports are the sanctioned exception
- * (ADR-0004).
+ * (ADR-0004). The handle is kept beside the display name (ADR-0065): the
+ * pages print `@username`, the PDF and the console the name.
  */
 final class ProjectPerson
 {
@@ -25,7 +26,7 @@ final class ProjectPerson
     {
         Person::query()->updateOrCreate(
             ['id' => $event->userId],
-            ['display_name' => $event->displayName, 'email' => $event->email],
+            ['display_name' => $event->displayName, 'username' => $event->username, 'email' => $event->email],
         );
     }
 }

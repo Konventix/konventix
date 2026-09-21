@@ -54,6 +54,7 @@ function communityGdprMakeAccount(string $brandId, string $username, string $vis
         statusEmoji: '💡',
         socialLinks: ['mastodon' => 'https://example.test/@'.$username],
         visibility: $visibility,
+        listedInAttendees: false,
         locale: 'en',
         updatedAt: now()->toIso8601String(),
     ));

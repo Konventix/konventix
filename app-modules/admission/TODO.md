@@ -66,6 +66,25 @@
       the PDF), the banner, the seat from `admission_seats`, and Resources'
       seat button through the `admission.ticket.show` slot. The invitee's
       landing page on the claim link's own signed URL.
+- [x] Holder surfaces show the handle (ADR-0065, bugfix round 2026-09-21
+      Task 17a): `admission_people.username` projected beside the display
+      name; `MyTicketData`, `ManagedAdmissionData`, `TicketPageData` and
+      `ClaimLandingData` carry `…Username` instead of `…Name`, so the ticket
+      page, `/my/tickets`, the manager rows and the claim page print
+      `@username` ("Unassigned"/"Not yet assigned"/"Assigned" when null) and
+      never ship the real name; the PDF keeps it (a document). The ticket
+      list and the claim page link the event by `eventSlug`, and the ticket
+      page links its registration for the manager. Run
+      `identity:replay-profiles` after deploy so existing rows learn the
+      handle.
+- [ ] The claim-link mail (`SendClaimLink`, `ClaimLinkMailData::managerName`)
+      still names the inviter by display name to a third party — the one
+      person-naming surface ADR-0065's first pass leaves; switch it to the
+      handle together with the template texts in
+      `AdmissionServiceProvider::registerMessageTemplates()`.
+- [ ] `AdmissionGdprHandler` does not tombstone `admission_people` at all —
+      neither the display name nor, since ADR-0065, the handle; Content's
+      handler does both. Add the tombstone write there.
 - [ ] `Documents\TicketDocumentRenderer` and `Http\Controllers\TicketPageController`
       format the same event band and validity range with two copies of the
       same three helpers; fold them into one presenter (#292 follow-up).

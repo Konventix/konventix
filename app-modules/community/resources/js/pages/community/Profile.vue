@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Heart, Trash2 } from '@lucide/vue';
 import { computed } from 'vue';
 import InputError from '@/components/InputError.vue';
@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { useInitials } from '@/composables/useInitials';
 import { formatCalendarDate, formatDateTime } from '@/lib/datetime';
+import { show as showProfile } from '@/routes/community/profile';
 import {
     destroy as destroyComment,
     react,
@@ -22,6 +23,10 @@ import {
  * `resolveProfileForMemberOrFail`'s check, so a guest or non-member on a
  * `public` profile gets `comments: null` and no comments section renders at
  * all — the write endpoints 404 them the same way (Task 9).
+ *
+ * A comment author's handle links to their own page (ADR-0065): this page
+ * exists only where Community is active, so the route is always there —
+ * whether it answers is the profile's own visibility rule (ADR-0052).
  */
 type SocialLinks = Record<string, string>;
 
@@ -227,7 +232,13 @@ const memberSinceLabel = computed(() =>
                             {{ comment.authorName }}
                         </span>
                         <span v-if="comment.authorUsername">
-                            · @{{ comment.authorUsername }}
+                            ·
+                            <Link
+                                :href="showProfile(comment.authorUsername).url"
+                                class="hover:text-accent"
+                            >
+                                @{{ comment.authorUsername }}
+                            </Link>
                         </span>
                         · {{ formatCommentDate(comment.postedAt) }}
                         <span v-if="comment.isMine">· you</span>

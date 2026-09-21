@@ -64,15 +64,18 @@ final class ClaimController
         abort_if($admission->holder_user_id !== null, 410, __('This claim link is no longer usable.'));
 
         $userId = (string) $request->user()->getAuthIdentifier();
-        $eventName = EventSummary::query()->where('event_id', $admission->event_id)->value('name');
+        $event = EventSummary::query()->where('event_id', $admission->event_id)->first();
 
         return Inertia::render('admission/claim/Show', ClaimLandingData::from([
             'linkId' => $row->id,
-            'eventName' => $eventName,
+            'eventName' => $event?->name,
+            'eventSlug' => $event?->slug,
             'role' => $admission->role,
-            'managerName' => $admission->buyer_user_id === null
+            // The inviter as a handle (ADR-0065); the mail that carried the
+            // link still names them, this page does not.
+            'managerUsername' => $admission->buyer_user_id === null
                 ? null
-                : Person::query()->find($admission->buyer_user_id)?->display_name,
+                : Person::query()->find($admission->buyer_user_id)?->username,
             'intendedEmail' => $row->intended_email,
             'expiresAt' => $this->dates->dateTime($row->expires_at, $this->brandTimezone->handle($admission->brand_id)),
             'alreadyHolderOfAnother' => Admission::query()
