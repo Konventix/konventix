@@ -34,10 +34,14 @@ and the backlog below is still a starting point for that phase.
       (ADR-0065, bugfix round 2026-09-21 Task 17a) — Wayfinder's
       `community.profile.show`, since this page only exists where the module
       is active; whether the linked page answers is the profile's own
-      visibility rule (ADR-0052). The comment still shows the display name
-      beside the handle, as the profile heading itself does — ADR-0065's
-      handle-only rule for the wall is a follow-up to decide with the
-      profile page's own shape.
+      visibility rule (ADR-0052).
+- [x] The wall comment is the handle and nothing else (ADR-0065, D-IDP-15,
+      round 4 Task 22): `ProfileController::presentComments()` no longer
+      ships `authorName` — `authorsById()` reads the handle column alone —
+      and `Profile.vue` renders the linked `@username`, falling back to
+      "A member" for an author without one (a tombstoned or not-yet-replayed
+      row). The profile heading above keeps display name and handle: that is
+      the subject's own page (ADR-0051 §7).
 - [x] Write `SPEC.md` — purpose, ownership boundary, event contract.
 - [x] `src/Gdpr/CommunityGdprHandler` (slice 25 tail, ADR-0051 §9): exports the
       profile read model, brand memberships, authored comments, reactions and

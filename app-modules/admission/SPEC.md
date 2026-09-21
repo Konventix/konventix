@@ -93,12 +93,14 @@ reading either.
   once they name an admission (#292 §5); the ticket page and the PDF name
   the seat from here. No personal data.
 - **`Models\Person`** — this module's own holder read model (display name
-  only), projected from Identity's `UserRegistered`/`UserProfileUpdated` and
+  and, since ADR-0065, the handle), projected from Identity's
+  `UserRegistered`/`UserProfileUpdated` and
   backfilled by `identity:replay-profiles`, mirroring Registration's
   `Registrant` and Messaging's `Recipient`. Supplies the ticket's and the
-  claim flow's holder-name fallback: the linked holder's display name, else
-  "Unassigned" — the badge's own fallback, now shared rather than
-  re-derived.
+  claim flow's holder fallback: the linked holder's handle on participant
+  surfaces and in the `admission.claim-link` mail (ADR-0065, D-IDP-15), the
+  display name on the documents this module renders, else "Unassigned" —
+  the badge's own fallback, now shared rather than re-derived.
 - **`Models\EventSummary`** (`admission_event_summaries`) — this module's
   own read model of an event's name, start, end, timezone, venue label and
   banner (`banner_media_id`, a Platform media ULID resolved through

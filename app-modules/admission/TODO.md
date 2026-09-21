@@ -77,11 +77,15 @@
       page links its registration for the manager. Run
       `identity:replay-profiles` after deploy so existing rows learn the
       handle.
-- [ ] The claim-link mail (`SendClaimLink`, `ClaimLinkMailData::managerName`)
-      still names the inviter by display name to a third party — the one
-      person-naming surface ADR-0065's first pass leaves; switch it to the
-      handle together with the template texts in
-      `AdmissionServiceProvider::registerMessageTemplates()`.
+- [x] The claim-link mail names the inviter by handle (ADR-0065, D-IDP-15,
+      round 4 Task 22): `ClaimLinkMailData::managerUsername` carries
+      `admission_people.username`, and the `admission.claim-link` bodies in
+      `AdmissionServiceProvider::registerMessageTemplates()` print
+      `{{ '@'.$managerUsername }}` — `'@'.` inside the expression, because
+      `@{{ … }}` is Blade's own escape. No handle (an unknown manager, or a
+      row the replay has not reached) names nobody: "The organizer has
+      reserved a ticket for you." / "Die Veranstalter haben …". The real
+      name no longer leaves this module for a third party at all.
 - [ ] `AdmissionGdprHandler` does not tombstone `admission_people` at all —
       neither the display name nor, since ADR-0065, the handle; Content's
       handler does both. Add the tombstone write there.

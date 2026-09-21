@@ -32,12 +32,12 @@ function inviteTestAdmission(string $eventId): Admission
     ]);
 }
 
-it('mails a bound link to its address with the event, the inviter, the URL and the banner', function (): void {
+it('mails a bound link to its address with the event, the inviter\'s handle, the URL and the banner', function (): void {
     $brand = $this->withBrand();
     $eventId = (string) Str::ulid();
     $banner = MediaItem::factory()->create(['brand_id' => $brand->id, 'alt_text' => 'The hall']);
     ticketEventSummary($brand, $eventId, ['banner_media_id' => $banner->id]);
-    $manager = ticketPerson(['display_name' => 'Ada Lovelace']);
+    $manager = ticketPerson(['display_name' => 'Ada Lovelace', 'username' => 'ada']);
     $admission = inviteTestAdmission($eventId);
     $link = app(IssueAdmissionClaimLink::class)->handle($admission, 'friend@example.test');
     Queue::fake();
@@ -51,11 +51,15 @@ it('mails a bound link to its address with the event, the inviter, the URL and t
         /** @var ClaimLinkMailData $payload */
         $payload = $message->payload;
 
+        expect(json_encode($payload->toArray()))->not->toContain('Ada Lovelace');
+
         expect($message->templateKey)->toBe('admission.claim-link')
             ->and($message->recipientEmail)->toBe('friend@example.test')
             ->and($message->recipientId)->toBeNull()
             ->and($payload->eventName)->toBe('Kon Fest 2026')
-            ->and($payload->managerName)->toBe('Ada Lovelace')
+            // The handle, never the display name: this mail goes to a third
+            // party (ADR-0065, D-IDP-15).
+            ->and($payload->managerUsername)->toBe('ada')
             ->and($payload->role)->toBe('visitor')
             ->and($payload->claimUrl)->toContain($link->id)->toContain('signature=')
             ->and($payload->expiresAt)->toBeString()->not->toBeEmpty()
@@ -79,7 +83,7 @@ it('sends nothing for an unbound link, which is a bearer link to copy', function
     Queue::assertNothingPushed();
 });
 
-it('renders the template with and without an inviter name, directives on their own lines', function (): void {
+it('renders the template with and without an inviter handle, directives on their own lines', function (): void {
     $brand = $this->withBrand();
     $renderer = app(TemplateRenderer::class);
     $envelope = fn (ClaimLinkMailData $payload, string $locale): SendMessageData => new SendMessageData(
@@ -93,29 +97,42 @@ it('renders the template with and without an inviter name, directives on their o
         channel: 'mail',
     );
 
-    $withName = $renderer->render($envelope(new ClaimLinkMailData(
+    $withHandle = $renderer->render($envelope(new ClaimLinkMailData(
         eventName: 'Kon Fest 2026',
-        managerName: 'Ada Lovelace',
+        managerUsername: 'ada',
         role: 'visitor',
         claimUrl: 'https://example.test/claim/x',
         expiresAt: '28.08.2026 18:00',
     ), 'en'));
 
-    expect($withName->body)->toContain('Ada Lovelace has reserved a ticket for you.')
+    expect($withHandle->body)->toContain('@ada has reserved a ticket for you.')
         ->toContain('Event: Kon Fest 2026')
         ->toContain('href="https://example.test/claim/x"')
+        ->not->toContain('{{')
         ->not->toContain('@if')
         ->not->toContain('@endif');
 
+    // Without a handle nobody is named — "the organizer", never a real name.
     $anonymous = $renderer->render($envelope(new ClaimLinkMailData(
         eventName: null,
-        managerName: null,
+        managerUsername: null,
         role: 'visitor',
         claimUrl: 'https://example.test/claim/x',
         expiresAt: '28.08.2026 18:00',
     ), 'de'));
 
-    expect($anonymous->body)->toContain('Ein Ticket wurde für Sie reserviert.')
+    expect($anonymous->body)->toContain('Die Veranstalter haben ein Ticket für Sie reserviert.')
+        ->not->toContain('@');
+
+    $anonymousEnglish = $renderer->render($envelope(new ClaimLinkMailData(
+        eventName: null,
+        managerUsername: null,
+        role: 'visitor',
+        claimUrl: 'https://example.test/claim/x',
+        expiresAt: '28.08.2026 18:00',
+    ), 'en'));
+
+    expect($anonymousEnglish->body)->toContain('The organizer has reserved a ticket for you.')
         ->not->toContain('@');
 });
 

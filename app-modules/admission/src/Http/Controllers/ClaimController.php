@@ -71,8 +71,8 @@ final class ClaimController
             'eventName' => $event?->name,
             'eventSlug' => $event?->slug,
             'role' => $admission->role,
-            // The inviter as a handle (ADR-0065); the mail that carried the
-            // link still names them, this page does not.
+            // The inviter as a handle (ADR-0065), on this page and in the
+            // mail that carried the link alike (D-IDP-15).
             'managerUsername' => $admission->buyer_user_id === null
                 ? null
                 : Person::query()->find($admission->buyer_user_id)?->username,

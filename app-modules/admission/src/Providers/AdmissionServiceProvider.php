@@ -254,6 +254,11 @@ class AdmissionServiceProvider extends ModuleServiceProvider
      * The claim-link invitation (#292 §4.6, #16 point 1): sending is
      * Messaging's concern, this module only declares what its mail says.
      * Every directive on its own line (`.ai/rules/app-modules-src.md`).
+     *
+     * The inviter is named by handle (ADR-0065, D-IDP-15) — `'@'.$…` in
+     * the expression, since `@{{ … }}` would be Blade's own escape and
+     * print the braces. Without a handle the mail names nobody and says
+     * "the organizer" instead.
      */
     protected function registerMessageTemplates(): void
     {
@@ -265,10 +270,10 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    @if ($managerName)
-                    <p>{{ $managerName }} hat ein Ticket für Sie reserviert.</p>
+                    @if ($managerUsername)
+                    <p>{{ '@'.$managerUsername }} hat ein Ticket für Sie reserviert.</p>
                     @else
-                    <p>Ein Ticket wurde für Sie reserviert.</p>
+                    <p>Die Veranstalter haben ein Ticket für Sie reserviert.</p>
                     @endif
                     @if ($eventName)
                     <p>Veranstaltung: {{ $eventName }}</p>
@@ -278,10 +283,10 @@ class AdmissionServiceProvider extends ModuleServiceProvider
                     <p>Der Link gilt bis {{ $expiresAt }} und nur für diese E-Mail-Adresse.</p>
                     BLADE,
                 'en' => <<<'BLADE'
-                    @if ($managerName)
-                    <p>{{ $managerName }} has reserved a ticket for you.</p>
+                    @if ($managerUsername)
+                    <p>{{ '@'.$managerUsername }} has reserved a ticket for you.</p>
                     @else
-                    <p>A ticket has been reserved for you.</p>
+                    <p>The organizer has reserved a ticket for you.</p>
                     @endif
                     @if ($eventName)
                     <p>Event: {{ $eventName }}</p>
@@ -294,7 +299,7 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             defaultLocale: 'de',
             sample: [
                 'eventName' => 'SXLan 2027',
-                'managerName' => 'Ada Lovelace',
+                'managerUsername' => 'ada',
                 'role' => 'visitor',
                 'claimUrl' => 'https://example.test/admissions/claim/abc123',
                 'expiresAt' => '28.08.2026 18:00',

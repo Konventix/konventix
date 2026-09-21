@@ -127,7 +127,57 @@ it('lets a member comment on a profile', function (): void {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('comments.0.body', 'Welcome to the wall!')
             ->where('comments.0.authorUsername', $viewer->username)
+            ->missing('comments.0.authorName')
             ->where('comments.0.isMine', true));
+});
+
+it('signs a wall comment with the handle alone, never the display name', function (): void {
+    // ADR-0065 / D-IDP-15: the wall names an author by handle, and the real
+    // name does not reach the props at all — a name in the JSON of a page is
+    // the name on the page (ADR-0065 point 4). The heading above keeps both,
+    // because that is the subject's own page (ADR-0051 §7).
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
+
+    communityWallMakeSubject($brand->getKey(), 'ada-lovelace');
+    $viewer = communityWallMakeMember($brand->getKey());
+
+    // A display name of the author's own, so its absence below is a fact
+    // about the page rather than about the fixture.
+    event(new UserProfileUpdated(
+        userId: (string) $viewer->getKey(),
+        email: $viewer->email,
+        displayName: 'Grace Hopper',
+        username: $viewer->username,
+        tagline: null,
+        statusEmoji: null,
+        socialLinks: [],
+        visibility: 'internal',
+        listedInAttendees: false,
+        locale: 'en',
+        updatedAt: now()->toIso8601String(),
+    ));
+
+    $this->actingAs($viewer)
+        ->post('/u/ada-lovelace/comments', ['body' => 'Welcome to the wall!'])
+        ->assertRedirect();
+
+    $response = $this->actingAs($viewer)->get('/u/ada-lovelace');
+
+    $comment = $response->viewData('page')['props']['comments'][0];
+
+    expect(array_keys($comment))->toBe([
+        'id',
+        'body',
+        'authorUsername',
+        'postedAt',
+        'isMine',
+        'canDelete',
+        'reactionCount',
+        'hasReacted',
+    ])
+        ->and($comment['authorUsername'])->toBe($viewer->username)
+        ->and(json_encode($comment))->not->toContain('Grace Hopper');
 });
 
 it('404s a comment from a non-member', function (): void {

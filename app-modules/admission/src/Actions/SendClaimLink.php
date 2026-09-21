@@ -28,7 +28,7 @@ use RuntimeException;
  * can still copy it out of the ticket manager. An unbound link (no
  * address) is never sent — there is nobody to send it to.
  *
- * The event name, the manager's name and the banner all come from this
+ * The event name, the manager's handle and the banner all come from this
  * module's own read models (`admission_event_summaries`,
  * `admission_people`), never from Event or Identity (ADR-0004).
  */
@@ -63,7 +63,7 @@ final class SendClaimLink
                 templateKey: self::TEMPLATE_KEY,
                 payload: new ClaimLinkMailData(
                     eventName: $event?->name,
-                    managerName: $inviterUserId === null ? null : Person::query()->find($inviterUserId)?->display_name,
+                    managerUsername: $inviterUserId === null ? null : Person::query()->find($inviterUserId)?->username,
                     role: $admission->role,
                     claimUrl: $this->links->urlFor($link),
                     expiresAt: $this->dates->dateTime(

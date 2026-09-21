@@ -91,7 +91,11 @@ final class ProfileController
                 return [
                     'id' => $comment->getKey(),
                     'body' => $comment->body,
-                    'authorName' => $author['displayName'] ?? __('Member'),
+                    // The handle alone (ADR-0065, D-IDP-15): a wall comment
+                    // names its author by handle, and the display name never
+                    // reaches the props of this page — a name in the JSON is
+                    // the name on the page (ADR-0065 point 4). The heading
+                    // above is the subject's own (ADR-0051 §7) and keeps both.
                     'authorUsername' => $author['username'] ?? null,
                     'postedAt' => $comment->created_at?->toIso8601String() ?? now()->toIso8601String(),
                     'isMine' => $viewerId !== null && $comment->author_user_id === $viewerId,
@@ -104,16 +108,20 @@ final class ProfileController
     }
 
     /**
+     * Handles only: the display name of a comment's author has no reader on
+     * this page since ADR-0065, and a column fetched is a column one careless
+     * template away from the markup.
+     *
      * @param  array<int, string>  $ids
-     * @return array<string, array{displayName: string, username: string}>
+     * @return array<string, array{username: string}>
      */
     private function authorsById(array $ids): array
     {
         return CommunityProfile::query()
             ->whereKey($ids)
-            ->get()
+            ->get(['id', 'username'])
             ->mapWithKeys(fn (CommunityProfile $profile): array => [
-                $profile->getKey() => ['displayName' => $profile->display_name, 'username' => $profile->username],
+                $profile->getKey() => ['username' => $profile->username],
             ])
             ->all();
     }

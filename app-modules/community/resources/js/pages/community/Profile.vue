@@ -24,9 +24,14 @@ import {
  * `public` profile gets `comments: null` and no comments section renders at
  * all — the write endpoints 404 them the same way (Task 9).
  *
- * A comment author's handle links to their own page (ADR-0065): this page
- * exists only where Community is active, so the route is always there —
- * whether it answers is the profile's own visibility rule (ADR-0052).
+ * A comment author is their handle and nothing else (ADR-0065, D-IDP-15):
+ * the display name does not reach these props at all, so no template can
+ * print it. The handle links to the author's own page — this page exists
+ * only where Community is active, so the route is always there, and
+ * whether it answers is the profile's own visibility rule (ADR-0052). A
+ * comment whose author has no handle (a tombstoned or not-yet-replayed
+ * row) is signed "A member". The profile heading above keeps display name
+ * and handle together: that is the person's own page (ADR-0051 §7).
  */
 type SocialLinks = Record<string, string>;
 
@@ -45,7 +50,6 @@ type ProfileProps = {
 type CommentProps = {
     id: string;
     body: string;
-    authorName: string;
     authorUsername: string | null;
     postedAt: string;
     isMine: boolean;
@@ -69,6 +73,12 @@ const commentForm = useForm({ body: '' });
 
 function formatCommentDate(value: string): string {
     return formatDateTime(value, { dateStyle: 'long', timeStyle: 'short' });
+}
+
+function authorLabel(comment: CommentProps): string {
+    return comment.authorUsername === null
+        ? 'a member'
+        : `@${comment.authorUsername}`;
 }
 
 function submitComment(): void {
@@ -228,17 +238,15 @@ const memberSinceLabel = computed(() =>
                     class="flex items-center justify-between gap-2 text-xs text-text-muted"
                 >
                     <span>
-                        <span class="font-medium text-text">
-                            {{ comment.authorName }}
-                        </span>
-                        <span v-if="comment.authorUsername">
-                            ·
-                            <Link
-                                :href="showProfile(comment.authorUsername).url"
-                                class="hover:text-accent"
-                            >
-                                @{{ comment.authorUsername }}
-                            </Link>
+                        <Link
+                            v-if="comment.authorUsername"
+                            :href="showProfile(comment.authorUsername).url"
+                            class="font-medium text-text hover:text-accent"
+                        >
+                            @{{ comment.authorUsername }}
+                        </Link>
+                        <span v-else class="font-medium text-text">
+                            A member
                         </span>
                         · {{ formatCommentDate(comment.postedAt) }}
                         <span v-if="comment.isMine">· you</span>
@@ -270,7 +278,7 @@ const memberSinceLabel = computed(() =>
                             v-if="comment.canDelete"
                             type="button"
                             class="hover:text-danger"
-                            :aria-label="`Delete comment by ${comment.authorName}`"
+                            :aria-label="`Delete comment by ${authorLabel(comment)}`"
                             @click="deleteComment(comment)"
                         >
                             <Trash2 class="size-3.5" />
