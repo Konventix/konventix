@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Event\Data;
 
+use Konventix\Event\Enums\AttendeeListVisibility;
 use Konventix\Event\Enums\EventVisibility;
 use Konventix\Event\Enums\ReentryPolicy;
 use Konventix\Event\Models\Event;
@@ -59,6 +60,8 @@ final class EventData extends Data
         /** A media-library ULID (ADR-0035), owned by the event's brand; null for no banner (#292). */
         #[Nullable, Ulid]
         public readonly ?string $bannerMediaId = null,
+        /** ADR-0064 §1: the per-event attendee-list switch; `Off` when the form does not say. */
+        public readonly AttendeeListVisibility $attendeeListVisibility = AttendeeListVisibility::Off,
     ) {}
 
     /**
@@ -92,6 +95,7 @@ final class EventData extends Data
             reentryPolicy: $event->reentry_policy,
             predecessorEventId: $event->predecessor_event_id,
             bannerMediaId: $event->banner_media_id,
+            attendeeListVisibility: $event->attendee_list_visibility,
         );
     }
 }

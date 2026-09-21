@@ -32,6 +32,8 @@ const { profile, membershipImages, steamAvatarUrl } = defineProps<{
         statusEmoji: string | null;
         socialLinks: Record<string, string>;
         visibility: 'public' | 'internal' | 'event';
+        /** ADR-0064: opt-in to be named on event attendee lists. */
+        listedInAttendees: boolean;
         timezone: string | null;
     };
     membershipImages: {
@@ -272,6 +274,37 @@ function submitBanner(event: Event): void {
                 </label>
                 <InputError class="mt-2" :message="errors.visibility" />
             </fieldset>
+
+            <!-- ADR-0064 §1: a second, separate choice — a public profile
+                 is not a consent to be listed next to an event. A plain
+                 checkbox: absent when unchecked, which the server reads as
+                 false. -->
+            <div class="grid gap-2">
+                <label class="flex items-start gap-2 text-sm">
+                    <input
+                        type="checkbox"
+                        name="listedInAttendees"
+                        value="1"
+                        class="mt-1 size-4 accent-accent"
+                        :checked="profile.listedInAttendees"
+                        aria-describedby="listed-in-attendees-hint"
+                    />
+                    <span>
+                        <span class="block"
+                            >List me as an attendee on event pages I am
+                            registered for</span
+                        >
+                        <span
+                            id="listed-in-attendees-hint"
+                            class="block text-text-muted"
+                            >Only your username, only where the organizer shows
+                            the list, and only once your registration is
+                            confirmed.</span
+                        >
+                    </span>
+                </label>
+                <InputError class="mt-2" :message="errors.listedInAttendees" />
+            </div>
 
             <div class="grid gap-2">
                 <Label for="timezone">Timezone</Label>

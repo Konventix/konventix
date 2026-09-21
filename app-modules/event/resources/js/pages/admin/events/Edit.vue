@@ -46,6 +46,8 @@ type Props = {
         timezone: string;
         visibility: string;
         reentryPolicy: string;
+        /** ADR-0064: the per-event attendee-list switch. */
+        attendeeListVisibility: string;
         predecessorEventId: string | null;
         bannerMediaId: string | null;
         brandId: string;
@@ -69,6 +71,7 @@ const form = useForm({
     timezone: props.event.timezone,
     visibility: props.event.visibility,
     reentryPolicy: props.event.reentryPolicy,
+    attendeeListVisibility: props.event.attendeeListVisibility,
     predecessorEventId: props.event.predecessorEventId,
     bannerMediaId: props.event.bannerMediaId,
     days: [...props.days],
@@ -308,6 +311,31 @@ function promoteVenue(venueId: string): void {
                                 <option value="once_only">Once only</option>
                             </select>
                         </div>
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="edit-attendee-list">Attendee list</Label>
+                        <select
+                            id="edit-attendee-list"
+                            v-model="form.attendeeListVisibility"
+                            class="h-9 rounded-md border border-border bg-surface px-3 text-sm"
+                            aria-describedby="edit-attendee-list-hint"
+                        >
+                            <option value="off">Off</option>
+                            <option value="members">
+                                Count for everyone, names for signed-in members
+                            </option>
+                            <option value="public">Names for everyone</option>
+                        </select>
+                        <p
+                            id="edit-attendee-list-hint"
+                            class="text-sm text-text-muted"
+                        >
+                            Only confirmed registrants who opted in on their
+                            profile are ever named, by username.
+                        </p>
+                        <InputError
+                            :message="form.errors.attendeeListVisibility"
+                        />
                     </div>
                 </CardContent>
             </Card>

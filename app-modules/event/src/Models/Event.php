@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Konventix\Event\Database\Factories\EventFactory;
+use Konventix\Event\Enums\AttendeeListVisibility;
 use Konventix\Event\Enums\EventLifecycleState;
 use Konventix\Event\Enums\EventVisibility;
 use Konventix\Event\Enums\ReentryPolicy;
@@ -41,6 +42,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property EventLifecycleState $state
  * @property EventVisibility $visibility
  * @property ReentryPolicy $reentry_policy
+ * @property AttendeeListVisibility $attendee_list_visibility
  * @property string|null $predecessor_event_id
  * @property Carbon|null $published_at
  * @property Carbon|null $cancelled_at
@@ -68,6 +70,7 @@ class Event extends Model
         'state',
         'visibility',
         'reentry_policy',
+        'attendee_list_visibility',
         'predecessor_event_id',
         'published_at',
         'cancelled_at',
@@ -184,6 +187,7 @@ class Event extends Model
             'state' => EventLifecycleState::class,
             'visibility' => EventVisibility::class,
             'reentry_policy' => ReentryPolicy::class,
+            'attendee_list_visibility' => AttendeeListVisibility::class,
             'published_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'concluded_at' => 'datetime',

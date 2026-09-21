@@ -74,6 +74,7 @@ final class IdentityGdprHandler implements GdprHandler
                 'timezone' => $user->timezone,
                 'state' => $user->state->value,
                 'profile_visibility' => $user->profile_visibility->value,
+                'listed_in_attendees' => $user->listed_in_attendees,
                 'email_verified_at' => $user->email_verified_at?->toIso8601String(),
                 'two_factor_enabled' => $user->two_factor_confirmed_at !== null,
                 'registered_at' => $user->created_at?->toIso8601String(),
@@ -197,6 +198,8 @@ final class IdentityGdprHandler implements GdprHandler
             // A scrubbed account has no audience left to choose a page for
             // (ADR-0052 §5 consequences).
             'profile_visibility' => ProfileVisibility::Internal,
+            // And nothing left to be listed as on an attendee list (ADR-0064).
+            'listed_in_attendees' => false,
         ])->save();
 
         event(new UserAnonymized(

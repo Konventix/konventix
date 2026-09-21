@@ -59,6 +59,7 @@ class UserFactory extends Factory
             'status_emoji' => null,
             'social_links' => null,
             'profile_visibility' => ProfileVisibility::Internal,
+            'listed_in_attendees' => false,
             'locale' => 'en',
             // Null, not UTC: a fresh account has chosen no zone and reads
             // every timestamp on its browser's clock (#243).

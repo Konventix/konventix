@@ -18,7 +18,10 @@ keeps as its own read model.
 ## Owns
 
 - **User**, deliberately narrow: ULID, display name, email, password hash,
-  locale, timezone, account state, and typed preference values. Nothing else.
+  locale, timezone, account state, typed preference values, and the
+  profile-of-record (ADR-0051 §2, ADR-0052, ADR-0064: `username`, `tagline`,
+  `status_emoji`, `social_links`, `profile_visibility`,
+  `listed_in_attendees`). Nothing else.
   Account state is `AccountState::Active`/`Locked`/`Anonymized`/`Merged`;
   `pending` is covered by `email_verified_at` instead of its own state.
   `Anonymized` is written by the `Gdpr/` handler; `Merged` (#81) is written
@@ -106,7 +109,7 @@ event class lands.
 |---|---|---|---|
 | `UserRegistered` | An account is created | `user_id`, `brand_id` (the brand it was created *through*, ADR-0016), `email`, `display_name`, `locale`, `registered_at` | implemented |
 | `UserEmailVerified` | The email address is confirmed | `user_id`, `verified_at` | proposed |
-| `UserProfileUpdated` | Account contact/profile data changes | `user_id`, `email`, `display_name`, `locale`, `updated_at` | implemented |
+| `UserProfileUpdated` | Account contact/profile data changes | `user_id`, `email`, `display_name`, `username`, `tagline`, `status_emoji`, `social_links`, `visibility` (ADR-0052), `listed_in_attendees` (ADR-0064 — the opt-in to be named on event attendee lists), `locale`, `updated_at` | implemented |
 | `UserPreferencesUpdated` | Typed preference values change (notification preferences are *not* these — they live in Messaging per ADR-0041) | `user_id`, `preference_key`, `value` | proposed |
 | `UserAuthenticated` | A login succeeds | `user_id`, `brand_id`, `authenticated_at` | proposed |
 | `UserAuthenticationFailed` | A login attempt is rejected | `user_id` or `null`, `brand_id`, `reason_code` | proposed |

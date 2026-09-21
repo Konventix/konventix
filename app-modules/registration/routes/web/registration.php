@@ -16,9 +16,20 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Registration\Http\Controllers\AttendeesController;
 use Konventix\Registration\Http\Controllers\MyRegistrationsController;
 use Konventix\Registration\Http\Controllers\RegistrationController;
 use Konventix\Registration\Http\Controllers\WaitlistController;
+
+// Who is coming (ADR-0064 §7): public, addressed by the event's slug like
+// Event's own landing route, and resolved through this module's
+// `EventSummary`. Deliberately NOT in the `auth` group — a hidden event or
+// a switched-off list must read as 404, never as a login redirect; the
+// controller asks a guest to sign in only for a `members` list on a visible
+// event.
+Route::get('/events/{slug}/attendees', [AttendeesController::class, 'index'])
+    ->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*')
+    ->name('registration.attendees.index');
 
 // The public registration flow (SPEC.md, TODO.md). Both routes require an
 // authenticated account — D-REG-08 (`docs/inventory/decision-log.md` Round

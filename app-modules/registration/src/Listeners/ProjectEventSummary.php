@@ -6,6 +6,7 @@ namespace Konventix\Registration\Listeners;
 
 use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventArchived;
+use Konventix\Event\Events\EventAttendeeListPolicyChanged;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
@@ -186,6 +187,20 @@ final class ProjectEventSummary
             ->where('brand_id', $event->brandId)
             ->where('event_id', $event->eventId)
             ->update(['archived_at' => $event->archivedAt]);
+    }
+
+    /**
+     * The per-event attendee-list switch (ADR-0064 §6), carried complete —
+     * replace, never patch. Emitted at creation right after `EventCreated`,
+     * so the row is already there; a policy event for an event with no row
+     * is the same safe no-op as a reschedule for one.
+     */
+    public function handleAttendeeListPolicyChanged(EventAttendeeListPolicyChanged $event): void
+    {
+        EventSummary::withoutBrandScope()
+            ->where('brand_id', $event->brandId)
+            ->where('event_id', $event->eventId)
+            ->update(['attendee_list_visibility' => $event->attendeeListVisibility]);
     }
 
     private function markPublic(string $eventId, string $brandId, string $since): void

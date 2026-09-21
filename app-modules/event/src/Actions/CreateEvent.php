@@ -7,6 +7,7 @@ namespace Konventix\Event\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Event\Data\EventData;
+use Konventix\Event\Events\EventAttendeeListPolicyChanged;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Event\Models\Event;
@@ -48,6 +49,7 @@ final class CreateEvent
                 'timezone' => $data->timezone,
                 'visibility' => $data->visibility,
                 'reentry_policy' => $data->reentryPolicy,
+                'attendee_list_visibility' => $data->attendeeListVisibility,
                 'predecessor_event_id' => $data->predecessorEventId,
             ]);
             // Explicit brand, not ambient context (ADR-0029).
@@ -78,6 +80,14 @@ final class CreateEvent
                 eventId: $event->id,
                 brandId: $event->brand_id,
                 reentryPolicy: $event->reentry_policy->value,
+            ));
+
+            // Same reasoning for the attendee-list switch (ADR-0064 §6):
+            // Registration projects it and has no other way to learn it.
+            event(new EventAttendeeListPolicyChanged(
+                eventId: $event->id,
+                brandId: $event->brand_id,
+                attendeeListVisibility: $event->attendee_list_visibility->value,
             ));
 
             if ($days !== []) {

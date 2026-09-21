@@ -37,6 +37,7 @@ final class SetAccountEmail
                 statusEmoji: $user->status_emoji,
                 socialLinks: $user->social_links ?? [],
                 visibility: $user->profile_visibility->value,
+                listedInAttendees: $user->listed_in_attendees,
                 locale: $user->locale,
                 updatedAt: now()->toIso8601String(),
             ));

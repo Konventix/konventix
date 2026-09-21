@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use Konventix\Event\Events\EventAttendeeListPolicyChanged;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventRescheduled;
@@ -181,4 +182,41 @@ it('projects the banner from EventCreated, patches it on EventDetailsUpdated and
     ));
 
     expect(EventSummary::where('event_id', $eventId)->firstOrFail()->banner_media_id)->toBeNull();
+});
+
+/**
+ * ADR-0064 §6: the per-event attendee-list switch reaches this module only
+ * through `EventAttendeeListPolicyChanged` — complete each time, replace
+ * never patch — and a row that has never been told stays `off`, the safe
+ * direction.
+ */
+it('starts every summary with the attendee list off and projects the switch from the policy event', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+
+    event(registrationEventCreatedEvent($eventId, $brand->id));
+
+    $summary = EventSummary::where('event_id', $eventId)->firstOrFail();
+    expect($summary->attendee_list_visibility)->toBe(EventSummary::ATTENDEE_LIST_OFF)
+        ->and($summary->showsAttendeeList())->toBeFalse();
+
+    event(new EventAttendeeListPolicyChanged(eventId: $eventId, brandId: $brand->id, attendeeListVisibility: 'members'));
+
+    $summary->refresh();
+    expect($summary->attendee_list_visibility)->toBe(EventSummary::ATTENDEE_LIST_MEMBERS)
+        ->and($summary->showsAttendeeList())->toBeTrue()
+        ->and($summary->attendeeNamesVisibleTo(false))->toBeFalse()
+        ->and($summary->attendeeNamesVisibleTo(true))->toBeTrue();
+
+    event(new EventAttendeeListPolicyChanged(eventId: $eventId, brandId: $brand->id, attendeeListVisibility: 'public'));
+
+    expect($summary->refresh()->attendeeNamesVisibleTo(false))->toBeTrue();
+});
+
+it('ignores a policy event for an event it holds no summary for', function (): void {
+    $brand = $this->withBrand();
+
+    event(new EventAttendeeListPolicyChanged(eventId: (string) Str::ulid(), brandId: $brand->id, attendeeListVisibility: 'public'));
+
+    expect(EventSummary::query()->count())->toBe(0);
 });

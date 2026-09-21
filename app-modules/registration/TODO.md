@@ -87,6 +87,23 @@
 
 ## Done
 
+- [x] Attendee list on the event page (bugfix round 2026-09-21, Task 15,
+      ADR-0064): `Attendees\PublicAttendees` (confirmed, one per person,
+      named only when `Registrant.listed` and a known `username`, ordered
+      by username) feeds the `event.landing` card
+      `registration/EventAttendees` (order 15; count, a dozen names, a link
+      on) and `GET /events/{slug}/attendees` (`AttendeesController`,
+      `pages/event/Attendees.vue`, paginated; 404 for a hidden event or a
+      switched-off list before any login redirect, sign-in only for a
+      `members` list). `Registrant` gained `username`/`listed` from
+      `UserProfileUpdated`, `EventSummary` gained
+      `attendee_list_visibility` from `EventAttendeeListPolicyChanged`
+      (backfilled once from `events` by the migration) plus
+      `scopeVisibleOnLanding()`. `AttendeeData` is username and an optional
+      literal `/u/{username}` — the slot and page tests pin that no display
+      name, e-mail, organization or user ULID is in either payload. Run
+      `identity:replay-profiles` after deploy so existing registrants get
+      their handles; until then they are counted, not named.
 - [x] `tickets-for-event` static-page block (bugfix round 2026-09-21,
       Task 7): `Blocks\TicketsForEventBlock` puts one event's public offers
       on any composed page, registered through `registerBlockTypes()` like

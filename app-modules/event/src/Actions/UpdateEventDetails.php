@@ -7,6 +7,7 @@ namespace Konventix\Event\Actions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Konventix\Event\Data\EventData;
+use Konventix\Event\Events\EventAttendeeListPolicyChanged;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Event\Events\EventRescheduled;
@@ -36,6 +37,7 @@ final class UpdateEventDetails
                 || $event->timezone !== $data->timezone;
 
             $reentryPolicyChanged = $event->reentry_policy !== $data->reentryPolicy;
+            $attendeeListPolicyChanged = $event->attendee_list_visibility !== $data->attendeeListVisibility;
 
             $event->forceFill([
                 'name' => $data->name,
@@ -47,6 +49,7 @@ final class UpdateEventDetails
                 'timezone' => $data->timezone,
                 'visibility' => $data->visibility,
                 'reentry_policy' => $data->reentryPolicy,
+                'attendee_list_visibility' => $data->attendeeListVisibility,
                 'predecessor_event_id' => $data->predecessorEventId,
             ])->save();
 
@@ -78,6 +81,16 @@ final class UpdateEventDetails
                     eventId: $event->id,
                     brandId: $event->brand_id,
                     reentryPolicy: $event->reentry_policy->value,
+                ));
+            }
+
+            // Registration renders the attendee list off its projection of
+            // this switch (ADR-0064 §6) and may not read `events`.
+            if ($attendeeListPolicyChanged) {
+                event(new EventAttendeeListPolicyChanged(
+                    eventId: $event->id,
+                    brandId: $event->brand_id,
+                    attendeeListVisibility: $event->attendee_list_visibility->value,
                 ));
             }
 

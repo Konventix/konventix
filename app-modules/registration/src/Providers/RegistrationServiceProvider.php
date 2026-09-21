@@ -20,6 +20,7 @@ use Konventix\Commerce\Events\RegistrationLinePlacedInCart;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventArchived;
+use Konventix\Event\Events\EventAttendeeListPolicyChanged;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
@@ -40,6 +41,7 @@ use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Blocks\TicketsForEventBlock;
 use Konventix\Registration\Console\AnnounceRegistrationOwnershipCommand;
 use Konventix\Registration\Console\ExpireWaitlistOffersCommand;
+use Konventix\Registration\Data\EventAttendeesData;
 use Konventix\Registration\Data\PublicOfferData;
 use Konventix\Registration\Enums\Permission;
 use Konventix\Registration\Events\QuotaReleased;
@@ -178,6 +180,9 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         Event::listen(VenueUpdated::class, [ProjectEventSummary::class, 'handleVenueUpdated']);
         Event::listen(VenueUnassigned::class, [ProjectEventSummary::class, 'handleVenueUnassigned']);
         Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleArchived']);
+        // ADR-0064 §6: the attendee-list switch, the only way this module
+        // learns it — emitted at creation and on change, complete each time.
+        Event::listen(EventAttendeeListPolicyChanged::class, [ProjectEventSummary::class, 'handleAttendeeListPolicyChanged']);
         // #240: `/shop` lists offers across every event, so the projection
         // has to know which events are public — `event.landing` gets that
         // from `Event::isVisibleOnLanding()`, which Registration may not
@@ -653,6 +658,29 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 ),
             ],
             order: 10,
+        );
+
+        // Who is coming (ADR-0064), after the offers. The switch lives on
+        // this module's `EventSummary` projection, not on Event's row; when
+        // it is `off` the card gets `null` and renders nothing, and the
+        // count and names are never computed. `auth()` is read here, at
+        // request time, for the `members` half of the switch.
+        $slots->add(
+            slot: 'event.landing',
+            module: 'registration',
+            component: 'registration/EventAttendees',
+            props: static function (array $context): array {
+                $summary = EventSummary::query()->where('event_id', $context['eventId'])->first();
+
+                if ($summary === null || ! $summary->showsAttendeeList()) {
+                    return ['listing' => null];
+                }
+
+                return [
+                    'listing' => EventAttendeesData::ofSummary($summary, viewerSignedIn: auth()->check())->toArray(),
+                ];
+            },
+            order: 15,
         );
 
         // The shop's brand-wide counterpart (GitLab #240). `/shop` lists

@@ -51,6 +51,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string|null $status_emoji
  * @property array<string, string>|null $social_links
  * @property ProfileVisibility $profile_visibility
+ * @property bool $listed_in_attendees
  * @property string $locale
  * @property string|null $timezone
  * @property AccountState $state
@@ -63,7 +64,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'password', 'username', 'tagline', 'status_emoji', 'social_links', 'profile_visibility', 'locale', 'timezone', 'preferences'])]
+#[Fillable(['name', 'email', 'password', 'username', 'tagline', 'status_emoji', 'social_links', 'profile_visibility', 'listed_in_attendees', 'locale', 'timezone', 'preferences'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -82,6 +83,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'password' => 'hashed',
             'social_links' => 'array',
             'profile_visibility' => ProfileVisibility::class,
+            'listed_in_attendees' => 'boolean',
             'state' => AccountState::class,
             'preferences' => AccountPreferencesData::class.':default',
             'two_factor_confirmed_at' => 'datetime',

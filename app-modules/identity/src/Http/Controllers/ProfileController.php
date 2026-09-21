@@ -38,6 +38,8 @@ class ProfileController
                 'statusEmoji' => $user->status_emoji,
                 'socialLinks' => $user->social_links ?? (object) [],
                 'visibility' => $user->profile_visibility->value,
+                // ADR-0064 §1: the opt-in to be named on event attendee lists.
+                'listedInAttendees' => $user->listed_in_attendees,
                 // The zone every system timestamp is shown in (#243), or
                 // null for an account that has never chosen one — which the
                 // select offers as "Browser (…)" and the helper answers with
@@ -98,6 +100,7 @@ class ProfileController
             'status_emoji' => $data->statusEmoji !== '' ? $data->statusEmoji : null,
             'social_links' => array_filter($data->socialLinks ?? []) ?: null,
             'profile_visibility' => ProfileVisibility::from($data->visibility),
+            'listed_in_attendees' => $data->listedInAttendees,
             'timezone' => $data->timezone === '' ? null : $data->timezone,
         ]);
 
@@ -118,6 +121,7 @@ class ProfileController
             statusEmoji: $request->user()->status_emoji,
             socialLinks: $request->user()->social_links ?? [],
             visibility: $request->user()->profile_visibility->value,
+            listedInAttendees: $request->user()->listed_in_attendees,
             locale: $request->user()->locale,
             updatedAt: now()->toIso8601String(),
         ));

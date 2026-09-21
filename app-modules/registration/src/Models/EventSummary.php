@@ -49,6 +49,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $venue_label
  * @property string|null $banner_media_id
  * @property string|null $venue_id
+ * @property string $attendee_list_visibility
  * @property Carbon|null $public_since
  * @property Carbon|null $archived_at
  * @property Carbon|null $created_at
@@ -69,7 +70,24 @@ class EventSummary extends Model
      */
     public const string VISIBILITY_PUBLIC = 'public';
 
-    protected $fillable = ['event_id', 'name', 'slug', 'visibility', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id', 'banner_media_id', 'public_since', 'archived_at'];
+    /**
+     * `Event::isVisibleOnLanding()`'s other branch: an `Unlisted` event is
+     * reachable by direct link at any lifecycle state.
+     */
+    public const string VISIBILITY_UNLISTED = 'unlisted';
+
+    /**
+     * The per-event attendee-list switch (ADR-0064), as
+     * `Konventix\Event\Enums\AttendeeListVisibility`'s scalar values —
+     * strings here for the same ADR-0004 reason as `VISIBILITY_PUBLIC`.
+     */
+    public const string ATTENDEE_LIST_OFF = 'off';
+
+    public const string ATTENDEE_LIST_MEMBERS = 'members';
+
+    public const string ATTENDEE_LIST_PUBLIC = 'public';
+
+    protected $fillable = ['event_id', 'name', 'slug', 'visibility', 'starts_at', 'ends_at', 'timezone', 'venue_label', 'venue_id', 'banner_media_id', 'public_since', 'archived_at', 'attendee_list_visibility'];
 
     /**
      * This module's projection of `Event::scopeListedPublicly()` — the rule
@@ -92,6 +110,47 @@ class EventSummary extends Model
             ->whereNotNull('public_since')
             ->where('visibility', self::VISIBILITY_PUBLIC)
             ->whereNull('archived_at');
+    }
+
+    /**
+     * This module's projection of `Event::isVisibleOnLanding()` — the rule
+     * a page *addressed by* one event owes (ADR-0064 §7): out of `Draft`
+     * (`public_since`), or `Unlisted`, which is reachable by direct link at
+     * any state. Looser than `scopeListedPublicly()` on purpose, in both
+     * directions: an unlisted event's attendees page resolves like its
+     * landing page does, and an archived one keeps resolving too.
+     *
+     * @param  Builder<EventSummary>  $query
+     * @return Builder<EventSummary>
+     */
+    public function scopeVisibleOnLanding(Builder $query): Builder
+    {
+        return $query->where(function (Builder $visible): void {
+            $visible->whereNotNull('public_since')
+                ->orWhere('visibility', self::VISIBILITY_UNLISTED);
+        });
+    }
+
+    /**
+     * Whether the event shows an attendee list at all (ADR-0064 §1): the
+     * count is shown under this switch alone.
+     */
+    public function showsAttendeeList(): bool
+    {
+        return $this->attendee_list_visibility !== self::ATTENDEE_LIST_OFF;
+    }
+
+    /**
+     * Whether *this* viewer may see names: `public` shows them to anyone,
+     * `members` to a signed-in account only, `off` to nobody.
+     */
+    public function attendeeNamesVisibleTo(bool $signedIn): bool
+    {
+        return match ($this->attendee_list_visibility) {
+            self::ATTENDEE_LIST_PUBLIC => true,
+            self::ATTENDEE_LIST_MEMBERS => $signedIn,
+            default => false,
+        };
     }
 
     /**

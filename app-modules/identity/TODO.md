@@ -176,6 +176,52 @@ person behind it. The value here is in what is left out.
 
 ## Done
 
+- [x] A visible "already linked" error for Steam, and recovery codes shown
+      once (bugfix round 2026-09-21, Task 13). `LinkSocialIdentity` already
+      refused a Steam account linked elsewhere and the callback redirected
+      with a `provider` error, but `LinkedAccounts.vue` rendered that error
+      only inside the disconnect form of an already-linked provider — never,
+      for the person it was meant for. The page now reads
+      `page.props.errors.provider` and shows it as a `role="alert"` above
+      the list. The refusal names the holder by profile-of-record
+      `username` (`SocialIdentityAlreadyLinked::forUsername()`; its docblock
+      records why that is not a disclosure: the person is signed into that
+      Steam account in this very browser — never display name or Steam
+      persona), and a second Steam identity on the same account gets its
+      own typed refusal (`providerAlreadyConnected()`, "disconnect the
+      connected Steam account first") instead of dying on the
+      `(user_id, provider)` unique index with a 500. Self-service merging
+      stays rejected (operator-only, #81). Two-factor:
+      `TwoFactorAuthentication.vue` no longer fetches the recovery codes on
+      every visit of the security page nor lists them permanently; they
+      appear exactly once — right after confirmation (read off the
+      `enabled` prop flipping, since the confirm form is unmounted by that
+      flip and Vue drops an emit from an unmounted component) or after
+      regeneration — in `RecoveryCodesDialog.vue`, non-dismissible, with a
+      required "I saved my recovery codes" checkbox gating Done
+      (`recoveryCodesReveal.ts`, vitest). Fortify's GET route for the codes
+      stays: the checkbox is a nudge, not a new security boundary.
+      `tests/SocialLoginTest.php`, `tests/LinkedAccountsTest.php`,
+      `tests/TwoFactorAuthenticationTest.php`. Trap found on the way, worth
+      a `.ai/rules/tests.md` entry: with `session.serialization = json`,
+      `assertSessionHasErrors()` before a follow-up `$this->get()` starts
+      the store from the test and marshals `errors` into a `ViewErrorBag`
+      object, which the next request's own `marshalErrorBag()` iterates
+      into an empty bag — fetch the page first, assert the session after.
+      Follow-up: the "already linked" copy says "sign in there to
+      disconnect it first"; once a "re-authenticate, do not link" callback
+      mode exists (Backlog above), that step could become a one-click move.
+
+- [x] The attendee-list opt-in (bugfix round 2026-09-21, Task 15,
+      ADR-0064): `users.listed_in_attendees` (default false) joins the
+      profile-of-record, set by one checkbox on `settings/Profile.vue`
+      ("List me as an attendee on event pages I am registered for"),
+      exported by the GDPR handler and reset on anonymization.
+      `UserProfileUpdated` widened with `listedInAttendees` at every
+      dispatch site and every hand-built test payload across modules;
+      `identity:replay-profiles` carries it, which is how Registration's
+      registrants learn it after deploy.
+
 - [x] A Steam-only account can set its first password (bugfix round
       2026-09-21, Task 5). `PasswordUpdateData` demanded `current_password`
       unconditionally, which no account with a null hash could satisfy —
@@ -391,3 +437,27 @@ person behind it. The value here is in what is left out.
       ADR-0014's ULID-key rule), `Queries\ActiveSessionsQuery`,
       `SessionController` (`sessions.destroy` behind `password.confirm`,
       `sessions.destroy-others` a direct delete), `SessionList.vue`.
+
+- [x] The session list is honest about what it knows (bugfix round
+      2026-09-21). `ActiveSessionsQuery` lists only rows the session handler
+      still honours (`last_activity` within `session.lifetime`) — before, every
+      row ever written stayed listed with a "Revoke" button that acted on
+      nothing. `SessionData.device` is a readable line from the in-house
+      `Support\UserAgent` reader ("Chrome on Windows", "Unknown device");
+      the raw header stays as the tooltip. The IP address is labelled as an
+      address: nothing resolves it to a place, so the page promises no
+      "location". `SecurityController` passes `sessionsAvailable`
+      (`session.driver === 'database'`) and the page says so when the list
+      cannot exist. Settings pages show their breadcrumb trail again —
+      `layouts/settings/Layout.vue` now declares the `breadcrumbs` prop the
+      pages were already sending; `SettingsLayoutTest` pins it.
+
+- [ ] `.env.example` says `SESSION_DRIVER=redis` while `config/session.php`
+      defaults to `database` and the session list only exists on the database
+      driver. A deployment copied from the example gets a Security page that
+      says "no list on this installation" — which is honest, but a surprise.
+      Either the example moves to `database` (with the `sessions` table's
+      write on every request priced in) or the redis choice is documented
+      beside the settings page's notice. `.env.example` is under
+      `.ai/rules/general.md`, outside this module's files, so it is recorded
+      here rather than changed.

@@ -42,6 +42,12 @@ final class ProfileUpdateData extends Data
         public readonly ?array $socialLinks,
         public readonly string $visibility,
         public readonly ?string $timezone,
+        /**
+         * ADR-0064 §1: the opt-in to be named on event attendee lists. A
+         * plain checkbox in an HTML form is simply absent when unchecked,
+         * so the default is the unchecked value and the rule is `sometimes`.
+         */
+        public readonly bool $listedInAttendees = false,
     ) {}
 
     /**
@@ -77,6 +83,7 @@ final class ProfileUpdateData extends Data
             // string `Intl.DateTimeFormat` would throw on for every timestamp
             // the person then looks at.
             'timezone' => ['nullable', 'timezone:all'],
+            'listedInAttendees' => ['sometimes', 'boolean'],
         ]);
 
         foreach (SocialLinks::PLATFORMS as $platform => $regex) {

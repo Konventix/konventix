@@ -61,6 +61,7 @@ it('re-projects UserProfileUpdated over an existing row', function (): void {
         statusEmoji: null,
         socialLinks: [],
         visibility: 'internal',
+        listedInAttendees: false,
         locale: 'en',
         updatedAt: now()->toIso8601String(),
     ));
