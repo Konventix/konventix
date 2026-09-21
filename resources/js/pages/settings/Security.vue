@@ -3,6 +3,7 @@ import { Form, Head } from '@inertiajs/vue3';
 import SecurityController from '@/actions/Konventix/Identity/Http/Controllers/SecurityController';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import PasskeyList from '@/components/PasskeyList.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
 import SessionList from '@/components/SessionList.vue';
 import TwoFactorAuthentication from '@/components/TwoFactorAuthentication.vue';
@@ -19,6 +20,8 @@ type Props = {
     requiresConfirmation?: boolean;
     sessions: Konventix.Identity.Data.SessionData[];
     sessionsAvailable: boolean;
+    canManagePasskeys: boolean;
+    passkeys?: Konventix.Identity.Data.PasskeyData[];
 };
 
 const props = defineProps<Props>();
@@ -124,6 +127,16 @@ defineOptions({
                 :enabled="twoFactorEnabled ?? false"
                 :confirming="twoFactorConfirming ?? false"
             />
+        </div>
+
+        <div v-if="canManagePasskeys" class="space-y-6 border-t pt-6">
+            <Heading
+                variant="small"
+                title="Passkeys"
+                description="Sign in with your device's screen lock or a security key"
+            />
+
+            <PasskeyList :passkeys="passkeys ?? []" />
         </div>
 
         <div class="space-y-6 border-t pt-6">

@@ -36,7 +36,26 @@ keeps as its own read model.
   outstanding contract text lands on `policies.required` with
   `url.intended` preserved. They read
   `session('compliance.consent_redirect')` rather than asking Compliance
-  directly (#205).
+  directly (#205). A passkey login is the third such path and is rebound the
+  same way (`ConsentAwarePasskeyLoginResponse`).
+- **Passkeys** (WebAuthn) as a sign-in method beside the password and Steam:
+  Fortify's `Features::passkeys()` over `laravel/passkeys`, with this module
+  supplying the ULID `Models\Passkey` (`Passkeys::usePasskeyModel()`), the
+  `PasskeyUser` contract on User, the list and the add/remove surface on the
+  Security settings page (both behind `password.confirm`), the 404-not-403
+  refusal for another account's credential, and the account-state check on
+  login — a passkey enrolled before a lock does not walk past it. Like a
+  linked social identity, a passkey is a row referencing the user, never a
+  column on User.
+  The **relying party is the request host**, re-set per request by
+  `Http\Middleware\BindPasskeyRelyingParty` on Fortify's seven passkey
+  routes rather than fixed at boot from `app.url`: one instance answers on
+  every brand's domain and on the operator console, and WebAuthn binds a
+  credential to the host it was created on. So a passkey is per site — a
+  credential made on one brand's domain does not sign in on another's. A
+  cross-brand passkey would need one shared registrable domain and is out of
+  scope. The browser half is hand-written (`resources/js/lib/webauthn.ts`,
+  `webauthnCodec.ts`), with no npm dependency.
 - **Social login** behind a `SocialProvider` driver contract. A linked identity
   is a row (`provider`, `provider_user_id`, linked-at) referencing the user —
   never a column on User. Steam is a driver, so are Discord, Google, and

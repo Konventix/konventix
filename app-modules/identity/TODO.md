@@ -461,3 +461,48 @@ person behind it. The value here is in what is left out.
       beside the settings page's notice. `.env.example` is under
       `.ai/rules/general.md`, outside this module's files, so it is recorded
       here rather than changed.
+
+- [x] Passkeys as a sign-in method (bugfix round 2026-09-21, Task 16).
+      `Features::passkeys()` over the vendored `laravel/passkeys`, with
+      `config/fortify-options.php` carrying every feature's options — the
+      inline `Features::twoFactorAuthentication([...])` form writes into a
+      config key that a file of that name then replaces wholesale, so the
+      options had to move out of `config/fortify.php` for `confirmPassword`
+      to reach the passkey routes at all. Identity supplies the ULID
+      `Models\Passkey` + migration + factory, `PasskeyData`, the "Passkeys"
+      section of the Security page (`PasskeyList.vue`), "Sign in with a
+      passkey" on the login page, a hand-written browser client
+      (`resources/js/lib/webauthn.ts`, `webauthnCodec.ts` — no npm
+      dependency), `ConsentAwarePasskeyLoginResponse` (the third login path
+      through the contract-consent gate), the account-state check in
+      `Passkeys::authorizeLoginUsing()`, a `PasskeyController::destroy()`
+      that says 404 rather than 403 for another account's credential, and
+      the `passkeys` rate limiter. The relying party is the **request
+      host**, re-set per request by `BindPasskeyRelyingParty` on Fortify's
+      seven passkey routes: one instance serves every brand domain and the
+      console, and WebAuthn binds a credential to the host it was made on.
+      Passkeys join the GDPR export and are deleted outright on
+      anonymization, for the same reason a social identity is.
+
+- [ ] `PasskeyTest` runs no real WebAuthn ceremony: the package ships no
+      attestation/assertion test helper, so `StorePasskey` and
+      `VerifyPasskey` are faked in the container and the posted bodies are
+      credentials that deserialise but would never verify. The signature
+      check, the challenge and origin comparison and the signature-counter
+      update are covered only by the package's own suite. If a helper
+      appears (or one is written against `Webauthn\\`'s test doubles), the
+      store and login cases should run the ceremony end to end.
+
+- [ ] Fortify registers `passkey.confirm-options` and `passkey.confirm` —
+      confirming a password *with* a passkey — and nothing in the UI uses
+      them yet: `ConfirmPassword.vue` still asks for the password, which is
+      awkward for an account that has no password at all (a Steam-only
+      account that added a passkey cannot add a second one). The two routes
+      already carry `BindPasskeyRelyingParty` and the limiter, so this is a
+      page change plus a `webauthn.ts` call.
+
+- [ ] A passkey is per host by design (one relying party per brand domain),
+      so a person with accounts on several of an operator's brand sites
+      enrols one passkey per site. A cross-brand passkey would need every
+      brand under one shared registrable domain and a `related origins`
+      well-known document; it is out of scope until a customer asks.

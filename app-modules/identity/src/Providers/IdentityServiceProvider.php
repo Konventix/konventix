@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Compliance\Gdpr\SubjectResolver;
@@ -23,17 +24,22 @@ use Konventix\Identity\Actions\AuthenticateUser;
 use Konventix\Identity\Actions\CreateNewUser;
 use Konventix\Identity\Actions\ResetUserPassword;
 use Konventix\Identity\Console\ReplayProfilesCommand;
+use Konventix\Identity\Enums\AccountState;
 use Konventix\Identity\Enums\Permission;
 use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Gdpr\IdentitySubjectResolver;
 use Konventix\Identity\Http\Controllers\AccountRegistrationController;
+use Konventix\Identity\Http\Controllers\PasskeyController;
+use Konventix\Identity\Http\Middleware\BindPasskeyRelyingParty;
 use Konventix\Identity\Http\Middleware\EnsureCredentialsAreStrings;
 use Konventix\Identity\Http\Middleware\EnsureSignupsOpen;
 use Konventix\Identity\Http\Responses\ConsentAwareLoginResponse;
+use Konventix\Identity\Http\Responses\ConsentAwarePasskeyLoginResponse;
 use Konventix\Identity\Http\Responses\ConsentAwareTwoFactorLoginResponse;
 use Konventix\Identity\Http\Responses\GenericPasswordResetLinkResponse;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Listeners\SendWelcomeOnVerified;
+use Konventix\Identity\Models\Passkey;
 use Konventix\Identity\Models\User;
 use Konventix\Identity\Social\SocialProviderRegistry;
 use Konventix\Identity\Social\SteamProvider;
@@ -56,6 +62,9 @@ use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse as Succ
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
+use Laravel\Passkeys\Contracts\PasskeyLoginResponse as PasskeyLoginResponseContract;
+use Laravel\Passkeys\Passkey as BasePasskey;
+use Laravel\Passkeys\Passkeys;
 use Laravel\Socialite\Contracts\Factory as SocialiteFactory;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 use SocialiteProviders\Steam\SteamExtendSocialite;
@@ -88,6 +97,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
         $this->configureFortifyActions();
         $this->configureFortifyResponses();
         $this->configureFortifyViews();
+        $this->configurePasskeys();
         $this->configureRateLimiting();
         $this->throttleUnhookedFortifyRoutes();
 
@@ -243,12 +253,52 @@ class IdentityServiceProvider extends ModuleServiceProvider
         $this->app->bind(LoginResponseContract::class, ConsentAwareLoginResponse::class);
         $this->app->bind(TwoFactorLoginResponseContract::class, ConsentAwareTwoFactorLoginResponse::class);
 
+        // The third login path (bugfix round 2026-09-21, Task 16). The
+        // package's provider binds this one in *its* `register()` too, so
+        // the same boot-time rebinding applies. The login page posts the
+        // assertion through Inertia rather than as JSON so the gate — which
+        // deliberately never redirects a JSON login — actually runs.
+        $this->app->bind(PasskeyLoginResponseContract::class, ConsentAwarePasskeyLoginResponse::class);
+
         // ADR-0016/#18: one class answers both contracts, so "address not
         // found" and "reset link sent" produce the identical response —
         // see GenericPasswordResetLinkResponse's own docblock for why this
         // has to happen here and not by editing Fortify's stock responses.
         $this->app->bind(SuccessfulPasswordResetLinkRequestResponseContract::class, GenericPasswordResetLinkResponse::class);
         $this->app->bind(FailedPasswordResetLinkRequestResponseContract::class, GenericPasswordResetLinkResponse::class);
+    }
+
+    /**
+     * Passkeys as a sign-in method (bugfix round 2026-09-21, Task 16).
+     * Fortify registers the seven routes and maps its config onto the
+     * package's; this module supplies the ULID model and the one rule the
+     * package cannot know: which accounts may not sign in at all.
+     *
+     * The authorisation callback is the passkey arm of
+     * `Actions\AuthenticateUser` — the package has already proven the
+     * assertion when it runs, so what is left is the account-state check
+     * that action makes after the password matches, with the same wording
+     * for a locked account and the same silent refusal for a tombstone
+     * (Anonymized) or a closed (Merged, #81) row. Without it a passkey
+     * enrolled before the lock would walk straight past it.
+     */
+    private function configurePasskeys(): void
+    {
+        Passkeys::usePasskeyModel(Passkey::class);
+
+        Passkeys::authorizeLoginUsing(function (Request $request, $user, BasePasskey $passkey): bool {
+            if (! $user instanceof User) {
+                return false;
+            }
+
+            if ($user->state === AccountState::Locked) {
+                throw ValidationException::withMessages([
+                    'credential' => [__('This account has been locked. Contact support to regain access.')],
+                ]);
+            }
+
+            return $user->state === AccountState::Active;
+        });
     }
 
     /**
@@ -393,6 +443,18 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
         RateLimiter::for('registration', $perIpAndAddress('registration'));
         RateLimiter::for('password-reset', $perIpAndAddress('password-reset'));
+
+        // `fortify.limiters.passkeys` (Task 16). The guest half hands out a
+        // challenge and takes an assertion — there is no address to key on
+        // before the assertion is verified, and a discoverable credential
+        // names no account, so the budget is per address of origin only; a
+        // stolen private key is not something a limiter defends against.
+        // The signed-in half (registration options, store, delete) sits
+        // behind `password.confirm`, itself limited above, and joins this
+        // one so a confirmed session cannot mint challenges without bound.
+        RateLimiter::for('passkeys', function (Request $request): Limit {
+            return Limit::perMinute(10)->by('passkeys|'.($request->ip() ?? 'unknown'));
+        });
     }
 
     /**
@@ -465,6 +527,7 @@ class IdentityServiceProvider extends ModuleServiceProvider
     {
         $credentials = EnsureCredentialsAreStrings::class;
         $signupsOpen = EnsureSignupsOpen::class;
+        $relyingParty = BindPasskeyRelyingParty::class;
 
         $additions = [
             // The signup gate on both halves of the form (hotfix
@@ -481,6 +544,16 @@ class IdentityServiceProvider extends ModuleServiceProvider
             // Already throttled through `fortify.limiters.login`; it joins the
             // list for the credential guard alone (review finding 6).
             'login.store' => [$credentials],
+            // Task 16: the relying party follows the request host on every
+            // passkey route — `BindPasskeyRelyingParty`'s docblock has the
+            // why. `passkey.destroy` also swaps its controller below.
+            'passkey.login-options' => [$relyingParty],
+            'passkey.login' => [$relyingParty],
+            'passkey.confirm-options' => [$relyingParty],
+            'passkey.confirm' => [$relyingParty],
+            'passkey.registration-options' => [$relyingParty],
+            'passkey.store' => [$relyingParty],
+            'passkey.destroy' => [$relyingParty],
         ];
 
         // Fortify registers both halves of the reset form as `guest`, so a
@@ -518,6 +591,13 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
                 if ($route->getName() === 'register.store') {
                     $route->uses([AccountRegistrationController::class, 'store']);
+                }
+
+                // Same swap for the same reason: the package's `destroy`
+                // says 403 for another account's passkey, this module's
+                // says 404 (`PasskeyController`'s docblock).
+                if ($route->getName() === 'passkey.destroy') {
+                    $route->uses([PasskeyController::class, 'destroy']);
                 }
             }
         });

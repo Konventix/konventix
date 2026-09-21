@@ -12,6 +12,7 @@ use Konventix\Identity\Enums\AccountState;
 use Konventix\Identity\Enums\ProfileVisibility;
 use Konventix\Identity\Events\UserAnonymized;
 use Konventix\Identity\Models\BrandMembership;
+use Konventix\Identity\Models\Passkey;
 use Konventix\Identity\Models\Session;
 use Konventix\Identity\Models\SocialIdentity;
 use Konventix\Identity\Models\User;
@@ -121,6 +122,23 @@ final class IdentityGdprHandler implements GdprHandler
                     'linked_at' => $identity->linked_at->toIso8601String(),
                 ])
                 ->all(),
+            // The other way in that is not a password (bugfix round
+            // 2026-09-21, Task 16). The credential itself is deliberately
+            // absent: a public key and a signature counter are the
+            // account's security state, not the person's data, and
+            // exporting them tells the reader nothing they asked for. The
+            // name they gave the device does.
+            'passkeys' => Passkey::query()
+                ->where('user_id', $subjectId)
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn (Passkey $passkey): array => [
+                    'name' => $passkey->name,
+                    'authenticator' => $passkey->authenticator,
+                    'last_used_at' => $passkey->last_used_at?->toIso8601String(),
+                    'created_at' => $passkey->created_at?->toIso8601String(),
+                ])
+                ->all(),
         ];
     }
 
@@ -175,6 +193,13 @@ final class IdentityGdprHandler implements GdprHandler
         // be forgotten. Keeping it would also leave the provider login working
         // against an anonymized account.
         SocialIdentity::query()->where('user_id', $subjectId)->delete();
+
+        // Same reasoning for a passkey (Task 16): nothing outside this
+        // module references one, the row is a live credential for the
+        // account, and the tombstone must not be signable into. The login
+        // callback already refuses an anonymized account, but a credential
+        // that still exists is one an operator could mistakenly revive.
+        Passkey::query()->where('user_id', $subjectId)->delete();
 
         $user->forceFill([
             'name' => 'Deleted account',

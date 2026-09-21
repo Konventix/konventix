@@ -124,6 +124,32 @@ return [
         // be tried without limit by anyone already holding valid credentials
         // (#253). The named limiter is defined in IdentityServiceProvider.
         'two-factor' => 'two-factor',
+        // Same shape for the passkey endpoints (bugfix round 2026-09-21,
+        // Task 16): the two guest routes hand out challenges and accept
+        // assertions, so they get the login limiter's generosity per address.
+        'passkeys' => 'passkeys',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Passkeys (WebAuthn relying party)
+    |--------------------------------------------------------------------------
+    |
+    | Fortify copies these into `passkeys.*` once, in its `register()`. They
+    | are only the boot-time fallback: one instance serves many hosts (a brand
+    | site each, plus the operator console), and a passkey is bound to the
+    | relying-party id it was created under, so Identity's
+    | `BindPasskeyRelyingParty` middleware re-sets `passkeys.relying_party_id`
+    | and `passkeys.allowed_origins` from the request host on every passkey
+    | route. Octane clones the config repository per request
+    | (`CreateConfigurationSandbox`), so that override never leaks between
+    | requests.
+    |
+    */
+
+    'passkeys' => [
+        'relying_party_id' => parse_url((string) config('app.url'), PHP_URL_HOST),
+        'allowed_origins' => [config('app.url')],
     ],
 
     /*
@@ -154,10 +180,15 @@ return [
         Features::registration(),
         Features::resetPasswords(),
         Features::emailVerification(),
-        Features::twoFactorAuthentication([
-            'confirm' => true,
-            'confirmPassword' => true,
-        ]),
+        // Feature options live in config/fortify-options.php, not inline:
+        // `Features::twoFactorAuthentication([...])` writes them into the
+        // `fortify-options` key while this file loads, and a config file of
+        // that name — which the passkeys feature needs for `confirmPassword`
+        // — is loaded right after this one and *replaces* the whole key
+        // (`LoadConfiguration::loadConfigurationFile()` merges only the
+        // handful of keys it names). Inline options here would be lost.
+        Features::twoFactorAuthentication(),
+        Features::passkeys(),
     ],
 
 ];

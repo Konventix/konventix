@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Identity\Data\PasskeyData;
 use Konventix\Identity\Data\PasswordUpdateData;
 use Konventix\Identity\Data\SessionData;
 use Konventix\Identity\Http\Requests\TwoFactorAuthenticationRequest;
@@ -22,8 +23,8 @@ class SecurityController
 
     /**
      * Show the user's security settings page: password, two-factor
-     * authentication (when the Fortify feature is enabled), and the session
-     * list for this brand. `hasPassword` tells the form whether it is
+     * authentication and passkeys (each when its Fortify feature is
+     * enabled), and the session list for this brand. `hasPassword` tells the form whether it is
      * changing a password or setting the first one — a Steam-only account
      * has none, and `PasswordUpdateData` refuses `current_password` for it.
      */
@@ -45,7 +46,18 @@ class SecurityController
             // page says so rather than presenting an empty list as "no other
             // sessions".
             'sessionsAvailable' => config('session.driver') === 'database',
+            'canManagePasskeys' => Features::canManagePasskeys(),
         ];
+
+        if (Features::canManagePasskeys()) {
+            // The list lives here rather than on a route of its own: the
+            // package exposes no index, and this page is the only reader.
+            $props['passkeys'] = $user->passkeys()
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn ($passkey) => PasskeyData::fromModel($passkey))
+                ->values();
+        }
 
         if (Features::canManageTwoFactorAuthentication()) {
             $props['twoFactorEnabled'] = $user->hasEnabledTwoFactorAuthentication();

@@ -20,6 +20,8 @@ use Konventix\Identity\Enums\AccountState;
 use Konventix\Identity\Enums\ProfileVisibility;
 use Konventix\Identity\Mail\AuthMailer;
 use Konventix\Identity\Profile\PlaceholderEmail;
+use Laravel\Fortify\Contracts\PasskeyUser;
+use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -66,10 +68,21 @@ use Spatie\Permission\Traits\HasRoles;
  */
 #[Fillable(['name', 'email', 'password', 'username', 'tagline', 'status_emoji', 'social_links', 'profile_visibility', 'listed_in_attendees', 'locale', 'timezone', 'preferences'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class User extends Authenticatable implements MustVerifyEmail
+class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
-    /** @use HasFactory<UserFactory> */
-    use HasFactory, HasRoles, HasUlids, MustVerifyEmailTrait, Notifiable, TwoFactorAuthenticatable;
+    /**
+     * `PasskeyAuthenticatable` (Fortify's, over `laravel/passkeys`) adds
+     * `passkeys()`, the WebAuthn user handle and the two names an
+     * authenticator shows. It belongs on the slim model for the same reason
+     * `TwoFactorAuthenticatable` and `socialIdentities()` do: a passkey is
+     * a way of proving who this account is, which is what Identity owns —
+     * not a fact about the person another module keeps as a read model.
+     * The relation points at Identity's own `passkeys` table
+     * (`Models\Passkey`, via `Passkeys::usePasskeyModel()`).
+     *
+     * @use HasFactory<UserFactory>
+     */
+    use HasFactory, HasRoles, HasUlids, MustVerifyEmailTrait, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
 
     /**
      * Get the attributes that should be cast.
