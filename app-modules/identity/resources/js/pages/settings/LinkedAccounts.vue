@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Form, Head } from '@inertiajs/vue3';
+import { Form, Head, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,19 @@ defineOptions({
         breadcrumbs: [{ title: 'Linked accounts', href: edit() }],
     },
 });
+
+/**
+ * Both refusals arrive as a `provider` error on the page, not on a form: the
+ * Steam callback redirects here with "already linked to @someone" or
+ * "disconnect the connected Steam account first" (`LinkSocialIdentity`), and
+ * the unlink guard answers the same way. Read off the page props, because
+ * the callback is a full round trip through Steam and no `<Form>` on this
+ * page submitted it — which is how the message used to render only inside
+ * the disconnect form of an already-linked provider, and so never at all
+ * (bugfix round 2026-09-21, Task 13).
+ */
+const page = usePage();
+const providerError = computed(() => page.props.errors.provider);
 </script>
 
 <template>
@@ -36,6 +50,15 @@ defineOptions({
             title="Linked accounts"
             description="Connect an account you already have, and use it to sign in."
         />
+
+        <div
+            v-if="providerError"
+            role="alert"
+            class="rounded-lg border border-danger/20 bg-danger-surface p-4"
+            data-test="provider-error"
+        >
+            <InputError :message="providerError" />
+        </div>
 
         <ul class="divide-y divide-border rounded-lg border border-border">
             <li
@@ -85,9 +108,8 @@ defineOptions({
                     <Form
                         v-if="account.linked && account.canUnlink"
                         v-bind="destroy(account.provider)"
-                        v-slot="{ errors, processing }"
+                        v-slot="{ processing }"
                     >
-                        <InputError :message="errors.provider" />
                         <Button
                             type="submit"
                             variant="outline"

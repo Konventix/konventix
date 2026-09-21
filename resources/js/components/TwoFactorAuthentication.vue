@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import { Form } from '@inertiajs/vue3';
-import { onMounted, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
+import RecoveryCodesDialog from '@/components/RecoveryCodesDialog.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import twoFactor from '@/routes/two-factor';
+import {
+    becameEnabled,
+    noCodesRevealed,
+    revealCodes,
+} from './recoveryCodesReveal';
+import type { RecoveryCodesReveal } from './recoveryCodesReveal';
 
 const props = defineProps<{
     enabled: boolean;
@@ -15,7 +22,15 @@ const props = defineProps<{
 }>();
 
 const qrCodeSvg = ref<string | null>(null);
-const recoveryCodes = ref<string[]>([]);
+
+/**
+ * The recovery codes are never fetched on mount and never listed on the page:
+ * they are on screen exactly once, right after the enrolment is confirmed or
+ * a regeneration, in a dialog that closes only past the "I saved them"
+ * checkbox (`recoveryCodesReveal.ts`). Fortify's GET route still answers, so
+ * the checkbox is a nudge, not a security boundary.
+ */
+const reveal = ref<RecoveryCodesReveal>(noCodesRevealed);
 
 async function loadQrCode(): Promise<void> {
     const response = await fetch(twoFactor.qrCode.url(), {
@@ -25,11 +40,11 @@ async function loadQrCode(): Promise<void> {
     qrCodeSvg.value = payload.svg ?? null;
 }
 
-async function loadRecoveryCodes(): Promise<void> {
+async function revealFreshRecoveryCodes(): Promise<void> {
     const response = await fetch(twoFactor.recoveryCodes.url(), {
         headers: { Accept: 'application/json' },
     });
-    recoveryCodes.value = (await response.json()) as string[];
+    reveal.value = revealCodes((await response.json()) as string[]);
 }
 
 watch(
@@ -42,11 +57,21 @@ watch(
     { immediate: true },
 );
 
-onMounted(() => {
-    if (props.enabled) {
-        void loadRecoveryCodes();
-    }
-});
+// The confirmation moment is read off the props rather than off the confirm
+// form's `@success`: Fortify redirects back, the page keeps its state (a
+// non-GET `<Form>` visit preserves it), and the props flip from confirming
+// to enabled while this component stays mounted — whereas the confirm form
+// itself is unmounted by that flip, and Vue drops an emit from an unmounted
+// component. Not immediate, so a page that loads already enabled shows
+// nothing.
+watch(
+    () => props.enabled,
+    (isEnabled, wasEnabled) => {
+        if (becameEnabled(wasEnabled, isEnabled)) {
+            void revealFreshRecoveryCodes();
+        }
+    },
+);
 </script>
 
 <template>
@@ -55,7 +80,7 @@ onMounted(() => {
             <Badge :variant="enabled ? 'default' : 'secondary'">
                 {{ enabled ? 'Enabled' : 'Disabled' }}
             </Badge>
-            <p class="text-sm text-muted-foreground">
+            <p class="text-sm text-text-muted">
                 Use an authenticator app to require a code in addition to your
                 password when logging in.
             </p>
@@ -74,15 +99,14 @@ onMounted(() => {
         <div v-else-if="confirming" class="space-y-4">
             <div
                 v-if="qrCodeSvg"
-                class="w-fit rounded-lg border p-4"
+                class="w-fit rounded-lg border border-border p-4"
                 v-html="qrCodeSvg"
             />
-            <p v-else class="text-sm text-muted-foreground">Loading QR code…</p>
+            <p v-else class="text-sm text-text-muted">Loading QR code…</p>
 
             <Form
                 v-bind="twoFactor.confirm.form()"
                 :options="{ preserveScroll: true }"
-                @success="() => loadRecoveryCodes()"
                 v-slot="{ errors, processing }"
                 class="flex flex-col gap-2"
             >
@@ -109,25 +133,24 @@ onMounted(() => {
         </div>
 
         <div v-else class="space-y-4">
-            <div v-if="recoveryCodes.length" class="space-y-2">
+            <div class="space-y-2">
                 <p class="text-sm font-medium">Recovery codes</p>
-                <p class="text-sm text-muted-foreground">
-                    Store these somewhere safe. Each can be used once if you
-                    lose access to your authenticator app.
+                <p class="text-sm text-text-muted">
+                    Your recovery codes were shown once when you enabled
+                    two-factor authentication. If you no longer have them,
+                    generate a new set — the old codes stop working.
                 </p>
-                <ul
-                    class="grid grid-cols-2 gap-1 rounded-lg border bg-muted/50 p-4 font-mono text-sm"
-                >
-                    <li v-for="code in recoveryCodes" :key="code">
-                        {{ code }}
-                    </li>
-                </ul>
                 <Form
                     v-bind="twoFactor.regenerateRecoveryCodes.form()"
                     :options="{ preserveScroll: true }"
-                    @success="() => loadRecoveryCodes()"
+                    @success="() => revealFreshRecoveryCodes()"
                 >
-                    <Button type="submit" variant="secondary" size="sm">
+                    <Button
+                        type="submit"
+                        variant="secondary"
+                        size="sm"
+                        data-test="regenerate-recovery-codes-button"
+                    >
                         Regenerate recovery codes
                     </Button>
                 </Form>
@@ -146,5 +169,7 @@ onMounted(() => {
                 </Button>
             </Form>
         </div>
+
+        <RecoveryCodesDialog v-model="reveal" />
     </div>
 </template>

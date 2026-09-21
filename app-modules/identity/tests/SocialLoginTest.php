@@ -124,28 +124,77 @@ it('links a new identity for somebody already signed in', function (): void {
  * The identity belongs to one account, full stop. Without this, signing in to
  * account A and presenting account B's Steam login would quietly give A a
  * second key to a login it does not own.
+ *
+ * Bugfix round 2026-09-21, Task 13: the refusal names the holder by its
+ * profile-of-record username — acceptable because the person is signed into
+ * that Steam account in this very browser (`SocialIdentityAlreadyLinked`'s
+ * docblock) — and never by display name or Steam persona.
  */
-it('refuses to link an identity another account already holds', function (): void {
+it('refuses to link an identity another account already holds, naming the holder by username', function (): void {
     $this->withBrand();
 
-    $owner = User::factory()->create();
+    $owner = User::factory()->create([
+        'name' => 'Gabe Newell',
+        'username' => 'gaben-holds-it',
+    ]);
     SocialIdentity::factory()->for($owner)->create([
         'provider' => 'steam',
         'provider_user_id' => '76561198000000047',
+        'nickname' => 'GabeN persona',
     ]);
 
     $other = User::factory()->create();
     $this->actingAs($other);
 
     identityCallbackFrom($this, '76561198000000047')
-        ->assertRedirect(route('linked-accounts.edit'))
-        ->assertSessionHasErrors('provider');
+        ->assertRedirect(route('linked-accounts.edit'));
+
+    // Follow the redirect before touching the session from the test: the
+    // callback is a round trip through Steam, no form on that page submitted
+    // it, so the page props are the only place the flashed error can render.
+    // (`assertSessionHasErrors()` first would start the store from the test,
+    // marshal `errors` into an object, and the next request's own marshal
+    // — which iterates the raw value — would empty it.)
+    $this->get(route('linked-accounts.edit'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('settings/LinkedAccounts')
+            ->where('errors.provider', fn (string $message): bool => str_contains($message, 'gaben-holds-it')
+                && ! str_contains($message, 'Gabe Newell')
+                && ! str_contains($message, 'GabeN persona')));
 
     // Nothing moved, and nobody was silently switched into somebody else's
     // account: the actor is still themselves.
     expect($other->socialIdentities()->count())->toBe(0)
         ->and($owner->socialIdentities()->count())->toBe(1)
         ->and(auth()->id())->toBe($other->getKey());
+});
+
+/**
+ * One account holds at most one identity per provider. Connecting a second
+ * Steam account used to hit the `(user_id, provider)` unique index and 500;
+ * the Action now answers with its own refusal before the insert.
+ */
+it('refuses a second identity at the same provider with an error, not a 500', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create();
+    SocialIdentity::factory()->for($user)->create([
+        'provider' => 'steam',
+        'provider_user_id' => '76561198000000060',
+    ]);
+    $this->actingAs($user);
+
+    identityCallbackFrom($this, '76561198000000061')
+        ->assertRedirect(route('linked-accounts.edit'))
+        ->assertSessionHasErrors('provider');
+
+    expect(session('errors')->first('provider'))->toContain('Disconnect the connected Steam account first');
+
+    // No constraint violation aborted the transaction (.ai/rules/tests.md:
+    // a 500 from one would make this query impossible), and the original
+    // identity is untouched.
+    expect($user->socialIdentities()->pluck('provider_user_id')->all())->toBe(['76561198000000060']);
 });
 
 it('starts a signup when nobody is signed in and nobody is recognised', function (): void {

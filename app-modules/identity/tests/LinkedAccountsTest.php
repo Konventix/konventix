@@ -125,3 +125,39 @@ it('does not expose the provider identifier to the settings page', function (): 
     // it does not travel — it belongs in the GDPR export instead.
     expect($response->getContent())->not->toContain('76561198000000777');
 });
+
+/**
+ * Bugfix round 2026-09-21, Task 13: a `provider` error is flashed by a
+ * redirect — the Steam callback's "already linked" refusal (covered end to
+ * end in `SocialLoginTest`) and the unlink guard alike — with no form on
+ * this page behind it, so the page reads it off the page props. It used to
+ * render only inside the disconnect form of an already-linked provider —
+ * which, for the person whose link was just refused, is never. Driven here
+ * through the unlink guard because it is the one refusal a plain request
+ * can provoke without a Steam round trip.
+ */
+it('renders a flashed provider error at page level', function (): void {
+    $this->withBrand();
+
+    $user = User::factory()->create(['password' => null]);
+    SocialIdentity::factory()->for($user)->create(['provider' => 'steam']);
+
+    $this->actingAs($user)
+        ->delete('http://localhost/settings/linked-accounts/steam')
+        ->assertRedirect();
+
+    // The page is fetched before any session assertion from the test side
+    // (see `SocialLoginTest` for why that order matters).
+    $response = $this->get('http://localhost/settings/linked-accounts')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('settings/LinkedAccounts')
+            ->where('accounts.0.linked', true)
+            ->where('accounts.0.canUnlink', false)
+            ->where('errors.provider', fn (string $message): bool => $message !== ''));
+
+    // And it reaches the rendered document, not only the props.
+    $message = $response->inertiaPage()['props']['errors']['provider'];
+
+    expect($response->getContent())->toContain(e($message));
+});

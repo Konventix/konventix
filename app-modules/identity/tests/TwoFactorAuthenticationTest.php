@@ -113,3 +113,32 @@ test('a confirmed user can disable two-factor authentication', function () {
     $response->assertSessionHasNoErrors();
     expect($user->fresh()->two_factor_secret)->toBeNull();
 });
+
+/**
+ * Bugfix round 2026-09-21, Task 13: the codes are shown once, right after
+ * confirmation or regeneration, and regeneration invalidates the old set.
+ * Fortify's GET route stays — the page fetches the fresh set through it the
+ * moment the regeneration succeeds, and the "I saved my recovery codes"
+ * checkbox in front of it is a nudge, not a new security boundary.
+ */
+test('regenerating recovery codes returns a different set, served by the GET route', function () {
+    $user = User::factory()->withTwoFactor()->create();
+
+    $before = $user->recoveryCodes();
+
+    $this->actingAs($user)
+        ->withSession(['auth.password_confirmed_at' => time()])
+        ->post(route('two-factor.regenerate-recovery-codes'))
+        ->assertSessionHasNoErrors();
+
+    $after = $user->fresh()->recoveryCodes();
+
+    expect($after)->toHaveCount(count($before))
+        ->and(array_intersect($before, $after))->toBe([]);
+
+    $this->actingAs($user)
+        ->withSession(['auth.password_confirmed_at' => time()])
+        ->getJson(route('two-factor.recovery-codes'))
+        ->assertOk()
+        ->assertExactJson($after);
+});
