@@ -26,6 +26,8 @@ use Konventix\Registration\Enums\RegistrationApproval;
 use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Enums\TaxClass;
+use Konventix\Registration\Models\EntryCondition;
+use Konventix\Registration\Models\EntryConditionAssertion;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registration;
@@ -171,6 +173,17 @@ class RegistrationTypeAdminController
             ),
             'events' => $this->eventOptions($type->brand_id, include: $type->event_id),
             'quotas' => $this->quotaOptions($type->brand_id),
+            // ADR-0066 §9.1: the Entry conditions card. The picker offers
+            // the brand's live conditions plus any archived one this type
+            // still holds — hiding the latter would let a save silently drop
+            // a condition the type is still asking for.
+            'entryConditions' => $this->entryConditionOptions($type),
+            // What the warning before saving is made of (spec §4.2): how many
+            // registrations a newly added condition leaves *not asserted*,
+            // and how many historic assertions a removal leaves behind.
+            'entryConditionAssertions' => $this->assertionCounts($type),
+            // D-REG-21: the sibling types this one may point at instead.
+            'alternativeTypes' => $this->alternativeTypeOptions($type),
             'options' => $this->axisOptions(),
             'registrations' => $registrations,
             // Terms freeze once anyone has registered under them — the form
@@ -224,7 +237,13 @@ class RegistrationTypeAdminController
     {
         /** @var RegistrationType */
         return RegistrationType::withoutBrandScope()
-            ->with(['quotas' => fn ($query) => $query->withoutGlobalScope(BrandScope::class)])
+            ->with([
+                'quotas' => fn ($query) => $query->withoutGlobalScope(BrandScope::class),
+                // BrandScope re-applies on the *related* model in a relation
+                // load and reads nothing on this host (.ai/rules) — the
+                // escape is owed per relation, not once on the parent.
+                'entryConditions' => fn ($query) => $query->withoutGlobalScope(BrandScope::class),
+            ])
             ->findOrFail($registrationType);
     }
 
@@ -246,6 +265,79 @@ class RegistrationTypeAdminController
                 'id' => $summary->event_id,
                 'name' => $summary->name,
                 'brandId' => $summary->brand_id,
+            ])
+            ->all());
+    }
+
+    /**
+     * The conditions this type may demand: the brand's live catalogue, plus
+     * any archived condition the type already holds (spec §4.2, the same
+     * `include` rule the event picker follows).
+     *
+     * `assertionText` rides along because the card shows it inline — an
+     * operator picking "Student ticket" is picking a sentence somebody will
+     * be asked to tick, and a name alone hides exactly that.
+     *
+     * @return list<array{id: string, key: string, name: string, assertionText: string, verification: string, archived: bool}>
+     */
+    private function entryConditionOptions(RegistrationType $type): array
+    {
+        $held = $type->entryConditions->pluck('id')->all();
+
+        return array_values(EntryCondition::withoutBrandScope()
+            ->where('brand_id', $type->brand_id)
+            ->where(fn ($query) => $query->whereNull('archived_at')->orWhereIn('id', $held))
+            ->orderBy('name')
+            ->get()
+            ->map(fn (EntryCondition $condition): array => [
+                'id' => (string) $condition->getKey(),
+                'key' => $condition->key,
+                'name' => $condition->name,
+                'assertionText' => $condition->assertion_text,
+                'verification' => $condition->verification->value,
+                'archived' => $condition->isArchived(),
+            ])
+            ->all());
+    }
+
+    /**
+     * How many assertions each of this type's registrations left behind, per
+     * condition — the number the card names before a removal (spec §4.2).
+     * Removing a condition keeps every one of them.
+     *
+     * @return array<string, int>
+     */
+    private function assertionCounts(RegistrationType $type): array
+    {
+        return EntryConditionAssertion::withoutBrandScope()
+            ->whereIn('registration_id', Registration::withoutBrandScope()
+                ->where('registration_type_id', $type->getKey())
+                ->select('id'))
+            ->selectRaw('entry_condition_id, count(*) as aggregate')
+            ->groupBy('entry_condition_id')
+            ->pluck('aggregate', 'entry_condition_id')
+            ->map(fn ($count): int => (int) $count)
+            ->all();
+    }
+
+    /**
+     * The sibling types of the same event this one may offer instead
+     * (D-REG-21) — never itself, and never across events: "buy the regular
+     * ticket instead" has to lead somewhere the person can actually buy.
+     *
+     * @return list<array{id: string, name: string}>
+     */
+    private function alternativeTypeOptions(RegistrationType $type): array
+    {
+        return array_values(RegistrationType::withoutBrandScope()
+            ->where('brand_id', $type->brand_id)
+            ->where('event_id', $type->event_id)
+            ->whereKeyNot($type->getKey())
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (RegistrationType $sibling): array => [
+                'id' => (string) $sibling->getKey(),
+                'name' => $sibling->name,
             ])
             ->all());
     }

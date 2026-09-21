@@ -227,6 +227,60 @@ only the judging one is part of `registration.desk`), issuing invitation
 tokens, and exporting registration lists.
 Registration never references another module's `Permission` enum.
 
+## Entry conditions, end to end (ADR-0066, round 4 Task 31)
+
+The surfaces the model of §"Owns" is reached through:
+
+- **Console** — `/admin/entry-conditions` (index, editor, archive) behind
+  `registration.manage-entry-conditions`. The editor carries a character
+  budget on the assertion text and a live preview rendering the registrant's
+  own checkbox component, and states that `operator_checked` is advisory: it
+  fills a worklist and never gates a confirmation, for which the axis is
+  `approval: required` on the type (D-REG-22).
+- **Type editor** — an *Entry conditions* card beside Grants: an ordered
+  multi-select with each condition's assertion text inline, plus the optional
+  `alternative_registration_type_id` pointer. `entryConditions` is **not**
+  one of `GuardsTypeConfiguration::frozenAxes()` (D-REG-19); saving emits
+  `RegistrationTypeEntryConditionsChanged`, and on a type that has
+  registrations the card warns first, naming how many of them a newly added
+  condition leaves *not asserted* and how many historic declarations a
+  removal leaves standing.
+- **Public form** — `RegistrationFormData` carries
+  `entryConditions: list<PublicEntryConditionData>` and the alternative
+  type's id and name. One required checkbox per condition, the assertion text
+  verbatim in a real `<label>`, the document hint via `aria-describedby`
+  (ADR-0055, ADR-0008). `SubmitRegistrationData` gains
+  `acceptedEntryConditionIds` and `acceptedLegalTexts`.
+- **Submission** — `SubmitRegistration::guardEntryConditions()`, per type and
+  beside `guardBillingParty()`: a missing declaration is a 422 keyed
+  `entryConditions.{id}`, rendered beside the "buy the regular ticket
+  instead" link where the type names an alternative (D-REG-21). Inside the
+  existing transaction it writes one assertion per declared condition with
+  both snapshots, emits one `RegistrationEntryConditionAsserted` each and one
+  `RegistrationConsentGiven` carrying the binding context. A **waitlist
+  conversion writes none**: the queue holds a billing snapshot, not a
+  declaration, so its registration shows *not asserted* like any condition
+  added after the fact.
+- **Verification** — `Actions\DecideEntryConditionAssertion` (verify / refuse
+  / waive, bounded `reason_code`, `decided_via`) behind
+  `registration.verify-entry-conditions`, emitting
+  `RegistrationEntryConditionDecided`. The registration detail
+  (`/admin/registrations/{registration}`) lists declarations, *not asserted*
+  rows for conditions added later and *no longer required* rows for
+  conditions since removed; the registrations index gains an entry-condition
+  state filter which is the `operator_checked` worklist. Every decision is
+  advisory: a refusal records a fact and never cancels, revokes or reaches
+  Commerce.
+- **Privacy** — `Gdpr\RegistrationGdprHandler` exports assertions as
+  `{condition name, asserted text, asserted_at, state, decided_at}` — the
+  snapshot, never the condition's current wording — and anonymizes
+  `subject_user_id`/`decided_by_user_id` with the registration, keeping the
+  tombstone, idempotently. `Listeners\PruneEntryConditionAssertions`
+  discharges the retention rule `registration.entry-condition-assertions` on
+  the registration's own `EventConcluded` clock (D-REG-23), never the
+  ten-year bookkeeping floor. An assertion reaches no attendee list
+  (ADR-0064), no public profile and no export that is not the subject's own.
+
 ## Observability
 
 `Metrics\RegistrationMetrics` (ADR-0059, ADR-0066 §10):

@@ -16,6 +16,7 @@ import {
     index as typesIndex,
     update as updateType,
 } from '@/routes/admin/registration-types';
+import RegistrationTypeEntryConditionsCard from '../../../components/RegistrationTypeEntryConditionsCard.vue';
 import RegistrationTypeGrantsCard from '../../../components/RegistrationTypeGrantsCard.vue';
 
 /**
@@ -38,6 +39,16 @@ type Props = {
     };
     events: { id: string; name: string; brandId: string }[];
     quotas: { id: string; name: string; capacity: number; consumed: number }[];
+    entryConditions: {
+        id: string;
+        key: string;
+        name: string;
+        assertionText: string;
+        verification: string;
+        archived: boolean;
+    }[];
+    entryConditionAssertions: Record<string, number>;
+    alternativeTypes: { id: string; name: string }[];
     options: Record<string, string[]>;
     eventPageUrl: string | null;
     registrations: number;
@@ -87,6 +98,10 @@ const form = useForm({
         ? { ...props.type.priceDeclaration }
         : null,
     quotaIds: [...props.type.quotaIds],
+    // Not frozen (D-REG-19): a sold type still accepts a new condition, and
+    // the card warns about what that leaves *not asserted* before saving.
+    entryConditionIds: [...props.type.entryConditionIds],
+    alternativeRegistrationTypeId: props.type.alternativeRegistrationTypeId,
     salesStart: toLocalDateTimeInput(props.type.salesStart),
     salesEnd: toLocalDateTimeInput(props.type.salesEnd),
 });
@@ -364,6 +379,22 @@ function submit(): void {
                     :disabled="props.termsFrozen"
                     :error="form.errors.grants"
                     :seating-slots="props.seatingSlots"
+                />
+
+                <RegistrationTypeEntryConditionsCard
+                    v-model="form.entryConditionIds"
+                    v-model:alternative-type-id="
+                        form.alternativeRegistrationTypeId
+                    "
+                    :conditions="props.entryConditions"
+                    :assertion-counts="props.entryConditionAssertions"
+                    :saved-ids="props.type.entryConditionIds"
+                    :registrations="props.registrations"
+                    :alternative-types="props.alternativeTypes"
+                    :error="form.errors.entryConditionIds"
+                    :alternative-error="
+                        form.errors.alternativeRegistrationTypeId
+                    "
                 />
             </div>
 

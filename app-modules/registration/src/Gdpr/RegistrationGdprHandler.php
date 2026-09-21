@@ -7,6 +7,8 @@ namespace Konventix\Registration\Gdpr;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\SubjectRef;
+use Konventix\Platform\Models\Scopes\BrandScope;
+use Konventix\Registration\Models\EntryConditionAssertion;
 use Konventix\Registration\Models\Registrant;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\WaitlistEntry;
@@ -21,6 +23,15 @@ use Konventix\Registration\Models\WaitlistEntry;
  * stay resolvable, and the commercial fact "a registration existed" is
  * itself subject to statutory retention through its invoices. Both methods
  * are idempotent by construction.
+ *
+ * Entry-condition assertions (ADR-0066 §11) ride with the registration in
+ * both directions: exported as the wording the person actually agreed to —
+ * the snapshot, never the condition's current text — and anonymized rather
+ * than deleted, so a tombstone keeps the registration's history coherent.
+ * They are deliberately absent from every export that is not the subject's
+ * own: an assertion prices a ticket and is checked at the door, and it is
+ * neither a marketing segment nor anything the attendee list (ADR-0064) or a
+ * public profile may learn.
  *
  * D-REG-08 keeps `registrant_user_id` non-nullable, so `registrations` and
  * `waitlist_entries` never carry a bare address — a person with no account
@@ -95,9 +106,29 @@ final class RegistrationGdprHandler implements GdprHandler
             ])
             ->all();
 
+        // ADR-0066 §11: the wording the person actually agreed to, because
+        // that is what they are entitled to see — never the condition's
+        // current text, which may have been reworded since. The proof is
+        // not here because it was never stored: the platform keeps the
+        // declaration, not the document (D-ADM-07).
+        $assertions = EntryConditionAssertion::withoutBrandScope()
+            ->where('subject_user_id', $subjectId)
+            ->with(['entryCondition' => fn ($query) => $query->withoutGlobalScope(BrandScope::class)])
+            ->orderBy('asserted_at')
+            ->get()
+            ->map(fn (EntryConditionAssertion $assertion): array => [
+                'condition_name' => $assertion->entryCondition?->name,
+                'asserted_text' => $assertion->assertion_text_snapshot,
+                'asserted_at' => $assertion->asserted_at->toIso8601String(),
+                'state' => $assertion->state->value,
+                'decided_at' => $assertion->decided_at?->toIso8601String(),
+            ])
+            ->all();
+
         return [
             'registrations' => $registrations,
             'waitlist_entries' => $waitlist,
+            'entry_condition_assertions' => $assertions,
         ];
     }
 
@@ -124,5 +155,18 @@ final class RegistrationGdprHandler implements GdprHandler
         WaitlistEntry::withoutBrandScope()
             ->where('registrant_user_id', $subjectId)
             ->update($scrub);
+
+        // The assertion is anonymized, never deleted (spec §11): the
+        // tombstone keeps the registration's history coherent — a row that
+        // vanished would make a verified declaration look as though it had
+        // never been made — while the two user references are forgotten.
+        // Both updates are idempotent: a second run matches nothing.
+        EntryConditionAssertion::withoutBrandScope()
+            ->where('subject_user_id', $subjectId)
+            ->update(['subject_user_id' => null]);
+
+        EntryConditionAssertion::withoutBrandScope()
+            ->where('decided_by_user_id', $subjectId)
+            ->update(['decided_by_user_id' => null]);
     }
 }

@@ -46,6 +46,25 @@ function quantitySubmission(int $quantity): SubmitRegistrationData
     );
 }
 
+/**
+ * A submission that declares the given entry conditions (ADR-0066 §6.2).
+ * Lives here rather than in a test file because more than one file calls it
+ * (.ai/rules/tests.md).
+ *
+ * @param  list<string>  $conditionIds
+ */
+function entryConditionSubmission(array $conditionIds, int $quantity = 1): SubmitRegistrationData
+{
+    return new SubmitRegistrationData(
+        organizationName: null,
+        billingRecipientName: null,
+        billingEmail: null,
+        quantity: $quantity,
+        acceptedEntryConditionIds: $conditionIds,
+        acceptedLegalTexts: true,
+    );
+}
+
 function regMailsRender(string $templateKey, RegistrationMailData $payload, string $locale = 'de'): string
 {
     $message = new SendMessageData(

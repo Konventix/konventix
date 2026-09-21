@@ -6,6 +6,7 @@ namespace Konventix\Registration\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Konventix\Registration\Actions\Concerns\GuardsTypeConfiguration;
+use Konventix\Registration\Actions\Concerns\SyncsTypeEntryConditions;
 use Konventix\Registration\Actions\Concerns\SyncsTypeQuotas;
 use Konventix\Registration\Data\RegistrationTypeData;
 use Konventix\Registration\Models\RegistrationType;
@@ -25,12 +26,14 @@ use Konventix\Registration\Models\RegistrationType;
 final class UpdateRegistrationType
 {
     use GuardsTypeConfiguration;
+    use SyncsTypeEntryConditions;
     use SyncsTypeQuotas;
 
     public function handle(RegistrationType $type, RegistrationTypeData $data): RegistrationType
     {
         $this->guardConfiguration($data);
         $this->guardFrozenAxes($type, $data);
+        $this->guardAlternativeType($type, $data->alternativeRegistrationTypeId, $data->eventId);
 
         return DB::transaction(function () use ($type, $data): RegistrationType {
             $type->forceFill([
@@ -56,9 +59,19 @@ final class UpdateRegistrationType
                 // otherwise store the operator's wall-clock digits.
                 'sales_start' => $data->salesStartInstant(),
                 'sales_end' => $data->salesEndInstant(),
+                // D-REG-21: the "buy the regular ticket instead" pointer.
+                // Not an axis — it grants nothing and may be set or cleared
+                // at any time, live type or not.
+                'alternative_registration_type_id' => $data->alternativeRegistrationTypeId,
             ])->save();
 
             $this->syncQuotas($type, $data->quotaIds);
+            // Deliberately outside `frozenAxes()` (D-REG-19): a sold type
+            // still accepts a new condition. Nothing retroactive follows —
+            // the registrations that exist write no assertion and show as
+            // *not asserted*, and a removed condition leaves its historic
+            // rows standing.
+            $this->syncEntryConditions($type, $data->entryConditionIds);
 
             return $type->refresh();
         });

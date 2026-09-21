@@ -6,9 +6,11 @@ namespace Konventix\Registration\Data;
 
 use Konventix\Platform\Data\EndPriceData;
 use Konventix\Platform\Models\Scopes\BrandScope;
+use Konventix\Registration\Models\EntryCondition;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\RegistrationType;
 use Konventix\Registration\Offers\PublicOffers;
+use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -45,10 +47,36 @@ final class RegistrationFormData extends Data
          * page shows no number input at all.
          */
         public readonly int $maxQuantity,
+
+        /**
+         * The declarations this type demands, in the operator's order
+         * (ADR-0066, spec §6.2) — one required checkbox each, the
+         * `assertionText` verbatim in a real `<label>`.
+         *
+         * @var list<PublicEntryConditionData>
+         */
+        #[DataCollectionOf(PublicEntryConditionData::class)]
+        public readonly array $entryConditions = [],
+
+        /**
+         * The type to offer instead when somebody will not tick one of those
+         * boxes (D-REG-21): id and name, so the refusal can carry a "buy the
+         * regular ticket instead" link rather than being a dead end. Null
+         * where the operator named none.
+         */
+        public readonly ?string $alternativeRegistrationTypeId = null,
+
+        public readonly ?string $alternativeRegistrationTypeName = null,
     ) {}
 
     public static function fromModel(RegistrationType $registrationType): self
     {
+        $alternative = $registrationType->alternative_registration_type_id === null
+            ? null
+            : RegistrationType::withoutBrandScope()
+                ->whereKey($registrationType->alternative_registration_type_id)
+                ->first();
+
         return new self(
             registrationTypeId: $registrationType->id,
             eventId: $registrationType->event_id,
@@ -68,6 +96,17 @@ final class RegistrationFormData extends Data
             endPrice: PublicOffers::endPricesFor([$registrationType])[0],
             termsDays: $registrationType->terms_days,
             maxQuantity: self::maxQuantityFor($registrationType),
+            // Ordered by the pivot's `position` (the relation orders
+            // itself); archived conditions are not filtered out here,
+            // because a type still pointing at one still demands it — the
+            // *editor*'s picker is what hides an archived condition.
+            entryConditions: array_values($registrationType->entryConditions()
+                ->withoutGlobalScope(BrandScope::class)
+                ->get()
+                ->map(fn (EntryCondition $condition): PublicEntryConditionData => PublicEntryConditionData::fromModel($condition))
+                ->all()),
+            alternativeRegistrationTypeId: $alternative?->getKey(),
+            alternativeRegistrationTypeName: $alternative?->name,
         );
     }
 

@@ -6,6 +6,36 @@
 
 ## Next
 
+- [x] Entry conditions, end to end (round 4, Task 31, ADR-0066 slice B1;
+      D-REG-19/20/21/22/23/24). The console (`/admin/entry-conditions`:
+      index, editor with a character budget and a live preview of the
+      registrant's own checkbox, archive instead of delete); the type
+      editor's *Entry conditions* card with the alternative-type pointer and
+      the warning a live type owes before saving; one required checkbox per
+      condition on the public form, with the assertion text verbatim in a
+      real `<label>`; `SubmitRegistration::guardEntryConditions()` refusing
+      on `entryConditions.{id}` beside the "buy the regular ticket instead"
+      link, then writing the snapshotted assertions,
+      `RegistrationEntryConditionAsserted` per condition and one
+      `RegistrationConsentGiven` with the binding context;
+      `DecideEntryConditionAssertion` (verify/refuse/waive) behind
+      `registration.verify-entry-conditions` on a new registration detail
+      that shows *not asserted* and *no longer required* rows, plus the
+      entry-condition state filter that is the `operator_checked` worklist;
+      the GDPR export and anonymization of assertions, and
+      `PruneEntryConditionAssertions` on the registration's own
+      `EventConcluded` clock. **Deliberate gaps, all of them decided:**
+      `acceptedLegalTexts` is carried but no control renders it yet — the
+      `registration.consent` slot and Compliance's `RecordConsentDeclaration`
+      are Task 32; the door (`entry_condition_keys` on
+      `RegistrationConfirmed`, `RecordDoorVerification`) is Task 33.
+- [ ] A waitlist conversion declares nothing (spec §15, noticed in Task 31):
+      `WaitlistEntry` holds a billing snapshot, not a tick, so converting an
+      offer for a type with entry conditions writes no assertion and the
+      registration shows *not asserted* until an operator waives it.
+      Collecting the declaration on the offer link belongs with the
+      per-holder declarations a claim link would collect (D-REG-20's
+      follow-up) — one design, not two.
 - [x] Entry conditions and policy bindings — the behaviour-neutral
       foundation (round 4, Task 30, ADR-0066; D-REG-17/18/24, and the
       Compliance half under D-CPL-02/03/04/05/08/09/16). Tables

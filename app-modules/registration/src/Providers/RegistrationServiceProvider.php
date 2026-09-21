@@ -17,6 +17,7 @@ use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Events\PaymentReversed;
 use Konventix\Commerce\Events\RegistrationLinePlacedInCart;
+use Konventix\Compliance\Events\RetentionPeriodElapsed;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventArchived;
@@ -73,6 +74,7 @@ use Konventix\Registration\Listeners\Metrics\RecordEntryConditionMetrics;
 use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Listeners\ProjectRegistrant;
 use Konventix\Registration\Listeners\PromoteOnQuotaReleased;
+use Konventix\Registration\Listeners\PruneEntryConditionAssertions;
 use Konventix\Registration\Listeners\RecordCartHoldOnLinePlaced;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderLineSettled;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
@@ -239,6 +241,12 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // call into Platform from the Action that emitted them.
         Event::listen(RegistrationEntryConditionAsserted::class, [RecordEntryConditionMetrics::class, 'handle']);
         Event::listen(RegistrationEntryConditionDecided::class, [RecordEntryConditionMetrics::class, 'handle']);
+
+        // D-REG-23 / spec §11: an entry-condition declaration ages on the
+        // registration's own clock, started by `EventConcluded`. Compliance
+        // publishes the rule and never touches this module's table; the
+        // listener ignores every category but its own.
+        Event::listen(RetentionPeriodElapsed::class, PruneEntryConditionAssertions::class);
     }
 
     protected function registerGdprExporters(): void
@@ -279,12 +287,26 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 permission: Permission::ManageRegistrationTypes->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
+            // ADR-0066 §9.1 / D-REG-24: what a reduced fare rests on. Its
+            // own capability, beside the offer it belongs to.
+            new NavigationItem(
+                module: 'registration',
+                label: 'Entry conditions',
+                url: '/admin/entry-conditions',
+                // One of `resources/js/lib/navIcons.ts`'s known names — a
+                // module names an icon, it does not import a component
+                // (ADR-0003), and an unknown name silently falls back.
+                icon: 'book-open-check',
+                order: 22,
+                permission: Permission::ManageEntryConditions->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
             new NavigationItem(
                 module: 'registration',
                 label: 'Quotas',
                 url: '/admin/quotas',
                 icon: 'gauge',
-                order: 22,
+                order: 23,
                 permission: Permission::ManageQuotas->value,
                 area: NavigationItem::AREA_ADMIN,
             ),

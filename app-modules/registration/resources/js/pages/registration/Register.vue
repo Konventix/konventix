@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Form, Head } from '@inertiajs/vue3';
+import { ref } from 'vue';
 import RegistrationController from '@/actions/Konventix/Registration/Http/Controllers/RegistrationController';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -8,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import OfferPrice from '../../components/OfferPrice.vue';
+import RegistrationEntryConditions from '../../components/RegistrationEntryConditions.vue';
 
 /**
  * Props are `Konventix\Registration\Data\RegistrationFormData` (ADR-0009) —
@@ -37,6 +39,9 @@ type Props = {
     endPrice: Konventix.Platform.Data.EndPriceData | null;
     termsDays: number;
     maxQuantity: number;
+    entryConditions: Konventix.Registration.Data.PublicEntryConditionData[];
+    alternativeRegistrationTypeId: string | null;
+    alternativeRegistrationTypeName: string | null;
 };
 
 const props = defineProps<Props>();
@@ -51,6 +56,14 @@ const needsBillingAddress = props.settlement === 'invoice';
  * then sends nothing and the Data object's default of one applies.
  */
 const offersQuantity = props.maxQuantity > 1;
+
+/**
+ * Whether every entry condition this type demands has been declared
+ * (ADR-0066 §6.2) — owned by `RegistrationEntryConditions`, which holds the
+ * boxes. A type that demands nothing starts satisfied and the form behaves
+ * exactly as it did before the feature existed.
+ */
+const conditionsSatisfied = ref(props.entryConditions.length === 0);
 </script>
 
 <template>
@@ -228,11 +241,27 @@ const offersQuantity = props.maxQuantity > 1;
                         </div>
                     </template>
 
+                    <RegistrationEntryConditions
+                        v-if="props.entryConditions.length > 0"
+                        :conditions="props.entryConditions"
+                        :event-id="props.eventId"
+                        :alternative-registration-type-id="
+                            props.alternativeRegistrationTypeId
+                        "
+                        :alternative-registration-type-name="
+                            props.alternativeRegistrationTypeName
+                        "
+                        :errors="errors"
+                        @update:satisfied="
+                            (value: boolean) => (conditionsSatisfied = value)
+                        "
+                    />
+
                     <div
                         class="flex items-center gap-4 border-t border-border pt-4"
                     >
                         <Button
-                            :disabled="processing"
+                            :disabled="processing || !conditionsSatisfied"
                             data-test="submit-registration-button"
                         >
                             Submit registration

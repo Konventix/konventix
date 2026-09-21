@@ -6,6 +6,7 @@ namespace Konventix\Registration\Actions;
 
 use Illuminate\Support\Facades\DB;
 use Konventix\Registration\Actions\Concerns\GuardsTypeConfiguration;
+use Konventix\Registration\Actions\Concerns\SyncsTypeEntryConditions;
 use Konventix\Registration\Actions\Concerns\SyncsTypeQuotas;
 use Konventix\Registration\Data\RegistrationTypeData;
 use Konventix\Registration\Models\RegistrationType;
@@ -21,6 +22,7 @@ use Konventix\Registration\Models\RegistrationType;
 final class CreateRegistrationType
 {
     use GuardsTypeConfiguration;
+    use SyncsTypeEntryConditions;
     use SyncsTypeQuotas;
 
     public function handle(string $brandId, RegistrationTypeData $data): RegistrationType
@@ -51,11 +53,20 @@ final class CreateRegistrationType
                 // otherwise store the operator's wall-clock digits.
                 'sales_start' => $data->salesStartInstant(),
                 'sales_end' => $data->salesEndInstant(),
+                // D-REG-21: the "buy the regular ticket instead" pointer.
+                // Not an axis — it grants nothing and may be set or cleared
+                // at any time.
+                'alternative_registration_type_id' => $data->alternativeRegistrationTypeId,
             ]);
 
             $type->forceFill(['brand_id' => $brandId])->save();
 
+            $this->guardAlternativeType($type, $data->alternativeRegistrationTypeId, $data->eventId);
             $this->syncQuotas($type, $data->quotaIds);
+            // Not a frozen axis either (D-REG-19): which declarations a type
+            // asks for stays editable after it has sold, because the
+            // evidence is each assertion's own snapshot.
+            $this->syncEntryConditions($type, $data->entryConditionIds);
 
             return $type->refresh();
         });

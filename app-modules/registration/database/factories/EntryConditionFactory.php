@@ -29,7 +29,10 @@ class EntryConditionFactory extends Factory
      */
     public function definition(): array
     {
-        $name = rtrim(fake()->unique()->words(2, true), '.');
+        // Not `fake()->words()`: it is typed `array|string` whatever the
+        // flag, and the unique key built below needs a plain string anyway
+        // (the same trap `CompetitionTeamFactory` names).
+        $name = 'Condition '.Str::upper(Str::random(6));
 
         return [
             'event_id' => null,

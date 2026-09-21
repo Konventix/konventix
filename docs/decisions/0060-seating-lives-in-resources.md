@@ -151,6 +151,11 @@ flow for every expired hold. Picking after confirmation removes all three.
 - `GuardsTypeConfiguration` still freezes `grants` once a type has
   registrations, so a seating grant must be on the SXLan types before the
   Eventula import and before sales open (recorded in #80).
+- `entryConditions` (ADR-0066) is deliberately **not** added to that frozen
+  set (D-REG-19): unlike a grant, the evidence for a condition is the
+  snapshot on each `EntryConditionAssertion`, so editing the set after a type
+  has sold reinterprets nobody — it only changes what the next submission is
+  asked to declare.
 - The two ungated release listeners are the only Resources code that runs
   for a brand with the module off; anything else added to that list needs
   this ADR amended.

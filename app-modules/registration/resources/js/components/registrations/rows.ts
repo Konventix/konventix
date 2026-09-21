@@ -1,7 +1,9 @@
+import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import { h } from 'vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
+import { show as showRegistration } from '@/routes/admin/registrations';
 
 /**
  * One row of the operator console's registration list, and the columns that
@@ -68,12 +70,17 @@ export function registrationColumns(options: {
             id: 'registrant',
             header: 'Registrant',
             enableSorting: false,
+            // A real link, not a row click: the detail has to be reachable
+            // by keyboard (WCAG 2.1.1, .ai/rules/js.md).
             cell: ({ row }) =>
                 h('div', { class: 'flex flex-col' }, [
                     h(
-                        'span',
-                        { class: 'font-medium' },
-                        row.original.registrant,
+                        Link,
+                        {
+                            href: showRegistration(row.original.id).url,
+                            class: 'font-medium hover:text-accent',
+                        },
+                        () => row.original.registrant,
                     ),
                     row.original.registrantEmail
                         ? h(

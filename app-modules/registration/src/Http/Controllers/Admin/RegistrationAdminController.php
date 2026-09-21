@@ -13,13 +13,21 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Registration\Actions\ApproveRegistration;
+use Konventix\Registration\Actions\DecideEntryConditionAssertion;
 use Konventix\Registration\Actions\ReduceRegistrationQuantity;
+use Konventix\Registration\Data\DecideEntryConditionData;
+use Konventix\Registration\Data\EntryConditionAssertionData;
 use Konventix\Registration\Data\ReduceRegistrationQuantityData;
+use Konventix\Registration\Enums\EntryConditionAssertionState;
+use Konventix\Registration\Enums\EntryConditionReasonCode;
 use Konventix\Registration\Enums\Permission;
 use Konventix\Registration\Enums\QuantityReductionReason;
 use Konventix\Registration\Enums\RegistrationStatus;
+use Konventix\Registration\Models\EntryCondition;
+use Konventix\Registration\Models\EntryConditionAssertion;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Registrant;
 use Konventix\Registration\Models\Registration;
@@ -92,16 +100,136 @@ class RegistrationAdminController
             }),
             'filters' => $this->currentFilters($request, $sort, $perPage, $filters),
             'statuses' => $this->statusValues(),
+            'conditionStates' => $this->conditionFilterValues(),
             'brands' => $this->brandOptions(),
             'events' => $this->eventOptions($filters['brand']),
             // The capability, not the row state: a reader without it never
             // sees the button, and the route authorizes again regardless.
             'canReduceQuantity' => Gate::allows(Permission::ReduceRegistrationQuantity->value),
+            'canVerifyEntryConditions' => Gate::allows(Permission::VerifyEntryConditions->value),
             'reductionReasons' => array_map(
                 fn (QuantityReductionReason $case): string => $case->value,
                 QuantityReductionReason::cases(),
             ),
         ]);
+    }
+
+    /**
+     * One registration, and the declarations it rests on (spec §9.1).
+     *
+     * The list is the union of three things, because D-REG-19 left the set
+     * of conditions editable after a type has sold: what this registration
+     * declared, what the type demands that it never declared (*not
+     * asserted*, no row — the absence is the state), and what it declared
+     * for a condition the type has since dropped (*no longer required*, the
+     * row stays because it is evidence).
+     *
+     * Fetched by hand rather than route-model-bound, and escaped per
+     * relation: the admin host resolves no brand and `BrandScope` hardens
+     * every brand-owned query — the parent, the pivot's related model and
+     * the assertions alike — to zero rows (ADR-0029, .ai/rules).
+     */
+    public function show(string $registration): Response
+    {
+        Gate::authorize(Permission::ViewRegistrations->value);
+
+        /** @var Registration $model */
+        $model = Registration::withoutBrandScope()->findOrFail($registration);
+
+        /** @var RegistrationType|null $type */
+        $type = RegistrationType::withoutBrandScope()->find($model->registration_type_id);
+
+        $demanded = $type === null
+            ? collect()
+            : $type->entryConditions()->withoutGlobalScope(BrandScope::class)->get()->keyBy('id');
+
+        $assertions = EntryConditionAssertion::withoutBrandScope()
+            ->where('registration_id', $model->getKey())
+            ->with(['entryCondition' => fn ($query) => $query->withoutGlobalScope(BrandScope::class)])
+            ->get();
+
+        $rows = $assertions
+            ->map(fn (EntryConditionAssertion $assertion): EntryConditionAssertionData => EntryConditionAssertionData::ofAssertion(
+                $assertion,
+                $assertion->entryCondition,
+                stillRequired: $demanded->has($assertion->entry_condition_id),
+            ))
+            ->concat($demanded
+                ->reject(fn (EntryCondition $condition): bool => $assertions->contains('entry_condition_id', $condition->getKey()))
+                ->map(fn (EntryCondition $condition): EntryConditionAssertionData => EntryConditionAssertionData::ofUnasserted($condition)))
+            ->values()
+            ->all();
+
+        /** @var Registrant|null $registrant */
+        $registrant = Registrant::query()->find($model->registrant_user_id);
+
+        return Inertia::render('admin/registrations/Show', [
+            'registration' => [
+                'id' => (string) $model->getKey(),
+                'registrant' => $registrant->display_name ?? $model->registrant_user_id,
+                'registrantEmail' => $registrant->email ?? null,
+                'organization' => $model->organization_name,
+                'typeName' => $type->name ?? $model->registration_type_id,
+                'eventName' => EventSummary::withoutBrandScope()
+                    ->where('event_id', $model->event_id)
+                    ->value('name') ?? $model->event_id,
+                'status' => $model->status->value,
+                'paymentStatus' => $model->payment_status->value,
+                'quantity' => $model->quantity,
+                'submittedAt' => $model->submitted_at->toIso8601String(),
+            ],
+            'entryConditions' => $rows,
+            // The capability, not the row state: a reader without it never
+            // sees the controls, and the route authorizes again regardless.
+            'canVerifyEntryConditions' => Gate::allows(Permission::VerifyEntryConditions->value),
+            'reasonCodes' => array_map(
+                fn (EntryConditionReasonCode $case): string => $case->value,
+                EntryConditionReasonCode::cases(),
+            ),
+        ]);
+    }
+
+    /**
+     * Verify, refuse or waive one declaration (spec §9.1, D-REG-22) behind
+     * `registration.verify-entry-conditions`.
+     *
+     * Advisory throughout: a refusal records a fact, and it neither cancels
+     * the registration nor revokes an admission nor reaches Commerce (T-8,
+     * ADR-0005). An operator who wants a blocking check sets
+     * `approval: required` on the type.
+     */
+    public function decideEntryCondition(
+        string $registration,
+        string $entryCondition,
+        DecideEntryConditionData $data,
+        DecideEntryConditionAssertion $decide,
+        Request $request,
+    ): RedirectResponse {
+        Gate::authorize(Permission::VerifyEntryConditions->value);
+
+        /** @var Registration $model */
+        $model = Registration::withoutBrandScope()->findOrFail($registration);
+
+        /** @var EntryCondition $condition */
+        $condition = EntryCondition::withoutBrandScope()
+            ->where('brand_id', $model->brand_id)
+            ->findOrFail($entryCondition);
+
+        try {
+            $decide->handle(
+                registration: $model,
+                condition: $condition,
+                state: $data->state,
+                decidedByUserId: (string) $request->user()?->getKey(),
+                reasonCode: $data->reasonCode,
+            );
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['state' => $e->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Declaration recorded as :state.', ['state' => $data->state->value])]);
+
+        return back();
     }
 
     /**
@@ -318,7 +446,14 @@ class RegistrationAdminController
         $eventDefault = ($brand === null || $brand === $selection->brandId()) ? $selection->eventId() : null;
 
         return [
-            ...$this->resolveFilters($request, ['status' => $this->statusValues()]),
+            ...$this->resolveFilters($request, [
+                'status' => $this->statusValues(),
+                // D-REG-20/22: the entry-condition state. For an
+                // `operator_checked` condition this filter **is** the
+                // worklist — `asserted` is the undecided pile — and it is
+                // never a gate: nothing here changes what may be confirmed.
+                'condition' => $this->conditionFilterValues(),
+            ]),
             'brand' => $brand,
             'event' => $this->resolveSelectionFilter($request, 'event', $eventDefault),
         ];
@@ -345,6 +480,20 @@ class RegistrationAdminController
     }
 
     /**
+     * The entry-condition filter's closed set: the four assertion states
+     * plus `none` for "declared nothing at all" (spec §9.1).
+     *
+     * @return list<string>
+     */
+    private function conditionFilterValues(): array
+    {
+        return [
+            ...array_map(fn (EntryConditionAssertionState $case): string => $case->value, EntryConditionAssertionState::cases()),
+            'none',
+        ];
+    }
+
+    /**
      * @return list<string>
      */
     private function statusValues(): array
@@ -362,6 +511,21 @@ class RegistrationAdminController
             ->when($filters['brand'] !== null, fn ($query) => $query->forBrand($filters['brand']))
             ->when($filters['event'] !== null, fn ($query) => $query->where('event_id', $filters['event']))
             ->when($filters['status'] !== null, fn ($query) => $query->where('status', $filters['status']))
+            // The declaration's state, not the registration's: a row matches
+            // when *any* of its assertions is in that state. `none` is the
+            // other half of the worklist — the registrations that declared
+            // nothing at all.
+            ->when($filters['condition'] === 'none', fn ($query) => $query->whereDoesntHave(
+                'entryConditionAssertions',
+                fn ($inner) => $inner->withoutGlobalScope(BrandScope::class),
+            ))
+            ->when(
+                $filters['condition'] !== null && $filters['condition'] !== 'none',
+                fn ($query) => $query->whereHas(
+                    'entryConditionAssertions',
+                    fn ($inner) => $inner->withoutGlobalScope(BrandScope::class)->where('state', $filters['condition']),
+                ),
+            )
             ->when($request->filled('search'), function ($query) use ($request): void {
                 $term = '%'.$request->string('search')->trim().'%';
 

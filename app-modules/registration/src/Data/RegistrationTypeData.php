@@ -41,6 +41,7 @@ final class RegistrationTypeData extends Data
     /**
      * @param  list<GrantData>  $grants
      * @param  list<string>  $quotaIds
+     * @param  list<string>  $entryConditionIds
      */
     public function __construct(
         #[Required, Ulid]
@@ -83,6 +84,27 @@ final class RegistrationTypeData extends Data
         /** @var list<string> */
         #[ArrayType]
         public readonly array $quotaIds = [],
+
+        /**
+         * The entry conditions this type demands a declaration of, in the
+         * order the public form renders them (ADR-0066, D-REG-18).
+         *
+         * Deliberately **not** a frozen axis (D-REG-19): the set stays
+         * editable after the type has sold. The evidence is the snapshot on
+         * each assertion, not this list, so an edit reinterprets nobody —
+         * it only changes what the *next* submission is asked to declare.
+         */
+        /** @var list<string> */
+        #[ArrayType]
+        public readonly array $entryConditionIds = [],
+
+        /**
+         * "Buy the regular ticket instead" and nothing else (D-REG-21): the
+         * type offered beside a submission refused at the checkbox. Not an
+         * ADR-0005 axis, grants nothing, set and cleared at any time.
+         */
+        #[Nullable, Ulid]
+        public readonly ?string $alternativeRegistrationTypeId = null,
 
         /**
          * The sales window (#218, #216 draft i). ISO-8601 instants with an
@@ -163,6 +185,10 @@ final class RegistrationTypeData extends Data
             // Absent is fine (the quick-create form omits it); present must
             // be an array, empty included.
             'quotaIds' => ['sometimes', 'array'],
+            // Same shape, same reason: a type that demands no declaration
+            // sends an empty array, which the inferred `required` refuses.
+            'entryConditionIds' => ['sometimes', 'array'],
+            'entryConditionIds.*' => ['ulid'],
         ];
     }
 
@@ -180,6 +206,8 @@ final class RegistrationTypeData extends Data
             grants: array_values($type->grants->all()),
             priceDeclaration: $type->price_declaration,
             quotaIds: array_values($type->quotas->pluck('id')->all()),
+            entryConditionIds: array_values($type->entryConditions->pluck('id')->all()),
+            alternativeRegistrationTypeId: $type->alternative_registration_type_id,
             salesStart: $type->sales_start?->toIso8601String(),
             salesEnd: $type->sales_end?->toIso8601String(),
         );

@@ -36,11 +36,15 @@ use Konventix\Registration\Enums\EntryConditionVerification;
  * A `refused` row records a fact. It never revokes an admission and never
  * reaches Commerce (T-8).
  *
+ * `subject_user_id` is nullable for one reason only: deletion anonymizes it
+ * with the registration and keeps the tombstone (spec §11, Round 6
+ * D-BATCH). Every row that is written names its subject.
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $registration_id
  * @property string $entry_condition_id
- * @property string $subject_user_id
+ * @property string|null $subject_user_id
  * @property Carbon $asserted_at
  * @property string $assertion_text_snapshot
  * @property EntryConditionVerification $verification_snapshot

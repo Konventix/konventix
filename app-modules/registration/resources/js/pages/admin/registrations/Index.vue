@@ -38,8 +38,11 @@ const props = defineProps<{
         status: string | null;
         brand: string | null;
         event: string | null;
+        condition: string | null;
     };
     statuses: string[];
+    /** The four assertion states plus `none` — the worklist (D-REG-22). */
+    conditionStates: string[];
     brands: { id: string; name: string }[];
     events: { id: string; name: string }[];
     canReduceQuantity: boolean;
@@ -113,6 +116,21 @@ const filterDefs = computed<DataTableFilterDef[]>(() => [
             label: status[0].toUpperCase() + status.slice(1),
         })),
     },
+    // D-REG-22: for an `operator_checked` condition this filter **is** the
+    // worklist — "Asserted" is the undecided pile. It narrows the list and
+    // gates nothing.
+    {
+        name: 'condition',
+        label: 'Entry condition',
+        value: props.filters.condition,
+        options: props.conditionStates.map((state) => ({
+            value: state,
+            label:
+                state === 'none'
+                    ? 'Nothing declared'
+                    : state[0].toUpperCase() + state.slice(1),
+        })),
+    },
 ]);
 
 /**
@@ -126,6 +144,7 @@ const exportHref = computed(() =>
             status: filters.status,
             brand: filters.brand,
             event: filters.event,
+            condition: filters.condition,
         },
     }),
 );

@@ -4,19 +4,26 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Actions;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Registration\Actions\Concerns\ConsumesQuotas;
 use Konventix\Registration\Data\SubmitRegistrationData;
 use Konventix\Registration\Enums\ConfirmationGate;
+use Konventix\Registration\Enums\EntryConditionAssertionState;
 use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Enums\RegistrationApproval;
 use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Enums\RegistrationVisibility;
 use Konventix\Registration\Enums\WaitlistState;
+use Konventix\Registration\Events\RegistrationConsentGiven;
+use Konventix\Registration\Events\RegistrationEntryConditionAsserted;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Events\WaitlistEntryConverted;
+use Konventix\Registration\Models\EntryCondition;
+use Konventix\Registration\Models\EntryConditionAssertion;
 use Konventix\Registration\Models\InvitationToken;
 use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registration;
@@ -71,6 +78,18 @@ final class SubmitRegistration
             $this->guardAccount($registrantUserId);
             $this->guardBillingParty($registrationType, $data);
 
+            // ADR-0066 §6.2: which declarations this type demands cannot be
+            // written into `SubmitRegistrationData`'s static ruleset either
+            // — the same reason the billing party is guarded here. A
+            // waitlist conversion is exempt for the same reason it skips
+            // the visibility and window guards: the spot was promised, and
+            // the queue carries no tick (see `writeEntryConditionAssertions`).
+            $conditions = $this->entryConditionsFor($registrationType);
+
+            if ($fromWaitlist === null) {
+                $this->guardEntryConditions($conditions, $data);
+            }
+
             // A waitlist offer held exactly one unit (D-REG-12), so a
             // conversion buys exactly one — the queue promises a spot, not
             // a basket.
@@ -117,6 +136,12 @@ final class SubmitRegistration
                 confirmationGate: $registrationType->confirmation_gate->value,
                 submittedAt: $registration->submitted_at->toIso8601String(),
             ));
+
+            // The evidence, inside the same transaction as the act it
+            // belongs to: one row per condition, with the wording that was
+            // shown (T-6), then one event per condition and one declaration
+            // of the legal texts for Compliance to resolve (D-CPL-10).
+            $this->writeEntryConditionAssertions($registration, $registrationType, $conditions, $data, $fromWaitlist !== null);
 
             if ($fromWaitlist !== null) {
                 $fromWaitlist->forceFill([
@@ -311,6 +336,144 @@ final class SubmitRegistration
                 'quantity' => __('Only :remaining left.', ['remaining' => $remaining]),
             ]);
         }
+    }
+
+    /**
+     * The conditions this type demands right now, in the operator's order.
+     *
+     * Read through an explicit query rather than the relation property:
+     * `Model::shouldBeStrict()` forbids lazy-loading an unloaded relation,
+     * the type may arrive straight from route-model binding, and a waitlist
+     * conversion runs this on the admin host where `BrandScope` hardens
+     * every brand-owned query to nothing (.ai/rules) — so the scope is
+     * escaped on the *related* model as well as on the parent.
+     *
+     * Archived conditions are not filtered out: a type still pointing at one
+     * still demands it, and hiding it here would silently stop asking
+     * without anybody deciding to.
+     *
+     * @return Collection<int, EntryCondition>
+     */
+    private function entryConditionsFor(RegistrationType $registrationType): Collection
+    {
+        return $registrationType->entryConditions()
+            ->withoutGlobalScope(BrandScope::class)
+            ->get();
+    }
+
+    /**
+     * Every condition the type declares has to be in the posted list
+     * (D-REG-21, spec §6.2).
+     *
+     * A declaration nobody made is not a declaration, so the submission is
+     * refused rather than written without one — keyed `entryConditions.{id}`
+     * so the message lands on the checkbox that raised it (ADR-0055). Where
+     * the type names an `alternative_registration_type_id`, the page renders
+     * a "buy the regular ticket instead" link beside that error: a dead end
+     * at the checkbox loses a sale the full-price type would have taken.
+     *
+     * @param  Collection<int, EntryCondition>  $conditions
+     */
+    private function guardEntryConditions(Collection $conditions, SubmitRegistrationData $data): void
+    {
+        if ($conditions->isEmpty()) {
+            return;
+        }
+
+        $accepted = array_flip($data->acceptedEntryConditionIds);
+
+        $missing = $conditions
+            ->reject(fn (EntryCondition $condition): bool => isset($accepted[(string) $condition->getKey()]))
+            ->mapWithKeys(fn (EntryCondition $condition): array => [
+                'entryConditions.'.$condition->getKey() => __('Please confirm: :text', ['text' => $condition->assertion_text]),
+            ])
+            ->all();
+
+        if ($missing !== []) {
+            throw ValidationException::withMessages($missing);
+        }
+    }
+
+    /**
+     * One assertion per condition, whatever the quantity (D-REG-20): the
+     * registrant declares once, for the contractual act. The door checks per
+     * person instead, because the label rides on every admission.
+     *
+     * The snapshots are the point (T-6): the condition's wording may be
+     * reworded tomorrow, the evidence may not change under the person who
+     * gave it.
+     *
+     * A waitlist conversion writes nothing. The queue holds a billing
+     * snapshot, not a declaration — nobody ticked a box when they joined —
+     * so its registration shows *not asserted* in the console and an
+     * operator waives or asks, exactly as for a condition added to a live
+     * type (D-REG-19). Collecting the declaration on the offer link is the
+     * honest follow-up and belongs with the per-holder declarations (§15).
+     *
+     * `RegistrationConsentGiven` goes out once, with the binding context
+     * Compliance resolves into policy versions (D-CPL-10, Task 32). This
+     * module builds the bag and never interprets it; until that listener
+     * exists nothing consumes the event.
+     *
+     * @param  Collection<int, EntryCondition>  $conditions
+     */
+    private function writeEntryConditionAssertions(
+        Registration $registration,
+        RegistrationType $registrationType,
+        Collection $conditions,
+        SubmitRegistrationData $data,
+        bool $fromWaitlist,
+    ): void {
+        $assertedIds = [];
+
+        if (! $fromWaitlist) {
+            $accepted = array_flip($data->acceptedEntryConditionIds);
+
+            foreach ($conditions as $condition) {
+                if (! isset($accepted[(string) $condition->getKey()])) {
+                    continue;
+                }
+
+                $assertion = new EntryConditionAssertion([
+                    'registration_id' => $registration->getKey(),
+                    'entry_condition_id' => $condition->getKey(),
+                    'subject_user_id' => $registration->registrant_user_id,
+                    'asserted_at' => now(),
+                    'assertion_text_snapshot' => $condition->assertion_text,
+                    'verification_snapshot' => $condition->verification,
+                    'state' => EntryConditionAssertionState::Asserted,
+                ]);
+
+                $assertion->forceFill(['brand_id' => $registration->brand_id])->save();
+
+                $assertedIds[] = (string) $condition->getKey();
+
+                event(new RegistrationEntryConditionAsserted(
+                    assertionId: (string) $assertion->getKey(),
+                    registrationId: (string) $registration->getKey(),
+                    entryConditionId: (string) $condition->getKey(),
+                    entryConditionKey: $condition->key,
+                    brandId: $registration->brand_id,
+                    subjectUserId: (string) $registration->registrant_user_id,
+                    verification: $condition->verification->value,
+                    assertedAt: $assertion->asserted_at->toIso8601String(),
+                ));
+            }
+        }
+
+        event(new RegistrationConsentGiven(
+            brandId: $registration->brand_id,
+            subjectId: (string) $registration->registrant_user_id,
+            captureContext: 'registration',
+            acceptedAt: now()->toIso8601String(),
+            bindingContext: [
+                'brand_id' => $registration->brand_id,
+                'event_id' => $registrationType->event_id,
+                'registration_type_ids' => [(string) $registrationType->getKey()],
+                'entry_condition_ids' => $assertedIds,
+                'registration_id' => (string) $registration->getKey(),
+            ],
+        ));
     }
 
     private function guardAccount(?string $registrantUserId): void
