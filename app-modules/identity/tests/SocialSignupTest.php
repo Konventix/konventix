@@ -159,3 +159,55 @@ it('shows the completion page with the provider name it came from', function ():
             ->where('providerLabel', 'Steam')
             ->where('suggestedName', 'gaben'));
 });
+
+/**
+ * The whole arc `LinkedAccounts.vue` promises: an account Steam created has no
+ * password, sets one from the security settings without being asked for a
+ * current one, and from then on signs in with the address it typed. The
+ * settings pages sit behind `verified`, and Steam asserts no address, so the
+ * person confirms the one they gave first (#293 — the gate stays).
+ */
+it('lets a Steam-only account set a password and then sign in with it', function (): void {
+    $this->withBrand();
+
+    $this->withSession(['identity.social.pending' => identityPendingSteamSignup()])
+        ->post('http://localhost/auth/steam/complete', [
+            'name' => 'Ada Lovelace',
+            'username' => 'ada-lovelace',
+            'email' => 'ada@example.test',
+        ])->assertRedirect();
+
+    $user = User::query()->where('email', 'ada@example.test')->firstOrFail();
+
+    expect($user->hasPassword())->toBeFalse();
+
+    $user->markEmailAsVerified();
+
+    $this->actingAs($user)
+        ->get('http://localhost/settings/security')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('settings/Security')
+            ->where('hasPassword', false));
+
+    $this->actingAs($user)
+        ->from('http://localhost/settings/security')
+        ->put('http://localhost/settings/password', [
+            'password' => 'a-brand-new-password',
+            'password_confirmation' => 'a-brand-new-password',
+        ])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect('http://localhost/settings/security');
+
+    expect($user->refresh()->hasPassword())->toBeTrue();
+
+    $this->post(route('logout'))->assertRedirect();
+    $this->assertGuest();
+
+    $this->post(route('login.store'), [
+        'email' => 'ada@example.test',
+        'password' => 'a-brand-new-password',
+    ])->assertRedirect(route('dashboard', absolute: false));
+
+    $this->assertAuthenticatedAs($user);
+});

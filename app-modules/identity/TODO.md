@@ -176,6 +176,26 @@ person behind it. The value here is in what is left out.
 
 ## Done
 
+- [x] A Steam-only account can set its first password (bugfix round
+      2026-09-21, Task 5). `PasswordUpdateData` demanded `current_password`
+      unconditionally, which no account with a null hash could satisfy —
+      and `LinkedAccounts.vue` sends exactly those accounts to that form.
+      `PasswordValidationRules::currentPasswordRulesFor()` answers
+      `missing` for an account without a password and the full check for
+      everyone else; `SecurityController::edit()` shares `hasPassword`, and
+      `Security.vue` hides the current-password field and titles the card
+      "Set password". Second half of the same report: Fortify's
+      `password.reset`/`password.update` were `guest:web`, so a signed-in
+      person opening the mail link landed on the dashboard;
+      `throttleUnhookedFortifyRoutes()` now strips that guard (the token
+      plus the address is the credential, `NewPasswordController` never
+      reads the session). The `verified` gate on `settings/security` stays
+      on purpose: an account with a placeholder address sets a real one
+      first (#293), and `EmailVerificationBanner` tells it so on every
+      page. `tests/Feature/Settings/SecurityTest.php`,
+      `tests/Feature/Auth/PasswordResetTest.php`, `tests/SocialSignupTest.php`
+      (Steam signup, set password, sign in with e-mail and password).
+
 - [x] A "Sign in with Steam" button on the login page (#81) — Steam sign-in
       used to start only from `LinkedAccounts.vue`, reachable only after
       signing in some other way, which was backwards for a deployment where

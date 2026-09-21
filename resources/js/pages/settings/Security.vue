@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { edit } from '@/routes/security';
 
 type Props = {
+    hasPassword: boolean;
     passwordRules: string;
     canManageTwoFactor: boolean;
     twoFactorEnabled?: boolean;
@@ -41,8 +42,12 @@ defineOptions({
     <div class="space-y-6">
         <Heading
             variant="small"
-            title="Update password"
-            description="Ensure your account is using a long, random password to stay secure"
+            :title="props.hasPassword ? 'Update password' : 'Set password'"
+            :description="
+                props.hasPassword
+                    ? 'Ensure your account is using a long, random password to stay secure'
+                    : 'This account signs in through a linked account only. Set a password to also sign in with your e-mail address.'
+            "
         />
 
         <Form
@@ -59,7 +64,7 @@ defineOptions({
             class="space-y-6"
             v-slot="{ errors, processing }"
         >
-            <div class="grid gap-2">
+            <div v-if="props.hasPassword" class="grid gap-2">
                 <Label for="current_password">Current password</Label>
                 <PasswordInput
                     id="current_password"

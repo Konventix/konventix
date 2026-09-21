@@ -23,7 +23,9 @@ class SecurityController
     /**
      * Show the user's security settings page: password, two-factor
      * authentication (when the Fortify feature is enabled), and the session
-     * list for this brand.
+     * list for this brand. `hasPassword` tells the form whether it is
+     * changing a password or setting the first one — a Steam-only account
+     * has none, and `PasswordUpdateData` refuses `current_password` for it.
      */
     public function edit(TwoFactorAuthenticationRequest $request): Response
     {
@@ -32,6 +34,7 @@ class SecurityController
         $user = $request->user();
 
         $props = [
+            'hasPassword' => $user->hasPassword(),
             'passwordRules' => Password::defaults()->toPasswordRulesString(),
             'canManageTwoFactor' => Features::canManageTwoFactorAuthentication(),
             'sessions' => $this->sessions->for($user)
@@ -58,11 +61,17 @@ class SecurityController
      */
     public function update(Request $request, PasswordUpdateData $data): RedirectResponse
     {
-        $request->user()->update([
+        $user = $request->user();
+        $hadPassword = $user->hasPassword();
+
+        $user->update([
             'password' => $data->password,
         ]);
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => __('Password updated.')]);
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $hadPassword ? __('Password updated.') : __('Password set.'),
+        ]);
 
         return back();
     }

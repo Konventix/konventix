@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Identity\Data;
 
 use Konventix\Identity\Concerns\PasswordValidationRules;
+use Konventix\Identity\Models\User;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -16,6 +17,12 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * `current_password` validation rule, the starter-kit form fields), and there
  * is no name-mapping strategy configured (`config/data.php`) to translate
  * between the two, so the property name must match the posted field exactly.
+ *
+ * `current_password` is nullable because a Steam-only account has no
+ * password to confirm: for it the field is `missing`, for everyone else it is
+ * required (`PasswordValidationRules::currentPasswordRulesFor()`). The rules
+ * read the acting account off the request the way `AdminUpdateUserData`
+ * reads its route binding — the Data has no other handle on it.
  */
 #[TypeScript]
 final class PasswordUpdateData extends Data
@@ -23,7 +30,7 @@ final class PasswordUpdateData extends Data
     use PasswordValidationRules;
 
     public function __construct(
-        public readonly string $current_password,
+        public readonly ?string $current_password,
         public readonly string $password,
     ) {}
 
@@ -32,8 +39,10 @@ final class PasswordUpdateData extends Data
      */
     public static function rules(): array
     {
+        $user = request()->user();
+
         return [
-            'current_password' => self::currentPasswordRules(),
+            'current_password' => self::currentPasswordRulesFor($user instanceof User ? $user : null),
             'password' => self::passwordRules(),
         ];
     }

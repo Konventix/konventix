@@ -483,7 +483,17 @@ class IdentityServiceProvider extends ModuleServiceProvider
             'login.store' => [$credentials],
         ];
 
-        $this->app->booted(function () use ($additions): void {
+        // Fortify registers both halves of the reset form as `guest`, so a
+        // signed-in person who opens the mail link is bounced to the
+        // dashboard instead of the form. The link is the credential here —
+        // `NewPasswordController` resolves the account from token + email,
+        // never from the session — so the guard protects nothing and only
+        // strands the person who requested the reset while still signed in
+        // elsewhere (a Steam-only account setting its first password, say).
+        $guest = 'guest:'.config('fortify.guard');
+        $openToSignedIn = ['password.reset', 'password.update'];
+
+        $this->app->booted(function () use ($additions, $guest, $openToSignedIn): void {
             // By name, but walked rather than looked up: RouteServiceProvider
             // refreshes the collection's name lookup in a `booted` callback of
             // its own, and ours is registered first — `getByName()` here still
@@ -493,6 +503,17 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
                 if ($middleware !== null) {
                     $route->middleware($middleware);
+                }
+
+                if (in_array($route->getName(), $openToSignedIn, true)) {
+                    // `Route::middleware()` only ever appends, so the array is
+                    // rewritten in place; the cached resolution is dropped
+                    // with it in case anything gathered it already.
+                    $route->action['middleware'] = array_values(array_filter(
+                        (array) ($route->action['middleware'] ?? []),
+                        fn (string $name): bool => $name !== $guest,
+                    ));
+                    $route->computedMiddleware = null;
                 }
 
                 if ($route->getName() === 'register.store') {

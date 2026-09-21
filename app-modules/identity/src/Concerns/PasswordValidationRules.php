@@ -6,6 +6,7 @@ namespace Konventix\Identity\Concerns;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Validation\Rules\Password;
+use Konventix\Identity\Models\User;
 
 trait PasswordValidationRules
 {
@@ -32,5 +33,24 @@ trait PasswordValidationRules
     protected static function currentPasswordRules(): array
     {
         return ['required', 'string', 'current_password'];
+    }
+
+    /**
+     * The current-password rules for a particular account. A Steam-only
+     * account (`users.password` is nullable since slice 15a) has nothing to
+     * confirm, so demanding `current_password` there is a form nobody can
+     * submit; the field must then stay out of the request altogether —
+     * `missing`, not `nullable`, so a stray value is never quietly ignored.
+     * Every account that does hold a password keeps the full check.
+     *
+     * @return array<int, Password|ValidationRule|array<mixed>|string>
+     */
+    protected static function currentPasswordRulesFor(?User $user): array
+    {
+        if ($user !== null && ! $user->hasPassword()) {
+            return ['missing'];
+        }
+
+        return self::currentPasswordRules();
     }
 }

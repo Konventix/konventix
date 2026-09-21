@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Queue;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Jobs\SendQueuedMessage;
@@ -96,4 +97,56 @@ test('password cannot be reset with invalid token', function () {
     ]);
 
     $response->assertSessionHasErrors('email');
+});
+
+/**
+ * Fortify registers both halves of the reset form as `guest`, which bounced a
+ * signed-in person who opened the mail link to the dashboard. The token plus
+ * the address is the credential — `NewPasswordController` never reads the
+ * session — so `IdentityServiceProvider::throttleUnhookedFortifyRoutes()`
+ * strips that guard from `password.reset` and `password.update`.
+ */
+test('a signed-in person can open the reset screen from the mail link', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+
+    $this->post(route('password.email'), ['email' => $user->email]);
+
+    $job = Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'identity.password-reset',
+    )->firstOrFail();
+
+    $token = basename((string) parse_url($job->message->payload->toArray()['resetUrl'], PHP_URL_PATH));
+
+    $this->actingAs($user)
+        ->get(route('password.reset', $token))
+        ->assertOk();
+});
+
+test('a signed-in person can complete the reset', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+
+    $this->post(route('password.email'), ['email' => $user->email]);
+
+    $job = Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'identity.password-reset',
+    )->firstOrFail();
+
+    $token = basename((string) parse_url($job->message->payload->toArray()['resetUrl'], PHP_URL_PATH));
+
+    $response = $this->actingAs($user)->post(route('password.update'), [
+        'token' => $token,
+        'email' => $user->email,
+        'password' => 'a-brand-new-password',
+        'password_confirmation' => 'a-brand-new-password',
+    ]);
+
+    $response->assertSessionHasNoErrors();
+
+    expect(Hash::check('a-brand-new-password', $user->refresh()->password))->toBeTrue();
 });
