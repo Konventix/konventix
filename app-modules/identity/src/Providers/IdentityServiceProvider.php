@@ -9,6 +9,7 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
@@ -157,8 +158,19 @@ class IdentityServiceProvider extends ModuleServiceProvider
         // singleton, so the package's own `make(Factory)` inside returns this
         // very instance instead of recursing; the Manager's boot-time event
         // then merely re-extends an instance that already knows the driver.
-        $this->app->afterResolving(SocialiteFactory::class, function (): void {
-            (new SteamExtendSocialite)->handle($this->app->make(SocialiteWasCalled::class));
+        //
+        // The container is the one the callback is handed, never `$this->app`.
+        // Under Octane every request runs in a sandbox cloned from the worker's
+        // base application (.ai/rules/listeners.md, #142), and it is the
+        // sandbox that resolves the flushed factory anew. `SocialiteWasCalled`
+        // extends whatever factory *its own* container makes — built from
+        // `$this->app` it extended the base application's instance while the
+        // request's sandbox instance had never heard of Steam: "Driver [steam]
+        // not supported" on every login of the staging cluster, on the very
+        // release that carried the afterResolving fix (v0.6.4, 2026-09-21).
+        // Tests never notice, there both containers are the same object.
+        $this->app->afterResolving(SocialiteFactory::class, function (SocialiteFactory $factory, Container $app): void {
+            (new SteamExtendSocialite)->handle($app->make(SocialiteWasCalled::class));
         });
 
         // Compliance's public verification link resolves an address to an
