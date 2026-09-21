@@ -41,6 +41,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $provider_message_id
  * @property bool $urgent
  * @property Carbon|null $hold_until
+ * @property string|null $hold_reason
  * @property string|null $digest_message_id
  * @property string|null $resent_from_id
  * @property Carbon $queued_at
@@ -80,6 +81,7 @@ class MessageRecord extends Model
         'provider_message_id',
         'urgent',
         'hold_until',
+        'hold_reason',
         'digest_message_id',
         'resent_from_id',
         'queued_at',

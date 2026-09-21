@@ -67,7 +67,14 @@ it('lists every brand with its transport state', function (): void {
             $brands = collect($page->toArray()['props']['brands'])->keyBy('name');
             expect($brands['Configured']['customTransport'])->toBeTrue()
                 ->and($brands['Configured']['fromAddress'])->toBe('hi@configured.test')
-                ->and($brands['Bare']['customTransport'])->toBeFalse();
+                ->and($brands['Bare']['customTransport'])->toBeFalse()
+                // The quota column: null means the configured default, which
+                // the page receives beside the rows (Task 14).
+                ->and($brands['Bare']['mailQuotaPerHour'])->toBeNull()
+                ->and($page->toArray()['props']['quotaDefaults'])->toBe([
+                    'perHour' => (int) config('messaging.mail_quota.per_hour'),
+                    'perDay' => (int) config('messaging.mail_quota.per_day'),
+                ]);
         });
 });
 
@@ -158,4 +165,60 @@ it('requires the sender-identity capability', function (): void {
     $this->actingAs($admin)
         ->get('http://admin.mailset.test/admin/mail-settings')
         ->assertForbidden();
+});
+
+it('stores the sending quota overrides and shows the configured defaults beside them', function (): void {
+    // Task 14: blank keeps the default; the edit page carries the defaults
+    // so the form can show them as placeholders.
+    config(['messaging.mail_quota.per_hour' => 100, 'messaging.mail_quota.per_day' => 500]);
+    $admin = mailSettingsOperator();
+
+    $brand = Brand::factory()->create(['slug' => 'ms-quota']);
+
+    $this->actingAs($admin)
+        ->put("http://admin.mailset.test/admin/mail-settings/{$brand->getKey()}", [
+            'fromName' => 'SXLan Crew',
+            'fromAddress' => 'crew@sxlan.test',
+            'replyTo' => null,
+            'timezone' => null,
+            'useCustomTransport' => false,
+            'mailQuotaPerHour' => 50,
+            'mailQuotaPerDay' => null,
+        ])
+        ->assertRedirect();
+
+    $settings = BrandMailSettings::withoutBrandScope()->where('brand_id', $brand->getKey())->sole();
+    expect($settings->mail_quota_per_hour)->toBe(50)
+        ->and($settings->mail_quota_per_day)->toBeNull();
+
+    $this->actingAs($admin)
+        ->get("http://admin.mailset.test/admin/mail-settings/{$brand->getKey()}/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/mail-settings/Edit')
+            ->where('settings.mailQuotaPerHour', 50)
+            ->where('settings.mailQuotaPerDay', null)
+            ->where('quotaDefaults.perHour', 100)
+            ->where('quotaDefaults.perDay', 500));
+});
+
+it('refuses a sending quota below one', function (): void {
+    $admin = mailSettingsOperator();
+
+    $brand = Brand::factory()->create(['slug' => 'ms-quota-zero']);
+
+    $this->actingAs($admin)
+        ->from("http://admin.mailset.test/admin/mail-settings/{$brand->getKey()}/edit")
+        ->put("http://admin.mailset.test/admin/mail-settings/{$brand->getKey()}", [
+            'fromName' => 'SXLan Crew',
+            'fromAddress' => 'crew@sxlan.test',
+            'replyTo' => null,
+            'timezone' => null,
+            'useCustomTransport' => false,
+            'mailQuotaPerHour' => 0,
+            'mailQuotaPerDay' => 500,
+        ])
+        ->assertSessionHasErrors(['mailQuotaPerHour']);
+
+    expect(BrandMailSettings::withoutBrandScope()->where('brand_id', $brand->getKey())->exists())->toBeFalse();
 });

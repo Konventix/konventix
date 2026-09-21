@@ -12,7 +12,9 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * the quiet-hours timezone fallback (ADR-0041), and an optional SMTP
  * transport shaped like a `config('mail.mailers.*')` entry. A null
  * `smtpPassword` on an already-configured transport keeps the stored
- * secret — the form never has to echo it back.
+ * secret — the form never has to echo it back. The two quota fields
+ * (Task 14, `Mail\MailQuota`) are nullable overrides of the configured
+ * sending quota; null keeps the default.
  */
 #[TypeScript]
 class MailSettingsData extends Data
@@ -28,6 +30,8 @@ class MailSettingsData extends Data
         public ?string $smtpUsername = null,
         public ?string $smtpPassword = null,
         public ?string $smtpScheme = null,
+        public ?int $mailQuotaPerHour = null,
+        public ?int $mailQuotaPerDay = null,
     ) {}
 
     /**
@@ -46,6 +50,8 @@ class MailSettingsData extends Data
             'smtpUsername' => ['nullable', 'string', 'max:255'],
             'smtpPassword' => ['nullable', 'string', 'max:255'],
             'smtpScheme' => ['nullable', 'in:smtp,smtps'],
+            'mailQuotaPerHour' => ['nullable', 'integer', 'min:1'],
+            'mailQuotaPerDay' => ['nullable', 'integer', 'min:1'],
         ];
     }
 }

@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use Konventix\Messaging\Data\SendMessageData;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Jobs\SendQueuedMessage;
+use Konventix\Messaging\Mail\MailQuota;
 use Konventix\Messaging\Mail\TemplatedMail;
 use Konventix\Messaging\Models\BrandMailSettings;
 use Konventix\Messaging\Templates\MessageTemplate;
@@ -105,4 +106,18 @@ it('renders the subject and body from the registered template against the typed 
         TemplatedMail::class,
         fn (TemplatedMail $mail): bool => $mail->envelope()->subject === 'Hello Ada'
     );
+});
+
+it('counts a mail the transport accepted into the brand\'s sending quota', function (): void {
+    // Task 14: the counter moves where sent_at is written, mail only.
+    $brand = $this->withBrand();
+    Mail::fake();
+    $quota = app(MailQuota::class);
+    $scope = $quota->scopeFor($brand->getKey());
+
+    expect($quota->usage($scope))->toBe(['hour' => 0, 'day' => 0]);
+
+    app()->call([messagingChannelJob($brand->getKey()), 'handle']);
+
+    expect($quota->usage($scope))->toBe(['hour' => 1, 'day' => 1]);
 });

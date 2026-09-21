@@ -46,11 +46,28 @@ class MailSettingsAdminController
                         'fromAddress' => $row?->from_address,
                         'timezone' => $row?->timezone,
                         'customTransport' => $row?->transport !== null,
+                        'mailQuotaPerHour' => $row?->mail_quota_per_hour,
+                        'mailQuotaPerDay' => $row?->mail_quota_per_day,
                     ];
                 })
                 ->values()
                 ->all(),
+            'quotaDefaults' => $this->quotaDefaults(),
         ]);
+    }
+
+    /**
+     * The configured sending quota (Task 14), shown as the placeholder of
+     * a blank override and as the index's fallback.
+     *
+     * @return array{perHour: int, perDay: int}
+     */
+    private function quotaDefaults(): array
+    {
+        return [
+            'perHour' => (int) config('messaging.mail_quota.per_hour'),
+            'perDay' => (int) config('messaging.mail_quota.per_day'),
+        ];
     }
 
     public function edit(Brand $brand, BrandMailIdentityResolver $identity): Response
@@ -84,7 +101,10 @@ class MailSettingsAdminController
                 'smtpScheme' => $transport['scheme'] ?? null,
                 // The secret itself never travels back to the browser.
                 'hasSmtpPassword' => ($transport['password'] ?? null) !== null,
+                'mailQuotaPerHour' => $settings?->mail_quota_per_hour,
+                'mailQuotaPerDay' => $settings?->mail_quota_per_day,
             ],
+            'quotaDefaults' => $this->quotaDefaults(),
         ]);
     }
 

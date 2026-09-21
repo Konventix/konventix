@@ -39,15 +39,16 @@ date, alert names and recipient under the alert's section when done.
 - KonventixDatabaseBackupMissing fires on its own on an instance that never
   completed a backup.
 
-The other twelve — KonventixMetricsDown, KonventixHealthCheckFailed,
+The other thirteen — KonventixMetricsDown, KonventixHealthCheckFailed,
 KonventixQueueJobsFailing, KonventixWaitingRoomStuck, KonventixWebhookSilence,
 KonventixPaymentFailureRate, KonventixHttp5xxRate, KonventixCheckoutSlow,
 KonventixWalArchivingFailing, KonventixPodsRestarting,
-KonventixResourceHoldSweepStale and KonventixClaimInviteMailFailing — are not triggered
+KonventixResourceHoldSweepStale, KonventixClaimInviteMailFailing and
+KonventixMailQuotaExhausted — are not triggered
 by hand for #168; each has a `vmalert-tool` unit test in
 `contrib/observability/alerts/tests/konventix.rules.test.yaml` that shapes an
 input series so the rule's expression fires and asserts the labels vmalert
-reports, which is the acceptance in place of a live trigger. Two of those twelve
+reports, which is the acceptance in place of a live trigger. Two of those thirteen
 need more than the unit test to prove the *metric*, not just the rule, is
 honest: KonventixWebhookSilence and KonventixPaymentFailureRate are proven by
 running a sandbox payment flow — a Stripe test-mode webhook withheld, and a
@@ -173,6 +174,34 @@ Two commands, safe to re-run, neither one specific to a single event:
   projection listens; never a replay of `AdmissionIssued`, which would
   count every admission on the dashboards a second time. Run it once after
   the deploy that brings the table, after `event:replay-details`.
+
+## Mail quota
+
+The default mail transport sits behind a mailbox provider that refuses
+mail past a fixed number of recipients per hour and per day — netcup's
+webhosting allows 100 an hour and 500 a day (forum.netcup.de, read
+2026-09-21) — and a burst used to hit that wall on the transport and fail.
+Since the 2026-09-21 bugfix round Messaging counts what it sends per
+budget and window (`Mail\MailQuota`, `config/messaging.php`,
+`MAIL_QUOTA_PER_HOUR` / `MAIL_QUOTA_PER_DAY`) and holds a non-urgent mail
+that would cross either limit: the delivery log shows it `held` with
+`hold_reason = mail_quota` and a `hold_until` at the start of the next
+free window — the next UTC clock hour, or midnight in the brand's
+mail-settings timezone (UTC when it has none) — and the every-minute
+`messaging:flush-held` sweep releases it, checking the quota again as it
+does so an exhausted window re-holds instead of bursting. Nothing is
+dropped; in-app and push rows are not mail and never wait; an urgent send
+(a console resend, an urgent announcement) is never held but still
+counts.
+
+Budgets follow the account the provider is counting: a brand with its own
+SMTP transport has its own hourly and daily count, keyed by its brand id;
+every brand on the application's default mailer shares one (`default`).
+Per-brand overrides live on the console's mail-settings page ("Sending
+quota"; blank keeps the configured default) and the index shows the
+effective pair per brand. The sale dashboard's Messages row shows the
+share of each window already used and the mails held per hour;
+`KonventixMailQuotaExhausted` fires when a window is full.
 
 ## Alerts
 
@@ -332,6 +361,27 @@ could not be sent." in the logs, which carries Messaging's reason — no
 resolvable address (the link is bound, so this means a malformed one got
 past validation), a brand with no mail identity, or the mail transport
 itself, in which case `KonventixQueueJobsFailing` fires beside this.
+
+### KonventixMailQuotaExhausted
+
+A brand's mail sending quota for the hour or the day has been fully used
+for five minutes (see "Mail quota" above): the count Messaging keeps of
+mail the transport accepted has reached the limit, so every further
+non-urgent mail is being held with `hold_reason = mail_quota` and will be
+released when the window reopens — the next UTC hour, or midnight in the
+brand's mail-settings timezone. Nothing needs rescuing: the delivery log
+(`/admin/messages`, status *held*) lists what waits and until when, and
+the sale dashboard's "Mail held for quota per hour" panel shows the
+backlog forming. What to decide is whether the limit is right. For a
+brand on the default mailer the budget is the provider's and shared with
+every other brand on it; if it fires during a sale, raise
+`MAIL_QUOTA_PER_HOUR` / `MAIL_QUOTA_PER_DAY` only once the provider has
+raised its own limit, or move the brand onto its own SMTP transport with
+its own budget (console, mail settings). For a brand with its own
+transport, the override on its mail-settings row is the knob. An hourly
+alert that resolves itself within the hour on a publishing day is the
+system working; a daily one on a sale day means the confirmations of the
+last hours are queued until midnight and is worth a decision before then.
 
 ### KonventixRoleUnavailable
 

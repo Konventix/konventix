@@ -17,9 +17,14 @@ type BrandRow = {
     fromAddress: string | null;
     timezone: string | null;
     customTransport: boolean;
+    mailQuotaPerHour: number | null;
+    mailQuotaPerDay: number | null;
 };
 
-defineProps<{ brands: BrandRow[] }>();
+defineProps<{
+    brands: BrandRow[];
+    quotaDefaults: { perHour: number; perDay: number };
+}>();
 </script>
 
 <template>
@@ -28,7 +33,7 @@ defineProps<{ brands: BrandRow[] }>();
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             title="Mail settings"
-            description="Sender identity, transport and quiet-hours timezone per brand"
+            description="Sender identity, transport, sending quota and quiet-hours timezone per brand"
         />
 
         <div class="rounded-xl border border-border">
@@ -46,6 +51,7 @@ defineProps<{ brands: BrandRow[] }>();
                             <th scope="col" class="p-3 font-medium">
                                 Timezone
                             </th>
+                            <th scope="col" class="p-3 font-medium">Quota</th>
                             <th scope="col" class="p-3"></th>
                         </tr>
                     </thead>
@@ -86,6 +92,24 @@ defineProps<{ brands: BrandRow[] }>();
                             <td class="p-3 text-text-muted">
                                 {{ brand.timezone ?? '—' }}
                             </td>
+                            <td class="p-3">
+                                {{
+                                    brand.mailQuotaPerHour ??
+                                    quotaDefaults.perHour
+                                }}/h ·
+                                {{
+                                    brand.mailQuotaPerDay ??
+                                    quotaDefaults.perDay
+                                }}/d
+                                <span
+                                    v-if="
+                                        brand.mailQuotaPerHour === null &&
+                                        brand.mailQuotaPerDay === null
+                                    "
+                                    class="text-text-muted"
+                                    >(default)</span
+                                >
+                            </td>
                             <td class="p-3 text-right" @click.stop>
                                 <Button as-child variant="outline" size="sm">
                                     <Link :href="editMailSettings(brand.id)"
@@ -96,7 +120,7 @@ defineProps<{ brands: BrandRow[] }>();
                         </tr>
                         <tr v-if="brands.length === 0">
                             <td
-                                colspan="5"
+                                colspan="6"
                                 class="p-6 text-center text-text-muted"
                             >
                                 No brands yet.

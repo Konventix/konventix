@@ -47,6 +47,26 @@
 
 ## Backlog
 
+- [ ] Mail quota overshoot between sweeps (Task 14): the counter moves
+      when `SendQueuedMessage` has actually sent, and the flush sweep
+      tallies its own releases per budget within one run — but a sweep a
+      minute later, with the previous run's jobs still on the queue, reads
+      a counter that has not caught up and may release up to one more
+      window's worth. Bounded by the sweep interval and queue latency;
+      a reservation at release time would close it at the cost of
+      counting twice on a failed send.
+- [ ] Mail quota shared scope and timezones: brands on the default mailer
+      share one count, but the daily window closes at midnight in each
+      brand's own mail-settings timezone, so two brands in different zones
+      count the shared budget in overlapping days. One timezone per shared
+      scope (the operator's) would be exact; today the operator's brands
+      are all in one zone.
+- [ ] A digested announcement keeps no per-item link: `messaging.digest`
+      lists each coalesced member's rendered subject only, so a normal
+      (non-urgent) announcement that reaches a recipient inside a digest
+      shows its title without the `/news/{slug}` link the urgent path and
+      the inbox row carry (bugfix round 2026-09-21, Task 11). Carrying a
+      URL per digest member means widening `DigestData`'s item shape.
 - [ ] `TemplateOverrideGuard` refuses a literal email address in an override:
       its `@word` scan matches `@example` inside `info@example.com` and the
       glued-directive check then rejects it, even though Blade renders it
@@ -118,6 +138,22 @@
       query-ergonomics question, not a correctness one.
 
 ## Done
+
+- [x] Mail quota per hour and per day (bugfix round 2026-09-21, Task 14):
+      `config/messaging.php`, two nullable overrides on the settings row
+      and `hold_reason` on the log row, `Mail\MailQuota` (scope, cache
+      counters, hold computation in the brand's timezone), the gate in
+      `SendMessage`, counting in `SendQueuedMessage`, quota-aware release
+      in `FlushHeldMessages`, the "Sending quota" card and index column,
+      `MessagingGauges` plus `mail_quota_held_total`, the sale dashboard
+      panels, `KonventixMailQuotaExhausted` and its runbook.
+- [x] The announcement notification links to the news entry (bugfix round
+      2026-09-21, Task 11): `AnnouncementPublished` now carries the slug,
+      `AnnouncementData` a nullable `url`, and
+      `SendAnnouncementNotifications` builds it once before the fan-out —
+      brand-absolute via `BrandUrl::baseFor()`, else the absolute route —
+      so the inbox row, the push payload and the mail ("Zum Beitrag" /
+      "Read the article", guarded on `$url`) all point at `/news/{slug}`.
 
 - [x] Operator notices stay out of the participant inbox (bugfix round
       2026-09-21, Task 9): `Topic` carries an `audience`

@@ -289,3 +289,27 @@ tests:
             exp_annotations:
               summary: "Claim-link invitations for sxlan are failing to send"
               runbook: "docs/operations.md#konventixclaiminvitemailfailing"
+
+  - interval: 1m
+    input_series:
+      - series: 'konventix_mail_quota_used{job="konventix", brand="sxlan", window="hour"}'
+        values: '98 99 100 100 100 100 100 100 100 100'
+      - series: 'konventix_mail_quota_limit{job="konventix", brand="sxlan", window="hour"}'
+        values: '100x10'
+      - series: 'konventix_mail_quota_used{job="konventix", brand="sxlan", window="day"}'
+        values: '400x10'
+      - series: 'konventix_mail_quota_limit{job="konventix", brand="sxlan", window="day"}'
+        values: '500x10'
+    alert_rule_test:
+      - eval_time: 4m
+        groupname: konventix.app
+        alertname: KonventixMailQuotaExhausted
+        exp_alerts: []
+      - eval_time: 8m
+        groupname: konventix.app
+        alertname: KonventixMailQuotaExhausted
+        exp_alerts:
+          - exp_labels: {job: konventix, brand: sxlan, window: hour, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Mail quota for sxlan is exhausted for this hour; mail is being held"
+              runbook: "docs/operations.md#konventixmailquotaexhausted"

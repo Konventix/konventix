@@ -56,6 +56,25 @@ scalars and ULIDs, which is exactly what the rule asks for.
   coalesces several into one `messaging.digest` message listing each item's
   rendered subject; member rows keep `digest_message_id` so "did they get it"
   stays answerable. `urgent` bypasses both.
+- **Mail quota** (bugfix round 2026-09-21, Task 14): how much mail one
+  SMTP account may send per hour and per day before the provider refuses
+  it — netcup's webhosting, which the default transport sits behind,
+  allows 100 recipients an hour and 500 a day (`config/messaging.php`,
+  `MAIL_QUOTA_PER_HOUR` / `MAIL_QUOTA_PER_DAY`). `Mail\MailQuota` counts
+  mail the transport accepted per budget and window in cache counters
+  (`h:<YmdH>` in UTC, `d:<Ymd>` in the brand's mail-settings timezone or
+  UTC), and `SendMessage` holds a non-urgent mail envelope that would
+  cross either limit — `held`, `hold_reason = mail_quota`, `hold_until` at
+  the start of the next free window — beside the digest hold; the
+  `messaging:flush-held` sweep releases quota holds as themselves, never
+  coalesced, and re-checks the quota as it releases any mail so an
+  exhausted window re-holds instead of bursting. A brand with its own
+  transport has its own budget (overridable on its settings row); brands
+  on the application's default mailer share one. In-app and push never
+  wait; `urgent` bypasses the hold but still counts. Observed as
+  `mail_quota_held_total`, `mail_quota_used` and `mail_quota_limit` (per
+  brand and window, every brand on every scrape) and the
+  `KonventixMailQuotaExhausted` alert (ADR-0059).
 - **Templates**: template keys registered by the owning module at boot,
   per-brand overrides, localisation per recipient locale, and rendering against
   a typed payload rather than a free-form array (ADR-0009,

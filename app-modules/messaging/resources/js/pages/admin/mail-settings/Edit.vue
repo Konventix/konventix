@@ -14,14 +14,16 @@ import {
 } from '@/routes/admin/mail-settings';
 
 /**
- * One brand's sender identity, quiet-hours timezone (ADR-0041) and
- * transport (ADR-0028). The stored SMTP password never travels back here:
- * an empty password field on an already-configured transport keeps the
- * stored secret.
+ * One brand's sender identity, quiet-hours timezone (ADR-0041), sending
+ * quota (Task 14) and transport (ADR-0028). The stored SMTP password never
+ * travels back here: an empty password field on an already-configured
+ * transport keeps the stored secret. A blank quota field keeps the
+ * configured default, which the placeholder shows.
  */
 type Props = {
     brand: { id: string; name: string };
     identity: Konventix.Messaging.Data.BrandMailIdentityData;
+    quotaDefaults: { perHour: number; perDay: number };
     settings: {
         fromName: string;
         fromAddress: string;
@@ -33,6 +35,8 @@ type Props = {
         smtpUsername: string | null;
         smtpScheme: string | null;
         hasSmtpPassword: boolean;
+        mailQuotaPerHour: number | null;
+        mailQuotaPerDay: number | null;
     };
 };
 
@@ -53,6 +57,8 @@ const form = useForm({
     smtpUsername: props.settings.smtpUsername,
     smtpPassword: null as string | null,
     smtpScheme: props.settings.smtpScheme,
+    mailQuotaPerHour: props.settings.mailQuotaPerHour,
+    mailQuotaPerDay: props.settings.mailQuotaPerDay,
 });
 
 useUnsavedChanges(() => form.isDirty);
@@ -61,7 +67,14 @@ function submit(): void {
     form.transform((data) => ({
         ...data,
         smtpPassword: data.smtpPassword === '' ? null : data.smtpPassword,
+        // A cleared number input reads as '' — that is "back to the default".
+        mailQuotaPerHour: blankToNull(data.mailQuotaPerHour),
+        mailQuotaPerDay: blankToNull(data.mailQuotaPerDay),
     })).put(updateMailSettings(props.brand.id).url, { preserveScroll: true });
+}
+
+function blankToNull(value: number | string | null): number | null {
+    return value === '' || value === null ? null : Number(value);
 }
 </script>
 
@@ -71,7 +84,7 @@ function submit(): void {
     <div class="flex flex-col gap-6">
         <AdminPageHeader
             :title="`Mail settings — ${brand.name}`"
-            description="Sender identity, transport and quiet-hours timezone for this brand"
+            description="Sender identity, transport, sending quota and quiet-hours timezone for this brand"
         />
 
         <form class="flex flex-col gap-6" @submit.prevent="submit">
@@ -215,6 +228,57 @@ function submit(): void {
                                 <InputError :message="form.errors.smtpScheme" />
                             </div>
                         </template>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Sending quota</CardTitle>
+                    </CardHeader>
+                    <CardContent class="flex flex-col gap-4">
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="grid gap-2">
+                                <Label for="mail-quota-per-hour"
+                                    >Mail per hour</Label
+                                >
+                                <Input
+                                    id="mail-quota-per-hour"
+                                    v-model="form.mailQuotaPerHour"
+                                    type="number"
+                                    min="1"
+                                    :placeholder="String(quotaDefaults.perHour)"
+                                />
+                                <InputError
+                                    :message="form.errors.mailQuotaPerHour"
+                                />
+                            </div>
+                            <div class="grid gap-2">
+                                <Label for="mail-quota-per-day"
+                                    >Mail per day</Label
+                                >
+                                <Input
+                                    id="mail-quota-per-day"
+                                    v-model="form.mailQuotaPerDay"
+                                    type="number"
+                                    min="1"
+                                    :placeholder="String(quotaDefaults.perDay)"
+                                />
+                                <InputError
+                                    :message="form.errors.mailQuotaPerDay"
+                                />
+                            </div>
+                        </div>
+                        <p class="text-xs text-text-muted">
+                            Blank means the configured default ({{
+                                quotaDefaults.perHour
+                            }}
+                            per hour, {{ quotaDefaults.perDay }} per day). Mail
+                            over the quota is held and released automatically
+                            when the next hour or day begins; urgent mail is
+                            never held. Brands without their own SMTP server
+                            share one budget, since they send through one
+                            account.
+                        </p>
                     </CardContent>
                 </Card>
             </div>

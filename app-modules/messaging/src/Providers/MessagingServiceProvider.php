@@ -33,6 +33,7 @@ use Konventix\Messaging\Listeners\ProjectRecipient;
 use Konventix\Messaging\Listeners\PruneDeliveryLog;
 use Konventix\Messaging\Listeners\SendAnnouncementNotifications;
 use Konventix\Messaging\Listeners\SendDunningNotice;
+use Konventix\Messaging\Metrics\MessagingGauges;
 use Konventix\Messaging\Metrics\MessagingMetrics;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
@@ -43,6 +44,7 @@ use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Observability\MetricCatalog;
 use RuntimeException;
+use Spatie\Prometheus\Facades\Prometheus;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -241,11 +243,24 @@ class MessagingServiceProvider extends ModuleServiceProvider
                 'en' => '{{ $title }}',
             ],
             bodies: [
-                'de' => '<p>Neue Ankündigung: <strong>{{ $title }}</strong></p>',
-                'en' => '<p>New announcement: <strong>{{ $title }}</strong></p>',
+                'de' => <<<'BLADE'
+                    <p>Neue Ankündigung: <strong>{{ $title }}</strong></p>
+                    @if ($url)
+                    <p><a href="{{ $url }}">Zum Beitrag</a></p>
+                    @endif
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>New announcement: <strong>{{ $title }}</strong></p>
+                    @if ($url)
+                    <p><a href="{{ $url }}">Read the article</a></p>
+                    @endif
+                    BLADE,
             ],
             defaultLocale: 'de',
-            sample: ['title' => 'Neue Programmpunkte veröffentlicht'],
+            sample: [
+                'title' => 'Neue Programmpunkte veröffentlicht',
+                'url' => 'https://sxlan.example/news/neue-programmpunkte',
+            ],
         ));
 
         $registry->register(new MessageTemplate(
@@ -365,9 +380,15 @@ class MessagingServiceProvider extends ModuleServiceProvider
      * Messaging's metrics (ADR-0059): catalogue entries here, listeners
      * below.
      */
+    /**
+     * ADR-0059: counters in the catalogue, the mail-quota gauges answered
+     * by `MessagingGauges` at scrape time.
+     */
     protected function registerMetrics(): void
     {
         $this->app->make(MetricCatalog::class)->register(...MessagingMetrics::definitions());
+
+        Prometheus::registerCollectorClasses([MessagingGauges::class]);
     }
 
     /**

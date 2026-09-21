@@ -34,6 +34,8 @@ export default dashboard({
         ]),
         row('Messages', [
             timeseries('Messages per minute by channel and outcome', [prom(`sum by (channel, outcome) (rate(konventix_messages_total{${J}}[5m])) * 60`, '{{channel}} {{outcome}}')], { w: 24, description: 'failed is final; retry will be attempted again.' }),
+            timeseries('Mail quota used', [prom(`konventix_mail_quota_used{${J}} / konventix_mail_quota_limit{${J}}`, '{{brand}} {{window}}')], { w: 12, unit: 'percentunit', max: 1, description: 'Share of the hourly and daily sending quota already sent (config/messaging.php; brands on the default mailer share one count). KonventixMailQuotaExhausted fires at 100 % for 5 min.' }),
+            timeseries('Mail held for quota per hour', [prom(`sum by (brand, window) (increase(konventix_mail_quota_held_total{${J}}[1h]))`, '{{brand}} {{window}}')], { w: 12, description: 'Held, not lost: the flush sweep releases them when the window reopens.' }),
         ]),
         row('Waiting room and stock', [
             timeseries('Waiting room depth', [prom(`konventix_waiting_room_depth{${J}}`, '{{brand}}')]),

@@ -26,6 +26,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $from_address
  * @property string|null $reply_to
  * @property string|null $timezone
+ * @property int|null $mail_quota_per_hour
+ * @property int|null $mail_quota_per_day
  * @property array<string, mixed>|null $transport
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -37,7 +39,16 @@ class BrandMailSettings extends Model
 
     protected $table = 'messaging_brand_settings';
 
-    protected $fillable = ['from_name', 'from_address', 'reply_to', 'timezone', 'transport'];
+    protected $fillable = [
+        'from_name',
+        'from_address',
+        'reply_to',
+        'timezone',
+        // Null = the configured default (`config('messaging.mail_quota')`).
+        'mail_quota_per_hour',
+        'mail_quota_per_day',
+        'transport',
+    ];
 
     /**
      * @return array<string, string>
@@ -49,6 +60,8 @@ class BrandMailSettings extends Model
             // not `json` — the stored value is Crypt-encrypted ciphertext, not
             // plain JSON.
             'transport' => 'encrypted:array',
+            'mail_quota_per_hour' => 'integer',
+            'mail_quota_per_day' => 'integer',
         ];
     }
 

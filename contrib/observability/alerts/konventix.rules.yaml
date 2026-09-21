@@ -133,6 +133,16 @@ groups:
           summary: "Claim-link invitations for {{ $labels.brand }} are failing to send"
           runbook: "docs/operations.md#konventixclaiminvitemailfailing"
 
+      - alert: KonventixMailQuotaExhausted
+        expr: |
+          konventix_mail_quota_used{job="__RELEASE__"}
+          >= konventix_mail_quota_limit{job="__RELEASE__"}
+        for: 5m
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "Mail quota for {{ $labels.brand }} is exhausted for this {{ $labels.window }}; mail is being held"
+          runbook: "docs/operations.md#konventixmailquotaexhausted"
+
   - name: konventix.platform
     rules:
       - alert: KonventixDatabaseBackupMissing

@@ -14,6 +14,7 @@ use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Enums\MessageStatus;
 use Konventix\Messaging\Events\MessageDelivered;
 use Konventix\Messaging\Events\MessageFailed;
+use Konventix\Messaging\Mail\MailQuota;
 use Konventix\Messaging\Models\MessageRecord;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Messaging\Templates\TemplateRenderer;
@@ -38,6 +39,10 @@ use Throwable;
  * Brand context: restored automatically before `handle()` runs by Platform's
  * `PropagatesBrandContextToQueue` (ADR-0010); the log row is nevertheless
  * looked up by the envelope's own ids, never ambient context.
+ *
+ * A mail the transport accepted counts against the brand's sending quota
+ * (`Mail\MailQuota`, Task 14) right where `sent_at` is written — a failed
+ * attempt does not, and neither do in-app or push deliveries.
  */
 final class SendQueuedMessage implements ShouldQueue
 {
@@ -69,6 +74,10 @@ final class SendQueuedMessage implements ShouldQueue
             $this->recordAttemptFailure($failure);
 
             throw $failure;
+        }
+
+        if ($this->message->channel === Channel::Mail->value) {
+            app(MailQuota::class)->record($this->message->brandId);
         }
 
         $record = $this->record();

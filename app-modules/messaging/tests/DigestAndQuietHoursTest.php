@@ -14,6 +14,7 @@ use Konventix\Messaging\Digests\HoldPolicy;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Enums\MessageStatus;
 use Konventix\Messaging\Events\MessageQueued;
+use Konventix\Messaging\Mail\MailQuota;
 use Konventix\Messaging\Models\BrandMailSettings;
 use Konventix\Messaging\Models\MessageRecord;
 use Konventix\Messaging\Models\Recipient;
@@ -173,7 +174,7 @@ it('flushes a single due hold as the message itself', function (): void {
     $result = app(FlushHeldMessages::class)->handle();
 
     $row = MessageRecord::withoutBrandScope()->sole();
-    expect($result)->toBe(['flushed' => 1, 'digests' => 0])
+    expect($result)->toBe(['flushed' => 1, 'digests' => 0, 'reheld' => 0])
         ->and($row->status)->toBe(MessageStatus::Sent)
         ->and($row->digest_message_id)->toBeNull()
         ->and($row->template_key)->toBe('test.digest');
@@ -193,7 +194,7 @@ it('coalesces several due holds into one digest in the recipient locale', functi
     $this->travelTo(Carbon::parse('2026-08-17 12:31:00', 'UTC'));
     $result = app(FlushHeldMessages::class)->handle();
 
-    expect($result)->toBe(['flushed' => 1, 'digests' => 1]);
+    expect($result)->toBe(['flushed' => 1, 'digests' => 1, 'reheld' => 0]);
 
     $digest = MessageRecord::withoutBrandScope()->where('template_key', 'messaging.digest')->sole();
     expect($digest->status)->toBe(MessageStatus::Sent)
@@ -245,7 +246,7 @@ it('keeps holds in separate windows per recipient', function (): void {
     $result = app(FlushHeldMessages::class)->handle();
 
     // Two separate recipients never share a digest: each flushes alone.
-    expect($result)->toBe(['flushed' => 2, 'digests' => 0])
+    expect($result)->toBe(['flushed' => 2, 'digests' => 0, 'reheld' => 0])
         ->and(MessageRecord::withoutBrandScope()->where('template_key', 'messaging.digest')->count())->toBe(0);
 });
 
@@ -253,4 +254,69 @@ it('documents the digest window and quiet hours defaults', function (): void {
     expect(HoldPolicy::WINDOW_MINUTES)->toBe(30)
         ->and(HoldPolicy::QUIET_START_HOUR)->toBe(22)
         ->and(HoldPolicy::QUIET_END_HOUR)->toBe(8);
+});
+
+it('re-holds a quota hold at flush time when the new window is already spent', function (): void {
+    // Task 14: the sweep asks the quota again before releasing, so a
+    // window that filled up meanwhile re-holds instead of bursting.
+    $brand = $this->withBrand();
+    config(['messaging.mail_quota.per_hour' => 1]);
+    $this->travelTo(Carbon::parse('2026-09-21 12:00:00', 'UTC'));
+    $userId = digestQuietHoursSetup(digestable: false);
+
+    Mail::fake();
+
+    app(MailQuota::class)->record($brand->getKey());
+    digestQuietHoursSend($userId);
+
+    $row = MessageRecord::withoutBrandScope()->sole();
+    expect($row->status)->toBe(MessageStatus::Held)
+        ->and($row->hold_reason)->toBe('mail_quota')
+        ->and($row->hold_until?->toDateTimeString())->toBe('2026-09-21 13:00:00');
+
+    // Something else used the 13:00 hour before the sweep got there.
+    $this->travelTo(Carbon::parse('2026-09-21 13:01:00', 'UTC'));
+    app(MailQuota::class)->record($brand->getKey());
+
+    expect(app(FlushHeldMessages::class)->handle())->toBe(['flushed' => 0, 'digests' => 0, 'reheld' => 1]);
+
+    $row->refresh();
+    expect($row->status)->toBe(MessageStatus::Held)
+        ->and($row->hold_reason)->toBe('mail_quota')
+        ->and($row->hold_until?->toDateTimeString())->toBe('2026-09-21 14:00:00');
+    Mail::assertNothingSent();
+
+    $this->travelTo(Carbon::parse('2026-09-21 14:00:00', 'UTC'));
+    expect(app(FlushHeldMessages::class)->handle())->toBe(['flushed' => 1, 'digests' => 0, 'reheld' => 0]);
+    expect($row->refresh()->status)->toBe(MessageStatus::Sent)
+        ->and($row->hold_reason)->toBeNull();
+});
+
+it('releases quota holds as themselves, never coalesced, and counts its own releases', function (): void {
+    $brand = $this->withBrand();
+    config(['messaging.mail_quota.per_hour' => 1]);
+    $this->travelTo(Carbon::parse('2026-09-21 12:00:00', 'UTC'));
+    $userId = digestQuietHoursSetup(digestable: false);
+
+    Mail::fake();
+
+    app(MailQuota::class)->record($brand->getKey());
+    digestQuietHoursSend($userId, name: 'One');
+    digestQuietHoursSend($userId, name: 'Two');
+
+    expect(MessageRecord::withoutBrandScope()->where('hold_reason', 'mail_quota')->count())->toBe(2);
+
+    // A fresh hour with room for exactly one: the first goes out as itself,
+    // the second waits for the next hour — no digest, and no burst on a
+    // counter the queued job has not moved yet.
+    $this->travelTo(Carbon::parse('2026-09-21 13:00:00', 'UTC'));
+    expect(app(FlushHeldMessages::class)->handle())->toBe(['flushed' => 1, 'digests' => 0, 'reheld' => 1]);
+
+    $rows = MessageRecord::withoutBrandScope()->orderBy('id')->get();
+    expect($rows)->toHaveCount(2)
+        ->and($rows[0]->status)->toBe(MessageStatus::Sent)
+        ->and($rows[0]->template_key)->toBe('test.digest')
+        ->and($rows[1]->status)->toBe(MessageStatus::Held)
+        ->and($rows[1]->hold_until?->toDateTimeString())->toBe('2026-09-21 14:00:00')
+        ->and(MessageRecord::withoutBrandScope()->where('template_key', 'messaging.digest')->count())->toBe(0);
 });

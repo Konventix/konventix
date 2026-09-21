@@ -16,6 +16,7 @@ use Konventix\Messaging\Enums\MessageStatus;
 use Konventix\Messaging\Events\MessageQueued;
 use Konventix\Messaging\Events\MessageSuppressed;
 use Konventix\Messaging\Jobs\SendQueuedMessage;
+use Konventix\Messaging\Mail\MailQuota;
 use Konventix\Messaging\Models\MessageRecord;
 use Konventix\Messaging\Models\NotificationPreference;
 use Konventix\Messaging\Models\Recipient;
@@ -39,6 +40,14 @@ use RuntimeException;
  *
  * A request that resolves to no address at all is still refused loudly —
  * silence is the one failure mode a messaging pipeline must not have.
+ *
+ * Beside the digest hold sits the mail quota (Task 14, `Mail\MailQuota`):
+ * a non-urgent mail envelope whose brand has exhausted its hourly or daily
+ * sending budget is written `held` with `hold_reason = mail_quota` and a
+ * `hold_until` at the start of the next free window — accepted, logged,
+ * never dropped — and the flush sweep releases it. In-app and push rows
+ * are not mail and never wait for it; `urgent` bypasses it as it does the
+ * digest window.
  */
 final class SendMessage
 {
@@ -47,6 +56,7 @@ final class SendMessage
         private readonly TopicRegistry $topics,
         private readonly ChannelMap $channels,
         private readonly HoldPolicy $holds,
+        private readonly MailQuota $quota,
     ) {}
 
     /**
@@ -124,8 +134,20 @@ final class SendMessage
                 $recipient,
             );
 
+            $holdReason = null;
+
+            if ($holdUntil === null && $channel === Channel::Mail && ! $request->urgent) {
+                $quotaHold = $this->quota->holdFor($this->quota->scopeFor($brandId));
+
+                if ($quotaHold !== null) {
+                    $holdUntil = $quotaHold->until;
+                    $holdReason = MailQuota::HOLD_REASON;
+                    $this->quota->recordHold($brandId, $quotaHold);
+                }
+            }
+
             if ($holdUntil !== null) {
-                $this->log($message, MessageStatus::Held, $holdUntil);
+                $this->log($message, MessageStatus::Held, $holdUntil, $holdReason);
             } else {
                 $this->log($message, MessageStatus::Queued);
 
@@ -210,7 +232,7 @@ final class SendMessage
         return null;
     }
 
-    private function log(SendMessageData $message, MessageStatus $status, ?CarbonImmutable $holdUntil = null): void
+    private function log(SendMessageData $message, MessageStatus $status, ?CarbonImmutable $holdUntil = null, ?string $holdReason = null): void
     {
         $record = new MessageRecord([
             'id' => $message->messageId,
@@ -228,6 +250,7 @@ final class SendMessage
             'attachments' => $message->attachments?->toArray(),
             'urgent' => $message->urgent,
             'hold_until' => $holdUntil,
+            'hold_reason' => $holdReason,
             'queued_at' => now(),
         ]);
         // brand_id from the envelope, not ambient context (ADR-0010):

@@ -2,14 +2,18 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Messaging\Enums\Channel;
+use Konventix\Messaging\Enums\MessageStatus;
 use Konventix\Messaging\Events\MessageQueued;
 use Konventix\Messaging\Jobs\SendQueuedMessage;
+use Konventix\Messaging\Mail\MailQuota;
+use Konventix\Messaging\Models\MessageRecord;
 use Spatie\LaravelData\Data;
 
 /**
@@ -24,7 +28,7 @@ final class MessagingActionTestPayload extends Data
     public function __construct(public readonly string $displayName) {}
 }
 
-function messagingSendRequest(string $recipientId): SendMessageRequest
+function messagingSendRequest(string $recipientId, bool $urgent = false): SendMessageRequest
 {
     return new SendMessageRequest(
         recipientId: $recipientId,
@@ -32,6 +36,7 @@ function messagingSendRequest(string $recipientId): SendMessageRequest
         recipientLocale: 'en',
         templateKey: 'test.welcome',
         payload: new MessagingActionTestPayload('Ada'),
+        urgent: $urgent,
     );
 }
 
@@ -82,4 +87,39 @@ it('requires the payload to be a Data object, not a free-form array', function (
         // @phpstan-ignore-next-line intentional contract violation under test
         payload: ['displayName' => 'Ada'],
     ))->toThrow(TypeError::class);
+});
+
+it('holds a mail for the quota once the hourly budget is spent, until the next hour', function (): void {
+    // Task 14: the mail is accepted and logged, never dropped — it waits
+    // for the window and MessageQueued still fires for it.
+    $brand = $this->withBrand();
+    config(['messaging.mail_quota.per_hour' => 1]);
+    $this->travelTo(Carbon::parse('2026-09-21 14:20:00', 'UTC'));
+    app(MailQuota::class)->record($brand->getKey());
+
+    Queue::fake();
+    Event::fake([MessageQueued::class]);
+
+    [$message] = app(SendMessage::class)->handle(messagingSendRequest((string) Str::ulid()));
+
+    $row = MessageRecord::withoutBrandScope()->findOrFail($message->messageId);
+    expect($row->status)->toBe(MessageStatus::Held)
+        ->and($row->hold_reason)->toBe('mail_quota')
+        ->and($row->hold_until?->toDateTimeString())->toBe('2026-09-21 15:00:00');
+
+    Queue::assertNothingPushed();
+    Event::assertDispatched(MessageQueued::class);
+});
+
+it('never holds an urgent mail for the quota', function (): void {
+    $brand = $this->withBrand();
+    config(['messaging.mail_quota.per_hour' => 1]);
+    app(MailQuota::class)->record($brand->getKey());
+
+    Queue::fake();
+
+    [$message] = app(SendMessage::class)->handle(messagingSendRequest((string) Str::ulid(), urgent: true));
+
+    expect(MessageRecord::withoutBrandScope()->findOrFail($message->messageId)->status)->toBe(MessageStatus::Queued);
+    Queue::assertPushed(SendQueuedMessage::class);
 });
