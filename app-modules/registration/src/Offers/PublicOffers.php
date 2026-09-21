@@ -135,6 +135,6 @@ final class PublicOffers
             $endPrices[$index] = $answers[$position] ?? null;
         }
 
-        return $endPrices;
+        return array_values($endPrices);
     }
 }

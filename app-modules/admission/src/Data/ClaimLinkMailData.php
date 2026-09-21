@@ -21,7 +21,7 @@ final class ClaimLinkMailData extends Data
 {
     public function __construct(
         public readonly ?string $eventName,
-        public readonly ?string $managerUsername,
+        public readonly ?string $managerHandle,
         public readonly string $role,
         public readonly string $claimUrl,
         public readonly string $expiresAt,

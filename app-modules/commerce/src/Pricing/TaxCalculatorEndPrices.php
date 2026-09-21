@@ -79,13 +79,13 @@ final class TaxCalculatorEndPrices implements EndPriceCalculator
         $calculable = [];
 
         foreach ($lines as $index => $line) {
-            $unitAmountNet = $line['unitAmountNet'] ?? null;
+            $unitAmountNet = $line['unitAmountNet'];
 
             // A caller that declares a price owes a decimal string and a
             // tax class (ADR-0017's own shape). Anything else costs that
             // line its end price rather than the whole page: this payload
             // crossed a module boundary before it got here.
-            if (! is_string($unitAmountNet) || ! is_numeric($unitAmountNet)) {
+            if (! is_numeric($unitAmountNet)) {
                 continue;
             }
 
@@ -94,7 +94,7 @@ final class TaxCalculatorEndPrices implements EndPriceCalculator
             // 500s whichever page asked. The declaring module's enum
             // happens to agree with ours today; this is the cross-module
             // scalar boundary and the guard is the point.
-            $taxClass = TaxClass::tryFrom($line['taxClass'] ?? '');
+            $taxClass = TaxClass::tryFrom($line['taxClass']);
 
             if ($taxClass === null) {
                 continue;
@@ -135,6 +135,6 @@ final class TaxCalculatorEndPrices implements EndPriceCalculator
             );
         }
 
-        return $answer;
+        return array_values($answer);
     }
 }

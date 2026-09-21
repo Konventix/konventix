@@ -63,7 +63,7 @@ final class SendClaimLink
                 templateKey: self::TEMPLATE_KEY,
                 payload: new ClaimLinkMailData(
                     eventName: $event?->name,
-                    managerUsername: $inviterUserId === null ? null : Person::query()->find($inviterUserId)?->username,
+                    managerHandle: $inviterUserId === null ? null : self::handleFor(Person::query()->find($inviterUserId)?->username),
                     role: $admission->role,
                     claimUrl: $this->links->urlFor($link),
                     expiresAt: $this->dates->dateTime(
@@ -91,5 +91,16 @@ final class SendClaimLink
         event(new ClaimLinkSent(linkId: $link->id, admissionId: $admission->id, brandId: $admission->brand_id, sent: true));
 
         return true;
+    }
+
+    /**
+     * The inviter as the mail shows them: the handle with its `@`, built
+     * here because the template guard allows an echo of a payload field
+     * and nothing more (ADR-0065, D-IDP-15); null when there is no handle,
+     * which the template turns into a neutral wording.
+     */
+    private static function handleFor(?string $username): ?string
+    {
+        return $username === null || $username === '' ? null : '@'.$username;
     }
 }

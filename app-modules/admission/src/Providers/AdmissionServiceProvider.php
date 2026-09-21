@@ -282,8 +282,8 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             ],
             bodies: [
                 'de' => <<<'BLADE'
-                    @if ($managerUsername)
-                    <p>{{ '@'.$managerUsername }} hat ein Ticket für Sie reserviert.</p>
+                    @if ($managerHandle)
+                    <p>{{ $managerHandle }} hat ein Ticket für Sie reserviert.</p>
                     @else
                     <p>Die Veranstalter haben ein Ticket für Sie reserviert.</p>
                     @endif
@@ -295,8 +295,8 @@ class AdmissionServiceProvider extends ModuleServiceProvider
                     <p>Der Link gilt bis {{ $expiresAt }} und nur für diese E-Mail-Adresse.</p>
                     BLADE,
                 'en' => <<<'BLADE'
-                    @if ($managerUsername)
-                    <p>{{ '@'.$managerUsername }} has reserved a ticket for you.</p>
+                    @if ($managerHandle)
+                    <p>{{ $managerHandle }} has reserved a ticket for you.</p>
                     @else
                     <p>The organizer has reserved a ticket for you.</p>
                     @endif
@@ -311,7 +311,7 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             defaultLocale: 'de',
             sample: [
                 'eventName' => 'SXLan 2027',
-                'managerUsername' => 'ada',
+                'managerHandle' => '@ada',
                 'role' => 'visitor',
                 'claimUrl' => 'https://example.test/admissions/claim/abc123',
                 'expiresAt' => '28.08.2026 18:00',

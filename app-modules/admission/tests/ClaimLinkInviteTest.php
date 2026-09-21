@@ -59,7 +59,7 @@ it('mails a bound link to its address with the event, the inviter\'s handle, the
             ->and($payload->eventName)->toBe('Kon Fest 2026')
             // The handle, never the display name: this mail goes to a third
             // party (ADR-0065, D-IDP-15).
-            ->and($payload->managerUsername)->toBe('ada')
+            ->and($payload->managerHandle)->toBe('@ada')
             ->and($payload->role)->toBe('visitor')
             ->and($payload->claimUrl)->toContain($link->id)->toContain('signature=')
             ->and($payload->expiresAt)->toBeString()->not->toBeEmpty()
@@ -99,7 +99,7 @@ it('renders the template with and without an inviter handle, directives on their
 
     $withHandle = $renderer->render($envelope(new ClaimLinkMailData(
         eventName: 'Kon Fest 2026',
-        managerUsername: 'ada',
+        managerHandle: '@ada',
         role: 'visitor',
         claimUrl: 'https://example.test/claim/x',
         expiresAt: '28.08.2026 18:00',
@@ -115,7 +115,7 @@ it('renders the template with and without an inviter handle, directives on their
     // Without a handle nobody is named — "the organizer", never a real name.
     $anonymous = $renderer->render($envelope(new ClaimLinkMailData(
         eventName: null,
-        managerUsername: null,
+        managerHandle: null,
         role: 'visitor',
         claimUrl: 'https://example.test/claim/x',
         expiresAt: '28.08.2026 18:00',
@@ -126,7 +126,7 @@ it('renders the template with and without an inviter handle, directives on their
 
     $anonymousEnglish = $renderer->render($envelope(new ClaimLinkMailData(
         eventName: null,
-        managerUsername: null,
+        managerHandle: null,
         role: 'visitor',
         claimUrl: 'https://example.test/claim/x',
         expiresAt: '28.08.2026 18:00',
