@@ -36,8 +36,10 @@ use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Pages\RegistrantAudience;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
+use Konventix\Registration\Audience\RegistrationRegistrantAudience;
 use Konventix\Registration\Blocks\TicketsForEventBlock;
 use Konventix\Registration\Console\AnnounceRegistrationOwnershipCommand;
 use Konventix\Registration\Console\ExpireWaitlistOffersCommand;
@@ -112,6 +114,18 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 Permission::ExportRegistrations,
             ),
         ];
+    }
+
+    /**
+     * Platform's `Pages\RegistrantAudience` contract (Task 20), the same
+     * inversion as Commerce's `WaitingRoomGate` binding: Platform owns the
+     * interface and asks it who counts as a registrant of a brand; this
+     * module answers from its own `registrations` table and never hands a
+     * model across. Platform resolves it lazily and fails closed without it.
+     */
+    protected function registerBindings(): void
+    {
+        $this->app->bind(RegistrantAudience::class, RegistrationRegistrantAudience::class);
     }
 
     /**

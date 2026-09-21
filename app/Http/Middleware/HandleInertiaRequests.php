@@ -15,6 +15,7 @@ use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Cookies\CookiePreferences;
 use Konventix\Platform\Cookies\CookieRegistry;
 use Konventix\Platform\Data\BrandIdentityData;
+use Konventix\Platform\Data\BrandMenuEntryData;
 use Konventix\Platform\Data\FooterLinkData;
 use Konventix\Platform\Enums\Permission as PlatformPermission;
 use Konventix\Platform\Environment\DeploymentEnvironment;
@@ -22,6 +23,7 @@ use Konventix\Platform\Models\AdminFavorite;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\FooterColumn;
 use Konventix\Platform\Models\FooterLink;
+use Konventix\Platform\Navigation\BrandMenu;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\ConsoleEventSources;
@@ -113,6 +115,12 @@ class HandleInertiaRequests extends Middleware
                     ->map(fn (NavigationItem $item): array => $item->toArray())
                     ->all()
                 : [],
+            // The brand's own entries, rendered after `nav`'s module entries
+            // (Task 20): operator-composed rows, resolved for this viewer —
+            // a page the viewer may not read is already gone, and so is a
+            // parent with nothing left under it. Empty on the admin host,
+            // which has no brand and its own chrome.
+            'brandMenu' => $this->brandMenu($request),
             // The signed-in account's own entries, rendered in the account
             // menu rather than the topbar. Empty for a guest, so the menu
             // that never renders for one costs no queries either.
@@ -236,6 +244,26 @@ class HandleInertiaRequests extends Middleware
             'events' => $sources->hasAny() ? $sources->eventsFor($selection->brandId()) : [],
             'eventsAvailable' => $sources->hasAny(),
         ];
+    }
+
+    /**
+     * The brand's own topbar entries for this viewer (Task 20), through
+     * Platform's `BrandMenu` service — the host layer never reads a
+     * `BrandMenuItem` row or learns the visibility rule.
+     *
+     * @return array<int, BrandMenuEntryData>
+     */
+    private function brandMenu(Request $request): array
+    {
+        $brand = app(BrandContext::class)->current();
+
+        if ($brand === null) {
+            return [];
+        }
+
+        $viewerId = $request->user()?->getAuthIdentifier();
+
+        return app(BrandMenu::class)->forViewer($brand, $viewerId === null ? null : (string) $viewerId);
     }
 
     /**

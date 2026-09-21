@@ -38,6 +38,7 @@ use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\ConsoleEventSources;
 use Konventix\Platform\Operators\OperatorContext;
+use Konventix\Platform\Pages\PageAccess;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Realtime\BrandApplicationProvider;
 use Konventix\Platform\Slots\SlotRegistry;
@@ -179,6 +180,14 @@ class PlatformServiceProvider extends ModuleServiceProvider
         // depend on the brand's storage settings and must not outlive the
         // request that resolved them.
         $this->app->scoped(BrandIdentityResolver::class);
+
+        // Scoped: it memoizes "is this viewer a registrant of this brand" so
+        // a menu full of registrant pages asks Registration once per
+        // request, and not once per worker lifetime. Platform binds no
+        // `Pages\RegistrantAudience` itself — Registration does, against
+        // its own table — and `PageAccess` resolves it lazily, failing
+        // closed when nothing is bound.
+        $this->app->scoped(PageAccess::class);
     }
 
     /**
@@ -265,6 +274,15 @@ class PlatformServiceProvider extends ModuleServiceProvider
                 icon: 'file-text',
                 order: 11,
                 permission: Permission::ViewStaticPages->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'platform',
+                label: 'Menu',
+                url: '/admin/menu',
+                icon: 'menu',
+                order: 11,
+                permission: Permission::ManageBrandMenu->value,
                 area: NavigationItem::AREA_ADMIN,
             ),
             new NavigationItem(

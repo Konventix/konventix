@@ -12,6 +12,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Platform\Http\Controllers\Admin\AdminDashboardController;
 use Konventix\Platform\Http\Controllers\Admin\BrandAdminController;
+use Konventix\Platform\Http\Controllers\Admin\BrandMenuAdminController;
 use Konventix\Platform\Http\Controllers\Admin\ConsoleSelectionController;
 use Konventix\Platform\Http\Controllers\Admin\FooterLinksAdminController;
 use Konventix\Platform\Http\Controllers\Admin\OperatorAdminController;
@@ -36,6 +37,11 @@ Route::put('/settings/operator', [OperatorAdminController::class, 'update'])->na
 Route::get('/settings/footer', [FooterLinksAdminController::class, 'edit'])->name('admin.settings.footer.edit');
 Route::put('/settings/footer', [FooterLinksAdminController::class, 'update'])->name('admin.settings.footer.update');
 Route::put('/settings/footer/columns', [FooterLinksAdminController::class, 'updateColumns'])->name('admin.settings.footer.columns.update');
+
+// A brand's topbar menu, edited as a whole (see BrandMenuItemKind). Its
+// own path rather than `/pages/menu`, which `/pages/{page}` would swallow.
+Route::get('/menu', [BrandMenuAdminController::class, 'edit'])->name('admin.menu.edit');
+Route::put('/menu', [BrandMenuAdminController::class, 'update'])->name('admin.menu.update');
 
 Route::get('/brands', [BrandAdminController::class, 'index'])->name('admin.brands.index');
 Route::post('/brands', [BrandAdminController::class, 'store'])->name('admin.brands.store');

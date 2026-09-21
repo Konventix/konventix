@@ -10,8 +10,10 @@ use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Blocks\ValidatesBlockComposition;
 use Konventix\Platform\Data\Blocks\BlockData;
 use Konventix\Platform\Data\UpdateStaticPageData;
+use Konventix\Platform\Enums\BrandMenuItemKind;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\BrandMenuItem;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\StaticPage;
 
@@ -21,6 +23,11 @@ use Konventix\Platform\Models\StaticPage;
  * page's brand in context, media references are checked against that brand's
  * library, and usages are diffed so a dropped image stops being referenced
  * (ADR-0035).
+ *
+ * The "show in menu" shortcut (Task 20) is handled here too: `true` makes
+ * sure the brand's menu has a top-level entry for this page, `false` makes
+ * sure it has none, `null` leaves the menu alone. Both are idempotent, so
+ * saving twice never doubles an entry.
  */
 final class SaveStaticPage
 {
@@ -53,12 +60,55 @@ final class SaveStaticPage
                 'slug' => $data->slug,
                 'blocks' => $blocks,
                 'published_at' => $data->published ? ($page->published_at ?? now()) : null,
+                'visibility' => $data->visibility,
             ])->save();
 
             $this->syncUsages($page, $before, $this->mediaIdsIn($blocks));
+            $this->syncMenuEntry($page, $data->showInMenu);
 
             return $page->refresh();
         });
+    }
+
+    private function syncMenuEntry(StaticPage $page, ?bool $showInMenu): void
+    {
+        if ($showInMenu === null) {
+            return;
+        }
+
+        // The admin host resolves no brand, so the scope is escaped and the
+        // filter is explicit — the same shape UpdateBrandMenu uses.
+        $entries = BrandMenuItem::withoutBrandScope()
+            ->forBrand($page->brand_id)
+            ->where('kind', BrandMenuItemKind::Page)
+            ->where('static_page_id', $page->getKey());
+
+        if (! $showInMenu) {
+            $entries->delete();
+
+            return;
+        }
+
+        if ($entries->exists()) {
+            return;
+        }
+
+        $position = (int) BrandMenuItem::withoutBrandScope()
+            ->forBrand($page->brand_id)
+            ->whereNull('parent_id')
+            ->max('position');
+
+        $entry = new BrandMenuItem([
+            'parent_id' => null,
+            'kind' => BrandMenuItemKind::Page,
+            'label' => null,
+            'static_page_id' => $page->getKey(),
+            'url' => null,
+            'opens_in_new_tab' => false,
+            'position' => $position + 1,
+        ]);
+        $entry->brand_id = $page->brand_id;
+        $entry->save();
     }
 
     private function guardSlug(Brand $brand, string $slug, ?string $ignorePageId): void

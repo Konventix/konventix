@@ -68,7 +68,26 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
 - **Block-based CMS for brand static pages.** Page and block models, publication
   state, and the block-type registry that modules register their own block types
   into. This covers a brand's own pages — landing page, imprint, info pages —
-  not editorial content.
+  not editorial content. A page carries a **visibility** (`public`,
+  `members`, `registrants`; `Enums\PageVisibility`) that `Pages\PageAccess`
+  enforces on `/pages/{slug}` — a refusal is a 404, never a login redirect —
+  and on the `/` home branch, where a refused viewer gets the Welcome
+  fallback. "Registrants" is answered through **`Pages\RegistrantAudience`**,
+  a contract Platform owns and binds nothing to: Registration binds the one
+  implementation against its own `registrations` table (the same inversion as
+  `WaitingRoom\WaitingRoomGate`), and with nothing bound the answer is "no"
+  for everyone — fail closed.
+- **The brand menu.** `brand_menu_items` (`Models\BrandMenuItem`,
+  `BelongsToBrand`): the entries a brand shows in its topbar after the module
+  entries the navigation registry contributes. One level of hierarchy —
+  `page`, `url` and `parent` kinds (`Enums\BrandMenuItemKind`) — edited as
+  a whole on the console (`UpdateBrandMenu`, replace-all like the footer,
+  `platform.manage-brand-menu`). `Navigation\BrandMenu` resolves the rows for
+  one viewer into the shared `brandMenu` prop beside `nav`: a page entry
+  inherits its page's visibility and is dropped when the page is unpublished
+  or not readable, and a parent left with no children is dropped with it, so
+  the shell holds no visibility rule. The page editor's "Show in menu"
+  shortcut is `SaveStaticPage`'s idempotent add/remove of a top-level entry.
 - **Per-brand role administration.** Roles and their permission grants are data
   scoped by `brand_id` as the spatie team key, plus the `permissions:sync`
   command that projects every module's capability enum into permission rows
@@ -167,7 +186,7 @@ data, not code (ADR-0013).
 
 Proposed catalogue: `ViewBrands`, `ManageBrands`, `ManageBrandDomains`,
 `ManageBrandTheme`, `ManageModuleActivation`, `ViewStaticPages`,
-`ManageStaticPages`, `ManageRoles`, `ViewOperator`,
+`ManageStaticPages`, `ManageBrandMenu`, `ManageRoles`, `ViewOperator`,
 `ManageOperator`, and the operator-level `UseCrossBrandScope` that unlocks
 `withoutBrandScope()` (ADR-0010).
 

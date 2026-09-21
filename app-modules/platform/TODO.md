@@ -20,6 +20,29 @@ depends on brand resolution and gating working.
 
 ## Backlog
 
+- [x] Static pages in the brand menu, structured, with page visibility
+      (bugfix round 2026-09-21, Task 20): `brand_menu_items` +
+      `Models\BrandMenuItem` (`BelongsToBrand`, `inDisplayOrder`),
+      `Enums\BrandMenuItemKind`/`PageVisibility`, `static_pages.visibility`,
+      `Data\BrandMenuItemData`/`BrandMenuData` (replace-all, max 30, the
+      footer's URL whitelist, `key`/`parentKey` for one level of hierarchy),
+      `Actions\UpdateBrandMenu` (depth, destination, brand and page-ownership
+      guards), `Permission::ManageBrandMenu`, `BrandMenuAdminController` at
+      `/admin/menu`, `Pages\RegistrantAudience` + `Pages\PageAccess`
+      (scoped, fail-closed), `Navigation\BrandMenu` → shared `brandMenu`
+      prop, `StaticPageController::home()` (the `/` branch moved out of
+      `routes/web.php`), `SaveStaticPage`'s idempotent "show in menu".
+      Module Vue `pages/admin/pages/Menu.vue` + `components/admin/
+      BrandMenuForm.vue`/`BrandMenuItemFields.vue`; host
+      `BrandMenuDesktop.vue` (reka navigation menu) / `BrandMenuMobile.vue`
+      (nested collapsibles) in `AppTopbar.vue`, which now honours
+      `external` on desktop too. Follow-ups: the admin nav icon `menu` is
+      not in `navIcons.ts` and falls back to the generic mark; the pages
+      index row carries no visibility column yet; a menu entry pointing at a
+      page of another brand is refused on save but nothing re-checks when a
+      page later moves — pages cannot move brands today, so this is
+      theoretical.
+
 - [ ] Auth surfaces name the operator and list its brands (GitLab #184,
       ADR-0054 §5): a shared prop beside the footer data — operator name,
       `legal_name`, the operator's brands with their primary-domain URL —

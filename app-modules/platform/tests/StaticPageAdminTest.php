@@ -9,7 +9,9 @@ use Konventix\Platform\Blocks\BlockType;
 use Konventix\Platform\Blocks\HasBlockEditor;
 use Konventix\Platform\Brands\BrandUrl;
 use Konventix\Platform\Data\Blocks\TextBlockData;
+use Konventix\Platform\Enums\PageVisibility;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\BrandMenuItem;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\MediaUsage;
 use Konventix\Platform\Models\Operator;
@@ -284,4 +286,43 @@ it('requires view-static-pages to read and manage-static-pages to write', functi
 
     $this->actingAs($reader)->get('http://admin.pages.test/admin/pages')->assertOk();
     $this->actingAs($reader)->put("http://admin.pages.test/admin/pages/{$page->getKey()}", ['title' => 'x', 'slug' => 'x', 'published' => false, 'blocks' => []])->assertForbidden();
+});
+
+it('round-trips visibility and keeps the show-in-menu shortcut idempotent', function (): void {
+    [, $admin] = pagesOperator();
+    $brand = Brand::factory()->create(['slug' => 'pg-visibility']);
+    $page = pageOf($brand, ['slug' => 'lounge']);
+
+    $save = fn (array $extra) => $this->actingAs($admin)
+        ->put("http://admin.pages.test/admin/pages/{$page->getKey()}", [
+            'title' => 'Lounge', 'slug' => 'lounge', 'published' => true, 'blocks' => [], ...$extra,
+        ])
+        ->assertRedirect();
+
+    $entries = fn () => BrandMenuItem::withoutBrandScope()->forBrand($brand->getKey())->where('static_page_id', $page->getKey());
+
+    $save(['visibility' => 'members', 'showInMenu' => true]);
+    $save(['visibility' => 'members', 'showInMenu' => true]);
+
+    expect($page->refresh()->visibility)->toBe(PageVisibility::Members)
+        ->and($entries()->count())->toBe(1)
+        ->and($entries()->sole()->parent_id)->toBeNull();
+
+    $this->actingAs($admin)
+        ->get("http://admin.pages.test/admin/pages/{$page->getKey()}/edit")
+        ->assertInertia(fn (AssertableInertia $response) => $response
+            ->where('page.visibility', 'members')
+            ->where('page.inMenu', true));
+
+    // Omitted: the menu is left alone. Explicitly off: the entry goes.
+    $save(['visibility' => 'registrants']);
+    expect($page->refresh()->visibility)->toBe(PageVisibility::Registrants)
+        ->and($entries()->count())->toBe(1);
+
+    $save(['showInMenu' => false]);
+    $save(['showInMenu' => false]);
+    expect($entries()->count())->toBe(0)
+        // No visibility in the submit means public — the form always sends
+        // one; this is the default for a caller that never heard of it.
+        ->and($page->refresh()->visibility)->toBe(PageVisibility::Public);
 });

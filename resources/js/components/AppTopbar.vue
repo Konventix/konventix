@@ -3,6 +3,8 @@ import { Link, router, usePage } from '@inertiajs/vue3';
 import { Menu, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
+import BrandMenuDesktop from '@/components/BrandMenuDesktop.vue';
+import BrandMenuMobile from '@/components/BrandMenuMobile.vue';
 import {
     Collapsible,
     CollapsibleContent,
@@ -27,7 +29,9 @@ import type { BrandNavItem } from '@/types/navigation';
  *
  * It holds no module imports. Navigation arrives as data from the shared
  * `nav` prop, which Platform's NavigationRegistry fills and filters by
- * module activation and capability (ADR-0003, enforcement point 2); the
+ * module activation and capability (ADR-0003, enforcement point 2), and
+ * the brand's own entries from `brandMenu` (Task 20), rendered after the
+ * module entries and already resolved for this viewer on the server; the
  * announcement banner and the notification bell resolve through the module
  * component registry, so a build without Content or Messaging renders
  * neither rather than failing.
@@ -43,6 +47,7 @@ const mobileMenuOpen = ref(false);
 
 const user = computed(() => page.props.auth?.user ?? null);
 const navItems = computed(() => page.props.nav ?? []);
+const brandMenu = computed(() => page.props.brandMenu ?? []);
 const cartCount = computed(() => page.props.cart?.count ?? 0);
 
 /**
@@ -134,6 +139,8 @@ function handleLogout(): void {
                         </span>
                     </component>
 
+                    <BrandMenuMobile :entries="brandMenu" />
+
                     <template v-if="user">
                         <span class="my-2 border-t border-border" />
                         <UserMenuContent
@@ -168,7 +175,8 @@ function handleLogout(): void {
                     <AppLogo />
                 </Link>
                 <nav class="flex items-center gap-1" aria-label="Main">
-                    <Link
+                    <component
+                        :is="item.external ? 'a' : Link"
                         v-for="item in navItems"
                         :key="item.url"
                         :href="item.url"
@@ -186,7 +194,11 @@ function handleLogout(): void {
                         >
                             {{ cartCount }}
                         </span>
-                    </Link>
+                    </component>
+                    <BrandMenuDesktop
+                        v-if="brandMenu.length > 0"
+                        :entries="brandMenu"
+                    />
                 </nav>
             </div>
 

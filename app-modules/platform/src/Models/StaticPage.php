@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Konventix\Platform\Data\Blocks\BlockData;
 use Konventix\Platform\Database\Factories\StaticPageFactory;
+use Konventix\Platform\Enums\PageVisibility;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 use Spatie\LaravelData\DataCollection;
 
@@ -25,12 +26,16 @@ use Spatie\LaravelData\DataCollection;
  * This is also the reference implementation of a brand-owned model: ULID key,
  * `BelongsToBrand`, no manual `where('brand_id', ...)` anywhere.
  *
+ * `visibility` says who may read the page once it is published (see
+ * `PageVisibility`); `Pages\PageAccess` is the one place that asks.
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $slug
  * @property string $title
  * @property DataCollection<int, BlockData>|null $blocks
  * @property Carbon|null $published_at
+ * @property PageVisibility $visibility
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -41,7 +46,7 @@ class StaticPage extends Model
     /** @use HasFactory<StaticPageFactory> */
     use HasFactory, HasUlids;
 
-    protected $fillable = ['slug', 'title', 'blocks', 'published_at'];
+    protected $fillable = ['slug', 'title', 'blocks', 'published_at', 'visibility'];
 
     /**
      * @return array<string, string>
@@ -51,6 +56,7 @@ class StaticPage extends Model
         return [
             'blocks' => DataCollection::class.':'.BlockData::class,
             'published_at' => 'datetime',
+            'visibility' => PageVisibility::class,
         ];
     }
 

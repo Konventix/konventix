@@ -608,6 +608,39 @@ declare namespace Konventix {
                 readonly bannerMediaId: string | null;
                 readonly attendeeListVisibility: Konventix.Event.Enums.AttendeeListVisibility;
             };
+            export type OpeningPeriodData = {
+                readonly dayOfWeek: number;
+                readonly opensAt: string;
+                readonly closesAt: string;
+            };
+            export type VenueData = {
+                readonly name: string;
+                readonly addressLine1: string;
+                readonly addressLine2: string | null;
+                readonly postalCode: string;
+                readonly city: string;
+                readonly countryCode: string;
+                readonly latitude: number | null;
+                readonly longitude: number | null;
+                readonly accessNotes: string | null;
+                readonly openingTimes: Konventix.Event.Data.OpeningPeriodData[];
+                readonly slug: string | null;
+                readonly description: string | null;
+                readonly entryLatitude: number | null;
+                readonly entryLongitude: number | null;
+                readonly seatPlanReference: string | null;
+                readonly publicTransport: string | null;
+                readonly parkingSpots: Konventix.Event.Data.VenuePlaceData[];
+                readonly loadingZones: Konventix.Event.Data.VenuePlaceData[];
+                readonly imageMediaIds: string[];
+                readonly primaryMediaId: string | null;
+            };
+            export type VenuePlaceData = {
+                readonly label: string;
+                readonly address: string | null;
+                readonly latitude: number | null;
+                readonly longitude: number | null;
+            };
             namespace Blocks {
                 export type CountdownBlockData = {
                     readonly eventId: string;
@@ -1265,6 +1298,7 @@ declare namespace Konventix {
                 readonly confirmationGate: string;
                 readonly price: Konventix.Registration.Data.PriceDeclarationData | null;
                 readonly termsDays: number;
+                readonly maxQuantity: number;
             };
             export type RegistrationMailData = {
                 readonly registrationTypeName: string;
@@ -1286,6 +1320,7 @@ declare namespace Konventix {
                 readonly settlement: Konventix.Registration.Enums.RegistrationSettlement;
                 readonly confirmationGate: Konventix.Registration.Enums.ConfirmationGate;
                 readonly termsDays: number;
+                readonly maxQuantityPerRegistration: number | null;
                 readonly grants: Konventix.Registration.Data.GrantData[];
                 readonly priceDeclaration: Konventix.Registration.Data.PriceDeclarationData | null;
                 readonly quotaIds: string[];
@@ -1301,6 +1336,7 @@ declare namespace Konventix {
                 readonly billingCity: string | null;
                 readonly billingCountryCode: string | null;
                 readonly billingVatId: string | null;
+                readonly quantity: number;
             };
             export type TicketsForEventBlockData = {
                 readonly eventId: string;

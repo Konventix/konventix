@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Platform\Data;
 
 use Konventix\Platform\Data\Blocks\BlockData;
+use Konventix\Platform\Enums\PageVisibility;
 use Konventix\Platform\Models\StaticPage;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -26,11 +27,14 @@ final class StaticPageData extends Data
         public readonly string $title,
         public readonly string $slug,
         public readonly bool $published,
+        public readonly PageVisibility $visibility,
+        /** Whether the brand's menu already carries an entry for this page. */
+        public readonly bool $inMenu,
         public readonly ?string $publicUrl,
         public readonly array $blocks,
     ) {}
 
-    public static function ofModel(StaticPage $page, string $brandName, ?string $publicUrl): self
+    public static function ofModel(StaticPage $page, string $brandName, ?string $publicUrl, bool $inMenu): self
     {
         return new self(
             id: $page->getKey(),
@@ -39,6 +43,8 @@ final class StaticPageData extends Data
             title: $page->title,
             slug: $page->slug,
             published: $page->published_at !== null,
+            visibility: $page->visibility,
+            inMenu: $inMenu,
             publicUrl: $publicUrl,
             blocks: $page->blocks?->items() ?? [],
         );

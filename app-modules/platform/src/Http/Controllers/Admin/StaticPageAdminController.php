@@ -22,10 +22,12 @@ use Konventix\Platform\Data\MediaItemData;
 use Konventix\Platform\Data\StaticPageData;
 use Konventix\Platform\Data\StaticPageRowData;
 use Konventix\Platform\Data\UpdateStaticPageData;
+use Konventix\Platform\Enums\BrandMenuItemKind;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\BrandMenuItem;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\Scopes\BrandScope;
 use Konventix\Platform\Models\StaticPage;
@@ -107,7 +109,16 @@ class StaticPageAdminController
         $brand = Brand::query()->findOrFail($model->brand_id);
 
         return Inertia::render('admin/pages/Edit', [
-            'page' => StaticPageData::ofModel($model, $brand->name, $model->published_at === null ? null : $this->publicUrl($brandUrl->baseFor($brand), $model))->toArray(),
+            'page' => StaticPageData::ofModel(
+                $model,
+                $brand->name,
+                $model->published_at === null ? null : $this->publicUrl($brandUrl->baseFor($brand), $model),
+                inMenu: BrandMenuItem::withoutBrandScope()
+                    ->forBrand($brand->getKey())
+                    ->where('kind', BrandMenuItemKind::Page)
+                    ->where('static_page_id', $model->getKey())
+                    ->exists(),
+            )->toArray(),
             // Editable types are resolved with the page's brand in context:
             // the gate answers per brand, and the admin host has none.
             'types' => $brandContext->withBrand($brand, fn (): array => array_values(array_map(

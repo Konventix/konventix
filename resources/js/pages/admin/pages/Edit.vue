@@ -9,7 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
+import { edit as menuIndex } from '@/routes/admin/menu';
 import {
     destroy as destroyPage,
     index as pagesIndex,
@@ -20,6 +28,22 @@ import type { BlockEditorContext } from '@/types/blocks';
 type Page = Konventix.Platform.Data.StaticPageData;
 type Block = Konventix.Platform.Data.Blocks.BlockData;
 type TypeOption = Konventix.Platform.Data.Blocks.BlockTypeOptionData;
+type Visibility = Konventix.Platform.Enums.PageVisibility;
+
+const visibilityOptions: { value: Visibility; label: string; hint: string }[] =
+    [
+        { value: 'public', label: 'Everyone', hint: 'Anyone with the link.' },
+        {
+            value: 'members',
+            label: 'Members only',
+            hint: 'Signed-in accounts; everyone else gets a 404.',
+        },
+        {
+            value: 'registrants',
+            label: 'Registrants only',
+            hint: "Accounts holding a confirmed registration for one of this brand's events; everyone else gets a 404.",
+        },
+    ];
 
 const props = defineProps<{
     page: Page;
@@ -31,11 +55,16 @@ const form = useForm<{
     title: string;
     slug: string;
     published: boolean;
+    visibility: Visibility;
+    /** Whether the brand's menu should carry an entry for this page (Task 20). */
+    showInMenu: boolean;
     blocks: Block[];
 }>({
     title: props.page.title,
     slug: props.page.slug,
     published: props.page.published,
+    visibility: props.page.visibility,
+    showInMenu: props.page.inMenu,
     blocks: props.page.blocks.map((block) => ({
         ...block,
         data: { ...block.data },
@@ -97,18 +126,73 @@ function remove(): void {
                         </p>
                         <InputError :message="form.errors.slug" />
                     </div>
-                    <div class="flex items-center gap-2">
-                        <Checkbox
-                            id="page-published"
-                            :model-value="form.published"
+                    <div class="grid gap-2">
+                        <Label for="page-visibility">Who may read it</Label>
+                        <Select
+                            :model-value="form.visibility"
                             @update:model-value="
-                                (value: boolean | 'indeterminate') =>
-                                    (form.published = value === true)
+                                (value) =>
+                                    (form.visibility = value as Visibility)
                             "
-                        />
-                        <Label for="page-published" class="font-normal"
-                            >Published</Label
                         >
+                            <SelectTrigger id="page-visibility">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem
+                                    v-for="option in visibilityOptions"
+                                    :key="option.value"
+                                    :value="option.value"
+                                >
+                                    {{ option.label }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <p class="text-xs text-text-muted">
+                            {{
+                                visibilityOptions.find(
+                                    (option) =>
+                                        option.value === form.visibility,
+                                )?.hint
+                            }}
+                            A menu entry for this page is shown to the same
+                            people.
+                        </p>
+                        <InputError :message="form.errors.visibility" />
+                    </div>
+                    <div class="flex flex-col gap-3">
+                        <div class="flex items-center gap-2">
+                            <Checkbox
+                                id="page-published"
+                                :model-value="form.published"
+                                @update:model-value="
+                                    (value: boolean | 'indeterminate') =>
+                                        (form.published = value === true)
+                                "
+                            />
+                            <Label for="page-published" class="font-normal"
+                                >Published</Label
+                            >
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <Checkbox
+                                id="page-in-menu"
+                                :model-value="form.showInMenu"
+                                @update:model-value="
+                                    (value: boolean | 'indeterminate') =>
+                                        (form.showInMenu = value === true)
+                                "
+                            />
+                            <Label for="page-in-menu" class="font-normal">
+                                Show in menu
+                            </Label>
+                            <Link
+                                :href="menuIndex().url"
+                                class="text-xs text-text-muted hover:text-text"
+                            >
+                                Arrange the menu
+                            </Link>
+                        </div>
                     </div>
                 </CardContent>
             </Card>

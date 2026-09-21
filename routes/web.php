@@ -3,11 +3,9 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
-use Konventix\Platform\Blocks\StaticPageRenderer;
 use Konventix\Platform\Enums\Permission;
+use Konventix\Platform\Http\Controllers\StaticPageController;
 use Konventix\Platform\Http\Middleware\EnsureOperatorHost;
-use Konventix\Platform\Models\StaticPage;
 use Konventix\Platform\Operators\OperatorContext;
 use Spatie\Health\Http\Controllers\HealthCheckResultsController;
 
@@ -18,34 +16,12 @@ use Spatie\Health\Http\Controllers\HealthCheckResultsController;
  * (ADR-0003). Never add a module's routes here.
  */
 
-// If the current brand (BelongsToBrand's global scope) has a published
-// `home`-slug static page, render it through the same block pipeline as
-// `/pages/{slug}` (StaticPageController); otherwise fall back to the
-// minimal Welcome page.
-Route::get('/', function (StaticPageRenderer $renderer, OperatorContext $operator) {
-    // The admin host has no brand and therefore no home page: BrandScope
-    // hardens the query below to nothing and the operator lands on the
-    // empty Welcome page with no way into the console (hotfix 2026-09-13).
-    // The console is the only thing this host is for, so `/` goes there;
-    // `admin.dashboard` sends a guest on to login itself.
-    if ($operator->hasOperator()) {
-        return redirect()->route('admin.dashboard');
-    }
-
-    $home = StaticPage::query()
-        ->where('slug', 'home')
-        ->published()
-        ->first();
-
-    if ($home === null) {
-        return Inertia::render('Welcome');
-    }
-
-    return Inertia::render('StaticPage', [
-        'title' => $home->title,
-        'blocks' => $renderer->render($home),
-    ]);
-})->name('home');
+// The brand's landing page: a published `home`-slug static page this
+// viewer may read, rendered through the same block pipeline as
+// `/pages/{slug}`, else the minimal Welcome page. The query, the
+// visibility check and the admin-host redirect all live in the controller
+// beside `show()`, so `/` and `/pages/{slug}` cannot drift apart.
+Route::get('/', [StaticPageController::class, 'home'])->name('home');
 
 // Health results, in two shapes for two readers.
 //
