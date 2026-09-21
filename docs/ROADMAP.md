@@ -771,6 +771,8 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Messaging | Suppression list admin | `admin/emails/*` | P2 backlog |
 | Messaging | Template editor (index + editor), per-brand override + preview + test mail | — (new concept, ADR-0048) | ✓ (`/admin/messages/templates`) |
 | Messaging | In-app inbox + archive; notification/digest/quiet-hours preferences | `notifications/*`, `settings/{Notifications,EmailSettings}` | S13 |
+| Support | Report launcher + dialog on every brand host and the console, console inbox + report detail (triage, assignment, known issues), reporter access ("My support requests", guest signed links, link re-issue) | LanHelp `tickets/*`, `staff/*`, LanCore `admin-tickets/*` | ✓ (#88, ADR-0063 — the report channel is a go-live requirement, not a post-release module) |
+| Support | Helpdesk half: knowledge base, SLAs, macros, satisfaction surveys | LanHelp `kb/*` | P3 (#48) — after the event, and the KB is a Content type |
 
 ### Core
 
@@ -786,7 +788,7 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Commerce | Voucher CRUD + redemption view | `vouchers/*` | P2 backlog (SPEC-owned, unscheduled) |
 | Commerce | Product catalogue admin (index + editor with variants and stock), public shop listing/detail, the person-owned cart, the waiting-room holding page | `shop/*`, `cart/*` | ✓ (slice 24, ADR-0047) |
 | Content | Entry editor + admin index, public listing/detail, comment moderation, announcements (+ public banner) | `news/*`, `announcements/*` | ✓ |
-| Content | Knowledge-base content type | LanHelp `kb/*` | P3 — lands with Support (ADR-0022) |
+| Content | Knowledge-base content type | LanHelp `kb/*` | P3 — the helpdesk half of Support (#48); the report channel itself shipped without it (ADR-0063) |
 
 ### Pennant-gated modules
 
@@ -805,6 +807,5 @@ Status: **✓** shipped · **S«n»** scheduled in that Phase 2 slice ·
 | Community | Chat rooms, achievements CRUD + user showcase, public profiles, presence | `chat/Room`, LanShout, `achievements/*`, `u/Show`, `settings/Achievements` | P3 |
 | Sponsoring | Sponsor + sponsor-level CRUD, public sponsor display | `sponsors/*`, `sponsor-levels/*` | P3 |
 | Newsletter | List management | `newsletter-lists/*` | P3 |
-| Support | Ticket create/list/detail, staff queue, admin views (ADR-0022; the KB half lands in Content instead) | LanHelp `tickets/*`, `staff/*`, LanCore `admin-tickets/*` | P3 |
 | Extensibility | Webhook CRUD + delivery detail, OAuth app management | `webhooks/*` | P3 (external contracts only after internal ones are stable) |
 | — | Satellite connection screens | `integrations/*` (Create{LanBrackets,LanEntrance,LanHelp,LanShout}) | dropped — the satellites are gone (module-map) |

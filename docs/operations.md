@@ -296,6 +296,50 @@ agent, the viewport, the visit buffer and the captured client error. The
 row itself stays: it is the operator's record that something was broken on
 a given release, and what is left says nothing about who reported it.
 
+### Reporter access
+
+A signed-in reporter follows their own report under **My support requests**
+in the account menu; nothing to operate there, and no capability — the page
+answers 404 for anything the signed-in account did not file. A guest follows
+theirs through a **signed link valid 30 days**, mailed in the receipt. Both
+see the report, the technical context and the **external** thread only; an
+internal note never leaves the console, and a reporter's reply arrives as an
+external message that notifies the brand's triage holders exactly like a new
+report does.
+
+Mails after the receipt are gated on `contact_consent` — the "you may
+contact me" checkbox. Without it, state changes and replies are readable on
+the page but are never sent. The console's reporter card prints which way
+that went, so an operator knows before they write whether anybody will be
+told.
+
+**"My link does not work."** That is normal after 30 days and after a mail
+client has wrapped the URL. The page a dead link lands on is not a 403: it
+is a form with one field, the eight-character reference, and one button.
+Pressing it mails a fresh 30-day link **to the address stored on the
+report** — never to an address typed into the form, which is why there is no
+address field and why nobody needs to be talked through one. Tell the person
+to press the button; nothing has to be done in the console.
+
+It answers the same sentence whether the reference exists, never existed, was
+purged by the retention sweep, or belongs to an account rather than a guest.
+So "they pressed it and got the confirmation" is **not** evidence that a mail
+went out. If one really did not arrive, check `/admin/messages` for a
+`support.request-link` send to that report's address, and the suppression
+list for that address.
+
+**The throttle** is three re-issues an hour, keyed on the **reference**, not
+on the caller — the inbox is what is being protected. A fourth press inside
+the hour answers 429 and the page says so. There is no override: the person
+waits, or an operator reads the answer out of the console and replies in the
+thread, which reaches them on the same address without a link at all. The
+limiter is `support-link`, declared in `SupportServiceProvider`; the report
+form's own limiter, `support-report`, is a different budget.
+
+Nothing else revokes a link inside its 30 days, and a link grants read and
+reply on **one** report. Once the retention sweep has purged a report, its
+link answers 404 and a re-issue sends nothing.
+
 ## Alerts
 
 ### KonventixMetricsDown

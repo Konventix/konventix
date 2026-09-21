@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
+use Konventix\Messaging\Jobs\SendQueuedMessage;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
@@ -174,5 +177,24 @@ function supportContextWithIds(string $pageId, string $submitId): SupportContext
         clientSentAt: $empty->clientSentAt,
         receivedAt: $empty->receivedAt,
         lastClientError: $empty->lastClientError,
+    );
+}
+
+/**
+ * The Messaging sends one template key produced, under `Queue::fake()`.
+ *
+ * Here rather than in a `*Test.php` file because three files call it, and
+ * under `--parallel` a helper declared in a test file exists only in the
+ * worker that loaded that file (`.ai/rules/tests.md`). The `support`
+ * prefix is the other half of that rule: these names are process-global
+ * across every module's suite.
+ *
+ * @return Collection<int, SendQueuedMessage>
+ */
+function supportQueuedSends(string $templateKey): Collection
+{
+    return Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === $templateKey,
     );
 }

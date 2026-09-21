@@ -12,6 +12,7 @@ not cosmetic — they force generic data models instead of relabeled LAN concept
 | **Event** | Event, Venue | Event lifecycle, venue as sub-concept |
 | **Compliance** | Policy, DataLifecycle | Consent/policies, GDPR export & deletion orchestration (delegating to per-module `Gdpr/` exporters), audit, `CheckoutLegalTexts::SLUGS` — the checkout's `terms`/`withdrawal` roles (#200 AK 4) |
 | **Messaging** | Notification, EmailLog | Channel abstraction (mail, push, in-app), delivery log as infrastructure; delivery log and template overrides have screens (`/admin/messages`) |
+| **Support** | LanHelp (the retired satellite) | SupportRequest with its typed context snapshot, the thread (internal notes and external replies), triage state, assignment, known-issue notices, reporter access ("My support requests" and 30-day signed guest links). Kernel-style and **not** Pennant-gated (ADR-0063, amending ADR-0022): the launcher is on every brand host *and* on the operator console, which resolves no brand. LanHelp's knowledge base becomes a Content type instead (#48) |
 
 ## Core (every brand)
 
@@ -35,7 +36,6 @@ not cosmetic — they force generic data models instead of relabeled LAN concept
 | **Sponsoring** | Sponsoring | Thin in LanCore; port late |
 | **Newsletter** | Newsletter | Listmonk client behind a contract |
 | **Extensibility** | Integration, Webhook, Api | Out-of-process tier: OAuth apps, webhooks. **Post-release** — do not publish external contracts before internal ones are stable |
-| **Support** | LanHelp (the retired satellite) | SupportRequest, replies, assignment. **Post-release** (ADR-0022). LanHelp's knowledge base becomes a Content type instead |
 
 ## Release scope
 
@@ -45,8 +45,12 @@ Messaging — plus Resources, Competition, GameOps, Content, Staffing
 (our own events need them; Staffing is the first thing a pretix user sees
 here and cannot get there).
 
+Support ships with the release too, and is always on: the report channel
+is the operator's early-warning system at go-live (#88, ADR-0063), not a
+feature a brand opts into.
+
 Deliberately after release: Community, Agenda, Sponsoring, Newsletter,
-Extensibility, Support.
+Extensibility.
 
 ## The satellites are gone
 

@@ -7,8 +7,10 @@ namespace Konventix\Support\Providers;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Messaging\Enums\Channel;
@@ -26,12 +28,17 @@ use Konventix\Support\Captcha\CaptchaVerifier;
 use Konventix\Support\Captcha\NullCaptchaVerifier;
 use Konventix\Support\Console\PurgeSupportRequestsCommand;
 use Konventix\Support\Enums\Permission;
+use Konventix\Support\Events\SupportRequestMessagePosted;
 use Konventix\Support\Events\SupportRequestOpened;
 use Konventix\Support\Events\SupportRequestStateChanged;
 use Konventix\Support\Gdpr\SupportGdprHandler;
+use Konventix\Support\Http\Middleware\RenderExpiredSupportLink;
 use Konventix\Support\Listeners\AcknowledgeReporterOnRequestOpened;
 use Konventix\Support\Listeners\Metrics\RecordSupportMetrics;
+use Konventix\Support\Listeners\NotifyOperatorsOnReporterReply;
 use Konventix\Support\Listeners\NotifyOperatorsOnRequestOpened;
+use Konventix\Support\Listeners\NotifyReporterOnReply;
+use Konventix\Support\Listeners\NotifyReporterOnStateChanged;
 use Konventix\Support\Metrics\SupportGauges;
 use Konventix\Support\Metrics\SupportMetrics;
 use Konventix\Support\Models\SupportRequest;
@@ -83,6 +90,15 @@ class SupportServiceProvider extends ModuleServiceProvider
 
         $this->registerMetrics();
         $this->configureRateLimiting();
+
+        // The guest link's failure mode as an alias, registered here
+        // because a module owns its own middleware and wires nothing
+        // centrally (ADR-0003) — the same shape Compliance's
+        // `require-consent` uses. It is applied *outside* `signed` in
+        // `routes/web/support.php`, which is what lets it turn the
+        // signature failure into the re-issue page.
+        $this->app->make(Router::class)
+            ->aliasMiddleware('support-link-expired', RenderExpiredSupportLink::class);
     }
 
     /**
@@ -127,6 +143,24 @@ class SupportServiceProvider extends ModuleServiceProvider
     {
         RateLimiter::for('support-report', fn (Request $request): Limit => Limit::perMinutes(10, 5)
             ->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown')));
+
+        // The re-issue budget (design §8.2): three fresh links an hour per
+        // reference. Keyed on the **reference** and not on the caller,
+        // because the thing being protected is somebody else's inbox — an
+        // address a stranger holding an eight-character reference could
+        // otherwise have a link mailed to as often as they liked, from as
+        // many source addresses as they liked. The cost of that choice is
+        // that a person can lock their own re-issue out for an hour by
+        // pressing the button four times, which is an hour's wait against
+        // a mail flood.
+        //
+        // Normalised the same way `ReissueSupportLink` normalises before
+        // looking a reference up, so `a1b2c3d4` and `A1B2-C3D4` cannot buy
+        // three attempts each.
+        RateLimiter::for('support-link', fn (Request $request): Limit => Limit::perHour(3)
+            ->by('support-link:'.sha1(Str::lower(
+                preg_replace('/[^0-9A-Za-z]/', '', (string) $request->input('reference')) ?? ''
+            ))));
     }
 
     /**
@@ -190,6 +224,33 @@ class SupportServiceProvider extends ModuleServiceProvider
                 badge: fn (): int => SupportRequest::query()->open()->count(),
             ),
         );
+
+        // The reporter's own entry in the account menu (design §8.1,
+        // ADR-0044). No `permission`, and none is missing: the menu renders
+        // only for a signed-in account and `MySupportRequestsController`
+        // authorizes on ownership, which is not a capability anybody can be
+        // granted — the same reasoning Commerce's "My orders" and
+        // Admission's "My tickets" already carry.
+        //
+        // No `badge` either, deliberately. The console's count is a work
+        // queue; a person's own reports are not, and a number beside "My
+        // support requests" would be a nudge to check something nobody is
+        // waiting on them for. It is also a query per account menu render,
+        // on every brand page, for a list that is usually empty.
+        //
+        // `order: 30` puts it after the things a person came to the brand
+        // for — their registrations, their tickets, their orders — because
+        // this is where they go when one of those went wrong.
+        $this->app->make(NavigationRegistry::class)->add(
+            new NavigationItem(
+                module: 'support',
+                label: 'My support requests',
+                url: '/my/support-requests',
+                icon: 'life-buoy',
+                order: 30,
+                area: NavigationItem::AREA_ACCOUNT,
+            ),
+        );
     }
 
     /**
@@ -211,6 +272,20 @@ class SupportServiceProvider extends ModuleServiceProvider
         // (`.ai/rules/listeners.md`).
         Event::listen(SupportRequestOpened::class, NotifyOperatorsOnRequestOpened::class);
         Event::listen(SupportRequestOpened::class, AcknowledgeReporterOnRequestOpened::class);
+
+        // Design §7, S3: what happens to a report *after* it was filed.
+        // Both of the message listeners hang off the same event and split
+        // on who wrote the entry, because a thread has two directions and
+        // exactly one of them is news to each side — an operator's reply is
+        // news to the reporter, the reporter's reply is news to the
+        // operators, and neither is news to the person who just typed it.
+        //
+        // Each is registered explicitly: modular's event discovery is off,
+        // and a listener without an `Event::listen` line never fires
+        // (`.ai/rules/listeners.md`).
+        Event::listen(SupportRequestStateChanged::class, NotifyReporterOnStateChanged::class);
+        Event::listen(SupportRequestMessagePosted::class, NotifyReporterOnReply::class);
+        Event::listen(SupportRequestMessagePosted::class, NotifyOperatorsOnReporterReply::class);
     }
 
     /**
@@ -327,6 +402,114 @@ class SupportServiceProvider extends ModuleServiceProvider
                 'title' => 'New support request A1B2C3D4 · Purchase affected',
                 'detail' => 'The pay button does nothing on my phone. — Brand: sxlan. Route: commerce.pay.show. Release: 0.8.0.',
                 'url' => 'https://admin.example.test/admin/support-requests/01K5MZ6V4N8YQ2W3J7R9T1X0AB',
+            ],
+        ));
+
+        // The three S3 templates (design §7, §8.2). All branch-free for
+        // the reason stated above, which here costs a prepared field per
+        // locale where an `@if` over five states would have been shorter
+        // and unsaveable through the override editor.
+        //
+        // The state name and the sentence that says what it means are two
+        // fields rather than one: "Resolved" and "we are going to leave
+        // this as it is" are the two halves a person actually reads, and a
+        // mail that named only the state would leave them guessing which
+        // of the two terminal answers they had just been given.
+        $registry->register(new MessageTemplate(
+            key: 'support.request-state-changed',
+            subjects: [
+                'de' => 'Ihre Meldung {{ $reference }}: {{ $stateDe }}',
+                'en' => 'Your report {{ $reference }}: {{ $stateEn }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag,</p>
+                    <p>der Stand Ihrer Meldung <strong>{{ $reference }}</strong> hat sich
+                    geändert: <strong>{{ $stateDe }}</strong>.</p>
+                    <p>{{ $noteDe }}</p>
+                    <p><a href="{{ $requestUrl }}">Meldung ansehen</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>there is news about your report <strong>{{ $reference }}</strong>:
+                    <strong>{{ $stateEn }}</strong>.</p>
+                    <p>{{ $noteEn }}</p>
+                    <p><a href="{{ $requestUrl }}">View your report</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'reference' => 'A1B2C3D4',
+                'stateDe' => 'In Bearbeitung',
+                'stateEn' => 'In progress',
+                'noteDe' => 'Jemand kümmert sich jetzt darum.',
+                'noteEn' => 'Somebody is working on it now.',
+                'requestUrl' => 'https://example.test/my/support-requests/01K5MZ6V4N8YQ2W3J7R9T1X0AB',
+            ],
+        ));
+
+        // The excerpt and not the whole reply, on purpose: a mail carrying
+        // the full answer becomes the place people read it, and the thread
+        // — where the next question can be asked — becomes the place
+        // nobody goes.
+        $registry->register(new MessageTemplate(
+            key: 'support.request-replied',
+            subjects: [
+                'de' => 'Neue Antwort zu Ihrer Meldung {{ $reference }}',
+                'en' => 'A reply on your report {{ $reference }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag,</p>
+                    <p>zu Ihrer Meldung <strong>{{ $reference }}</strong> gibt es eine
+                    Antwort:</p>
+                    <blockquote>{{ $excerpt }}</blockquote>
+                    <p><a href="{{ $requestUrl }}">Antwort lesen und antworten</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>somebody has answered your report <strong>{{ $reference }}</strong>:</p>
+                    <blockquote>{{ $excerpt }}</blockquote>
+                    <p><a href="{{ $requestUrl }}">Read it and write back</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'reference' => 'A1B2C3D4',
+                'excerpt' => 'Thank you — we found the cause and a fix is going out this evening.',
+                'requestUrl' => 'https://example.test/my/support-requests/01K5MZ6V4N8YQ2W3J7R9T1X0AB',
+            ],
+        ));
+
+        // The self-service re-issue (design §8.2). It says nothing about
+        // *why* a new link was asked for and carries no reason field: the
+        // person who pressed the button knows, and the person who did not
+        // press it — if somebody else typed their reference — should learn
+        // as little as possible from the mail they did not expect.
+        $registry->register(new MessageTemplate(
+            key: 'support.request-link',
+            subjects: [
+                'de' => 'Ihr neuer Zugang zu Meldung {{ $reference }}',
+                'en' => 'Your new link to report {{ $reference }}',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    <p>Guten Tag,</p>
+                    <p>hier ist ein neuer Zugang zu Ihrer Meldung
+                    <strong>{{ $reference }}</strong>. Der Link gilt 30 Tage.</p>
+                    <p><a href="{{ $requestUrl }}">Meldung ansehen</a></p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    <p>Hello,</p>
+                    <p>here is a new link to your report <strong>{{ $reference }}</strong>.
+                    It works for the next 30 days.</p>
+                    <p><a href="{{ $requestUrl }}">View your report</a></p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'reference' => 'A1B2C3D4',
+                'requestUrl' => 'https://example.test/support/requests/01K5MZ6V4N8YQ2W3J7R9T1X0AB?signature=abc',
             ],
         ));
     }

@@ -6,23 +6,23 @@
 
 ## Next
 
-- [ ] S3 Reporter access (#307, #88): `/my/support-requests`, guest signed links,
-      link re-issue, state-changed and replied mails, a11y pass, runbook.
+- [ ] Nothing owed for #88. The four slices are on `develop`; what is left
+      below is the helpdesk half (#48) and the follow-ups each slice named.
 
 ## Backlog
 
-- [ ] Wire `docs/architecture/module-map.md` (row "Support") and ROADMAP's
-      Support entries from "post-release" to "report channel at go-live
-      (#88), helpdesk half after the event (#48)" — ADR-0063's last
-      consequence, left for the slice that touches those documents.
 - [ ] Typed "ask about this" reference through a Platform UI slot
       (ADR-0022); `subject_module`/`subject_id` are reserved for it.
+- [ ] Migrate a guest's report onto an account when that address later gets
+      one. It is not done today (design §8.2): the GDPR handler answers by
+      user id *and* by address, so the person still gets their data, but the
+      old report never appears under "My support requests".
+- [ ] Decide whether a reporter's reply should reopen a report that triage
+      has moved to `in_progress` and back — today a terminal report simply
+      refuses the reply and asks for a new one, which is the honest
+      behaviour but loses the connection between the two.
 - [ ] Attachments through Platform media (needs a brand-host upload route).
 - [ ] A captcha driver behind `CaptchaVerifier` (Turnstile), if abuse shows up.
-- [ ] Drop the remaining `Route::has()` fallbacks in `Links\SupportLinks`
-      once S3 registers `support.requests.show` /
-      `support.requests.mine.show` — the literal paths beside them are the
-      TODO markers. S2 removed the console one.
 - [ ] Name an assignee and a note's author instead of printing their ULID,
       once Platform maintains an identity read model (the same gap
       `RoleAssignmentController` documents).
@@ -38,6 +38,31 @@
 
 ## Done
 
+- [x] S3 Reporter access (#307, #88): `GET /my/support-requests` and
+      `/my/support-requests/{request}` behind `auth`, authorized on
+      ownership with a 404 for everything else and deliberately not
+      brand-filtered, plus `POST …/reply` through the new `PostReporterReply`
+      (external, terminal reports refused on the `body` field); the
+      `AREA_ACCOUNT` navigation entry with no badge; the guest's signed
+      `GET /support/requests/{request}` and `POST …/reply`, whose reply URL
+      and post-reply redirect carry the expiry the visit arrived with rather
+      than a fresh 30 days; the `support-link-expired` middleware rendering
+      `support/requests/LinkExpired` instead of a 403 (checking
+      `hasValidSignature()` itself — `Illuminate\Routing\Pipeline` catches
+      per pipe, so an outer frame never sees `InvalidSignatureException`);
+      `POST /support/requests/link` with `ReissueSupportLink`, a reference
+      and nothing else, the stored address only, one answer for every input
+      and `throttle:support-link` at three an hour per reference;
+      `support.request-state-changed`, `support.request-replied` and
+      `support.request-link` in `de`/`en`, branch-free, with the consent
+      gate in `Listeners\Concerns\ReachesTheReporter` so a fourth update
+      mail cannot forget it; `NotifyReporterOnStateChanged`,
+      `NotifyReporterOnReply` and `NotifyOperatorsOnReporterReply` splitting
+      one event by who wrote the entry; `SupportLinks` free of its
+      `Route::has()` fallbacks; the a11y pass written up in SPEC.md and
+      pinned in `supportMarkup.test.ts`; the runbook's "Reporter access"
+      subsection; the module map's Support row and ROADMAP's Support entries
+      corrected off "post-release".
 - [x] S2 Console (#306, #88): `GET /admin/support-requests` with
       `useDataTable` (reference, categories, state, brand or `Console`,
       release, masked reporter, received, assignee, known-issue mark) and

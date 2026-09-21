@@ -238,7 +238,10 @@ also a registrant.
 | Template | To | Notes |
 |---|---|---|
 | `support.request-received` | the reporter | Sent regardless of `contact_consent`: it is the receipt, and for a guest the signed 30-day link in it is the only key to the request. An account's receipt rides `support.request-updates`; a guest's rides no topic, because there is no account to hold a preference. |
-| `support.request-notice` | operators | `urgent`, with an absolute console link. Recipients are the `support.triage-requests` holders on the brand — or, for a console-filed report that has no brand, the `platform.access-admin` holders of the operator (D-SUP-12). |
+| `support.request-notice` | operators | `urgent`, with an absolute console link. Recipients are the `support.triage-requests` holders on the brand — or, for a console-filed report that has no brand, the `platform.access-admin` holders of the operator (D-SUP-12). The same template carries a **reporter's reply**: one operator notice, three fields, nothing for an override editor to learn twice. |
+| `support.request-state-changed` | the reporter | On a move to `in_progress`, `resolved` or `wont_fix` — never on `seen`, which the first console open sets seconds after the receipt. **Only with `contact_consent`.** |
+| `support.request-replied` | the reporter | On an **external** message written by somebody other than the reporter. Quotes the first 200 characters and links to the thread. **Only with `contact_consent`.** |
+| `support.request-link` | a guest reporter | A fresh 30-day signed link, on self-service re-issue. Sent to the stored address only. |
 
 Both templates are branch-free: every sentence that differs between a guest
 and an account is a prepared payload field, because a per-brand override may
@@ -250,8 +253,105 @@ log, suppression list and quota are brand-scoped and whose `brand_id` is not
 nullable; the operator's oldest brand stands in. The row itself stays
 brandless everywhere it is read.
 
+`contact_consent` gates everything **after** the receipt, and the gate lives
+in one place — `Listeners\Concerns\ReachesTheReporter` — so that a fourth
+update mail cannot forget it. The receipt is the single exception and says
+so in its own listener: for a guest it is the only key to the report, and
+withholding it would mean accepting a report the person can never read
+again.
+
+A thread has two directions and one event. `SupportRequestMessagePosted`
+feeds two listeners that split on who wrote the entry: an operator's
+external reply is news to the reporter, a reporter's own reply is news to
+the triage holders (through `Queries\TriageHolders`, the same rule the
+opened notice applies), and neither is news to the person who just typed it.
+An internal note reaches nobody outside the console.
+
 Every send is best-effort: a notification that cannot be delivered is a
 `Log::warning`, never a failed report.
+
+## Reporter access
+
+Two ways in, one page. `support/requests/Show` is rendered for both, and the
+only prop that differs is `replyUrl` — relative for an account, signed for a
+guest. They are one component on purpose: the moment they diverge is the
+moment one of them stops hiding internal notes.
+
+**Accounts.** `GET /my/support-requests` lists everything this account has
+reported and `GET /my/support-requests/{request}` is one of them, with a
+reply form while the report is not terminal (`POST …/reply`). Authorization
+is ownership, checked in the query, and everything else is a **404** rather
+than a 403 — a 403 on an eight-character reference is an answer about
+whether it exists. There is no capability and none is missing, the same
+reasoning `/my/orders` and `/my/tickets` carry. The list is deliberately
+**not** brand-filtered, unlike every other `/my/*` list: a report is about
+the platform, filed from wherever the person happened to be standing, and a
+list that hid it because they opened the account menu on another host would
+be a list that loses reports. Navigation is one `AREA_ACCOUNT` entry, "My
+support requests", with no badge — a person's own reports are not a work
+queue.
+
+**Guests.** The receipt carries `URL::temporarySignedRoute` for 30 days
+(`SupportLinks::GUEST_LINK_DAYS`); `GET /support/requests/{request}` and
+`POST …/reply` are both `signed`. The signature is the whole authorization
+and no session is written. The reply URL and the redirect after a reply
+carry **the expiry the visit arrived with**, never a fresh 30 days, so a
+page left open does not quietly become a page open forever.
+
+An expired or tampered signature is **not** a 403. `support-link-expired`
+sits in front of `signed` on those routes, asks the same
+`hasValidSignature()` question, and renders `support/requests/LinkExpired`
+when the answer is no — a form with one field and one button. (Catching
+`InvalidSignatureException` in an outer middleware was the obvious shape and
+does not work: `Illuminate\Routing\Pipeline` wraps every pipe in its own
+try/catch and hands the throwable to the exception handler, so an outer
+frame only ever sees a finished 403.) `signed` stays behind it: if the two
+checks ever drift, the route refuses rather than opening.
+
+`POST /support/requests/link` is the re-issue, and its design is what it
+refuses to say. It takes a **reference and nothing else** — a form with an
+address field would let anybody holding a reference move somebody else's
+report to an inbox of their choosing — and it answers the same 202 for a
+reference that exists, one that never did, one the retention sweep purged
+and one an account filed. The route carries `throttle:support-link`, three
+an hour keyed on the normalised reference, because the thing being protected
+is one known inbox rather than one caller. The design's §8.2 sketched a 404
+for a purged report; that is deliberately not built, because one answer for
+every input is the stronger property.
+
+## Accessibility
+
+The a11y pass of design §12 (ADR-0055, WCAG 2.1 AA) covers the launcher, the
+dialog and the four reporter surfaces. What was checked, and what holds:
+
+- **Headings.** Every page has exactly one `h1` (`Heading as="h1"`), and no
+  level is skipped: the report page's thread and its technical details are
+  `<section>`s under their own `h2`, the second one visually hidden because
+  the reused context card carries its own visible `h3`. The dialog's
+  accessible name is its `DialogTitle`.
+- **Labels and errors.** Every control has a real `<label>` (or an
+  `aria-label` where only an icon is visible, as on the launcher). Each
+  error is linked to its field through `aria-describedby` plus
+  `aria-invalid`, never rendered loose beside it; the re-issue field also
+  carries its format hint that way.
+- **Focus.** After a reply — succeeded or refused — focus moves to the
+  `role="status"` region that says what happened, because the box is empty
+  again and the page otherwise looks unchanged. The reply visit is made with
+  `preserveState` so that region survives it. The dialog moves focus to the
+  first invalid field on a failed submit, and reka-ui traps and restores
+  focus around it.
+- **Live regions.** `role="status"` on the reply result and on the re-issue
+  answer; `role="alert"` on the dialog's transport failure. Nothing ticking
+  is announced.
+- **Keyboard.** Every row of "My support requests" carries a real `<Link>`,
+  so nothing is reachable by pointer only. The launcher is a `<button>` with
+  `aria-haspopup="dialog"`, `aria-expanded` and a 44 px target.
+- **Tokens.** Semantic only (ADR-0008), asserted per component.
+
+Static promises — an attribute that must exist, a heading level, the absence
+of the word "internal" in the reporter's thread — are pinned in
+`resources/js/components/supportMarkup.test.ts`. Focus order and the focus
+trap are reka-ui's and are not pretended at there.
 
 ## Activation
 
@@ -302,6 +402,10 @@ it. A window below one day is refused by the sweep rather than obeyed.
 
 - Whether Compliance's retention rules (`compliance.manage-retention-rules`)
   should drive `support:purge-requests` instead of `config/support.php`.
+- Whether a guest whose address later gets an account should be migrated
+  onto it. Today they are not: the GDPR handler answers by user id **and**
+  by address, so the person still gets their data, but their old report
+  does not appear under "My support requests" (design §8.2).
 - Whether Platform should maintain an identity read model so the console can
   name an assignee and a note's author instead of printing ULIDs. The same
   question Platform's role editor left open, and the same answer for now.

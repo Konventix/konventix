@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import myIndexMarkup from '../pages/support/requests/Index.vue?raw';
+import expiredMarkup from '../pages/support/requests/LinkExpired.vue?raw';
+import myShowMarkup from '../pages/support/requests/Show.vue?raw';
+import reporterThreadMarkup from './requests/SupportReporterThread.vue?raw';
 import launcherMarkup from './SupportLauncher.vue?raw';
 import dialogMarkup from './SupportRequestDialog.vue?raw';
 
@@ -21,8 +25,13 @@ import dialogMarkup from './SupportRequestDialog.vue?raw';
  * What it deliberately does not claim to check: focus order, the focus
  * trap and the return of focus on Escape. Those are reka-ui's, exercised by
  * every other dialog in the application, and a string match would only
- * pretend to cover them. S3's a11y pass (#307) is where the whole flow is
- * walked.
+ * pretend to cover them.
+ *
+ * S3 (#307) added the four reporter surfaces below. They are asserted the
+ * same way and for the same reason — a heading level, a `<label>`, an
+ * `aria-describedby`, a live region — are static promises that get deleted
+ * in refactors, and the walk of the whole flow is written up in the
+ * module's SPEC.md rather than pretended at here.
  */
 describe('SupportLauncher.vue', () => {
     const markup = launcherMarkup;
@@ -114,5 +123,82 @@ describe('SupportRequestDialog.vue', () => {
 
     it('uses semantic tokens only (ADR-0008)', () => {
         expect(markup).not.toMatch(/\b(bg|text|border)-(zinc|gray|slate)-\d/);
+    });
+});
+
+describe('the reporter’s pages (S3, #307)', () => {
+    it('gives every reporter page exactly one h1, and never skips a level', () => {
+        // `Heading as="h1"` is the page title on all three; the sections
+        // under it are h2s, and the only h3 on the show page is the
+        // context card's own `CardTitle`, which sits under the h2 that
+        // labels its section.
+        for (const markup of [myIndexMarkup, myShowMarkup, expiredMarkup]) {
+            expect(markup).toContain('as="h1"');
+        }
+
+        expect(myShowMarkup).toContain('<h2 id="support-context-heading"');
+        expect(myShowMarkup).toContain(
+            'aria-labelledby="support-context-heading"',
+        );
+        expect(reporterThreadMarkup).toContain(
+            '<h2 id="support-thread-heading"',
+        );
+    });
+
+    it('announces the result of a reply and moves focus to what it said', () => {
+        expect(reporterThreadMarkup).toContain('role="status"');
+        expect(reporterThreadMarkup).toContain('tabindex="-1"');
+        expect(reporterThreadMarkup).toContain('status.value?.focus()');
+    });
+
+    it('links the reply box to its own error, and labels it', () => {
+        expect(reporterThreadMarkup).toContain('<Label :for="bodyId">');
+        expect(reporterThreadMarkup).toContain(
+            ':aria-invalid="form.errors.body ? \'true\' : undefined"',
+        );
+        expect(reporterThreadMarkup).toContain('`${bodyId}-error`');
+    });
+
+    it('never teaches the reporter’s thread the word "internal"', () => {
+        // The server sends external entries only
+        // (`scopeVisibleToReporter()`); a component that knew how to draw
+        // an internal note would be one prop away from drawing one. The
+        // docblock above it says "internal" a great deal, so the rendered
+        // half is what is asserted — the same reason it also must not
+        // print an `authorUserId`, which is a staff ULID.
+        const rendered = reporterThreadMarkup.slice(
+            reporterThreadMarkup.indexOf('<template>'),
+        );
+
+        expect(rendered).not.toContain('internal');
+        expect(rendered).not.toContain('Internal');
+        expect(rendered).not.toContain('authorUserId');
+    });
+
+    it('announces the re-issue answer and asks for nothing but a reference', () => {
+        expect(expiredMarkup).toContain('role="status"');
+        expect(expiredMarkup).toContain('<Label for="support-link-reference">');
+        expect(expiredMarkup).toContain('support-link-reference-hint');
+        // No address field, ever: the fresh link goes to the stored one.
+        expect(expiredMarkup).not.toContain('type="email"');
+        expect(expiredMarkup).not.toContain('v-model="email"');
+    });
+
+    it('keeps the list keyboard-reachable through a real link', () => {
+        expect(myIndexMarkup).toContain('<Link');
+        expect(myIndexMarkup).toContain('showRequest(request.id).url');
+    });
+
+    it('uses semantic tokens only (ADR-0008)', () => {
+        for (const markup of [
+            myIndexMarkup,
+            myShowMarkup,
+            expiredMarkup,
+            reporterThreadMarkup,
+        ]) {
+            expect(markup).not.toMatch(
+                /\b(bg|text|border)-(zinc|gray|slate)-\d/,
+            );
+        }
     });
 });

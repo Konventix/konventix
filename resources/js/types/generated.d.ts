@@ -1811,9 +1811,35 @@ declare namespace Konventix {
                 readonly isKnownIssue: boolean;
                 readonly knownIssueNotice: string | null;
             };
+            export type SupportLinkReissueInputData = {
+                readonly reference: string;
+            };
             export type SupportMessageInputData = {
                 readonly visibility: Konventix.Support.Enums.MessageVisibility;
                 readonly body: string;
+            };
+            export type SupportMyRequestRowData = {
+                readonly id: string;
+                readonly reference: string;
+                readonly categories: Konventix.Support.Enums.SupportCategory[];
+                readonly state: Konventix.Support.Enums.SupportRequestState;
+                readonly createdAt: string | null;
+                readonly lastUpdateAt: string | null;
+            };
+            export type SupportReplyInputData = {
+                readonly body: string;
+            };
+            export type SupportReporterRequestData = {
+                readonly id: string;
+                readonly reference: string;
+                readonly categories: Konventix.Support.Enums.SupportCategory[];
+                readonly message: string;
+                readonly state: Konventix.Support.Enums.SupportRequestState;
+                readonly context: Konventix.Support.Data.SupportContextData;
+                readonly messages: Konventix.Support.Data.SupportRequestMessageData[];
+                readonly canReply: boolean;
+                readonly createdAt: string | null;
+                readonly closedAt: string | null;
             };
             export type SupportRequestData = {
                 readonly id: string;

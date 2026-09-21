@@ -103,6 +103,15 @@ function dryRunSkippedRoutes(): array
         'verification.verify' => 'needs a signed verification link',
         'admission.claim.show' => 'needs a signed claim link (#292 §4.3); the same URL the POST takes',
 
+        // Same shape once more: a guest's own report is reached only through
+        // the 30-day signed link in their receipt (#307, design §8.2), and
+        // `konventix:seed` files no report to mail one for. Without a
+        // signature the route deliberately answers the link-expired page
+        // rather than the screen this walk is checking, which would pass
+        // while proving nothing. `GuestAccessTest` mints a link for both
+        // sides of that.
+        'support.requests.show' => 'needs a signed 30-day reporter link',
+
         // Same shape: konventix:seed never posts to the public data-request
         // form, so no `DataSubjectRequestVerification` row — and therefore no
         // valid token — exists for this route's `{token}` to point at
@@ -496,6 +505,22 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             // *not* `withoutBrandScope()`: `SupportRequest` carries no
             // `BelongsToBrand` at all (ADR-0050 §1), which is what lets the
             // inbox span brands on the admin host in the first place.
+            //
+            // The reporter's own page (#307) shares that parameter name and
+            // needs a stricter row: `/my/support-requests/{supportRequest}`
+            // 404s for everyone but the account that filed it, so a report
+            // of the brand picked by heap order would fail the walk for the
+            // walking member — the same trap `{order}` and `{admission}`
+            // above already carry a `$member` clause for. Filed on the
+            // brand *and* by that member, minted when neither exists.
+            $parameter === 'supportRequest' && $member !== null && str_starts_with($name, 'support.requests.mine.') => SupportRequest::query()
+                ->where('filed_on_brand_id', $brand->getKey())
+                ->where('user_id', $member->getKey())
+                ->first()
+                ?? SupportRequest::factory()
+                    ->filedOnBrand((string) $brand->getKey())
+                    ->byUser((string) $member->getKey())
+                    ->create(),
             $parameter === 'supportRequest' => SupportRequest::query()
                 ->where('filed_on_brand_id', $brand->getKey())
                 ->first()
