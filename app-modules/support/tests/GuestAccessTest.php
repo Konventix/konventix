@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use DateTimeInterface;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
