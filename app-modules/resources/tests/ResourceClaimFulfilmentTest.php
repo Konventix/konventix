@@ -62,6 +62,11 @@ function claimTestGrant(string $resourceTypeId, int $quantity = 1): array
 it('projects the event window from Event contract events', function (): void {
     // Resources may not read Event's models (ADR-0004), so a booking's
     // interval has to come from a projection.
+    //
+    // Frozen: the fixture and the expectation each call `now()->startOfHour()`,
+    // and a run that straddles the top of an hour (pipeline 1893, 22:00:10
+    // UTC) sees two different hours.
+    $this->freezeTime();
     $brand = $this->withBrand();
     $eventId = (string) Str::ulid();
 
