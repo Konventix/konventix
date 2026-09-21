@@ -104,6 +104,75 @@ Default role (ADR-0045): `support.desk` "Support Desk" with all three.
 Filing a report needs no capability: `OpenSupportRequest` is the module's
 one public write, open to guests, guarded by throttles and the honeypot.
 
+## The report channel
+
+One endpoint, two routes, one Action. `POST /support/requests` on every
+brand host and `POST /admin/support/requests` on the operator console both
+reach `SupportRequestController::store` and `OpenSupportRequest`; which host
+a report came in on is the `filed_on_brand_id` column and never a second
+code path. The answer is JSON — the dialog posts through Inertia's `useHttp`
+and the page underneath is never replaced, because the person reporting a
+broken checkout is standing on it.
+
+Filing needs no capability and no account. What stands in place of
+authorization, in the order it runs:
+
+1. `throttle:support-report` — five reports per ten minutes per account, or
+   per address of origin for a guest.
+2. The honeypot field, checked before validation: a filled one answers 201
+   with a plausible reference and stores nothing, so a bot learns nothing
+   from the difference.
+3. Three reports an hour per e-mail address (`sha1`ed into a limiter key) —
+   the axis a pool of source addresses cannot spend around.
+4. `Captcha\CaptchaVerifier`, bound to `NullCaptchaVerifier`. There is no
+   captcha and `config('support.captcha.driver')` is null; the seam exists
+   so turning one on is configuration and one class, never a redesign of the
+   endpoint.
+
+No IP address is stored anywhere — the limiters hash it and forget it.
+
+`Context\SupportContextFactory` is where the trust boundary of the design's
+§5 is applied: the browser is believed about what only the browser knows
+(the URL, the visit buffer, the viewport, the last client error, the page's
+own correlation id, each length- or shape-bounded), and every other field —
+route, release, brand, event, account, user agent, arrival time, the submit
+correlation id — is derived by the server and overwrites whatever arrived.
+
+`Links\SupportLinks` builds every link a Support mail carries, always
+absolute: the brand's own origin for a reporter link, the operator's console
+origin (`OperatorSettings::adminBaseUrlForBrand()`) for an operator one.
+
+## Notifications
+
+Two topics, declared in the provider beside the templates that use them.
+
+| Topic | Audience | Channels | Digestable |
+|---|---|---|---|
+| `support.requests` | operator | in-app, mail | yes (today's sends are `urgent`) |
+| `support.request-updates` | participant (the reporter) | in-app, mail | no |
+
+`support.requests` is an operator-audience topic, so its in-app rows show in
+the console bell and never in the participant inbox of an organizer who is
+also a registrant.
+
+| Template | To | Notes |
+|---|---|---|
+| `support.request-received` | the reporter | Sent regardless of `contact_consent`: it is the receipt, and for a guest the signed 30-day link in it is the only key to the request. An account's receipt rides `support.request-updates`; a guest's rides no topic, because there is no account to hold a preference. |
+| `support.request-notice` | operators | `urgent`, with an absolute console link. Recipients are the `support.triage-requests` holders on the brand — or, for a console-filed report that has no brand, the `platform.access-admin` holders of the operator (D-SUP-12). |
+
+Both templates are branch-free: every sentence that differs between a guest
+and an account is a prepared payload field, because a per-brand override may
+contain no expression (`TemplateOverrideGuard`) and the editor seeds itself
+with the shipped default.
+
+A console-filed report still needs *a* brand for Messaging, whose delivery
+log, suppression list and quota are brand-scoped and whose `brand_id` is not
+nullable; the operator's oldest brand stands in. The row itself stays
+brandless everywhere it is read.
+
+Every send is best-effort: a notification that cannot be delivered is a
+`Log::warning`, never a failed report.
+
 ## Activation
 
 Kernel-style, always active and not gateable (ADR-0063, amending
@@ -153,6 +222,10 @@ it. A window below one day is refused by the sweep rather than obeyed.
 
 - Whether Compliance's retention rules (`compliance.manage-retention-rules`)
   should drive `support:purge-requests` instead of `config/support.php`.
+- Whether the shared `auth.user` prop should carry the account's address so
+  the dialog can show it read-only (design §6.2 item 5). It does not today
+  (ADR-0051 §5 keeps that prop lean), so the dialog names the account
+  instead of the address.
 - Which triage holders a console-filed request (no brand) notifies once the
   instance has more than one operator.
 - `context.commit`: null until the image build passes a sha (`APP_COMMIT`).

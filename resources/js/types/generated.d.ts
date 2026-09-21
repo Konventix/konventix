@@ -54,7 +54,7 @@ export type TicketManagerData = {
 readonly registrationId: string,
 readonly ticketCount: number,
 readonly holdsOne: boolean,
-readonly admissions: undefined<number, Konventix.Admission.Data.ManagedAdmissionData>,
+readonly admissions: Konventix.Admission.Data.ManagedAdmissionData[],
 };
 export type TicketPageData = {
 readonly id: string,

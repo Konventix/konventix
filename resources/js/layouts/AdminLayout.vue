@@ -39,6 +39,11 @@ const cookieSettings = useCookieSettingsDialog();
 const cookieSettingsDialog = resolveRegisteredComponent(
     'platform/dialogs/cookie-settings',
 );
+
+// Support's floating report button (ADR-0063, #88). The console carries it
+// too — that is the whole reason Support is not gateable: a per-brand gate
+// reads "no brand in context" as inactive, and this host has none.
+const supportLauncher = resolveRegisteredComponent('support/SupportLauncher');
 </script>
 
 <template>
@@ -59,5 +64,6 @@ const cookieSettingsDialog = resolveRegisteredComponent(
             :open="cookieSettings.isOpen.value"
             @close="cookieSettings.close()"
         />
+        <component :is="supportLauncher" v-if="supportLauncher" />
     </SidebarProvider>
 </template>

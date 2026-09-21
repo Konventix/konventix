@@ -5,6 +5,13 @@ import EmailVerificationBanner from '@/components/EmailVerificationBanner.vue';
 import EnvironmentRibbon from '@/components/EnvironmentRibbon.vue';
 import SkipToContent from '@/components/SkipToContent.vue';
 import { Toaster } from '@/components/ui/sonner';
+import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+
+// Support's floating report button (ADR-0063, #88), contributed by the
+// module and resolved by name — the shell learns nothing about it and
+// renders nothing when it is absent, the same skip AdminLayout already
+// uses for the cookie dialog.
+const supportLauncher = resolveRegisteredComponent('support/SupportLauncher');
 
 /**
  * The brand-facing shell: one topbar for visitors and members alike, the
@@ -35,5 +42,6 @@ import { Toaster } from '@/components/ui/sonner';
         </main>
         <AppFooter />
         <Toaster />
+        <component :is="supportLauncher" v-if="supportLauncher" />
     </div>
 </template>

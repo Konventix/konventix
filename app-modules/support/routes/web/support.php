@@ -14,3 +14,19 @@ declare(strict_types=1);
  * So: declare bare routes here. Do not re-apply `web` or the module gate, and
  * never register these routes from routes/web.php.
  */
+
+use Illuminate\Support\Facades\Route;
+use Konventix\Support\Http\Controllers\SupportRequestController;
+
+/*
+ * The report channel (design §6.4, S1). Open to guests: filing a report
+ * needs no account and no capability — a channel that required either would
+ * be a channel the people who find the bugs cannot reach (ADR-0063).
+ *
+ * `throttle:support-report` is the per-account/per-IP budget declared in
+ * `SupportServiceProvider::configureRateLimiting()`; the per-address one
+ * lives in the controller, because only the controller has read the address.
+ */
+Route::post('/support/requests', [SupportRequestController::class, 'store'])
+    ->middleware('throttle:support-report')
+    ->name('support.requests.store');
