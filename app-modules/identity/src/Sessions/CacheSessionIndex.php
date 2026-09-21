@@ -28,7 +28,7 @@ final class CacheSessionIndex implements SessionIndex
             'user_id' => $userId,
             'ip_address' => $meta['ip_address'] ?? null,
             'user_agent' => $meta['user_agent'] ?? null,
-            'last_activity' => (int) ($meta['last_activity'] ?? 0),
+            'last_activity' => $meta['last_activity'],
         ], $ttlSeconds);
 
         $ids = $this->idsFor($userId);

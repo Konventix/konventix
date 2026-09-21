@@ -42,7 +42,7 @@ final class RedisSessionIndex implements SessionIndex
             'user_id' => $userId,
             'ip_address' => (string) ($meta['ip_address'] ?? ''),
             'user_agent' => (string) ($meta['user_agent'] ?? ''),
-            'last_activity' => (string) ($meta['last_activity'] ?? 0),
+            'last_activity' => (string) $meta['last_activity'],
         ]);
         $connection->expire($metaKey, $ttlSeconds);
 

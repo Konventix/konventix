@@ -45,6 +45,9 @@ final class MintRecoveryCodesGrant
             return;
         }
 
+        // The vendor events annotate `$user` as a class this application
+        // does not have; read it untyped and narrow to the framework contract.
+        /** @var mixed $user */
         $user = $event->user;
 
         if (! $user instanceof Authenticatable) {

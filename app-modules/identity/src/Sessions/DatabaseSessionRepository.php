@@ -25,7 +25,7 @@ final class DatabaseSessionRepository implements SessionRepository
 
     public function activeFor(User $user): array
     {
-        return $this->sessions->for($user)
+        return array_values($this->sessions->for($user)
             ->map(fn (Session $session): SessionSummary => new SessionSummary(
                 id: $session->id,
                 ipAddress: $session->ip_address,
@@ -33,7 +33,7 @@ final class DatabaseSessionRepository implements SessionRepository
                 lastActivity: $session->last_activity,
             ))
             ->values()
-            ->all();
+            ->all());
     }
 
     public function revoke(User $user, string $sessionId): void
