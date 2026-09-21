@@ -130,6 +130,24 @@ class Policy extends Model
         return $this->hasMany(PolicyVersion::class);
     }
 
+    /**
+     * What this text governs (ADR-0066, spec §5.2). An **empty** relation is
+     * the meaningful state: a policy with no bindings applies everywhere its
+     * brand sells, which is what every policy did before this table existed
+     * (D-CPL-04).
+     *
+     * A binding of an operator-wide policy may carry a brand of its own
+     * (D-CPL-05), so this relation is scoped like any other brand-owned one
+     * and the resolver uses `PolicyBinding::forPolicies()` instead — which
+     * escapes `BrandScope` deliberately and restates the brand filter.
+     *
+     * @return HasMany<PolicyBinding, $this>
+     */
+    public function bindings(): HasMany
+    {
+        return $this->hasMany(PolicyBinding::class);
+    }
+
     protected static function newFactory(): PolicyFactory
     {
         return PolicyFactory::new();

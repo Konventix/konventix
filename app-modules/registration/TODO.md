@@ -6,6 +6,34 @@
 
 ## Next
 
+- [x] Entry conditions and policy bindings — the behaviour-neutral
+      foundation (round 4, Task 30, ADR-0066; D-REG-17/18/24, and the
+      Compliance half under D-CPL-02/03/04/05/08/09/16). Tables
+      `registration_entry_conditions`, `registration_type_entry_condition`
+      and `registration_entry_condition_assertions`, plus
+      `registration_types.alternative_registration_type_id`; models
+      `EntryCondition` (brand-wide, optional `event_id`, `active`/`archived`
+      scopes) and `EntryConditionAssertion` (unique per
+      `(registration, condition)`, `restrict` on the condition, cascade with
+      the registration); enums `EntryConditionVerification`,
+      `EntryConditionAssertionState`, `EntryConditionDecisionSource`,
+      `EntryConditionReasonCode`; events `EntryConditionCreated`/`Updated`/
+      `Archived` (all `AuditableEvent`),
+      `RegistrationTypeEntryConditionsChanged`,
+      `RegistrationEntryConditionAsserted`,
+      `RegistrationEntryConditionDecided`, `RegistrationConsentGiven`; Data
+      `EntryConditionData` and `PublicEntryConditionData`;
+      `Permission::ManageEntryConditions` and
+      `Permission::VerifyEntryConditions`, the second one in
+      `registration.desk` and the first deliberately not (D-REG-24); and the
+      module's first metrics catalogue
+      (`entry_condition_assertions_total{brand, verification}`,
+      `entry_condition_decisions_total{brand, state, source}` — never the
+      condition's key, T-11). **Nothing is wired into a form, an action or a
+      page**: no existing assertion changed, and an unbound policy resolves
+      exactly as it did. The console, the public checkboxes,
+      `SubmitRegistration::guardEntryConditions()`, the GDPR export and the
+      retention rule are Task 31; the door is Task 33.
 - [x] Partial cancellation with a per-unit refund (round 4, Task 23,
       D-REG-15): `registration_quantity_reductions` (ULID = the idempotency
       key every other module keys on), `Actions\ReduceRegistrationQuantity`

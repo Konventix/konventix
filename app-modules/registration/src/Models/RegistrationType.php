@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -46,6 +47,7 @@ use Spatie\LaravelData\Support\EloquentCasts\DataCollectionEloquentCast;
  * @property PriceDeclarationData|null $price_declaration
  * @property int $terms_days
  * @property int|null $max_quantity_per_registration
+ * @property string|null $alternative_registration_type_id
  * @property Carbon|null $sales_start
  * @property Carbon|null $sales_end
  * @property Carbon|null $created_at
@@ -74,6 +76,9 @@ class RegistrationType extends Model
         // created without ever naming it, and `shouldBeStrict()` refuses a
         // missing attribute.
         'max_quantity_per_registration' => null,
+        // Same reason: `alternativeType()` and the form read it on instances
+        // that were created without ever naming it.
+        'alternative_registration_type_id' => null,
     ];
 
     protected $fillable = [
@@ -87,6 +92,7 @@ class RegistrationType extends Model
         'price_declaration',
         'terms_days',
         'max_quantity_per_registration',
+        'alternative_registration_type_id',
         'sales_start',
         'sales_end',
     ];
@@ -163,6 +169,42 @@ class RegistrationType extends Model
     public function registrations(): HasMany
     {
         return $this->hasMany(Registration::class);
+    }
+
+    /**
+     * The conditions this type demands a declaration of, in the order the
+     * public form renders them (ADR-0066, D-REG-18).
+     *
+     * Deliberately **not** a frozen axis (D-REG-19): the set stays editable
+     * after the type has sold, because the evidence is the snapshot on each
+     * `EntryConditionAssertion` and not this pivot. Archived conditions stay
+     * attached to the registrations that asserted them, so the relation does
+     * not filter them out — a caller building the *editor*'s picker asks for
+     * `active()` itself.
+     *
+     * @return BelongsToMany<EntryCondition, $this>
+     */
+    public function entryConditions(): BelongsToMany
+    {
+        return $this->belongsToMany(EntryCondition::class, 'registration_type_entry_condition')
+            ->withPivot('position')
+            ->withTimestamps()
+            ->orderByPivot('position');
+    }
+
+    /**
+     * The type to offer instead when somebody will not tick the box
+     * (D-REG-21) — "Buy the regular ticket instead", and nothing else. It is
+     * not an ADR-0005 axis, it grants nothing, and it may be set and cleared
+     * at any time.
+     *
+     * Same module, so a real FK backs it (ADR-0014).
+     *
+     * @return BelongsTo<RegistrationType, $this>
+     */
+    public function alternativeType(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'alternative_registration_type_id');
     }
 
     /**

@@ -521,12 +521,18 @@ declare namespace Konventix {
                 | 'compliance.view-policies'
                 | 'compliance.manage-policies'
                 | 'compliance.publish-policy'
+                | 'compliance.manage-policy-bindings'
                 | 'compliance.view-consents'
                 | 'compliance.view-subject-requests'
                 | 'compliance.handle-subject-requests'
                 | 'compliance.download-subject-export'
                 | 'compliance.view-audit-log'
                 | 'compliance.manage-retention-rules';
+            export type PolicyBindingKind =
+                | 'event'
+                | 'registration_type'
+                | 'settlement_provider'
+                | 'entry_condition';
             export type PolicyVersionState =
                 'draft' | 'published' | 'superseded';
             export type RetentionClockStart = 'record_age' | 'event_concluded';
@@ -1247,6 +1253,17 @@ declare namespace Konventix {
                 readonly username: string;
                 readonly profileUrl: string | null;
             };
+            export type EntryConditionData = {
+                readonly id: string | null;
+                readonly eventId: string | null;
+                readonly key: string;
+                readonly name: string;
+                readonly description: string | null;
+                readonly assertionText: string;
+                readonly documentHint: string | null;
+                readonly verification: Konventix.Registration.Enums.EntryConditionVerification;
+                readonly archived: boolean;
+            };
             export type EventAttendeesData = {
                 readonly eventName: string;
                 readonly eventUrl: string;
@@ -1281,6 +1298,13 @@ declare namespace Konventix {
                 readonly unitAmountNet: string;
                 readonly taxClass: Konventix.Registration.Enums.TaxClass;
                 readonly display: Konventix.Registration.Enums.PriceDisplay;
+            };
+            export type PublicEntryConditionData = {
+                readonly id: string;
+                readonly key: string;
+                readonly name: string;
+                readonly assertionText: string;
+                readonly documentHint: string | null;
             };
             export type PublicOfferData = {
                 readonly registrationTypeId: string;
@@ -1364,6 +1388,13 @@ declare namespace Konventix {
         namespace Enums {
             export type ConfirmationGate =
                 'on_submit' | 'on_approval' | 'on_payment';
+            export type EntryConditionAssertionState =
+                'asserted' | 'verified' | 'refused' | 'waived';
+            export type EntryConditionDecisionSource = 'console' | 'door';
+            export type EntryConditionReasonCode =
+                'document_missing' | 'document_invalid' | 'operator_waived';
+            export type EntryConditionVerification =
+                'self_declared' | 'document_at_door' | 'operator_checked';
             export type GrantKind = 'admission' | 'resource_claim' | 'seating';
             export type PaymentStatus = 'none' | 'pending' | 'paid' | 'overdue';
             export type Permission =
@@ -1374,6 +1405,8 @@ declare namespace Konventix {
                 | 'registration.reject-registrations'
                 | 'registration.cancel-registrations'
                 | 'registration.reduce-registration-quantity'
+                | 'registration.manage-entry-conditions'
+                | 'registration.verify-entry-conditions'
                 | 'registration.issue-invitation-tokens'
                 | 'registration.export-registrations';
             export type PriceDisplay = 'net' | 'gross';

@@ -9,12 +9,16 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Konventix\Commerce\Events\CheckoutConsentGiven;
+use Konventix\Compliance\Bindings\PolicyResolver;
 use Konventix\Compliance\Console\ApplyRetentionRulesCommand;
 use Konventix\Compliance\Console\SweepUnverifiedRequestsCommand;
 use Konventix\Compliance\Console\WatchSubjectRequestDeadlinesCommand;
 use Konventix\Compliance\Data\CheckoutLegalTextGapData;
 use Konventix\Compliance\Data\CheckoutLegalTextRoleData;
 use Konventix\Compliance\Enums\Permission;
+use Konventix\Compliance\Events\ConsentGranted;
+use Konventix\Compliance\Events\ConsentPromptRaised;
+use Konventix\Compliance\Events\ConsentWithdrawn;
 use Konventix\Compliance\Events\DataExportCompleted;
 use Konventix\Compliance\Events\DataExportRequested;
 use Konventix\Compliance\Events\RetentionPeriodElapsed;
@@ -26,11 +30,14 @@ use Konventix\Compliance\Http\Middleware\EnsurePoliciesAccepted;
 use Konventix\Compliance\Legal\PolicyPublicLegalTexts;
 use Konventix\Compliance\Listeners\DispatchSubjectRequestFanOut;
 use Konventix\Compliance\Listeners\FlagOutstandingContractConsent;
+use Konventix\Compliance\Listeners\Metrics\RecordConsentMetrics;
 use Konventix\Compliance\Listeners\NotifySubjectOfRequestOutcome;
 use Konventix\Compliance\Listeners\PruneAuditTrail;
 use Konventix\Compliance\Listeners\RecordAuditableEvents;
 use Konventix\Compliance\Listeners\RecordCheckoutConsent;
 use Konventix\Compliance\Listeners\StartRetentionClock;
+use Konventix\Compliance\Metrics\ComplianceGauges;
+use Konventix\Compliance\Metrics\ComplianceMetrics;
 use Konventix\Compliance\Support\CheckoutLegalTexts;
 use Konventix\Compliance\Support\OutstandingConsents;
 use Konventix\Compliance\Support\PolicyMarkdown;
@@ -42,7 +49,9 @@ use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Slots\SlotRegistry;
+use Spatie\Prometheus\Facades\Prometheus;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -82,6 +91,12 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // resolves everything else per call.
         $this->app->singleton(CheckoutLegalTexts::class);
 
+        // ADR-0066: the same question with a context (spec §5.4). Stateless
+        // too — nothing is cached, because a rebinding has to take effect on
+        // the next request. `CheckoutLegalTexts` stays the no-context call
+        // that `missingSlugsForBrands()` and the #222 gap notice ask.
+        $this->app->singleton(PolicyResolver::class);
+
         // Platform declares the contract, Compliance answers it (#184,
         // ADR-0004): the kernel may not import a `Policy`, so this is how
         // code outside this module links to a published legal text. Replaces
@@ -93,11 +108,27 @@ class ComplianceServiceProvider extends ModuleServiceProvider
     {
         parent::boot();
 
+        $this->registerMetrics();
+
         // The consent gate as an opt-in alias other modules apply to their
         // own routes (see EnsurePoliciesAccepted). Compliance registers the
         // alias and wires nothing centrally — ADR-0003.
         $this->app->make(Router::class)
             ->aliasMiddleware('require-consent', EnsurePoliciesAccepted::class);
+    }
+
+    /**
+     * Compliance's metrics (ADR-0059, ADR-0066 spec §10): catalogue entries
+     * here, the consent recorders in `Listeners\Metrics`, the outstanding-
+     * contract gauge in `ComplianceGauges`, and
+     * `policy_binding_matches_total` written by the resolver itself, which
+     * is the only thing that knows a binding matched.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...ComplianceMetrics::definitions());
+
+        Prometheus::registerCollectorClasses([ComplianceGauges::class]);
     }
 
     /**
@@ -141,6 +172,14 @@ class ComplianceServiceProvider extends ModuleServiceProvider
         // module's tables — events are the only contract between modules
         // (ADR-0004), and the architecture test allows nothing else.
         Event::listen(CheckoutConsentGiven::class, [RecordCheckoutConsent::class, 'handle']);
+
+        // ADR-0059 / ADR-0066 spec §10: the three consent counters. Prompts
+        // and grants share one bounded surface set so the dashboard can
+        // divide one by the other — the refusal rate is derived, never
+        // counted (D-CPL-17).
+        Event::listen(ConsentPromptRaised::class, [RecordConsentMetrics::class, 'handle']);
+        Event::listen(ConsentGranted::class, [RecordConsentMetrics::class, 'handle']);
+        Event::listen(ConsentWithdrawn::class, [RecordConsentMetrics::class, 'handle']);
 
         // Telling the subject what happened to their request (Art. 12(3)).
         // Deletion is acknowledged when it *starts* — see the listener for

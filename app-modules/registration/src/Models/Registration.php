@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 use Konventix\Registration\Database\Factories\RegistrationFactory;
@@ -119,6 +120,23 @@ class Registration extends Model
     public function registrationType(): BelongsTo
     {
         return $this->belongsTo(RegistrationType::class);
+    }
+
+    /**
+     * The declarations made when this act was submitted (ADR-0066, spec
+     * §4.3): one row per condition the type demanded at that moment, with the
+     * wording that was shown.
+     *
+     * There is deliberately no row for a condition added to the type
+     * afterwards — the console derives *not asserted* from the absence
+     * (D-REG-19) — and a row survives the removal of a condition from the
+     * type, because it is evidence rather than configuration.
+     *
+     * @return HasMany<EntryConditionAssertion, $this>
+     */
+    public function entryConditionAssertions(): HasMany
+    {
+        return $this->hasMany(EntryConditionAssertion::class, 'registration_id');
     }
 
     /**

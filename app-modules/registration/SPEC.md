@@ -34,6 +34,34 @@ is entitled to what*; other modules materialize those entitlements.
   `on_approval`. `sales_start`/`sales_end` are nullable columns on the type.
   The sales window is stored as instants, not ADR-0027 wall-clock times
   (#218).
+- **`EntryCondition`** and the `registration_type_entry_condition` pivot
+  (ADR-0066, D-REG-17/18) — what a reduced fare rests on: the sentence a
+  registrant ticks (`assertion_text`, verbatim), the document the door will
+  ask for (`document_hint`), and how it is meant to be checked
+  (`verification`: `self_declared` / `document_at_door` /
+  `operator_checked`). Brand-wide and reusable, with an optional `event_id`
+  pinning a one-off condition to one event; the stable `key` is what travels
+  to the door and onto the ticket, the ULID is what a Compliance policy
+  binding points at. Conditions are **archived, never deleted**, and the set
+  on a type stays editable after the type has sold — `entryConditions` is
+  deliberately **not** one of `GuardsTypeConfiguration::frozenAxes()`
+  (D-REG-19). `operator_checked` is advisory and fills a worklist; a blocking
+  check is `approval: required` on the type (D-REG-22).
+  `registration_types.alternative_registration_type_id` is nullable and used
+  for exactly one thing: the "buy the regular ticket instead" link beside a
+  refused submission (D-REG-21).
+- **`EntryConditionAssertion`** — the evidence: one row per
+  `(registration, condition)` whatever the registration's `quantity`
+  (D-REG-20), carrying `assertion_text_snapshot` and `verification_snapshot`
+  as they stood when the declaration was made, plus what was later decided
+  about it (`asserted` / `verified` / `refused` / `waived`, with a bounded
+  `reason_code` and `decided_via: console|door`). The snapshot is why the
+  condition may be reworded freely: evidence may not change under the person
+  who gave it. A condition added to a live type writes **no** row for the
+  registrations that already exist — the console shows *not asserted*
+  instead — and removing one from a type leaves the historic rows standing.
+  A refusal records a fact: it never revokes an admission and never reaches
+  Commerce.
 - **`Registration`** — the contractual act itself. Carries the invoice
   recipient (which may be an organization rather than the submitting user), the
   registration status, the answers given on the registration form, and
@@ -156,6 +184,11 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 | `RegistrationPaymentStatusChanged` | The independent payment status field moves | `registration_id`, `brand_id`, `previous_status`, `status`, `changed_at` |
 | `QuotaExhausted` | The last unit of a quota is consumed | `quota_id`, `event_id`, `brand_id`, `exhausted_at` |
 | `QuotaReleased` | Units return to a quota after cancellation or expiry | `quota_id`, `released_units`, `released_at` |
+| `EntryConditionCreated` / `EntryConditionUpdated` / `EntryConditionArchived` | An operator defines, changes or archives an entry condition. All three are `AuditableEvent` — binding a fare to a requirement is a privileged act | `entry_condition_id`, `brand_id`, `key`, `name`, `verification` |
+| `RegistrationTypeEntryConditionsChanged` | The set of conditions a type demands changed. A **full state**, not a delta, and nothing retroactive follows from it (D-REG-19) | `registration_type_id`, `brand_id`, `entry_condition_ids` (in render order) |
+| `RegistrationEntryConditionAsserted` | A registrant declared that they meet a condition — one per condition the type demanded at submission | `assertion_id`, `registration_id`, `entry_condition_id`, `entry_condition_key`, `brand_id`, `subject_user_id`, `verification`, `asserted_at` |
+| `RegistrationEntryConditionDecided` | Somebody verified, refused or waived a declaration, at the console or at the door | `assertion_id`, `registration_id`, `entry_condition_key`, `brand_id`, `state`, `decided_by_user_id`, `decided_via`, `reason_code`, `decided_at` |
+| `RegistrationConsentGiven` | A registrant accepted the legal texts on the registration form (D-CPL-10) — Registration's half of the declaration contract, beside Commerce's `CheckoutConsentGiven` | `brand_id`, `subject_id`, `capture_context`, `accepted_at`, `binding_context` (an opaque bag of scalars this module builds and never interprets) |
 | `RegistrationOwnershipAnnounced` | `registration:announce-ownership` replays it for every registration (design doc §13, 2026-09-11 amendment) | `registration_id`, `brand_id`, `registrant_user_id` — a registration's buyer, restated for backfill only — never re-emits `RegistrationConfirmed`'s mail-triggering payload |
 
 ## Consumes
@@ -187,8 +220,23 @@ data, not code (ADR-0013).
 The catalog covers: viewing registrations, managing `RegistrationType`
 definitions, managing quotas, approving and rejecting submissions, cancelling
 registrations, reducing a confirmed registration's quantity (D-REG-15),
-issuing invitation tokens, and exporting registration lists.
+defining entry conditions and judging a declaration of one (D-REG-24 —
+`ManageEntryConditions` and `VerifyEntryConditions`, two capabilities because
+writing the terms of an offer and judging a document are different jobs;
+only the judging one is part of `registration.desk`), issuing invitation
+tokens, and exporting registration lists.
 Registration never references another module's `Permission` enum.
+
+## Observability
+
+`Metrics\RegistrationMetrics` (ADR-0059, ADR-0066 §10):
+`entry_condition_assertions_total{brand, verification}` and
+`entry_condition_decisions_total{brand, state, source}`, recorded by
+`Listeners\Metrics\RecordEntryConditionMetrics` on this module's own events.
+The condition's `key` rides on both events and is **never** a label: an
+operator-defined key is unbounded cardinality (T-11). Both feed the *Consent
+and conditions* row of the platform dashboard, and the second one feeds
+`KonventixEntryConditionRefusalsAtDoor`.
 
 ## Mail
 

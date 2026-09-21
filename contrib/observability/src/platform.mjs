@@ -56,6 +56,25 @@ export default dashboard({
             timeseries('Schedule heartbeat age', [prom(`time() - konventix_schedule_last_heartbeat_timestamp_seconds{${J}}`)], { unit: 's', w: 12, description: 'KonventixScheduleStale fires at 300 s.' }),
             timeseries('Log records per minute by level', [prom(`sum by (level) (rate(konventix_log_records_total{${J}}[5m])) * 60`, '{{level}}')], { w: 12 }),
         ]),
+        row('Consent and conditions', [
+            stat('Prompts', [prom(`sum(increase(konventix_consent_prompts_total{${J}}[$__range]))`)], { description: 'Times somebody was asked to agree to something, in the selected range (ADR-0066).' }),
+            stat('Grants', [prom(`sum(increase(konventix_consent_grants_total{${J}}[$__range]))`)], { description: 'Agreements recorded. Prompts and grants share one surface set so the two are comparable.' }),
+            stat('Not agreed', [prom(`1 - sum(increase(konventix_consent_grants_total{${J}}[$__range])) / sum(increase(konventix_consent_prompts_total{${J}}[$__range]))`)], { unit: 'percentunit', thresholds: thresholds('green', [0.5, 'orange'], [0.9, 'red']), description: 'Derived from prompts against grants (D-CPL-17); the interstitial\'s "Not now" has no counter of its own. KonventixConsentGateBlocking fires when prompts run with no grant at all.' }),
+            stat('Outstanding contract subjects', [prom(`sum(konventix_outstanding_contract_subjects{${J}})`)], { description: 'People who still owe agreement to a published contract text.' }),
+            stat('Withdrawals', [prom(`sum(increase(konventix_consent_withdrawals_total{${J}}[$__range]))`)]),
+            stat('Door refusals', [prom(`sum(increase(konventix_entry_condition_decisions_total{${J}, state="refused", source="door"}[$__range]))`)], { thresholds: thresholds('green', [1, 'orange']), description: 'KonventixEntryConditionRefusalsAtDoor fires above three in ten minutes.' }),
+            timeseries('Prompts per hour by surface and reason', [prom(`sum by (surface, reason) (increase(konventix_consent_prompts_total{${J}}[1h]))`, '{{surface}} {{reason}}')], { w: 12 }),
+            timeseries('Grants against prompts per hour', [
+                prom(`sum by (surface) (increase(konventix_consent_prompts_total{${J}}[1h]))`, '{{surface}} prompted'),
+                prom(`sum by (surface) (increase(konventix_consent_grants_total{${J}}[1h]))`, '{{surface}} granted'),
+            ], { w: 12, description: 'The refusal rate is the gap between the two — it is derived, never counted (D-CPL-17).' }),
+            timeseries('Bound-policy matches per hour by kind', [prom(`sum by (brand, kind) (increase(konventix_policy_binding_matches_total{${J}}[1h]))`, '{{brand}} {{kind}}')], { w: 8, description: 'Whether a bound text is actually being asked for. The kind is a label; the target never is.' }),
+            timeseries('Outstanding contract subjects', [prom(`konventix_outstanding_contract_subjects{${J}}`, '{{brand}}')], { w: 8 }),
+            timeseries('Entry conditions per hour', [
+                prom(`sum by (verification) (increase(konventix_entry_condition_assertions_total{${J}}[1h]))`, 'asserted {{verification}}'),
+                prom(`sum by (state, source) (increase(konventix_entry_condition_decisions_total{${J}}[1h]))`, '{{state}} at the {{source}}'),
+            ], { w: 8 }),
+        ]),
         row('Runtime', [
             timeseries('CPU per role', [prom(`sum by (container) (rate(container_cpu_usage_seconds_total{${K}, container!="", container!="POD"}[5m]))`, '{{container}}')], { unit: 'short' }),
             timeseries('Memory per role', [prom(`sum by (container) (container_memory_working_set_bytes{${K}, container!="", container!="POD"})`, '{{container}}')], { unit: 'bytes' }),

@@ -60,6 +60,7 @@ final class GrantConsent
                 versionId: $policyVersion->id,
                 brandId: $consent->brand_id,
                 grantedAt: $grantedAt->toIso8601String(),
+                captureContext: $captureContext,
             ));
 
             return $consent;

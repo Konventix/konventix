@@ -425,6 +425,60 @@ alert that resolves itself within the hour on a publishing day is the
 system working; a daily one on a sale day means the confirmations of the
 last hours are queued until midnight and is worth a decision before then.
 
+### KonventixConsentGateBlocking
+
+More than five consent prompts were raised for a brand in fifteen minutes
+and not one agreement was recorded (ADR-0066, D-CPL-17). Everybody is
+being asked and nobody is agreeing, which almost never means everybody
+changed their mind. The sale has stopped and nothing else notices: no 5xx,
+no failed job, no queue backlog — the logs look healthy, which is exactly
+why this rule exists.
+
+Three causes, in the order they are worth checking. **An unpublished or
+un-effective text**: the interstitial and the checkout slot render nothing
+to agree to when the policy a gate asks for has no published version whose
+`effective_at` has arrived, so the control is empty and the POST has
+nothing to record. `/admin/policies` for the brand, and the settlement
+console's gap notice (#222), say which slug is missing. **A redirect
+loop**: a gate that sends somebody to `policies.required` where the same
+gate applies again — `require-contract-consent` is applied by each owning
+module to its own routes and must never reach `policies.*`, the login
+routes, `/my/*` or Support's report channel (T-9, ADR-0063). Watch one
+request in the access log (`http.request` records) and see whether the
+redirect repeats. **A broken control**: check the browser console on the
+page the dashboard's "Prompts per hour by surface" names as the surface —
+a page that never renders the checkbox cannot be agreed to.
+
+The panel beside it is "Grants against prompts per hour". The refusal rate
+is derived from those two series and is not a counter: the interstitial's
+"Not now" increments nothing, on purpose, so a high gap is this alert's
+evidence and not a separate number to chase.
+
+### KonventixEntryConditionRefusalsAtDoor
+
+More than three entry-condition declarations were refused at the entrance
+in ten minutes for one brand (ADR-0066, D-ADM-06). Two readings, and the
+door staff can usually tell them apart in a minute: a reduced-fare type is
+being abused — people bought a student ticket without a student ID — or
+the door is misreading the hint and refusing people who did bring what was
+asked for.
+
+Look at the registrations index filtered on entry-condition state for that
+brand: it lists which condition is being refused and what the ticket told
+the holder to bring (`document_hint`, printed on the ticket PDF). If the
+hint and what the door is asking for disagree, fix the hint on
+`/admin/entry-conditions` — it reaches tickets rendered from that point on
+and the admissions issued afterwards; admissions already issued keep the
+list they were stamped with, so tell the door directly as well.
+
+Nothing needs rescuing at the turnstile either way. A refusal records a
+fact: it never revokes the admission and never reaches Commerce (T-8), so
+nobody is turned away by the system and no money moves. Whether a refused
+person is let in is the operator's decision at the door, and an operator
+who wants a *blocking* check sets `approval: required` on the registration
+type instead, which is decided before the event rather than at the
+entrance.
+
 ### KonventixRoleUnavailable
 
 A deployment has had unavailable replicas for ten minutes. `kubectl -n

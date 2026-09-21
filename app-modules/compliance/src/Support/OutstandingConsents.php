@@ -112,6 +112,23 @@ final class OutstandingConsents
     }
 
     /**
+     * The version ids this subject holds a live consent for.
+     *
+     * The same fact `consentedVersionIds()` expresses as a subquery, read out
+     * as a list instead — for the one caller that has already resolved its
+     * own candidate set and only needs to subtract
+     * (`Bindings\PolicyResolver::outstandingContractFor()`). Kept here rather
+     * than re-queried there so "still owes agreement" stays one definition:
+     * a consent that has been withdrawn does not count.
+     *
+     * @return list<string>
+     */
+    public function consentedVersionIdsFor(string $subjectId): array
+    {
+        return array_values(array_map(strval(...), $this->consentedVersionIds($subjectId)->pluck('policy_version_id')->all()));
+    }
+
+    /**
      * The published, effective, consent-requiring versions of the policies
      * this brand reads — or null when no brand is resolved at all (a console
      * command, a queued job without brand context). Refusing to answer is

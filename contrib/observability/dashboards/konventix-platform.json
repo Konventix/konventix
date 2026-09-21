@@ -1485,11 +1485,657 @@
     {
       "id": 28,
       "type": "row",
-      "title": "Runtime",
+      "title": "Consent and conditions",
       "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 66,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Prompts",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 0,
+        "y": 67
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_consent_prompts_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Times somebody was asked to agree to something, in the selected range (ADR-0066).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 29
+    },
+    {
+      "type": "stat",
+      "title": "Grants",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 4,
+        "y": 67
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_consent_grants_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Agreements recorded. Prompts and grants share one surface set so the two are comparable.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 30
+    },
+    {
+      "type": "stat",
+      "title": "Not agreed",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 8,
+        "y": 67
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "1 - sum(increase(konventix_consent_grants_total{job=\"$release\"}[$__range])) / sum(increase(konventix_consent_prompts_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Derived from prompts against grants (D-CPL-17); the interstitial's \"Not now\" has no counter of its own. KonventixConsentGateBlocking fires when prompts run with no grant at all.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 31
+    },
+    {
+      "type": "stat",
+      "title": "Outstanding contract subjects",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 12,
+        "y": 67
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(konventix_outstanding_contract_subjects{job=\"$release\"})",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "People who still owe agreement to a published contract text.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 32
+    },
+    {
+      "type": "stat",
+      "title": "Withdrawals",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 16,
+        "y": 67
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_consent_withdrawals_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 33
+    },
+    {
+      "type": "stat",
+      "title": "Door refusals",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 20,
+        "y": 67
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_entry_condition_decisions_total{job=\"$release\", state=\"refused\", source=\"door\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "KonventixEntryConditionRefusalsAtDoor fires above three in ten minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 34
+    },
+    {
+      "type": "timeseries",
+      "title": "Prompts per hour by surface and reason",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 0,
+        "y": 71
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (surface, reason) (increase(konventix_consent_prompts_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{surface}} {{reason}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 35
+    },
+    {
+      "type": "timeseries",
+      "title": "Grants against prompts per hour",
+      "gridPos": {
+        "w": 12,
+        "h": 8,
+        "x": 12,
+        "y": 71
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (surface) (increase(konventix_consent_prompts_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{surface}} prompted",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (surface) (increase(konventix_consent_grants_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{surface}} granted",
+          "range": true
+        }
+      ],
+      "description": "The refusal rate is the gap between the two — it is derived, never counted (D-CPL-17).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 36
+    },
+    {
+      "type": "timeseries",
+      "title": "Bound-policy matches per hour by kind",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 0,
+        "y": 79
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (brand, kind) (increase(konventix_policy_binding_matches_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{brand}} {{kind}}",
+          "range": true
+        }
+      ],
+      "description": "Whether a bound text is actually being asked for. The kind is a label; the target never is.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 37
+    },
+    {
+      "type": "timeseries",
+      "title": "Outstanding contract subjects",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 8,
+        "y": 79
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "konventix_outstanding_contract_subjects{job=\"$release\"}",
+          "legendFormat": "{{brand}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 38
+    },
+    {
+      "type": "timeseries",
+      "title": "Entry conditions per hour",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 16,
+        "y": 79
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (verification) (increase(konventix_entry_condition_assertions_total{job=\"$release\"}[1h]))",
+          "legendFormat": "asserted {{verification}}",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (state, source) (increase(konventix_entry_condition_decisions_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{state}} at the {{source}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 39
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Runtime",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 87,
         "w": 24,
         "h": 1
       },
@@ -1502,7 +2148,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 67
+        "y": 88
       },
       "targets": [
         {
@@ -1547,7 +2193,7 @@
           "sort": "desc"
         }
       },
-      "id": 29
+      "id": 41
     },
     {
       "type": "timeseries",
@@ -1556,7 +2202,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 67
+        "y": 88
       },
       "targets": [
         {
@@ -1601,7 +2247,7 @@
           "sort": "desc"
         }
       },
-      "id": 30
+      "id": 42
     },
     {
       "type": "timeseries",
@@ -1610,7 +2256,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 75
+        "y": 96
       },
       "targets": [
         {
@@ -1655,7 +2301,7 @@
           "sort": "desc"
         }
       },
-      "id": 31
+      "id": 43
     },
     {
       "type": "timeseries",
@@ -1664,7 +2310,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 75
+        "y": 96
       },
       "targets": [
         {
@@ -1709,16 +2355,16 @@
           "sort": "desc"
         }
       },
-      "id": 32
+      "id": 44
     },
     {
-      "id": 33,
+      "id": 45,
       "type": "row",
       "title": "Database",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 83,
+        "y": 104,
         "w": 24,
         "h": 1
       },
@@ -1731,7 +2377,7 @@
         "w": 6,
         "h": 4,
         "x": 0,
-        "y": 84
+        "y": 105
       },
       "targets": [
         {
@@ -1785,7 +2431,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 34
+      "id": 46
     },
     {
       "type": "stat",
@@ -1794,7 +2440,7 @@
         "w": 6,
         "h": 4,
         "x": 6,
-        "y": 84
+        "y": 105
       },
       "targets": [
         {
@@ -1844,7 +2490,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 35
+      "id": 47
     },
     {
       "type": "timeseries",
@@ -1853,7 +2499,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 84
+        "y": 105
       },
       "targets": [
         {
@@ -1898,7 +2544,7 @@
           "sort": "desc"
         }
       },
-      "id": 36
+      "id": 48
     }
   ]
 }

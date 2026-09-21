@@ -37,6 +37,7 @@ use Konventix\Platform\Data\EndPriceData;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Pages\RegistrantAudience;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Platform\Slots\SlotRegistry;
@@ -51,6 +52,8 @@ use Konventix\Registration\Events\QuotaReleased;
 use Konventix\Registration\Events\RegistrationApproved;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationEntryConditionAsserted;
+use Konventix\Registration\Events\RegistrationEntryConditionDecided;
 use Konventix\Registration\Events\RegistrationQuantityReduced;
 use Konventix\Registration\Events\RegistrationRejected;
 use Konventix\Registration\Events\RegistrationSubmitted;
@@ -66,6 +69,7 @@ use Konventix\Registration\Listeners\MailOnRegistrationQuantityReduced;
 use Konventix\Registration\Listeners\MailOnRegistrationRejected;
 use Konventix\Registration\Listeners\MailOnRegistrationSubmitted;
 use Konventix\Registration\Listeners\MarkInvoicedOnInvoiceIssued;
+use Konventix\Registration\Listeners\Metrics\RecordEntryConditionMetrics;
 use Konventix\Registration\Listeners\ProjectEventSummary;
 use Konventix\Registration\Listeners\ProjectRegistrant;
 use Konventix\Registration\Listeners\PromoteOnQuotaReleased;
@@ -74,6 +78,7 @@ use Konventix\Registration\Listeners\RecordPaymentOnOrderLineSettled;
 use Konventix\Registration\Listeners\RecordPaymentOnOrderPaid;
 use Konventix\Registration\Listeners\RecordReversalOnOrderLineReversed;
 use Konventix\Registration\Listeners\RecordReversalOnPaymentReversed;
+use Konventix\Registration\Metrics\RegistrationMetrics;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
 use Konventix\Registration\Offers\PublicOffers;
@@ -114,6 +119,11 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 Permission::ApproveRegistrations,
                 Permission::RejectRegistrations,
                 Permission::CancelRegistrations,
+                // D-REG-24: judging a declaration is desk work — the
+                // `operator_checked` worklist is the registrations index.
+                // Defining a condition (`ManageEntryConditions`) is not, for
+                // the same reason the desk does not edit registration types.
+                Permission::VerifyEntryConditions,
                 Permission::ExportRegistrations,
             ),
         ];
@@ -223,6 +233,12 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         // same event live in their own providers and decide the ordering
         // between themselves (see `ReduceRegistrationQuantity`'s docblock).
         Event::listen(RegistrationQuantityReduced::class, MailOnRegistrationQuantityReduced::class);
+
+        // ADR-0059 / spec §10: the two entry-condition counters. One
+        // listener for both events, on this module's own events — never a
+        // call into Platform from the Action that emitted them.
+        Event::listen(RegistrationEntryConditionAsserted::class, [RecordEntryConditionMetrics::class, 'handle']);
+        Event::listen(RegistrationEntryConditionDecided::class, [RecordEntryConditionMetrics::class, 'handle']);
     }
 
     protected function registerGdprExporters(): void
@@ -678,11 +694,24 @@ class RegistrationServiceProvider extends ModuleServiceProvider
     {
         parent::boot();
 
+        $this->registerMetrics();
+
         $this->commands([ExpireWaitlistOffersCommand::class, AnnounceRegistrationOwnershipCommand::class]);
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             $schedule->command('registration:expire-waitlist-offers')->everyFifteenMinutes();
         });
+    }
+
+    /**
+     * Registration's metrics (ADR-0059, ADR-0066 spec §10): catalogue
+     * entries here, the recorder in `Listeners\Metrics`. No gauge — both
+     * entries are counters on this module's own events, and the host never
+     * learns these names.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...RegistrationMetrics::definitions());
     }
 
     /**

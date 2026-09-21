@@ -101,6 +101,7 @@ final class WithdrawConsent
                 subjectId: $consent->subject_id,
                 policyId: $consent->policyVersion->policy_id,
                 withdrawnAt: $withdrawnAt->toIso8601String(),
+                brandId: $consent->brand_id,
             ));
 
             return $consent;

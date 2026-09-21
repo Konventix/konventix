@@ -143,6 +143,23 @@ groups:
           summary: "Mail quota for {{ $labels.brand }} is exhausted for this {{ $labels.window }}; mail is being held"
           runbook: "docs/operations.md#konventixmailquotaexhausted"
 
+      - alert: KonventixConsentGateBlocking
+        expr: |
+          sum by (brand) (increase(konventix_consent_prompts_total{job="__RELEASE__"}[15m])) > 5
+          and sum by (brand) (increase(konventix_consent_grants_total{job="__RELEASE__"}[15m])) == 0
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "Everybody at {{ $labels.brand }} is being asked to agree and nobody is agreeing"
+          runbook: "docs/operations.md#konventixconsentgateblocking"
+
+      - alert: KonventixEntryConditionRefusalsAtDoor
+        expr: |
+          sum by (brand) (increase(konventix_entry_condition_decisions_total{job="__RELEASE__", state="refused", source="door"}[10m])) > 3
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "The door at {{ $labels.brand }} is refusing entry conditions"
+          runbook: "docs/operations.md#konventixentryconditionrefusalsatdoor"
+
   - name: konventix.platform
     rules:
       - alert: KonventixDatabaseBackupMissing

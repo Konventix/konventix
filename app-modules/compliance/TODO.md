@@ -6,6 +6,30 @@
 
 ## Next
 
+- [x] Policy bindings and the resolver — the behaviour-neutral foundation
+      (round 4, Task 30, ADR-0066; D-CPL-02/03/04/05/08/09/16).
+      `policy_bindings` (`kind` + `target_key`, nullable `brand_id` through
+      `MayBeOperatorWide`, unique per `(policy, kind, target)`), the two
+      nullable `consents` columns `policy_binding_id` and `binding_context`
+      (**no backfill** — a null bag means "asked brand-wide", which is what
+      every existing row meant), `PolicyBinding` + factory, `bindings()` on
+      `Policy`, `PolicyBindingKind`, `BindPolicy`/`UnbindPolicy`, events
+      `PolicyBound`/`PolicyBindingRemoved` (both `AuditableEvent`) and
+      `ConsentPromptRaised`, `Permission::ManagePolicyBindings`, and
+      `Bindings\PolicyResolver` with `BindingContext` and
+      `ResolvedLegalText` — **OR within a kind, AND across kinds**, unbound
+      policies always resolving, ordering `terms`/`withdrawal` then by name,
+      and `requires_consent` alone deciding agreement versus information
+      (no role column; `CheckoutLegalTextRoleData` untouched).
+      `CheckoutLegalTexts::forBrand()` and `missingSlugsForBrands()` are
+      unchanged and stay the no-context call the #222 gap notice asks. Also
+      the module's first metrics catalogue and the *Consent and conditions*
+      dashboard row, with `KonventixConsentGateBlocking`. **Nothing resolves
+      through the new path yet**: the binding console, the
+      `registration.consent` slot and the two-step checkout are Task 32, the
+      re-consent gate is Task 33.
+      `ConsentGranted` gained `capture_context` and `ConsentWithdrawn` a
+      nullable `brand_id`, both appended for the counters.
 - [ ] Two stores of personal data now sit outside the retention machinery:
       Telescope's request bodies (development only — a `require-dev` package
       that never reaches production) and Pulse's user-keyed aggregates. Both

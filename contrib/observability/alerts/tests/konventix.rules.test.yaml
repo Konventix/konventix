@@ -313,3 +313,53 @@ tests:
             exp_annotations:
               summary: "Mail quota for sxlan is exhausted for this hour; mail is being held"
               runbook: "docs/operations.md#konventixmailquotaexhausted"
+
+  # ADR-0066 spec §10: everyone is being asked and nobody is agreeing — a
+  # loop, an unpublished text, or a broken interstitial. The failure mode
+  # this feature can produce that nothing else would catch: the sale stops
+  # and the logs look healthy. The second brand proves the rule does not
+  # fire where grants are keeping up.
+  - interval: 1m
+    input_series:
+      - series: 'konventix_consent_prompts_total{job="konventix", brand="sxlan", surface="checkout", reason="contract"}'
+        values: '0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32'
+      - series: 'konventix_consent_grants_total{job="konventix", brand="sxlan", surface="checkout"}'
+        values: '0x17'
+      - series: 'konventix_consent_prompts_total{job="konventix", brand="other", surface="checkout", reason="contract"}'
+        values: '0 2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32'
+      - series: 'konventix_consent_grants_total{job="konventix", brand="other", surface="checkout"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16'
+    alert_rule_test:
+      - eval_time: 16m
+        groupname: konventix.app
+        alertname: KonventixConsentGateBlocking
+        exp_alerts:
+          - exp_labels: {brand: sxlan, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Everybody at sxlan is being asked to agree and nobody is agreeing"
+              runbook: "docs/operations.md#konventixconsentgateblocking"
+
+  # ADR-0066 spec §10: more than three door refusals in ten minutes —
+  # either a reduced-fare type is being abused or the door is misreading
+  # the hint. A console refusal is deliberately not counted here.
+  - interval: 1m
+    input_series:
+      - series: 'konventix_entry_condition_decisions_total{job="konventix", brand="sxlan", state="refused", source="door"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11'
+      - series: 'konventix_entry_condition_decisions_total{job="konventix", brand="sxlan", state="refused", source="console"}'
+        values: '0x11'
+      - series: 'konventix_entry_condition_decisions_total{job="konventix", brand="sxlan", state="verified", source="door"}'
+        values: '0 5 10 15 20 25 30 35 40 45 50 55'
+    alert_rule_test:
+      - eval_time: 2m
+        groupname: konventix.app
+        alertname: KonventixEntryConditionRefusalsAtDoor
+        exp_alerts: []
+      - eval_time: 11m
+        groupname: konventix.app
+        alertname: KonventixEntryConditionRefusalsAtDoor
+        exp_alerts:
+          - exp_labels: {brand: sxlan, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "The door at sxlan is refusing entry conditions"
+              runbook: "docs/operations.md#konventixentryconditionrefusalsatdoor"

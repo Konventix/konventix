@@ -22,8 +22,30 @@ what comes back (ADR-0004).
   every brand inherits it unless it publishes its own under the same slug
   (#76, ADR-0016). Each version has an effective date, published text, and a
   flag for whether agreement is required.
+- **Policy bindings** (ADR-0066, D-CPL-02/03/04/05): what a policy governs —
+  a `kind` (`event`, `registration_type`, `settlement_provider`,
+  `entry_condition`) and a `target_key`, which is a ULID for the three entity
+  kinds and the provider's own key for the fourth. A binding hangs on the
+  **policy**, never on a version: rebinding a text is not a new version of
+  it. `brand_id` is nullable and mirrors the policy's: a brand may bind the
+  operator's inherited text to its own event, the operator binds globally
+  with null. **A policy with no bindings applies everywhere its brand
+  sells** — today's behaviour, unchanged, and the state the console states
+  out loud.
+- **The resolver** (`Bindings\PolicyResolver`, ADR-0066 D-CPL-03/08): which
+  texts apply to *this* act, given a `BindingContext` of scalars the calling
+  module builds and never interprets. A bound policy matches when, for every
+  kind it binds on, one of its bindings of that kind matches — **OR within a
+  kind, AND across kinds**; a kind it does not bind on places no requirement,
+  and a bound kind the context carries nothing for cannot match.
+  `requires_consent` alone decides agreement versus information; there is no
+  role column and no third role. `Support\CheckoutLegalTexts::forBrand()`
+  stays the no-context call the #222 gap notice asks.
 - **Consent records**: subject, policy version, timestamp, the context the
-  consent was captured in, and withdrawal. A subject is a ULID that may be a
+  consent was captured in, the binding that made the text applicable and a
+  snapshot of the scalars the resolution ran on (D-CPL-09 — evidence, never
+  a read model; both null for an unbound policy and for every row written
+  before ADR-0066), and withdrawal. A subject is a ULID that may be a
   user or — for people who registered without an account — a subject key issued
   by Compliance.
 - **The login and checkout re-consent gate** (#205): a narrower question
@@ -89,8 +111,11 @@ A row becomes binding when its event class lands; the rest stay proposals.
 |---|---|---|---|
 | `PolicyPublished` | A policy version becomes effective | `policy_id`, `version_id`, `brand_id` (null for an operator-wide text, #76), `slug`, `effective_at`, `requires_consent` | shipped |
 | `PolicyWithdrawn` | A policy version is superseded or withdrawn | `policy_id`, `version_id`, `brand_id` | proposed |
-| `ConsentGranted` | A subject agrees to a policy version | `consent_id`, `subject_id`, `policy_id`, `version_id`, `brand_id`, `granted_at` | shipped |
-| `ConsentWithdrawn` | A subject withdraws agreement | `consent_id`, `subject_id`, `policy_id`, `withdrawn_at` | shipped |
+| `ConsentGranted` | A subject agrees to a policy version | `consent_id`, `subject_id`, `policy_id`, `version_id`, `brand_id`, `granted_at`, `capture_context` | shipped |
+| `ConsentWithdrawn` | A subject withdraws agreement | `consent_id`, `subject_id`, `policy_id`, `withdrawn_at`, `brand_id` (null where none could be named) | shipped |
+| `ConsentPromptRaised` | A subject is *asked* to agree to something | `brand_id`, `subject_id`, `surface` (`login`/`checkout`/`registration`/`route_gate`), `reason` (`contract`/`required`) | shipped |
+| `PolicyBound` | A policy is bound to something it governs | `policy_id`, `binding_id`, `brand_id` (null when the operator binds globally), `kind`, `target_key`, `changed_by_user_id` | shipped |
+| `PolicyBindingRemoved` | A binding is taken off a policy | same payload as `PolicyBound` | shipped |
 | `DataExportRequested` | An export request is accepted and fans out | `request_id`, `subject_id`, `brand_id`, `requested_at` | shipped |
 | `DataExportCompleted` | Every handler has responded and the archive exists | `request_id`, `subject_id`, `archive_expires_at` | shipped |
 | `UserDeletionRequested` | A deletion request is accepted and fans out | `request_id`, `subject_id`, `brand_id`, `mode` (`anonymize` or `erase`) | shipped |
@@ -125,10 +150,30 @@ Declared in `src/Enums/Permission.php`. Roles that grant them are per-brand
 data, not code (ADR-0013).
 
 Proposed catalogue: `ViewPolicies`, `ManagePolicies`, `PublishPolicy`,
-`ViewConsents`, `ViewSubjectRequests`, `HandleSubjectRequests`,
-`DownloadSubjectExport`, `ViewAuditLog`, `ManageRetentionRules`. Downloading a
-subject export is separated from handling requests on purpose: seeing that a
-request exists and seeing its contents are different levels of access.
+`ManagePolicyBindings`, `ViewConsents`, `ViewSubjectRequests`,
+`HandleSubjectRequests`, `DownloadSubjectExport`, `ViewAuditLog`,
+`ManageRetentionRules`. Downloading a subject export is separated from
+handling requests on purpose: seeing that a request exists and seeing its
+contents are different levels of access. `ManagePolicyBindings` is separate
+from `ManagePolicies` for the same kind of reason (D-CPL-16): binding a text
+to a product changes who is bound by it without changing a word of it.
+Compliance ships no default role of its own, so both reach an operator
+through Platform's `platform.brand-admin` (ADR-0045).
+
+## Observability
+
+`Metrics\ComplianceMetrics` (ADR-0059, ADR-0066 §10):
+`consent_prompts_total{brand, surface, reason}`,
+`consent_grants_total{brand, surface}`,
+`consent_withdrawals_total{brand}`,
+`policy_binding_matches_total{brand, kind}` — written by the resolver, since
+a resolution is not an event — and the scrape-time gauge
+`outstanding_contract_subjects{brand}`. Every label is a bounded set; a
+policy slug or a binding target never becomes one. The **refusal rate is
+derived** from prompts against grants on the dashboard's *Consent and
+conditions* row (D-CPL-17); there is no refusal counter, and the
+interstitial's "Not now" increments nothing. Alert:
+`KonventixConsentGateBlocking`.
 
 ## Activation
 
