@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { edit as notificationSettings } from '@/routes/notification-preferences';
 import { index as notificationsIndex } from '@/routes/notifications';
-import { badgeText, bellLabel } from './notificationInbox';
+import { badgeText, bellLabel, inboxView } from './notificationInbox';
 import { useNotificationInbox } from './useNotificationInbox';
 
 /**
@@ -40,7 +40,23 @@ const userId = computed<string | undefined>(() => {
     return id === undefined || id === null ? undefined : String(id);
 });
 
-const { inbox, markRead, markAllRead } = useNotificationInbox(userId);
+// The current brand's Reverb app key, shared by `HandleInertiaRequests`
+// (ADR-0025); `null` on the operator console host, which has no brand and
+// therefore no realtime — the feed still loads there, the socket is skipped.
+// Typed by hand because the shared-props declaration in `resources/js/types`
+// carries this key only through its index signature.
+const reverbKey = computed<string | null>(() => {
+    const reverb = page.props.reverb as { key?: string | null } | undefined;
+
+    return reverb?.key ?? null;
+});
+
+const { inbox, markRead, markAllRead, reload } = useNotificationInbox(
+    userId,
+    reverbKey,
+);
+
+const view = computed(() => inboxView(inbox));
 
 /**
  * A notification's URL is a link into this brand, so it stays an Inertia
@@ -116,14 +132,31 @@ function open(notification: { id: string; url: string | null }): void {
             </div>
             <div class="max-h-96 overflow-y-auto">
                 <p
-                    v-if="!inbox.loaded"
+                    v-if="view === 'loading'"
                     class="px-3 py-6 text-center text-sm text-text-muted"
                     role="status"
                 >
                     Loading…
                 </p>
+                <div
+                    v-else-if="view === 'failed'"
+                    class="flex flex-col items-center gap-2 px-3 py-6 text-center"
+                >
+                    <p class="text-sm text-danger" role="alert">
+                        Notifications could not be loaded.
+                    </p>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        class="h-auto px-3 py-1 text-xs"
+                        @click="reload"
+                    >
+                        Retry
+                    </Button>
+                </div>
                 <p
-                    v-else-if="inbox.notifications.length === 0"
+                    v-else-if="view === 'empty'"
                     class="px-3 py-6 text-center text-sm text-text-muted"
                 >
                     Nothing here yet.

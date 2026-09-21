@@ -31,15 +31,32 @@ export type InboxState = {
     ownerId: string | null;
     /** `false` until the first feed response landed — the bell's loading state. */
     loaded: boolean;
+    /**
+     * The last feed fetch was rejected or answered non-2xx. A terminal state
+     * beside `loaded`, not a substitute for it: before this existed every
+     * failure — a 419 after the session expired, a 500, a lost connection —
+     * left `loaded` false and the bell said "Loading…" until the next full
+     * page load. `retryFeed()` clears it before the next attempt.
+     */
+    failed: boolean;
     notifications: InboxNotification[];
     unread: number;
 };
+
+/** What the bell's list area shows, decided once here rather than in the template. */
+export type InboxView = 'loading' | 'failed' | 'empty' | 'list';
 
 /** The bell's short list keeps this many; the `/notifications` page has the rest. */
 export const INBOX_LIMIT = 15;
 
 export function emptyInbox(ownerId: string | null = null): InboxState {
-    return { ownerId, loaded: false, notifications: [], unread: 0 };
+    return {
+        ownerId,
+        loaded: false,
+        failed: false,
+        notifications: [],
+        unread: 0,
+    };
 }
 
 export function applyFeed(
@@ -49,6 +66,37 @@ export function applyFeed(
     state.notifications = feed.notifications.slice(0, INBOX_LIMIT);
     state.unread = feed.unread;
     state.loaded = true;
+    state.failed = false;
+}
+
+/** The feed request did not land: rejected, or answered with a non-ok status. */
+export function failFeed(state: InboxState): void {
+    state.failed = true;
+}
+
+/**
+ * Back to "Loading…" for the retry. Only the flag moves: a list that a
+ * push already filled stays where it is until the feed answers.
+ */
+export function retryFeed(state: InboxState): void {
+    state.failed = false;
+}
+
+/**
+ * "Loading…" only while neither terminal state was reached; a failure
+ * after a successful load (a retry cannot cause one today, but a refresh
+ * could) keeps the list rather than hiding it behind the error line.
+ */
+export function inboxView(
+    state: Pick<Readonly<InboxState>, 'loaded' | 'failed'> & {
+        readonly notifications: readonly unknown[];
+    },
+): InboxView {
+    if (state.loaded) {
+        return state.notifications.length === 0 ? 'empty' : 'list';
+    }
+
+    return state.failed ? 'failed' : 'loading';
 }
 
 /**

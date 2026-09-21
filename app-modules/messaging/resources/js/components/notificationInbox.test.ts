@@ -5,10 +5,13 @@ import {
     badgeText,
     bellLabel,
     emptyInbox,
+    failFeed,
     INBOX_LIMIT,
+    inboxView,
     markAllRead,
     markRead,
     receive,
+    retryFeed,
 } from './notificationInbox';
 
 function notification(
@@ -37,6 +40,51 @@ describe('notificationInbox', () => {
         expect(state.loaded).toBe(true);
         expect(state.unread).toBe(2);
         expect(state.notifications.map((entry) => entry.id)).toEqual(['a']);
+    });
+
+    it('turns a failed fetch into a terminal state rather than endless loading', () => {
+        const state = emptyInbox('u1');
+
+        expect(inboxView(state)).toBe('loading');
+
+        failFeed(state);
+
+        expect(state.failed).toBe(true);
+        expect(state.loaded).toBe(false);
+        expect(inboxView(state)).toBe('failed');
+
+        // Retry: back to loading, and a feed that lands clears the failure.
+        retryFeed(state);
+
+        expect(state.failed).toBe(false);
+        expect(inboxView(state)).toBe('loading');
+
+        applyFeed(state, { unread: 0, notifications: [] });
+
+        expect(state.loaded).toBe(true);
+        expect(state.failed).toBe(false);
+        expect(inboxView(state)).toBe('empty');
+    });
+
+    it('shows the list once loaded, and keeps it over a later failure', () => {
+        const state = emptyInbox('u1');
+        applyFeed(state, { unread: 1, notifications: [notification('a')] });
+
+        expect(inboxView(state)).toBe('list');
+
+        // A refresh that fails after a successful load must not hide what
+        // the person can already see behind the error line.
+        failFeed(state);
+
+        expect(inboxView(state)).toBe('list');
+    });
+
+    it('starts over for another account without carrying the failure along', () => {
+        const state = emptyInbox('u1');
+        failFeed(state);
+
+        expect(emptyInbox('u2').failed).toBe(false);
+        expect(inboxView(emptyInbox('u2'))).toBe('loading');
     });
 
     it('puts a push at the top, counts it once, and keeps the list short', () => {

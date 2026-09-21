@@ -17,6 +17,7 @@ use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Messaging\Topics\Topic;
 use Konventix\Messaging\Topics\TopicRegistry;
+use Konventix\Platform\Models\Operator;
 use Spatie\LaravelData\Data;
 
 /**
@@ -116,6 +117,29 @@ it('serves the bell feed with the unread count', function (): void {
         ->assertOk()
         ->assertJsonPath('unread', 2)
         ->assertJsonCount(3, 'notifications');
+});
+
+it('serves an empty feed on the operator console host, where no brand resolves', function (): void {
+    // The bell sits in the console shell too. A request to the admin host
+    // resolves no brand (ADR-0029) and BrandScope hardens brand-owned
+    // queries to nothing — the feed must answer with an empty inbox rather
+    // than fail, or the bell stays on "Loading…" for the life of the page.
+    // The row is created before the request: after it, no brand resolves.
+    $brand = $this->withBrand();
+    $user = User::factory()->create();
+    InboxNotification::factory()->create([
+        'brand_id' => $brand->getKey(),
+        'recipient_id' => (string) $user->getKey(),
+    ]);
+
+    $operator = Operator::factory()->create();
+    $operator->forceFill(['admin_host' => 'admin.inbox.test'])->save();
+
+    $this->actingAs($user)
+        ->getJson('http://admin.inbox.test/notifications/feed')
+        ->assertOk()
+        ->assertJsonPath('unread', 0)
+        ->assertJsonCount(0, 'notifications');
 });
 
 it('marks a notification read once and emits NotificationRead', function (): void {

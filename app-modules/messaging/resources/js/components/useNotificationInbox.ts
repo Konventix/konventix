@@ -10,9 +10,11 @@ import type { InboxNotification, InboxState } from './notificationInbox';
 import {
     applyFeed,
     emptyInbox,
+    failFeed,
     markAllRead as applyMarkAllRead,
     markRead as applyMarkRead,
     receive,
+    retryFeed,
 } from './notificationInbox';
 
 /**
@@ -28,6 +30,13 @@ import {
  * nothing at all — a private channel with an empty id is a 403 from
  * `/broadcasting/auth` on every logged-out page. Signing out and in as
  * someone else in the same tab starts the inbox over.
+ *
+ * The feed comes first and the socket second, and the socket may fail
+ * without taking the feed with it. On the operator console host there is
+ * no brand and therefore no Reverb key (ADR-0025, ADR-0029), so `echo()`
+ * throws inside `app.ts`'s configuration — an exception that used to fire
+ * before the fetch line was reached and left the bell on "Loading…" for as
+ * long as the page lived.
  */
 const state = reactive<InboxState>(emptyInbox());
 
@@ -70,32 +79,46 @@ async function parseJson(response: Response): Promise<unknown> {
 }
 
 function unsubscribe(): void {
-    if (subscribedTo !== null) {
-        echo().leave(channelFor(subscribedTo));
-        subscribedTo = null;
+    if (subscribedTo === null) {
+        return;
+    }
+
+    const channel = channelFor(subscribedTo);
+    subscribedTo = null;
+
+    try {
+        echo().leave(channel);
+    } catch {
+        // Nothing to leave: Echo was never configured on this page, so the
+        // subscription below never happened either.
     }
 }
 
-function follow(userId: string | null): void {
-    // The SSR build renders the bell's markup and nothing else: no socket,
-    // no fetch — the browser does both once it takes over.
-    if (typeof window === 'undefined' || userId === state.ownerId) {
+/**
+ * The live half. Skipped outright without a key — a host without a brand
+ * has no Reverb app to talk to — and guarded against `echo()` throwing, so
+ * a page whose realtime is broken still shows the list the fetch brought.
+ */
+function subscribe(userId: string, reverbKey: string | null): void {
+    if (reverbKey === null) {
         return;
     }
 
-    unsubscribe();
-    Object.assign(state, emptyInbox(userId));
-
-    if (userId === null) {
-        return;
+    try {
+        echo()
+            .private(channelFor(userId))
+            .listen('.notification.received', (incoming: InboxNotification) => {
+                receive(state, incoming);
+            });
+        subscribedTo = userId;
+    } catch {
+        // No push on this page; the fetched list stands and the next full
+        // page load tries again.
     }
+}
 
-    echo()
-        .private(channelFor(userId))
-        .listen('.notification.received', (incoming: InboxNotification) => {
-            receive(state, incoming);
-        });
-    subscribedTo = userId;
+function loadFeed(userId: string): Promise<void> {
+    retryFeed(state);
 
     // A browser fetch of a fixed same-origin Wayfinder route. The advanced
     // SAST analyzer traces the XSRF cookie from `requestInit()` into the
@@ -106,7 +129,7 @@ function follow(userId: string | null): void {
     // analyzer (2.55.0) matched none of the rule ids its own report names
     // for this finding, and GitLab documents the ids as unstable.
     // gitlab-advanced-sast-exclude
-    void fetch(notificationsFeed().url, requestInit('get'))
+    return fetch(notificationsFeed().url, requestInit('get'))
         .then(parseJson)
         .then((data) => {
             // The account may have changed while the request was in flight.
@@ -122,10 +145,40 @@ function follow(userId: string | null): void {
         })
         .catch(() => {
             // The bell is decoration on every page it renders on — a failed
-            // fetch must never break the page around it. `loaded` stays
-            // false, so the bell shows its loading state rather than an
-            // empty inbox that is not known to be empty.
+            // fetch must never break the page around it. It is recorded,
+            // though: `failed` is what turns "Loading…" into an error line
+            // with a retry, instead of a spinner that never stops.
+            if (state.ownerId === userId) {
+                failFeed(state);
+            }
         });
+}
+
+function follow(userId: string | null, reverbKey: string | null): void {
+    // The SSR build renders the bell's markup and nothing else: no socket,
+    // no fetch — the browser does both once it takes over.
+    if (typeof window === 'undefined' || userId === state.ownerId) {
+        return;
+    }
+
+    unsubscribe();
+    Object.assign(state, emptyInbox(userId));
+
+    if (userId === null) {
+        return;
+    }
+
+    void loadFeed(userId);
+    subscribe(userId, reverbKey);
+}
+
+/** The "Retry" on the error line: the same fetch again, for the same account. */
+function reload(): Promise<void> {
+    if (state.ownerId === null) {
+        return Promise.resolve();
+    }
+
+    return loadFeed(state.ownerId);
 }
 
 async function markRead(id: string): Promise<void> {
@@ -162,14 +215,23 @@ async function markAllRead(): Promise<void> {
 /**
  * `userId` is the shared auth prop's id, `undefined` for a guest. Reactive
  * so the inbox tracks a sign-in or sign-out that happens without a full
- * page load.
+ * page load. `reverbKey` is the shared `reverb.key` prop: the current
+ * brand's Reverb app key, `null` where there is no brand (the operator
+ * console host). It is read when the account changes, not watched — a key
+ * changes with the host, and a host changes with a full page load.
  */
-export function useNotificationInbox(userId: Ref<string | undefined>) {
-    watch(userId, (id) => follow(id ?? null), { immediate: true });
+export function useNotificationInbox(
+    userId: Ref<string | undefined>,
+    reverbKey: Ref<string | null | undefined>,
+) {
+    watch(userId, (id) => follow(id ?? null, reverbKey.value ?? null), {
+        immediate: true,
+    });
 
     return {
         inbox: readonly(state),
         markRead,
         markAllRead,
+        reload,
     };
 }

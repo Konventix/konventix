@@ -119,6 +119,18 @@
 
 ## Done
 
+- [x] The bell finishes loading on the operator console host (bugfix round
+      2026-09-21, Task 6): `useNotificationInbox` fetches the feed before
+      it subscribes, skips Echo outright when the page's `reverb.key` is
+      null and wraps the subscription in `try/catch`, so a host without a
+      brand (no Reverb app, `echo()` throws) still renders the fetched
+      list. `InboxState.failed` is a terminal state beside `loaded`: a
+      rejected or non-ok fetch shows an error line with a "Retry" instead of
+      "Loading…" forever. `inboxView()` decides what the list area shows.
+      `useNotificationInbox.test.ts` covers the composable with a mocked
+      `@laravel/echo-vue` and a stubbed `fetch`; `InAppInboxTest` pins the
+      admin-host feed as 200, unread 0, empty list.
+
 - [x] Hero picture row in the branded layout (#292): `SendMessageRequest`
       and `SendMessageData` carry `heroImageUrl`/`heroImageAlt`, the layout
       prints the row between header and body. Not logged, so
