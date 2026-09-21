@@ -337,6 +337,27 @@ tournament history in the Eventula dump. Full text:
 | D-REG-13 | Attendee list on the event page | **Opt-in per person (`users.listed_in_attendees`, default off) and switched per event by the operator (`off`/`members`/`public`, default off); the count may show under the event switch alone, names need both; confirmed registrations only, one entry per person, username only — never display name, e-mail, billing fields or the user ULID; profile link only where Community is active.** (Bugfix round 2026-09-21, Task 15.) | adr → ADR-0064 |
 | D-IDP-14 | Names on participant surfaces | **The handle (`@username`) on every public and logged-in page, linked to `/u/{username}` when Community is active for the brand; the real name only in the console and on documents.** Person read models store `username` beside `display_name`. (User decision 2026-09-21.) | adr → ADR-0065 |
 
+## Round 9 — after release 0.7.0 (2026-09-21, operator interview)
+
+Taken on the dev instance after the 2026-09-21 round (plan
+`docs/superpowers/plans/2026-09-21-bugfix-round.md`) had rolled out as 0.7.0.
+Each item names a follow-up the round left open; the chosen option is the next
+round's work.
+
+| ID | Decision | Chosen | Status |
+|---|---|---|---|
+| D-COM-20 | Prices on public pages outside the shop | **Gross end prices everywhere** — a Commerce enrichment for the event landing page, the `tickets-for-event` block and every other public price, as the shop and cart already have (#234). | next round |
+| D-REG-14 | Attendee list defaults | **Both defaults stay off** (per-person opt-in and per-event switch); "members" stays "signed in on the brand host". Confirms D-REG-13. | adr → ADR-0064 |
+| D-IDP-15 | Real names in the remaining spots | **Handle everywhere, mails included**: the Community profile wall drops the display name beside the handle; the claim-link mail names the inviter by handle. Real names stay on invoices and tickets only. | next round |
+| D-IDP-16 | Passkey scope | **Per site**: the relying party is the request host, a passkey works on the brand host or console it was created on; cross-brand passkeys are not planned. | shipped 0.7.0 |
+| D-REG-15 | Changing a registration's quantity | **Partial cancellation with a per-unit refund**, releasing quota and admissions accordingly; the waitlist keeps one unit per person. | next round |
+| D-MSG-10 | Mail quota accounting | **Budget per transport**: a brand with its own SMTP transport has its own hourly and daily budget; brands on the default mailer share one, whose daily window rolls over at UTC midnight. | shipped 0.7.0 (UTC day: next round) |
+| D-IDP-17 | Sessions list on redis | **Redis with a per-user session index**: a custom session handler keeps a set of session ids per account on login, activity and logout so the list and per-session revoke work on redis as on the database driver. Location stays the IP address. | next round |
+| D-IDP-18 | Recovery codes shown once | **Enforced server-side**: Fortify's GET route for the codes is replaced by an Identity-owned path that serves a set only once, right after confirmation or regeneration. | next round |
+| D-MSG-11 | Digested announcements | **Each digest item carries its link** to the news entry. | next round |
+| D-PLT-12 | Media variants and venues | **`media:regenerate-variants` backfills missing variants after deploy; the venue edit page gets an opening-times editor.** xpertise stays unset on dev. | next round |
+| D-REG-16 | Entry conditions, policy bindings, re-consent | **Designed now and built directly on develop, no issues**: one spec plus ADR for entry conditions on registration types and policies bound to an event, a type, a payment provider or an entry condition, and re-consent to contract policies on login or before critical actions. | next round |
+
 ## Open
 
 **56 of the 68 inventory decisions remain open.** They are written up in the
