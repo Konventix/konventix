@@ -48,11 +48,10 @@ final class PublicOffers
      */
     public static function forEvent(string $eventId): array
     {
-        return self::query()
+        return array_values(self::query()
             ->where('event_id', $eventId)
             ->get()
             ->map(fn (RegistrationType $type): PublicOfferData => PublicOfferData::ofType($type))
-            ->values()
-            ->all();
+            ->all());
     }
 }
