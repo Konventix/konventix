@@ -11,6 +11,7 @@ use Konventix\Commerce\Actions\AddProductToCart;
 use Konventix\Commerce\Actions\ChangeCartLineQuantity;
 use Konventix\Commerce\Actions\ExpireCarts;
 use Konventix\Commerce\Actions\OpenCart;
+use Konventix\Commerce\Actions\PlaceRegistrationLineInCart;
 use Konventix\Commerce\Actions\RemoveCartLine;
 use Konventix\Commerce\Enums\CartLineKind;
 use Konventix\Commerce\Enums\CartStatus;
@@ -159,6 +160,53 @@ it('refuses a quantity change on a registration line', function (): void {
 
     expect(fn () => app(ChangeCartLineQuantity::class)->handle($line, 2))
         ->toThrow(LogicException::class);
+});
+
+it('carries the registration quantity onto the line at the per-unit amount, and still refuses to change it', function (): void {
+    // Bugfix round 2026-09-21, Task 19: the buyer chose the number on the
+    // registration form, so the line shows "3 × 50,00" — and the
+    // registration holds exactly three quota units, which is why the cart
+    // may not move the number afterwards.
+    $brand = $this->withBrand();
+    $registrationId = (string) Str::ulid();
+
+    $line = app(PlaceRegistrationLineInCart::class)->handle(
+        brandId: $brand->getKey(),
+        registrantUserId: (string) Str::ulid(),
+        registrationId: $registrationId,
+        requestKey: $registrationId,
+        lines: [['label' => 'Weekend Ticket', 'quantity' => 3, 'unit_amount_net' => '50.00', 'tax_class' => 'standard']],
+    );
+
+    expect($line->quantity)->toBe(3)
+        ->and($line->unit_amount_net)->toBe('50.00');
+
+    expect(fn () => app(ChangeCartLineQuantity::class)->handle($line, 2))
+        ->toThrow(LogicException::class);
+
+    expect($line->refresh()->quantity)->toBe(3);
+});
+
+it('falls back to one line at the summed total when the request lines disagree on quantity', function (): void {
+    // An amendment's delta lines are priced independently, so there is no
+    // single per-unit price to divide back out — the money is what has to
+    // stay right.
+    $brand = $this->withBrand();
+    $registrationId = (string) Str::ulid();
+
+    $line = app(PlaceRegistrationLineInCart::class)->handle(
+        brandId: $brand->getKey(),
+        registrantUserId: (string) Str::ulid(),
+        registrationId: $registrationId,
+        requestKey: (string) Str::ulid(),
+        lines: [
+            ['label' => 'Booth', 'quantity' => 1, 'unit_amount_net' => '250.00', 'tax_class' => 'standard'],
+            ['label' => 'Crew badge', 'quantity' => 2, 'unit_amount_net' => '10.00', 'tax_class' => 'standard'],
+        ],
+    );
+
+    expect($line->quantity)->toBe(1)
+        ->and($line->unit_amount_net)->toBe('270.00');
 });
 
 it('returns the same cart on a second OpenCart::for() call', function (): void {

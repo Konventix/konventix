@@ -11,7 +11,14 @@ import { Label } from '@/components/ui/label';
 /**
  * Props are `Konventix\Registration\Data\RegistrationFormData` (ADR-0009) —
  * the single source for what this page is allowed to know about the offer
- * it renders.
+ * it renders — spread by the controller beside the invitation token.
+ *
+ * Written out rather than referenced as
+ * `Konventix.Registration.Data.RegistrationFormData`: `defineProps<T>()` is
+ * compiled by `@vue/compiler-sfc`, which resolves the *root* props type on
+ * its own and cannot see an ambient global namespace — the build fails with
+ * "Unresolvable type reference". The generated type is usable one level
+ * down (see the type editor's `type:` prop), never as the root.
  */
 type Props = {
     registrationTypeId: string;
@@ -19,18 +26,23 @@ type Props = {
     name: string;
     settlement: string;
     confirmationGate: string;
-    price: {
-        unitAmountNet: string;
-        taxClass: string;
-        display: string;
-    } | null;
+    price: Konventix.Registration.Data.PriceDeclarationData | null;
     termsDays: number;
+    maxQuantity: number;
 };
 
 const props = defineProps<Props>();
 
 /** Invoice settlement legally needs the recipient's postal address. */
 const needsBillingAddress = props.settlement === 'invoice';
+
+/**
+ * The quantity control exists only where there is a choice to make (Task
+ * 19): `maxQuantity` is already `min(type cap, remaining quota)` and a
+ * ceiling of one means the type never opted into multiple units — the form
+ * then sends nothing and the Data object's default of one applies.
+ */
+const offersQuantity = props.maxQuantity > 1;
 </script>
 
 <template>
@@ -70,6 +82,33 @@ const needsBillingAddress = props.settlement === 'invoice';
                         class="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-text"
                     >
                         {{ errors.registrationType }}
+                    </div>
+
+                    <div v-if="offersQuantity" class="grid gap-2">
+                        <Label for="quantity">How many?</Label>
+                        <Input
+                            id="quantity"
+                            name="quantity"
+                            type="number"
+                            inputmode="numeric"
+                            min="1"
+                            :max="props.maxQuantity"
+                            :default-value="1"
+                            class="max-w-24"
+                            :aria-invalid="errors.quantity ? 'true' : undefined"
+                            :aria-describedby="
+                                errors.quantity
+                                    ? 'quantity-error'
+                                    : 'quantity-hint'
+                            "
+                        />
+                        <p id="quantity-hint" class="text-xs text-text-muted">
+                            Up to {{ props.maxQuantity }} per registration.
+                        </p>
+                        <InputError
+                            id="quantity-error"
+                            :message="errors.quantity"
+                        />
                     </div>
 
                     <div class="grid gap-2">

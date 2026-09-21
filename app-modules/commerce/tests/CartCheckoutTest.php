@@ -11,6 +11,7 @@ use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Actions\AddProductToCart;
 use Konventix\Commerce\Actions\OpenCart;
 use Konventix\Commerce\Actions\PlaceOrderFromCart;
+use Konventix\Commerce\Actions\PlaceRegistrationLineInCart;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
 use Konventix\Commerce\Actions\RemoveCartLine;
 use Konventix\Commerce\Actions\SendInvoiceMail;
@@ -132,6 +133,43 @@ it('checks out a mixed cart into one order with two lines carrying settles_kind/
         ->and($cart->fresh()->expires_at->isFuture())->toBeTrue();
 
     expect(Payment::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+});
+
+it('checks out a multi-unit registration line at unit times quantity', function (): void {
+    // Bugfix round 2026-09-21, Task 19: the registration bought three
+    // units, the line keeps the per-unit net, and the checkout multiplies
+    // it exactly as it does for a product line.
+    $brand = cartCheckoutBrand();
+    test()->activateFeature('commerce:shop', $brand);
+    $user = User::factory()->create();
+    $registrationId = (string) Str::ulid();
+
+    $cart = OpenCart::for($brand->getKey(), $user->getKey());
+    app(PlaceRegistrationLineInCart::class)->handle(
+        brandId: $brand->getKey(),
+        registrantUserId: $user->getKey(),
+        registrationId: $registrationId,
+        requestKey: $registrationId,
+        lines: [['label' => 'Weekend Ticket', 'quantity' => 3, 'unit_amount_net' => '50.00', 'tax_class' => 'standard']],
+    );
+
+    $account = cartCheckoutAccount();
+
+    app(PlaceOrderFromCart::class)->handle($cart->fresh(), $account, cartCheckoutReturnUrl(), cartCheckoutBillingParty($user));
+
+    $order = Order::query()->where('settles_type', 'cart')->where('settles_id', $cart->id)->sole();
+
+    // 3 × 50.00 net = 150.00, 19% ADR-0030 domestic standard.
+    expect($order->total_net)->toBe('150.00')
+        ->and($order->total_gross)->toBe('178.50');
+
+    $line = OrderLine::query()->where('order_id', $order->id)->sole();
+
+    expect($line->settles_kind)->toBe('registration')
+        ->and($line->settles_ref)->toBe($registrationId)
+        ->and($line->quantity)->toBe(3)
+        ->and($line->unit_amount_net)->toBe('50.00')
+        ->and($line->line_gross)->toBe('178.50');
 });
 
 it('emits CartCheckedOut and OrderPlaced with settlesType cart', function (): void {

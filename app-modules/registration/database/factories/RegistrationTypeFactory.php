@@ -53,6 +53,18 @@ class RegistrationTypeFactory extends Factory
         ];
     }
 
+    /**
+     * The ceiling on how many units one registration of this type may buy
+     * (Task 19). Left null by default — null means one, so every existing
+     * factory call keeps the single-unit behaviour.
+     */
+    public function maxQuantityPerRegistration(?int $max): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'max_quantity_per_registration' => $max,
+        ]);
+    }
+
     public function forEvent(string $eventId): static
     {
         return $this->state(fn (array $attributes): array => [

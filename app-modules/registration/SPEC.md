@@ -36,7 +36,14 @@ is entitled to what*; other modules materialize those entitlements.
   (#218).
 - **`Registration`** — the contractual act itself. Carries the invoice
   recipient (which may be an organization rather than the submitting user), the
-  registration status, and the answers given on the registration form.
+  registration status, the answers given on the registration form, and
+  `quantity`: how many units of the offer this act buys. Quantity is a
+  Registration fact chosen at submission and never edited afterwards —
+  not in the cart, not on the order — bounded by the type's
+  `max_quantity_per_registration` (nullable, null means one, so a type opts
+  in) and by what the type's quotas still have left. It multiplies the quota
+  units held, the settlement line's quantity and every grant's own
+  multiplicity.
   `registrant_user_id` is required, never nullable: **D-REG-08**
   (`docs/inventory/decision-log.md` Round 5) settled that registrants must
   hold an account in Phase 1 — guest registration (a registrant with no
@@ -61,8 +68,15 @@ is entitled to what*; other modules materialize those entitlements.
   invoice, or any disturbance to the immutable original (ADR-0031).
 - **`Quota`** — a standalone entity, not a column on a type. Quotas are
   consumed and released by registrations and may be referenced by more than one
-  `RegistrationType`. An amendment consumes one unit per added admission, and
-  cancellation releases the submission's unit *plus* every amended one.
+  `RegistrationType`. A submission consumes `registrations.quantity` units
+  (one, unless the type opted into a larger
+  `max_quantity_per_registration`), an amendment consumes one unit per added
+  admission, and cancellation releases the submission's own `quantity`
+  *plus* every amended one — consume and release are symmetric or capacity
+  leaks. A submission asking for more units than remain is refused as a
+  `quantity` form error naming what is left; a submission that finds
+  *nothing* left still queues on the waitlist, which keeps its one-unit
+  semantics (a promotion holds one unit and a conversion buys one).
   `resource_type_id` (design §12b, #282) is an optional, nullable link to a
   Resources seat category — a plain ULID, no FK (ADR-0014) — set on the quota
   form so one quota can be a category's ceiling: `AdjustQuotaOnPlaceSupplyChanged`
@@ -72,7 +86,11 @@ is entitled to what*; other modules materialize those entitlements.
 - **Grant definitions** — how many admissions of which role, which resource
   claims, and which seating (categories, mode, number of places) a confirmed
   registration of a given type is entitled to. The definition lives here; the
-  resulting admissions, bookings and seat claims do not. `grants` is one of the
+  resulting admissions, bookings and seat claims do not. A grant's
+  `quantity` is the per-unit multiplicity; the registration's own quantity
+  multiplies it **once**, in `ConfirmRegistration`'s `RegistrationConfirmed`
+  payload, so Admission, Resources and Community read the final count and
+  never learn that a registration has a quantity at all. `grants` is one of the
   axes `GuardsTypeConfiguration` freezes once a type has registrations
   (ADR-0060), so a seating grant is an operational ordering constraint, not
   something added after the fact: it must be on the type before the type sells
@@ -110,8 +128,8 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 | `RegistrationSubmitted` | A registration form is accepted and persisted | `registration_id`, `registration_type_id`, `event_id`, `brand_id`, `registrant_user_id`, `settlement`, `confirmation_gate`, `submitted_at` |
 | `RegistrationApproved` | A reviewer approves a registration on an `approval: required` type | `registration_id`, `approved_by_user_id`, `approved_at` |
 | `RegistrationRejected` | A reviewer rejects it | `registration_id`, `rejected_by_user_id`, `reason_code`, `rejected_at` |
-| `RegistrationConfirmed` | The type's `confirmation_gate` has been passed — the one event that materializes entitlements | `registration_id`, `registration_type_id`, `event_id`, `brand_id`, `registrant_user_id`, `confirmed_at`, `grants` (list of `{kind, role, quantity, resource_type_id, resource_type_ids, seating_mode}` scalars; `resource_type_ids` and `seating_mode` are set on `kind: seating` only) |
-| `RegistrationSettlementRequested` | A registration on a `settlement` of `instant` or `invoice` needs an order. **Gate-dependent emission:** `on_payment` types emit at submission (paying must precede confirming), all other gates emit at confirmation — the two points partition, no double emission. A priced amendment emits a third time, keyed on itself. `external` never emits: money moves off-platform, and door payment is a Commerce POS concern (ADR-0018) | `registration_id`, `registration_type_id`, `event_id`, `brand_id`, `settlement`, `billing_party` (scalars incl. address, `country_code`, `vat_id`), `lines` (list of `{label, quantity, unit_amount_net, tax_class}` — the declared tax *class*, never a rate: Commerce resolves the rate and treatment, ADR-0017/ADR-0030), `price_display` (`net` / `gross`), `terms_days`, `requested_at`, `request_key` (the ULID of whatever requested settlement — the registration for the initial request, the amendment for a delta; Commerce's order idempotency key, ADR-0036), `saleStartsAt`/`saleEndsAt` (nullable ISO-8601 instants. Null means *not window-bound*: the window travels only with a fresh registration, never with a waitlist conversion, a post-approval confirmation or a priced amendment, #218) |
+| `RegistrationConfirmed` | The type's `confirmation_gate` has been passed — the one event that materializes entitlements | `registration_id`, `registration_type_id`, `event_id`, `brand_id`, `registrant_user_id`, `confirmed_at`, `grants` (list of `{kind, role, quantity, resource_type_id, resource_type_ids, seating_mode}` scalars; `resource_type_ids` and `seating_mode` are set on `kind: seating` only). `quantity` is the grant's own multiplicity **times the registration's quantity** — multiplied here and nowhere else |
+| `RegistrationSettlementRequested` | A registration on a `settlement` of `instant` or `invoice` needs an order. **Gate-dependent emission:** `on_payment` types emit at submission (paying must precede confirming), all other gates emit at confirmation — the two points partition, no double emission. A priced amendment emits a third time, keyed on itself. `external` never emits: money moves off-platform, and door payment is a Commerce POS concern (ADR-0018) | `registration_id`, `registration_type_id`, `event_id`, `brand_id`, `settlement`, `billing_party` (scalars incl. address, `country_code`, `vat_id`), `lines` (list of `{label, quantity, unit_amount_net, tax_class}` — the declared tax *class*, never a rate: Commerce resolves the rate and treatment, ADR-0017/ADR-0030. The initial request is one line at the registration's own `quantity` and the type's **per-unit** net, so the cart and the order both multiply; an amendment sends the delta's own lines), `price_display` (`net` / `gross`), `terms_days`, `requested_at`, `request_key` (the ULID of whatever requested settlement — the registration for the initial request, the amendment for a delta; Commerce's order idempotency key, ADR-0036), `saleStartsAt`/`saleEndsAt` (nullable ISO-8601 instants. Null means *not window-bound*: the window travels only with a fresh registration, never with a waitlist conversion, a post-approval confirmation or a priced amendment, #218) |
 | `RegistrationAmended` | Grants are added to an already-confirmed registration (ADR-0036). Always emitted; the money side is separate and conditional, so a free amendment — crew that comes with an exhibitor's package — emits only this | `registration_id`, `amendment_id`, `registration_type_id`, `event_id`, `brand_id`, `registrant_user_id`, `grants` (**only the added** grants, same scalar shape as `RegistrationConfirmed`), `amended_at` |
 | `RegistrationCancelled` | The contractual act is cancelled by organizer or registrant | `registration_id`, `cancelled_by_user_id`, `reason_code`, `cancelled_at` |
 | `RegistrationPaymentStatusChanged` | The independent payment status field moves | `registration_id`, `brand_id`, `previous_status`, `status`, `changed_at` |

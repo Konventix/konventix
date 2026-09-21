@@ -18,6 +18,7 @@ use Konventix\Registration\Enums\WaitlistState;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Events\WaitlistEntryConverted;
 use Konventix\Registration\Models\InvitationToken;
+use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
 use Konventix\Registration\Models\WaitlistEntry;
@@ -29,6 +30,13 @@ use RuntimeException;
  * sales window (#218) and account (D-REG-08 —
  * `docs/inventory/decision-log.md` Round 5: registrants must hold an
  * account), consumes the type's quotas, and emits `RegistrationSubmitted`.
+ *
+ * A submission buys `quantity` units (Task 19, bugfix round 2026-09-21):
+ * the type's `max_quantity_per_registration` is the ceiling, the quotas are
+ * consumed `quantity` times all-or-nothing, and asking for more than remains
+ * is a `quantity` form error naming what is left rather than a waitlist
+ * entry — the waitlist keeps its one-unit semantics, so only a submission
+ * that finds *nothing* left queues.
  *
  * When `confirmation_gate: on_submit`, this Action confirms the
  * registration in the same transaction by calling `ConfirmRegistration`
@@ -63,10 +71,16 @@ final class SubmitRegistration
             $this->guardAccount($registrantUserId);
             $this->guardBillingParty($registrationType, $data);
 
+            // A waitlist offer held exactly one unit (D-REG-12), so a
+            // conversion buys exactly one — the queue promises a spot, not
+            // a basket.
+            $quantity = $fromWaitlist === null ? $data->quantity : 1;
+
             // A waitlist conversion consumed its quota units at offer time
             // (the hold — D-REG-12); consuming again would double-book.
             if ($fromWaitlist === null) {
-                $this->consumeQuotas($registrationType);
+                $this->guardQuantity($registrationType, $quantity);
+                $this->consumeQuotas($registrationType, $quantity);
             }
 
             $registration = Registration::create([
@@ -74,6 +88,7 @@ final class SubmitRegistration
                 'event_id' => $registrationType->event_id,
                 'registrant_user_id' => $registrantUserId,
                 'status' => RegistrationStatus::Submitted,
+                'quantity' => $quantity,
                 'payment_status' => $registrationType->settlement === RegistrationSettlement::Free
                     ? PaymentStatus::None
                     : PaymentStatus::Pending,
@@ -251,6 +266,51 @@ final class SubmitRegistration
                 ? __('This registration is not on sale yet.')
                 : __('This registration is no longer on sale.'),
         ]);
+    }
+
+    /**
+     * The two upper bounds on a buyer-chosen quantity (Task 19), neither of
+     * which `SubmitRegistrationData`'s static ruleset can see: the type's
+     * own ceiling, and what its quotas still have left.
+     *
+     * Both refuse as a `quantity` form error, the shape
+     * `guardBillingParty()` uses — the number input is right there and the
+     * buyer can act on either message.
+     *
+     * The capacity check deliberately does **not** cover the sold-out case.
+     * A quota with nothing left falls through to `consumeQuotas()`, whose
+     * `QuotaExhaustedException` the controller turns into a waitlist entry
+     * (D-REG-12) — telling someone "only 0 left" instead of queueing them
+     * would drop the one thing the module offers a sold-out sale. The
+     * quotas are read under the same lock `consumeQuotas()` takes a moment
+     * later, inside the caller's transaction, so the number named here is
+     * the number that is then consumed against.
+     */
+    private function guardQuantity(RegistrationType $registrationType, int $quantity): void
+    {
+        $cap = $registrationType->maxQuantityPerRegistration();
+
+        if ($quantity > $cap) {
+            throw ValidationException::withMessages([
+                'quantity' => __('At most :max per registration.', ['max' => $cap]),
+            ]);
+        }
+
+        if ($quantity === 1) {
+            return;
+        }
+
+        $remaining = $registrationType->quotas()
+            ->lockForUpdate()
+            ->get()
+            ->map(fn (Quota $quota): int => $quota->remaining())
+            ->min();
+
+        if ($remaining !== null && $remaining > 0 && $remaining < $quantity) {
+            throw ValidationException::withMessages([
+                'quantity' => __('Only :remaining left.', ['remaining' => $remaining]),
+            ]);
+        }
     }
 
     private function guardAccount(?string $registrantUserId): void

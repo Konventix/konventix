@@ -6,7 +6,13 @@
 
 ## Next (Phase 1 PoC — no payment; keep Commerce dormant and prove the boundary)
 
-(nothing outstanding for Phase 1 — see Done)
+- [x] A registration cart line carries the registration's own quantity
+      (bugfix round 2026-09-21, Task 19): `PlaceRegistrationLineInCart`
+      takes it from the settlement request's lines — where they agree on
+      one — and keeps `unit_amount_net` per unit, so the cart and the
+      checkout multiply it like any product line. `ChangeCartLineQuantity`
+      still refuses the line: the registration holds exactly that many
+      quota units, so the number is not the cart's to change.
 
 ## Backlog (Phase 2 — release scope, invoice-settled registrations are a definition-of-done item)
 

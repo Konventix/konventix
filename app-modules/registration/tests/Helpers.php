@@ -32,6 +32,20 @@ function emptySubmission(): SubmitRegistrationData
     );
 }
 
+/**
+ * A submission that buys `$quantity` units (Task 19). Lives here rather than
+ * in a test file because more than one file calls it (.ai/rules/tests.md).
+ */
+function quantitySubmission(int $quantity): SubmitRegistrationData
+{
+    return new SubmitRegistrationData(
+        organizationName: null,
+        billingRecipientName: null,
+        billingEmail: null,
+        quantity: $quantity,
+    );
+}
+
 function regMailsRender(string $templateKey, RegistrationMailData $payload, string $locale = 'de'): string
 {
     $message = new SendMessageData(

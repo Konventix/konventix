@@ -37,7 +37,11 @@ use RuntimeException;
  * Commerce enforces the window only for a fresh sale, and only where a payer
  * can still act on the refusal.
  *
- * `$lines` defaults to the type's price declaration. An amendment overrides
+ * `$lines` defaults to the type's price declaration, at the registration's
+ * own quantity (Task 19): one line, `quantity` units of the type's per-unit
+ * net. Commerce multiplies — the cart line and the order line both read
+ * `unit_amount_net * quantity` — so the amount stays per unit here and the
+ * cart can say "3 × 50,00". An amendment overrides
  * it with the delta's own lines: the added grants are priced independently of
  * what the type costs — crew that comes with an exhibitor package is free,
  * while a second booth is not — and `GrantData` carries no price of its own.
@@ -85,7 +89,7 @@ final class RequestSettlement
             lines: $lines ?? [
                 [
                     'label' => $registrationType->name,
-                    'quantity' => 1,
+                    'quantity' => $registration->quantity,
                     'unit_amount_net' => $price->unitAmountNet,
                     'tax_class' => $price->taxClass->value,
                 ],

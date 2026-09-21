@@ -38,6 +38,11 @@ final class CreateRegistrationType
                 'grants' => $data->grants,
                 'price_declaration' => $data->priceDeclaration,
                 'terms_days' => $data->termsDays,
+                // Not a frozen axis either (Task 19): the ceiling applies to
+                // the next submission — the quantity an existing
+                // registration bought sits on its own row and is not
+                // reinterpreted by lowering it.
+                'max_quantity_per_registration' => $data->maxQuantityPerRegistration,
                 // Not a frozen axis (#218): closing a sale early or extending
                 // it by a day is an operational decision — it reinterprets
                 // nobody's existing registration the way the terms would.

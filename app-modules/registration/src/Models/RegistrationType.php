@@ -45,6 +45,7 @@ use Spatie\LaravelData\Support\EloquentCasts\DataCollectionEloquentCast;
  * @property DataCollection<int, GrantData> $grants
  * @property PriceDeclarationData|null $price_declaration
  * @property int $terms_days
+ * @property int|null $max_quantity_per_registration
  * @property Carbon|null $sales_start
  * @property Carbon|null $sales_end
  * @property Carbon|null $created_at
@@ -68,6 +69,11 @@ class RegistrationType extends Model
     protected $attributes = [
         'grants' => '[]',
         'terms_days' => 14,
+        // Explicitly null rather than absent, for the reason above:
+        // `maxQuantityPerRegistration()` reads it on instances that were
+        // created without ever naming it, and `shouldBeStrict()` refuses a
+        // missing attribute.
+        'max_quantity_per_registration' => null,
     ];
 
     protected $fillable = [
@@ -80,9 +86,25 @@ class RegistrationType extends Model
         'grants',
         'price_declaration',
         'terms_days',
+        'max_quantity_per_registration',
         'sales_start',
         'sales_end',
     ];
+
+    /**
+     * How many units of this offer one registration may buy (bugfix round
+     * 2026-09-21, Task 19).
+     *
+     * The column is nullable and **null means one**: a type opts into a
+     * larger quantity rather than opting out of it, so every type that
+     * predates the column keeps the one-unit behaviour it always had. Every
+     * reader goes through here rather than through the raw column, so the
+     * null-is-one rule is stated once.
+     */
+    public function maxQuantityPerRegistration(): int
+    {
+        return max(1, $this->max_quantity_per_registration ?? 1);
+    }
 
     /**
      * Whether this type may be bought at `$now` (#218, #216 draft i).
@@ -158,6 +180,7 @@ class RegistrationType extends Model
             // at all" (settlement: free), never a zero price.
             'price_declaration' => PriceDeclarationData::class,
             'terms_days' => 'integer',
+            'max_quantity_per_registration' => 'integer',
             'sales_start' => 'datetime',
             'sales_end' => 'datetime',
         ];

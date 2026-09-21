@@ -232,6 +232,136 @@ it('accepts a submission inside the sales window', function (): void {
     expect($registration->status)->toBe(RegistrationStatus::Confirmed);
 });
 
+/**
+ * Task 19 (bugfix round 2026-09-21): the buyer's own quantity. The type opts
+ * in through `max_quantity_per_registration`; everything below is what the
+ * one number then multiplies.
+ */
+it('consumes one quota unit per bought unit and settles the line at that quantity', function (): void {
+    $this->withBrand();
+
+    $quota = Quota::factory()->withCapacity(10)->create();
+    $type = RegistrationType::factory()
+        ->confirmationGate(ConfirmationGate::OnSubmit)
+        ->settlement(RegistrationSettlement::Instant)
+        ->priced(unitAmountNet: '50.00')
+        ->maxQuantityPerRegistration(5)
+        ->create();
+    $type->quotas()->attach($quota);
+
+    Event::fake([RegistrationSettlementRequested::class]);
+
+    $registration = submitRegistrationAction()->handle(
+        $type,
+        (string) Str::ulid(),
+        quantitySubmission(3),
+    );
+
+    expect($registration->quantity)->toBe(3)
+        ->and($quota->fresh()->consumed)->toBe(3);
+
+    // The amount stays per unit — Commerce multiplies, on the cart line and
+    // on the order line alike.
+    Event::assertDispatched(
+        RegistrationSettlementRequested::class,
+        fn (RegistrationSettlementRequested $event): bool => $event->lines === [[
+            'label' => $type->name,
+            'quantity' => 3,
+            'unit_amount_net' => '50.00',
+            'tax_class' => 'standard',
+        ]],
+    );
+});
+
+it('defaults to one unit when the form sends no quantity', function (): void {
+    $this->withBrand();
+
+    $quota = Quota::factory()->withCapacity(10)->create();
+    $type = RegistrationType::factory()->maxQuantityPerRegistration(5)->create();
+    $type->quotas()->attach($quota);
+
+    $registration = submitRegistrationAction()->handle($type, (string) Str::ulid(), emptySubmission());
+
+    expect($registration->quantity)->toBe(1)
+        ->and($quota->fresh()->consumed)->toBe(1);
+});
+
+it('refuses a quantity above the type cap as a form error', function (): void {
+    $this->withBrand();
+
+    $quota = Quota::factory()->withCapacity(10)->create();
+    // Null cap: the type never opted in, so its ceiling is one.
+    $type = RegistrationType::factory()->create();
+    $type->quotas()->attach($quota);
+
+    try {
+        submitRegistrationAction()->handle($type, (string) Str::ulid(), quantitySubmission(2));
+        $this->fail('A quantity above the cap was accepted.');
+    } catch (ValidationException $exception) {
+        expect($exception->errors())->toHaveKey('quantity');
+    }
+
+    expect(Registration::count())->toBe(0)
+        ->and($quota->fresh()->consumed)->toBe(0);
+});
+
+it('refuses a quantity larger than the quota still holds, naming what is left', function (): void {
+    $this->withBrand();
+
+    $quota = Quota::factory()->create(['capacity' => 5, 'consumed' => 3]);
+    $type = RegistrationType::factory()->maxQuantityPerRegistration(10)->create();
+    $type->quotas()->attach($quota);
+
+    try {
+        submitRegistrationAction()->handle($type, (string) Str::ulid(), quantitySubmission(4));
+        $this->fail('A quantity larger than the remaining capacity was accepted.');
+    } catch (ValidationException $exception) {
+        expect($exception->errors()['quantity'][0])->toContain('2');
+    }
+
+    // Nothing bought, nothing held: the refusal happens before any consume.
+    expect(Registration::count())->toBe(0)
+        ->and($quota->fresh()->consumed)->toBe(3);
+});
+
+it('still waitlists a multi-unit submission when nothing at all is left', function (): void {
+    // "Only 0 left" is not an answer — a sold-out sale queues (D-REG-12),
+    // and the queue holds one unit whatever the person asked for.
+    $this->withBrand();
+
+    $quota = Quota::factory()->exhausted()->create();
+    $type = RegistrationType::factory()->maxQuantityPerRegistration(4)->create();
+    $type->quotas()->attach($quota);
+
+    expect(fn () => submitRegistrationAction()->handle($type, (string) Str::ulid(), quantitySubmission(3)))
+        ->toThrow(QuotaExhaustedException::class);
+});
+
+it('buys one unit on a waitlist conversion, whatever the form says', function (): void {
+    $this->withBrand();
+
+    $quota = Quota::factory()->withCapacity(4)->create();
+    $type = RegistrationType::factory()->maxQuantityPerRegistration(4)->create();
+    $type->quotas()->attach($quota);
+
+    $entry = WaitlistEntry::factory()->create([
+        'registration_type_id' => $type->id,
+        'event_id' => $type->event_id,
+    ]);
+
+    $registration = submitRegistrationAction()->handle(
+        $type,
+        (string) Str::ulid(),
+        quantitySubmission(3),
+        fromWaitlist: $entry,
+    );
+
+    // The offer held exactly one unit, so the conversion buys exactly one —
+    // and consumes nothing more on top of that hold.
+    expect($registration->quantity)->toBe(1)
+        ->and($quota->fresh()->consumed)->toBe(0);
+});
+
 it('lets a waitlist conversion through a window that has since closed', function (): void {
     // A held spot was promised at offer time; the queue draining after the
     // sale ended is the point of the queue (D-REG-12).

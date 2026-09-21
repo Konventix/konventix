@@ -64,6 +64,15 @@ final class RegistrationTypeData extends Data
         #[Required, IntegerType, Min(0), Max(365)]
         public readonly int $termsDays,
 
+        /**
+         * The ceiling on how many units one registration of this type may
+         * buy (bugfix round 2026-09-21, Task 19). Null means one — a type
+         * opts in, and `RegistrationType::maxQuantityPerRegistration()` is
+         * the one place that rule is written down.
+         */
+        #[Nullable, IntegerType, Min(1), Max(100)]
+        public readonly ?int $maxQuantityPerRegistration = null,
+
         /** @var list<GrantData> */
         #[DataCollectionOf(GrantData::class)]
         public readonly array $grants = [],
@@ -167,6 +176,7 @@ final class RegistrationTypeData extends Data
             settlement: $type->settlement,
             confirmationGate: $type->confirmation_gate,
             termsDays: $type->terms_days,
+            maxQuantityPerRegistration: $type->max_quantity_per_registration,
             grants: array_values($type->grants->all()),
             priceDeclaration: $type->price_declaration,
             quotaIds: array_values($type->quotas->pluck('id')->all()),

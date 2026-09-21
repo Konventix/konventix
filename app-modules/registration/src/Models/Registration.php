@@ -27,6 +27,13 @@ use Konventix\Registration\Enums\RegistrationStatus;
  * Round 5): registrants must hold an account in Phase 1, guest registration
  * is deferred.
  *
+ * `quantity` is how many units of the offer this act buys (bugfix round
+ * 2026-09-21, Task 19): a buyer-chosen fact set at submission and never
+ * edited afterwards. It multiplies the quota units the registration holds,
+ * the settlement line's quantity and every grant's own multiplicity —
+ * `RegistrationType::max_quantity_per_registration` is the ceiling, and its
+ * null default of one is why every older row reads as one.
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $registration_type_id
@@ -34,6 +41,7 @@ use Konventix\Registration\Enums\RegistrationStatus;
  * @property string $registrant_user_id
  * @property RegistrationStatus $status
  * @property PaymentStatus $payment_status
+ * @property int $quantity
  * @property string|null $organization_name
  * @property string|null $billing_recipient_name
  * @property string|null $billing_email
@@ -63,12 +71,26 @@ class Registration extends Model
     /** @use HasFactory<RegistrationFactory> */
     use HasFactory, HasUlids;
 
+    /**
+     * A default attribute, not just a column default: `shouldBeStrict()`
+     * forbids reading an attribute a freshly created instance never
+     * received, and every reader of a registration's quantity — the quota
+     * release, the settlement line, the confirmed grants — would otherwise
+     * depend on whether the row happened to be re-read after the insert.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'quantity' => 1,
+    ];
+
     protected $fillable = [
         'registration_type_id',
         'event_id',
         'registrant_user_id',
         'status',
         'payment_status',
+        'quantity',
         'organization_name',
         'billing_recipient_name',
         'billing_email',
@@ -107,6 +129,7 @@ class Registration extends Model
         return [
             'status' => RegistrationStatus::class,
             'payment_status' => PaymentStatus::class,
+            'quantity' => 'integer',
             'submitted_at' => 'datetime',
             'approved_at' => 'datetime',
             'rejected_at' => 'datetime',

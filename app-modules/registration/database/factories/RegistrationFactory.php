@@ -38,12 +38,26 @@ class RegistrationFactory extends Factory
             'event_id' => $registrationType->event_id,
             'registrant_user_id' => (string) Str::ulid(),
             'status' => RegistrationStatus::Submitted,
+            'quantity' => 1,
             'payment_status' => PaymentStatus::None,
             'organization_name' => null,
             'billing_recipient_name' => null,
             'billing_email' => null,
             'submitted_at' => now(),
         ];
+    }
+
+    /**
+     * How many units of the offer this act buys (Task 19). The type's
+     * `max_quantity_per_registration` is the operator's ceiling; a factory
+     * row is not put through `SubmitRegistration`'s guard, so a test that
+     * wants an over-cap row can still build one on purpose.
+     */
+    public function quantity(int $quantity): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'quantity' => $quantity,
+        ]);
     }
 
     public function forType(RegistrationType $registrationType): static

@@ -91,9 +91,18 @@ final class ConfirmRegistration
                 brandId: $registration->brand_id,
                 registrantUserId: $registration->registrant_user_id,
                 confirmedAt: $registration->confirmed_at->toIso8601String(),
+                // Task 19: the buyer's quantity multiplies every grant, and
+                // it is multiplied exactly here — the payload is the one
+                // contract Admission, Resources and Community read, so
+                // three double tickets reach them as six admissions and six
+                // seats without any of them learning that a registration
+                // has a quantity at all.
                 grants: array_values($registrationType->grants
                     ->toCollection()
-                    ->map(fn (GrantData $grant): array => $grant->toEventPayload())
+                    ->map(fn (GrantData $grant): array => [
+                        ...$grant->toEventPayload(),
+                        'quantity' => $grant->quantity * $registration->quantity,
+                    ])
                     ->all()),
             ));
 

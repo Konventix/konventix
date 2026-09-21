@@ -81,6 +81,7 @@ const form = useForm({
     settlement: props.type.settlement,
     confirmationGate: props.type.confirmationGate,
     termsDays: props.type.termsDays,
+    maxQuantityPerRegistration: props.type.maxQuantityPerRegistration,
     grants: props.type.grants.map((grant) => ({ ...grant })) as Grant[],
     priceDeclaration: props.type.priceDeclaration
         ? { ...props.type.priceDeclaration }
@@ -121,6 +122,13 @@ function submit(): void {
         ...data,
         salesStart: toInstant(data.salesStart),
         salesEnd: toInstant(data.salesEnd),
+        // An emptied number input is "no ceiling of its own", which is one
+        // (Task 19) — not the empty string the browser hands over.
+        maxQuantityPerRegistration:
+            data.maxQuantityPerRegistration === null ||
+            (data.maxQuantityPerRegistration as unknown as string) === ''
+                ? null
+                : Number(data.maxQuantityPerRegistration),
     })).put(updateType(props.type.id).url, { preserveScroll: true });
 }
 </script>
@@ -320,6 +328,31 @@ function submit(): void {
                                     Days until an invoice is due.
                                 </p>
                                 <InputError :message="form.errors.termsDays" />
+                            </div>
+
+                            <div class="grid gap-2">
+                                <Label for="type-max-quantity"
+                                    >Maximum per registration</Label
+                                >
+                                <Input
+                                    id="type-max-quantity"
+                                    v-model.number="
+                                        form.maxQuantityPerRegistration
+                                    "
+                                    type="number"
+                                    min="1"
+                                    placeholder="1"
+                                />
+                                <p class="text-xs text-text-muted">
+                                    How many units one person may buy in a
+                                    single registration. Empty means one, and
+                                    the form then offers no choice.
+                                </p>
+                                <InputError
+                                    :message="
+                                        form.errors.maxQuantityPerRegistration
+                                    "
+                                />
                             </div>
                         </div>
                     </CardContent>

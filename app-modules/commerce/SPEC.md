@@ -73,7 +73,13 @@ BaFin/ZAG licensing.
   `RemoveCartLine` all lock the variant row under their own transaction and
   call `Cart::touchExpiry()`, so continued activity keeps the reservation
   alive; `ChangeCartLineQuantity` refuses a registration line with a
-  `LogicException`, since its quantity is fixed by the registration itself.
+  `LogicException`, since its quantity is fixed by the registration itself:
+  `PlaceRegistrationLineInCart` takes it from the settlement request (the
+  buyer chose it on the registration form, bugfix round 2026-09-21 Task 19)
+  and keeps `unit_amount_net` per unit, so the cart shows "3 × 50,00" and
+  the checkout multiplies — but the registration holds exactly that many
+  quota units, so changing the number here would move the money without
+  moving the hold.
   **The sweep** (`commerce:expire-carts`, scheduled every fifteen minutes
   with `->withoutOverlapping()`, mirroring
   `Registration\Actions\ExpireWaitlistOffers`) is two passes over the same

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Konventix\Registration\Data;
 
 use Spatie\LaravelData\Attributes\Validation\Email;
+use Spatie\LaravelData\Attributes\Validation\IntegerType;
 use Spatie\LaravelData\Attributes\Validation\Max;
+use Spatie\LaravelData\Attributes\Validation\Min;
 use Spatie\LaravelData\Attributes\Validation\Nullable;
 use Spatie\LaravelData\Attributes\Validation\Size;
 use Spatie\LaravelData\Attributes\Validation\StringType;
@@ -55,5 +57,20 @@ final class SubmitRegistrationData extends Data
 
         #[Nullable, StringType, Max(32)]
         public readonly ?string $billingVatId = null,
+
+        /**
+         * How many units of the offer this submission buys (bugfix round
+         * 2026-09-21, Task 19).
+         *
+         * `Min(1)` and a default of one: a form that sends nothing — every
+         * type whose ceiling is one, which is every type that has not opted
+         * in — buys one unit, exactly as before. The *upper* bound is the
+         * type's own `max_quantity_per_registration` and what its quotas
+         * still have left, neither of which a static ruleset can see, so
+         * `SubmitRegistration` guards it per type the way
+         * `guardBillingParty()` guards the invoice address.
+         */
+        #[IntegerType, Min(1)]
+        public readonly int $quantity = 1,
     ) {}
 }

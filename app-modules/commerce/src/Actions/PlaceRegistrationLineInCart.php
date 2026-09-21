@@ -19,11 +19,24 @@ use Konventix\Commerce\Models\CartLine;
  * and already holds its own quota, only where the money settles changes.
  *
  * A registration always settles as one line, however many priced lines its
- * settlement request carried: `unit_amount_net` is the sum of every
- * request line's own net (`unit_amount_net * quantity`), `label` is the
- * first line's label, `tax_class` the first line's class — the cart shows
- * "your registration", not an itemised breakdown Registration never asked
- * for.
+ * settlement request carried: `label` is the first line's label,
+ * `tax_class` the first line's class — the cart shows "your registration",
+ * not an itemised breakdown Registration never asked for.
+ *
+ * The *quantity* comes from the request (bugfix round 2026-09-21, Task 19):
+ * a registration may now buy N units, and `unit_amount_net` stays the price
+ * of one so the cart reads "3 × 50,00" and the totals multiply the way they
+ * do for a product line. That only works while every request line agrees on
+ * the quantity, which is the shape Registration sends — one line at the
+ * registration's own quantity, or an amendment's lines. Where they disagree
+ * the line falls back to the old shape, quantity one at the summed total:
+ * the money is identical either way, and inventing a per-unit price by
+ * dividing would not be.
+ *
+ * `ChangeCartLineQuantity` still refuses this line. The quantity is the
+ * registration's own fact, fixed at submission, and the registration holds
+ * exactly that many quota units — changing it in the cart would move the
+ * money without moving the hold.
  *
  * #218 (#216 draft i, fix round 1): the request may carry the type's sales
  * window as two nullable ISO-8601 instants, and **this is the only place
@@ -100,9 +113,21 @@ final class PlaceRegistrationLineInCart
         $cartLine = DB::transaction(function () use ($cart, $registrationId, $requestKey, $lines, $saleStartsAt, $saleEndsAt): CartLine {
             $first = $lines[0];
 
-            $totalNet = '0.00';
+            // One quantity for the whole line, and only when every request
+            // line already agrees on it — otherwise the line keeps the old
+            // shape (see this class's docblock). `$unitNet` is what the
+            // cart multiplies by `$quantity`, so both branches come to the
+            // same total.
+            $uniform = count(array_unique(array_column($lines, 'quantity'))) === 1;
+            $quantity = $uniform ? $first['quantity'] : 1;
+
+            $unitNet = '0.00';
             foreach ($lines as $line) {
-                $totalNet = bcadd($totalNet, bcmul($line['unit_amount_net'], (string) $line['quantity'], 2), 2);
+                $unitNet = bcadd(
+                    $unitNet,
+                    $uniform ? $line['unit_amount_net'] : bcmul($line['unit_amount_net'], (string) $line['quantity'], 2),
+                    2,
+                );
             }
 
             $cartLine = new CartLine([
@@ -111,8 +136,8 @@ final class PlaceRegistrationLineInCart
                 'ref_id' => $registrationId,
                 'request_key' => $requestKey,
                 'label' => $first['label'],
-                'quantity' => 1,
-                'unit_amount_net' => $totalNet,
+                'quantity' => $quantity,
+                'unit_amount_net' => $unitNet,
                 'tax_class' => $first['tax_class'],
                 'position' => $cart->lines()->count(),
                 'sale_starts_at' => $saleStartsAt,

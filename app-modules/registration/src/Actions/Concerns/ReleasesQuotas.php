@@ -15,8 +15,8 @@ use Konventix\Registration\Models\RegistrationAmendment;
  * every unit each quota referenced by the registration's type gave up, and
  * both emit `QuotaReleased` per quota (SPEC.md "Public contract" table).
  *
- * That is one unit for the submission itself (`ConsumesQuotas`, called from
- * `SubmitRegistration`) **plus** one per admission any amendment added
+ * That is the submission's own `quantity` units (`ConsumesQuotas`, called
+ * from `SubmitRegistration`) **plus** one per admission any amendment added
  * (ADR-0036). Releasing only the submission's unit would leak capacity
  * permanently on every amended registration — the seats would stay counted
  * as sold after the registration was cancelled.
@@ -49,7 +49,11 @@ trait ReleasesQuotas
             ->lockForUpdate()
             ->get();
 
-        $units = 1 + $this->amendedUnits($registration);
+        // Symmetry with `ConsumesQuotas` (Task 19): the submission consumed
+        // `quantity` units, so the cancellation gives back `quantity` —
+        // plus one per admission any amendment added (ADR-0036). A row
+        // written before the column existed reads as one.
+        $units = $registration->quantity + $this->amendedUnits($registration);
 
         foreach ($quotas as $quota) {
             $this->releaseQuota($quota, $units);

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Registration\Data;
 
+use Konventix\Platform\Models\Scopes\BrandScope;
+use Konventix\Registration\Models\Quota;
 use Konventix\Registration\Models\RegistrationType;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
@@ -25,6 +27,14 @@ final class RegistrationFormData extends Data
         public readonly string $confirmationGate,
         public readonly ?PriceDeclarationData $price,
         public readonly int $termsDays,
+
+        /**
+         * The largest quantity this form may offer (bugfix round
+         * 2026-09-21, Task 19): the type's own ceiling, lowered to what the
+         * quotas it draws on still have left. One means "no choice" and the
+         * page shows no number input at all.
+         */
+        public readonly int $maxQuantity,
     ) {}
 
     public static function fromModel(RegistrationType $registrationType): self
@@ -39,6 +49,40 @@ final class RegistrationFormData extends Data
             // the invoice's actual treatment is resolved by Commerce.
             price: $registrationType->price_declaration,
             termsDays: $registrationType->terms_days,
+            maxQuantity: self::maxQuantityFor($registrationType),
         );
+    }
+
+    /**
+     * `min(type cap, remaining quota)`, never below one.
+     *
+     * A quantity larger than what remains would only be refused by
+     * `SubmitRegistration` a moment later, so the control never offers it.
+     * The remaining capacity is the *smallest* of the type's quotas: they
+     * are consumed all-or-nothing (D-REG-12), so the tightest one is the
+     * ceiling. A type drawing on no quota is bounded by its own cap alone.
+     *
+     * Read through an explicit query rather than the relation property:
+     * `Model::shouldBeStrict()` forbids lazy-loading an unloaded relation,
+     * and the type may arrive here straight from route-model binding. The
+     * floor of one keeps the form renderable while the sale is sold out —
+     * the submission then queues on the waitlist, which is
+     * `SubmitRegistration`'s answer, not this page's.
+     */
+    private static function maxQuantityFor(RegistrationType $registrationType): int
+    {
+        $cap = $registrationType->maxQuantityPerRegistration();
+
+        if ($cap === 1) {
+            return 1;
+        }
+
+        $remaining = $registrationType->quotas()
+            ->withoutGlobalScope(BrandScope::class)
+            ->get()
+            ->map(fn (Quota $quota): int => $quota->remaining())
+            ->min();
+
+        return $remaining === null ? $cap : max(1, min($cap, $remaining));
     }
 }

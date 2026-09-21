@@ -6,6 +6,23 @@
 
 ## Next
 
+- [x] Quantity on the registration form (bugfix round 2026-09-21, Task 19):
+      `registrations.quantity` (default 1) and
+      `registration_types.max_quantity_per_registration` (nullable, null
+      means one). `RegistrationFormData.maxQuantity` is
+      `min(type cap, remaining quota)` and `Register.vue` shows a number
+      input only above one; `SubmitRegistration` guards the cap, consumes
+      `quantity` units all-or-nothing and refuses "Only N left." as a
+      `quantity` form error, while nothing left still queues on the
+      waitlist at one unit; `RequestSettlement` sends one line at
+      `quantity` × the per-unit net; `ConfirmRegistration` multiplies every
+      grant once in the `RegistrationConfirmed` payload, so Admission,
+      Resources and Community changed nothing; `ReleasesQuotas` gives back
+      `quantity + amended units`. Not built: changing the quantity of an
+      existing registration (an amendment adds grants, and a *smaller*
+      quantity has no path at all — it is a cancellation today), and the
+      waitlist still queues and promotes one unit per entry however many
+      the person asked for.
 - [x] Every event a registrant sees links to its page (bugfix round
       2026-09-21, Task 17c): `MyRegistrationData` and `PublicOfferData`
       carry `eventSlug` from this module's own `EventSummary` (null until
