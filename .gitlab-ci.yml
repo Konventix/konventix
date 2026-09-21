@@ -60,6 +60,12 @@ stages:
   - analyse
   - test
   - scan
+  # The gates' own stage, after the scanners': a manual job whose `needs:`
+  # name unplayed manual jobs is *skipped*, and a skipped job can be neither
+  # played nor retried — so the gates take their reports by stage order
+  # (`dependencies:`) instead and stay playable. Nothing waits for this
+  # stage: every job after it either carries `needs:` or is manual itself.
+  - gate
   - build
   - publish
   - release
@@ -679,7 +685,7 @@ gemnasium-dependency_scanning:
       - '**/gl-sbom-*.cdx.json'
 
 scan:gate:
-  stage: scan
+  stage: gate
   image: alpine:3.22
   # Manual, like the scanners it reads. Press the scanners first: a report
   # that is not there fails this job, on purpose (see `require` below), so
@@ -688,6 +694,10 @@ scan:gate:
   # code and dependencies — and it blocks nothing: `publish:image` no longer
   # needs it. On a feature branch or a docs/ branch only secret detection
   # exists, so the gate checks only that.
+  #
+  # `dependencies:`, not `needs:` — see the `gate` stage above. Pipeline
+  # 1839 is the proof: with `needs:` on the manual scanners this job was
+  # skipped and unplayable even after one of them had run.
   rules:
     - if: $PIPELINE_SHAPE == "docs"
       when: manual
@@ -706,21 +716,13 @@ scan:gate:
       variables:
         GATE_SECRETS_ONLY: "yes"
   allow_failure: true
-  needs:
-    # Optional throughout: which analyzers a commit produces depends on the
-    # files it touches, and a scanner that did not run is not a finding.
-    - job: secret_detection
-      artifacts: true
-      optional: true
-    - job: gitlab-advanced-sast
-      artifacts: true
-      optional: true
-    - job: semgrep-sast
-      artifacts: true
-      optional: true
-    - job: gemnasium-dependency_scanning
-      artifacts: true
-      optional: true
+  dependencies:
+    # A scanner that was not pressed, or does not exist on this ref, simply
+    # hands over nothing; `require` below decides what that means.
+    - secret_detection
+    - gitlab-advanced-sast
+    - semgrep-sast
+    - gemnasium-dependency_scanning
   before_script:
     - apk add --no-cache jq
   script:
@@ -1039,10 +1041,11 @@ container_scanning:
 # longer waits for it. Press `container_scanning`, then this, to get the
 # verdict a release tag used to be held on.
 scan:gate:image:
-  # Follows `container_scanning`, which #261 moved behind `publish:image` so
-  # it scans the tag that exists rather than one that might not; a job cannot
-  # need another from a later stage, so this moves with it.
-  stage: publish
+  # One stage after `container_scanning`, and `dependencies:` rather than
+  # `needs:` for the same reason as `scan:gate`: a job that needs an unplayed
+  # manual job is skipped for good. `release:image` shares this stage and
+  # does not wait for it.
+  stage: release
   image: alpine:3.22
   rules:
     - if: $PIPELINE_SHAPE == "docs"
@@ -1054,9 +1057,8 @@ scan:gate:image:
     - if: $CI_COMMIT_BRANCH == "develop"
       when: manual
   allow_failure: true
-  needs:
-    - job: container_scanning
-      artifacts: true
+  dependencies:
+    - container_scanning
   before_script:
     - apk add --no-cache jq
   script:
