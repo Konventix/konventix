@@ -23,9 +23,11 @@ use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Events\CreditNoteIssued;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
+use Konventix\Commerce\Exceptions\CreditNoteExceedsInvoiceException;
 use Konventix\Commerce\Exceptions\CreditNoteRequiresInvoiceException;
 use Konventix\Commerce\Exceptions\RefundBlockedByCheckInException;
 use Konventix\Commerce\Exceptions\RefundEventRelayFailedException;
+use Konventix\Commerce\Listeners\RefundUnitsOnRegistrationQuantityReduced;
 use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
@@ -33,12 +35,14 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
+use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\SettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Mail\TemplatedMail;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
+use Konventix\Registration\Events\RegistrationQuantityReduced;
 
 /**
  * Records refund calls so tests can assert the PSP side of `RefundOrder`
@@ -94,7 +98,7 @@ function refundTestPaidOrder(?string $registrationId = null, bool $invoiced = tr
     // need one. `$invoiced: false` is the instant-settled order that was paid
     // at checkout and never invoiced.
     if ($invoiced) {
-        Invoice::factory()->create(['order_id' => $order->id]);
+        Invoice::factory()->forOrder($order)->create();
     }
 
     return $order;
@@ -247,7 +251,7 @@ it('does not block an order that settles something other than a registration', f
         'settles_type' => 'resource_booking',
         'settles_id' => (string) Str::ulid(),
     ]);
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     expect(app(RefundOrder::class)->handle($order, reasonCode: 'customer-request')->status)
         ->toBe(OrderStatus::Refunded);
@@ -397,7 +401,7 @@ it('blocks the refund of a cart order when one of its registration lines is chec
         'settles_kind' => 'registration',
         'settles_ref' => $registrationId,
     ]);
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     event(new AdmissionCheckedIn(
         checkInId: (string) Str::ulid(),
@@ -434,7 +438,7 @@ it('refunds a cart order whose lines have no checked-in registration', function 
         'settles_kind' => 'registration',
         'settles_ref' => (string) Str::ulid(),
     ]);
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
 
@@ -1200,7 +1204,7 @@ function refundTestPaidCartOrder(): Order
         'settles_id' => (string) Str::ulid(),
     ]);
 
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     return $order;
 }
@@ -1280,4 +1284,224 @@ it('emits no line event for a direct registration order, which OrderRefunded alr
     app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
 
     Event::assertNotDispatched(OrderLineCancelled::class);
+});
+
+/**
+ * D-REG-15 / #7: the per-unit refund a reduced registration triggers.
+ *
+ * A paid, invoiced order of three units at 19.00 net each, its line carrying
+ * the `settles_kind`/`settles_ref` pair both order shapes write. The spy
+ * adapter is registered so the provider leg is observable without an SDK.
+ *
+ * @return array{0: Order,1: OrderLine, 2: RefundTestSpyAdapter}
+ */
+function refundTestUnitOrder(string $registrationId, int $quantity = 3): array
+{
+    $account = SettlementAccount::factory()->create(['provider' => 'spy']);
+
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'registration',
+        'settles_id' => $registrationId,
+        'request_key' => $registrationId,
+        'currency' => 'EUR',
+        'total_net' => bcmul('19.00', (string) $quantity, 2),
+        'total_tax' => bcmul('3.61', (string) $quantity, 2),
+        'total_gross' => bcmul('22.61', (string) $quantity, 2),
+    ]);
+
+    $line = OrderLine::factory()->forOrder($order)->create([
+        'settles_kind' => 'registration',
+        'settles_ref' => $registrationId,
+        'quantity' => $quantity,
+        'unit_amount_net' => '19.00',
+        'tax_rate' => '19.00',
+        'line_net' => bcmul('19.00', (string) $quantity, 2),
+        'line_tax' => bcmul('3.61', (string) $quantity, 2),
+        'line_gross' => bcmul('22.61', (string) $quantity, 2),
+    ]);
+
+    Invoice::factory()->create([
+        'order_id' => $order->id,
+        'total_net' => $order->total_net,
+        'total_tax' => $order->total_tax,
+        'total_gross' => $order->total_gross,
+    ]);
+
+    Payment::factory()->create([
+        'order_id' => $order->id,
+        'settlement_account_id' => $account->id,
+        'provider' => 'spy',
+        'status' => PaymentStatus::Succeeded,
+        'amount' => $order->total_gross,
+        'currency' => 'EUR',
+        'received_at' => now(),
+    ]);
+
+    app(SettlementAdapterRegistry::class)->register('spy', RefundTestSpyAdapter::class);
+    $spy = app(RefundTestSpyAdapter::class);
+    app()->instance(RefundTestSpyAdapter::class, $spy);
+
+    return [$order, $line, $spy];
+}
+
+function refundTestReductionEvent(
+    string $registrationId,
+    string $brandId,
+    string $reductionId,
+    int $units,
+): RegistrationQuantityReduced {
+    return new RegistrationQuantityReduced(
+        registrationId: $registrationId,
+        reductionId: $reductionId,
+        registrationTypeId: (string) Str::ulid(),
+        eventId: (string) Str::ulid(),
+        brandId: $brandId,
+        registrantUserId: (string) Str::ulid(),
+        removedUnits: $units,
+        previousQuantity: 3,
+        newQuantity: 3 - $units,
+        removedGrants: [[
+            'kind' => 'admission',
+            'role' => 'visitor',
+            'quantity' => $units,
+            'resource_type_id' => null,
+            'resource_type_ids' => null,
+            'seating_mode' => null,
+        ]],
+        reasonCode: 'registrant-request',
+        reducedByUserId: null,
+        reducedAt: now()->toIso8601String(),
+    );
+}
+
+it('refunds one unit at the line rate, leaves the order paid and credits net plus tax', function (): void {
+    $brand = $this->withBrand();
+    $registrationId = (string) Str::ulid();
+
+    [$order, , $spy] = refundTestUnitOrder($registrationId);
+
+    Event::fake([OrderRefunded::class, OrderLineCancelled::class, CreditNoteIssued::class]);
+
+    app(RefundUnitsOnRegistrationQuantityReduced::class)->handle(
+        refundTestReductionEvent($registrationId, $brand->getKey(), (string) Str::ulid(), 1),
+    );
+
+    // 19.00 net at 19% is 3.61 tax and 22.61 gross — one unit, not the order.
+    expect($spy->refunds)->toHaveCount(1)
+        ->and($spy->refunds[0]['amount'])->toBe('22.61')
+        // The sale still stands for the two units the buyer kept.
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+
+    $creditNote = CreditNote::withoutBrandScope()->where('order_id', $order->id)->sole();
+
+    expect((string) $creditNote->total_net)->toBe('19.00')
+        ->and((string) $creditNote->total_tax)->toBe('3.61')
+        ->and((string) $creditNote->total_gross)->toBe('22.61')
+        // #7's first criterion: net + tax == gross on the row the document
+        // renders from, so the rate it derives is the line's own 19%.
+        ->and(bcadd((string) $creditNote->total_net, (string) $creditNote->total_tax, 2))
+        ->toBe((string) $creditNote->total_gross);
+
+    Event::assertDispatched(
+        OrderRefunded::class,
+        fn (OrderRefunded $e): bool => $e->orderId === $order->id && $e->whole === false,
+    );
+    // Nothing was cancelled — the units are Registration's business and it
+    // has already done it.
+    Event::assertNotDispatched(OrderLineCancelled::class);
+});
+
+it('allows a second reduction of the same order and refuses a replay of the first', function (): void {
+    $brand = $this->withBrand();
+    $registrationId = (string) Str::ulid();
+
+    [$order, , $spy] = refundTestUnitOrder($registrationId);
+
+    $firstReduction = (string) Str::ulid();
+
+    app(RefundUnitsOnRegistrationQuantityReduced::class)->handle(
+        refundTestReductionEvent($registrationId, $brand->getKey(), $firstReduction, 1),
+    );
+
+    // The same announcement again: the credit note's `reduction_key` is the
+    // claim, so the provider is never asked twice.
+    app(RefundUnitsOnRegistrationQuantityReduced::class)->handle(
+        refundTestReductionEvent($registrationId, $brand->getKey(), $firstReduction, 1),
+    );
+
+    expect($spy->refunds)->toHaveCount(1)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(1);
+
+    // A genuinely second reduction goes through: the order is still `paid`,
+    // which is exactly what the partial branch preserves.
+    $spy->reference = 're_spy_2';
+
+    app(RefundUnitsOnRegistrationQuantityReduced::class)->handle(
+        refundTestReductionEvent($registrationId, $brand->getKey(), (string) Str::ulid(), 1),
+    );
+
+    expect($spy->refunds)->toHaveCount(2)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(2)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+it('never credits more than the invoice is worth', function (): void {
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+    $invoice = Invoice::withoutBrandScope()->where('order_id', $order->id)->sole();
+
+    app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        totalGross: (string) $invoice->total_gross,
+    );
+
+    // #7's third criterion: the sum of an invoice's credit notes never
+    // exceeds its gross, and a credit note cannot be corrected afterwards.
+    expect(fn () => app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        totalGross: '0.01',
+    ))->toThrow(CreditNoteExceedsInvoiceException::class);
+});
+
+it('refunds the unused units of a partly checked-in registration, but not more', function (): void {
+    // ADR-0037's own consequence: the per-admission keying exists for this.
+    $brand = $this->withBrand();
+    $registrationId = (string) Str::ulid();
+
+    [$order, , $spy] = refundTestUnitOrder($registrationId);
+
+    // One of the three was used.
+    event(refundTestCheckIn($order));
+
+    app(RefundUnitsOnRegistrationQuantityReduced::class)->handle(
+        refundTestReductionEvent($registrationId, $brand->getKey(), (string) Str::ulid(), 2),
+    );
+
+    expect($spy->refunds)->toHaveCount(1)
+        ->and($spy->refunds[0]['amount'])->toBe('45.22');
+
+    // A third unit would be the one that walked through the door.
+    app(RefundUnitsOnRegistrationQuantityReduced::class)->handle(
+        refundTestReductionEvent($registrationId, $brand->getKey(), (string) Str::ulid(), 3),
+    );
+
+    expect($spy->refunds)->toHaveCount(1);
+});
+
+it('does nothing for a registration that never produced an order', function (): void {
+    $brand = $this->withBrand();
+
+    Event::fake([OrderRefunded::class, CreditNoteIssued::class]);
+
+    // A `free` or `external` registration never caused a Commerce record
+    // (ADR-0026) — the reduction still happened, there is just no money.
+    app(RefundUnitsOnRegistrationQuantityReduced::class)->handle(
+        refundTestReductionEvent((string) Str::ulid(), $brand->getKey(), (string) Str::ulid(), 1),
+    );
+
+    Event::assertNotDispatched(OrderRefunded::class);
+    Event::assertNotDispatched(CreditNoteIssued::class);
 });

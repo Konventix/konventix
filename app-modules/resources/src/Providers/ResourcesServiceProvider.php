@@ -24,6 +24,7 @@ use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationQuantityReduced;
 use Konventix\Registration\Events\RegistrationRejected;
 use Konventix\Resources\Actions\FindSeatClaimForAdmission;
 use Konventix\Resources\Actions\HasFreePlaceForClaim;
@@ -52,6 +53,7 @@ use Konventix\Resources\Listeners\Metrics\RecordBookingMetrics;
 use Konventix\Resources\Listeners\Metrics\RecordPlanMetrics;
 use Konventix\Resources\Listeners\ProjectAdmission;
 use Konventix\Resources\Listeners\ProjectEventWindow;
+use Konventix\Resources\Listeners\ReduceSeatClaimOnRegistrationQuantityReduced;
 use Konventix\Resources\Listeners\ReleaseBookingOnAdmissionRevoked;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationCancelled;
 use Konventix\Resources\Listeners\ReleaseBookingsOnRegistrationRejected;
@@ -383,6 +385,13 @@ class ResourcesServiceProvider extends ModuleServiceProvider
         );
 
         Event::listen(RegistrationCancelled::class, ReleaseBookingsOnRegistrationCancelled::class);
+
+        // D-REG-15: a partial cancellation. The entitlement shrinks by the
+        // places the removed units were worth and gives its surplus
+        // bookings back — never the whole claim, which is what a
+        // cancellation does. Ungated for the same reason the two releases
+        // above are.
+        Event::listen(RegistrationQuantityReduced::class, ReduceSeatClaimOnRegistrationQuantityReduced::class);
         Event::listen(RegistrationRejected::class, ReleaseBookingsOnRegistrationRejected::class);
 
         Event::listen(EventCreated::class, [ProjectEventWindow::class, 'handleCreated']);

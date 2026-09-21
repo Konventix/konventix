@@ -138,6 +138,7 @@ Not part of the cross-module contract; other modules must not listen to them.
 | `RegistrationConfirmed` | Registration | `FulfilClaimsOnRegistrationConfirmed`, gated per brand: `resource_claim` grants become first-fit bookings, `seating` grants become one `unplaced` claim each with `registrant_user_id` from the payload; idempotent on `(registration_id, amendment_id null)` |
 | `RegistrationAmended` | Registration | `FulfilClaimsOnRegistrationAmended`, the same keyed on `amendment_id` |
 | `RegistrationCancelled` | Registration | `ReleaseBookingsOnRegistrationCancelled`, **ungated** (see Activation): every active booking of the registration released with `registration_cancelled`, claims → `released` |
+| `RegistrationQuantityReduced` (D-REG-15) | Registration | `ReduceSeatClaimOnRegistrationQuantityReduced`, **ungated** for the same reason: `resource_claims.quantity` drops by the `seating` grants' own quantity (already multiplied by the removed units), and whatever the claim now occupies above that cap is released through `ReleaseResourceBooking` with reason `registration_quantity_reduced` — unattended bookings first, newest first inside each group, so a place bound to a ticket stays and the seats picked earliest are kept. Never the whole claim: the quantity is floored at one, because a reduction always leaves a unit standing and an entitlement of zero would leave the picker with nothing to offer. Idempotent per `resource_claim_reduction_receipts.(claim_id, reduction_id)` — a decrement is not a state a replay converges on |
 | `RegistrationRejected` | Registration | `ReleaseBookingsOnRegistrationRejected`, ungated, reason `registration_rejected` |
 | `EventCreated`, `EventRescheduled`, `EventDetailsUpdated` | Event | `ProjectEventWindow`, ungated: upsert of `resource_event_windows` by `(brand_id, event_id)` with timezone-aware instants (ADR-0027), name and slug; `event:replay-details` backfills existing events |
 | `AdmissionRevoked` | Admission | `ReleaseBookingOnAdmissionRevoked`, ungated like the other release listeners (#292 §6.5): releases the booking bound to the admission (`admission_revoked`). A holder change (`AdmissionHolderUnassigned`) deliberately keeps the seat — the next holder inherits it |
@@ -223,7 +224,8 @@ short-circuit through `ModuleGate::isActiveForBrand($brandId)` because
 Admin routes carry no module gate; `BrandScope` hardens their queries instead.
 
 Two listener kinds are deliberately **not** gated, recorded in ADR-0060 as the
-explicit exception to ADR-0003: `ReleaseBookingsOnRegistrationCancelled` and
+explicit exception to ADR-0003: `ReleaseBookingsOnRegistrationCancelled`,
+`ReduceSeatClaimOnRegistrationQuantityReduced` and
 `ReleaseBookingsOnRegistrationRejected` release bookings for a brand that has
 switched the module off — a release is safe and idempotent, and a brand that
 switches Resources off must not keep seats parked for cancelled registrations;

@@ -27,6 +27,7 @@ use Konventix\Admission\Listeners\ProjectEventSummary;
 use Konventix\Admission\Listeners\ProjectPerson;
 use Konventix\Admission\Listeners\ProjectReentryPolicyOnEventReentryPolicyChanged;
 use Konventix\Admission\Listeners\RevokeAdmissionsOnRegistrationCancelled;
+use Konventix\Admission\Listeners\RevokeUnitsOnRegistrationQuantityReduced;
 use Konventix\Admission\Metrics\AdmissionMetrics;
 use Konventix\Admission\Support\BuildTicketManager;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
@@ -52,6 +53,7 @@ use Konventix\Registration\Events\RegistrationAmended;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationOwnershipAnnounced;
+use Konventix\Registration\Events\RegistrationQuantityReduced;
 use Konventix\Resources\Events\ResourceBookingConfirmed;
 use Konventix\Resources\Events\ResourceBookingReleased;
 use Konventix\Staffing\Events\AssignmentAccepted;
@@ -148,6 +150,16 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         Event::listen(
             RegistrationCancelled::class,
             RevokeAdmissionsOnRegistrationCancelled::class,
+        );
+
+        // D-REG-15: the act did not end, it got smaller. A plain synchronous
+        // listener on purpose — it runs inside `ReduceRegistrationQuantity`'s
+        // transaction and throws when fewer admissions are free than the
+        // reduction asks for, which rolls the whole reduction back and stops
+        // Commerce's queued refund from ever being pushed.
+        Event::listen(
+            RegistrationQuantityReduced::class,
+            RevokeUnitsOnRegistrationQuantityReduced::class,
         );
 
         // Admission's read model of the two Event facts the door must decide

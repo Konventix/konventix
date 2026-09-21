@@ -11,6 +11,7 @@ use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Jobs\RelayRefundEvents;
+use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
@@ -41,6 +42,17 @@ use Konventix\Commerce\Models\Payment;
  * console's refund button now behaves the same way whichever kind of order
  * paid for the seat. A *partial* refund releases nothing, exactly as
  * `OrderRefunded.whole` already told Registration for a direct order.
+ *
+ * **A partial refund is its own branch** (D-REG-15, #7). Passing
+ * `$reductionKey` says the money went back for named units of a
+ * registration rather than for the order: the order stays `paid` because
+ * the sale still stands for what the buyer kept, no `OrderLineCancelled`
+ * goes out because nothing was cancelled, `OrderRefunded` carries
+ * `whole: false` — which Registration already ignores — and the credit note
+ * carries the reduction's own key, unique per brand, so the money write is
+ * idempotent on it even though the order status can no longer serve as the
+ * claim. `$amountNet`/`$amountTax` travel with it so the document states the
+ * rate that was actually charged instead of the invoice's totals (#7).
  *
  * Escapes BrandScope explicitly (ADR-0010): the reversal caller runs on the
  * stateless api surface, where no brand is resolved from the host.
@@ -106,8 +118,11 @@ final class RecordRefund
         ?string $amount = null,
         ?Payment $payment = null,
         ?string $providerReference = null,
+        ?string $reductionKey = null,
+        ?string $amountNet = null,
+        ?string $amountTax = null,
     ): Order {
-        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount, $payment, $providerReference): Order {
+        return DB::transaction(function () use ($order, $reasonCode, $reasonNote, $amount, $payment, $providerReference, $reductionKey, $amountNet, $amountTax): Order {
             // **The order row is the claim** (blocker 1), and it is the
             // first lock every money path takes (`LocksMoneyRowsInOneOrder`). Everything below
             // writes paperwork that cannot be taken back — a credit note is
@@ -140,6 +155,23 @@ final class RecordRefund
 
             $order = $locked;
 
+            // D-REG-15's claim, narrower still and taken first: a partial
+            // refund leaves the order `paid`, so the order lock above lets
+            // every replay of the same reduction through. The credit note's
+            // `reduction_key` is unique per brand at the database, and this
+            // read happens under that same lock, so the second one in stops
+            // here — before the reversal row, before the document, before
+            // the announcement.
+            if ($reductionKey !== null && CreditNote::forReductionKey($order->brand_id, $reductionKey) !== null) {
+                Log::info('This quantity reduction has already been credited; nothing further written (D-REG-15).', [
+                    'order_id' => $order->id,
+                    'brand_id' => $order->brand_id,
+                    'reduction_key' => $reductionKey,
+                ]);
+
+                return $order->refresh();
+            }
+
             // The reversal row for the provider's own reference (#247), and
             // a second, narrower claim: where both sides key the refund on
             // the same `re_…` the loser stops here rather than at the order
@@ -166,15 +198,40 @@ final class RecordRefund
                         reasonCode: IssueCreditNote::REASON_REFUND,
                         reasonNote: $reasonNote,
                         totalGross: $amount,
+                        // Per-unit amounts where the caller computed them
+                        // (D-REG-15, #7); null keeps the whole-invoice copy.
+                        totalNet: $amountNet,
+                        totalTax: $amountTax,
+                        reductionKey: $reductionKey,
                     )
                     : null;
 
-            $order->forceFill(['status' => OrderStatus::Refunded])->save();
-
             $totalGross = $order->total_gross;
 
-            $whole = $amount === null
-                || (is_numeric($amount) && bccomp($amount, $totalGross, 2) === 0);
+            $whole = $reductionKey === null
+                && ($amount === null
+                    || (is_numeric($amount) && bccomp($amount, $totalGross, 2) === 0));
+
+            // **A unit refund leaves the order `paid`** (D-REG-15), and only
+            // that one does. The sale still stands: the buyer kept units,
+            // the invoice is still owed for them, and `OrderStatus::Refunded`
+            // would tell every list, export and sweep otherwise. It is also
+            // what allows a second reduction on the same order — the order
+            // lock above refuses anything that is no longer `paid`, so
+            // flipping the status here would make the first reduction the
+            // last.
+            //
+            // Every other partial refund keeps the behaviour it has always
+            // had and moves the order to `refunded` regardless of amount:
+            // an operator's partial, and a dashboard refund the provider
+            // reports back in instalments (`commerce:reconcile-payments`
+            // records two 60.00/59.00 legs of one 119.00 order), both mean
+            // the sale is over even though no single leg equals the total.
+            // `OrderRefunded.whole` is what tells Registration the
+            // difference, and it always has been.
+            if ($reductionKey === null) {
+                $order->forceFill(['status' => OrderStatus::Refunded])->save();
+            }
 
             $refundedAt = now()->toIso8601String();
 

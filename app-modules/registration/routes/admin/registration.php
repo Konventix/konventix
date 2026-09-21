@@ -22,6 +22,11 @@ Route::get('/events/{event}/registration-stats', RegistrationStatsController::cl
 Route::get('/registrations', [RegistrationAdminController::class, 'index'])->name('admin.registrations.index');
 Route::post('/registrations/bulk-approve', [RegistrationAdminController::class, 'bulkApprove'])->name('admin.registrations.bulk-approve');
 Route::get('/registrations/export', [RegistrationAdminController::class, 'export'])->name('admin.registrations.export');
+// D-REG-15: partial cancellation — take units off a confirmed registration
+// and let Commerce return the money for exactly those units. Its own
+// capability, deliberately not one `registration.desk` holds.
+Route::post('/registrations/{registration}/reduce-quantity', [RegistrationAdminController::class, 'reduceQuantity'])
+    ->name('admin.registrations.reduce-quantity');
 
 // The offer itself (ADR-0005): axes, grants, price declaration, quota links.
 Route::get('/registration-types', [RegistrationTypeAdminController::class, 'index'])->name('admin.registration-types.index');

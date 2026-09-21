@@ -11,7 +11,11 @@ use Konventix\Commerce\Actions\Concerns\LocksMoneyRowsInOneOrder;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
+use Konventix\Commerce\Exceptions\RefundBlockedByCheckInException;
+use Konventix\Commerce\Models\CheckedInAdmission;
+use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
@@ -43,6 +47,16 @@ use Throwable;
  * show that money and nothing else; the operator had to refund it by hand
  * in the provider's dashboard.
  *
+ * **And a third, partial one** (D-REG-15, #7): a confirmed registration
+ * bought fewer units, so the money for exactly those units goes back while
+ * the order stays `paid` and the rest of the sale stands. That refund is
+ * keyed on the reduction rather than on the order — the order status can no
+ * longer serve as the claim once a second partial is legitimate — and it
+ * carries its own net/tax split, computed from the order line's rate, so the
+ * Gutschrift states the rate that was actually charged. Its check-in guard
+ * is per admission rather than per registration: one attendee among five
+ * does not block the money for four people who never came.
+ *
  * The guards and the provider call are what this Action *is*; the credit
  * note, the status and `OrderRefunded` live in `RecordRefund`, which the
  * `external_refund` reversal path reaches without them (ADR-0057 point 1).
@@ -63,6 +77,8 @@ use Throwable;
  */
 final class RefundOrder
 {
+    private const string KIND_REGISTRATION = 'registration';
+
     // ADR-0057 point 4 gave the same question a second caller (the
     // unpaid-reversal sweep), which skips rather than refuses — the trait
     // owns the definition, this class keeps the refusal.
@@ -75,12 +91,31 @@ final class RefundOrder
         private readonly SettlementAdapterRegistry $registry,
     ) {}
 
+    /**
+     * `$reductionKey`, `$amountNet` and `$amountTax` are D-REG-15's partial
+     * refund (see the class docblock's third refund). Null everywhere else.
+     */
     public function handle(
         Order $order,
         string $reasonCode,
         ?string $reasonNote = null,
         ?string $amount = null,
+        ?string $reductionKey = null,
+        ?string $amountNet = null,
+        ?string $amountTax = null,
+        ?string $registrationId = null,
+        ?int $units = null,
     ): Order {
+        // **Before the provider, not after** (D-REG-15). The money leg runs
+        // first on purpose (#236), so the only place a replay can be stopped
+        // without sending the money twice is here, ahead of it. The credit
+        // note's `reduction_key` is unique per brand, and `RecordRefund`
+        // asks again under the order lock for the concurrent case this
+        // unlocked read cannot see.
+        if ($reductionKey !== null && CreditNote::forReductionKey($order->brand_id, $reductionKey) !== null) {
+            return $order->refresh();
+        }
+
         $unapplied = $this->unappliedPayment($order);
 
         $this->guardRefundable($order, $unapplied);
@@ -89,8 +124,19 @@ final class RefundOrder
         // nothing — the order was already cancelled when it arrived, the
         // seat was released and no admission came from it — so there is no
         // attendance the money could be weighed against.
-        if ($unapplied === null) {
+        if ($unapplied === null && $reductionKey === null) {
             $this->guardNotCheckedIn($order);
+        }
+
+        // ADR-0037's own consequence, made real: "if a future partial-refund
+        // flow refunds *unused* admissions of a partially checked-in group,
+        // the guard needs per-admission granularity; the read model's
+        // per-admission keying already permits that." A reduction refunds
+        // named units, so one attendee among five no longer blocks the money
+        // for the four who never came — what is refused is a refund of more
+        // units than the registration has admissions nobody used.
+        if ($reductionKey !== null && $registrationId !== null && $units !== null) {
+            $this->guardEnoughUnusedAdmissions($order, $registrationId, $units);
         }
 
         // Money that was never applied has no sale to undo (ADR-0057
@@ -131,7 +177,38 @@ final class RefundOrder
             amount: $amount,
             payment: $payment,
             providerReference: $providerReference,
+            reductionKey: $reductionKey,
+            amountNet: $amountNet,
+            amountTax: $amountTax,
         );
+    }
+
+    /**
+     * The per-admission half of ADR-0037's guard (D-REG-15): how many
+     * admissions of this registration were checked in, against how many
+     * units the refund is for.
+     *
+     * The order line's `quantity` is how many units were sold; a refund of
+     * `$units` is legitimate exactly while `sold - used >= units`.
+     * Admission has already refused the reduction when fewer than that many
+     * admissions were free, so in practice this never fires first — it is
+     * the money rail enforcing the rule itself rather than trusting
+     * Admission's discipline, which is what ADR-0037 decided against
+     * "Commerce reports, Registration decides".
+     */
+    private function guardEnoughUnusedAdmissions(Order $order, string $registrationId, int $units): void
+    {
+        $sold = (int) OrderLine::withoutBrandScope()
+            ->where('order_id', $order->id)
+            ->where('settles_kind', self::KIND_REGISTRATION)
+            ->where('settles_ref', $registrationId)
+            ->sum('quantity');
+
+        $used = CheckedInAdmission::countForRegistration($order->brand_id, $registrationId);
+
+        if ($sold - $used < $units) {
+            throw RefundBlockedByCheckInException::forUnitsOfRegistration($registrationId, $units, max(0, $sold - $used));
+        }
     }
 
     /**

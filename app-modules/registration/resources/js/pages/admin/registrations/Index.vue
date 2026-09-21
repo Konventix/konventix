@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
 import { Check, Download } from '@lucide/vue';
-import type { ColumnDef, SortingState } from '@tanstack/vue-table';
-import { computed, h, ref } from 'vue';
+import type { SortingState } from '@tanstack/vue-table';
+import { computed, ref } from 'vue';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import DataTableToolbar from '@/components/admin/DataTableToolbar.vue';
@@ -13,24 +13,14 @@ import type {
     DataTableFilters,
 } from '@/composables/useDataTable';
 import { seedSelectionFilter, useDataTable } from '@/composables/useDataTable';
-import { formatDateTime } from '@/lib/datetime';
 import {
     bulkApprove,
     exportMethod as exportRegistrations,
     index as registrationsIndex,
 } from '@/routes/admin/registrations';
-
-type RegistrationRow = {
-    id: string;
-    eventId: string;
-    registrant: string;
-    registrantEmail: string | null;
-    organization: string | null;
-    status: string;
-    paymentStatus: string;
-    submittedAt: string;
-    approvable: boolean;
-};
+import ReduceQuantityDialog from '../../../components/registrations/ReduceQuantityDialog.vue';
+import { registrationColumns } from '../../../components/registrations/rows';
+import type { RegistrationRow } from '../../../components/registrations/rows';
 
 interface PaginatedRegistrations {
     data: RegistrationRow[];
@@ -52,6 +42,8 @@ const props = defineProps<{
     statuses: string[];
     brands: { id: string; name: string }[];
     events: { id: string; name: string }[];
+    canReduceQuantity: boolean;
+    reductionReasons: string[];
 }>();
 
 const selection = useConsoleSelection();
@@ -179,97 +171,17 @@ function approveSelected(): void {
     );
 }
 
-const statusClasses: Record<string, string> = {
-    submitted: 'bg-warning/15 text-warning',
-    approved: 'bg-accent/15 text-accent',
-    confirmed: 'bg-success/15 text-success',
-    rejected: 'bg-danger/15 text-danger',
-    cancelled: 'bg-subtle text-text-muted',
-};
+// D-REG-15: the row being reduced, or null. The dialog owns its own form.
+const reducing = ref<RegistrationRow | null>(null);
 
-const columns: ColumnDef<RegistrationRow>[] = [
-    {
-        id: 'select',
-        header: '',
-        enableSorting: false,
-        cell: ({ row }) =>
-            row.original.approvable
-                ? h('input', {
-                      type: 'checkbox',
-                      checked: selected.value.has(row.original.id),
-                      onChange: () => toggleSelection(row.original.id),
-                  })
-                : null,
-    },
-    {
-        id: 'registrant',
-        header: 'Registrant',
-        enableSorting: false,
-        cell: ({ row }) =>
-            h('div', { class: 'flex flex-col' }, [
-                h('span', { class: 'font-medium' }, row.original.registrant),
-                row.original.registrantEmail
-                    ? h(
-                          'span',
-                          { class: 'text-xs text-text-muted' },
-                          row.original.registrantEmail,
-                      )
-                    : null,
-            ]),
-    },
-    {
-        id: 'organization',
-        header: 'Organization',
-        enableSorting: false,
-        cell: ({ row }) =>
-            h(
-                'span',
-                { class: 'text-text-muted' },
-                row.original.organization ?? '—',
-            ),
-    },
-    {
-        accessorKey: 'status',
-        header: 'Status',
-        enableSorting: true,
-        cell: ({ row }) => {
-            const status = row.getValue<string>('status');
-
-            return h(
-                'span',
-                {
-                    class: `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses[status] ?? 'bg-subtle text-text-muted'}`,
-                },
-                status,
-            );
-        },
-    },
-    {
-        accessorKey: 'payment_status',
-        accessorFn: (row) => row.paymentStatus,
-        header: 'Payment',
-        enableSorting: true,
-        cell: ({ row }) =>
-            h('span', { class: 'text-text-muted' }, row.original.paymentStatus),
-    },
-    {
-        accessorKey: 'submitted_at',
-        accessorFn: (row) => row.submittedAt,
-        header: 'Submitted',
-        enableSorting: true,
-        // The instant carries its offset; the reader's own zone is what the
-        // column shows, with the machine-readable value on the `<time>`.
-        cell: ({ row }) =>
-            h(
-                'time',
-                {
-                    class: 'text-text-muted',
-                    datetime: row.original.submittedAt,
-                },
-                formatDateTime(row.original.submittedAt),
-            ),
-    },
-];
+const columns = computed(() =>
+    registrationColumns({
+        isSelected: (id) => selected.value.has(id),
+        onToggle: toggleSelection,
+        canReduce: props.canReduceQuantity,
+        onReduce: (row) => (reducing.value = row),
+    }),
+);
 </script>
 
 <template>
@@ -318,6 +230,12 @@ const columns: ColumnDef<RegistrationRow>[] = [
             empty-message="No registrations match."
             @update:sorting="onSortingChange"
             @update:page="setPage"
+        />
+
+        <ReduceQuantityDialog
+            :registration="reducing"
+            :reasons="props.reductionReasons"
+            @close="reducing = null"
         />
     </div>
 </template>

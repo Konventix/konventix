@@ -46,6 +46,7 @@ use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentReversalRecorded;
 use Konventix\Commerce\Listeners\NotifyOperatorsOnPaymentUnapplied;
 use Konventix\Commerce\Listeners\NotifyOperatorsOnStockExhausted;
 use Konventix\Commerce\Listeners\ProjectCheckInOnAdmissionCheckedIn;
+use Konventix\Commerce\Listeners\RefundUnitsOnRegistrationQuantityReduced;
 use Konventix\Commerce\Listeners\SendOrderConfirmationOnOrderPlaced;
 use Konventix\Commerce\Listeners\SendPaymentFailedMailOnPaymentFailed;
 use Konventix\Commerce\Listeners\SendPaymentReversedMailOnPaymentReversed;
@@ -58,6 +59,7 @@ use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Models\WaitingRoomSettings;
+use Konventix\Commerce\Pricing\TaxCalculatorEndPrices;
 use Konventix\Commerce\Settlement\LocalHostedCheckoutAdapter;
 use Konventix\Commerce\Settlement\ManualSettlementAdapter;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
@@ -99,9 +101,11 @@ use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Operators\OperatorSettings;
 use Konventix\Platform\Permissions\DefaultRole;
+use Konventix\Platform\Pricing\EndPriceCalculator;
 use Konventix\Platform\Slots\SlotRegistry;
 use Konventix\Platform\Storage\StorageMigrationRegistry;
 use Konventix\Platform\WaitingRoom\WaitingRoomGate;
+use Konventix\Registration\Events\RegistrationQuantityReduced;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
 use Laravel\Pennant\Feature;
 use Spatie\Prometheus\Facades\Prometheus;
@@ -265,6 +269,14 @@ class CommerceServiceProvider extends ModuleServiceProvider
     {
         Event::listen(RegistrationSettlementRequested::class, CreateOrderOnSettlementRequested::class);
 
+        // D-REG-15: a confirmed registration bought fewer units, so the
+        // money for exactly those goes back. Queued with `$afterCommit`,
+        // which is load-bearing: Admission's synchronous listener on the
+        // same event throws when too few admissions are free, and the
+        // rollback that follows drops this job's push before it is ever
+        // made (`ReduceRegistrationQuantity`'s docblock).
+        Event::listen(RegistrationQuantityReduced::class, RefundUnitsOnRegistrationQuantityReduced::class);
+
         // The ADR-0037 read model. D-COM-15 forbids Commerce querying
         // Admission's tables, so this projection is the *only* way the refund
         // guard can know a registration was used.
@@ -399,6 +411,15 @@ class CommerceServiceProvider extends ModuleServiceProvider
         // module standing behind the door resolves this through Platform's
         // `ensure-waiting-room` alias, never this binding directly.
         $this->app->bind(WaitingRoomGate::class, CommerceWaitingRoomGate::class);
+
+        // Platform's contract, Commerce's arithmetic (#234, D-COM-20) — the
+        // same inversion, one line down. A module with a public price to
+        // print resolves `EndPriceCalculator` and never imports
+        // `Commerce\Tax\*`, which ADR-0004 forbids and `ArchitectureTest`
+        // enforces. `bind`, not `singleton`: it is stateless and cheap, and
+        // a fresh instance per resolution cannot carry one request's brand
+        // into the next under Octane.
+        $this->app->bind(EndPriceCalculator::class, TaxCalculatorEndPrices::class);
     }
 
     /**
@@ -1037,6 +1058,13 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     // consumer page is the PAngV problem #3 exists for. The
                     // flag is already in hand here, so the card is told.
                     'smallBusinessScheme' => $smallBusinessScheme,
+                    // And in which currency (#234): the brand's own, read
+                    // off the same row, so no public card hardcodes a
+                    // symbol. Empty where there is nothing to price — the
+                    // card renders nothing at all then.
+                    'currency' => $first === null
+                        ? ''
+                        : app(OperatorSettings::class)->currencyForBrand($first->brand_id),
                     'products' => $products
                         ->map(fn (Product $product): array => ShopProductData::ofModel(
                             $product,

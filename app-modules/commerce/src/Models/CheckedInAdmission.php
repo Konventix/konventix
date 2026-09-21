@@ -57,6 +57,20 @@ class CheckedInAdmission extends Model
     }
 
     /**
+     * How many admissions of this registration were used (D-REG-15). One
+     * row per admission is what makes this a count rather than a boolean —
+     * the per-admission keying ADR-0037's consequences anticipated for
+     * exactly the partial-refund case.
+     */
+    public static function countForRegistration(string $brandId, string $registrationId): int
+    {
+        return self::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('registration_id', $registrationId)
+            ->count();
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

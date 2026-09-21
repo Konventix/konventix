@@ -17,10 +17,12 @@ use Spatie\LaravelData\Data;
  * `OrderAdminController::refund()`): why the money goes back, and the
  * operator's own words about it.
  *
- * No amount. ADR-0037's Action accepts a partial one, but the console's
- * button refunds the order whole — a partial refund still splits the tax
- * like the full invoice (#7), so offering it here would produce a credit
- * note whose tax lines are wrong. #73 keeps the two apart deliberately.
+ * No amount. The console's button refunds the order whole. Since D-REG-15 a
+ * partial refund does split its own tax correctly (#7) — but only where a
+ * caller can say *which units* it is refunding, which
+ * `RefundUnitsOnRegistrationQuantityReduced` can and an operator typing an
+ * amount into this form cannot. #73's console-side partial refund needs that
+ * per-line selection first, so the two stay apart deliberately.
  *
  * Inbound only, so no `#[TypeScript]`: nothing renders this shape, the page
  * posts the two fields and reads its errors back under their own names

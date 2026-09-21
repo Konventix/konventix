@@ -44,6 +44,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $currency
  * @property string $reason_code
  * @property string|null $reason_note
+ * @property string|null $reduction_key
  * @property Carbon $issued_on
  * @property string|null $document_path
  * @property string|null $document_disk
@@ -77,8 +78,24 @@ class CreditNote extends Model
         'currency',
         'reason_code',
         'reason_note',
+        'reduction_key',
         'issued_on',
     ];
+
+    /**
+     * "Has this partial cancellation already been credited?" (D-REG-15) —
+     * the money side's idempotency key, asked before the provider is
+     * called and again under the order lock. `withoutBrandScope()` scoped
+     * to the caller's own brand is ADR-0010's named escape hatch: a
+     * reduction is made from the operator host, which resolves no brand.
+     */
+    public static function forReductionKey(string $brandId, string $reductionKey): ?self
+    {
+        return self::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('reduction_key', $reductionKey)
+            ->first();
+    }
 
     /**
      * @return BelongsTo<Order, $this>

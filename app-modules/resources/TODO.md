@@ -6,6 +6,16 @@
 
 ## Next
 
+- [x] Seat claims shrink with a reduced registration (round 4, Task 23,
+      D-REG-15): `Actions\ReduceSeatClaim` +
+      `ReduceSeatClaimOnRegistrationQuantityReduced` (ungated, like the
+      release listeners beside it) — `resource_claims.quantity` minus the
+      `seating` grants' own quantity, surplus occupying bookings released
+      through `ReleaseResourceBooking` with reason
+      `registration_quantity_reduced`, unattended first and newest first,
+      never the whole claim. Idempotent per
+      `resource_claim_reduction_receipts.(claim_id, reduction_id)`.
+
 - [x] A seat per ticket (#292 §6): `resource_admissions` read model off
       Admission's events (`ProjectAdmission`, backfilled by
       `admission:announce-ownership`), `resource_bookings.admission_id`

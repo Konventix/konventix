@@ -28,6 +28,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $brand_id
  * @property string|null $registration_id
  * @property string|null $amendment_id
+ * @property string|null $reduction_id
  * @property string|null $assignment_id
  * @property string $event_id
  * @property string|null $holder_user_id
@@ -51,6 +52,7 @@ class Admission extends Model
     protected $fillable = [
         'registration_id',
         'amendment_id',
+        'reduction_id',
         'assignment_id',
         'event_id',
         'holder_user_id',

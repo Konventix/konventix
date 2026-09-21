@@ -20,6 +20,15 @@ enum Permission: string
     case ApproveRegistrations = 'registration.approve-registrations';
     case RejectRegistrations = 'registration.reject-registrations';
     case CancelRegistrations = 'registration.cancel-registrations';
+
+    /**
+     * D-REG-15: take units off a confirmed registration and send the money
+     * for them back. Deliberately **not** part of `registration.desk`
+     * (ADR-0045): the desk approves, rejects and cancels, but a partial
+     * cancellation moves money through Commerce without the operator ever
+     * opening the order, so it is granted on purpose or not at all.
+     */
+    case ReduceRegistrationQuantity = 'registration.reduce-registration-quantity';
     case IssueInvitationTokens = 'registration.issue-invitation-tokens';
     case ExportRegistrations = 'registration.export-registrations';
 }

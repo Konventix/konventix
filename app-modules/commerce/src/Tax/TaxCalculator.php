@@ -24,7 +24,14 @@ use Spatie\LaravelData\DataCollection;
  */
 final class TaxCalculator
 {
-    private const int SCALE = 4;
+    /**
+     * Public since D-REG-15: `RefundUnitsOnRegistrationQuantityReduced`
+     * computes one line's per-unit net and tax with this same arithmetic
+     * but the line's *snapshotted* rate rather than a re-resolved class
+     * (ADR-0017), so the two must agree on the intermediate scale or a
+     * credit note and its invoice line could round apart by a cent.
+     */
+    public const int SCALE = 4;
 
     /**
      * @param  list<array{label: string, quantity: int, unit_amount_net: numeric-string, tax_class: string}>  $lines

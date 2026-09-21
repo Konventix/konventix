@@ -73,7 +73,7 @@ function expiryTestDirectOrder(
     $order->forceFill(['created_at' => now()->subMinutes($minutesOld)])->save();
 
     if ($invoiced) {
-        Invoice::factory()->create(['order_id' => $order->id]);
+        Invoice::factory()->forOrder($order)->create();
     }
 
     return $order;

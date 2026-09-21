@@ -144,6 +144,14 @@ final class CreditNoteDocumentRenderer
      * (unlike an invoice's `OrderLine`s) — the effective rate is derived
      * from the two totals it does carry. Zero net (reverse charge, §19
      * UStG) is zero tax by construction, so there is no division to guard.
+     *
+     * The derivation is only as true as the totals, which is what #7 was
+     * about: while `IssueCreditNote` copied the invoice's net and tax and
+     * overrode the gross alone, a partial credit note printed the whole
+     * invoice's rate beside a smaller amount and the document stated a VAT
+     * figure nobody had charged. Since D-REG-15 a partial note carries its
+     * own net and tax, computed at the order line's snapshotted rate, so
+     * this quotient comes back to exactly that rate.
      */
     private function effectiveTaxRate(CreditNote $creditNote): float
     {

@@ -50,6 +50,16 @@ enum OperationsNoticeKind: string
     case PaymentUnapplied = 'payment-unapplied';
 
     /**
+     * D-REG-15: a registration's quantity was reduced and the money for the
+     * removed units could not be sent back — the provider refused, or the
+     * refund was refused here. The reduction itself stands (the units, the
+     * quota and the admissions are already gone), so nobody is watching the
+     * console request that started it: the queued refund is the only thing
+     * that failed, and this notice is the only thing that says so.
+     */
+    case UnitRefundFailed = 'unit-refund-failed';
+
+    /**
      * #231: an expiry sweep cancelled an order without the provider ever
      * confirming what happened to its money — it was unreachable for the
      * whole grace, or it reported the payment as still travelling until the

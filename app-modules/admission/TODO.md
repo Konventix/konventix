@@ -6,6 +6,17 @@
 
 ## Next (Phase 1 PoC — admissions produced by the one registration flow)
 
+- [x] Partial revocation for a reduced registration (round 4, Task 23,
+      D-REG-15): `Actions\RevokeUnitsForRegistration` +
+      `RevokeUnitsOnRegistrationQuantityReduced`, idempotent per
+      `admissions.reduction_id` (the subtractive twin of `amendment_id`).
+      Selection is unassigned + unclaimed + unseated first, then unassigned
+      with a live claim link (revoked with it); never a holder, a seated
+      ticket or an accepted check-in. Too few free admissions is a refusal
+      (`NotEnoughFreeAdmissionsException`) thrown inside Registration's own
+      transaction, which is what stops Commerce's queued refund. Reason
+      `registration_quantity_reduced`, N × `AdmissionRevoked` + N delta rows.
+
 (nothing outstanding for Phase 1 — see Done)
 
 ## Backlog (Phase 2 — release scope, entrance scanning is a definition-of-done item)

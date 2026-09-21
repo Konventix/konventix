@@ -47,5 +47,15 @@ final class RegistrationMailData extends Data
         public readonly bool $wasPaid = false,
         public readonly ?string $cartUrl = null,
         public readonly ?string $cartHoldExpiresAt = null,
+
+        /**
+         * D-REG-15's pair, lit up by `registration.quantity-reduced` alone:
+         * how many units were taken off the act and how many are left.
+         * Numbers rather than a sentence, for the same reason every code
+         * above is a code — the recipient's locale is resolved when the
+         * mail is actually sent, not here.
+         */
+        public readonly ?int $removedUnits = null,
+        public readonly ?int $newQuantity = null,
     ) {}
 }

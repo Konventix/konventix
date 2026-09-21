@@ -33,6 +33,7 @@ use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Platform\Blocks\BlockRegistry;
+use Konventix\Platform\Data\EndPriceData;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -50,6 +51,7 @@ use Konventix\Registration\Events\QuotaReleased;
 use Konventix\Registration\Events\RegistrationApproved;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationQuantityReduced;
 use Konventix\Registration\Events\RegistrationRejected;
 use Konventix\Registration\Events\RegistrationSubmitted;
 use Konventix\Registration\Gdpr\RegistrationGdprHandler;
@@ -60,6 +62,7 @@ use Konventix\Registration\Listeners\CancelRegistrationOnOrderUndone;
 use Konventix\Registration\Listeners\MailOnRegistrationApproved;
 use Konventix\Registration\Listeners\MailOnRegistrationCancelled;
 use Konventix\Registration\Listeners\MailOnRegistrationConfirmed;
+use Konventix\Registration\Listeners\MailOnRegistrationQuantityReduced;
 use Konventix\Registration\Listeners\MailOnRegistrationRejected;
 use Konventix\Registration\Listeners\MailOnRegistrationSubmitted;
 use Konventix\Registration\Listeners\MarkInvoicedOnInvoiceIssued;
@@ -214,6 +217,12 @@ class RegistrationServiceProvider extends ModuleServiceProvider
         Event::listen(RegistrationRejected::class, MailOnRegistrationRejected::class);
         Event::listen(RegistrationConfirmed::class, MailOnRegistrationConfirmed::class);
         Event::listen(RegistrationCancelled::class, MailOnRegistrationCancelled::class);
+
+        // D-REG-15: the act got smaller rather than ending. Registered here
+        // like the other five; Admission's and Commerce's listeners on the
+        // same event live in their own providers and decide the ordering
+        // between themselves (see `ReduceRegistrationQuantity`'s docblock).
+        Event::listen(RegistrationQuantityReduced::class, MailOnRegistrationQuantityReduced::class);
     }
 
     protected function registerGdprExporters(): void
@@ -601,6 +610,64 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 'wasPaid' => true,
             ],
         ));
+
+        // D-REG-15: the sixth lifecycle mail. The act did not end — it got
+        // smaller — so the body says what is left rather than what was
+        // taken, and names the refund without promising a date: the money
+        // goes back through Commerce's own queued refund.
+        $registry->register(new MessageTemplate(
+            key: 'registration.quantity-reduced',
+            subjects: [
+                'de' => 'Ihre Anmeldung wurde reduziert',
+                'en' => 'Your registration has been reduced',
+            ],
+            bodies: [
+                'de' => <<<'BLADE'
+                    @if ($holderName)
+                    <p>Guten Tag {{ $holderName }},</p>
+                    @else
+                    <p>Guten Tag,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Ihre Anmeldung zu {{ $eventName }} ({{ $registrationTypeName }}) wurde um {{ $removedUnits }} Einheit(en) reduziert.</p>
+                    @else
+                    <p>Ihre Anmeldung ({{ $registrationTypeName }}) wurde um {{ $removedUnits }} Einheit(en) reduziert.</p>
+                    @endif
+                    <p>Es bleiben {{ $newQuantity }} Einheit(en) gebucht.</p>
+                    @if ($wasPaid)
+                    <p>Der Betrag für die entfallenen Einheiten wird erstattet; Sie erhalten dazu eine Gutschrift.</p>
+                    @endif
+                    <p>Den aktuellen Stand sehen Sie auf Ihrer <a href="{{ $registrationUrl }}">Anmeldeseite</a>.</p>
+                    BLADE,
+                'en' => <<<'BLADE'
+                    @if ($holderName)
+                    <p>Hello {{ $holderName }},</p>
+                    @else
+                    <p>Hello,</p>
+                    @endif
+                    @if ($eventName)
+                    <p>Your registration for {{ $eventName }} ({{ $registrationTypeName }}) has been reduced by {{ $removedUnits }} unit(s).</p>
+                    @else
+                    <p>Your registration ({{ $registrationTypeName }}) has been reduced by {{ $removedUnits }} unit(s).</p>
+                    @endif
+                    <p>{{ $newQuantity }} unit(s) remain booked.</p>
+                    @if ($wasPaid)
+                    <p>The amount for the removed units will be refunded; you will receive a credit note for it.</p>
+                    @endif
+                    <p>The current state is on your <a href="{{ $registrationUrl }}">registration page</a>.</p>
+                    BLADE,
+            ],
+            defaultLocale: 'de',
+            sample: [
+                'holderName' => 'Erika Musterfrau',
+                'eventName' => 'SXLan 2026',
+                'registrationTypeName' => 'Teilnehmer-Ticket',
+                'registrationUrl' => 'https://example.test/my/registrations/abc123',
+                'removedUnits' => 2,
+                'newQuantity' => 1,
+                'wasPaid' => true,
+            ],
+        ));
     }
 
     /**
@@ -744,19 +811,36 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 // event's name to its page.
                 $summaries = (clone $listable)->get(['event_id', 'name', 'slug'])->keyBy('event_id');
 
+                /** @var list<RegistrationType> $types */
+                $types = array_values(PublicOffers::query()
+                    ->whereIn('event_id', (clone $listable)->select('event_id'))
+                    ->get()
+                    ->all());
+
+                // What the offers actually cost (#234, D-COM-20). `/shop`
+                // used to get its end prices from `ShopController`, which
+                // filled `unitAmountGross` into this payload on the way out
+                // — the reason it was the only public surface with one.
+                // They are computed here now, through Platform's contract,
+                // once for the whole list; the landing page and the
+                // `tickets-for-event` block get theirs the same way, from
+                // `PublicOffers::forEvent()`.
+                $endPrices = PublicOffers::endPricesFor($types);
+
                 return [
-                    'offers' => PublicOffers::query()
-                        ->whereIn('event_id', (clone $listable)->select('event_id'))
-                        ->get()
-                        ->map(fn (RegistrationType $type): array => PublicOfferData::ofType(
+                    'offers' => array_map(
+                        fn (RegistrationType $type, ?EndPriceData $endPrice): array => PublicOfferData::ofType(
                             $type,
                             // Never null here: the subquery above already
                             // dropped every type whose event has no listable
                             // summary (review finding 3).
                             (string) $summaries->get($type->event_id)?->name,
                             $summaries->get($type->event_id)?->slug,
-                        )->toArray())
-                        ->all(),
+                            $endPrice,
+                        )->toArray(),
+                        $types,
+                        $endPrices,
+                    ),
                 ];
             },
             order: 10,

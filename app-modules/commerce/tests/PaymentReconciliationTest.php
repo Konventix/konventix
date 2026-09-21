@@ -794,7 +794,7 @@ it('adds no second reversal for a refund the console itself made (#235, #247)', 
     // which would credit-note it twice and report a lost notification that
     // never existed.
     [$order, $payment] = reconciliationTestStripeSettled();
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     app(SettlementAdapterRegistry::class)->register(
         SettlementAccount::PROVIDER_STRIPE,

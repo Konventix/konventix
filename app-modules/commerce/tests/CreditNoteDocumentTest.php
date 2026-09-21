@@ -6,6 +6,7 @@ use horstoeko\zugferd\ZugferdDocumentPdfReader;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Konventix\Commerce\Actions\IssueCreditNote;
 use Konventix\Commerce\Actions\SendCreditNoteMail;
 use Konventix\Commerce\Data\BillingPartyData;
@@ -473,4 +474,49 @@ it('404s the admin credit note document route when nothing has been generated ye
     $this->actingAs($admin)
         ->get('http://admin.credit-note-docs-missing.test/admin/credit-notes/'.$note->getKey().'/document')
         ->assertNotFound();
+});
+
+it('states the line\'s own VAT rate on a partial credit note (#7)', function (): void {
+    // Before D-REG-15 `IssueCreditNote` copied the invoice's net and tax and
+    // overrode only the gross, so a partial note printed the *whole*
+    // invoice's amounts beside a smaller total and the derived rate was a
+    // number nobody had charged.
+    $brand = $this->withBrand();
+    Storage::fake('invoices');
+    Mail::fake();
+
+    $order = creditNoteDocOrder();
+    creditNoteDocInvoice($order);
+
+    // One unit of a 100.00 net line at 19%.
+    $note = app(IssueCreditNote::class)->handle(
+        order: $order,
+        reasonCode: IssueCreditNote::REASON_REFUND,
+        totalGross: '59.50',
+        totalNet: '50.00',
+        totalTax: '9.50',
+        reductionKey: (string) Str::ulid(),
+    );
+
+    expect(bcadd((string) $note->total_net, (string) $note->total_tax, 2))
+        ->toBe((string) $note->total_gross);
+
+    (new GenerateCreditNoteDocument($note->id, $brand->id))
+        ->handle(app(CreditNoteDocumentRenderer::class), app(SendCreditNoteMail::class));
+
+    $bytes = Storage::disk('invoices')->get($note->refresh()->document_path);
+    $reader = ZugferdDocumentPdfReader::readAndGuessFromContent($bytes);
+
+    $reader->firstDocumentTax();
+    $reader->getDocumentTax($categoryCode, $typeCode, $basisAmount, $calculatedAmount, $rateApplicablePercent, $exemptionReason, $exemptionReasonCode, $lineTotalBasisAmount, $allowanceChargeBasisAmount, $taxPointDate, $dueDateTypeCode);
+
+    expect($rateApplicablePercent)->toEqualWithDelta(19.0, 0.001)
+        ->and($basisAmount)->toEqualWithDelta(50.0, 0.001)
+        ->and($calculatedAmount)->toEqualWithDelta(9.5, 0.001);
+
+    $reader->getDocumentSummation($grandTotal, $duePayable, $lineTotal, $charge, $allowance, $taxBasis, $tax, $rounding, $totalPrepaid);
+
+    expect($grandTotal)->toEqualWithDelta(59.5, 0.001)
+        ->and($taxBasis)->toEqualWithDelta(50.0, 0.001)
+        ->and($tax)->toEqualWithDelta(9.5, 0.001);
 });

@@ -27,6 +27,35 @@ class InvoiceFactory extends Factory
      *
      * @return array<string, mixed>
      */
+    /**
+     * An invoice that actually belongs to its order: the same totals and
+     * currency, which is what `IssueInvoice` writes in production. Needed
+     * since D-REG-15 gave `IssueCreditNote` a "the sum of an invoice's
+     * credit notes never exceeds its gross" guard (#7): a fixture whose
+     * invoice says 35.70 while its order says 218.98 refuses a legitimate
+     * whole refund.
+     */
+    public function forOrder(Order $order): static
+    {
+        return $this->state(function (array $attributes) use ($order): array {
+            // The order's gross is the number the guard compares against;
+            // net and tax are split back out of it at the standard rate, so
+            // the three still agree the way a real invoice's do — the
+            // factory's own default does the same for a free-standing row,
+            // and `OrderFactory` carries no tax of its own to copy.
+            $gross = (string) $order->total_gross;
+            $net = bcround(bcdiv($gross, '1.19', 4), 2);
+
+            return [
+                'order_id' => $order->id,
+                'currency' => $order->currency,
+                'total_net' => $net,
+                'total_tax' => bcsub($gross, $net, 2),
+                'total_gross' => $gross,
+            ];
+        });
+    }
+
     public function definition(): array
     {
         return [

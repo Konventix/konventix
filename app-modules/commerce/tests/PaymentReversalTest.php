@@ -67,7 +67,7 @@ it('keeps an external refund recorded when a consumer throws, reversal row inclu
     $this->withBrand();
     [$order, $payment] = paymentReversalTestPaid();
 
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     Event::listen(OrderRefunded::class, function (): void {
         throw new RuntimeException('the external-refund consumer blew up');
@@ -408,7 +408,7 @@ it('reverses an order whose admission was already checked in', function (): void
 it('undoes the sale for a refund the operator made in the provider dashboard', function (): void {
     $this->withBrand();
     [$order, $payment] = paymentReversalTestPaid();
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     Event::fake([OrderRefunded::class, PaymentReversed::class, CreditNoteIssued::class]);
 
@@ -431,7 +431,7 @@ it('undoes the sale for a refund the operator made in the provider dashboard', f
 it('converges on one credit note when an external refund replays', function (): void {
     $this->withBrand();
     [$order, $payment] = paymentReversalTestPaid();
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     Event::fake([OrderRefunded::class]);
 

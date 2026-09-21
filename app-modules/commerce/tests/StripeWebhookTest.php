@@ -453,7 +453,7 @@ it('reverses the payment when the organizer loses the dispute', function (): voi
 
 it('records a refund made in the Stripe dashboard as an external refund', function (): void {
     [$order] = stripeWebhookTestSettled();
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     Event::fake([OrderRefunded::class]);
 
@@ -485,7 +485,7 @@ it('keys a dashboard refund on the refund id even when Stripe did not expand it 
     // money on its `re_…` produced two rows for one refund (fix round 1,
     // review finding 3).
     [$order] = stripeWebhookTestSettled();
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     $stripe = new StripeWebhookTestFakeApi;
     $stripe->reversals = [
@@ -758,7 +758,7 @@ it('reverses an order whose admission was already checked in', function (): void
 
 it('records a partial dashboard refund as a partial OrderRefunded', function (): void {
     [$order] = stripeWebhookTestSettled();
-    Invoice::factory()->create(['order_id' => $order->id]);
+    Invoice::factory()->forOrder($order)->create();
 
     Event::fake([OrderRefunded::class]);
 

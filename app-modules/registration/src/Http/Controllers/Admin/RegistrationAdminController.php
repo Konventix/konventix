@@ -8,18 +8,23 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Registration\Actions\ApproveRegistration;
+use Konventix\Registration\Actions\ReduceRegistrationQuantity;
+use Konventix\Registration\Data\ReduceRegistrationQuantityData;
 use Konventix\Registration\Enums\Permission;
+use Konventix\Registration\Enums\QuantityReductionReason;
 use Konventix\Registration\Enums\RegistrationStatus;
 use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\Registrant;
 use Konventix\Registration\Models\Registration;
 use Konventix\Registration\Models\RegistrationType;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -76,13 +81,100 @@ class RegistrationAdminController
                     // the page shows in the reader's zone.
                     'submittedAt' => $registration->submitted_at->toIso8601String(),
                     'approvable' => $registration->status === RegistrationStatus::Submitted,
+                    // D-REG-15: how many units the act buys, and whether any
+                    // of them can be given back. `quantity > 1` is the whole
+                    // rule — removing the last unit is a cancellation, which
+                    // `CancelRegistration` owns.
+                    'quantity' => $registration->quantity,
+                    'reducible' => $registration->status === RegistrationStatus::Confirmed
+                        && $registration->quantity > 1,
                 ];
             }),
             'filters' => $this->currentFilters($request, $sort, $perPage, $filters),
             'statuses' => $this->statusValues(),
             'brands' => $this->brandOptions(),
             'events' => $this->eventOptions($filters['brand']),
+            // The capability, not the row state: a reader without it never
+            // sees the button, and the route authorizes again regardless.
+            'canReduceQuantity' => Gate::allows(Permission::ReduceRegistrationQuantity->value),
+            'reductionReasons' => array_map(
+                fn (QuantityReductionReason $case): string => $case->value,
+                QuantityReductionReason::cases(),
+            ),
         ]);
+    }
+
+    /**
+     * Partial cancellation (D-REG-15): `units` off a confirmed
+     * registration's `quantity`, the quota units back, and — through
+     * `RegistrationQuantityReduced` — the admissions revoked and the money
+     * for exactly those units returned.
+     *
+     * The registration is fetched by hand rather than route-model-bound:
+     * the admin host resolves no brand and `BrandScope` hardens every
+     * brand-owned query to zero rows (ADR-0029), so implicit binding would
+     * 404 every existing row. The Action then reads the type through
+     * `LoadsRegistrationType`, which escapes the scope per relation (#236).
+     *
+     * Every refusal — Admission's included, since its listener runs inside
+     * the Action's transaction — arrives here as a `RuntimeException` and
+     * becomes a validation message on the dialog. Nothing partial can
+     * survive one: the transaction rolled back, so there is no reduction
+     * row, no released quota and no queued refund.
+     */
+    public function reduceQuantity(
+        string $registration,
+        ReduceRegistrationQuantityData $data,
+        ReduceRegistrationQuantity $reduceRegistrationQuantity,
+        AuditRecorder $auditRecorder,
+        Request $request,
+    ): RedirectResponse {
+        Gate::authorize(Permission::ReduceRegistrationQuantity->value);
+
+        /** @var Registration $model */
+        $model = Registration::withoutBrandScope()->findOrFail($registration);
+
+        $previousQuantity = $model->quantity;
+
+        try {
+            $reduction = $reduceRegistrationQuantity->handle(
+                registration: $model,
+                units: $data->units,
+                reasonCode: $data->reasonCode->value,
+                reasonNote: $data->reasonNote,
+                reducedByUserId: (string) $request->user()?->getKey(),
+            );
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['units' => $e->getMessage()]);
+        }
+
+        // The explicit half of the audit trail (Round 6, D-BATCH), the same
+        // call the refund console makes: `RegistrationQuantityReduced` is no
+        // `AuditableEvent`, so nothing else would record *who* shrank a
+        // paid-for registration. After the Action, never inside it — an
+        // audit write must not take part in a rollback.
+        $auditRecorder->record(
+            action: 'registration.quantity-reduced',
+            subjectId: $model->getKey(),
+            brandId: $model->brand_id,
+            context: [
+                'reduction_id' => $reduction->id,
+                'units' => $reduction->units,
+                'previous_quantity' => $previousQuantity,
+                'new_quantity' => $previousQuantity - $reduction->units,
+                'reason_code' => $reduction->reason_code,
+                'reason_note' => $reduction->reason_note,
+            ],
+        );
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => __(':units unit(s) removed; the money for them is on its way back.', [
+                'units' => $reduction->units,
+            ]),
+        ]);
+
+        return back();
     }
 
     /**
