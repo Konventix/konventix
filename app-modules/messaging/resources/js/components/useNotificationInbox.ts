@@ -101,9 +101,11 @@ function follow(userId: string | null): void {
     // SAST analyzer traces the XSRF cookie from `requestInit()` into the
     // request headers and reports the call as a server-side request with a
     // user-controlled URL (v0.6.4, pipeline 1828); there is no server and
-    // no URL a value could steer, so the rule is excluded at all three
-    // call sites and nowhere else.
-    // gitlab-advanced-sast-exclude: javascript-node-ssrf-generic-taint
+    // no URL a value could steer, so the finding is excluded on the three
+    // fetch lines and nowhere else. The tag is unscoped on purpose: the
+    // analyzer (2.55.0) matched none of the rule ids its own report names
+    // for this finding, and GitLab documents the ids as unstable.
+    // gitlab-advanced-sast-exclude
     void fetch(notificationsFeed().url, requestInit('get'))
         .then(parseJson)
         .then((data) => {
@@ -132,7 +134,8 @@ async function markRead(id: string): Promise<void> {
     }
 
     try {
-        // gitlab-advanced-sast-exclude: javascript-node-ssrf-generic-taint — see the feed fetch
+        // See the feed fetch above.
+        // gitlab-advanced-sast-exclude
         await fetch(
             notificationsRead({ notification: id }).url,
             requestInit('post'),
@@ -146,7 +149,8 @@ async function markAllRead(): Promise<void> {
     applyMarkAllRead(state);
 
     try {
-        // gitlab-advanced-sast-exclude: javascript-node-ssrf-generic-taint — see the feed fetch
+        // See the feed fetch above.
+        // gitlab-advanced-sast-exclude
         await fetch(notificationsReadAll().url, requestInit('post')).then(
             parseJson,
         );
