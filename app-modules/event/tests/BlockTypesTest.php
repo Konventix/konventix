@@ -55,7 +55,22 @@ it('resolves event-hero props from the event\'s wall-clock schedule and venue', 
         'endsAt' => '2026-08-12 18:00:00',
         'timezone' => 'Europe/Berlin',
         'venueCity' => 'Hamburg',
+        'slug' => $event->slug,
     ]);
+});
+
+it('resolves event-hero without a slug for a draft event, so the hero never links to a landing page that 404s', function (): void {
+    $this->withBrand();
+
+    $event = Event::factory()->create(['name' => 'Not yet announced']);
+
+    expect($event->isVisibleOnLanding())->toBeFalse();
+
+    $props = (new EventHeroBlock)->resolve(['eventId' => $event->getKey()]);
+
+    expect($props['found'])->toBeTrue();
+    expect($props['name'])->toBe('Not yet announced');
+    expect($props['slug'])->toBeNull();
 });
 
 it('resolves event-hero to a graceful not-found shape when the event does not exist', function (): void {
@@ -65,6 +80,7 @@ it('resolves event-hero to a graceful not-found shape when the event does not ex
 
     expect($props['found'])->toBeFalse();
     expect($props['name'])->toBeNull();
+    expect($props['slug'])->toBeNull();
 });
 
 it('resolves countdown props to the event\'s starting instant, not the raw wall-clock string', function (): void {
@@ -98,6 +114,7 @@ it('does not resolve an event belonging to another brand', function (): void {
     $countdownProps = (new CountdownBlock)->resolve(['eventId' => $event->getKey()]);
 
     expect($eventHeroProps['found'])->toBeFalse();
+    expect($eventHeroProps['slug'])->toBeNull();
     expect($countdownProps['found'])->toBeFalse();
 });
 
@@ -123,6 +140,7 @@ it('renders event-hero and countdown blocks through the full static-page pipelin
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('blocks.0.component', 'event/blocks/EventHeroBlock')
             ->where('blocks.0.props.name', 'Xpertise Con')
+            ->where('blocks.0.props.slug', $event->slug)
             ->where('blocks.1.component', 'event/blocks/CountdownBlock')
             ->where('blocks.1.props.targetIso', $event->startsAtInstant()->toIso8601String()));
 });

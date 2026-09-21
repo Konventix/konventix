@@ -15,6 +15,11 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * promised (ADR-0027), not instants — the frontend prints them as-is rather
  * than reinterpreting them through `new Date(...)`, which would silently
  * shift them into the visitor's browser timezone.
+ *
+ * `slug` is the event's public landing slug, set only when the event
+ * `isVisibleOnLanding()` — the hero becomes a link to the landing page then.
+ * A draft's slug would 404 there (`EventLandingController`), so it stays
+ * null and the hero renders as a plain section.
  */
 #[TypeScript]
 final class EventHeroResolvedData extends Data
@@ -26,6 +31,7 @@ final class EventHeroResolvedData extends Data
         public readonly ?string $endsAt,
         public readonly ?string $timezone,
         public readonly ?string $venueCity,
+        public readonly ?string $slug,
     ) {}
 
     /**
@@ -44,6 +50,7 @@ final class EventHeroResolvedData extends Data
                 endsAt: null,
                 timezone: null,
                 venueCity: null,
+                slug: null,
             );
         }
 
@@ -54,6 +61,7 @@ final class EventHeroResolvedData extends Data
             endsAt: $event->ends_at->format('Y-m-d H:i:s'),
             timezone: $event->timezone,
             venueCity: $event->primaryVenue()?->city,
+            slug: $event->isVisibleOnLanding() ? $event->slug : null,
         );
     }
 }

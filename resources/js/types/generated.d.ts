@@ -617,6 +617,7 @@ declare namespace Konventix {
                     readonly endsAt: string | null;
                     readonly timezone: string | null;
                     readonly venueCity: string | null;
+                    readonly slug: string | null;
                 };
             }
         }

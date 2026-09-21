@@ -71,6 +71,7 @@ const props = defineProps<Props>();
         >
             <TicketEventBand
                 :event-name="props.eventName"
+                :event-slug="props.eventSlug"
                 :event-when="props.eventWhen"
                 :venue-label="props.venueLabel"
                 :banner-url="props.bannerUrl"

@@ -93,6 +93,12 @@
 
 ## Done
 
+- [x] The ticket's event band links to the event (2026-09-21 bugfix round,
+      task 8): `components/TicketEventBand.vue` takes `eventSlug` from
+      `pages/admission/tickets/Show.vue` (`TicketPageData::$eventSlug`,
+      already pinned in `TicketPageTest`) and wraps the band — banner, scrim
+      and heading — in one `<Link>` to `event.show` named by the heading;
+      without a slug it stays a plain block. No server change.
 - [x] Ticket PDF banner and render speed (2026-09-21 bugfix round, task 2):
       the banner is painted as the band's `background-image` with
       `background-size: cover` — dompdf has no `object-fit`, so the

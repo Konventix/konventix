@@ -30,6 +30,14 @@
 
 ## Done
 
+- [x] The event hero links to the event (2026-09-21 bugfix round, task 8):
+      `Data\Blocks\EventHeroResolvedData` gained `slug`, set only when the
+      event `isVisibleOnLanding()` (null when not found, cross-brand, or a
+      draft — the landing controller would 404 on it), and
+      `components/blocks/EventHeroBlock.vue` renders the whole hero as one
+      `<Link>` to `event.show` named by its heading when the slug is set,
+      the plain `<section>` otherwise. Admission's ticket event band does
+      the same with its `eventSlug`. Pinned in `tests/BlockTypesTest.php`.
 - [x] The event banner (#292): `events.banner_media_id`, a media-library
       ULID owned by the event's brand, picked in the editor (upload from the
       picker included), usage recorded and released like a brand's marks,
