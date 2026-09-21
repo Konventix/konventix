@@ -52,6 +52,7 @@ final class PublicOffers
             ->where('event_id', $eventId)
             ->get()
             ->map(fn (RegistrationType $type): PublicOfferData => PublicOfferData::ofType($type))
+            ->values()
             ->all();
     }
 }
