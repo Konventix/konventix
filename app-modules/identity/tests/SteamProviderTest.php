@@ -161,6 +161,23 @@ it('still knows the Steam driver on a factory resolved after Octane flushed it',
     expect(app(Factory::class)->driver('steam'))->toBeInstanceOf(SteamDriver::class);
 });
 
+it('still knows the Steam driver on a factory the Octane sandbox resolved', function (): void {
+    // Octane clones the worker's base application into a sandbox for every
+    // request (#142), flushes the factory, and the *sandbox* resolves it
+    // anew. The afterResolving callback that re-teaches the driver used to
+    // extend the factory of `$this->app` — the base application — so the
+    // sandbox's instance answered "Driver [steam] not supported" on every
+    // login of the staging cluster, on the release that carried the fix
+    // above (v0.6.4, 2026-09-21). Here the clone is the sandbox, and it is
+    // the only container that must have learned the driver.
+    app(Factory::class)->driver('steam');
+
+    $sandbox = clone app();
+    $sandbox->forgetInstance(Factory::class);
+
+    expect($sandbox->make(Factory::class)->driver('steam'))->toBeInstanceOf(SteamDriver::class);
+});
+
 it('404s a provider nobody registered', function (): void {
     $this->withBrand();
 
