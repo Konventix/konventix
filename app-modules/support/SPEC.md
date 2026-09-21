@@ -142,6 +142,86 @@ correlation id — is derived by the server and overwrites whatever arrived.
 absolute: the brand's own origin for a reporter link, the operator's console
 origin (`OperatorSettings::adminBaseUrlForBrand()`) for an operator one.
 
+## The console
+
+`GET /admin/support-requests` is the inbox and `GET /admin/support-requests/{request}`
+one report, both on the operator host behind `support.view-requests`.
+
+The inbox lists **across brands, plus the brandless rows**, and needs no
+`withoutBrandScope()` anywhere — the model carries no `BelongsToBrand`, which
+is the whole reason that choice was made (see "Owns"). It filters on state
+(defaulting to the open pile; clearing sends the literal `all`), category,
+brand (with a `Console` option for a report that has none) and the
+known-issue mark, and searches the reference, the message and the external
+reference. Not the reporter's address: finding people by address is not
+triage, and `support.view-reporter-contact` exists to make every such
+look-up a recorded one.
+
+Opening a report as the first staff member moves it `received → seen`
+through `TransitionSupportRequest`, so the move is audited, counted, and
+ends the clock `support_requests_unseen_oldest_age_seconds` runs.
+
+The detail page shows the whole `context` snapshot — both correlation ids
+with copy buttons, route, release, brand, previous page, the five visits,
+the viewport and the last script error — and a **"Find in logs"** link per
+id, built by `Links\SupportLinks::logsUrlFor()` from
+`config('support.logs.correlation_url')` by substituting `:correlationId`.
+Unset, or a template without the placeholder, renders no button: a link that
+opens the whole log stream while looking filtered is worse than none.
+
+Five writes, each its own route, Action and audit entry, all behind
+`support.triage-requests`:
+
+| Route | Action | Audit |
+|---|---|---|
+| `PATCH …/state` | `TransitionSupportRequest` | `support.request.state-changed` (event) |
+| `PATCH …/assignee` | `AssignSupportRequest` | `support.request.assigned` (explicit) |
+| `PATCH …/known-issue` | `MarkKnownIssue` | `support.request.known-issue-marked` (event) |
+| `PATCH …/external-reference` | `SetExternalReference` | `support.request.external-reference-set` (explicit) |
+| `POST …/messages` | `PostSupportMessage` | `support.request.message-posted` (event) |
+
+Three ride an `AuditableEvent` that Compliance's wildcard subscriber
+records; assignment and the external reference have no event, because
+nothing outside this module could act on either and §10.4 fixes the public
+contract at four events — so the controller calls `AuditRecorder` after the
+Action, where an audit write cannot take part in a rollback. Reading a
+reporter's unmasked contact is recorded the same way, as
+`support.reporter-contact.viewed`, every single time.
+
+The assignee picker offers the `support.triage-requests` holders of the
+report's brand, or the `platform.access-admin` holders of the operator for a
+console-filed one (`Queries\TriageHolders`, the same rule the notice of §7
+applies), and the endpoint checks that list again rather than trusting the
+id it was sent. Accounts appear as ULIDs: the display name lives in Identity
+and this module may not read it (ADR-0004), the same reason Platform's own
+role editor prints them.
+
+Navigation is one entry, `Support requests`, with the **open count as a
+badge** (D-SUP-13). The count is brand-wide — every open report of every
+brand plus the console-filed ones, which is what the inbox defaults to
+showing — and it is registered as a closure, resolved when Platform
+serialises the entry for one request. Never at boot: a number captured at
+registration would be frozen for an Octane worker's whole life.
+
+## Known issues
+
+`GET /support/known-issues` (brand host, no authentication, cached 60
+seconds per brand in `Queries\KnownIssues`) lists the reports triage has
+marked, whose state is not terminal, filed on this brand **or on none** — a
+brandless mark is the operator-wide notice that reaches every brand host at
+once.
+
+The answer is `{id, notice}` and nothing else. `notice` is the sentence an
+operator wrote, or the category label when they have not written one yet;
+it is never the reporter's message. Resolving the canonical report takes the
+banner down by itself, and `MarkKnownIssue` forgets the cache key so a wrong
+notice comes down at once rather than within the minute.
+
+`SupportLauncher` fetches this when the dialog opens — never on page load,
+and never on the console, which resolves no brand whose visitors need
+warning. A banner per notice, above everything else in the dialog; a report
+is still welcome afterwards.
+
 ## Notifications
 
 Two topics, declared in the provider beside the templates that use them.
@@ -222,6 +302,9 @@ it. A window below one day is refused by the sweep rather than obeyed.
 
 - Whether Compliance's retention rules (`compliance.manage-retention-rules`)
   should drive `support:purge-requests` instead of `config/support.php`.
+- Whether Platform should maintain an identity read model so the console can
+  name an assignee and a note's author instead of printing ULIDs. The same
+  question Platform's role editor left open, and the same answer for now.
 - Whether the shared `auth.user` prop should carry the account's address so
   the dialog can show it read-only (design §6.2 item 5). It does not today
   (ADR-0051 §5 keeps that prop lean), so the dialog names the account

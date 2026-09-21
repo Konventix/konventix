@@ -76,12 +76,12 @@ const props = withDefaults(
         /** Snapshot taken at submit time, never earlier. */
         context: () => SupportClientContext;
         /**
-         * TODO(S2, #306): the active known issues for this brand, fetched
-         * from `GET /support/known-issues` when the dialog opens. The banner
-         * below is the placeholder that slice fills; passing an empty list
-         * renders nothing, which is today's behaviour on every host.
+         * The active known issues for this brand (§9.4), fetched by the
+         * launcher from `GET /support/known-issues` when the dialog opens —
+         * never on page load, and never on the console, which has no brand
+         * whose visitors need warning. An empty list renders nothing.
          */
-        knownIssues?: { id: string; notice: string }[];
+        knownIssues?: Konventix.Support.Data.KnownIssueData[];
     }>(),
     {
         accountEmail: null,
@@ -252,8 +252,11 @@ function submit(): void {
             </DialogHeader>
 
             <!--
-                Known-issue banner (design §6.2 item 2, §9.4). S2 fills the
-                list; until then no host passes one and nothing renders.
+                Known-issue banner (design §6.2 item 2, §9.4). One per
+                notice, above everything else in the dialog: the whole point
+                is to be read before the person starts typing. `role="status"`
+                rather than `alert` — it is information, not an interruption,
+                and a report is still welcome afterwards.
             -->
             <div
                 v-for="issue in knownIssues"

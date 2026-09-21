@@ -1754,6 +1754,13 @@ declare namespace Konventix {
     }
     namespace Support {
         namespace Data {
+            export type KnownIssueData = {
+                readonly id: string;
+                readonly notice: string;
+            };
+            export type SupportAssigneeInputData = {
+                readonly assignedToUserId: string | null;
+            };
             export type SupportClientContextData = {
                 readonly pageCorrelationId: string | null;
                 readonly url: string | null;
@@ -1785,6 +1792,29 @@ declare namespace Konventix {
                 readonly receivedAt: string | null;
                 readonly lastClientError: string | null;
             };
+            export type SupportExternalReferenceInputData = {
+                readonly externalReference: string | null;
+            };
+            export type SupportInboxRowData = {
+                readonly id: string;
+                readonly reference: string;
+                readonly categories: Konventix.Support.Enums.SupportCategory[];
+                readonly state: Konventix.Support.Enums.SupportRequestState;
+                readonly brandLabel: string;
+                readonly release: string | null;
+                readonly reporterLabel: string;
+                readonly assignedToUserId: string | null;
+                readonly isKnownIssue: boolean;
+                readonly createdAt: string | null;
+            };
+            export type SupportKnownIssueInputData = {
+                readonly isKnownIssue: boolean;
+                readonly knownIssueNotice: string | null;
+            };
+            export type SupportMessageInputData = {
+                readonly visibility: Konventix.Support.Enums.MessageVisibility;
+                readonly body: string;
+            };
             export type SupportRequestData = {
                 readonly id: string;
                 readonly reference: string;
@@ -1804,6 +1834,14 @@ declare namespace Konventix {
                 readonly closedAt: string | null;
                 readonly createdAt: string | null;
             };
+            export type SupportRequestDetailData = {
+                readonly request: Konventix.Support.Data.SupportRequestData;
+                readonly brandLabel: string;
+                readonly reporterContact: string | null;
+                readonly allowedNext: Konventix.Support.Enums.SupportRequestState[];
+                readonly pageLogsUrl: string | null;
+                readonly submitLogsUrl: string | null;
+            };
             export type SupportRequestInputData = {
                 readonly categories: string[];
                 readonly message: string;
@@ -1819,6 +1857,9 @@ declare namespace Konventix {
                 readonly visibility: Konventix.Support.Enums.MessageVisibility;
                 readonly body: string;
                 readonly createdAt: string | null;
+            };
+            export type SupportStateInputData = {
+                readonly state: Konventix.Support.Enums.SupportRequestState;
             };
             export type SupportViewportData = {
                 readonly width: number;

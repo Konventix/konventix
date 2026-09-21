@@ -8,6 +8,7 @@ use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
 use Konventix\Platform\Navigation\NavigationItem;
+use Konventix\Platform\Navigation\NavigationRegistry;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -79,5 +80,67 @@ it('marks the package dashboards and the health page as full page loads', functi
                 // the flag must not leak onto it by accident.
                 ->and($navigation->reject(fn (array $item): bool => in_array($item['label'], ['Queues', 'Diagnostics', 'Health'], true))
                     ->every(fn (array $item): bool => $item['external'] === false))->toBeTrue();
+        });
+});
+
+/**
+ * The optional per-item count (D-SUP-13). Platform owns the mechanism;
+ * Support is its first user, and `app-modules/support/tests` asserts the
+ * number. What matters here is the contract: a closure, resolved at
+ * serialisation time and never at registration.
+ */
+it('leaves an entry without a badge alone', function (): void {
+    $item = new NavigationItem(module: 'platform', label: 'Brands', url: '/admin/brands');
+
+    expect($item->badgeCount())->toBeNull()
+        ->and($item->toArray())->toMatchArray(['badge' => null]);
+});
+
+it('resolves a badge count only when the entry is serialised', function (): void {
+    $calls = 0;
+
+    $item = new NavigationItem(
+        module: 'platform',
+        label: 'Counted',
+        url: '/admin/counted',
+        badge: function () use (&$calls): int {
+            $calls++;
+
+            return $calls;
+        },
+    );
+
+    // Registering is not counting: the closure must not have run yet.
+    app(NavigationRegistry::class)->add($item);
+
+    expect($calls)->toBe(0);
+
+    // Every serialisation asks again, which is what makes the number a fact
+    // about the request rather than about the worker (ADR-0003,
+    // .ai/rules/providers.md).
+    expect($item->toArray()['badge'])->toBe(1)
+        ->and($item->toArray()['badge'])->toBe(2);
+});
+
+it('renders the badge the registry hands the shell', function (): void {
+    $admin = adminNavigationOperator();
+
+    app(NavigationRegistry::class)->add(new NavigationItem(
+        module: 'platform',
+        label: 'Counted',
+        url: '/admin/counted',
+        permission: 'platform.view-diagnostics',
+        area: NavigationItem::AREA_ADMIN,
+        badge: fn (): int => 7,
+    ));
+
+    $this->actingAs($admin)
+        ->get('http://admin.navigation.test/admin')
+        ->assertOk()
+        ->assertInertia(function (AssertableInertia $page): void {
+            $entry = collect($page->toArray()['props']['admin']['navigation'])
+                ->firstWhere('label', 'Counted');
+
+            expect($entry['badge'])->toBe(7);
         });
 });

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Navigation;
 
+use Closure;
+
 /**
  * One navigation entry contributed by a module.
  *
@@ -37,6 +39,13 @@ class NavigationItem
      * @param  bool  $external  the URL is not an Inertia page (Horizon, Pulse, the health page), so the shell must
      *                          render a plain anchor and let the browser load it whole — an Inertia visit would
      *                          fetch its HTML over XHR and show it in the error modal instead
+     * @param  (Closure(): int)|null  $badge  a count the shell renders beside the label — "3 open" (D-SUP-13). A
+     *                                        closure, never a number: a count is a fact about *this* request, and
+     *                                        the item is registered once at boot (ADR-0003). Resolved by
+     *                                        {@see self::toArray()} at serialisation time, which is also why the
+     *                                        closure must resolve its own scoped bindings when it runs
+     *                                        (`.ai/rules/providers.md`) — the registry that holds it is a
+     *                                        singleton that outlives every request under Octane.
      */
     public function __construct(
         public readonly string $module,
@@ -48,10 +57,27 @@ class NavigationItem
         public readonly string $area = self::AREA_BRAND,
         public readonly ?string $feature = null,
         public readonly bool $external = false,
+        public readonly ?Closure $badge = null,
     ) {}
 
     /**
-     * @return array{module: string, label: string, url: string, icon: string|null, order: int, external: bool}
+     * The badge count for this request, or null when the entry carries no
+     * badge at all. Never called at boot: a count is a query, and a
+     * navigation entry is registered long before there is a request to
+     * count for.
+     */
+    public function badgeCount(): ?int
+    {
+        return $this->badge === null ? null : ($this->badge)();
+    }
+
+    /**
+     * The shape the two shells read. `badge` is resolved here and nowhere
+     * else — serialisation is the one moment a per-request count is both
+     * wanted and cheap, and every caller of this method already stands in a
+     * request.
+     *
+     * @return array{module: string, label: string, url: string, icon: string|null, order: int, external: bool, badge: int|null}
      */
     public function toArray(): array
     {
@@ -62,6 +88,7 @@ class NavigationItem
             'icon' => $this->icon,
             'order' => $this->order,
             'external' => $this->external,
+            'badge' => $this->badgeCount(),
         ];
     }
 }

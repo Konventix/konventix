@@ -58,7 +58,15 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
   never has (ADR-0029).
 - **Navigation registry.** Modules contribute entries; Platform filters them by
   active feature and by permission at render time, so no component holds a list
-  of modules (lessons-from-lancore #10).
+  of modules (lessons-from-lancore #10). An entry may carry an optional
+  **badge**: a count the shell renders beside the label, declared as a
+  closure and resolved only when `NavigationItem::toArray()` serialises the
+  entry for one request (D-SUP-13, Support's open reports is the first). A
+  number in its place would be the number the worker saw at boot and would
+  never move again — the registry is a singleton, registration happens once
+  (ADR-0003), and the closure must resolve its own scoped bindings when it
+  runs. `null` means the entry has no badge; `0` means it has one with
+  nothing waiting, and the shell renders neither.
 - **Personal operator-console navigation state.** Per-user pinned admin
   favorites (`admin_favorites`) and the order the user dragged them into
   (ADR-0042). Registry order is Platform's; *this* order is the user's, and it

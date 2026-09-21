@@ -8,6 +8,7 @@ use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
+use Konventix\Support\Data\SupportContextData;
 
 /**
  * Helpers more than one file of this module's suite calls. Pest loads every
@@ -115,4 +116,63 @@ function supportSubmission(array $overrides = []): array
             'lastClientError' => null,
         ], $overrides['context'] ?? []),
     ], array_diff_key($overrides, ['context' => null]));
+}
+
+/**
+ * Somebody who can reach the operator console with exactly these Support
+ * capabilities.
+ *
+ * Console roles are teamed on the **operator**, which is what the admin
+ * host resolves (ADR-0029, `MaterializeOperatorAdminRole`) — a Support
+ * capability granted on a brand is invisible there, which is why the
+ * operator key goes in and `platform.access-admin` is always added: without
+ * it the route middleware refuses before any capability is consulted.
+ *
+ * @param  list<string>  $permissions
+ */
+function supportConsoleUser(
+    Operator $operator,
+    array $permissions = [
+        'support.view-requests',
+        'support.triage-requests',
+        'support.view-reporter-contact',
+    ],
+    string $roleName = 'Console Desk',
+): User {
+    return supportHolder(
+        (string) $operator->getKey(),
+        ['platform.access-admin', ...$permissions],
+        $roleName,
+    );
+}
+
+/**
+ * A context snapshot carrying the two correlation ids and nothing else —
+ * what the console's "Find in logs" is built from (design §9.2).
+ */
+function supportContextWithIds(string $pageId, string $submitId): SupportContextData
+{
+    $empty = SupportContextData::ofNothing();
+
+    return new SupportContextData(
+        pageCorrelationId: $pageId,
+        submitCorrelationId: $submitId,
+        url: $empty->url,
+        route: $empty->route,
+        previousUrl: $empty->previousUrl,
+        previousCorrelationId: $empty->previousCorrelationId,
+        recentVisits: $empty->recentVisits,
+        release: $empty->release,
+        commit: $empty->commit,
+        brand: $empty->brand,
+        event: $empty->event,
+        userId: $empty->userId,
+        locale: $empty->locale,
+        timezone: $empty->timezone,
+        userAgent: $empty->userAgent,
+        viewport: $empty->viewport,
+        clientSentAt: $empty->clientSentAt,
+        receivedAt: $empty->receivedAt,
+        lastClientError: $empty->lastClientError,
+    );
 }

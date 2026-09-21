@@ -4,8 +4,10 @@ import { LifeBuoy } from '@lucide/vue';
 import { computed } from 'vue';
 import { useCookieSettingsDialog } from '@/composables/useCookieSettingsDialog';
 import adminSupportRequests from '@/routes/admin/support/requests';
+import { knownIssues as knownIssuesRoute } from '@/routes/support';
 import supportRequests from '@/routes/support/requests';
 import SupportRequestDialog from './SupportRequestDialog.vue';
+import { useKnownIssues } from './useKnownIssues';
 import { useSupportContext } from './useSupportContext';
 import { useSupportDialog } from './useSupportDialog';
 
@@ -37,6 +39,11 @@ import { useSupportDialog } from './useSupportDialog';
  * ink and nothing else. (Design §6.1 says "while the cookie *banner* is
  * open"; this application has no banner, only the settings dialog the
  * footer and the console open, so that is what is honoured here.)
+ *
+ * The known issues behind the dialog's banner are fetched here, on open and
+ * on the brand host only (§9.4): the console registers no such route, and
+ * a report filed there is about the console rather than about a brand whose
+ * visitors need warning.
  */
 const page = usePage();
 const dialog = useSupportDialog();
@@ -56,6 +63,11 @@ const endpoint = computed(() =>
 );
 
 const isGuest = computed(() => page.props.auth?.user == null);
+
+const { knownIssues } = useKnownIssues(
+    () => dialog.isOpen.value,
+    () => (isConsole.value ? null : knownIssuesRoute.url()),
+);
 </script>
 
 <template>
@@ -77,6 +89,7 @@ const isGuest = computed(() => page.props.auth?.user == null);
             :endpoint="endpoint"
             :is-guest="isGuest"
             :context="context.snapshot"
+            :known-issues="knownIssues"
             @close="dialog.close()"
         />
     </div>

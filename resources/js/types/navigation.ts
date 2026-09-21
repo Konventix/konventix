@@ -30,6 +30,12 @@ export type BrandNavItem = {
      * HTML over XHR and show it in the error modal.
      */
     external: boolean;
+    /**
+     * A count beside the label, resolved per request by the entry's own
+     * closure on the backend (D-SUP-13) — open support requests is the
+     * first. `null` for an entry that carries no badge at all.
+     */
+    badge: number | null;
 };
 
 /**

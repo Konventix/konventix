@@ -6,9 +6,6 @@
 
 ## Next
 
-- [ ] S2 Console (#306, #88): inbox, detail with logs deep link, transitions,
-      assignment, known issues + `/support/known-issues` + dialog banner,
-      external reference, messages, audit, navigation.
 - [ ] S3 Reporter access (#307, #88): `/my/support-requests`, guest signed links,
       link re-issue, state-changed and replied mails, a11y pass, runbook.
 
@@ -22,10 +19,13 @@
       (ADR-0022); `subject_module`/`subject_id` are reserved for it.
 - [ ] Attachments through Platform media (needs a brand-host upload route).
 - [ ] A captcha driver behind `CaptchaVerifier` (Turnstile), if abuse shows up.
-- [ ] Drop the `Route::has()` fallbacks in `Links\SupportLinks` once S2
-      registers `admin.support.requests.show` and S3 registers
-      `support.requests.show` / `support.requests.mine.show` — the literal
-      paths beside them are the TODO markers.
+- [ ] Drop the remaining `Route::has()` fallbacks in `Links\SupportLinks`
+      once S3 registers `support.requests.show` /
+      `support.requests.mine.show` — the literal paths beside them are the
+      TODO markers. S2 removed the console one.
+- [ ] Name an assignee and a note's author instead of printing their ULID,
+      once Platform maintains an identity read model (the same gap
+      `RoleAssignmentController` documents).
 - [ ] Decide whether `auth.user` should carry the account's address, so the
       dialog can show it read-only instead of naming the account
       (design §6.2 item 5; ADR-0051 §5 keeps that prop lean today).
@@ -38,6 +38,22 @@
 
 ## Done
 
+- [x] S2 Console (#306, #88): `GET /admin/support-requests` with
+      `useDataTable` (reference, categories, state, brand or `Console`,
+      release, masked reporter, received, assignee, known-issue mark) and
+      filters for state — defaulting to the open pile — category, brand and
+      the known-issue mark; the detail page with the whole context snapshot,
+      copy buttons and `Links\SupportLinks::logsUrlFor()` behind
+      `config('support.logs.correlation_url')`; `TransitionSupportRequest`
+      offered as exactly `allowedNext()`, `AssignSupportRequest` over
+      `Queries\TriageHolders`, `MarkKnownIssue`, `SetExternalReference` and
+      `PostSupportMessage` with an explicit visibility; `seen_at` stamped on
+      the first console open; an audit entry on every write and on every
+      unmasked contact view; `GET /support/known-issues` (no auth, cached 60
+      s, id and sentence only) wired into the dialog's banner through
+      `useKnownIssues`; the console navigation entry with the brand-wide
+      open count, for which Platform's `NavigationItem` gained an optional
+      `badge` closure resolved at serialisation time (D-SUP-13).
 - [x] S1 Report channel (#305, #88): `components/ui/textarea`;
       `SupportLauncher` mounted from `AppTopbarLayout` and `AdminLayout`
       through `resolveRegisteredComponent`; `SupportRequestDialog` in the

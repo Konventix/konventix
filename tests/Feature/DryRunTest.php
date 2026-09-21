@@ -41,6 +41,7 @@ use Konventix\Resources\Models\Plan;
 use Konventix\Resources\Models\ResourceAdmission;
 use Konventix\Resources\Models\ResourceClaim;
 use Konventix\Resources\Models\ResourceType;
+use Konventix\Support\Models\SupportRequest;
 use Laravel\Pennant\Feature;
 
 /**
@@ -446,7 +447,15 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             $parameter === 'subjectRequest' => dryRunDownloadableRequests($brand)
                 ->when($member !== null, fn (Builder $query) => $query->where('subject_id', $member->getKey()))
                 ->first(),
-            $parameter === 'order' => Order::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
+            // Scoped to the walking member when there is one: `/my/orders/{order}`
+            // and `/pay/order/{order}` 404 for everyone but the payer (#185),
+            // and a bare `first()` on a brand with several seeded orders
+            // picked somebody else's whenever Postgres felt like returning
+            // it first — a walk that passed or failed by heap order.
+            $parameter === 'order' => Order::withoutBrandScope()
+                ->where('brand_id', $brand->getKey())
+                ->when($member !== null, fn (Builder $query) => $query->where('payer_user_id', $member->getKey()))
+                ->first(),
             $parameter === 'product' => Product::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'invoice' => Invoice::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
             $parameter === 'account' => SettlementAccount::withoutBrandScope()
@@ -479,6 +488,18 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
                     $brand,
                     fn (): EntryCondition => EntryCondition::factory()->student()->create(),
                 ),
+            // The support console (design §9, #306). `konventix:seed` files
+            // no report — a demo that invented complaints from its own
+            // archetypes would be inventing the one kind of data an
+            // operator reads as real — so this walk mints one, the way the
+            // entry-condition editor above mints a condition. Deliberately
+            // *not* `withoutBrandScope()`: `SupportRequest` carries no
+            // `BelongsToBrand` at all (ADR-0050 §1), which is what lets the
+            // inbox span brands on the admin host in the first place.
+            $parameter === 'supportRequest' => SupportRequest::query()
+                ->where('filed_on_brand_id', $brand->getKey())
+                ->first()
+                ?? SupportRequest::factory()->filedOnBrand((string) $brand->getKey())->create(),
             // `{admission}` is only ever this route's — `admission.tickets.holder`
             // (the console's badge route resolves it without a `$member`) —
             // and `holder()` 403s unless `holder_user_id` names the signed-in

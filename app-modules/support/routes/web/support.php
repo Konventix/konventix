@@ -16,6 +16,7 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Support\Http\Controllers\KnownIssueController;
 use Konventix\Support\Http\Controllers\SupportRequestController;
 
 /*
@@ -30,3 +31,16 @@ use Konventix\Support\Http\Controllers\SupportRequestController;
 Route::post('/support/requests', [SupportRequestController::class, 'store'])
     ->middleware('throttle:support-report')
     ->name('support.requests.store');
+
+/*
+ * The known-issue banner's source (design §9.4). Open to everybody, because
+ * the dialog that asks for it is: a visitor about to report a problem the
+ * operator already knows about has not signed in, and telling them before
+ * they type is the whole point.
+ *
+ * Cached for sixty seconds in `Queries\KnownIssues`, so no throttle stands
+ * in front of it — every answer is a cache read of a handful of rows, and a
+ * limiter would only add state to something that has none.
+ */
+Route::get('/support/known-issues', KnownIssueController::class)
+    ->name('support.known-issues');

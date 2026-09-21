@@ -18,6 +18,8 @@ use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Messaging\Topics\Topic;
 use Konventix\Messaging\Topics\TopicRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Navigation\NavigationItem;
+use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Support\Captcha\CaptchaVerifier;
@@ -32,6 +34,7 @@ use Konventix\Support\Listeners\Metrics\RecordSupportMetrics;
 use Konventix\Support\Listeners\NotifyOperatorsOnRequestOpened;
 use Konventix\Support\Metrics\SupportGauges;
 use Konventix\Support\Metrics\SupportMetrics;
+use Konventix\Support\Models\SupportRequest;
 use Spatie\Prometheus\Facades\Prometheus;
 
 /**
@@ -146,6 +149,47 @@ class SupportServiceProvider extends ModuleServiceProvider
                 Permission::ViewReporterContact,
             ),
         ];
+    }
+
+    /**
+     * The console's one Support entry (design §9.3), with the open count as
+     * a badge (D-SUP-13).
+     *
+     * The badge is a **closure**, and that is the whole of the Platform
+     * change this slice needed. Navigation is registered once at boot
+     * (ADR-0003) while a count is a fact about one request, so a number here
+     * would be the number the worker happened to see when it started and
+     * would never move again — the same trap `.ai/rules/providers.md`
+     * describes for a scoped binding captured in a singleton's constructor.
+     * `NavigationItem::toArray()` calls it when the entry is serialised for
+     * a request, which is the only moment the count is both wanted and
+     * cheap, and the closure resolves everything it needs then.
+     *
+     * The count is **brand-wide**: every open report of every brand, plus
+     * the brandless ones filed on the console. That is what the inbox
+     * defaults to showing, so the badge and the first screen agree — and it
+     * is possible at all only because `SupportRequest` carries no
+     * `BelongsToBrand`, which on the admin host would harden this query to
+     * zero (ADR-0029).
+     *
+     * `order: 40` puts it after Compliance's block, at the end of the
+     * operator's own tools; the entry carries no feature, because Support
+     * cannot be switched off (ADR-0063).
+     */
+    protected function registerNavigation(): void
+    {
+        $this->app->make(NavigationRegistry::class)->add(
+            new NavigationItem(
+                module: 'support',
+                label: 'Support requests',
+                url: '/admin/support-requests',
+                icon: 'life-buoy',
+                order: 40,
+                permission: Permission::ViewRequests->value,
+                area: NavigationItem::AREA_ADMIN,
+                badge: fn (): int => SupportRequest::query()->open()->count(),
+            ),
+        );
     }
 
     /**

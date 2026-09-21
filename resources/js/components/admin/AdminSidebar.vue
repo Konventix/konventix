@@ -34,6 +34,8 @@ type AdminNavItem = {
     icon: string | null;
     order: number;
     external: boolean;
+    /** Resolved per request by the backend's `NavigationItem` (D-SUP-13). */
+    badge: number | null;
 };
 
 /** 'game-ops' -> 'Game Ops' — group label from the module's kebab-case name. */
@@ -150,6 +152,7 @@ const groups = computed(() => {
                         :url="item.url"
                         :icon="iconFor(item.icon)"
                         :external="item.external"
+                        :badge="item.badge"
                         :pinned="isPinned(item.url)"
                         @toggle-pin="toggle(item)"
                     />

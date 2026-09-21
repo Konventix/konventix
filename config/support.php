@@ -61,7 +61,10 @@ return [
     |
     | Empty by default: the dashboard lives outside the application and its
     | host differs per deployment, and a link to nowhere is worse than no
-    | link. The console hides the control when this is unset.
+    | link. The console hides the control when this is unset — and also when
+    | the template forgets the placeholder, since a URL without it opens the
+    | whole log stream while looking as though it had filtered it
+    | (`Links\SupportLinks::logsUrlFor()`).
     |
     */
 

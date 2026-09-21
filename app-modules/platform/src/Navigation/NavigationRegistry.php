@@ -23,6 +23,12 @@ use Laravel\Pennant\Feature;
  * this singleton across requests; `BrandContext` is scoped, not singleton, so
  * it is resolved at call time in `visible()` rather than constructor-injected
  * — the same pattern `BlockRegistry::resolveActive()` uses.
+ *
+ * An entry's optional badge count (D-SUP-13) obeys the same rule from the
+ * other end: it is registered as a closure and resolved only when the entry
+ * is serialised for one request (`NavigationItem::toArray()`), so nothing
+ * here ever counts anything at boot and a worker cannot pin one request's
+ * number into the next.
  */
 class NavigationRegistry
 {
