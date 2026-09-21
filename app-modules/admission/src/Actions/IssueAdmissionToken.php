@@ -74,6 +74,22 @@ final class IssueAdmissionToken
      */
     public const int LIFETIME_DAYS = 60;
 
+    /**
+     * The signing key per brand, memoised for the lifetime of *this
+     * instance* and nothing longer: a ticket file's twenty pages mint
+     * twenty tokens through one `TicketDocumentRenderer`, which holds one
+     * instance of this action, so the key is read once per render instead
+     * of once per page. Safe under Octane because this class has no
+     * container binding — it is built fresh wherever it is injected, never
+     * as a singleton — so nothing here outlives the request or job that
+     * resolved it. A key rotated (`RotateEntranceSigningKey`) while an
+     * instance is alive keeps signing with the key it already holds, which
+     * still verifies: retirement never expires a key (ADR-0033).
+     *
+     * @var array<string, EntranceSigningKey> keyed by brand id
+     */
+    private array $signingKeys = [];
+
     public function __construct(
         private readonly AdmissionTokenCodec $codec,
     ) {}
@@ -189,6 +205,11 @@ final class IssueAdmissionToken
     }
 
     private function signingKeyFor(string $brandId): EntranceSigningKey
+    {
+        return $this->signingKeys[$brandId] ??= $this->loadSigningKeyFor($brandId);
+    }
+
+    private function loadSigningKeyFor(string $brandId): EntranceSigningKey
     {
         // withoutBrandScope + explicit brand (ADR-0010): tokens are minted
         // from queue workers and console commands with no ambient brand.

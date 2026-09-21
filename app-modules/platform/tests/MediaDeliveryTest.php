@@ -305,3 +305,56 @@ it('serves a public_direct disk without the application, where the svg handling 
         }
     }
 });
+
+/**
+ * The `ticket_banner` variant: the ticket PDF's banner band spans the full
+ * 210mm page width at 22mm high, and dompdf inlines every picture as base64
+ * — so `ThumbnailGenerator` cuts that strip at upload, beside the `thumb`,
+ * cover-cropped (scale until both directions fill the band, keep the centre)
+ * to the band's own shape at up to 1240px wide.
+ */
+it('cover-crops a ticket_banner variant to the ticket band\'s shape, beside the thumb', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('media');
+
+    $item = app(StoreMediaUpload::class)->handle(
+        brandId: $brand->getKey(),
+        file: UploadedFile::fake()->image('banner.png', 2480, 1000),
+        altText: null,
+        uploadedByUserId: null,
+    );
+
+    expect($item->variants)->toHaveKeys(['thumb', 'ticket_banner']);
+
+    [$width, $height] = getimagesizefromstring((string) Storage::disk('media')->get($item->variants['ticket_banner']));
+    [$thumbWidth] = getimagesizefromstring((string) Storage::disk('media')->get($item->variants['thumb']));
+
+    // 1240 x (1240 * 22 / 210): the band's ratio, rounded to whole pixels.
+    expect([$width, $height])->toBe([ThumbnailGenerator::TICKET_BANNER_WIDTH, 130])
+        ->and(abs($width / $height - ThumbnailGenerator::TICKET_BANNER_BAND_WIDTH_MM / ThumbnailGenerator::TICKET_BANNER_BAND_HEIGHT_MM))->toBeLessThan(0.05)
+        ->and($thumbWidth)->toBe(480);
+});
+
+it('never upscales the ticket_banner: a smaller original gets the largest band-shaped box that fits, a tiny one none', function (): void {
+    $brand = $this->withBrand();
+    Storage::fake('media');
+
+    $upload = fn (int $width, int $height): MediaItem => app(StoreMediaUpload::class)->handle(
+        brandId: $brand->getKey(),
+        file: UploadedFile::fake()->image('picture.png', $width, $height),
+        altText: null,
+        uploadedByUserId: null,
+    );
+
+    // Portrait, narrower than the target: the whole width, 800 * 22 / 210
+    // high, cut from the middle rather than stretched.
+    $portrait = $upload(800, 1200);
+    [$width, $height] = getimagesizefromstring((string) Storage::disk('media')->get($portrait->variants['ticket_banner']));
+
+    expect([$width, $height])->toBe([800, 84]);
+
+    // Too small for even a one-pixel strip (and no wider than a thumb):
+    // no variants at all, and the ticket renderer falls back to the
+    // original the way it does for a row uploaded before the variant existed.
+    expect($upload(1, 1)->variants)->toBe([]);
+});

@@ -73,6 +73,18 @@
         /* The event banner (#292 §5a): a strip across the top of the event
            band, the text below it. Same absolute band, less room for text. */
         .event-band.with-banner { padding-top: 26mm; }
+        /* dompdf cannot fit an `<img>` into a box the way a browser does
+           (the CSS property for that is unimplemented), so an image in the
+           band was stretched into it; it does implement `background-size:
+           cover` (Css\Style::compute_background_size), so the picture is
+           painted as the band's own background and cropped to it instead.
+           dompdf rasterises a background into a bitmap of the box's size at
+           the document's DPI — `TicketDocumentRenderer::DPI`, 150, makes
+           this band exactly 1240 x 130px, the shape and size of Platform's
+           `ticket_banner` variant, so for a row that has one nothing is
+           resampled and the inlined bytes are the strip itself, not the
+           whole original. Keep every length in this file in mm or pt: a
+           `px` here would shrink with that DPI. */
         .event-band .banner {
             position: absolute;
             top: 0;
@@ -80,8 +92,10 @@
             width: 100%;
             height: 22mm;
             overflow: hidden;
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
         }
-        .event-band .banner img { width: 100%; height: 22mm; object-fit: cover; display: block; }
         .event-band.with-banner .event-name { font-size: 16pt; margin-bottom: 2mm; }
         .event-band.with-banner .event-when, .event-band.with-banner .venue { font-size: 10pt; }
         .seat-line { font-size: 11pt; color: #111827; margin-bottom: 3mm; }
@@ -118,10 +132,12 @@
         .qr-box {
             display: inline-block;
             background-color: #ffffff;
-            padding: 10px;
+            padding: 2.6mm;
             margin: 0 0 14mm;
         }
-        .qr-box img { width: 320px; height: 320px; display: block; }
+        /* 320px nominal at dompdf's default 96 DPI (§4.2), written in mm
+           so the document DPI above cannot shrink it. */
+        .qr-box img { width: 85mm; height: 85mm; display: block; }
         .holder-name { font-size: 18pt; font-weight: bold; margin: 0 0 8mm; }
         .holder-name.unassigned { font-style: italic; font-weight: normal; color: #6b7280; }
         .role-badge {
@@ -164,7 +180,7 @@
         <div class="content">
             <div class="event-band{{ $page['banner'] !== null ? ' with-banner' : '' }}">
                 @if ($page['banner'] !== null)
-                    <div class="banner"><img src="{{ $page['banner'] }}" alt=""></div>
+                    <div class="banner" style="background-image: url('{{ $page['banner'] }}');"></div>
                 @endif
 
                 <div class="info">

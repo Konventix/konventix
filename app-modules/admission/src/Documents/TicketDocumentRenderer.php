@@ -48,9 +48,31 @@ use Konventix\Platform\Operators\OperatorSettings;
  * The operator has no logo field (only a name and a legal name), so its
  * presence on the page is textual only — the footer band and the
  * forensic repeat, never an image.
+ *
+ * Every picture is inlined as base64, so what is inlined decides the
+ * render time: the brand logo and each distinct banner are resolved once
+ * per file, not once per page, and both are asked for through
+ * `MediaLibrary::dataUriForPreferring()` — the library's generated
+ * variants first (`ticket_banner`, the band-shaped strip Platform cuts at
+ * upload; `thumb`), the original only for a row that has none. The
+ * signing key behind every page's QR is likewise read once per render,
+ * memoised inside `IssueAdmissionToken` for that instance's lifetime.
  */
 final class TicketDocumentRenderer
 {
+    /**
+     * dompdf rasterises a `background-image` — the banner band, since the
+     * template's cover crop — into a bitmap of the box's size at the
+     * document's DPI and embeds that, once per document, so the DPI and
+     * not the picture decides how sharp the banner prints. 150 makes the
+     * 210mm band exactly 1240px wide: `ThumbnailGenerator`'s
+     * `ticket_banner` strip maps onto it 1:1 and nothing is resampled or
+     * upscaled. Every other length in the template is in mm or pt, so the
+     * rest of the page is unmoved; the badge and the invoice keep dompdf's
+     * default 96.
+     */
+    public const int DPI = 150;
+
     public function __construct(
         private readonly MediaLibrary $mediaLibrary,
         private readonly OperatorDateTimeFormat $dates,
@@ -68,21 +90,34 @@ final class TicketDocumentRenderer
         $brandId = $admissions->first()?->brand_id;
         $brand = $brandId === null ? null : Brand::query()->find($brandId);
         $operatorLegalName = $brandId === null ? null : $this->operatorSettings->sellerForBrand($brandId)->legalName;
+        // Once for the whole file, not once per page: every page of a
+        // buyer's file shows the same mark, and each resolution is a row
+        // lookup plus a storage read (three round trips on S3). The 480px
+        // `thumb` is plenty for a 38mm masthead logo and the 6%-opacity
+        // brand mark; a row without one inlines the original.
+        $brandLogo = $brand?->logo_media_id === null
+            ? null
+            : $this->mediaLibrary->dataUriForPreferring($brand->logo_media_id, ['thumb']);
 
         $eventSummaries = $this->eventSummariesFor($admissions, $brandId);
         $people = $this->peopleFor($admissions);
         $seats = $this->seatsFor($admissions);
         // One resolution per distinct banner, not per page: a group's
-        // twenty tickets share one event and one picture (#292 §5a).
+        // twenty tickets share one event and one picture (#292 §5a). The
+        // `ticket_banner` variant is the band's own shape at 1240px, so the
+        // template's `background-size: cover` has nothing left to crop.
         $banners = $eventSummaries
             ->pluck('banner_media_id')
             ->filter()
             ->unique()
-            ->mapWithKeys(fn (string $mediaId): array => [$mediaId => $this->mediaLibrary->dataUriFor($mediaId)]);
+            ->mapWithKeys(fn (string $mediaId): array => [
+                $mediaId => $this->mediaLibrary->dataUriForPreferring($mediaId, ['ticket_banner', 'thumb']),
+            ]);
 
         $pages = $admissions->map(fn (Admission $admission): array => $this->pageDataFor(
             $admission,
             $brand,
+            $brandLogo,
             $operatorLegalName,
             $eventSummaries->get($admission->event_id),
             $admission->holder_user_id === null ? null : $people->get($admission->holder_user_id),
@@ -92,6 +127,7 @@ final class TicketDocumentRenderer
 
         return Pdf::loadView('admission::tickets.document', ['pages' => $pages])
             ->setPaper('a4', 'portrait')
+            ->setOption('dpi', self::DPI)
             ->output();
     }
 
@@ -141,11 +177,10 @@ final class TicketDocumentRenderer
     /**
      * @return array<string, mixed>
      */
-    private function pageDataFor(Admission $admission, ?Brand $brand, ?string $operatorLegalName, ?EventSummary $event, ?Person $holder, ?string $seatLabel, ?string $banner): array
+    private function pageDataFor(Admission $admission, ?Brand $brand, ?string $brandLogo, ?string $operatorLegalName, ?EventSummary $event, ?Person $holder, ?string $seatLabel, ?string $banner): array
     {
         $holderName = $holder->display_name ?? 'Unassigned';
         $role = str_replace('_', ' ', $admission->role);
-        $brandLogo = $brand?->logo_media_id === null ? null : $this->mediaLibrary->dataUriFor($brand->logo_media_id);
 
         // §4.3: holder name, event name, venue, operator legal name, role
         // and the admission id, in that order. Nulls (a missing summary,

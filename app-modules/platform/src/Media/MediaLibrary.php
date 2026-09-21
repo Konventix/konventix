@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Media;
 
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Konventix\Platform\Data\MediaItemData;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\MediaUsage;
@@ -177,6 +178,48 @@ class MediaLibrary
             return null;
         }
 
+        return $this->dataUri($disk, $path);
+    }
+
+    /**
+     * `dataUriFor()` with a preference list: the bytes of the first named
+     * variant the item actually carries on disk, the original when it has
+     * none of them. One row lookup however long the list, and the same
+     * graceful degradation — unknown ULID, nothing on disk — as everywhere
+     * else here.
+     *
+     * For a PDF renderer inlining a picture (the ticket's banner and brand
+     * logo): a generated variant is a fraction of the original's bytes, but
+     * a row uploaded before that variant existed carries no such key and
+     * must still render, so the caller names what it would like and takes
+     * what there is. The original is the last resort, never skipped — a
+     * missing picture, not a larger one, is the failure this avoids.
+     *
+     * @param  list<string>  $variants  most preferred first
+     */
+    public function dataUriForPreferring(string $mediaId, array $variants): ?string
+    {
+        $item = MediaItem::withoutBrandScope()->find($mediaId);
+
+        if ($item === null) {
+            return null;
+        }
+
+        $disk = $this->disks->filesystem($item->disk);
+
+        foreach ([...$variants, null] as $variant) {
+            $path = $this->pathFor($item, $variant);
+
+            if ($path !== null && $disk->exists($path)) {
+                return $this->dataUri($disk, $path);
+            }
+        }
+
+        return null;
+    }
+
+    private function dataUri(Filesystem $disk, string $path): string
+    {
         return sprintf(
             'data:%s;base64,%s',
             $disk->mimeType($path) ?: 'application/octet-stream',

@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Konventix\Admission\Actions\RotateEntranceSigningKey;
 use Konventix\Admission\Models\Admission;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\MediaItem;
 use Symfony\Component\Finder\Finder;
 
 /**
@@ -229,4 +232,61 @@ it('refuses a revoked admission with 404', function (): void {
     $this->actingAs($holder)
         ->get('/my/admissions/'.$admission->getKey().'/ticket')
         ->assertNotFound();
+});
+
+it('keeps the signing-key and media lookups flat however many pages the buyer\'s file has', function (): void {
+    // Render speed: the signing key used to be queried once per page
+    // (`IssueAdmissionToken::current()`), the brand logo resolved once per
+    // page. Both are now read once per file — the key memoised inside the
+    // one `IssueAdmissionToken` the renderer holds, the logo hoisted beside
+    // the banner — so a three-page file costs exactly what a one-page file
+    // does on those two tables.
+    $brand = $this->withBrand();
+    app(RotateEntranceSigningKey::class)->handle($brand->id);
+    Storage::fake('media');
+
+    $pixel = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+    $logo = MediaItem::factory()->create();
+    Storage::disk('media')->put($logo->path, $pixel);
+    $brand->update(['logo_media_id' => $logo->id]);
+    $picture = MediaItem::factory()->create();
+    Storage::disk('media')->put($picture->path, $pixel);
+
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId, ['banner_media_id' => $picture->id]);
+
+    $buyer = User::factory()->create();
+    $single = (string) Str::ulid();
+    $group = (string) Str::ulid();
+    Admission::factory()->create(['event_id' => $eventId, 'registration_id' => $single, 'buyer_user_id' => $buyer->getKey()]);
+    Admission::factory()->count(3)->create(['event_id' => $eventId, 'registration_id' => $group, 'buyer_user_id' => $buyer->getKey()]);
+
+    $lookups = function (string $registrationId) use ($buyer): array {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $this->actingAs($buyer)->get('/my/registrations/'.$registrationId.'/ticket')->assertOk();
+
+        $queries = collect(DB::getQueryLog())->pluck('query');
+        DB::disableQueryLog();
+
+        return [
+            'signing keys' => $queries->filter(fn (string $sql): bool => str_contains($sql, 'entrance_signing_keys'))->count(),
+            'media' => $queries->filter(fn (string $sql): bool => str_contains($sql, 'media_items'))->count(),
+        ];
+    };
+
+    // Warm-up, discarded: `BrandIdentityResolver` (scoped) resolves the
+    // brand's logo for the request's own page chrome on the first request
+    // this process serves and remembers it, so measuring from a cold
+    // start would count one lookup the ticket never made.
+    $lookups($single);
+
+    $onePage = $lookups($single);
+
+    // One key read for the file, one row lookup each for the logo and the
+    // banner — `dataUriForPreferring()` walks its preference list on the
+    // row it already holds, never one query per candidate variant.
+    expect($onePage)->toBe(['signing keys' => 1, 'media' => 2])
+        ->and($lookups($group))->toBe($onePage);
 });

@@ -8,6 +8,8 @@ use Konventix\Admission\Documents\TicketDocumentRenderer;
 use Konventix\Admission\Models\Admission;
 use Konventix\Admission\Models\AdmissionSeat;
 use Konventix\Platform\Documents\DocumentWatermark;
+use Konventix\Platform\Media\MediaLibrary;
+use Konventix\Platform\Media\ThumbnailGenerator;
 use Konventix\Platform\Models\MediaItem;
 use Mockery\MockInterface;
 
@@ -314,4 +316,127 @@ it('paints the banner after the watermark layers and before the QR box, and name
         ->and($testsystemPosition)->toBeLessThan($bannerPosition)
         ->and($bannerPosition)->toBeLessThan($qrPosition)
         ->and($html)->toContain('Seat: A-12');
+});
+
+it('paints the banner as a cover background, never as an image dompdf would stretch', function (): void {
+    // Regression pin: dompdf implements no `object-fit`, so an `<img>` in
+    // the 100% x 22mm band was stretched into it. `background-size: cover`
+    // is what dompdf does implement (`Css\Style::compute_background_size`),
+    // so the band paints the picture as its own background. Reads the raw
+    // Blade output for the same reason the layer-order pin does: this is a
+    // property of the markup, not of anything the renderer contributes.
+    $html = view('admission::tickets.document', ['pages' => [ticketPageFixture([
+        'banner' => 'data:image/webp;base64,UklGRg==',
+    ])]])->render();
+
+    preg_match('/<div class="banner"[^>]*>(.*?)<\/div>/s', $html, $band);
+
+    expect($band)->not->toBeEmpty()
+        ->and($band[0])->toContain("background-image: url('data:image/webp;base64,UklGRg==')")
+        ->and($band[1])->not->toContain('<img')
+        ->and($html)->toContain('background-size: cover')
+        ->and($html)->not->toContain('object-fit');
+});
+
+/**
+ * A picture PNG cannot squash: per-pixel noise, so the inlined bytes scale
+ * with the pixel count and the band-shaped `ticket_banner` strip (1240 x 130)
+ * is measurably smaller than the 1600 x 400 original it was cut from.
+ */
+function ticketNoisyPng(int $width, int $height): string
+{
+    $image = imagecreatetruecolor($width, $height);
+    mt_srand(72);
+
+    for ($y = 0; $y < $height; $y++) {
+        for ($x = 0; $x < $width; $x++) {
+            imagesetpixel($image, $x, $y, mt_rand(0, 0xFFFFFF));
+        }
+    }
+
+    ob_start();
+    imagepng($image);
+    imagedestroy($image);
+
+    return (string) ob_get_clean();
+}
+
+it('inlines the ticket_banner variant when the picture has one, and the whole original when it does not', function (): void {
+    $brand = $this->withBrand(ticketOperatorBrand());
+    ticketSigningKey($brand);
+    Storage::fake('media');
+
+    $eventId = (string) Str::ulid();
+    $banner = MediaItem::factory()->create(['brand_id' => $brand->id]);
+    Storage::disk('media')->put($banner->path, ticketNoisyPng(1600, 400));
+    // The variants Platform cuts at upload (`StoreMediaUpload`), produced
+    // by the real generator so this covers the crop as well as the choice.
+    $banner->update(['variants' => app(ThumbnailGenerator::class)->generate(Storage::disk('media'), $banner->path, 'image/png')]);
+    ticketEventSummary($brand, $eventId, ['banner_media_id' => $banner->id]);
+    $admission = ticketAdmissionFor($eventId, ticketPerson());
+    $library = app(MediaLibrary::class);
+
+    // What the renderer inlines, measured where it can be: dompdf
+    // rasterises the band itself at `TicketDocumentRenderer::DPI`, so the
+    // PDF's size says nothing about the bytes that went in. The strip is
+    // a fraction of the original — fewer pixels, and lossy.
+    $strip = $library->dataUriForPreferring($banner->id, ['ticket_banner', 'thumb']);
+    $original = $library->dataUriFor($banner->id);
+
+    expect($banner->variants)->toHaveKey('ticket_banner')
+        ->and($strip)->toBe($library->dataUriFor($banner->id, 'ticket_banner'))
+        ->and(strlen($strip))->toBeLessThan(intdiv(strlen($original), 4));
+
+    $withVariant = app(TicketDocumentRenderer::class)->render(collect([$admission]));
+
+    // A row from before the variant existed: the same original, no strip
+    // to prefer, and the render must still come out.
+    $banner->update(['variants' => []]);
+
+    expect($library->dataUriForPreferring($banner->id, ['ticket_banner', 'thumb']))->toBe($original);
+
+    $withOriginal = app(TicketDocumentRenderer::class)->render(collect([$admission->fresh()]));
+
+    expect(str_starts_with($withVariant, '%PDF'))->toBeTrue()
+        ->and(str_starts_with($withOriginal, '%PDF'))->toBeTrue();
+});
+
+it('resolves the brand logo and the banner once each for a multi-page file, not once per page', function (): void {
+    // Each resolution is a row lookup plus a storage read — three round
+    // trips on S3 — and every page of a buyer's file shows the same mark
+    // and, for one event, the same banner, so the renderer hoists both.
+    // `MediaLibrary` is not final, so unlike `IssueAdmissionToken` it can
+    // be mocked here; Mockery's `once()` is what fails this when a page
+    // asks again, and `with()` pins the preference order: the generated
+    // variant first, the original only for a row without one.
+    $brand = $this->withBrand(ticketOperatorBrand());
+    ticketSigningKey($brand);
+    $logo = MediaItem::factory()->create(['brand_id' => $brand->id]);
+    $brand->update(['logo_media_id' => $logo->id]);
+    $banner = MediaItem::factory()->create(['brand_id' => $brand->id]);
+
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId, ['banner_media_id' => $banner->id]);
+    $admissions = Admission::factory()->count(3)->create(['event_id' => $eventId]);
+
+    $pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+    $this->mock(MediaLibrary::class, function (MockInterface $mock) use ($logo, $banner, $pixel): void {
+        // `thumb` for the logo: 480px is plenty for a 38mm masthead and a
+        // 6%-opacity brand mark.
+        $mock->shouldReceive('dataUriForPreferring')
+            ->once()
+            ->with($logo->id, ['thumb'])
+            ->andReturn($pixel);
+        // The band-shaped strip for the banner, the thumb as second best.
+        $mock->shouldReceive('dataUriForPreferring')
+            ->once()
+            ->with($banner->id, ['ticket_banner', 'thumb'])
+            ->andReturn($pixel);
+    });
+
+    $bytes = app(TicketDocumentRenderer::class)->render($admissions);
+
+    expect(str_starts_with($bytes, '%PDF'))->toBeTrue()
+        ->and(preg_match_all('/\/Type\s*\/Page(?!s)/', $bytes))->toBe(3);
 });

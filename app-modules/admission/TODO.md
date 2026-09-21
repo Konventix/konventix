@@ -69,6 +69,13 @@
 - [ ] `Documents\TicketDocumentRenderer` and `Http\Controllers\TicketPageController`
       format the same event band and validity range with two copies of the
       same three helpers; fold them into one presenter (#292 follow-up).
+- [ ] Ticket PDF render time, the two remaining costs after the 2026-09-21
+      bugfix round (below): the QR is a large inline SVG per page
+      (`Documents\TicketQr`) — a compact raster, or one shared `<defs>`
+      symbol, would shrink each page — and dompdf subsets the DejaVu fonts
+      per document, which dominates a one-page render; both want a
+      measurement first (`admission_tickets_rendered_total` has no
+      duration, so time a render by hand) before either is worth doing.
 - [ ] Badge template admin UI: `BadgeTemplate` and the
       `admission.manage-badge-templates` capability exist, but there is no
       screen — designing a badge currently means tinker. The print endpoint
@@ -86,6 +93,25 @@
 
 ## Done
 
+- [x] Ticket PDF banner and render speed (2026-09-21 bugfix round, task 2):
+      the banner is painted as the band's `background-image` with
+      `background-size: cover` — dompdf has no `object-fit`, so the
+      `<img>` was stretched into the 22mm band — pinned structurally in
+      `TicketDocumentTest`. Platform's `ThumbnailGenerator` cuts a
+      `ticket_banner` variant at upload (cover-cropped to the band's
+      210mm x 22mm shape at up to 1240px, never upscaled) beside the
+      `thumb`, and the renderer asks `MediaLibrary::dataUriForPreferring()`
+      for it, then `thumb`, then the original (legacy rows have no
+      variant). The brand logo is resolved once per file instead of once
+      per page, and `IssueAdmissionToken` memoises the signing key per
+      brand for its own instance's lifetime (no container binding, so
+      nothing outlives the request under Octane). Found on the way: dompdf
+      rasterises a background image into a bitmap of the box's size at the
+      document DPI and embeds that once per document, so the ticket sets
+      `TicketDocumentRenderer::DPI = 150` — the 210mm band becomes exactly
+      1240 x 130px, the strip's own size — and the template's QR box moved
+      from px to mm so it keeps its printed size. No PDF caching: rendered
+      fresh, stored nowhere (§4.4) — "stores no PDF on disk" still pins it.
 - [x] Participant ticket document and stable token (#72, ADR-0061):
       `Documents\TicketDocumentRenderer` renders one A4 page per admission
       from the existing KVX1 token — a rendering of the access right, not a
