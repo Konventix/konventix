@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Konventix\Identity\Data\AccountMergedClosedMailData;
 use Konventix\Identity\Data\AccountMergedSurvivorMailData;
+use Konventix\Identity\Data\EmailMissingNoticeData;
 use Konventix\Identity\Data\PasswordResetMailData;
 use Konventix\Identity\Data\RegistrationAttemptMailData;
 use Konventix\Identity\Data\VerifyEmailMailData;
@@ -205,6 +206,26 @@ final class AuthMailer
             homeUrl: $homeUrl,
             shopUrl: Feature::for($brand)->active('commerce:shop') ? rtrim($homeUrl, '/').'/shop' : null,
         ), topicKey: 'identity.welcome');
+    }
+
+    /**
+     * The in-app nudge for an account on a placeholder address (#293): a
+     * row in its inbox pointing at the page that collects a real one. Not a
+     * mail — there is nowhere to send one — so the topic carries the in-app
+     * channel alone. The caller is whoever put the placeholder there (the
+     * Eventula importer, #87), once, right after `UserRegistered` has
+     * projected Messaging's recipient row; a second call would simply add a
+     * second inbox row, so it is not a per-login hook.
+     */
+    public function sendEmailMissingNotice(User $user, string $brandId): void
+    {
+        if (! $user->hasPlaceholderEmail()) {
+            return;
+        }
+
+        $this->send($user, $brandId, 'identity.email-missing', new EmailMissingNoticeData(
+            url: $this->absoluteRouteUrl('verification.notice', [], Brand::query()->find($brandId)),
+        ), topicKey: 'identity.email-missing');
     }
 
     /**

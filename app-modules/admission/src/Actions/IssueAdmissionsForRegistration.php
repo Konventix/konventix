@@ -125,6 +125,7 @@ final class IssueAdmissionsForRegistration
             role: $admission->role,
             holderUserId: null,
             issuedAt: $admission->created_at->toIso8601String(),
+            buyerUserId: $admission->buyer_user_id,
         ));
 
         return $admission;

@@ -252,6 +252,19 @@ person behind it. The value here is in what is left out.
       hard-coded expectation. `tests/RegistrationTest.php` and
       `tests/SocialSignupTest.php` carry the path-specific shape (no account
       created, existing one untouched beyond the mail).
+- [x] Signups can be closed (hotfix 2026-09-13): `EnsureSignupsOpen` on
+      Fortify's `register`/`register.store` (wrapped on in
+      `throttleUnhookedFortifyRoutes()`, like the limiters) and as the
+      `signups-open` alias on the social completion routes; the answer is
+      Platform's `OperatorSettings::signupsOpen()` — the operator's switch
+      (console, Operator settings, "Let visitors create accounts") under the
+      instance cap `SIGNUPS_ENABLED` (config/platform.php). A closed door
+      redirects to login with a message rather than 403ing, and the login
+      page drops its "Sign up" link (`canRegister`). Not a Fortify feature
+      toggle: `Features::registration()` is read at boot and cannot follow a
+      row. `SignupGateTest` covers both entrances, the cap and login staying
+      open.
+
 - [x] `RecordBrandMembership` resolves `BrandContext` at call time (#142). Under
       Octane the event dispatcher builds listeners from the worker's base
       application, so the constructor-injected context was always empty and no

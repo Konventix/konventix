@@ -80,6 +80,7 @@ it('saves a changed date and time format', function (): void {
             'vatId' => null,
             'taxNumber' => null,
             'smallBusinessScheme' => false,
+            'signupsOpen' => true,
             'dateFormat' => 'YYYY-MM-DD',
             'timeFormat' => '12h',
         ])
@@ -91,6 +92,53 @@ it('saves a changed date and time format', function (): void {
         ->and($operator->time_format)->toBe('12h');
 });
 
+it('saves the operator closing signups', function (): void {
+    // Hotfix 2026-09-13: the switch Identity's `EnsureSignupsOpen` reads
+    // through `OperatorSettings::signupsOpen()`.
+    [$operator, $admin] = operatorWithSettingsAdmin();
+
+    expect($operator->refresh()->signups_open)->toBeTrue();
+
+    $this->actingAs($admin)
+        ->put('http://admin.operatorsettings.test/admin/settings/operator', [
+            'name' => 'Konventix',
+            'legalName' => 'Sund-Xplosion e.V.',
+            'countryCode' => 'DE',
+            'smallBusinessScheme' => false,
+            'signupsOpen' => false,
+            'dateFormat' => 'DD.MM.YYYY',
+            'timeFormat' => '24h',
+        ])
+        ->assertRedirect();
+
+    expect($operator->refresh()->signups_open)->toBeFalse()
+        ->and(app(OperatorSettings::class)->signupsOpen())->toBeFalse();
+});
+
+it('tells the operator when the environment has closed signups over their head', function (): void {
+    [, $admin] = operatorWithSettingsAdmin();
+
+    $this->actingAs($admin)
+        ->get('http://admin.operatorsettings.test/admin/settings/operator')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('operator.signupsOpen', true)
+            ->where('signupsForcedClosed', false));
+
+    config()->set('platform.signups.enabled', false);
+
+    $this->actingAs($admin)
+        ->get('http://admin.operatorsettings.test/admin/settings/operator')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('operator.signupsOpen', true)
+            ->where('signupsForcedClosed', true));
+
+    // The cap is the environment's alone: the row still says open, and the
+    // combined answer still says closed.
+    expect(app(OperatorSettings::class)->signupsOpen())->toBeFalse();
+});
+
 it('refuses a date format nobody ships a formatter for', function (): void {
     [, $admin] = operatorWithSettingsAdmin();
 
@@ -100,6 +148,7 @@ it('refuses a date format nobody ships a formatter for', function (): void {
             'legalName' => 'Sund-Xplosion e.V.',
             'countryCode' => 'DE',
             'smallBusinessScheme' => false,
+            'signupsOpen' => true,
             'dateFormat' => 'the fourteenth',
             'timeFormat' => 'sundial',
         ])
@@ -134,6 +183,7 @@ it('saves the legal seller identity', function (): void {
             'vatId' => 'DE123456789',
             'taxNumber' => '15/123/45678',
             'smallBusinessScheme' => false,
+            'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
         ])
@@ -160,6 +210,7 @@ it('records the small-business election', function (): void {
             'legalName' => 'Sund-Xplosion e.V.',
             'countryCode' => 'DE',
             'smallBusinessScheme' => true,
+            'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
         ])
@@ -179,6 +230,7 @@ it('requires a legal name, because an invoice cannot be issued without one', fun
             'legalName' => '',
             'countryCode' => 'DE',
             'smallBusinessScheme' => false,
+            'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
         ])
@@ -197,6 +249,7 @@ it('rejects a country code that is not two letters', function (): void {
             'legalName' => 'Sund-Xplosion e.V.',
             'countryCode' => 'Germany',
             'smallBusinessScheme' => false,
+            'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
         ])
@@ -216,6 +269,7 @@ it('refuses an admin holding console access but not the operator capability', fu
             'legalName' => 'Hijacked e.V.',
             'countryCode' => 'DE',
             'smallBusinessScheme' => false,
+            'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
         ])
@@ -239,6 +293,7 @@ it('changes what Commerce reads as the invoice seller', function (): void {
             'legalName' => 'Renamed e.V.',
             'countryCode' => 'DE',
             'smallBusinessScheme' => true,
+            'signupsOpen' => true,
             'dateFormat' => 'DD.MM.YYYY',
             'timeFormat' => '24h',
         ]);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { Armchair } from '@lucide/vue';
+import AdmissionSeatController from '@/actions/Konventix/Resources/Http/Controllers/AdmissionSeatController';
 import SeatPickController from '@/actions/Konventix/Resources/Http/Controllers/SeatPickController';
 import {
     ASSIGNED_BY_ORGANISER_MESSAGE,
@@ -48,7 +49,53 @@ const props = defineProps<{
             {{ props.summary.quantity === 1 ? 'Seat' : 'Seats' }}
         </h2>
 
+        <!-- Per ticket (#292 §6.4): when the registration has admissions,
+             each one seats itself from its own ticket page; the
+             registration-level picker stays only for a claim with none. -->
+        <ul
+            v-if="props.summary.admissions.length > 0"
+            class="flex flex-col divide-y divide-border rounded-xl border border-border bg-surface-raised"
+            aria-label="Seats per ticket"
+        >
+            <li
+                v-for="row in props.summary.admissions"
+                :key="row.admissionId"
+                class="flex flex-wrap items-center gap-x-4 gap-y-2 p-4"
+            >
+                <span class="text-sm font-medium text-text">
+                    Ticket {{ row.number }}
+                </span>
+                <span
+                    v-if="row.placeRef"
+                    class="rounded-full bg-success/15 px-3 py-1 text-sm font-medium text-success"
+                >
+                    {{ row.placeRef }}
+                </span>
+                <span v-else class="text-sm text-text-muted">
+                    {{
+                        props.summary.seatingMode === 'assign'
+                            ? ASSIGNED_BY_ORGANISER_MESSAGE
+                            : 'No seat yet'
+                    }}
+                </span>
+                <span class="flex-1" />
+                <Link
+                    v-if="props.summary.seatingMode !== 'assign'"
+                    :href="
+                        AdmissionSeatController.show.url({
+                            admission: row.admissionId,
+                        })
+                    "
+                    class="inline-flex min-h-11 items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-subtle"
+                >
+                    <Armchair class="size-4" />
+                    {{ row.placeRef ? 'Change seat' : 'Choose seat' }}
+                </Link>
+            </li>
+        </ul>
+
         <div
+            v-else
             class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-surface-raised p-4"
         >
             <template v-if="props.summary.placeRefs.length > 0">

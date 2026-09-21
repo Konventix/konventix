@@ -19,6 +19,7 @@ use Konventix\Identity\Database\Factories\UserFactory;
 use Konventix\Identity\Enums\AccountState;
 use Konventix\Identity\Enums\ProfileVisibility;
 use Konventix\Identity\Mail\AuthMailer;
+use Konventix\Identity\Profile\PlaceholderEmail;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -113,6 +114,17 @@ class User extends Authenticatable implements MustVerifyEmail
     public function hasPassword(): bool
     {
         return $this->password !== null && $this->password !== '';
+    }
+
+    /**
+     * Whether the address on this row is a stand-in rather than one the
+     * person gave us (#293). Such an account can sign in — through Steam,
+     * which is how it got here — but is asked for a real address before it
+     * reaches anything behind `verified`, and no mail is ever sent to it.
+     */
+    public function hasPlaceholderEmail(): bool
+    {
+        return PlaceholderEmail::is($this->email);
     }
 
     /**

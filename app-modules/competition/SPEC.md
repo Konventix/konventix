@@ -15,23 +15,49 @@ GameOps, which owns server and handler *lifecycle* state while Competition owns
 *result* state (ADR-0012). What is left here is the sporting truth of the event:
 who entered, who played whom, when, and what the score was.
 
+The surfaces built on the engine — lifecycle, signup, check-in, results
+reported by participants, the tournament desk and the public pages — are
+specified in `docs/superpowers/specs/2026-09-18-competition-design.md`
+(D-CMP-15 to D-CMP-25). This document carries the model; that one carries
+the flows.
+
 ## Owns
 
 - **Competition** — a contest under an event: its `Discipline` (ADR-0024 —
   a video game is one kind of discipline; a pinball table, a quiz format or a
-  judged contest are others), team size, participant limit, signup window,
-  ruleset text, and its lifecycle status. Where the discipline is a video
-  game, `Discipline` references the game by GameOps game ULID (ADR-0012
-  amended, D-GOP-04) rather than Competition storing `game_id` directly.
+  judged contest are others), participant limit, signup window, ruleset
+  text, its check-in and result-submission policy, and its **lifecycle
+  status** (D-CMP-15): `Draft → Published → SignupClosed → Running →
+  Finished`, `Cancelled` from anything but `Finished`, transitions enforced
+  by the enum. `SignupClosed` exists so an organizer can close signups and
+  resolve incomplete teams before anything starts. Where the discipline is a
+  video game, `Discipline` references the game by GameOps game ULID and is
+  itself the source of record for team size, duration hints and draws
+  (ADR-0062).
 - **Entrant** — a team or a solo participant taking part, with its roster of
-  members referenced by Identity user ULID, its seed, and its signup state.
+  members referenced by Identity user ULID (one of them `captain`), its
+  seed, and its signup state — including **`incomplete`** for a roster
+  below the discipline's team size, which holds a slot until the organizer
+  fills it from the interested list or declines it at signup close
+  (D-CMP-17). Teams join by **invite code**.
+- **Interest** — a person's public "interested to play" entry on a
+  competition, shown next to the entered teams so people can find each
+  other, and the organizer's pool for filling incomplete teams (D-CMP-17).
 - **ParticipantProfile** — the module's read model of a person as a competitor
   (display name, tag), populated from Identity events (ADR-0004). Competition
   never reads Identity's `User` model.
 - **Match** — the pairing itself and its result state: which entrants, which
   round, when it is scheduled, and once played, the score, the winner, forfeits,
   and the recorded finish. Match status here is sporting status — scheduled,
-  live, finished, cancelled — never infrastructure status.
+  live, finished, cancelled — never infrastructure status. Around it:
+  **result reports** from the two sides (agreeing reports record the result;
+  differing ones make a dispute the desk resolves with a note), optional
+  **proof** images in Platform's media library, and a **match history** —
+  every report, confirmation, dispute, resolution, correction and voiding as
+  a row (D-CMP-19).
+- **Score entries** — for a `leaderboard` stage, an entrant's submitted
+  time, points or jury score, per heat where the stage has heats, counted
+  only once an organizer has verified it (D-CMP-16).
 - **Schedule** — when matches happen across rounds and days.
 - **Standings** — the ranking derived from recorded results, persisted per
   stage as a projection that `CalculateStandings` recomputes wholesale. See
@@ -39,8 +65,11 @@ who entered, who played whom, when, and what the score was.
 - **Brackets** — structure, seeding and pairing, absorbed from LanBrackets
   (ADR-0019). Module-internal: no external service, no webhook endpoint. A
   **Stage** is one phase of a competition (a group stage feeding a playoff is
-  two stages), and `match_connections` is the progression graph between
-  matches. The constructions and their guarantees are documented under
+  two stages), carries the format and its typed settings, declares where its
+  entrants come from (`signup` or `previous_stage`) and how many advance,
+  and `match_connections` is the progression graph between matches. The UI
+  builds one stage per competition today; the model is ready for more
+  (D-CMP-16). The constructions and their guarantees are documented under
   "Bracket mathematics" below.
 
 ## Does not own
@@ -48,7 +77,8 @@ who entered, who played whom, when, and what the score was.
 | Nearby concept | Owned by |
 |---|---|
 | Game server provisioning, match handler configuration, `Deployment` and `MatchSession` lifecycle state | **GameOps** (ADR-0012). Competition emits `MatchScheduled` and `MatchFinished` and never provisions, configures, or tears down anything. |
-| The game catalogue, its modes, and server requirements | **GameOps** owns games/modes/server requirements outright (decision log Round 6, D-GOP-04, ADR-0012 amended). Competition's `Discipline` references a GameOps game by ULID and keeps a **read model** projected from GameOps' events carrying the fields ADR-0024 documented (avg match/stage minutes, signup rules, team size — not just name/icon) — never a query against a GameOps model. |
+| The game catalogue, its modes, and server requirements | **GameOps** owns games/modes/server requirements outright (D-GOP-04 as amended by ADR-0062). Competition's `Discipline` references a GameOps game by ULID and keeps a **picker read model** projected from GameOps' catalogue event — name, icon, engine, modes — never a query against a GameOps model. Contest defaults (durations, team size, draws) live on the discipline itself, not in the projection. |
+| Proof images and their storage | **Platform** media library (ADR-0035); Competition stores the media ULID and decides who may see it. |
 | User accounts, display names, avatars, Steam and other social identities | **Identity**. Competition keeps `ParticipantProfile` as a read model. |
 | Whether a competitor may be on site, badge, check-in | **Admission** |
 | The entry fee as a commercial act, its order and invoice | **Registration** and **Commerce** (ADR-0006). Prize money and any other movement of funds never touch the platform (ADR-0007). |
@@ -201,6 +231,7 @@ rules.
 | Swiss | Score, a draw counting a half | **Buchholz** |
 | Single elimination | The round you were knocked out in | — |
 | Double elimination | The **losers**-bracket round you were knocked out in | — |
+| Leaderboard | The aggregate (`best` / `sum` / `average`) of verified score entries, `higher` or `lower` being better per the stage's settings | — |
 
 **Buchholz** (1932) is the sum of an entrant's opponents' final scores. A Swiss
 event never pairs everyone against everyone, so no head-to-head table exists to
@@ -221,6 +252,18 @@ losers with no third-place match are both 3rd, and nobody is 4th.
 | **Buchholz and byes** | Summed real opponents only | A bye contributes a **virtual opponent** worth the entrant's own score | Counted naively, whoever took the bye has one fewer opponent contributing and drops a place — punished for the organiser's arithmetic rather than for anything played. FIDE's virtual opponent is the standard answer. |
 | **Bracket identification** | Losers and grand-final matches encoded as round numbers 100, 200 and 202 | The `bracket` column the generator already writes | Sentinel values in an integer column are swept up by any query filtering "rounds 1..n". |
 | **Persistence** | Computed at query time, stored nothing | A `competition_standings` projection with `computed_at` | Defensible for a live table, wrong for a finished one: a correction months later would silently rewrite the ranking a prize was awarded on, with no record that it had changed. |
+
+### Leaderboard — a stage without matches
+
+A quarter of SXLAN's real programme is not head-to-head: a jury scores a
+casemod, Trackmania ranks best times, Fall Guys and PUBG award points per
+heat. Forcing those into a bracket is what Challonge made the organizer do.
+A `leaderboard` stage (D-CMP-16) has **no matches and no progression
+graph**; its truth is `competition_score_entries` — one value per entrant,
+or per entrant per heat — and `LeaderboardStandingsCalculator` ranks the
+verified ones with the same standard competition ranking as every other
+format. Unverified entries are invisible to the calculator, which is what
+makes participant submission safe.
 
 ### Known limitations — standings
 
@@ -275,7 +318,9 @@ GameOps is built against; the remaining rows are **proposed**.
 | `MatchRescheduled` *(proposed)* | A scheduled match moves in time | `match_id`, `competition_id`, `previous_scheduled_at`, `scheduled_at` |
 | `CompetitionPublished` *(proposed)* | A competition becomes publicly visible | `competition_id`, `event_id`, `game_id`, `game_mode`, `max_participants`, `team_size` |
 | `SignupOpened` / `SignupClosed` *(proposed)* | The signup window opens or closes | `competition_id`, `event_id`, `opened_at` / `closed_at`, `entrant_count` |
-| `EntrantRegistered` / `EntrantWithdrawn` *(proposed)* | An entrant joins or leaves a competition | `entrant_id`, `competition_id`, `member_user_ids` (list of ULIDs) |
+| `EntrantRegistered` / `EntrantWithdrawn` / `EntrantCheckedIn` | An entrant joins, leaves, or is checked in | `entrant_id`, `competition_id`, `team_id`, `member_user_ids` (list of ULIDs), `reason` (withdrawn) |
+| `CompetitionStarted` / `CompetitionFinished` / `CompetitionCancelled` (D-CMP-15) | The lifecycle moves | `competition_id`, `event_id`, `discipline_id`, `status`, `at` |
+| `MatchResultReported` / `MatchDisputed` / `MatchDisputeResolved` (D-CMP-19) | A side reports; the sides disagree; the desk decides | `match_id`, `competition_id`, `entrant_id`, `user_id`, `at` |
 
 ## Consumes
 
@@ -287,8 +332,8 @@ maintains from them.
 | `MatchSessionLive` | GameOps | The server is up and the handler has started the match; Competition moves the match to live and can show connection details. It is a lifecycle signal, not a result. |
 | `MatchResultReported` *(proposed)* | GameOps | The match handler observed a final score. Competition remains the owner of result state: it decides whether the reported score is recorded, held for review, or overridden. |
 | `MatchSessionFailed` *(proposed)* | GameOps | Provisioning or the handler failed; the match is flagged for the tournament desk rather than silently stalling. |
-| `UserRegistered` / `UserProfileUpdated` *(proposed)* | Identity | Maintains `ParticipantProfile`. The projection must be idempotent and replayable (ADR-0004). |
-| `AdmissionIssued` / `AdmissionRevoked` *(proposed)* | Admission | Signup eligibility: only people admitted to the event may enter a competition, and a revoked admission flags the entrant. |
+| `UserProfileUpdated` | Identity | Maintains `ParticipantProfile` (`display_name`, `username`, `visibility`). Idempotent and replayable (ADR-0004). |
+| `AdmissionHolderAssigned` / `AdmissionHolderUnassigned` / `AdmissionCheckedIn` / `AdmissionRevoked` | Admission | Maintains the **presence read model** — which person the door has seen at which event. Read by check-in when a competition sets `requires_event_check_in` (D-CMP-18). Never a signup gate (D-CMP-05). |
 | `EventArchived` *(proposed)* | Event | Freezes competitions, results, and standings as history. |
 | `DataExportRequested` / `UserDeletionRequested` *(proposed)* | Compliance | Fans out to `src/Gdpr/`: exports a competitor's entrant and match history, anonymizes `ParticipantProfile`, and reports completion back to Compliance. |
 
@@ -297,14 +342,22 @@ maintains from them.
 Declared in `src/Enums/Permission.php`. Roles that grant them are per-brand
 data, not code (ADR-0013).
 
-- Create, publish, and cancel competitions; edit rulesets.
-- Manage entrants: accept, seed, disqualify, withdraw.
-- Manage the schedule: schedule, reschedule, and cancel matches.
-- Record and correct match results — the capability with the highest blast
-  radius, since standings derive from it.
-- Enter a competition and manage one's own entrant roster — the
-  participant-facing capability.
-- View entrant contact data for tournament-desk work.
+- `ViewCompetitions`, `ManageDisciplines`, `ManageCompetitions` (create,
+  publish, close, start, finish, cancel; edit rulesets and policies).
+- `ManageEntrants`: fill or decline incomplete teams, move members,
+  withdraw, disqualify, seed.
+- `CheckInEntrants`, `ManageSchedule` — the desk's day-of work (D-CMP-23).
+- `RecordResults` (also verifies score entries and resolves disputes before
+  a result exists) and `CorrectResults` — the capability with the highest
+  blast radius, since a correction cascades through the bracket and
+  standings derive from it.
+- `ViewEntrantContacts` for tournament-desk work.
+
+Entering a competition, joining a team by code, registering interest,
+reporting or confirming a result and self-service check-in are **not**
+capabilities: they follow from a confirmed registration (D-CMP-05) and
+membership in a side. Default role sets (ADR-0045): Tournament Admin holds
+all nine; Tournament Desk holds view, check-in, record and schedule.
 
 ## Activation
 
@@ -356,3 +409,18 @@ enabling `game-ops` without `competition` gives a brand nothing.
   reintroducing free-form settings blobs (ADR-0009)?~~ **Decision log Round 7
   (D-BATCH-7):** typed per-discipline config Data objects (ADR-0009) — no
   free-form settings blobs.
+- ~~Does a handler-reported or participant-reported score need desk
+  confirmation, and what happens when the sides disagree?~~ **D-CMP-19
+  (2026-09-18):** two agreeing reports record the result; a differing one
+  is a dispute the desk resolves with a mandatory note; score entries need
+  organizer verification; corrections cascade and void downstream results.
+- ~~Which catalogue fields does Competition project from GameOps?~~
+  **ADR-0062:** name, icon, engine, modes — a picker. Contest defaults are
+  the discipline's own.
+- ~~Swiss: greedy or blossom?~~ **D-CMP-24:** Swiss stays available with
+  the greedy pairing; blossom is a later decision, still pinned by its test.
+- **Open:** multi-stage advancement in the UI (`PreviousStageSeedSource`,
+  cross-group ranking of runners-up) — modelled (D-CMP-16), not built.
+- **Open:** free-for-all heats as matches with N slots (a generator and a
+  placement-points calculator); the leaderboard with heats covers the need
+  by hand until then.

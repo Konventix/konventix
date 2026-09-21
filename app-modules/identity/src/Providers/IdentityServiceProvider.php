@@ -9,6 +9,7 @@ use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
@@ -27,11 +28,13 @@ use Konventix\Identity\Gdpr\IdentityGdprHandler;
 use Konventix\Identity\Gdpr\IdentitySubjectResolver;
 use Konventix\Identity\Http\Controllers\AccountRegistrationController;
 use Konventix\Identity\Http\Middleware\EnsureCredentialsAreStrings;
+use Konventix\Identity\Http\Middleware\EnsureSignupsOpen;
 use Konventix\Identity\Http\Responses\ConsentAwareLoginResponse;
 use Konventix\Identity\Http\Responses\ConsentAwareTwoFactorLoginResponse;
 use Konventix\Identity\Http\Responses\GenericPasswordResetLinkResponse;
 use Konventix\Identity\Listeners\RecordBrandMembership;
 use Konventix\Identity\Listeners\SendWelcomeOnVerified;
+use Konventix\Identity\Models\User;
 use Konventix\Identity\Social\SocialProviderRegistry;
 use Konventix\Identity\Social\SteamProvider;
 use Konventix\Messaging\Enums\Channel;
@@ -46,12 +49,14 @@ use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Operators\OperatorPresence;
+use Konventix\Platform\Operators\OperatorSettings;
 use Laravel\Fortify\Contracts\FailedPasswordResetLinkRequestResponse as FailedPasswordResetLinkRequestResponseContract;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
 use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse as SuccessfulPasswordResetLinkRequestResponseContract;
 use Laravel\Fortify\Contracts\TwoFactorLoginResponse as TwoFactorLoginResponseContract;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
+use Laravel\Socialite\Contracts\Factory as SocialiteFactory;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 use SocialiteProviders\Steam\SteamExtendSocialite;
 
@@ -86,6 +91,11 @@ class IdentityServiceProvider extends ModuleServiceProvider
         $this->configureRateLimiting();
         $this->throttleUnhookedFortifyRoutes();
 
+        // The signup gate as a named alias for the module's own social
+        // completion routes (routes/web/identity.php); Fortify's register
+        // routes get the class wrapped on above.
+        Route::aliasMiddleware('signups-open', EnsureSignupsOpen::class);
+
         $this->commands([ReplayProfilesCommand::class]);
     }
 
@@ -117,13 +127,6 @@ class IdentityServiceProvider extends ModuleServiceProvider
 
         // ADR-0048 point 5: the welcome that follows the first verification.
         Event::listen(Verified::class, SendWelcomeOnVerified::class);
-
-        // Community Socialite providers are not auto-discovered the way the
-        // built-in ones are — they extend the manager by listening for this
-        // event. Registered explicitly here because modular event discovery is
-        // off and stays off (.ai/rules/listeners.md); without this line
-        // `Socialite::driver('steam')` raises "Driver [steam] not supported".
-        Event::listen(SocialiteWasCalled::class, [SteamExtendSocialite::class, 'handle']);
     }
 
     /**
@@ -143,6 +146,35 @@ class IdentityServiceProvider extends ModuleServiceProvider
             $registry->register($app->make(SteamProvider::class));
 
             return $registry;
+        });
+
+        // Community Socialite providers are not auto-discovered the way the
+        // built-in ones are: the Manager package fires `SocialiteWasCalled`
+        // exactly once, after boot, and each provider's listener extends
+        // whatever factory instance exists at that moment. That was a plain
+        // `Event::listen` here, and it passed every test — but Octane flushes
+        // the factory before every request (config/octane.php `flush`, so a
+        // cached driver holds no stale request), and the instance resolved
+        // afterwards has never heard of Steam: "Driver [steam] not supported"
+        // on every login of the dev cluster (found 2026-09-18). Extending on
+        // every resolution covers the boot-time instance and each post-flush
+        // one alike. `afterResolving` runs once the container has stored the
+        // singleton, so the package's own `make(Factory)` inside returns this
+        // very instance instead of recursing; the Manager's boot-time event
+        // then merely re-extends an instance that already knows the driver.
+        //
+        // The container is the one the callback is handed, never `$this->app`.
+        // Under Octane every request runs in a sandbox cloned from the worker's
+        // base application (.ai/rules/listeners.md, #142), and it is the
+        // sandbox that resolves the flushed factory anew. `SocialiteWasCalled`
+        // extends whatever factory *its own* container makes — built from
+        // `$this->app` it extended the base application's instance while the
+        // request's sandbox instance had never heard of Steam: "Driver [steam]
+        // not supported" on every login of the staging cluster, on the very
+        // release that carried the afterResolving fix (v0.6.4, 2026-09-21).
+        // Tests never notice, there both containers are the same object.
+        $this->app->afterResolving(SocialiteFactory::class, function (SocialiteFactory $factory, Container $app): void {
+            (new SteamExtendSocialite)->handle($app->make(SocialiteWasCalled::class));
         });
 
         // Compliance's public verification link resolves an address to an
@@ -232,6 +264,10 @@ class IdentityServiceProvider extends ModuleServiceProvider
     {
         Fortify::loginView(fn (Request $request) => Inertia::render('auth/Login', [
             'canResetPassword' => Features::enabled(Features::resetPasswords()),
+            // The "Sign up" link goes with the gate that would refuse it
+            // (EnsureSignupsOpen): a link to a page that bounces back here
+            // with an error is worse than no link.
+            'canRegister' => Features::enabled(Features::registration()) && app(OperatorSettings::class)->signupsOpen(),
             'status' => $request->session()->get('status'),
             ...app(OperatorPresence::class)->props(),
         ]));
@@ -252,10 +288,26 @@ class IdentityServiceProvider extends ModuleServiceProvider
             ...app(OperatorPresence::class)->props(),
         ]));
 
-        Fortify::verifyEmailView(fn (Request $request) => Inertia::render('auth/VerifyEmail', [
-            'status' => $request->session()->get('status'),
-            ...app(OperatorPresence::class)->props(),
-        ]));
+        // One route, two screens (#293): an account still on a placeholder
+        // address has nothing a verification link could be sent to, so the
+        // notice becomes the form that collects the address. Fortify's
+        // controller has already established the account is unverified
+        // before this closure runs.
+        Fortify::verifyEmailView(function (Request $request) {
+            $user = $request->user();
+
+            if ($user instanceof User && $user->hasPlaceholderEmail()) {
+                return Inertia::render('auth/SetEmail', [
+                    'status' => $request->session()->get('status'),
+                    ...app(OperatorPresence::class)->props(),
+                ]);
+            }
+
+            return Inertia::render('auth/VerifyEmail', [
+                'status' => $request->session()->get('status'),
+                ...app(OperatorPresence::class)->props(),
+            ]);
+        });
 
         Fortify::confirmPasswordView(fn () => Inertia::render('auth/ConfirmPassword', [
             ...app(OperatorPresence::class)->props(),
@@ -412,9 +464,15 @@ class IdentityServiceProvider extends ModuleServiceProvider
     private function throttleUnhookedFortifyRoutes(): void
     {
         $credentials = EnsureCredentialsAreStrings::class;
+        $signupsOpen = EnsureSignupsOpen::class;
 
         $additions = [
-            'register.store' => ['throttle:registration', $credentials],
+            // The signup gate on both halves of the form (hotfix
+            // 2026-09-13): the page, so a closed instance never shows a
+            // form it would refuse, and the submission, so the page being
+            // hidden is not the only thing in the way.
+            'register' => [$signupsOpen],
+            'register.store' => [$signupsOpen, 'throttle:registration', $credentials],
             'password.email' => ['throttle:password-reset', $credentials],
             'password.update' => ['throttle:password-reset', $credentials],
             // Review finding 5: Fortify offers no limiter hook for this one
@@ -457,8 +515,8 @@ class IdentityServiceProvider extends ModuleServiceProvider
     /**
      * ADR-0048 point 3/5: `identity.verify-email` and `identity.password-
      * reset` carry no topic — contractual, un-mutable, the suppression list
-     * is the only gate — `identity.welcome` alone declares one
-     * (`registerMessageTopics()` below).
+     * is the only gate — `identity.welcome` and `identity.email-missing`
+     * declare one each (`registerMessageTopics()` below).
      */
     protected function registerMessageTemplates(): void
     {
@@ -648,6 +706,26 @@ class IdentityServiceProvider extends ModuleServiceProvider
                 'shopUrl' => 'https://example.test/shop',
             ],
         ));
+
+        // #293: the in-app nudge an account on a placeholder address finds in
+        // its inbox. In-app only — there is no address to mail — and never
+        // suppressible, since the account's ability to be reached at all is
+        // what it is about. `InAppChannel` lifts `url` from the payload.
+        $this->app->make(TemplateRegistry::class)->register(new MessageTemplate(
+            key: 'identity.email-missing',
+            subjects: [
+                'de' => 'Bitte E-Mail-Adresse festlegen',
+                'en' => 'Please set your email address',
+            ],
+            // The inbox shows the body as plain text and makes the whole
+            // row the link (`notifications/Index.vue`), so no anchor here.
+            bodies: [
+                'de' => '<p>Ihr Konto wurde ohne E-Mail-Adresse übernommen. Bitte legen Sie eine fest, damit wir Sie erreichen können und Sie Ihr Konto bei Bedarf wiederherstellen können. Bis dahin bleiben Bestellungen und Einstellungen gesperrt.</p>',
+                'en' => '<p>Your account was carried over without an email address. Please set one so we can reach you and you can recover your account if you ever need to. Until then, orders and settings stay locked.</p>',
+            ],
+            defaultLocale: 'de',
+            sample: ['url' => 'https://example.test/email/verify'],
+        ));
     }
 
     protected function registerMessageTopics(): void
@@ -657,6 +735,13 @@ class IdentityServiceProvider extends ModuleServiceProvider
             label: 'Welcome and onboarding',
             defaultChannels: [Channel::Mail],
             suppressible: true,
+        ));
+
+        $this->app->make(TopicRegistry::class)->register(new Topic(
+            key: 'identity.email-missing',
+            label: 'Account needs an email address',
+            defaultChannels: [Channel::InApp],
+            suppressible: false,
         ));
     }
 }

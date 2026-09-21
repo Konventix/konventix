@@ -6,6 +6,22 @@
 
 ## Next
 
+- [x] A seat per ticket (#292 §6): `resource_admissions` read model off
+      Admission's events (`ProjectAdmission`, backfilled by
+      `admission:announce-ownership`), `resource_bookings.admission_id`
+      with the partial unique index `resource_bookings_one_place_per_admission`,
+      `AssignPlaceToAdmission`, the per-admission picker routes and
+      `AdmissionSeatController`, `Pick.vue`'s per-ticket mode (`maxPlaces`),
+      per-ticket rows in `SeatSummarySlot`, and `TicketSeatSlot` on the
+      ticket page.
+- [ ] Extract the eligibility query and race handling shared by
+      `AssignPlacesToRegistration` and `AssignPlaceToAdmission` into a
+      concern (#292 follow-up; the plan asked for it, the two copies are
+      fifteen lines each).
+- [ ] A seating grant on a type without an admission grant keeps the
+      registration-level picker; forbid or explain it in the type editor
+      (#292 §12 point 2).
+
 - [x] Category-quota ceiling, the supply half (design §12b, #282): a new
       `PlaceSupplyChanged` event (`src/Events/`) fires from `SavePlan`'s
       projection (blocked/unblocked) and `ReservePlaceForOperator`/

@@ -50,5 +50,11 @@ final class SeatPickerData extends Data
 
         /** @var list<string> */
         public readonly array $currentPlaceIds,
+
+        /** The admission being seated (#292 §6.4), null for the registration-level picker. */
+        public readonly ?string $admissionId = null,
+
+        /** How many places this page may select: 1 per admission, the claim's quantity otherwise. */
+        public readonly ?int $maxPlaces = null,
     ) {}
 }

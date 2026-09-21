@@ -13,6 +13,7 @@ use Konventix\Platform\Data\OperatorSettingsData;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Operators\OperatorContext;
+use Konventix\Platform\Operators\OperatorSettings;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -27,12 +28,16 @@ class OperatorAdminController
 {
     public function __construct(private readonly OperatorContext $context) {}
 
-    public function edit(): Response
+    public function edit(OperatorSettings $settings): Response
     {
         Gate::authorize(Permission::ManageOperator->value);
 
         return Inertia::render('admin/settings/Operator', [
             'operator' => OperatorSettingsData::ofModel($this->operator()),
+            // Not part of the form: the environment's cap on signups is
+            // read-only here, and the page names it so a switch that has
+            // no effect is explained rather than mysterious.
+            'signupsForcedClosed' => $settings->signupsForcedClosed(),
         ]);
     }
 

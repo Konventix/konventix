@@ -238,6 +238,8 @@ it('hands the editor the brand\'s images, the console\'s events and the editable
             ->where('page.publicUrl', app(BrandUrl::class)->baseFor($brand).'/pages/'.$page->slug)
             ->has('types')
             ->has('context.media')
+            // The brand the picker uploads into (#292).
+            ->where('context.brandId', $brand->getKey())
             ->has('context.events'));
 
     // The `home` slug links to the brand's root, not `/pages/home`.

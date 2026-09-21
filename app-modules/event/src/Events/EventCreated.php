@@ -26,5 +26,7 @@ final readonly class EventCreated
         public string $timezone,
         public ?string $predecessorEventId,
         public ?string $visibility = null,
+        /** The banner's media-library ULID, null for none (#292). */
+        public ?string $bannerMediaId = null,
     ) {}
 }

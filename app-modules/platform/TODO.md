@@ -56,6 +56,12 @@ depends on brand resolution and gating working.
       branch; the nav icons `activity`, `list-checks` and `building` are
       absent from `navIcons.ts` and fall back to the generic mark.
 
+- [x] Upload from inside the picker (#292): `POST /admin/media/quick`
+      answers the same `StoreMediaUpload` as JSON (`MediaItemData`) so
+      `MediaPicker.vue` can add a picture to a brand, product, block or event
+      form without leaving it. Same capability, same validation, no SVG.
+- [ ] Drag-and-drop and multi-file upload in the picker; a `banner` variant
+      beside `thumb` in `ThumbnailGenerator` (#292 follow-ups).
 - [x] Object storage for the media library (ADR-0043, ROADMAP slice 17):
       `hero` blocks reference media by ULID and resolve at render (17a); the
       `media_s3` disk plus a `public_direct` delivery branch in
@@ -97,6 +103,25 @@ depends on brand resolution and gating working.
 - [ ] tests/Unit/ArchitectureTest.php's "App not to use Konventix" rule only inspects type-hinted dependencies, so a provider-level use import passes it silently — the rule's name promises more than it enforces. Either narrow the name or widen the check.
 
 ## Done
+
+- [x] "Operator Admin" follows the untouched-only re-sync rule (ADR-0045
+      amendment 2026-09-13, hotfix): `MaterializeOperatorAdminRole`, run from
+      `permissions:sync` for every operator and from `konventix:install`.
+      Before, the role was granted everything once at install and never
+      revisited, so every capability a later release added (all of
+      `resources.*` from 0.6.0) was a 403 on the admin host with no editor
+      to grant it from. `/` on the admin host now redirects to `/admin` —
+      there is no brand and so no home page there.
+
+- [x] `operators.signups_open` and `OperatorSettings::signupsOpen()` /
+      `signupsForcedClosed()` (hotfix 2026-09-13): the operator's own switch
+      for account creation on the Operator settings page, capped by
+      `platform.signups.enabled` (`SIGNUPS_ENABLED`). Operator level, not
+      brand level — an account is the person's (ADR-0016), so a signup on
+      one brand host is an account on every brand. Identity enforces it;
+      this module only owns the setting and its page. The page names the
+      environment's cap beside the switch so a switch that cannot open
+      anything is explained.
 
 - [x] ADR-0048 (mail-and-receipts tranche): three new cross-module read
       doorways for branded mail, none of them an Eloquent import.

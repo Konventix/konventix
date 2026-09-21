@@ -11,6 +11,7 @@ use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventReentryPolicyChanged;
 use Konventix\Event\Events\EventRescheduled;
 use Konventix\Event\Models\Event;
+use Konventix\Platform\Media\MediaLibrary;
 
 /**
  * Updates an event's details from the form Data (ADR-0009). Emits
@@ -20,10 +21,15 @@ use Konventix\Event\Models\Event;
  */
 final class UpdateEventDetails
 {
+    public function __construct(private readonly MediaLibrary $media) {}
+
     public function handle(Event $event, EventData $data): Event
     {
         return DB::transaction(function () use ($event, $data): Event {
             $this->guardSlugUnique($event, $data->slug);
+            $this->guardOwnedBanner($event->brand_id, $data->bannerMediaId);
+
+            $previousBanner = $event->banner_media_id;
 
             $rescheduled = $event->starts_at->format('Y-m-d H:i:s') !== $data->startsAt
                 || $event->ends_at->format('Y-m-d H:i:s') !== $data->endsAt
@@ -35,6 +41,7 @@ final class UpdateEventDetails
                 'name' => $data->name,
                 'slug' => $data->slug,
                 'description' => $data->description,
+                'banner_media_id' => $data->bannerMediaId,
                 'starts_at' => $data->startsAt,
                 'ends_at' => $data->endsAt,
                 'timezone' => $data->timezone,
@@ -43,12 +50,15 @@ final class UpdateEventDetails
                 'predecessor_event_id' => $data->predecessorEventId,
             ])->save();
 
+            $this->syncBannerUsage($event, $previousBanner, $event->banner_media_id);
+
             event(new EventDetailsUpdated(
                 eventId: $event->id,
                 brandId: $event->brand_id,
                 slug: $event->slug,
                 name: $event->name,
                 visibility: $event->visibility->value,
+                bannerMediaId: $event->banner_media_id,
             ));
 
             if ($rescheduled) {
@@ -73,6 +83,40 @@ final class UpdateEventDetails
 
             return $event->refresh();
         });
+    }
+
+    /**
+     * The library tracks who wears a picture so it can refuse to delete one
+     * still in use (ADR-0035) — the same bookkeeping `UpdateBrand` keeps for
+     * the brand's marks. Recorded under this module's own name.
+     */
+    private function syncBannerUsage(Event $event, ?string $before, ?string $after): void
+    {
+        if ($before === $after) {
+            return;
+        }
+
+        if ($before !== null) {
+            $this->media->releaseUsage($before, 'event', 'event', $event->id);
+        }
+
+        if ($after !== null) {
+            $this->media->recordUsage($after, 'event', 'event', $event->id);
+        }
+    }
+
+    /**
+     * A ULID from another brand's library would resolve and render — the
+     * library ignores brand scope on read — and vanish the day that brand
+     * is deleted (`UpdateBrand::guardOwnedMedia()` says the same).
+     */
+    private function guardOwnedBanner(string $brandId, ?string $mediaId): void
+    {
+        if ($mediaId !== null && ! $this->media->belongsToBrand($mediaId, $brandId)) {
+            throw ValidationException::withMessages([
+                'bannerMediaId' => __('That file belongs to a different brand.'),
+            ]);
+        }
     }
 
     private function guardSlugUnique(Event $event, string $slug): void

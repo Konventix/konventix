@@ -146,6 +146,14 @@ maintains from them.
 Identity maintains no read models of other modules' data. If it ever needs one,
 that is a signal the User model is being asked to grow again.
 
+One read doorway, no model: `Platform\Operators\OperatorSettings::signupsOpen()`
+says whether a stranger may create an account right now — the operator's own
+switch on the console's Operator settings page and the instance-wide
+`SIGNUPS_ENABLED` cap, combined there. `Http\Middleware\EnsureSignupsOpen`
+applies it to Fortify's register routes and to the social completion step,
+and the login page drops its "Sign up" link on the same answer. Account
+creation only: login and every existing account are untouched.
+
 ## Capabilities
 
 Declared in `src/Enums/Permission.php`. Roles that grant them are per-brand

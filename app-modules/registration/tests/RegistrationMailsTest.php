@@ -12,6 +12,7 @@ use Konventix\Messaging\Data\SendMessageData;
 use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Jobs\SendQueuedMessage;
 use Konventix\Messaging\Templates\TemplateRenderer;
+use Konventix\Platform\Models\MediaItem;
 use Konventix\Registration\Actions\ApproveRegistration;
 use Konventix\Registration\Actions\CancelPendingRegistrationForCart;
 use Konventix\Registration\Actions\CancelRegistration;
@@ -24,6 +25,7 @@ use Konventix\Registration\Enums\ConfirmationGate;
 use Konventix\Registration\Enums\PaymentStatus;
 use Konventix\Registration\Enums\RegistrationSettlement;
 use Konventix\Registration\Events\RegistrationSettlementRequested;
+use Konventix\Registration\Models\EventSummary;
 use Konventix\Registration\Models\RegistrationType;
 use Spatie\LaravelData\Data;
 
@@ -573,4 +575,37 @@ it('renders a confirmation mail enqueued before the cart fields existed', functi
 
     expect($body)->toContain('ist bestätigt.')
         ->not->toContain('Warenkorb');
+});
+
+// The hero (#292): the event's banner from this module's own summary,
+// resolved through the media library, heads every lifecycle mail — and a
+// picture that no longer resolves costs nothing but the picture.
+it('heads the confirmation mail with the event banner, and sends without one when it is missing or gone', function (): void {
+    $brand = $this->withBrand();
+    $registrant = regMailsRecipient($brand->id);
+    Queue::fake();
+
+    $eventId = registrationTypeEvent($brand);
+    $type = RegistrationType::factory()->create(['event_id' => $eventId]);
+    $banner = MediaItem::factory()->create(['brand_id' => $brand->id, 'alt_text' => 'The hall']);
+    EventSummary::withoutBrandScope()->where('event_id', $eventId)->update(['banner_media_id' => $banner->id]);
+
+    app(SubmitRegistration::class)->handle($type, $registrant->id, regMailsFreeSubmission());
+
+    $message = regMailsPushed('registration.confirmed')[0]->message;
+
+    expect($message->heroImageUrl)->toBeString()->toContain($banner->path)
+        ->and($message->heroImageAlt)->toBe('The hall');
+
+    // Gone: the summary still names it, the library no longer knows it.
+    Queue::fake();
+    EventSummary::withoutBrandScope()->where('event_id', $eventId)->update(['banner_media_id' => (string) Str::ulid()]);
+    $again = regMailsRecipient($brand->id);
+
+    app(SubmitRegistration::class)->handle($type, $again->id, regMailsFreeSubmission());
+
+    $message = regMailsPushed('registration.confirmed')[0]->message;
+
+    expect($message->heroImageUrl)->toBeNull()
+        ->and($message->heroImageAlt)->toBeNull();
 });

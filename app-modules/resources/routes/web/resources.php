@@ -16,6 +16,7 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Resources\Http\Controllers\AdmissionSeatController;
 use Konventix\Resources\Http\Controllers\SeatAvailabilityController;
 use Konventix\Resources\Http\Controllers\SeatPickController;
 
@@ -36,4 +37,15 @@ Route::middleware(['auth'])->group(function (): void {
 
     Route::get('/my/registrations/{registration}/seat/availability', [SeatAvailabilityController::class, 'show'])
         ->name('resources.seating.availability');
+
+    // The picker per ticket (#292 §6.4): the same page for one admission,
+    // opened to its holder and to the buyer who manages the group.
+    Route::get('/my/admissions/{admission}/seat', [AdmissionSeatController::class, 'show'])
+        ->name('resources.admission-seat.show');
+    Route::post('/my/admissions/{admission}/seat', [AdmissionSeatController::class, 'store'])
+        ->name('resources.admission-seat.store');
+    Route::delete('/my/admissions/{admission}/seat', [AdmissionSeatController::class, 'destroy'])
+        ->name('resources.admission-seat.destroy');
+    Route::get('/my/admissions/{admission}/seat/availability', [AdmissionSeatController::class, 'availability'])
+        ->name('resources.admission-seat.availability');
 });

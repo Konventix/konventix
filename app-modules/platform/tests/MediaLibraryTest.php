@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\MediaItem;
@@ -162,4 +164,92 @@ it('refuses an svg upload into the media library', function (): void {
         ->assertSessionHasErrors('file');
 
     expect(MediaItem::withoutBrandScope()->count())->toBe(0);
+});
+
+it('answers a quick upload with the item as JSON so a form can pick it without leaving', function (): void {
+    [, $admin] = mediaOperator();
+    Storage::fake('media');
+
+    $brand = $this->withBrand();
+
+    $response = $this->actingAs($admin)
+        ->postJson('http://admin.media.test/admin/media/quick', [
+            'brand_id' => $brand->id,
+            'file' => UploadedFile::fake()->image('banner.png', 1600, 600),
+            'alt_text' => 'Event banner',
+        ])
+        ->assertCreated();
+
+    $item = MediaItem::withoutBrandScope()->firstOrFail();
+
+    $response->assertJsonPath('id', $item->id)
+        ->assertJsonPath('brandId', $brand->id)
+        ->assertJsonPath('originalFilename', 'banner.png')
+        ->assertJsonPath('altText', 'Event banner')
+        ->assertJsonPath('usageCount', 0);
+
+    expect($response->json('url'))->toBeString()
+        ->and($item->uploaded_by_user_id)->toBe($admin->id);
+});
+
+it('403s a quick upload without the manage-media capability', function (): void {
+    [, $admin] = mediaOperator(['platform.access-admin', 'platform.view-media']);
+    Storage::fake('media');
+
+    $brand = $this->withBrand();
+
+    $this->actingAs($admin)
+        ->postJson('http://admin.media.test/admin/media/quick', [
+            'brand_id' => $brand->id,
+            'file' => UploadedFile::fake()->image('banner.png'),
+        ])
+        ->assertForbidden();
+
+    expect(MediaItem::withoutBrandScope()->count())->toBe(0);
+});
+
+it('422s a quick upload of an svg renamed to png, and of an unknown brand', function (): void {
+    [, $admin] = mediaOperator();
+    Storage::fake('media');
+
+    $brand = $this->withBrand();
+
+    $this->actingAs($admin)
+        ->postJson('http://admin.media.test/admin/media/quick', [
+            'brand_id' => $brand->id,
+            'file' => UploadedFile::fake()->createWithContent('logo.png', '<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('file');
+
+    $this->actingAs($admin)
+        ->postJson('http://admin.media.test/admin/media/quick', [
+            'brand_id' => (string) Str::ulid(),
+            'file' => UploadedFile::fake()->image('banner.png'),
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('brand_id');
+
+    expect(MediaItem::withoutBrandScope()->count())->toBe(0);
+});
+
+it('tells the console shell whether the picker may upload', function (): void {
+    [$operator, $admin] = mediaOperator();
+
+    // A second person on the same operator who may look but not manage.
+    $registrar = app(PermissionRegistrar::class);
+    $registrar->setPermissionsTeamId($operator->getKey());
+    $viewerRole = Role::query()->create(['name' => 'Viewer', 'guard_name' => 'web', 'brand_id' => $operator->getKey()]);
+    $viewerRole->givePermissionTo(['platform.access-admin', 'platform.view-media']);
+    $viewer = User::factory()->create();
+    $viewer->assignRole($viewerRole);
+    $registrar->setPermissionsTeamId(null);
+
+    $this->actingAs($admin)
+        ->get('http://admin.media.test/admin/media')
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('admin.canManageMedia', true));
+
+    $this->actingAs($viewer)
+        ->get('http://admin.media.test/admin/media')
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('admin.canManageMedia', false));
 });

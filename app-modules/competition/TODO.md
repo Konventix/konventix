@@ -6,54 +6,64 @@
 
 ## Next
 
-- [ ] Add migrations for `competitions`, `entrants`, `entrant_members`,
-      `matches`, and `participant_profiles`: ULID primary keys,
-      `BelongsToBrand`, and `ulid` columns without FK constraints for
-      `event_id`, `game_id`, and `user_id` (ADR-0014).
-- [ ] Emit `MatchScheduled` and `MatchFinished` exactly as ADR-0012 specifies —
-      ULIDs and scalars only — since GameOps is built against them. Add an arch
-      test proving Competition imports no GameOps class.
+Design settled 2026-09-18 in
+`docs/superpowers/specs/2026-09-18-competition-design.md` (D-CMP-15..25,
+ADR-0062). The build order for #32, each item its own merge request:
+
+- [ ] Lifecycle and admin CRUD (D-CMP-15): `CompetitionStatus` with enforced
+      transitions and `SignupClosed`; drop `competitions.format` in favour
+      of the first stage; `starts_at`, `max_entrants`, description and
+      rules, the check-in and result knobs; discipline CRUD; the admin
+      pages behind `ManageDisciplines` / `ManageCompetitions`.
+- [ ] Signup (D-CMP-17): captain `role`, `invite_code`, the interested list,
+      `incomplete` entrants, `FillIncompleteEntrant` / `DeclineIncompleteEntrant`
+      at close, `/my/tournaments` and join-by-code; `ParticipantProfile`
+      from `UserProfileUpdated`.
+- [ ] Check-in (D-CMP-18): the presence read model from Admission's events,
+      `CheckInEntrant` / `UndoCheckIn`, self-service window, desk list.
+- [ ] Leaderboard format (D-CMP-16): `competition_score_entries`,
+      `LeaderboardSettings`, `LeaderboardStandingsCalculator`, submit and
+      verify Actions; `entry_source` / `advance_count` on stages and the
+      `SeedSource` seam, single stage in the UI.
+- [ ] Results (D-CMP-19): `match_result_reports`, report / confirm /
+      dispute / resolve Actions, proofs through the media library, the
+      cascading correction that voids downstream results, and
+      `competition_match_history`.
+- [ ] Desk and public pages (D-CMP-20..22): seed order, generate / reset,
+      per-round scheduling, the ported canvas bracket with its table view,
+      event tournament index, competition, match and team pages, polling
+      while `Running`.
+- [ ] Capabilities and roles (D-CMP-23): `ManageSchedule`, `CheckInEntrants`,
+      `ViewEntrantContacts`; Tournament Desk as a second default role.
+- [ ] Metrics, dashboard row and the open-dispute alert (ADR-0059); GDPR
+      export and anonymisation for the new tables; the two
+      definition-of-done flows and the feature-off test.
 
 ## Backlog
 
-- [ ] Swiss pairing: decide whether to replace greedy first-fit with a
-      minimum-weight perfect matching (Edmonds' blossom, 1965) as `SPEC.md`'s
-      "Known limitations" describes. Not a refactor — it pairs some rounds
-      differently from the absorbed engine for identical input, so it needs a
-      decision. The greedy failure mode is already pinned by a test, so the
-      swap has a target to beat.
-- [ ] GameOps catalogue read model (blocked on Slice 11). `Discipline.game_id`
-      holds the reference today but nothing projects the catalogue fields
-      D-GOP-04 names (avg match/stage minutes, signup rules, team size).
-      **The contract needs settling first**: GameOps' SPEC lists no catalogue
-      event at all, not even as proposed, and contradicts D-GOP-04 on scope.
-- [ ] Check-in as an Action: `Entrant::$checked_in_at` exists but nothing
-      writes it. D-CMP-05 puts the admission check at check-in/match start,
-      so this is where Competition records that the door verified someone.
-
-- [ ] Build the signup flow: entrant creation and roster management as Actions,
-      eligibility checked against the admission read model, quota enforced
-      against the competition's participant limit.
-- [ ] Consume GameOps' `MatchSessionLive` and the proposed `MatchResultReported`
-      and `MatchSessionFailed`; per decision log Round 6 (D-CMP-11) a
-      handler-reported score writes result state directly and advances the
-      bracket — no desk confirmation gate.
-- [ ] `MatchResultCorrected` as a distinct event per decision log Round 6
-      (D-CMP-12), now proposed in `SPEC.md`'s contract table: the
-      tournament-desk correction Action, guarded by the result-correction
-      capability, that rewrites a match's recorded score and re-derives
-      standings without re-emitting `MatchFinished`.
-- [ ] Solo entrants as a team of size one (decision log Round 6, D-CMP-13): the
-      `Entrant` roster UI hides itself for size-1 teams rather than branching
-      the entrant model.
-- [ ] Build the tournament-desk and public surfaces: schedule, match detail, and
-      standings, each backed by one `Data` object with generated TS types
-      (ADR-0009); register nav entries with Platform.
-- [ ] Add `src/Gdpr/` export and anonymization for `ParticipantProfile`, entrant
-      membership, and match history.
-- [ ] Feature tests for the Phase 2 definition of done: an SXLan tournament from
-      signup through scheduling to recorded standings, plus a test proving every
-      listener short-circuits when the `competition` feature is off.
+- [ ] Swiss pairing: greedy first-fit stays (D-CMP-24). Replacing it with a
+      minimum-weight perfect matching (Edmonds' blossom) pairs some rounds
+      differently for identical input, so it needs a decision when a Swiss
+      competition is actually planned. The greedy failure mode is pinned by
+      a test, so the swap has a target to beat.
+- [ ] Multi-stage in the UI: a second stage with `entry_source =
+      previous_stage`, `PreviousStageSeedSource`, cross-group ranking of
+      runners-up (D-CMP-16 modelled it; nothing builds it yet).
+- [ ] Free-for-all heats as matches with N slots — a generator and a
+      placement-points calculator. The leaderboard with heats covers Fall
+      Guys and PUBG by hand until then.
+- [ ] GameOps catalogue picker read model (ADR-0062): `competition_game_
+      catalogue` from the catalogue event #179 defines. Not needed to run a
+      tournament; needed to link a video-game discipline to its game.
+- [ ] Consume GameOps' `MatchSessionLive`, `MatchResultReported` and
+      `MatchSessionFailed` (#115); per D-CMP-11 a handler-reported score
+      writes result state directly. Decide there what happens when a
+      handler reports on a match the desk has already voided (§8.5 of the
+      design).
+- [ ] Reverb broadcasting for the desk and the public bracket; polling is
+      the contract until then (D-CMP-22).
+- [ ] OBS overlay with a public `share_token` route surviving brand
+      resolution (ADR-0019) — with #117.
 
 ## Done
 

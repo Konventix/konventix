@@ -1,27 +1,23 @@
-# The pipeline is the one instance that sees every change (#59), and it runs at
-# four different depths depending on how far the change has travelled.
+# The pipeline is the one instance that sees every change (#59). It runs the
+# jobs that prove a commit and name an image, and nothing else runs on its own:
 #
 #   docs/ branch, with or without MR  ~1 min   the docs-only guard, secrets
 #   feature branch, no merge request  ~2 min   format, phpstan, vitest, secrets
-#   merge request                     ~8 min   + eslint, vue-tsc, the Pest suite,
-#                                              semgrep, dependency scanning
-#   develop, main, dev tag           ~16 min   + the image, built beside all of
-#   (v0.4.5-dev)                               that, published after it, then
-#                                              container-scanned; a tag names it
-#   candidate and release tag        ~40 min   + the cross-file SAST, which the
-#   (v0.4.5-rc.1, v0.4.5)                      publication then waits for
+#   merge request                     ~8 min   + eslint, vue-tsc, the Pest suite
+#   develop, main, any tag           ~16 min   + the image, built beside all of
+#                                              that and published after it; a
+#                                              tag names it
 #
-# The shape follows from one measurement: gitlab-advanced-sast took 24 minutes
-# when this was written and 50 on v0.5.3, and no amount of cores changes the
-# floor — its slowest rule group is one uncapped cross-file pass. Leaving it on
-# the merge request loop made every review wait 40 minutes for a scan nobody
-# was reading yet. It runs on the tags that reach an instance other people use
-# — a candidate or a release — and nowhere else. Not on a push to main: the
-# release tag lands on the same commit a moment later, and v0.4.4 showed what
-# two copies of the scan do to each other on shared runners (22 minutes on
-# main, 67 on the tag). What the job itself can do about its length is written
-# at the job: balanced rule groups from a shared metrics cache, and a taint
-# cache the release tag inherits from its candidate.
+# The scanners — both SAST analyzers, dependency scanning, container scanning
+# — and the two gates that read their reports are still here, but every one
+# of them is a manual job that fails nothing: it appears in the pipeline with
+# a play button, runs when someone presses it, and its verdict is advisory.
+# Nothing in the publishing chain waits for one. That is a deliberate trade:
+# the cross-file SAST took 27-50 minutes on every candidate and release tag,
+# and the release it existed to protect spent two days blocked on three
+# findings in browser code (v0.6.4, pipelines 1828 and 1833). Development
+# speed won. Run the scans by hand on the tags that reach other people, read
+# the security widget, and press the gate to get the old verdict.
 #
 # develop is the integration branch and the default: feature branches merge into
 # it, and it merges into main for a release.
@@ -34,15 +30,13 @@
 # file on a docs/ branch fails the pipeline instead of merging unverified.
 #
 # The GitHub workflow that published a second, unverified image to
-# ghcr.io/konventix/konventix is gone (#255): it had no `needs` on tests.yml,
-# no SAST, no secret detection, no dependency or container scanning, and it
-# fired on exactly the refs this pipeline guards — so every bar `scan:gate`
-# holds up was one push to the archived GitHub remote away from being walked
-# around. Here that bar is `publish:image`: it needs the analysis, test and
-# scan jobs, and it is the only job that writes a tag anything can deploy.
-# `build:image` runs beside them instead of behind them (#261) — it builds and
-# smoke-tests, and parks the result on a path nothing pulls from, so a red test
-# still means no deployable tag was ever written.
+# ghcr.io/konventix/konventix is gone (#255): it fired on exactly the refs this
+# pipeline guards, with none of the verification. Here the bar is
+# `publish:image`: it needs the verify, analyse and test jobs, and it is the
+# only job that writes a tag anything can deploy. `build:image` runs beside
+# them instead of behind them (#261) — it builds and smoke-tests, and parks the
+# result on a path nothing pulls from, so a red test still means no deployable
+# tag was ever written.
 #
 # Ordering is a DAG, not a ladder: `needs:` is what decides what waits for what,
 # so the stage list below is the story the pipeline graph tells, not the order
@@ -66,6 +60,12 @@ stages:
   - analyse
   - test
   - scan
+  # The gates' own stage, after the scanners': a manual job whose `needs:`
+  # name unplayed manual jobs is *skipped*, and a skipped job can be neither
+  # played nor retried — so the gates take their reports by stage order
+  # (`dependencies:`) instead and stay playable. Nothing waits for this
+  # stage: every job after it either carries `needs:` or is manual itself.
+  - gate
   - build
   - publish
   - release
@@ -118,17 +118,23 @@ workflow:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
-  # A candidate or a release: every tag except a dev tag. The 24-minute scan
-  # lives here. The pattern matches the dev form exactly — v0.4.5-dev,
-  # v0.4.5-dev.2 — so an oddly named tag lands in this tier rather than
-  # silently outside it. A push to main is deliberately not here: the release
-  # tag that follows covers the same commit.
-  release: &tier-release
+  # The scanners: present with a play button wherever a review or a publish
+  # happens, run by hand, and advisory — `when: manual` in a rule makes the
+  # job `allow_failure: true`, so an unplayed or a red scanner leaves the
+  # pipeline green and blocks nothing downstream. Every scanner and both
+  # gates carry this tier and an explicit `allow_failure: true` beside it,
+  # because the security templates set `false` and an override must say so.
+  scan: &tier-scan
     - if: $PIPELINE_SHAPE == "docs"
       when: never
-    - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+-dev(\.[0-9]+)?$/
-      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
     - if: $CI_COMMIT_TAG
+      when: manual
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: manual
 
 variables:
   # Dependency caches must live under the project directory — it is the only
@@ -571,10 +577,15 @@ test:php:
 
 ########## scan ##########
 #
-# The scanners need neither the toolchain image nor a green verify, so they
-# carry `needs: []` and start with the pipeline. `scan:gate` is what turns
-# their reports into a merge blocker: the analyzers themselves exit 0 with
-# findings, and their allow_failure only covers the analyzer crashing.
+# Every job in this section is manual and advisory except `secret_detection`,
+# which is automatic and advisory (see the top of this file). The scanners
+# need neither the toolchain image nor a green verify, so they carry
+# `needs: []` and are playable from the start. `scan:gate` is what turns
+# their reports into a verdict: the analyzers themselves exit 0 with
+# findings, and their allow_failure only covers the analyzer crashing. The
+# verdict blocks nothing — `publish:image` stopped needing it — but the gate
+# keeps its bars, so pressing the scanners and then the gate on a tag gives
+# exactly the answer a release used to be held on.
 #
 # The GitLab-native alternative is a merge request approval policy (Ultimate),
 # which requires approval instead of failing the pipeline. It lives in a
@@ -583,35 +594,33 @@ test:php:
 
 secret_detection:
   stage: scan
-  # Tier 0: sixteen seconds, and the one finding that must never reach a shared
-  # branch unnoticed. It runs on feature branch pushes too, and it is the one
-  # scanner the documentation shape keeps: a README with a real key is the
-  # finding the fleet repository actually had.
+  # The one scanner that still runs on its own: sixteen seconds, on every
+  # push including a docs/ branch, because a README with a real key is the
+  # finding the fleet repository actually had. Its report feeds the security
+  # widget; the verdict on it is `scan:gate`, which is manual like every
+  # other gate, so a finding here is visible rather than blocking.
   rules:
     - if: $PIPELINE_SHAPE == "docs"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH
   needs: []
-  allow_failure: false
+  allow_failure: true
 
 gitlab-advanced-sast:
   stage: scan
-  # Release tier: a candidate or a release, never a dev tag, never a branch.
-  # Twenty-four minutes in isolation and sixty when the runners are busy, and
-  # no amount of hardware changes that: three of its six passes analyse a
-  # single rule each with `timeout_for_interfile_analysis 0`, and those are the
-  # cross-file taint analyses that make it worth having. On the merge request
-  # loop it was the whole reason a review took forty minutes.
+  # Manual. Twenty-seven to fifty minutes for the cross-file taint analysis,
+  # which is the part worth having and the part no hardware shortens. It used
+  # to run on its own on every candidate and release tag and block the
+  # promotion through `scan:gate`; now it runs when pressed, on the tag that
+  # is about to reach other people, and its findings land in the security
+  # widget. Press it, then `scan:gate`, and the old verdict is back.
   #
-  # A dev tag — v0.4.5-dev — is an immutable image for a development instance
-  # and gets semgrep instead. A release candidate — v0.4.5-rc.1 — is what a
-  # staging instance runs before the same commit becomes v0.4.5, so it pays
-  # for the scan the release would. Nothing that reaches other people ships
-  # without the cross-file scan; nothing else pays for it twice.
-  rules: *tier-release
+  # Not in the same pipeline as `semgrep-sast`: both write gl-sast-report.json
+  # and the gate reads whichever landed last. Pick one per pipeline.
+  rules: *tier-scan
   needs: []
-  allow_failure: false
+  allow_failure: true
   # The template keys the chunking metrics (`scan_metrics.csv`) by ref, with the
   # default branch as fallback — and develop never runs this job, so every tag
   # started from nothing and the analyzer logged "falling back to random
@@ -646,34 +655,20 @@ gitlab-advanced-sast:
 
 semgrep-sast:
   stage: scan
-  # Stands in for the advanced analyzer wherever that one does not run: single
-  # file pattern matching, no cross-file dataflow, sixty-nine seconds. Never in
-  # the same pipeline as gitlab-advanced-sast — both write gl-sast-report.json
-  # and scan:gate would read whichever landed last.
-  rules:
-    - if: $PIPELINE_SHAPE == "docs"
-      when: never
-    # Ahead of the blanket tag exclusion below, so it wins: on a dev tag the
-    # advanced analyzer stands down and this one takes its place. Without this
-    # the pipeline would carry no SAST report at all and `scan:gate` would
-    # fail on the one it could not find. The pattern is the release tier's,
-    # negated — keep the two in step.
-    - if: $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+-dev(\.[0-9]+)?$/
-    - if: $CI_COMMIT_TAG
-      when: never
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_BRANCH == "develop"
+  # Manual. The cheap SAST: single-file pattern matching, no cross-file
+  # dataflow, about a minute. Same report file as `gitlab-advanced-sast`, so
+  # one or the other per pipeline, never both.
+  rules: *tier-scan
   needs: []
-  allow_failure: false
+  allow_failure: true
 
 gemnasium-dependency_scanning:
   stage: scan
-  # Tier 1: a lockfile only changes in a reviewed change, so a bare feature
-  # push has nothing new to say here.
-  rules: *tier-reviewed
+  # Manual. A few minutes over both lockfiles; worth pressing after a
+  # dependency bump and on a tag.
+  rules: *tier-scan
   needs: []
-  allow_failure: false
+  allow_failure: true
   # The template lists gl-dependency-scanning-report.json only under
   # artifacts:reports, and a report-type artifact cannot be downloaded by a
   # later job — so scan:gate saw "no report" and passed. Secret detection and
@@ -690,38 +685,44 @@ gemnasium-dependency_scanning:
       - '**/gl-sbom-*.cdx.json'
 
 scan:gate:
-  stage: scan
+  stage: gate
   image: alpine:3.22
+  # Manual, like the scanners it reads. Press the scanners first: a report
+  # that is not there fails this job, on purpose (see `require` below), so
+  # the gate can never wave through a scan that did not happen. Its verdict
+  # is the same as it always was — any secret, High and above with a fix in
+  # code and dependencies — and it blocks nothing: `publish:image` no longer
+  # needs it. On a feature branch or a docs/ branch only secret detection
+  # exists, so the gate checks only that.
+  #
+  # `dependencies:`, not `needs:` — see the `gate` stage above. Pipeline
+  # 1839 is the proof: with `needs:` on the manual scanners this job was
+  # skipped and unplayable even after one of them had run.
   rules:
-    # On a feature branch only secret detection ran, so the gate checks only
-    # that. Twelve seconds, and it means a credential cannot sit unnoticed on a
-    # shared branch just because no merge request exists yet. The documentation
-    # shape is the same case with a merge request.
     - if: $PIPELINE_SHAPE == "docs"
+      when: manual
       variables:
         GATE_SECRETS_ONLY: "yes"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
     - if: $CI_COMMIT_TAG
+      when: manual
     - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
     - if: $CI_COMMIT_BRANCH == "develop"
+      when: manual
     - if: $CI_COMMIT_BRANCH
+      when: manual
       variables:
         GATE_SECRETS_ONLY: "yes"
-  needs:
-    # Optional throughout: which analyzers a commit produces depends on the
-    # files it touches, and a scanner that did not run is not a finding.
-    - job: secret_detection
-      artifacts: true
-      optional: true
-    - job: gitlab-advanced-sast
-      artifacts: true
-      optional: true
-    - job: semgrep-sast
-      artifacts: true
-      optional: true
-    - job: gemnasium-dependency_scanning
-      artifacts: true
-      optional: true
+  allow_failure: true
+  dependencies:
+    # A scanner that was not pressed, or does not exist on this ref, simply
+    # hands over nothing; `require` below decides what that means.
+    - secret_detection
+    - gitlab-advanced-sast
+    - semgrep-sast
+    - gemnasium-dependency_scanning
   before_script:
     - apk add --no-cache jq
   script:
@@ -786,10 +787,10 @@ scan:gate:
       # situation. `solution` is the field that carries the remediation
       # ("Upgrade to versions 3.3.18, 5.1.6 or above."); empty or absent means
       # no fixed version was known when the report was written. The same rule
-      # is applied to the container report in `scan:gate:image`, on the release
-      # tier only and at Critical rather than High (#256's criterion, and those
-      # OS packages are not ours to fix); it cannot be read here, because
-      # build:image needs this job. Move the rule in both gates or in neither.
+      # is applied to the container report in `scan:gate:image`, at Critical
+      # rather than High (#256's criterion, and those OS packages are not
+      # ours to fix); it cannot be read here, because that report exists only
+      # after the image is published. Move the rule in both gates or in neither.
       if require gl-dependency-scanning-report.json; then
         total=$(jq '[.vulnerabilities[]] | length' gl-dependency-scanning-report.json)
         blocking=$(jq '[.vulnerabilities[] | select((.severity == "Critical" or .severity == "High") and ((.solution // "") != ""))] | length' gl-dependency-scanning-report.json)
@@ -980,14 +981,21 @@ container_scanning:
     - job: publish:image
   variables:
     CS_IMAGE: $CI_REGISTRY_IMAGE:$IMAGE_SHA_TAG
-  # Only where an image was actually published. A merge request's image is
-  # built and smoked and goes no further, so there is nothing to scan.
-  rules: *tier-published
-  # The analyzer itself never fails a pipeline — the same division of labour as
-  # the other four scanners: a report full of CVEs is a successful job, and a
-  # gate job is what goes red. On develop, main and a dev tag nothing reads this
-  # report and the base image's steady drip of Debian CVEs blocks nothing; on a
-  # release tag `scan:gate:image` reads it and blocks the promotion (#256).
+  # Manual, and only where an image was actually published — a merge
+  # request's image is built and smoked and goes no further, so there the
+  # job does not appear at all. The play button lights up once
+  # `publish:image` has written the tag this scans.
+  rules:
+    - if: $PIPELINE_SHAPE == "docs"
+      when: never
+    - if: $CI_COMMIT_TAG
+      when: manual
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: manual
+  # The analyzer itself never fails a pipeline: a report full of CVEs is a
+  # successful job, and `scan:gate:image` is the job that reads it.
   allow_failure: true
   # The template lists the report only under artifacts:reports, and a
   # report-type artifact cannot be downloaded by a later job — the same trap
@@ -1029,20 +1037,28 @@ container_scanning:
 # blocks. Same rule in `scan:gate` for the dependency report — move it in both
 # or in neither.
 #
-# Release tier only. On develop, main and a dev tag the container scan stays
-# advisory, which is what the base image's CVE schedule demands; a candidate or
-# release tag is the ref that reaches a cluster, and there a critical OS CVE
-# stops the promotion instead of being triaged after it.
+# Manual, wherever `container_scanning` is, and advisory: `release:image` no
+# longer waits for it. Press `container_scanning`, then this, to get the
+# verdict a release tag used to be held on.
 scan:gate:image:
-  # Follows `container_scanning`, which #261 moved behind `publish:image` so
-  # it scans the tag that exists rather than one that might not; a job cannot
-  # need another from a later stage, so this moves with it.
-  stage: publish
+  # One stage after `container_scanning`, and `dependencies:` rather than
+  # `needs:` for the same reason as `scan:gate`: a job that needs an unplayed
+  # manual job is skipped for good. `release:image` shares this stage and
+  # does not wait for it.
+  stage: release
   image: alpine:3.22
-  rules: *tier-release
-  needs:
-    - job: container_scanning
-      artifacts: true
+  rules:
+    - if: $PIPELINE_SHAPE == "docs"
+      when: never
+    - if: $CI_COMMIT_TAG
+      when: manual
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: manual
+  allow_failure: true
+  dependencies:
+    - container_scanning
   before_script:
     - apk add --no-cache jq
   script:
@@ -1107,9 +1123,9 @@ scan:gate:image:
 # `build:image` used to (#261). It copies a manifest and nothing else, so the
 # whole gate costs seconds rather than repeating a fourteen-minute build.
 #
-# On a candidate or release tag it also waits for the cross-file SAST through
-# `scan:gate`, which is the point: the tags that reach an instance other people
-# use are the ones that pay for the slow scan before they exist.
+# `scan:gate` is not in the list any more: the scanners and their gates are
+# manual and advisory (see the top of this file), so what an image needs to be
+# published is that it was formatted, linted, type-checked, tested and built.
 
 publish:image:
   stage: publish
@@ -1124,7 +1140,6 @@ publish:image:
     - analyse:js
     - test:php
     - test:js
-    - scan:gate
     - build:image
   script:
     # A manifest copy, not a rebuild: the promoted tag points at the manifest
@@ -1185,17 +1200,11 @@ release:image:
   # of the same source. Both names exist only after the gate.
   extends: .registry
   needs:
+    # Only the published tag. The promotion used to wait for
+    # `scan:gate:image` (#256); that gate is manual and advisory now, so a
+    # release is named as soon as its image is published, and the container
+    # scan is something to press on the tag afterwards.
     - job: publish:image
-    # The promotion waits for the container scan's verdict rather than racing
-    # it (#256): before that, `needs: [build:image]` meant a release tag was
-    # promoted under a DAG without container_scanning having been looked at.
-    # The other half of that sentence — that the sha tag was pushed before any
-    # of this — is what #261 removed: `publish:image` writes it, after every
-    # gate. Optional because `scan:gate:image` is release-tier: on a dev tag
-    # it does not exist, and that tier is deliberately left exactly as it was.
-    - job: scan:gate:image
-      artifacts: false
-      optional: true
   rules:
     - if: $CI_COMMIT_TAG
   script:

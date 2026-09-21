@@ -24,6 +24,7 @@ defineOptions({
 defineProps<{
     status?: string;
     canResetPassword: boolean;
+    canRegister: boolean;
 }>();
 
 /**
@@ -123,7 +124,10 @@ const steamRedirectUrl = computed(
             </Button>
         </div>
 
-        <div class="space-x-1 text-center text-sm text-muted-foreground">
+        <div
+            v-if="canRegister"
+            class="space-x-1 text-center text-sm text-muted-foreground"
+        >
             <span>Don't have an account?</span>
             <TextLink :href="register()" :tabindex="6">Sign up</TextLink>
         </div>

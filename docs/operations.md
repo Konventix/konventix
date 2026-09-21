@@ -39,15 +39,15 @@ date, alert names and recipient under the alert's section when done.
 - KonventixDatabaseBackupMissing fires on its own on an instance that never
   completed a backup.
 
-The other eleven — KonventixMetricsDown, KonventixHealthCheckFailed,
+The other twelve — KonventixMetricsDown, KonventixHealthCheckFailed,
 KonventixQueueJobsFailing, KonventixWaitingRoomStuck, KonventixWebhookSilence,
 KonventixPaymentFailureRate, KonventixHttp5xxRate, KonventixCheckoutSlow,
-KonventixWalArchivingFailing, KonventixPodsRestarting and
-KonventixResourceHoldSweepStale — are not triggered
+KonventixWalArchivingFailing, KonventixPodsRestarting,
+KonventixResourceHoldSweepStale and KonventixClaimInviteMailFailing — are not triggered
 by hand for #168; each has a `vmalert-tool` unit test in
 `contrib/observability/alerts/tests/konventix.rules.test.yaml` that shapes an
 input series so the rule's expression fires and asserts the labels vmalert
-reports, which is the acceptance in place of a live trigger. Two of those eleven
+reports, which is the acceptance in place of a live trigger. Two of those twelve
 need more than the unit test to prove the *metric*, not just the rule, is
 honest: KonventixWebhookSilence and KonventixPaymentFailureRate are proven by
 running a sandbox payment flow — a Stripe test-mode webhook withheld, and a
@@ -55,6 +55,28 @@ run of declined test cards. KonventixWalArchivingFailing and
 KonventixPodsRestarting are platform-side, sourced from CNPG's and kubelet's
 own exporters rather than anything this application emits, so they are
 observed when they occur in the cluster rather than provoked.
+
+## A console page answers 403 to the operator admin
+
+Capabilities are per scope: on the admin host only roles of the *operator*
+scope count, and the one that exists is "Operator Admin". Since 0.6.3
+`permissions:sync` (the migrate hook runs it on every deploy) re-grants that
+role every capability the release declares, unless the operator has narrowed
+it (`roles.customized_at`). On an instance where a page still 403s, run
+`php artisan permissions:sync` once and reload; a role the operator narrowed
+on purpose is reported as `skipped` and has to be widened by hand. Roles
+granted on a *brand* do not apply on the admin host — that is ADR-0029, not
+a bug.
+
+## Closing sign-up
+
+Operator settings in the console, "Let visitors create accounts": off, the
+sign-up form and the Steam sign-up step send a stranger to the login page
+with a note that sign-up is closed, and the login page drops its "Sign up"
+link. Existing accounts log in as before. `SIGNUPS_ENABLED=false` in the environment (the chart's
+`app.signups.enabled`) closes sign-up for the whole instance whatever the
+switch says — the console then shows why beside the switch — which is what a
+test system on a public host wants.
 
 ## Opening seating on an event
 
@@ -141,7 +163,16 @@ Two commands, safe to re-run, neither one specific to a single event:
   `registration_event_summaries` both pick up a name, a schedule and a
   venue for events created before the two read models existed. Run it again
   after backfilling a venue onto an event that predates this deploy — the
-  command does not run itself.
+  command does not run itself. Since #292 the same run also carries each
+  event's `banner_media_id` into both summaries.
+- `vendor/bin/sail artisan admission:announce-ownership` — re-emits the
+  narrow `AdmissionOwnershipAnnounced` event for every admission (#292), so
+  Resources' `resource_admissions` read model — who holds and who bought
+  each ticket, which the per-ticket seat picker authorises on — is
+  populated for admissions issued before that table existed. Only a
+  projection listens; never a replay of `AdmissionIssued`, which would
+  count every admission on the dashboards a second time. Run it once after
+  the deploy that brings the table, after `event:replay-details`.
 
 ## Alerts
 
@@ -202,6 +233,17 @@ errors, the ingress log for `api/commerce/webhooks/<provider>` with a
 non-2xx status, and that the webhook URL and signing secret in the
 settlement console are current. `commerce:reconcile-payments --pending`
 settles what the provider knows about meanwhile.
+
+If the Orders list shows nothing pending for the brand the metric names,
+compare `konventix_payments_pending` on `/metrics` with
+`select brand_id, count(*) from orders where status = 'pending' group by 1`.
+Before 0.6.2 the gauge only wrote rows for brands with a pending order, and a
+row once written stayed in Redis at its last value after the order was
+cancelled — dev carried `payments_pending{brand="sxlan"} 1` for two days
+against an empty table (2026-09-13). Since 0.6.2 every brand is written on
+every scrape, `0` included. A stale row from an older release goes away with
+`valkey-cli --scan --pattern 'konventix:metrics:*payments_pending*' | xargs
+valkey-cli del` on the app's Redis; the next scrape rewrites it.
 
 ### KonventixPaymentFailureRate
 
@@ -279,6 +321,17 @@ A pod restarted more than three times in thirty minutes. `kubectl -n
 konventix describe pod <pod>` shows OOMKilled or a failing probe;
 `kubectl logs --previous` shows the last words. Memory limits per role
 are in the chart values.
+
+### KonventixClaimInviteMailFailing
+
+More claim-link invitations failed to send than were sent in the last
+half hour (#292). The links exist — the buyer was told to copy them — so
+nobody is locked out, but a manager whose invitations never arrive stops
+trusting the feature. `SendMessage` refused: look for "Claim link mail
+could not be sent." in the logs, which carries Messaging's reason — no
+resolvable address (the link is bound, so this means a malformed one got
+past validation), a brand with no mail identity, or the mail transport
+itself, in which case `KonventixQueueJobsFailing` fires beside this.
 
 ### KonventixRoleUnavailable
 

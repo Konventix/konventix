@@ -32,6 +32,15 @@ it('serves the dashboard to an operator admin', function (): void {
         ->assertOk();
 });
 
+it('sends the admin host root to the console, and leaves a brand host root alone', function (): void {
+    // The admin host has no brand and so no home page: `/` was an empty
+    // Welcome page with no link into the console (hotfix 2026-09-13).
+    operatorWithAdmin();
+
+    $this->get('http://admin.op.test/')->assertRedirect('http://admin.op.test/admin');
+    $this->get('http://localhost/')->assertOk();
+});
+
 it('403s an authenticated user without the admin capability', function (): void {
     operatorWithAdmin();
 

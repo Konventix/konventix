@@ -71,6 +71,27 @@ reading either.
   is **not** stored: a badge is reproducible on demand from the admission plus
   its template, so unlike a GoBD-archived invoice (ADR-0031) keeping
   attendee-bearing documents on disk would add GDPR surface for no gain.
+- **The ticket manager and the ticket page** (#292, #16) — the buyer of a
+  registration is the **manager** of its admissions (`buyer_user_id`);
+  whoever is named on one is its **holder** (`holder_user_id`). The
+  manager names themselves (`Actions\AssignHolder`, never a third person
+  without their consent), invites by address (`SendClaimLink`, the
+  `admission.claim-link` mail) or by bearer link, withdraws
+  (`RevokeClaimLink`) and takes a ticket back until the door has accepted
+  it (`UnassignHolder`, `AdmissionHolderUnassigned`) — all from the
+  `registration.mine.show` slot (`TicketManagerSlot`, built by
+  `Support\BuildTicketManager`). An organizer does the same by capability
+  (`Permission::AssignHolder`/`ReassignHolder`, the `operator` actor).
+  Every ticket has a page, `/my/tickets/{admission}`, for holder and
+  manager alike: the event band with the banner, the scan code as inline
+  SVG of the *current* token (`Documents\TicketQr`, the same encoder the
+  PDF uses), the seat, and Resources' seat button through the
+  `admission.ticket.show` slot. The claim link's signed URL serves both the
+  landing page (GET) and the claim (POST).
+- **`Models\AdmissionSeat`** (`admission_seats`) — which place an admission
+  sits on, projected from Resources' `ResourceBookingConfirmed`/`Released`
+  once they name an admission (#292 §5); the ticket page and the PDF name
+  the seat from here. No personal data.
 - **`Models\Person`** — this module's own holder read model (display name
   only), projected from Identity's `UserRegistered`/`UserProfileUpdated` and
   backfilled by `identity:replay-profiles`, mirroring Registration's
@@ -79,10 +100,14 @@ reading either.
   "Unassigned" — the badge's own fallback, now shared rather than
   re-derived.
 - **`Models\EventSummary`** (`admission_event_summaries`) — this module's
-  own read model of an event's name, start, end, timezone and venue label,
-  projected from Event's `EventCreated`, `EventRescheduled`,
-  `VenueAssigned`, `VenueUpdated` and `VenueUnassigned`, and patched (never
-  replaced) on `EventDetailsUpdated`. Supplies the ticket's event band;
+  own read model of an event's name, start, end, timezone, venue label and
+  banner (`banner_media_id`, a Platform media ULID resolved through
+  `MediaLibrary`, #292), projected from Event's `EventCreated`,
+  `EventRescheduled`, `VenueAssigned`, `VenueUpdated` and
+  `VenueUnassigned`, and patched (never replaced) on `EventDetailsUpdated`
+  — the banner being the one column a details update may set to null,
+  because both events always carry its current value. Supplies the
+  ticket's event band;
   Admission may not read Event's models directly (ADR-0004), so this exists
   even though Registration keeps a similarly-shaped copy for its own mail
   path — two read models, not two owners.
@@ -154,7 +179,10 @@ firm up while the first flow is built.
 
 | Event | Emitted when | Payload |
 |---|---|---|
-| `AdmissionIssued` (proposed) | An admission is created from a confirmed registration's grants | `admission_id`, `registration_id`, `event_id`, `brand_id`, `role`, `holder_user_id` (nullable), `valid_from`, `valid_until`, `issued_at` |
+| `AdmissionIssued` | An admission is created from a confirmed registration's grants, or for crew | `admission_id`, `registration_id` (nullable), `event_id`, `brand_id`, `role`, `holder_user_id` (nullable), `issued_at`, `buyer_user_id` (nullable, #292 — so Resources' admission read model knows who may seat the ticket) | implemented |
+| `AdmissionHolderUnassigned` | An admission loses its holder without losing its existence (#292, #73): the buyer took it back or an organizer cleared it at the desk. Refused after check-in. The seat stays with the admission | `admission_id`, `registration_id` (nullable), `event_id`, `brand_id`, `previous_holder_user_id`, `unassigned_by_user_id` (nullable), `reason_code`, `unassigned_at` | implemented |
+| `ClaimLinkIssued`, `ClaimLinkSent`, `ClaimLinkRevoked` | A claim link is minted (bound to an address or a bearer link), its invitation mail handed to Messaging or refused (`sent`), or withdrawn by its issuer (#292 §9). Exist for the metrics recorder; carry `link_id`, `admission_id`, `brand_id` and the one flag each | implemented |
+| `AdmissionOwnershipAnnounced` | Backfill only (#292): the admission's current holder, buyer and state, re-emitted by `admission:announce-ownership` so Resources' `resource_admissions` can catch up on rows older than that read model. **Only a projection may listen** — a test scans every provider for it | `admission_id`, `registration_id` (nullable), `event_id`, `brand_id`, `holder_user_id` (nullable), `buyer_user_id` (nullable), `state` | implemented |
 | `AdmissionHolderAssigned` | An initially unassigned admission gets a named holder. `viaClaimLink` separates self-service claiming from an organizer naming someone at a desk — both end in the same state, only one means a person proved possession of a link | `admission_id`, `registration_id`, `event_id`, `brand_id`, `holder_user_id`, `via_claim_link`, `assigned_at` | implemented |
 | `AdmissionReassigned` (proposed) | An admission is transferred to a different person | `admission_id`, `previous_holder_user_id`, `holder_user_id`, `reassigned_at` |
 | `AdmissionRevoked` | An admission stops being valid before its window ends — emitted by `Actions\RevokeAdmissionsForRegistration` when the registration behind it is cancelled (ADR-0057 point 6) | `admission_id`, `registration_id` (nullable — a crew admission has none, D-STF-01), `event_id`, `brand_id`, `revoked_by_user_id` (nullable — the sweep-driven cancellation has none), `reason_code`, `revoked_at` |
@@ -181,7 +209,7 @@ maintains from them.
 | `EventCreated`, `EventRescheduled`, `EventDetailsUpdated`, `VenueAssigned`, `VenueUpdated`, `VenueUnassigned` | Event | Maintain `Models\EventSummary` (`admission_event_summaries`): times and timezone from the first two, venue label from the venue events, name/slug patched (not replaced) from `EventDetailsUpdated`. Backfilled by `event:replay-details`, which since this feature also re-fires `VenueAssigned` for each event's primary venue |
 | `RegistrationOwnershipAnnounced` | Registration | Backfills `admissions.buyer_user_id` for rows that predate the column — the replay-safe counterpart to `RegistrationConfirmed`/`RegistrationAmended`, which already carry `registrantUserId` going forward |
 | `UserAnonymizationRequested` (proposed) | Compliance | Hand the request to this module's `src/Gdpr/` handler; check-in records are attendance data and need an explicit answer |
-| `ResourceBookingConfirmed` (proposed) | Resources | Show the holder's seat or booth on the badge without owning the booking. Deliberately the *confirmed* event, not a hold — a tentative booking must never reach a badge |
+| `ResourceBookingConfirmed`, `ResourceBookingReleased` | Resources | `ProjectAdmissionSeat` (#292 §5): maintain `Models\AdmissionSeat` (`admission_seats`) — the place bound to an admission, for the ticket page and the ticket PDF — from a *confirmed* booking that names an `admissionId`, deleted again when that booking is released. A hold never reaches a ticket; a booking naming no admission is nobody's seat here |
 
 ## Capabilities
 
