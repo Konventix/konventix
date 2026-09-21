@@ -23,6 +23,14 @@ const echoMock = vi.hoisted(() => ({
 
 vi.mock('@laravel/echo-vue', () => echoMock);
 
+// The URLs the bell would take from the Wayfinder helpers; only their
+// presence matters here, the fetch is stubbed.
+const endpoints = {
+    feed: '/notifications/feed',
+    read: (id: string) => `/notifications/${id}/read`,
+    readAll: '/notifications/read-all',
+};
+
 function notification(id: string): InboxNotification {
     return {
         id,
@@ -79,7 +87,11 @@ describe('useNotificationInbox', () => {
         );
         const useNotificationInbox = await loadComposable();
 
-        const { inbox } = useNotificationInbox(ref('u1'), ref('brand-key'));
+        const { inbox } = useNotificationInbox(
+            ref('u1'),
+            ref('brand-key'),
+            endpoints,
+        );
 
         await vi.waitFor(() => expect(inbox.loaded).toBe(true));
 
@@ -96,7 +108,7 @@ describe('useNotificationInbox', () => {
         );
         const useNotificationInbox = await loadComposable();
 
-        const { inbox } = useNotificationInbox(ref('u1'), ref(null));
+        const { inbox } = useNotificationInbox(ref('u1'), ref(null), endpoints);
 
         await vi.waitFor(() => expect(inbox.loaded).toBe(true));
 
@@ -120,7 +132,11 @@ describe('useNotificationInbox', () => {
         });
         const useNotificationInbox = await loadComposable();
 
-        const { inbox } = useNotificationInbox(ref('u1'), ref('brand-key'));
+        const { inbox } = useNotificationInbox(
+            ref('u1'),
+            ref('brand-key'),
+            endpoints,
+        );
 
         await vi.waitFor(() => expect(inbox.loaded).toBe(true));
 
@@ -131,7 +147,7 @@ describe('useNotificationInbox', () => {
         fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
         const useNotificationInbox = await loadComposable();
 
-        const { inbox } = useNotificationInbox(ref('u1'), ref(null));
+        const { inbox } = useNotificationInbox(ref('u1'), ref(null), endpoints);
 
         await vi.waitFor(() => expect(inbox.failed).toBe(true));
 
@@ -142,7 +158,7 @@ describe('useNotificationInbox', () => {
         fetchMock.mockResolvedValue(failedResponse(419));
         const useNotificationInbox = await loadComposable();
 
-        const { inbox } = useNotificationInbox(ref('u1'), ref(null));
+        const { inbox } = useNotificationInbox(ref('u1'), ref(null), endpoints);
 
         await vi.waitFor(() => expect(inbox.failed).toBe(true));
 
@@ -153,7 +169,11 @@ describe('useNotificationInbox', () => {
         fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
         const useNotificationInbox = await loadComposable();
 
-        const { inbox, reload } = useNotificationInbox(ref('u1'), ref(null));
+        const { inbox, reload } = useNotificationInbox(
+            ref('u1'),
+            ref(null),
+            endpoints,
+        );
 
         await vi.waitFor(() => expect(inbox.failed).toBe(true));
 
@@ -172,7 +192,11 @@ describe('useNotificationInbox', () => {
     it('fetches nothing for a guest', async () => {
         const useNotificationInbox = await loadComposable();
 
-        const { inbox } = useNotificationInbox(ref(undefined), ref(null));
+        const { inbox } = useNotificationInbox(
+            ref(undefined),
+            ref(null),
+            endpoints,
+        );
 
         expect(inbox.loaded).toBe(false);
         expect(inbox.failed).toBe(false);

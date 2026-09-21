@@ -1,11 +1,6 @@
 import { echo } from '@laravel/echo-vue';
 import type { Ref } from 'vue';
 import { reactive, readonly, watch } from 'vue';
-import {
-    feed as notificationsFeed,
-    read as notificationsRead,
-    readAll as notificationsReadAll,
-} from '@/routes/notifications';
 import type { InboxNotification, InboxState } from './notificationInbox';
 import {
     applyFeed,
@@ -38,7 +33,30 @@ import {
  * before the fetch line was reached and left the bell on "Loading…" for as
  * long as the page lived.
  */
+/**
+ * The three URLs the inbox talks to. The bell hands them in from the
+ * Wayfinder helpers (`@/routes/notifications`); the composable imports
+ * none itself, so it stays a module vitest can load without the generated
+ * route files — they are not committed and absent in the pipeline's
+ * test:js job, which runs on node_modules alone.
+ */
+export type InboxEndpoints = {
+    feed: string;
+    read: (notificationId: string) => string;
+    readAll: string;
+};
+
 const state = reactive<InboxState>(emptyInbox());
+
+let endpoints: InboxEndpoints | null = null;
+
+function endpointsOrThrow(): InboxEndpoints {
+    if (endpoints === null) {
+        throw new Error('useNotificationInbox() has not been called yet.');
+    }
+
+    return endpoints;
+}
 
 let subscribedTo: string | null = null;
 
@@ -47,9 +65,9 @@ const channelFor = (userId: string): string =>
 
 /**
  * The request shape every inbox call shares. The URL is never a parameter
- * here: each caller hands `fetch()` the Wayfinder route directly, so what is
- * fetched is always one of the three named routes and nothing a value could
- * steer.
+ * here: each caller hands `fetch()` one of the three endpoints the bell took
+ * from the Wayfinder routes, so what is fetched is always one of the three
+ * named routes and nothing a value could steer.
  */
 function requestInit(method: 'get' | 'post'): RequestInit {
     const xsrf = document.cookie
@@ -129,7 +147,7 @@ function loadFeed(userId: string): Promise<void> {
     // analyzer (2.55.0) matched none of the rule ids its own report names
     // for this finding, and GitLab documents the ids as unstable.
     // gitlab-advanced-sast-exclude
-    return fetch(notificationsFeed().url, requestInit('get'))
+    return fetch(endpointsOrThrow().feed, requestInit('get'))
         .then(parseJson)
         .then((data) => {
             // The account may have changed while the request was in flight.
@@ -189,10 +207,9 @@ async function markRead(id: string): Promise<void> {
     try {
         // See the feed fetch above.
         // gitlab-advanced-sast-exclude
-        await fetch(
-            notificationsRead({ notification: id }).url,
-            requestInit('post'),
-        ).then(parseJson);
+        await fetch(endpointsOrThrow().read(id), requestInit('post')).then(
+            parseJson,
+        );
     } catch {
         // Optimistically marked; the server state catches up on next load.
     }
@@ -204,7 +221,7 @@ async function markAllRead(): Promise<void> {
     try {
         // See the feed fetch above.
         // gitlab-advanced-sast-exclude
-        await fetch(notificationsReadAll().url, requestInit('post')).then(
+        await fetch(endpointsOrThrow().readAll, requestInit('post')).then(
             parseJson,
         );
     } catch {
@@ -219,11 +236,15 @@ async function markAllRead(): Promise<void> {
  * brand's Reverb app key, `null` where there is no brand (the operator
  * console host). It is read when the account changes, not watched — a key
  * changes with the host, and a host changes with a full page load.
+ * `routes` are the inbox's three URLs (`InboxEndpoints`).
  */
 export function useNotificationInbox(
     userId: Ref<string | undefined>,
     reverbKey: Ref<string | null | undefined>,
+    routes: InboxEndpoints,
 ) {
+    endpoints = routes;
+
     watch(userId, (id) => follow(id ?? null, reverbKey.value ?? null), {
         immediate: true,
     });

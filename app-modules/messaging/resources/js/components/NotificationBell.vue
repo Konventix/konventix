@@ -9,7 +9,12 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { edit as notificationSettings } from '@/routes/notification-preferences';
-import { index as notificationsIndex } from '@/routes/notifications';
+import {
+    feed as notificationsFeed,
+    index as notificationsIndex,
+    read as notificationsRead,
+    readAll as notificationsReadAll,
+} from '@/routes/notifications';
 import { badgeText, bellLabel, inboxView } from './notificationInbox';
 import { useNotificationInbox } from './useNotificationInbox';
 
@@ -54,6 +59,11 @@ const reverbKey = computed<string | null>(() => {
 const { inbox, markRead, markAllRead, reload } = useNotificationInbox(
     userId,
     reverbKey,
+    {
+        feed: notificationsFeed().url,
+        read: (id) => notificationsRead({ notification: id }).url,
+        readAll: notificationsReadAll().url,
+    },
 );
 
 const view = computed(() => inboxView(inbox));
