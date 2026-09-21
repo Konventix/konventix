@@ -42,5 +42,11 @@ final class PaymentReversedMailData extends Data
         public readonly string $dueOn,
         public readonly ?string $payUrl,
         public readonly string $ordersUrl,
+        /**
+         * The order's own page (`commerce.mine.show`, bugfix round
+         * 2026-09-21, Task 9) on the brand host; `ordersUrl` stays the
+         * list both templates link beside it.
+         */
+        public readonly string $orderUrl,
     ) {}
 }

@@ -113,6 +113,9 @@ final class SendOrderConfirmationOnOrderPlaced
                 paid: $order->status === OrderStatus::Paid,
                 reservationUntil: $payableUntil === null ? null : $this->dates->dateTime($payableUntil, $zone),
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
+                // The order's own page (Task 9 of the 2026-09-21 bugfix
+                // round): the mail is about this order, so it lands on it.
+                orderUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.show', ['order' => $order->id]),
                 // GitLab #5: an unpaid order's confirmation says where to pay
                 // it. `PayLink` owns the rule so this mail and the
                 // payment-failed one cannot point at different places.

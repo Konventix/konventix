@@ -241,6 +241,7 @@ declare namespace Konventix {
                 readonly paid: boolean;
                 readonly reservationUntil: string | null;
                 readonly ordersUrl: string;
+                readonly orderUrl: string;
                 readonly payUrl: string | null;
             };
             export type OrderReversalData = {
@@ -262,6 +263,7 @@ declare namespace Konventix {
                 readonly reason: string;
                 readonly retryUrl: string;
                 readonly ordersUrl: string;
+                readonly orderUrl: string;
                 readonly payBy: string | null;
             };
             export type PaymentReversedMailData = {
@@ -273,6 +275,7 @@ declare namespace Konventix {
                 readonly dueOn: string;
                 readonly payUrl: string | null;
                 readonly ordersUrl: string;
+                readonly orderUrl: string;
             };
             export type ProductData = {
                 readonly id: string;
@@ -870,6 +873,7 @@ declare namespace Konventix {
                 | 'messaging.manage-sender-identity'
                 | 'messaging.view-suppression-list'
                 | 'messaging.manage-suppression-list';
+            export type TopicAudience = 'participant' | 'operator';
         }
     }
     namespace Platform {

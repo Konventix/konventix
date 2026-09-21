@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Messaging\Topics;
 
 use InvalidArgumentException;
+use Konventix\Messaging\Enums\TopicAudience;
 
 /**
  * Boot-time topic registrations (ADR-0041), a singleton exactly like
@@ -42,5 +43,19 @@ final class TopicRegistry
     public function all(): array
     {
         return $this->topics;
+    }
+
+    /**
+     * The keys declared for one audience — what the inbox filters rows by
+     * and the preferences page hides from accounts outside that audience.
+     *
+     * @return list<string>
+     */
+    public function keysFor(TopicAudience $audience): array
+    {
+        return array_keys(array_filter(
+            $this->topics,
+            fn (Topic $topic): bool => $topic->audience === $audience,
+        ));
     }
 }

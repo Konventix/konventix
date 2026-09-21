@@ -12,6 +12,7 @@ use Inertia\Response;
 use Konventix\Messaging\Actions\MarkAllNotificationsRead;
 use Konventix\Messaging\Actions\MarkNotificationRead;
 use Konventix\Messaging\Data\NotificationData;
+use Konventix\Messaging\Inbox\InboxScope;
 use Konventix\Messaging\Models\InboxNotification;
 
 /**
@@ -24,8 +25,10 @@ use Konventix\Messaging\Models\InboxNotification;
  * list leaves out, paginated.
  *
  * The two write endpoints answer both: JSON for the bell's `fetch`, a
- * redirect back for the page's Inertia visit. BrandScope narrows every query
- * to the current brand's rows by itself.
+ * redirect back for the page's Inertia visit. `InboxScope` decides which
+ * rows the host serves: the current brand's participant rows on a brand
+ * host, the operator's own notices across its brands on the admin host
+ * (bugfix round 2026-09-21, Task 9).
  */
 class NotificationsController
 {
@@ -33,19 +36,19 @@ class NotificationsController
 
     private const PER_PAGE = 25;
 
+    public function __construct(private readonly InboxScope $inbox) {}
+
     public function index(Request $request): JsonResponse
     {
         $recipientId = (string) $request->user()->getKey();
 
-        $notifications = InboxNotification::query()
-            ->where('recipient_id', $recipientId)
+        $notifications = $this->inbox->for($recipientId)
             ->latest()
             ->limit(self::LIMIT)
             ->get();
 
         return response()->json([
-            'unread' => InboxNotification::query()
-                ->where('recipient_id', $recipientId)
+            'unread' => $this->inbox->for($recipientId)
                 ->whereNull('read_at')
                 ->count(),
             'notifications' => $notifications
@@ -63,8 +66,7 @@ class NotificationsController
     {
         $recipientId = (string) $request->user()->getKey();
 
-        $notifications = InboxNotification::query()
-            ->where('recipient_id', $recipientId)
+        $notifications = $this->inbox->for($recipientId)
             ->latest()
             ->paginate(self::PER_PAGE)
             ->withQueryString();
@@ -73,8 +75,7 @@ class NotificationsController
             'notifications' => $notifications->through(
                 fn (InboxNotification $notification): NotificationData => NotificationData::ofModel($notification),
             ),
-            'unread' => InboxNotification::query()
-                ->where('recipient_id', $recipientId)
+            'unread' => $this->inbox->for($recipientId)
                 ->whereNull('read_at')
                 ->count(),
         ]);
@@ -82,9 +83,10 @@ class NotificationsController
 
     public function read(Request $request, string $notification, MarkNotificationRead $action): JsonResponse|RedirectResponse
     {
-        $row = InboxNotification::query()
+        // Found through the same scope the feed lists it in: a row this
+        // host does not serve is a 404 here too, not a read.
+        $row = $this->inbox->for((string) $request->user()->getKey())
             ->whereKey($notification)
-            ->where('recipient_id', (string) $request->user()->getKey())
             ->firstOrFail();
 
         $updated = $action->handle($row);

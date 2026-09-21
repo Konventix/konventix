@@ -218,6 +218,9 @@ final class SendPaymentReversedMailOnPaymentReversed
                 dueOn: $this->dueOn($event),
                 payUrl: $payUrl,
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
+                // The order's own page (Task 9 of the 2026-09-21 bugfix
+                // round): the mail is about this order, so it lands on it.
+                orderUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.show', ['order' => $order->id]),
             ),
             brandId: $event->brandId,
         ));

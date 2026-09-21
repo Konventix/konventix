@@ -119,6 +119,21 @@
 
 ## Done
 
+- [x] Operator notices stay out of the participant inbox (bugfix round
+      2026-09-21, Task 9): `Topic` carries an `audience`
+      (`TopicAudience::Participant` by default, `Operator` for
+      `commerce.operations`), `Inbox\InboxScope` serves one audience per
+      host — the brand's participant rows on a brand host, the operator's
+      own notices across its brands on the admin host through
+      `withoutBrandScope()`, never another operator's — and the feed, the
+      inbox page, `read` and `MarkAllNotificationsRead` all go through it,
+      so the console bell is no longer empty by design. The preferences
+      page lists operator topics only for an account holding
+      `platform.access-admin` on the operator's team
+      (`Topics\VisibleTopics`). Follow-up: `NotificationReceived` still
+      broadcasts on the recipient's private channel regardless of audience,
+      so a brand-host bell open in another tab counts an operator notice
+      live until the next fetch; the feed itself never lists it.
 - [x] The bell finishes loading on the operator console host (bugfix round
       2026-09-21, Task 6): `useNotificationInbox` fetches the feed before
       it subscribes, skips Echo outright when the page's `reverb.key` is

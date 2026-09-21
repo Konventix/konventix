@@ -5,11 +5,13 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
 use Konventix\Messaging\Enums\Channel;
+use Konventix\Messaging\Enums\TopicAudience;
 use Konventix\Messaging\Events\NotificationRead;
 use Konventix\Messaging\Events\NotificationReceived;
 use Konventix\Messaging\Models\InboxNotification;
@@ -59,6 +61,23 @@ function inAppInboxSetup(): string
     ));
 
     return $userId;
+}
+
+/**
+ * An operator-audience topic (Task 9 of the 2026-09-21 bugfix round): its
+ * rows belong to the console bell on the admin host, never to the
+ * participant inbox on a brand host.
+ */
+function inAppInboxOperatorTopic(): string
+{
+    app(TopicRegistry::class)->register(new Topic(
+        key: 'test.inbox-operator-topic',
+        label: 'Inbox operator test topic',
+        defaultChannels: [Channel::InApp],
+        audience: TopicAudience::Operator,
+    ));
+
+    return 'test.inbox-operator-topic';
 }
 
 function inAppInboxSend(string $userId, ?string $url = null): void
@@ -119,27 +138,144 @@ it('serves the bell feed with the unread count', function (): void {
         ->assertJsonCount(3, 'notifications');
 });
 
-it('serves an empty feed on the operator console host, where no brand resolves', function (): void {
+it('keeps operator notices out of the participant inbox on a brand host', function (): void {
+    // An organizer who is also a registrant: the console notice addressed
+    // to them must not show up beside their participant notifications on
+    // the brand host — neither in the bell's feed nor on the inbox page.
+    $brand = $this->withBrand();
+    $topic = inAppInboxOperatorTopic();
+    $user = User::factory()->create();
+
+    $participant = InboxNotification::factory()->create([
+        'brand_id' => $brand->getKey(),
+        'recipient_id' => (string) $user->getKey(),
+    ]);
+    InboxNotification::factory()->create([
+        'brand_id' => $brand->getKey(),
+        'recipient_id' => (string) $user->getKey(),
+        'topic_key' => $topic,
+        'url' => 'https://admin.inbox.test/admin/orders/1',
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/notifications/feed')
+        ->assertOk()
+        ->assertJsonPath('unread', 1)
+        ->assertJsonCount(1, 'notifications')
+        ->assertJsonPath('notifications.0.id', $participant->getKey());
+
+    $this->actingAs($user)
+        ->get('/notifications')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('notifications/Index')
+            ->where('unread', 1)
+            ->count('notifications.data', 1)
+            ->where('notifications.data.0.id', $participant->getKey()));
+});
+
+it('serves the operator notices on the console host, and none of the participant inbox', function (): void {
     // The bell sits in the console shell too. A request to the admin host
     // resolves no brand (ADR-0029) and BrandScope hardens brand-owned
-    // queries to nothing — the feed must answer with an empty inbox rather
-    // than fail, or the bell stays on "Loading…" for the life of the page.
-    // The row is created before the request: after it, no brand resolves.
+    // queries to nothing, so the feed reads the operator-audience rows
+    // through `withoutBrandScope()` — the signed-in recipient's own, across
+    // the operator's brands. The rows are created before the request:
+    // after it, no brand resolves.
     $brand = $this->withBrand();
+    $topic = inAppInboxOperatorTopic();
     $user = User::factory()->create();
+
     InboxNotification::factory()->create([
         'brand_id' => $brand->getKey(),
         'recipient_id' => (string) $user->getKey(),
     ]);
+    $notice = InboxNotification::factory()->create([
+        'brand_id' => $brand->getKey(),
+        'recipient_id' => (string) $user->getKey(),
+        'topic_key' => $topic,
+        'url' => 'https://admin.inbox.test/admin/orders/1',
+    ]);
+    // Another operator account's notice never shows.
+    InboxNotification::factory()->create([
+        'brand_id' => $brand->getKey(),
+        'topic_key' => $topic,
+    ]);
 
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.inbox.test'])->save();
+    $brand->operator->forceFill(['admin_host' => 'admin.inbox.test'])->save();
 
     $this->actingAs($user)
         ->getJson('http://admin.inbox.test/notifications/feed')
         ->assertOk()
+        ->assertJsonPath('unread', 1)
+        ->assertJsonCount(1, 'notifications')
+        ->assertJsonPath('notifications.0.id', $notice->getKey())
+        ->assertJsonPath('notifications.0.url', 'https://admin.inbox.test/admin/orders/1');
+
+    $this->actingAs($user)
+        ->get('http://admin.inbox.test/notifications')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('notifications/Index')
+            ->where('unread', 1)
+            ->count('notifications.data', 1)
+            ->where('notifications.data.0.id', $notice->getKey()));
+});
+
+it('never serves another operator\'s notices on its console host', function (): void {
+    $brand = $this->withBrand();
+    $topic = inAppInboxOperatorTopic();
+    $user = User::factory()->create();
+
+    InboxNotification::factory()->create([
+        'brand_id' => $brand->getKey(),
+        'recipient_id' => (string) $user->getKey(),
+        'topic_key' => $topic,
+    ]);
+
+    // A second operator, owning none of this brand — its console must not
+    // list the notice however the recipient is addressed there
+    // (`operators.admin_host` is unique, .ai/rules/tests.md).
+    Operator::factory()->create(['admin_host' => 'admin.other-operator.test']);
+
+    $this->actingAs($user)
+        ->getJson('http://admin.other-operator.test/notifications/feed')
+        ->assertOk()
         ->assertJsonPath('unread', 0)
         ->assertJsonCount(0, 'notifications');
+});
+
+it('marks read only what the host serves', function (): void {
+    $brand = $this->withBrand();
+    $topic = inAppInboxOperatorTopic();
+    $user = User::factory()->create();
+
+    $participant = InboxNotification::factory()->create([
+        'brand_id' => $brand->getKey(),
+        'recipient_id' => (string) $user->getKey(),
+    ]);
+    $notice = InboxNotification::factory()->create([
+        'brand_id' => $brand->getKey(),
+        'recipient_id' => (string) $user->getKey(),
+        'topic_key' => $topic,
+    ]);
+
+    $brand->operator->forceFill(['admin_host' => 'admin.inbox.test'])->save();
+
+    // An operator notice is not readable from the brand host: the feed
+    // never listed it there, so the read endpoint does not know it either.
+    $this->actingAs($user)
+        ->postJson("/notifications/{$notice->getKey()}/read")
+        ->assertNotFound();
+
+    // "Mark all" on the console host reads the console's rows and leaves
+    // the participant inbox untouched.
+    $this->actingAs($user)
+        ->postJson('http://admin.inbox.test/notifications/read-all')
+        ->assertOk()
+        ->assertJsonPath('read', 1);
+
+    expect($notice->refresh()->isUnread())->toBeFalse()
+        ->and($participant->refresh()->isUnread())->toBeTrue();
 });
 
 it('marks a notification read once and emits NotificationRead', function (): void {

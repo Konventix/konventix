@@ -25,6 +25,7 @@ it('lists read and unread notifications together, newest first', function (): vo
         'brand_id' => $brand->getKey(),
         'recipient_id' => (string) $user->getKey(),
         'title' => 'Newer, unread',
+        'url' => 'https://brand.example.test/my/orders/01K5MZ6V4N8YQ2W3J7R9T1X0AB',
     ]);
     // Somebody else's notification is never listed.
     InboxNotification::factory()->create(['brand_id' => $brand->getKey()]);
@@ -37,7 +38,12 @@ it('lists read and unread notifications together, newest first', function (): vo
             ->where('unread', 1)
             ->count('notifications.data', 2)
             ->where('notifications.data.0.id', $new->getKey())
-            ->where('notifications.data.1.id', $old->getKey()));
+            // The action URL is rendered as stored — absolute, so a link
+            // composed for another host still opens where it belongs
+            // (Task 9 of the 2026-09-21 bugfix round).
+            ->where('notifications.data.0.url', 'https://brand.example.test/my/orders/01K5MZ6V4N8YQ2W3J7R9T1X0AB')
+            ->where('notifications.data.1.id', $old->getKey())
+            ->where('notifications.data.1.url', null));
 });
 
 it('marks one read from the page and comes back to it', function (): void {

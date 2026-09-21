@@ -81,6 +81,7 @@ use Konventix\Commerce\WaitingRoom\RedisWaitingRoomStore;
 use Konventix\Commerce\WaitingRoom\WaitingRoomStore;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Messaging\Enums\Channel;
+use Konventix\Messaging\Enums\TopicAudience;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Messaging\Topics\Topic;
@@ -674,6 +675,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     @if ($payUrl)
                     <p><a href="{{ $payUrl }}">Jetzt bezahlen</a></p>
                     @endif
+                    <p><a href="{{ $orderUrl }}">Bestellung ansehen</a></p>
                     <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -703,6 +705,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     @if ($payUrl)
                     <p><a href="{{ $payUrl }}">Pay now</a></p>
                     @endif
+                    <p><a href="{{ $orderUrl }}">View order</a></p>
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
             ],
@@ -718,6 +721,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 'totalGross' => '25.00',
                 'reservationUntil' => '28.08.2026 18:00',
                 'ordersUrl' => 'https://example.test/my/orders',
+                'orderUrl' => 'https://example.test/my/orders/01K5MZ6V4N8YQ2W3J7R9T1X0AB',
                 'payUrl' => 'https://example.test/cart',
             ],
         ));
@@ -741,6 +745,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     Bestellung storniert und das Reservierte wieder freigegeben.</p>
                     @endif
                     <p><a href="{{ $retryUrl }}">Zahlung erneut versuchen</a></p>
+                    <p><a href="{{ $orderUrl }}">Bestellung ansehen</a></p>
                     <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -752,6 +757,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     cancelled and what it held goes back on sale.</p>
                     @endif
                     <p><a href="{{ $retryUrl }}">Try payment again</a></p>
+                    <p><a href="{{ $orderUrl }}">View order</a></p>
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
             ],
@@ -761,6 +767,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 'reason' => 'Die Karte wurde abgelehnt.',
                 'retryUrl' => 'https://example.test/pay/A1B2C3',
                 'ordersUrl' => 'https://example.test/my/orders',
+                'orderUrl' => 'https://example.test/my/orders/01K5MZ6V4N8YQ2W3J7R9T1X0AB',
                 'payBy' => '08.09.2026 18:00',
             ],
         ));
@@ -786,6 +793,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Ihre Bestellung bleibt bestehen. Bitte gleichen Sie den Betrag bis zum
                     <strong>{{ $dueOn }}</strong> aus.</p>
                     <p><a href="{{ $payUrl }}">Jetzt bezahlen</a></p>
+                    <p><a href="{{ $orderUrl }}">Bestellung ansehen</a></p>
                     <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -795,6 +803,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <p>Your order stands. Please settle the amount by
                     <strong>{{ $dueOn }}</strong>.</p>
                     <p><a href="{{ $payUrl }}">Pay now</a></p>
+                    <p><a href="{{ $orderUrl }}">View order</a></p>
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
             ],
@@ -808,6 +817,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 'dueOn' => '14.09.2026',
                 'payUrl' => 'https://example.test/pay/A1B2C3',
                 'ordersUrl' => 'https://example.test/my/orders',
+                'orderUrl' => 'https://example.test/my/orders/01K5MZ6V4N8YQ2W3J7R9T1X0AB',
             ],
         ));
 
@@ -834,6 +844,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <strong>{{ $dueOn }}</strong> erneut offen. Eine Online-Zahlung ist für
                     diese Bestellung derzeit nicht möglich — der Veranstalter kann eine
                     Überweisung oder eine Zahlung vor Ort verbuchen.</p>
+                    <p><a href="{{ $orderUrl }}">Bestellung ansehen</a></p>
                     <p><a href="{{ $ordersUrl }}">Meine Bestellungen</a></p>
                     BLADE,
                 'en' => <<<'BLADE'
@@ -844,6 +855,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                     <strong>{{ $dueOn }}</strong>. Paying online is not available for this
                     order at the moment — the organizer can book a bank transfer or a
                     payment at the door.</p>
+                    <p><a href="{{ $orderUrl }}">View order</a></p>
                     <p><a href="{{ $ordersUrl }}">My orders</a></p>
                     BLADE,
             ],
@@ -856,6 +868,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 'reasonEn' => 'The bank reports that the account did not have sufficient funds at the time of the debit.',
                 'dueOn' => '14.09.2026',
                 'ordersUrl' => 'https://example.test/my/orders',
+                'orderUrl' => 'https://example.test/my/orders/01K5MZ6V4N8YQ2W3J7R9T1X0AB',
             ],
         ));
 
@@ -895,6 +908,11 @@ class CommerceServiceProvider extends ModuleServiceProvider
      * both set `urgent: true` on the request itself — a manager is worth an
      * immediate nudge, not a 30-minute-coalesced digest, the same
      * `HoldPolicy`/D-CNT-08 reasoning an urgent announcement already uses.
+     *
+     * An operator-audience topic (bugfix round 2026-09-21, Task 9): its
+     * in-app rows show in the console bell on the admin host, never in the
+     * participant inbox of an organizer who is also a registrant, and the
+     * preferences page offers it only to accounts that reach the console.
      */
     protected function registerMessageTopics(): void
     {
@@ -904,6 +922,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
             defaultChannels: [Channel::InApp, Channel::Mail],
             suppressible: true,
             digestable: true,
+            audience: TopicAudience::Operator,
         ));
     }
 

@@ -36,6 +36,10 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * defaulted so every existing `new OrderConfirmationMailData(...)` call
  * site stays valid (additive-only payload changes, global constraints
  * D-BATCH-7).
+ *
+ * `orderUrl` is the order's own page (`commerce.mine.show`, bugfix round
+ * 2026-09-21, Task 9) on the brand host; `ordersUrl` stays the list the
+ * template links beside it.
  */
 #[TypeScript]
 final class OrderConfirmationMailData extends Data
@@ -53,6 +57,7 @@ final class OrderConfirmationMailData extends Data
         public readonly bool $paid,
         public readonly ?string $reservationUntil,
         public readonly string $ordersUrl,
+        public readonly string $orderUrl,
         public readonly ?string $payUrl = null,
     ) {}
 }

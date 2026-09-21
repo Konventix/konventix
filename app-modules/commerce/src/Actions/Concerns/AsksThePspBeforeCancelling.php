@@ -11,9 +11,9 @@ use Konventix\Commerce\Enums\OperationsNoticeKind;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Operations\AdminUrl;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
-use Konventix\Platform\Operators\OperatorSettings;
 use Konventix\Platform\Permissions\PermissionHolders;
 use RuntimeException;
 
@@ -207,9 +207,7 @@ trait AsksThePspBeforeCancelling
         $holders = app(PermissionHolders::class)
             ->userIdsWithPermission($order->brand_id, Permission::ManageProducts->value);
 
-        $base = app(OperatorSettings::class)->adminBaseUrlForBrand($order->brand_id);
-        $path = route('admin.orders.show', ['order' => $order->id], absolute: false);
-        $url = $base === null ? $path : rtrim($base, '/').$path;
+        $url = app(AdminUrl::class)->to($order->brand_id, 'admin.orders.show', ['order' => $order->id]);
 
         foreach ($holders as $userId) {
             try {

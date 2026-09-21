@@ -111,7 +111,10 @@ it('sends the order confirmation when a cart order is placed, with lines and the
             && $payload['lines'][0]['label'] === 'Con Shirt'
             && $payload['lines'][0]['quantity'] === 2
             && $payload['lines'][0]['lineGross'] === '35.70'
-            && str_ends_with($payload['ordersUrl'], '/my/orders');
+            && str_ends_with($payload['ordersUrl'], '/my/orders')
+            // Task 9 of the 2026-09-21 bugfix round: the mail is about this
+            // order, so it links the order's own page beside the list.
+            && str_ends_with($payload['orderUrl'], '/my/orders/'.$order->id);
     });
 });
 
@@ -134,6 +137,7 @@ function orderMailsConfirmationBody(?string $recipientName, string $brandId): st
             paid: false,
             reservationUntil: null,
             ordersUrl: 'https://brand.example.test/my/orders',
+            orderUrl: 'https://brand.example.test/my/orders/01K5MZ6V4N8YQ2W3J7R9T1X0AB',
         ),
         channel: Channel::Mail->value,
     );
@@ -228,7 +232,8 @@ it('sends the payment-failed mail to the order payer with a mapped reason and a 
             && $payload['reason'] === 'Die Zahlung ist abgelaufen.'
             // GitLab #5: a cart order retries on its own order-addressed pay
             // page, not on the order list — see `Settlement\PayLink`.
-            && str_ends_with($payload['retryUrl'], '/pay/order/'.$order->id);
+            && str_ends_with($payload['retryUrl'], '/pay/order/'.$order->id)
+            && str_ends_with($payload['orderUrl'], '/my/orders/'.$order->id);
     });
 });
 
@@ -464,6 +469,39 @@ it('reaches the permission holders with a payment-failed operations notice', fun
             && $payload['kind'] === 'payment-failed'
             && str_contains($payload['title'], strtoupper(substr($order->id, -8)));
     });
+});
+
+it('links the operations notice absolutely even when the operator has no admin host', function (): void {
+    // Task 9 of the 2026-09-21 bugfix round: a dev or single-host install
+    // has no `admin_host`, and the bare `/admin/orders/{id}` the producers
+    // used to store opened on whatever host the reader was on — a brand
+    // host, which rejects the console path. `Operations\AdminUrl` falls
+    // back to `config('app.url')` instead.
+    $brand = $this->withBrand();
+    orderMailsOperator($brand->id);
+    Queue::fake();
+
+    $order = Order::factory()->create(['settles_type' => 'cart', 'payer_user_id' => null]);
+
+    event(new PaymentFailed(
+        paymentId: (string) Str::ulid(),
+        orderId: $order->id,
+        brandId: $brand->id,
+        settlementMethod: 'stripe',
+        reasonCode: 'failed',
+        failedAt: now()->toIso8601String(),
+    ));
+
+    $notice = Queue::pushed(
+        SendQueuedMessage::class,
+        fn (SendQueuedMessage $job): bool => $job->message->templateKey === 'commerce.operations-notice',
+    )->first();
+
+    $url = $notice->message->payload->toArray()['url'];
+
+    expect(app(OperatorSettings::class)->adminBaseUrlForBrand($brand->id))->toBeNull()
+        ->and($url)->toStartWith(rtrim((string) config('app.url'), '/').'/')
+        ->and($url)->toEndWith('/admin/orders/'.$order->id);
 });
 
 it('honours an operator\'s own locale for the operations notice instead of hard-coding German', function (): void {

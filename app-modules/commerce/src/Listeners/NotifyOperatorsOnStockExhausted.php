@@ -11,9 +11,9 @@ use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Events\StockExhausted;
 use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\ProductVariant;
+use Konventix\Commerce\Operations\AdminUrl;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
-use Konventix\Platform\Operators\OperatorSettings;
 use Konventix\Platform\Permissions\PermissionHolders;
 use RuntimeException;
 
@@ -23,21 +23,22 @@ use RuntimeException;
  * brand, on the shared `commerce.operations` topic
  * (`CommerceServiceProvider::registerMessageTopics()`).
  *
- * The admin edit link is absolute: only Platform's `Brand`/`Role`/`Permission`
- * models and its non-model classes are allowed cross-module (ADR-0004's
- * global constraint), so `Operator::$admin_host` is reached through
+ * The admin edit link is absolute through `Operations\AdminUrl`: only
+ * Platform's `Brand`/`Role`/`Permission` models and its non-model classes
+ * are allowed cross-module (ADR-0004's global constraint), so
+ * `Operator::$admin_host` is reached through
  * `OperatorSettings::adminBaseUrlForBrand()` — the same sanctioned doorway
  * `sellerForBrand()`/`contactEmailForBrand()` already use — never the
- * `Operator` model directly. Falls back to a relative path when the brand
- * has no operator or no `admin_host` yet, same as that method's other
- * callers degrade.
+ * `Operator` model directly, and `config('app.url')` stands in when the
+ * operator has no `admin_host` yet (never a bare path, Task 9 of the
+ * 2026-09-21 bugfix round).
  */
 final class NotifyOperatorsOnStockExhausted
 {
     public function __construct(
         private readonly SendMessage $sendMessage,
         private readonly PermissionHolders $permissionHolders,
-        private readonly OperatorSettings $operatorSettings,
+        private readonly AdminUrl $adminUrl,
     ) {}
 
     public function handle(StockExhausted $event): void
@@ -57,7 +58,7 @@ final class NotifyOperatorsOnStockExhausted
             : "{$product->name} – {$variant->label}";
 
         $title = "Ausverkauft: {$productLabel}";
-        $url = $this->adminUrl($event->brandId, 'admin.products.edit', ['product' => $event->productId]);
+        $url = $this->adminUrl->to($event->brandId, 'admin.products.edit', ['product' => $event->productId]);
 
         $holders = $this->permissionHolders->userIdsWithPermission($event->brandId, Permission::ManageProducts->value);
 
@@ -91,16 +92,5 @@ final class NotifyOperatorsOnStockExhausted
                 ]);
             }
         }
-    }
-
-    /**
-     * @param  array<string, string>  $parameters
-     */
-    private function adminUrl(string $brandId, string $routeName, array $parameters): string
-    {
-        $base = $this->operatorSettings->adminBaseUrlForBrand($brandId);
-        $path = route($routeName, $parameters, absolute: false);
-
-        return $base === null ? $path : rtrim($base, '/').$path;
     }
 }

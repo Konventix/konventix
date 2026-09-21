@@ -34,13 +34,19 @@ scalars and ULIDs, which is exactly what the rule asks for.
   gone, and a typed payload (title, body, URL, tag) rendered by the static
   `push-sw.js` worker — never a free-form array.
 - **Topics and preferences** (ADR-0041, D-MSG-05/06): modules declare topics at
-  boot (key, label, default channels, `suppressible`, `digestable`) in the
-  `TopicRegistry`, exactly as they declare templates. A send names its topic;
-  `SendMessage` fans out one envelope per default channel intersected with the
-  recipient's stored preferences. Preference rows live *here* — the module that
-  applies the rule stores it, so an unsubscribe has no consistency window. The
-  preference page (`settings/notifications`) renders from the registry: a new
-  notification kind is one declaration, no migration, no settings-page edit.
+  boot (key, label, default channels, `suppressible`, `digestable`, `audience`)
+  in the `TopicRegistry`, exactly as they declare templates. A send names its
+  topic; `SendMessage` fans out one envelope per default channel intersected
+  with the recipient's stored preferences. Preference rows live *here* — the
+  module that applies the rule stores it, so an unsubscribe has no consistency
+  window. The preference page (`settings/notifications`) renders from the
+  registry: a new notification kind is one declaration, no migration, no
+  settings-page edit. `audience` (`TopicAudience::Participant`, the default,
+  or `Operator`) says which inbox the topic's in-app rows belong to — the
+  brand host's participant inbox or the console bell on the operator's admin
+  host (`Inbox\InboxScope`) — and the preference page offers an operator topic
+  only to an account holding `platform.access-admin` on the operator's team
+  (`Topics\VisibleTopics`). `commerce.operations` is the first operator topic.
 - **Digest windows and quiet hours** (ADR-0041 point 5): a digestable topic's
   send is written `held` — visible in the log, never dropped — with a
   `hold_until` at the end of its 30-minute window per (recipient, channel);
@@ -138,7 +144,13 @@ scalars and ULIDs, which is exactly what the rule asks for.
   (lessons-from-lancore #5) — then stays current via `notification.received`
   broadcast on the recipient's private channel over Reverb (ADR-0025).
   Rendering-time filtering for inactive modules (D-BATCH-7) applies at read,
-  not at send.
+  not at send. The feed, the inbox page and the read endpoints serve one
+  audience per host (`Inbox\InboxScope`): the current brand's
+  participant-topic rows on a brand host; on the operator's admin host — where
+  no brand resolves and `BrandScope` hardens to nothing (ADR-0029) — the
+  operator-topic rows of the signed-in recipient across that operator's brands,
+  read through `withoutBrandScope()` and never another operator's. A stored
+  URL is always absolute, composed by the producer for the host it opens on.
 - **Delivery log**: attempts, provider message identifiers, deliveries, bounces
   and complaints, plus the suppression list built from hard bounces and spam
   complaints. Infrastructure, not a domain record — it exists so a support

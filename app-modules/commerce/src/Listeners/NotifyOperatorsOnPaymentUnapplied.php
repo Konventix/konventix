@@ -10,9 +10,9 @@ use Konventix\Commerce\Enums\OperationsNoticeKind;
 use Konventix\Commerce\Enums\Permission;
 use Konventix\Commerce\Events\PaymentUnapplied;
 use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Operations\AdminUrl;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
-use Konventix\Platform\Operators\OperatorSettings;
 use Konventix\Platform\Permissions\PermissionHolders;
 use RuntimeException;
 
@@ -34,7 +34,7 @@ final class NotifyOperatorsOnPaymentUnapplied
     public function __construct(
         private readonly SendMessage $sendMessage,
         private readonly PermissionHolders $permissionHolders,
-        private readonly OperatorSettings $operatorSettings,
+        private readonly AdminUrl $adminUrl,
     ) {}
 
     public function handle(PaymentUnapplied $event): void
@@ -56,7 +56,7 @@ final class NotifyOperatorsOnPaymentUnapplied
             $order->status->value,
         );
 
-        $url = $this->adminUrl($event->brandId, 'admin.orders.show', ['order' => $order->id]);
+        $url = $this->adminUrl->to($event->brandId, 'admin.orders.show', ['order' => $order->id]);
 
         $holders = $this->permissionHolders->userIdsWithPermission($event->brandId, Permission::ManageProducts->value);
 
@@ -87,16 +87,5 @@ final class NotifyOperatorsOnPaymentUnapplied
                 ]);
             }
         }
-    }
-
-    /**
-     * @param  array<string, string>  $parameters
-     */
-    private function adminUrl(string $brandId, string $routeName, array $parameters): string
-    {
-        $base = $this->operatorSettings->adminBaseUrlForBrand($brandId);
-        $path = route($routeName, $parameters, absolute: false);
-
-        return $base === null ? $path : rtrim($base, '/').$path;
     }
 }

@@ -25,6 +25,12 @@ final class PaymentFailedMailData extends Data
         public readonly string $retryUrl,
         public readonly string $ordersUrl,
         /**
+         * The order's own page (`commerce.mine.show`, bugfix round
+         * 2026-09-21, Task 9) on the brand host; `ordersUrl` stays the
+         * list the template links beside it.
+         */
+        public readonly string $orderUrl,
+        /**
          * The deadline the retry has, already formatted, or null when this
          * order has none — a bank-transfer brand's registration order, or a
          * cart order whose cart is gone (#131, whole-branch review finding

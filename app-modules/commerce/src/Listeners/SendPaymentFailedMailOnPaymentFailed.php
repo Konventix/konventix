@@ -84,8 +84,13 @@ final class SendPaymentFailedMailOnPaymentFailed
         // different places for one order.
         $link = app(PayLink::class)->forOrder($order);
 
+        // The order's own page (Task 9 of the 2026-09-21 bugfix round): the
+        // mail is about this order, so both the retry fallback and the
+        // order link land on it rather than on the list.
+        $orderUrl = $this->absoluteUrl($event->brandId, 'commerce.mine.show', ['order' => $order->id]);
+
         $retryUrl = $link === null
-            ? $this->absoluteUrl($event->brandId, 'commerce.mine.index')
+            ? $orderUrl
             : $this->absoluteUrl($event->brandId, $link['route'], $link['parameters']);
 
         $this->sendMessage->handle(new SendMessageRequest(
@@ -96,6 +101,7 @@ final class SendPaymentFailedMailOnPaymentFailed
                 reason: $this->reasonSentence($event->reasonCode),
                 retryUrl: $retryUrl,
                 ordersUrl: $this->absoluteUrl($event->brandId, 'commerce.mine.index'),
+                orderUrl: $orderUrl,
                 // #131, whole-branch review finding 2: the retry link is
                 // worth nothing if the payer does not know it has a
                 // deadline. `Settlement\PaymentWindow` is the same answer

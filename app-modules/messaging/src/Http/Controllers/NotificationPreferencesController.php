@@ -13,6 +13,7 @@ use Konventix\Messaging\Enums\Channel;
 use Konventix\Messaging\Models\NotificationPreference;
 use Konventix\Messaging\Topics\Topic;
 use Konventix\Messaging\Topics\TopicRegistry;
+use Konventix\Messaging\Topics\VisibleTopics;
 
 /**
  * The notification-preferences page (ADR-0041, D-MSG-05/06): rendered from
@@ -22,11 +23,13 @@ use Konventix\Messaging\Topics\TopicRegistry;
  * settings-page edit to forget.
  *
  * Non-suppressible topics render as always-on: a preference is a choice,
- * and security notices deliberately offer none.
+ * and security notices deliberately offer none. Operator-audience topics
+ * are listed only for an account that can reach the console
+ * (`VisibleTopics`, bugfix round 2026-09-21, Task 9).
  */
 class NotificationPreferencesController
 {
-    public function edit(Request $request, TopicRegistry $topics): Response
+    public function edit(Request $request, VisibleTopics $topics): Response
     {
         $recipientId = (string) $request->user()->getKey();
 
@@ -41,7 +44,7 @@ class NotificationPreferencesController
             // browser needs it to subscribe this device; null hides the
             // push section entirely.
             'vapidPublicKey' => config('services.webpush.public_key'),
-            'topics' => collect($topics->all())
+            'topics' => collect($topics->for($recipientId))
                 ->map(fn (Topic $topic): array => [
                     'key' => $topic->key,
                     'label' => $topic->label,

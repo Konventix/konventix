@@ -218,6 +218,19 @@
 
 ## Done
 
+- [x] Every operator notice links absolutely and the payer mails land on the
+      order (bugfix round 2026-09-21, Task 9): `Operations\AdminUrl` is the
+      one rule behind the six `commerce.operations` producers (the four
+      `NotifyOperatorsOn*` listeners, `AsksThePspBeforeCancelling`,
+      `ReconcilePayments`) — `OperatorSettings::adminBaseUrlForBrand()` when
+      the operator has an `admin_host`, `config('app.url')` otherwise, never
+      a bare `/admin/...` path; the topic is declared
+      `TopicAudience::Operator`, so its inbox rows show in the console bell,
+      not in a registrant's participant inbox. `OrderConfirmationMailData`,
+      `PaymentFailedMailData` and `PaymentReversedMailData` carry `orderUrl`
+      (`commerce.mine.show` on the brand host); the four payer templates
+      link it beside the "My orders" list, and the payment-failed retry
+      fallback lands on the order too.
 - [x] Metrics for orders, payments, carts, stock and the waiting room in
       `src/Metrics` and `src/Listeners/Metrics` (ADR-0059, #173).
 

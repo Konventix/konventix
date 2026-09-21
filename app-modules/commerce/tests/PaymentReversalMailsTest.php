@@ -126,7 +126,10 @@ it('tells the payer their money was taken back, with the deadline and a pay link
             && $payload['currency'] === 'EUR'
             && $payload['dueOn'] === $dueOn->format('d.m.Y')
             && str_contains($payload['payUrl'], '/pay/registration/'.$order->settles_id)
-            && str_ends_with($payload['ordersUrl'], '/my/orders');
+            && str_ends_with($payload['ordersUrl'], '/my/orders')
+            // Task 9 of the 2026-09-21 bugfix round: the order's own page
+            // beside the list.
+            && str_ends_with($payload['orderUrl'], '/my/orders/'.$order->id);
     });
 });
 
@@ -216,12 +219,16 @@ it('tells the operators a dispute was opened, without a payer mail', function ()
 
     event(reversalMailsRecorded($order, kind: 'dispute', status: 'open'));
 
-    Queue::assertPushedOn('messaging', SendQueuedMessage::class, function (SendQueuedMessage $job) use ($holder): bool {
+    Queue::assertPushedOn('messaging', SendQueuedMessage::class, function (SendQueuedMessage $job) use ($holder, $order): bool {
         $payload = $job->message->payload->toArray();
 
         return $job->message->templateKey === 'commerce.operations-notice'
             && $job->message->recipientId === $holder->id
-            && $payload['kind'] === 'dispute-opened';
+            && $payload['kind'] === 'dispute-opened'
+            // Absolute even without an `admin_host` on the operator (Task 9
+            // of the 2026-09-21 bugfix round, `Operations\AdminUrl`).
+            && str_starts_with($payload['url'], rtrim((string) config('app.url'), '/').'/')
+            && str_ends_with($payload['url'], '/admin/orders/'.$order->id);
     });
 
     Queue::assertNotPushed(
@@ -325,7 +332,8 @@ it('promises a cart order no pay link, and names the ways the organizer can take
 
     expect($payload['payUrl'])->toBeNull()
         ->and($payload['dueOn'])->toBe($dueOn->format('d.m.Y'))
-        ->and(str_ends_with($payload['ordersUrl'], '/my/orders'))->toBeTrue();
+        ->and(str_ends_with($payload['ordersUrl'], '/my/orders'))->toBeTrue()
+        ->and($payload['orderUrl'])->toEndWith('/my/orders/'.$order->id);
 
     $rendered = app(TemplateRenderer::class)->render($job->message);
 

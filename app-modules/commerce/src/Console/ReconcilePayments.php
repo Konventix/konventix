@@ -22,6 +22,7 @@ use Konventix\Commerce\Enums\ReversalStatus;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\SettlementAccount;
+use Konventix\Commerce\Operations\AdminUrl;
 use Konventix\Commerce\Settlement\Mollie\MollieApi;
 use Konventix\Commerce\Settlement\Stripe\StripeApi;
 use Konventix\Commerce\Settlement\Stripe\StripeReversalCatchUp;
@@ -30,7 +31,6 @@ use Konventix\Commerce\Settlement\Stripe\StripeSettlementAdapter;
 use Konventix\Commerce\Settlement\Unzer\UnzerApi;
 use Konventix\Messaging\Actions\SendMessage;
 use Konventix\Messaging\Data\SendMessageRequest;
-use Konventix\Platform\Operators\OperatorSettings;
 use Konventix\Platform\Permissions\PermissionHolders;
 use RuntimeException;
 use Throwable;
@@ -845,7 +845,7 @@ final class ReconcilePayments extends Command
         $holders = app(PermissionHolders::class)
             ->userIdsWithPermission($payment->brand_id, Permission::ManageProducts->value);
 
-        $url = $this->adminUrl($payment->brand_id, 'admin.orders.show', ['order' => $payment->order_id]);
+        $url = app(AdminUrl::class)->to($payment->brand_id, 'admin.orders.show', ['order' => $payment->order_id]);
 
         foreach ($holders as $userId) {
             try {
@@ -870,17 +870,6 @@ final class ReconcilePayments extends Command
                 ]);
             }
         }
-    }
-
-    /**
-     * @param  array<string, string>  $parameters
-     */
-    private function adminUrl(string $brandId, string $routeName, array $parameters): string
-    {
-        $base = app(OperatorSettings::class)->adminBaseUrlForBrand($brandId);
-        $path = route($routeName, $parameters, absolute: false);
-
-        return $base === null ? $path : rtrim($base, '/').$path;
     }
 
     private function orderNumberShort(Payment $payment): string
