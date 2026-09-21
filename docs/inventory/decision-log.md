@@ -358,6 +358,46 @@ round's work.
 | D-PLT-12 | Media variants and venues | **`media:regenerate-variants` backfills missing variants after deploy; the venue edit page gets an opening-times editor.** xpertise stays unset on dev. | next round |
 | D-REG-16 | Entry conditions, policy bindings, re-consent | **Designed now and built directly on develop, no issues**: one spec plus ADR for entry conditions on registration types and policies bound to an event, a type, a payment provider or an entry condition, and re-consent to contract policies on login or before critical actions. | next round |
 
+## Round 10 — entry conditions, policy bindings, re-consent (2026-09-21, operator interview)
+
+D-REG-16 of Round 9 sent this one to design first. The spec
+(`docs/superpowers/specs/2026-09-21-entry-conditions-and-policy-bindings-design.md`)
+put twenty-five decision points to the operator, who answered all of them in one
+sitting on 2026-09-21. Four answers went against the spec's recommendation
+(D-REG-19, D-CPL-03, D-CPL-07 and D-CPL-08 — marked below); the spec now states
+every answer as a fact and keeps the rejected recommendation's reason beside it.
+ADR-0066 is accepted. The build is Tasks 30–33 of
+`docs/superpowers/plans/2026-09-21-round-4.md`, in the spec's §16 order.
+
+| ID | Decision | Chosen | Status |
+|---|---|---|---|
+| D-REG-17 | Scope of an entry condition | **Brand-wide and reusable**, with an optional `event_id` pinning a one-off condition to a single event. A shared ULID is what a policy binding points at. | Task 30 |
+| D-REG-18 | How a type declares its conditions | **A pivot table**: several reusable conditions per type, with a `position` for the order they render in. | Task 30 |
+| D-REG-19 | Editing conditions on a live type | **Freely editable after the type has sold** — *against the recommendation to freeze them with ADR-0060's other axes*. The evidence is the assertion snapshot, not the pivot: existing registrations keep their snapshots, a condition added later is "not asserted" for them and the console shows that state, removing a condition keeps the historic assertions, and the type editor warns before saving. | Task 31 |
+| D-REG-20 | Assertions when `quantity > 1` | **One assertion per registration** — the registrant asserts for the contractual act; per-holder declarations through claim links are a follow-up. | Task 31 |
+| D-REG-21 | Someone will not tick the box | **Refused on submit, plus the alternative-type link**: a nullable `alternative_registration_type_id` drives a "buy the regular ticket instead" link beside the error. | Task 31 |
+| D-REG-22 | Verification kinds | **The three kinds** (`self_declared`, `document_at_door`, `operator_checked`); `operator_checked` is **advisory** and fills a worklist. A blocking check is `approval: required` on the type — one mechanism, not two. | Task 31 |
+| D-REG-23 | Retention of an assertion | **The registration's own clock**, started by `EventConcluded` and published as a Compliance rule. Never the ten-year bookkeeping floor. | Task 31 |
+| D-REG-24 | Registration capabilities | **`ManageEntryConditions` and `VerifyEntryConditions`** — defining a fare condition and judging a document at the door are different jobs. | Task 30 |
+| D-ADM-06 | Depth of the door integration | **The label rides on the admission, the scan shows it, the door records `confirmed`/`refused` onto the assertion**, queued offline like every other scan write. A refusal never revokes an admission. | Task 33 |
+| D-ADM-07 | Documents and visibility of the label | **Never a document.** Visible to the door and the operator console; the **document hint prints on the ticket PDF**; **nothing on the badge** — the holder needs to know what to bring, the room does not need to know what they paid. | Task 33 |
+| D-CPL-02 | Binding target model | **One `kind` plus one `target_key` string** — ULIDs for entities, the provider key for a provider; a fifth kind must not cost a migration. | Task 30 |
+| D-CPL-03 | Combining several bindings | **OR within a kind, AND across kinds** — *against the recommendation of a flat OR*. The resolver's rule and the console's wording say so ("applies when any of the events match **and** any of the types match **and** …"), and "Stripe addendum only at event X" is now expressible directly. | Task 30 |
+| D-CPL-04 | A policy with no bindings | **Applies everywhere this brand sells** — today's behaviour, unchanged; the console says so out loud, because the empty state is the meaningful one. | Task 30 |
+| D-CPL-05 | Binding an operator-wide policy | **Allowed**; the binding carries a `brand_id` where a brand binds the operator's text to its own event, null where the operator binds globally. | Task 30 |
+| D-CPL-06 | How the checkout learns types and conditions | **A `binding_context` bag on `RegistrationSettlementRequested`**, persisted on the order line as opaque JSON Commerce never interprets. **No backfill** — existing orders resolve unbound policies only. | Task 32 |
+| D-CPL-07 | Provider versus the consent control | **Two-step checkout** — *against the recommendation of a partial reload*: choose the provider, then a confirmation step listing the texts with the accept control. A single-provider brand goes straight to the confirmation step; going back clears the acceptance. | Task 32 |
+| D-CPL-08 | The role of a bound text at checkout | **`requires_consent` alone decides** — *against the recommendation of a `checkout_role` column*: any matching bound policy is shown, the version's `requires_consent` decides checkbox versus information, no new role column, ordering `terms`/`withdrawal` first and then the rest by name. | Task 30 |
+| D-CPL-09 | What a consent record carries | **`policy_binding_id` plus a `binding_context` snapshot** — "why was this person asked, and for which purchase" becomes one row. | Task 30 |
+| D-CPL-10 | Which event carries a declaration | **The per-module events, extended**: `CheckoutConsentGiven` (Commerce) and a new `RegistrationConsentGiven`, both with a binding context. | Task 32 |
+| D-CPL-11 | Labelling binding targets in the console | **A Platform `TargetDirectory`** registry each module contributes options and labels to, in `SlotRegistry`'s shape; an unknown target is renderable, not a crash. | Task 32 |
+| D-CPL-12 | What marks a text as a contract | **`lawful_basis = contract`, reused** — no second flag that can disagree with the first. | Task 33 |
+| D-CPL-13 | Which acts are critical | **Contract-creating acts only**: registration submit, checkout start, cart checkout, amendment, waitlist conversion, ticket-claim acceptance. An outstanding text never costs someone their account, tickets or order history. | Task 33 |
+| D-CPL-14 | Where the re-consent gate lives | **A `require-contract-consent` alias**, registered by Compliance and applied by the owning module to its own critical routes, mirroring `require-consent`. | Task 33 |
+| D-CPL-15 | The interstitial | **`policies.required`, reused** for login and mid-session, with one line naming the act. No modal — a legal text behind a dismissible overlay is not an agreement. | Task 33 |
+| D-CPL-16 | The binding capability | **Compliance's own `ManagePolicyBindings`**, separate from `ManagePolicies`: binding a text to a product changes who is bound by it without changing a word of it. | Task 30 |
+| D-CPL-17 | Measuring a refusal | **Derived** from prompts against grants, plus a **"Not now"** button on the interstitial **without its own counter** — a consent screen with only one way out is not a choice. | Task 33 |
+
 ## Open
 
 **56 of the 68 inventory decisions remain open.** They are written up in the
