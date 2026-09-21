@@ -326,6 +326,14 @@ tournament history in the Eventula dump. Full text:
 | D-CMP-24 | Swiss pairing | **Swiss stays available with greedy pairing; blossom deferred until a Swiss competition is planned.** | spec (Competition), #33 |
 | D-CMP-25 | Eventula tournaments | **Not imported** — results lived in Challonge, the dump holds none. | — |
 | D-GOP-04 (amended) | Catalogue read model | **`Discipline` is the source of record for contest defaults; GameOps' catalogue event carries identity and operational fields only.** | adr → ADR-0062 |
+| D-SUP-01 | Feedback scope | **Ship #88 completely — launcher, report, console, reporter access, mails — ordered in four slices; no cutover-week subset.** (User decision 2026-09-21.) | spec (Support design 2026-09-21) |
+| D-SUP-02 | Where the launcher lives | **On every brand host and on the operator console; Support becomes non-gateable** because `ModuleGate` reads "no brand" as inactive. (User decision.) | adr → ADR-0063 |
+| D-SUP-04 | Context trust boundary | **Server-derived fields overwrite client fields; two correlation ids (page and submission); a five-visit ring buffer supplies the previous page with its own id.** | spec (Support design §5) |
+| D-SUP-05 | Guests and abuse | **Guests file with an address; per user/IP and per-address throttles, honeypot answering a fake 201, no stored IP; `CaptchaVerifier` seam with no driver.** (User: keep a captcha in mind.) | spec (Support design §6.4) |
+| D-SUP-06 | "Kauf betroffen" alarm | **A metric plus a vmalert rule on the alert channel (#96), and an operator notice on Support's own topic — never Commerce's `commerce.operations` key.** | spec (Support design §7, §10.6) |
+| D-SUP-07 | Reporter access | **"My support requests" for accounts; guests get the whole process by mail with 30-day signed links and a self-service re-issue that mails the stored address.** (User decision.) | spec (Support design §8) |
+| D-SUP-08 | Privacy and retention | **No screenshots, form contents or IP; 180 days after closing; GDPR export by user id and by address, erasure keeps the row.** | spec (Support design §11) |
+| D-SUP-10 | Operator notification | **Every new request notifies triage holders in-app and by mail; the monitoring alert is out of band and additional.** (User decision.) | spec (Support design §7) |
 
 ## Open
 
