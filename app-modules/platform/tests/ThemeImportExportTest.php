@@ -165,6 +165,11 @@ it('imports the export of one brand into another', function (): void {
     $source->update(['theme_tokens' => THEME_IO_LIGHT, 'theme_tokens_dark' => THEME_IO_DARK]);
     $target = Brand::factory()->create(['name' => 'Target Brand', 'slug' => 'target-brand']);
 
+    // Frozen: the assertion below compares this export with a second one
+    // taken after the import, and `exportedAt` differs whenever a second
+    // boundary falls between the two (pipeline #1945).
+    Carbon::setTestNow('2026-09-21 10:00:00');
+
     $export = app(ExportBrandTheme::class)->handle($source);
 
     $this->actingAs($admin)
