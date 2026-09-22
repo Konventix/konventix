@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Konventix\Community\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Events\ParticipantPresenceChanged;
+use Konventix\Community\Actions\PostMessage;
 use Konventix\Community\Gdpr\CommunityGdprHandler;
 use Konventix\Community\Listeners\ProjectAdmissionBadge;
 use Konventix\Community\Listeners\ProjectCommunityMember;
@@ -38,6 +42,40 @@ class CommunityServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'community';
+    }
+
+    /**
+     * `parent::boot()` first — it loads the route files that will name
+     * `throttle:shoutbox-post`, and the limiter itself is resolved per
+     * request rather than at registration (Support's and Commerce's named
+     * limiters are the same shape).
+     */
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->configureRateLimiting();
+    }
+
+    /**
+     * The coarse half of D-COM-09's budget: 5 messages per 10 seconds,
+     * keyed on the account so a LAN hall behind one NAT address does not
+     * share one.
+     *
+     * **The exact axis lives in `PostMessage` and has to**, because the
+     * rule is per person *per room* and only the Action has resolved which
+     * room — the compose box posts to the participant's own running event
+     * (D-COM-03), it never names a room. This limiter is the outer net that
+     * refuses a flood before it reaches a controller; the Action is what
+     * refuses a caller who skipped the route entirely (spec §6). Both read
+     * the same two constants, so the two halves cannot drift apart.
+     */
+    private function configureRateLimiting(): void
+    {
+        RateLimiter::for('shoutbox-post', fn (Request $request): Limit => Limit::perSecond(
+            PostMessage::MAX_PER_WINDOW,
+            PostMessage::WINDOW_SECONDS,
+        )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown')));
     }
 
     /**
