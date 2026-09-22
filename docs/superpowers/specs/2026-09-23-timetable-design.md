@@ -116,7 +116,7 @@ agenda_competitions (read model): competition_id (unique), brand_id, event_id, n
 
 **Rows are the distinct times that actually occur** on the day — every `starts_at` and `ends_at` of every visible item, sorted — not fixed 30-minute slots. A 14:15 item needs no special case and there are no empty rows at 03:00.
 
-**Columns are the event's tracks**, in `position` order. An item spans from its start row to its end row (`rowspan` in a plain HTML table — the browser does the layout; no absolute positioning and no overlap maths). Two items in one track at one time sit side by side in the same cell.
+**Columns are the event's tracks**, in `position` order. An item spans **half-open** `[start, end)` — from its start row up to, but not including, the row at its end (`rowspan` in a plain HTML table; the browser does the layout, with no absolute positioning and no overlap maths). Half-open because a row is a time *boundary*, not a slot: with Eröffnung 14:00–15:00 followed by Bandcheck 15:00–16:00 in one track, an inclusive span would make both claim the 15:00 row and break the table. Two items in one track at one time sit side by side in the same cell.
 
 **Untracked items** render as a full-width band above the grid ("Ohne Track"), which is also where an all-day item belongs.
 
