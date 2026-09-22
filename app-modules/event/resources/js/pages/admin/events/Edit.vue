@@ -373,7 +373,7 @@ function promoteVenue(venueId: string): void {
                         <TimeField
                             :id="`edit-day-${index}-ends`"
                             :model-value="day.day_ends_at ?? ''"
-                            label="Tag endet um"
+                            label="Day ends at"
                             class="w-32"
                             :error="form.errors[`days.${index}.day_ends_at`]"
                             @update:model-value="
@@ -400,8 +400,8 @@ function promoteVenue(venueId: string): void {
                         Add day
                     </Button>
                     <p class="text-xs text-text-muted">
-                        Leer = 00:00. Zeiten vor 12:00 gelten als Nacht des
-                        Folgetags (03:00 = drei Uhr morgens nach diesem Tag).
+                        Empty = 00:00. Times before 12:00 mean the night after
+                        this day (03:00 = 3 a.m. after the date).
                     </p>
                     <InputError :message="form.errors.days" />
                 </CardContent>
