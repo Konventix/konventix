@@ -10,11 +10,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Konventix\Competition\Data\LeaderboardSettings;
 use Konventix\Competition\Database\Factories\StageFactory;
+use Konventix\Competition\Enums\StageEntrySource;
+use Konventix\Competition\Enums\StageFormat;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
- * One phase of a competition, running one format (ADR-0019).
+ * One phase of a competition, running one format (ADR-0019, design §7).
  *
  * A real tournament is rarely a single bracket: a group phase feeding a
  * playoff bracket is two stages of different formats over the same entrants.
@@ -22,7 +25,15 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  *
  * `settings` holds the format's ruleset — best_of, points, group size,
  * grand-final reset, tiebreaker — validated by the format itself rather than
- * by this model, since only the format knows which keys it honours.
+ * by this model, since only the format knows which keys it honours. A
+ * leaderboard stage's half of that vocabulary is typed by
+ * `LeaderboardSettings` (ADR-0009), which is what `leaderboardSettings()`
+ * hands back.
+ *
+ * `entry_source` and `advance_count` are §7.3's multi-stage model: where this
+ * stage's field comes from, and how many of its entrants the **next** stage
+ * takes. Modelled now, built later — only `signup` has a seed source in this
+ * slice.
  *
  * @property string $id
  * @property string $brand_id
@@ -30,6 +41,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $name
  * @property string $format
  * @property int $sequence
+ * @property StageEntrySource $entry_source
+ * @property int|null $advance_count
  * @property array<string, mixed>|null $settings
  * @property Carbon|null $generated_at
  * @property Carbon|null $created_at
@@ -44,11 +57,45 @@ class Stage extends Model
 
     protected $table = 'competition_stages';
 
-    protected $fillable = ['competition_id', 'name', 'format', 'sequence', 'settings', 'generated_at'];
+    protected $fillable = [
+        'competition_id', 'name', 'format', 'sequence', 'entry_source',
+        'advance_count', 'settings', 'generated_at',
+    ];
 
     public function isGenerated(): bool
     {
         return $this->generated_at !== null;
+    }
+
+    /**
+     * The format as an enum, or null for a string nothing is registered
+     * under. Nullable rather than throwing: `format` is a plain column so a
+     * sixth format needs no migration, and a stage carrying an unknown one
+     * must still be readable enough to be corrected.
+     */
+    public function stageFormat(): ?StageFormat
+    {
+        return StageFormat::tryFrom($this->format);
+    }
+
+    /**
+     * Whether this stage scores entries instead of playing matches (§7.2).
+     *
+     * The one branch the leaderboard adds to code that already existed:
+     * everything else in this module asks a registry which generator or
+     * calculator a format resolves to, and a leaderboard resolves to neither.
+     */
+    public function isLeaderboard(): bool
+    {
+        return $this->format === StageFormat::Leaderboard->value;
+    }
+
+    /**
+     * This stage's leaderboard ruleset, defaults filled in (ADR-0009).
+     */
+    public function leaderboardSettings(): LeaderboardSettings
+    {
+        return LeaderboardSettings::ofStageSettings($this->settings);
     }
 
     /**
@@ -72,7 +119,13 @@ class Stage extends Model
      */
     protected function casts(): array
     {
-        return ['settings' => 'array', 'sequence' => 'integer', 'generated_at' => 'datetime'];
+        return [
+            'settings' => 'array',
+            'sequence' => 'integer',
+            'entry_source' => StageEntrySource::class,
+            'advance_count' => 'integer',
+            'generated_at' => 'datetime',
+        ];
     }
 
     protected static function newFactory(): StageFactory

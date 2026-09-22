@@ -9,10 +9,13 @@ use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\ScoreEntry;
 use Konventix\Competition\Models\Stage;
 use Konventix\Competition\Models\Standing;
+use Konventix\Competition\Standings\LeaderboardStandingsCalculator;
 use Konventix\Competition\Standings\MatchOutcome;
 use Konventix\Competition\Standings\MatchSide;
+use Konventix\Competition\Standings\ScoredEntry;
 use Konventix\Competition\Standings\StandingEntry;
 use Konventix\Competition\Standings\StandingsCalculatorRegistry;
 use Konventix\Competition\Standings\StandingsEntrant;
@@ -31,11 +34,22 @@ use Konventix\Competition\Standings\StandingsEntrant;
  * rows for entrants the recompute no longer ranks, so the table after a run
  * is exactly what the calculator returned — never a merge of this run and the
  * last one.
+ *
+ * **A leaderboard stage ranks here too** (design §7.2: "`CalculateStandings`
+ * recomputes the stage wholesale as it already does"), and it is the one
+ * branch in this class. The two paths meet only at `persist()`: a leaderboard
+ * has no matches, so `LeaderboardStandingsCalculator` takes score entries
+ * where the bracket calculators take outcomes and is deliberately a separate
+ * class with a separate signature rather than one interface bent over both.
+ * What they share is the table they land in, which has to be one table —
+ * every page that reads standings reads `competition_standings`, whatever
+ * produced them.
  */
 final class CalculateStandings
 {
     public function __construct(
         private readonly StandingsCalculatorRegistry $calculators,
+        private readonly LeaderboardStandingsCalculator $leaderboard,
     ) {}
 
     /**
@@ -43,25 +57,51 @@ final class CalculateStandings
      */
     public function handle(Stage $stage): array
     {
-        $calculator = $this->calculators->get($stage->format);
-
         $entrants = $this->entrants($stage);
-        $outcomes = $this->outcomes($stage);
 
-        $entries = $calculator->calculate(
-            $entrants,
-            $outcomes,
-            array_merge($stage->settings ?? [], [
-                // The stage's last round, which finished matches alone cannot
-                // reveal: a half-played bracket and a finished one look the
-                // same to a calculator that only sees results.
-                'final_round' => $this->finalRound($stage),
-            ]),
-        );
+        $entries = $stage->isLeaderboard()
+            ? $this->leaderboard->calculate($entrants, $this->scoredEntries($stage), $stage->leaderboardSettings())
+            : $this->calculators->get($stage->format)->calculate(
+                $entrants,
+                $this->outcomes($stage),
+                array_merge($stage->settings ?? [], [
+                    // The stage's last round, which finished matches alone
+                    // cannot reveal: a half-played bracket and a finished one
+                    // look the same to a calculator that only sees results.
+                    'final_round' => $this->finalRound($stage),
+                ]),
+            );
 
         $this->persist($stage, $entries);
 
         return $entries;
+    }
+
+    /**
+     * A leaderboard stage's entries, reduced to what its calculator needs
+     * (design §7.2).
+     *
+     * Unverified rows travel with the rest, carrying their state: "only
+     * verified entries count" is a ranking rule and belongs where the ranking
+     * is proved, not in this query's `where` clause.
+     *
+     * @return list<ScoredEntry>
+     */
+    public function scoredEntries(Stage $stage): array
+    {
+        return array_values(ScoreEntry::withoutBrandScope()
+            ->where('brand_id', $stage->brand_id)
+            ->where('stage_id', $stage->id)
+            ->orderBy('heat')
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn (ScoreEntry $entry): ScoredEntry => new ScoredEntry(
+                entrantId: $entry->entrant_id,
+                value: $entry->value,
+                heat: $entry->heat,
+                verified: $entry->isVerified(),
+            ))
+            ->all());
     }
 
     /**

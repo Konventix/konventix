@@ -19,7 +19,6 @@ use Konventix\Competition\Actions\ReopenSignup;
 use Konventix\Competition\Actions\StartCompetition;
 use Konventix\Competition\Actions\UnpublishCompetition;
 use Konventix\Competition\Actions\UpdateCompetition;
-use Konventix\Competition\Brackets\FormatRegistry;
 use Konventix\Competition\Data\CompetitionData;
 use Konventix\Competition\Data\CompetitionRowData;
 use Konventix\Competition\Enums\CheckInMode;
@@ -27,6 +26,7 @@ use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\Permission;
 use Konventix\Competition\Enums\ProofPolicy;
 use Konventix\Competition\Enums\ResultSubmissionMode;
+use Konventix\Competition\Enums\StageFormat;
 use Konventix\Competition\Exceptions\IllegalCompetitionStateTransitionException;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\Discipline;
@@ -322,9 +322,13 @@ class CompetitionAdminController
     }
 
     /**
-     * Every closed set the form offers, from the enums and the format
-     * registry themselves — a sixth format is a registration, never an edit
-     * here (ADR-0019).
+     * Every closed set the form offers, from the enums themselves — a sixth
+     * format is a case on `StageFormat`, never an edit here.
+     *
+     * `stageFormat` reads the enum rather than `FormatRegistry` since design
+     * §7.1: the registry holds the five formats that draw a bracket, and a
+     * leaderboard stage draws none (§7.2), so asking it would have hidden
+     * the one new format this release adds.
      *
      * @return array<string, list<string>>
      */
@@ -332,7 +336,7 @@ class CompetitionAdminController
     {
         return [
             'status' => array_column(CompetitionStatus::cases(), 'value'),
-            'stageFormat' => app(FormatRegistry::class)->keys(),
+            'stageFormat' => StageFormat::values(),
             'checkInMode' => array_column(CheckInMode::cases(), 'value'),
             'resultSubmissionMode' => array_column(ResultSubmissionMode::cases(), 'value'),
             'proofPolicy' => array_column(ProofPolicy::cases(), 'value'),

@@ -64,7 +64,7 @@ final class CompetitionData extends Data
         #[Required, StringType, Max(255)]
         public readonly string $stageName,
 
-        /** A key of the `FormatRegistry`; the Action refuses one it cannot resolve. */
+        /** A `StageFormat` value; the Action refuses one it does not know. */
         #[Required, StringType, Max(32)]
         public readonly string $stageFormat,
 
