@@ -1,0 +1,11 @@
+# Handles, die nicht aus den Eventula-Daten abzuleiten sind (#87, Entwurf 22.09.2026).
+# Ohne diese Zeilen wuerde die Slugify-Regel entweder eine E-Mail-Adresse zum
+# oeffentlichen Handle machen oder unter die Mindestlaenge von 3 Zeichen fallen.
+# Format: eventula_user_id <TAB> handle
+#
+45	fedcellar
+211	atzetooon
+304	timo-stern
+178	nj-sx
+252	nn-sx
+402	trollusername
