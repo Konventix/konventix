@@ -32,7 +32,6 @@ use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
 use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Tax\GermanVat;
-use Konventix\Compliance\Audit\AuditRecorder;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Operators\ConsoleSelection;
@@ -455,7 +454,12 @@ class OrderAdminController
      * operator 422 about a refund that is recorded and whose money is gone,
      * skipping the audit row with it. The money has moved; the only honest
      * answer is that the refund stands and the follow-up needs looking at.
-     * So: audit row written, warning toast, redirect as success.
+     * So: warning toast, redirect as success.
+     *
+     * The `commerce.order.refunded` audit entry is no longer written here
+     * (#250). It belongs to `RefundOrder`, so that a refund from the
+     * reconcile sweep or a console command is audited too; this method
+     * passes the actor and nothing else.
      *
      * Recording the provider's existing refund automatically is deliberately
      * not attempted: no adapter's seam exposes a way to read a refund back,
@@ -464,9 +468,9 @@ class OrderAdminController
      */
     public function refund(
         string $order,
+        Request $request,
         RefundOrderData $data,
         RefundOrder $refundOrder,
-        AuditRecorder $auditRecorder,
     ): RedirectResponse {
         Gate::authorize(Permission::IssueRefunds->value);
 
@@ -476,9 +480,9 @@ class OrderAdminController
         $announcementFailed = false;
 
         // Read before the Action moves anything: only a cancelled order takes
-        // `RefundOrder`'s unapplied path (ADR-0057 point 9, #6), and the trail
-        // has to be able to tell that apart from a real order refund — the
-        // order was not refunded, money that was never applied to it was.
+        // `RefundOrder`'s unapplied path (ADR-0057 point 9, #6), and the
+        // toast has to be able to tell that apart from a real order refund —
+        // the order was not refunded, money that was never applied to it was.
         $unapplied = $model->status === OrderStatus::Cancelled;
 
         try {
@@ -486,6 +490,11 @@ class OrderAdminController
                 order: $model,
                 reasonCode: $data->reasonCode->value,
                 reasonNote: $data->reasonNote,
+                // The only thing this controller still contributes to the
+                // audit entry (#250): who pressed the button. The Action
+                // writes the row, so the sweep and the console commands that
+                // also refund leave one too.
+                actorUserId: (string) $request->user()->getAuthIdentifier(),
             );
         } catch (ProviderRefusedRefundException $e) {
             throw ValidationException::withMessages([
@@ -503,55 +512,16 @@ class OrderAdminController
             // Caught before the arm below because it is a `RuntimeException`
             // too, and means the opposite of one: the refund is recorded and
             // the money is back with the payer, only the fan-out inside
-            // Konventix failed. Reported here as well as inside the relay, so
-            // the request that saw it leaves a trace of its own; then the
-            // method carries on to the audit row exactly as a clean refund
-            // does.
+            // Konventix failed. `RefundOrder` has already written the audit
+            // row with `announcement_failed: true` before rethrowing (#250),
+            // so all that is left here is the trace of the request that saw
+            // it and the toast that says so.
             report($e);
 
             $announcementFailed = true;
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['order' => $e->getMessage()]);
         }
-
-        // The explicit half of the audit trail (Round 6, D-BATCH), the same
-        // call `SettlementAccountAdminController::saveStripeSettings()`
-        // makes: `OrderRefunded` is no `AuditableEvent`, so nothing else
-        // would record *who* sent the full gross of an order back. #73's
-        // "jeder Vorgang erzeugt einen Audit-Eintrag" wants this for the
-        // whole flow; this is the refund's share of it.
-        //
-        // After the Action, never inside it: an audit write is not a
-        // business transaction and must not take part in a rollback
-        // (`AuditRecorder`'s own docblock). The reason and the note are
-        // recorded here in full — this row, not the credit note's document,
-        // is where an operator later reads why the money went back.
-        $auditRecorder->record(
-            action: 'commerce.order.refunded',
-            subjectId: $model->getKey(),
-            brandId: $model->brand_id,
-            context: [
-                'reason_code' => $data->reasonCode->value,
-                'reason_note' => $data->reasonNote,
-                'amount' => (string) $model->total_gross,
-                'currency' => $model->currency,
-                // The provider's own identifier for the money going back
-                // (#247), read off the row `RecordRefund` just wrote. Null
-                // for a `manual` refund, which has no provider to give one —
-                // and for a refund that reached the announcement failure
-                // above, since the row is written before the announcement.
-                'provider_reference' => $this->providerRefundReference($model),
-                // Nothing of the order was refunded on this path: it stays
-                // cancelled, no credit note is written, and only the money
-                // that could never be applied went back (#6).
-                'unapplied' => $unapplied,
-                // Whether the seat, the quota and the admission were released
-                // with the money. An operator reconstructing "why is this
-                // registration still confirmed" reads it here rather than
-                // correlating a queue failure by timestamp.
-                'announcement_failed' => $announcementFailed,
-            ],
-        );
 
         Inertia::flash('toast', match (true) {
             // Deliberately says nothing of the underlying error: the operator
@@ -566,29 +536,5 @@ class OrderAdminController
         });
 
         return back();
-    }
-
-    /**
-     * The reference the provider gave the refund this request just made
-     * (#247). Newest first, because an order can be refunded more than once
-     * over its life — a partial refund followed by the rest.
-     */
-    private function providerRefundReference(Order $order): ?string
-    {
-        /** @var string|null $reference */
-        $reference = PaymentReversal::withoutBrandScope()
-            ->where('order_id', $order->getKey())
-            // Either kind is this refund's own reference (`re_…`): `refund`
-            // when we recorded it, `external_refund` when the provider's own
-            // notification won the race and recorded it first (review NEW-3).
-            // What the operator needs is the identifier, not which path
-            // wrote it.
-            ->whereIn('kind', [ReversalKind::Refund->value, ReversalKind::ExternalRefund->value])
-            // ULIDs are monotone, unlike two `created_at` in the same clock
-            // tick — an order can be refunded more than once over its life.
-            ->orderByDesc('id')
-            ->value('provider_reference');
-
-        return $reference;
     }
 }

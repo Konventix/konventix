@@ -6,6 +6,52 @@
 
 ## Next (Phase 1 PoC — no payment; keep Commerce dormant and prove the boundary)
 
+- [x] #244 — the §19 UStG note on the buyer's side, not just on the
+      invoice. `taxNote()` (`resources/js/lib/purchaseTexts.ts`) takes the
+      operator's small-business election and prints "no VAT charged
+      (§ 19 UStG)" instead of "incl./excl. VAT", and the fact reaches every
+      price surface as `smallBusinessScheme` on the payload that carries the
+      price itself — `EndPriceData` (renamed from `includesTax`, which also
+      answered false for a reverse charge), `ShopProductData`, `CartData`,
+      `MyOrderDetailData` and the checkout's order props. Keyed on the
+      resolved `TaxTreatment`, never on a zero rate: a rate of "0.00" is an
+      amount and the election is a status. The shop pages' and the landing
+      slot's own `smallBusinessScheme` page prop is gone with it — one fact,
+      travelling with the thing it describes. Deliberately left: a reverse
+      charge still reads "incl. VAT" on the order pages, which is a separate
+      wording decision (see Backlog).
+
+- [x] #250 — the refund's audit entry moved out of the console and into
+      `RefundOrder`, and a manual unapplied refund is visible to
+      reconciliation. `commerce.order.refunded` is written by the Action for
+      every caller, so a refund from the reconcile sweep or a console command
+      is audited too; `OrderAdminController::refund()` passes only the actor,
+      and it keeps the `announcement_failed: true` case because the Action
+      records the entry before rethrowing `RefundEventRelayFailedException`.
+      D-REG-15's unit refund is deliberately excluded — it leaves the order
+      `paid` and has its own `commerce.order.units-refunded` entry. Separately
+      (D-0.8.2-3), an unapplied refund the provider gave no reference for now
+      writes its `payment_reversals` row all the same, keyed on the synthetic
+      `manual:<order>` (`RefundOrder::manualReference()`): `provider_reference`
+      stays NOT NULL, the unique `(provider, provider_reference)` key stays
+      the convergence mechanism, and the colon is a character no provider's
+      identifier can contain. Left open: two unapplied payments on one
+      cancelled order would share the one synthetic key, so the second refund
+      converges onto the first row instead of recording its own amount — one
+      order has at most one unapplied payment in every path we have, but a
+      double payment on a cancelled order would hit it.
+
+- [x] #187 — verified, no code needed. A whole refund of a cart order with
+      **two** registration lines cancels both registrations and releases both
+      quotas, walked end to end from `RefundOrder` in
+      `app-modules/registration/tests/PaymentReversalConsumptionTest.php`
+      ("cancels both registrations of a wholly refunded two-line cart
+      order…"), with the partial refund's "releases nothing" beside it. The
+      issue's open criterion "new event `OrderLineRefunded`" stays
+      deliberately unbuilt: `RecordRefund` emits `OrderLineCancelled` with
+      `reason_code: order_refunded` instead, rather than introduce a second
+      cross-module contract event for the same fact.
+
 - [x] The waiting room stops burning quota on a cookie-less client, and
       says so when it refuses (#221). The gate's redirect now repeats the
       ticket it just issued in the query string (`WaitingRoom/TicketHandoff`,
@@ -62,6 +108,16 @@
       quota units, so the number is not the cart's to change.
 
 ## Backlog (Phase 2 — release scope, invoice-settled registrations are a definition-of-done item)
+
+- [ ] A reverse-charged order's buyer-facing label. `GermanVat` resolves
+      `TaxTreatment::ReverseCharge` for a billing party holding a VAT ID in
+      another member state, and the invoice prints the statutory note — but
+      `pay/*`, `cart/Confirm` and `commerce/my/Show` still print "incl. VAT"
+      beside a total that carries none. #244 fixed the §19 case only,
+      because the reverse-charge wording is a legal decision nobody has
+      taken. The mechanism is already there: those payloads already read the
+      order's own `tax_treatment` snapshot for the §19 case, so this is one
+      more field off it, a `taxNote()` branch and a sentence — not plumbing.
 
 - [x] B2C invoices above 250 € need a postal address (§14 UStG vs §33
       UStDV): a way for the operator or payer to complete the billing

@@ -10,15 +10,19 @@ use Konventix\Commerce\Actions\Concerns\GuardsCheckedInAdmissions;
 use Konventix\Commerce\Actions\Concerns\LocksMoneyRowsInOneOrder;
 use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Enums\PaymentStatus;
+use Konventix\Commerce\Enums\ReversalKind;
 use Konventix\Commerce\Exceptions\ProviderRefusedRefundException;
 use Konventix\Commerce\Exceptions\RefundBlockedByCheckInException;
+use Konventix\Commerce\Exceptions\RefundEventRelayFailedException;
 use Konventix\Commerce\Models\CheckedInAdmission;
 use Konventix\Commerce\Models\CreditNote;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\OrderLine;
 use Konventix\Commerce\Models\Payment;
+use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
+use Konventix\Compliance\Audit\AuditRecorder;
 use RuntimeException;
 use Throwable;
 
@@ -70,6 +74,13 @@ use Throwable;
  * `refund`, so an operator reconciling a statement, the audit entry and the
  * order page all name the same identifier the provider's dashboard does.
  *
+ * **Every refund audits itself** (#250). The `commerce.order.refunded`
+ * entry used to be written by the console controller, so a refund from the
+ * reconcile sweep or a console command left no trail; it is written here
+ * now, and a caller contributes nothing but the actor. The one refund that
+ * does not write it is D-REG-15's unit refund, which has its own entry with
+ * its own columns (`RefundUnitsOnRegistrationQuantityReduced`).
+ *
  * ADR-0037 accepts a known gap: an offline device reconciles late (ADR-0033),
  * so a refund executed inside that sync window can slip past a check-in that
  * has happened but not yet arrived. That is a risk the ADR takes knowingly
@@ -77,6 +88,36 @@ use Throwable;
  */
 final class RefundOrder
 {
+    /**
+     * The audit entry every whole refund leaves, whoever asked for it
+     * (#250). It used to be written by `OrderAdminController::refund()`, so
+     * a refund from the reconcile sweep or a console command left no trail
+     * at all — the one caller that had a `request()` behind it was also the
+     * only one that recorded who did this and why.
+     */
+    public const string AUDIT_REFUNDED = 'commerce.order.refunded';
+
+    /**
+     * D-0.8.2-3: the `provider_reference` a refund with no provider
+     * reference of its own is keyed on — `manual:<order>`.
+     *
+     * `payment_reversals.provider_reference` stays NOT NULL (decision of
+     * 2026-09-08) because the unique `(provider, provider_reference)` key is
+     * the table's whole convergence mechanism and Postgres treats NULLs as
+     * distinct. So the row a manual refund needs in order to be visible to
+     * reconciliation has to carry *some* key, and that key must be one no
+     * provider can ever hand us.
+     *
+     * The colon is what makes that true. Every identifier the three
+     * providers assign is drawn from `[A-Za-z0-9_-]`: Stripe's `re_…`/`dp_…`
+     * (prefix, underscore, base62), Mollie's `re_…`/`chb_…` (prefix,
+     * underscore, alphanumeric) and Unzer's cancellation ids (`s-cnl-1`,
+     * letters, digits and hyphens). None of the three can contain `:`, so no
+     * real reference can collide with a synthetic one — and the order's ULID
+     * after it keeps two orders' manual refunds apart.
+     */
+    private const string MANUAL_REFERENCE_PREFIX = 'manual:';
+
     private const string KIND_REGISTRATION = 'registration';
 
     // ADR-0057 point 4 gave the same question a second caller (the
@@ -89,11 +130,17 @@ final class RefundOrder
         private readonly RecordRefund $recordRefund,
         private readonly RecordOwnRefund $recordOwnRefund,
         private readonly SettlementAdapterRegistry $registry,
+        private readonly AuditRecorder $auditRecorder,
     ) {}
 
     /**
      * `$reductionKey`, `$amountNet` and `$amountTax` are D-REG-15's partial
      * refund (see the class docblock's third refund). Null everywhere else.
+     *
+     * `$actorUserId` is the only thing a caller still contributes to the
+     * audit entry (#250): the console passes the operator, a sweep or a
+     * console command passes nothing, and `AuditRecorder` is left to record
+     * an actorless act rather than invent one.
      */
     public function handle(
         Order $order,
@@ -105,6 +152,7 @@ final class RefundOrder
         ?string $amountTax = null,
         ?string $registrationId = null,
         ?int $units = null,
+        ?string $actorUserId = null,
     ): Order {
         // **Before the provider, not after** (D-REG-15). The money leg runs
         // first on purpose (#236), so the only place a replay can be stopped
@@ -148,7 +196,19 @@ final class RefundOrder
         // the provider call and the record together, under the payment's own
         // lock (finding 6).
         if ($unapplied !== null) {
-            return $this->refundUnapplied($order, $unapplied, $amount);
+            $refunded = $this->refundUnapplied($order, $unapplied, $amount);
+
+            $this->recordAudit(
+                order: $refunded,
+                reasonCode: $reasonCode,
+                reasonNote: $reasonNote,
+                amount: $amount,
+                unapplied: true,
+                announcementFailed: false,
+                actorUserId: $actorUserId,
+            );
+
+            return $refunded;
         }
 
         // The PSP side effect (ADR-0039) first, and before any domain write:
@@ -170,17 +230,141 @@ final class RefundOrder
         // guarantee lives in `RecordRefund` rather than in each caller (fix
         // round 1, review finding 1), and still pointless: there is nothing
         // above the record left to make atomic with it.
-        return $this->recordRefund->handle(
-            order: $order,
-            reasonCode: $reasonCode,
-            reasonNote: $reasonNote,
-            amount: $amount,
-            payment: $payment,
-            providerReference: $providerReference,
-            reductionKey: $reductionKey,
-            amountNet: $amountNet,
-            amountTax: $amountTax,
+        $relayFailure = null;
+
+        try {
+            $refunded = $this->recordRefund->handle(
+                order: $order,
+                reasonCode: $reasonCode,
+                reasonNote: $reasonNote,
+                amount: $amount,
+                payment: $payment,
+                providerReference: $providerReference,
+                reductionKey: $reductionKey,
+                amountNet: $amountNet,
+                amountTax: $amountTax,
+            );
+        } catch (RefundEventRelayFailedException $e) {
+            // The opposite of a refusal (#236 fix round 1, NEW-1): the record
+            // is committed and the money is with the payer, only the fan-out
+            // inside Konventix failed — `RelayRefundEvents` runs inline under
+            // a `sync` queue, and its throw escapes the commit that already
+            // happened. Moving the audit write into this Action (#250) means
+            // this arm has to stay here rather than in the controller: who
+            // sent the money back is not conditional on whether a downstream
+            // listener behaved. Recorded, then rethrown, so the caller can
+            // still say the release needs looking at.
+            $relayFailure = $e;
+            $refunded = $order->refresh();
+        }
+
+        // D-REG-15's unit refund is not an order refund and leaves the order
+        // `paid`; `RefundUnitsOnRegistrationQuantityReduced` writes
+        // `commerce.order.units-refunded` for it instead, with the units, the
+        // reduction and the net/tax split this entry has no columns for.
+        if ($reductionKey === null) {
+            $this->recordAudit(
+                order: $refunded,
+                reasonCode: $reasonCode,
+                reasonNote: $reasonNote,
+                amount: $amount,
+                unapplied: false,
+                announcementFailed: $relayFailure !== null,
+                actorUserId: $actorUserId,
+            );
+        }
+
+        if ($relayFailure !== null) {
+            throw $relayFailure;
+        }
+
+        return $refunded;
+    }
+
+    /**
+     * The `provider_reference` a refund with no reference of its own is
+     * keyed on (D-0.8.2-3, #250) — `manual:<order>`.
+     *
+     * Public because the operator console and the reconciliation report both
+     * need to recognise the shape rather than restate it, and because a test
+     * asserting the row must name the same string the writer used.
+     */
+    public static function manualReference(Order $order): string
+    {
+        return self::MANUAL_REFERENCE_PREFIX.$order->getKey();
+    }
+
+    /**
+     * The refund's audit entry (#250), written by the Action so that every
+     * caller leaves one — the console, the reconcile sweep, a console
+     * command, a test.
+     *
+     * After the money and the record, never inside either: an audit write is
+     * not a business transaction and must not take part in a rollback
+     * (`AuditRecorder`'s own docblock). The reason and the note are recorded
+     * here in full — this row, not the credit note's document, is where an
+     * operator later reads why the money went back.
+     */
+    private function recordAudit(
+        Order $order,
+        string $reasonCode,
+        ?string $reasonNote,
+        ?string $amount,
+        bool $unapplied,
+        bool $announcementFailed,
+        ?string $actorUserId,
+    ): void {
+        $this->auditRecorder->record(
+            action: self::AUDIT_REFUNDED,
+            subjectId: $order->getKey(),
+            brandId: $order->brand_id,
+            context: [
+                'reason_code' => $reasonCode,
+                'reason_note' => $reasonNote,
+                'amount' => $amount ?? (string) $order->total_gross,
+                'currency' => $order->currency,
+                // The provider's own identifier for the money going back
+                // (#247), read off the row just written — or the synthetic
+                // `manual:<order>` where the provider gave none
+                // (D-0.8.2-3). Null only for a refund of a *paid* order that
+                // no provider took money for, which writes no row at all.
+                'provider_reference' => $this->providerRefundReference($order),
+                // Nothing of the order was refunded on the unapplied path: it
+                // stays cancelled, no credit note is written, and only the
+                // money that could never be applied went back (#6).
+                'unapplied' => $unapplied,
+                // Whether the seat, the quota and the admission were released
+                // with the money. An operator reconstructing "why is this
+                // registration still confirmed" reads it here rather than
+                // correlating a queue failure by timestamp.
+                'announcement_failed' => $announcementFailed,
+            ],
+            actorUserId: $actorUserId,
         );
+    }
+
+    /**
+     * The reference the provider gave the refund this call just made (#247).
+     * Newest first, because an order can be refunded more than once over its
+     * life — a partial refund followed by the rest.
+     */
+    private function providerRefundReference(Order $order): ?string
+    {
+        /** @var string|null $reference */
+        $reference = PaymentReversal::withoutBrandScope()
+            ->where('order_id', $order->getKey())
+            // Either kind is this refund's own reference (`re_…`): `refund`
+            // when we recorded it, `external_refund` when the provider's own
+            // notification won the race and recorded it first (review NEW-3).
+            // What the operator needs is the identifier, not which path
+            // wrote it.
+            ->whereIn('kind', [ReversalKind::Refund->value, ReversalKind::ExternalRefund->value])
+            // ULIDs are monotone, unlike two `created_at` in the same clock
+            // tick — an order can be refunded more than once over its life.
+            ->orderByDesc('id')
+            ->value('provider_reference');
+
+        return $reference;
     }
 
     /**
@@ -366,6 +550,18 @@ final class RefundOrder
      * — `ExpireRegistrationOrders` excludes them explicitly and a cart order
      * is invoiced only once it is paid — so there is no case here where a
      * document exists and is left uncorrected.
+     *
+     * **A refund with no provider reference gets a row too** (D-0.8.2-3,
+     * #250). Until now the row was written only where the provider named the
+     * money, so a `manual` refund — the organizer wiring the money back
+     * themselves — moved the payment off the unapplied list and left nothing
+     * behind: reconciliation saw a succeeded payment turn into a `reversed`
+     * one with no record of where the money went. It now gets the same row
+     * every other refund gets, keyed on `manual:<order>`
+     * (`manualReference()`), which is a shape no provider can assign. The
+     * unique `(provider, provider_reference)` key is still the convergence
+     * mechanism, so a repeated run finds the row instead of writing a second
+     * one.
      */
     private function recordUnappliedRefund(
         Order $order,
@@ -375,14 +571,14 @@ final class RefundOrder
     ): Order {
         $refunded = $amount ?? (string) $order->total_gross;
 
-        if ($providerReference !== null && $providerReference !== '') {
-            $this->recordOwnRefund->handle(
-                order: $order,
-                payment: $payment,
-                amount: $refunded,
-                providerReference: $providerReference,
-            );
-        }
+        $this->recordOwnRefund->handle(
+            order: $order,
+            payment: $payment,
+            amount: $refunded,
+            providerReference: $providerReference !== null && $providerReference !== ''
+                ? $providerReference
+                : self::manualReference($order),
+        );
 
         $paid = (string) $payment->amount;
 

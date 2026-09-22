@@ -230,15 +230,32 @@ ADR-0048); the bookkeeping export books documents, never payments
    a second press.
 
    `manual` gives none — the organizer wires the money back outside the
-   platform — and no row is written for it. `payment_reversals.provider_reference`
+   platform. `payment_reversals.provider_reference`
    stays NOT NULL deliberately: the unique `(provider, provider_reference)`
    key is this table's whole convergence mechanism, and Postgres treats
    NULLs as distinct, so a nullable column would admit unlimited unkeyed
-   rows past the guarantee for exactly the rows that have no key. The record
-   for a `manual` refund is the `commerce.order.refunded` audit entry, which
-   carries the reason, the amount, the currency and `unapplied: true`. That
-   entry is written by the console, so a future caller that is not the
-   console owes an equivalent of its own.
+   rows past the guarantee for exactly the rows that have no key.
+
+   **Amended 2026-09-22 (D-0.8.2-3, #250).** Writing *no* row for a `manual`
+   unapplied refund was the wrong half of that argument: the payment still
+   left the unapplied list, so reconciliation saw money disappear with
+   nothing written behind it, and the audit entry — which is not a money
+   record and is not read by anything reconciling — was the only trace. The
+   row is written now, keyed on the synthetic reference `manual:<order>`
+   (`RefundOrder::manualReference()`). The column stays NOT NULL and the
+   unique key stays the convergence mechanism; what changed is that the
+   manual case now has a key of its own. It cannot collide with a real one:
+   every identifier the three providers assign is drawn from
+   `[A-Za-z0-9_-]` — Stripe's `re_…`/`dp_…`, Mollie's `re_…`/`chb_…`,
+   Unzer's `s-cnl-1` cancellation ids — and none of them can contain a
+   colon. Being derived from the order rather than generated is what makes a
+   repeated run converge on the row instead of writing a second.
+
+   The same issue moved the `commerce.order.refunded` audit entry out of the
+   console controller and into `RefundOrder`, which answers the sentence this
+   point used to end on: a caller that is not the console no longer owes an
+   equivalent of its own, because the Action writes it for every caller and
+   the caller passes only the actor.
 
 ### Alternatives considered
 

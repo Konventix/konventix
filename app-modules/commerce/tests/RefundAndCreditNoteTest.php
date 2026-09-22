@@ -38,6 +38,7 @@ use Konventix\Commerce\Models\PaymentReversal;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Commerce\Settlement\SettlementAdapter;
 use Konventix\Commerce\Settlement\SettlementAdapterRegistry;
+use Konventix\Compliance\Models\AuditLogEntry;
 use Konventix\Identity\Models\User;
 use Konventix\Messaging\Mail\TemplatedMail;
 use Konventix\Platform\Models\Brand;
@@ -309,6 +310,133 @@ it('refunds an unapplied payment on a cancelled order, without a credit note (#6
 
     Event::assertNotDispatched(OrderRefunded::class);
     Event::assertNotDispatched(CreditNoteIssued::class);
+});
+
+/**
+ * #250: the `commerce.order.refunded` audit entry used to be written by
+ * `OrderAdminController::refund()`, so a refund from anywhere else — the
+ * reconcile sweep, a console command, a job — moved real money and left no
+ * trail at all. It is the Action's now, and this is the caller that has no
+ * controller and no authenticated user behind it.
+ */
+it('writes the refund audit entry for a caller that is not the console (#250)', function (): void {
+    $this->withBrand();
+
+    $order = refundTestPaidOrder();
+
+    app(RefundOrder::class)->handle(
+        $order,
+        reasonCode: 'customer-request',
+        reasonNote: 'Reconciled against the statement.',
+    );
+
+    $audit = AuditLogEntry::query()->where('action', 'commerce.order.refunded')->sole();
+
+    expect($audit->subject_id)->toBe($order->id)
+        ->and($audit->brand_id)->toBe($order->brand_id)
+        // A sweep has no actor, and inventing one would make the trail lie
+        // (`AuditRecorder`'s own docblock).
+        ->and($audit->actor_user_id)->toBeNull()
+        ->and($audit->context)->toBe([
+            'reason_code' => 'customer-request',
+            'reason_note' => 'Reconciled against the statement.',
+            'amount' => (string) $order->total_gross,
+            'currency' => $order->currency,
+            'provider_reference' => null,
+            'unapplied' => false,
+            'announcement_failed' => false,
+        ]);
+});
+
+/**
+ * D-0.8.2-3 / #250: a manual unapplied refund — the order cancelled, the
+ * payment succeeded, the organizer wiring the money back outside the
+ * platform — wrote no `payment_reversals` row at all, because
+ * `provider_reference` is NOT NULL and no provider had named this money.
+ * The payment left the unapplied list all the same, so reconciliation saw
+ * the money vanish. The row now carries a synthetic reference instead.
+ */
+it('writes a reversal row with a synthetic reference for a manual unapplied refund (#250)', function (): void {
+    $this->withBrand();
+
+    $order = Order::factory()->create([
+        'status' => OrderStatus::Cancelled,
+        'settles_type' => 'cart',
+        'total_gross' => '119.00',
+    ]);
+
+    // `manual`: `RefundOrder`'s PSP call resolves `ManualSettlementAdapter`,
+    // which is a true no-op and answers with no reference (ADR-0039).
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'manual',
+        'amount' => '119.00',
+        'currency' => $order->currency,
+    ]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    $reversal = PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->sole();
+
+    expect($reversal->provider_reference)->toBe('manual:'.$order->id)
+        ->and($reversal->provider_reference)->toBe(RefundOrder::manualReference($order))
+        // The colon is the whole collision argument: every reference the
+        // three providers assign is `[A-Za-z0-9_-]` only — Stripe's `re_…`,
+        // Mollie's `re_…`/`chb_…`, Unzer's `s-cnl-1`.
+        ->and($reversal->provider_reference)->toContain(':')
+        ->and($reversal->kind)->toBe(ReversalKind::Refund)
+        ->and($reversal->status)->toBe(ReversalStatus::Final)
+        ->and($reversal->amount)->toBe('119.00')
+        ->and($reversal->provider)->toBe('manual')
+        // Unchanged around it: no document to correct, the order stays
+        // cancelled, and the money leaves the unapplied list (#6).
+        ->and($order->refresh()->status)->toBe(OrderStatus::Cancelled)
+        ->and(CreditNote::withoutBrandScope()->where('order_id', $order->id)->count())->toBe(0)
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Reversed);
+
+    // And the trail names the same identifier the row does, so an operator
+    // reading the audit entry can find the row (#247's shape, manual case).
+    $audit = AuditLogEntry::query()->where('action', 'commerce.order.refunded')->sole();
+
+    expect($audit->context['provider_reference'])->toBe('manual:'.$order->id)
+        ->and($audit->context['unapplied'])->toBeTrue();
+});
+
+it('converges on one row when a manual unapplied refund runs a second time (#250)', function (): void {
+    // The unique `(provider, provider_reference)` key is still the whole
+    // convergence mechanism, which is why the synthetic reference had to be
+    // deterministic rather than random: a replayed job, or a sweep that reads
+    // the payment before the first run's commit is visible to it, must find
+    // this row rather than write a second one.
+    $this->withBrand();
+
+    $order = Order::factory()->create([
+        'status' => OrderStatus::Cancelled,
+        'total_gross' => '119.00',
+    ]);
+
+    $payment = Payment::factory()->succeeded()->create([
+        'order_id' => $order->id,
+        'provider' => 'manual',
+        'amount' => '119.00',
+        'currency' => $order->currency,
+    ]);
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    $first = PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->sole();
+
+    // The replay: the payment is back on the unapplied list as far as this
+    // caller can see, so the whole path runs again from the top.
+    $payment->refresh()->forceFill(['status' => PaymentStatus::Succeeded])->save();
+
+    app(RefundOrder::class)->handle($order->refresh(), reasonCode: 'customer-request');
+
+    $second = PaymentReversal::withoutBrandScope()->where('order_id', $order->id)->sole();
+
+    expect($second->id)->toBe($first->id)
+        ->and($second->amount)->toBe('119.00')
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Reversed);
 });
 
 it('refuses a second refund of unapplied money the first one already sent back (#6)', function (): void {

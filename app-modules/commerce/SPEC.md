@@ -469,14 +469,31 @@ BaFin/ZAG licensing.
   `RefundOrder`'s provider leg without a document — no credit note, no
   `OrderRefunded`, the order stays `cancelled`. The payment is locked for the
   provider call and leaves `succeeded` in the same transaction, which takes
-  it off the unapplied list and refuses a second press. A reversal row is
-  written **where the provider gave a reference**; `manual` gives none and
-  writes none, and the `commerce.order.refunded` audit entry
-  (`unapplied: true`, `provider_reference: null`) is the record there.
+  it off the unapplied list and refuses a second press. **Every** unapplied
+  refund writes a reversal row, including the `manual` one no provider names
+  (D-0.8.2-3, #250): where the provider gave no reference the row is keyed on
+  the synthetic `manual:<order>` (`RefundOrder::manualReference()`). Before
+  that the payment left the unapplied list with nothing written behind it and
+  reconciliation could not see where the money had gone.
   `provider_reference` stays NOT NULL on purpose: the unique
   `(provider, provider_reference)` key is what makes two writers of one
   refund converge, and NULLs are distinct in Postgres, so a nullable column
-  would drop the guarantee for exactly the rows that cannot key.
+  would drop the guarantee for exactly the rows that cannot key. That is also
+  why the synthetic value carries a colon — every identifier Stripe, Mollie
+  and Unzer assign is `[A-Za-z0-9_-]` only, so a real reference can never
+  collide with a synthetic one — and why it is derived from the order rather
+  than generated: a repeated run converges on the row instead of writing a
+  second.
+
+  **The refund's audit entry is the Action's, not the console's** (#250).
+  `RefundOrder` writes `commerce.order.refunded` itself — reason, note,
+  amount, currency, the provider reference (or the synthetic one),
+  `unapplied` and `announcement_failed` — and a caller contributes only the
+  actor. A refund from the reconcile sweep or a console command used to leave
+  no trail at all. D-REG-15's unit refund is the one refund that does not
+  write it: it leaves the order `paid` and has its own
+  `commerce.order.units-refunded` entry, with the units, the reduction and
+  the net/tax split.
 
   **One lock order for every money path**: the order row, then the payment,
   then the reversal row (`Actions\Concerns\LocksMoneyRowsInOneOrder`). The
@@ -713,11 +730,14 @@ Slots this module **declares** for others to fill (`Platform\Slots\SlotRegistry`
 ADR-0003 enforcement point 3):
 
 - `shop.index` — the public shop page's extension point. Registration
-  contributes its public registration types to it (#240, ADR-0047 point 3);
-  `ShopController::withGrossPrices()` fills `unitAmountGross` and
-  `includesTax` into any contribution's `offers[].price` from the declared
-  net amount and tax class, so Registration declares and Commerce calculates
-  (ADR-0017) across a boundary crossed only by scalars.
+  contributes its public registration types to it (#240, ADR-0047 point 3).
+  A contribution prices itself through Platform's `Pricing\EndPriceCalculator`,
+  which `Pricing\TaxCalculatorEndPrices` binds (#234): the contributor sends a
+  net amount and a tax class as scalars and gets an `EndPriceData` back with
+  both amounts, the resolved rate, the currency and `smallBusinessScheme` —
+  the §19 UStG treatment the calculation resolved, which is what decides the
+  buyer-facing tax note (#244). Registration declares and Commerce
+  calculates (ADR-0017), across a boundary crossed only by scalars.
 - `admin.settlement-accounts` — the settlement console's notice region.
   Compliance contributes its missing-checkout-text warning to it (#222).
 - `checkout.consent` — the legal control every purchase path renders before

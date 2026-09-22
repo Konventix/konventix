@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Konventix\Commerce\Actions\RefundOrder;
+use Konventix\Commerce\Enums\OrderStatus;
 use Konventix\Commerce\Events\OrderCancelled;
 use Konventix\Commerce\Events\OrderLineCancelled;
 use Konventix\Commerce\Events\OrderLineReversed;
 use Konventix\Commerce\Events\OrderPaid;
 use Konventix\Commerce\Events\OrderRefunded;
 use Konventix\Commerce\Events\PaymentReversed;
+use Konventix\Commerce\Models\Order;
+use Konventix\Commerce\Models\OrderLine;
 use Konventix\Platform\Brands\BrandContext;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -42,7 +46,10 @@ use Konventix\Registration\Models\WaitlistEntry;
  * (`RegistrationServiceProvider::registerListeners()`), so these tests
  * dispatch the real Commerce events and exercise the real wiring. No
  * Commerce code beyond the event classes is needed: Registration never reads
- * a reversal row (ADR-0004).
+ * a reversal row (ADR-0004). The one exception is the #187 walk below, which
+ * drives the real `RefundOrder` end to end precisely because what it has to
+ * prove is that Commerce emits one event per line, not that this module
+ * reacts to one.
  *
  * Helper names prefixed `reversal*` — Pest helpers are process-global
  * (.ai/rules/tests.md).
@@ -388,6 +395,96 @@ it('cancels a cart line\'s registration when the cart order is wholly refunded (
         fn (RegistrationCancelled $event): bool => $event->registrationId === $registration->id
             && $event->reasonCode === 'order_refunded',
     );
+});
+
+/**
+ * #187's acceptance criterion, end to end and with **two** registration
+ * lines: the case the issue said was untested. Everything above dispatches
+ * `OrderLineCancelled` by hand; this one starts at `RefundOrder` and only
+ * asserts what the registrant would notice.
+ *
+ * The iteration in `RecordRefund::orderLineCancelledEvents()` is the thing
+ * under test — a `->get()` and a `foreach` over every `settles_kind:
+ * 'registration'` line — plus the fact that `RelayRefundEvents` dispatches
+ * every one of them rather than stopping at the first.
+ */
+it('cancels both registrations of a wholly refunded two-line cart order and releases both quotas (#187)', function (): void {
+    reversalOperator($this->withBrand());
+
+    $firstQuota = Quota::factory()->withCapacity(5)->create();
+    $secondQuota = Quota::factory()->withCapacity(5)->create();
+
+    $first = reversalPaidRegistration($firstQuota);
+    $second = reversalPaidRegistration($secondQuota);
+
+    expect($firstQuota->fresh()->consumed)->toBe(1)
+        ->and($secondQuota->fresh()->consumed)->toBe(1);
+
+    // One cart order paying for both, the shape checkout writes: the order
+    // settles the *cart*, and each line names the registration it bought —
+    // which is exactly why `OrderRefunded` alone cannot say what to release.
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'cart',
+        'settles_id' => (string) Str::ulid(),
+        'total_gross' => '71.40',
+    ]);
+
+    foreach ([$first, $second] as $position => $registration) {
+        OrderLine::factory()->create([
+            'order_id' => $order->id,
+            'position' => $position + 1,
+            'settles_kind' => 'registration',
+            'settles_ref' => $registration->id,
+        ]);
+    }
+
+    // No payment row, so the provider leg resolves `ManualSettlementAdapter`,
+    // a true no-op (ADR-0039) — no SDK, no live call.
+    app(RefundOrder::class)->handle($order, reasonCode: 'customer-request');
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Refunded)
+        ->and($first->refresh()->status)->toBe(RegistrationStatus::Cancelled)
+        ->and($first->reason_code)->toBe('order_refunded')
+        ->and($second->refresh()->status)->toBe(RegistrationStatus::Cancelled)
+        ->and($second->reason_code)->toBe('order_refunded')
+        // Both places are back in the pool, not just the first line's.
+        ->and($firstQuota->fresh()->consumed)->toBe(0)
+        ->and($secondQuota->fresh()->consumed)->toBe(0);
+});
+
+it('leaves both registrations of a partially refunded two-line cart order standing (#187, D-REG-15)', function (): void {
+    // ADR-0057 point 3: a partial refund leaves the contractual act
+    // standing. The 0.8.0 partial-cancellation work is the path that does
+    // release units; refunding half the money is not it.
+    reversalOperator($this->withBrand());
+
+    $firstQuota = Quota::factory()->withCapacity(5)->create();
+    $secondQuota = Quota::factory()->withCapacity(5)->create();
+
+    $first = reversalPaidRegistration($firstQuota);
+    $second = reversalPaidRegistration($secondQuota);
+
+    $order = Order::factory()->paid()->create([
+        'settles_type' => 'cart',
+        'settles_id' => (string) Str::ulid(),
+        'total_gross' => '71.40',
+    ]);
+
+    foreach ([$first, $second] as $position => $registration) {
+        OrderLine::factory()->create([
+            'order_id' => $order->id,
+            'position' => $position + 1,
+            'settles_kind' => 'registration',
+            'settles_ref' => $registration->id,
+        ]);
+    }
+
+    app(RefundOrder::class)->handle($order, reasonCode: 'goodwill', amount: '35.70');
+
+    expect($first->refresh()->status)->toBe(RegistrationStatus::Confirmed)
+        ->and($second->refresh()->status)->toBe(RegistrationStatus::Confirmed)
+        ->and($firstQuota->fresh()->consumed)->toBe(1)
+        ->and($secondQuota->fresh()->consumed)->toBe(1);
 });
 
 /**
