@@ -10,6 +10,7 @@ use Konventix\Community\Actions\LockRoom;
 use Konventix\Community\Actions\MuteParticipant;
 use Konventix\Community\Actions\PostMessage;
 use Konventix\Community\Actions\RemoveMessage;
+use Konventix\Community\Broadcasting\RoomChannel;
 use Konventix\Community\Data\PostMessageData;
 use Konventix\Community\Data\ReportData;
 use Konventix\Community\Enums\RoomSubject;
@@ -461,4 +462,39 @@ it('records the heartbeat and answers with who is here, the badge beside the dot
             Redis::connection()->del(ConnectionState::roomKey($brand->getKey(), $room->id));
         }
     }
+});
+
+/**
+ * The heartbeat has no gate of its own: `enterRoom()` authorises through
+ * `RoomChannel::join()` and throws without writing, and the route owes the
+ * 403 (carry ruling 1). A room derived from the viewer's own admission is
+ * one `join()` lets in, so the refusal is staged by binding a channel that
+ * says no — `enterRoom()` resolves it from the container.
+ */
+it('answers a heartbeat the room channel refuses with a 403 and records nothing', function (): void {
+    if (! shoutboxPageRedisReachable()) {
+        $this->markTestSkipped('Redis is not reachable from this test process.');
+    }
+
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
+
+    $eventId = (string) Str::ulid();
+    $ada = shoutboxPageAdmitted($brand, $eventId, 'Ada');
+
+    $this->app->instance(RoomChannel::class, new class
+    {
+        public function join(mixed ...$arguments): bool
+        {
+            return false;
+        }
+    });
+
+    $this->actingAs($ada)->postJson('/live/shoutbox/presence', ['status' => 'online'])->assertForbidden();
+
+    $room = Room::withoutBrandScope()->sole();
+
+    // `exists()` answers a count on phpredis and predis alike; falsy either way.
+    expect(Redis::connection()->exists(ConnectionState::connectionKey($brand->getKey(), $ada->id)))->toBeFalsy()
+        ->and(Redis::connection()->exists(ConnectionState::roomKey($brand->getKey(), $room->id)))->toBeFalsy();
 });
