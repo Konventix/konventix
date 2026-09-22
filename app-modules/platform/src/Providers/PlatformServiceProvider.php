@@ -32,6 +32,7 @@ use Konventix\Platform\Features\BrandFeatureRegistry;
 use Konventix\Platform\Gdpr\HubAccessGdprHandler;
 use Konventix\Platform\Http\Controllers\CaddyAskController;
 use Konventix\Platform\Http\Controllers\MediaFileController;
+use Konventix\Platform\Http\Middleware\EnsureActiveEvent;
 use Konventix\Platform\Http\Middleware\EnsureFeatureIsActive;
 use Konventix\Platform\Http\Middleware\EnsureModuleIsActive;
 use Konventix\Platform\Http\Middleware\EnsureWaitingRoomAdmission;
@@ -44,10 +45,12 @@ use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Listeners\GuardNonProductionMail;
 use Konventix\Platform\Listeners\ProjectHubAccess;
 use Konventix\Platform\Listeners\ProjectHubLayout;
+use Konventix\Platform\Metrics\PlatformMetrics;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Platform\Operators\ConsoleEventSources;
 use Konventix\Platform\Operators\OperatorContext;
 use Konventix\Platform\Pages\PageAccess;
@@ -107,7 +110,19 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->registerRouteMiddleware();
         $this->registerCaddyAskRoute();
         $this->registerMediaFileRoute();
+        $this->registerMetrics();
         $this->app->make(PropagatesBrandContextToQueue::class)->register();
+    }
+
+    /**
+     * Platform's own catalogue entries (ADR-0059) — the live hub's view
+     * counter (D-HUB-04). Registered the way every module registers its
+     * metrics, so that the kernel module is no exception to the rule it
+     * holds the others to.
+     */
+    private function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...PlatformMetrics::definitions());
     }
 
     /**
@@ -552,5 +567,10 @@ class PlatformServiceProvider extends ModuleServiceProvider
         // itself, so a module applying this alias (Registration's public
         // form) never names Commerce's feature string either.
         $router->aliasMiddleware('ensure-waiting-room', EnsureWaitingRoomAdmission::class);
+
+        // The live hub's gate (design §7.1): `/live` is only for a member
+        // admitted to a running event on this brand. Named as an alias so
+        // the route reads what it requires, like the three above.
+        $router->aliasMiddleware('ensure-active-event', EnsureActiveEvent::class);
     }
 }

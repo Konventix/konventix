@@ -1114,6 +1114,25 @@ declare namespace Konventix {
                 brandId: string | null;
                 links: Konventix.Platform.Data.FooterLinkData[];
             };
+            export type HubCardData = {
+                readonly key: string;
+                readonly label: string;
+                readonly component: string;
+                readonly payload: Record<string, unknown>;
+            };
+            export type HubLinkData = {
+                readonly key: string;
+                readonly label: string;
+                readonly url: string | null;
+                readonly component: string | null;
+                readonly icon: string | null;
+            };
+            export type HubPageData = {
+                readonly event: Konventix.Platform.Data.ActiveEventData;
+                readonly events: Konventix.Platform.Data.ActiveEventData[];
+                readonly cards: Konventix.Platform.Data.HubCardData[];
+                readonly links: Konventix.Platform.Data.HubLinkData[];
+            };
             export type ImportBrandThemeData = {
                 format: string;
                 tokens: Record<string, string>;

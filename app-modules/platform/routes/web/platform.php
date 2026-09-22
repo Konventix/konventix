@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
 use Konventix\Platform\Http\Controllers\CookiePreferencesController;
+use Konventix\Platform\Http\Controllers\HubController;
 use Konventix\Platform\Http\Controllers\StaticPageController;
 
 Route::get('/pages/{slug}', [StaticPageController::class, 'show'])
@@ -26,3 +27,7 @@ Route::get('/pages/{slug}', [StaticPageController::class, 'show'])
 // The cookie-settings dialog's one write. No auth: a guest's choice about
 // their own device is theirs to make (§ 25 TDDDG).
 Route::post('/cookie-preferences', CookiePreferencesController::class)->name('platform.cookie-preferences.store');
+
+// The live hub (design §7.1). `auth` first, so a guest lands on login;
+// `ensure-active-event` then sends a member nobody admitted home with a toast.
+Route::middleware(['auth', 'ensure-active-event'])->get('/live', HubController::class)->name('platform.hub');

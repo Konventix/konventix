@@ -429,13 +429,68 @@
       "id": 7
     },
     {
-      "id": 8,
+      "type": "stat",
+      "title": "Hub views",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_platform_hub_views_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Live-hub page views (D-HUB-04).",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 8
+    },
+    {
+      "id": 9,
       "type": "row",
       "title": "HTTP",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 9,
         "w": 24,
         "h": 1
       },
@@ -448,7 +503,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 6
+        "y": 10
       },
       "targets": [
         {
@@ -493,7 +548,7 @@
           "sort": "desc"
         }
       },
-      "id": 9
+      "id": 10
     },
     {
       "type": "timeseries",
@@ -502,7 +557,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 6
+        "y": 10
       },
       "targets": [
         {
@@ -557,7 +612,7 @@
           "sort": "desc"
         }
       },
-      "id": 10
+      "id": 11
     },
     {
       "type": "timeseries",
@@ -566,7 +621,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 14
+        "y": 18
       },
       "targets": [
         {
@@ -611,16 +666,16 @@
           "sort": "desc"
         }
       },
-      "id": 11
+      "id": 12
     },
     {
-      "id": 12,
+      "id": 13,
       "type": "row",
       "title": "Queues",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 22,
+        "y": 26,
         "w": 24,
         "h": 1
       },
@@ -633,7 +688,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 23
+        "y": 27
       },
       "targets": [
         {
@@ -678,7 +733,7 @@
           "sort": "desc"
         }
       },
-      "id": 13
+      "id": 14
     },
     {
       "type": "timeseries",
@@ -687,7 +742,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 23
+        "y": 27
       },
       "targets": [
         {
@@ -732,7 +787,7 @@
           "sort": "desc"
         }
       },
-      "id": 14
+      "id": 15
     },
     {
       "type": "timeseries",
@@ -741,7 +796,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 31
+        "y": 35
       },
       "targets": [
         {
@@ -796,7 +851,7 @@
           "sort": "desc"
         }
       },
-      "id": 15
+      "id": 16
     },
     {
       "type": "timeseries",
@@ -805,7 +860,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 31
+        "y": 35
       },
       "targets": [
         {
@@ -850,7 +905,7 @@
           "sort": "desc"
         }
       },
-      "id": 16
+      "id": 17
     },
     {
       "type": "stat",
@@ -859,7 +914,7 @@
         "w": 4,
         "h": 4,
         "x": 0,
-        "y": 39
+        "y": 43
       },
       "targets": [
         {
@@ -909,7 +964,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 17
+      "id": 18
     },
     {
       "type": "stat",
@@ -918,7 +973,7 @@
         "w": 4,
         "h": 4,
         "x": 4,
-        "y": 39
+        "y": 43
       },
       "targets": [
         {
@@ -967,7 +1022,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 18
+      "id": 19
     },
     {
       "type": "stat",
@@ -976,7 +1031,7 @@
         "w": 4,
         "h": 4,
         "x": 8,
-        "y": 39
+        "y": 43
       },
       "targets": [
         {
@@ -1021,7 +1076,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 19
+      "id": 20
     },
     {
       "type": "stat",
@@ -1030,7 +1085,7 @@
         "w": 4,
         "h": 4,
         "x": 12,
-        "y": 39
+        "y": 43
       },
       "targets": [
         {
@@ -1076,7 +1131,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 20
+      "id": 21
     },
     {
       "type": "stat",
@@ -1085,7 +1140,7 @@
         "w": 4,
         "h": 4,
         "x": 16,
-        "y": 39
+        "y": 43
       },
       "targets": [
         {
@@ -1134,7 +1189,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 21
+      "id": 22
     },
     {
       "type": "stat",
@@ -1143,7 +1198,7 @@
         "w": 4,
         "h": 4,
         "x": 20,
-        "y": 39
+        "y": 43
       },
       "targets": [
         {
@@ -1192,7 +1247,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 22
+      "id": 23
     },
     {
       "type": "timeseries",
@@ -1201,7 +1256,7 @@
         "w": 24,
         "h": 8,
         "x": 0,
-        "y": 43
+        "y": 47
       },
       "targets": [
         {
@@ -1276,16 +1331,16 @@
           "sort": "desc"
         }
       },
-      "id": 23
+      "id": 24
     },
     {
-      "id": 24,
+      "id": 25,
       "type": "row",
       "title": "Health",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 51,
+        "y": 55,
         "w": 24,
         "h": 1
       },
@@ -1298,7 +1353,7 @@
         "w": 24,
         "h": 6,
         "x": 0,
-        "y": 52
+        "y": 56
       },
       "targets": [
         {
@@ -1371,7 +1426,7 @@
           "showLegend": true
         }
       },
-      "id": 25
+      "id": 26
     },
     {
       "type": "timeseries",
@@ -1380,7 +1435,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 58
+        "y": 62
       },
       "targets": [
         {
@@ -1426,7 +1481,7 @@
           "sort": "desc"
         }
       },
-      "id": 26
+      "id": 27
     },
     {
       "type": "timeseries",
@@ -1435,7 +1490,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 58
+        "y": 62
       },
       "targets": [
         {
@@ -1480,16 +1535,16 @@
           "sort": "desc"
         }
       },
-      "id": 27
+      "id": 28
     },
     {
-      "id": 28,
+      "id": 29,
       "type": "row",
       "title": "Consent and conditions",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 66,
+        "y": 70,
         "w": 24,
         "h": 1
       },
@@ -1502,7 +1557,7 @@
         "w": 4,
         "h": 4,
         "x": 0,
-        "y": 67
+        "y": 71
       },
       "targets": [
         {
@@ -1548,7 +1603,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 29
+      "id": 30
     },
     {
       "type": "stat",
@@ -1557,7 +1612,7 @@
         "w": 4,
         "h": 4,
         "x": 4,
-        "y": 67
+        "y": 71
       },
       "targets": [
         {
@@ -1603,7 +1658,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 30
+      "id": 31
     },
     {
       "type": "stat",
@@ -1612,7 +1667,7 @@
         "w": 4,
         "h": 4,
         "x": 8,
-        "y": 67
+        "y": 71
       },
       "targets": [
         {
@@ -1666,7 +1721,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 31
+      "id": 32
     },
     {
       "type": "stat",
@@ -1675,7 +1730,7 @@
         "w": 4,
         "h": 4,
         "x": 12,
-        "y": 67
+        "y": 71
       },
       "targets": [
         {
@@ -1721,7 +1776,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 32
+      "id": 33
     },
     {
       "type": "stat",
@@ -1730,7 +1785,7 @@
         "w": 4,
         "h": 4,
         "x": 16,
-        "y": 67
+        "y": 71
       },
       "targets": [
         {
@@ -1775,7 +1830,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 33
+      "id": 34
     },
     {
       "type": "stat",
@@ -1784,7 +1839,7 @@
         "w": 4,
         "h": 4,
         "x": 20,
-        "y": 67
+        "y": 71
       },
       "targets": [
         {
@@ -1834,7 +1889,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 34
+      "id": 35
     },
     {
       "type": "timeseries",
@@ -1843,7 +1898,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 71
+        "y": 75
       },
       "targets": [
         {
@@ -1888,7 +1943,7 @@
           "sort": "desc"
         }
       },
-      "id": 35
+      "id": 36
     },
     {
       "type": "timeseries",
@@ -1897,7 +1952,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 71
+        "y": 75
       },
       "targets": [
         {
@@ -1953,7 +2008,7 @@
           "sort": "desc"
         }
       },
-      "id": 36
+      "id": 37
     },
     {
       "type": "timeseries",
@@ -1962,7 +2017,7 @@
         "w": 8,
         "h": 8,
         "x": 0,
-        "y": 79
+        "y": 83
       },
       "targets": [
         {
@@ -2008,7 +2063,7 @@
           "sort": "desc"
         }
       },
-      "id": 37
+      "id": 38
     },
     {
       "type": "timeseries",
@@ -2017,7 +2072,7 @@
         "w": 8,
         "h": 8,
         "x": 8,
-        "y": 79
+        "y": 83
       },
       "targets": [
         {
@@ -2062,7 +2117,7 @@
           "sort": "desc"
         }
       },
-      "id": 38
+      "id": 39
     },
     {
       "type": "timeseries",
@@ -2071,7 +2126,7 @@
         "w": 8,
         "h": 8,
         "x": 16,
-        "y": 79
+        "y": 83
       },
       "targets": [
         {
@@ -2126,16 +2181,16 @@
           "sort": "desc"
         }
       },
-      "id": 39
+      "id": 40
     },
     {
-      "id": 40,
+      "id": 41,
       "type": "row",
       "title": "Support",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 87,
+        "y": 91,
         "w": 24,
         "h": 1
       },
@@ -2148,7 +2203,7 @@
         "w": 4,
         "h": 4,
         "x": 0,
-        "y": 88
+        "y": 92
       },
       "targets": [
         {
@@ -2194,7 +2249,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 41
+      "id": 42
     },
     {
       "type": "stat",
@@ -2203,7 +2258,7 @@
         "w": 4,
         "h": 4,
         "x": 4,
-        "y": 88
+        "y": 92
       },
       "targets": [
         {
@@ -2253,7 +2308,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 42
+      "id": 43
     },
     {
       "type": "stat",
@@ -2262,7 +2317,7 @@
         "w": 4,
         "h": 4,
         "x": 8,
-        "y": 88
+        "y": 92
       },
       "targets": [
         {
@@ -2308,7 +2363,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 43
+      "id": 44
     },
     {
       "type": "stat",
@@ -2317,7 +2372,7 @@
         "w": 4,
         "h": 4,
         "x": 12,
-        "y": 88
+        "y": 92
       },
       "targets": [
         {
@@ -2367,7 +2422,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 44
+      "id": 45
     },
     {
       "type": "timeseries",
@@ -2376,7 +2431,7 @@
         "w": 8,
         "h": 8,
         "x": 16,
-        "y": 88
+        "y": 92
       },
       "targets": [
         {
@@ -2421,7 +2476,7 @@
           "sort": "desc"
         }
       },
-      "id": 45
+      "id": 46
     },
     {
       "type": "timeseries",
@@ -2430,7 +2485,7 @@
         "w": 8,
         "h": 8,
         "x": 0,
-        "y": 96
+        "y": 100
       },
       "targets": [
         {
@@ -2476,7 +2531,7 @@
           "sort": "desc"
         }
       },
-      "id": 46
+      "id": 47
     },
     {
       "type": "timeseries",
@@ -2485,7 +2540,7 @@
         "w": 8,
         "h": 8,
         "x": 8,
-        "y": 96
+        "y": 100
       },
       "targets": [
         {
@@ -2530,16 +2585,16 @@
           "sort": "desc"
         }
       },
-      "id": 47
+      "id": 48
     },
     {
-      "id": 48,
+      "id": 49,
       "type": "row",
       "title": "Runtime",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 104,
+        "y": 108,
         "w": 24,
         "h": 1
       },
@@ -2552,7 +2607,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 105
+        "y": 109
       },
       "targets": [
         {
@@ -2597,7 +2652,7 @@
           "sort": "desc"
         }
       },
-      "id": 49
+      "id": 50
     },
     {
       "type": "timeseries",
@@ -2606,7 +2661,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 105
+        "y": 109
       },
       "targets": [
         {
@@ -2651,7 +2706,7 @@
           "sort": "desc"
         }
       },
-      "id": 50
+      "id": 51
     },
     {
       "type": "timeseries",
@@ -2660,7 +2715,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 113
+        "y": 117
       },
       "targets": [
         {
@@ -2705,7 +2760,7 @@
           "sort": "desc"
         }
       },
-      "id": 51
+      "id": 52
     },
     {
       "type": "timeseries",
@@ -2714,7 +2769,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 113
+        "y": 117
       },
       "targets": [
         {
@@ -2759,16 +2814,16 @@
           "sort": "desc"
         }
       },
-      "id": 52
+      "id": 53
     },
     {
-      "id": 53,
+      "id": 54,
       "type": "row",
       "title": "Database",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 121,
+        "y": 125,
         "w": 24,
         "h": 1
       },
@@ -2781,7 +2836,7 @@
         "w": 6,
         "h": 4,
         "x": 0,
-        "y": 122
+        "y": 126
       },
       "targets": [
         {
@@ -2835,7 +2890,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 54
+      "id": 55
     },
     {
       "type": "stat",
@@ -2844,7 +2899,7 @@
         "w": 6,
         "h": 4,
         "x": 6,
-        "y": 122
+        "y": 126
       },
       "targets": [
         {
@@ -2894,7 +2949,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 55
+      "id": 56
     },
     {
       "type": "timeseries",
@@ -2903,7 +2958,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 122
+        "y": 126
       },
       "targets": [
         {
@@ -2948,7 +3003,7 @@
           "sort": "desc"
         }
       },
-      "id": 56
+      "id": 57
     }
   ]
 }

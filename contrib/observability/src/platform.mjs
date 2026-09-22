@@ -21,6 +21,7 @@ export default dashboard({
             stat('Checkout p95', [prom(`histogram_quantile(0.95, sum by (le) (rate(konventix_http_request_duration_seconds_bucket{${J}, route="commerce.cart.checkout"}[10m])))`)], { unit: 's', thresholds: thresholds('green', [1, 'orange'], [3, 'red']) }),
             stat('Oldest pending job', [prom(`max(konventix_queue_oldest_pending_job_age{${J}})`)], { unit: 's', thresholds: thresholds('green', [30, 'orange'], [60, 'red']) }),
             stat('Errors logged (range)', [prom(`sum(increase(konventix_log_records_total{${J}, level=~"error|critical|alert|emergency"}[$__range]))`)], { thresholds: thresholds('green', [1, 'red']) }),
+            stat('Hub views', [prom(`sum(increase(konventix_platform_hub_views_total{${J}}[$__range]))`)], { description: 'Live-hub page views (D-HUB-04).' }),
         ]),
         row('HTTP', [
             timeseries('Requests per second by status class', [prom(`sum by (class) (label_replace(rate(konventix_http_requests_total{${J}}[5m]), "class", "$1xx", "status", "(.).."))`, '{{class}}')], { stack: true }),
