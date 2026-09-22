@@ -3,7 +3,7 @@
 Date: 2026-09-23. Status: approved design (operator decisions 2026-09-23, recorded in §11).
 Release: 0.9.0, sub-project **D** of four. Issue: #108 (Event-Shoutbox und Chat Wall), labelled `risiko::datenschutz`.
 Neighbours: A — the live-event hub (`2026-09-22-event-hub-design.md`, shipped), whose card registry and presence events this builds on; B — Competition (#296–#302), which later supplies match and competition rooms; C — the timetable (`2026-09-23-timetable-design.md`).
-Decisions this rests on: ADR-0003 (module activation), ADR-0004 (events are the only coupling), ADR-0009 (typed Data), ADR-0010 (brand ownership), ADR-0013 (capabilities), ADR-0014 (ULIDs, no cross-module FKs), ADR-0021/ADR-0025 (realtime transport — Reverb, already decided and proven), ADR-0035 (media library), ADR-0050 (GDPR subject spans the operator).
+Decisions this rests on: **ADR-0067** (this design's own: Community owns event-scoped rooms and wears an admission badge it does not enforce), ADR-0003 (module activation), ADR-0004 (events are the only coupling), ADR-0009 (typed Data), ADR-0010 (brand ownership), ADR-0013 (capabilities), ADR-0014 (ULIDs, no cross-module FKs), ADR-0021/ADR-0025 (realtime transport — Reverb, already decided and proven), ADR-0035 (media library), ADR-0050 (GDPR subject spans the operator).
 
 ## 1. Goal
 
@@ -186,7 +186,16 @@ No body text travels on any of them — a consumer that needs the text reads it 
 
 Nothing consumes these in 0.9.0. They exist so that **auto-moderation through an API** can arrive later as a listener on `ShoutboxMessagePosted` that writes a `community_message_reports` row, without Community learning what a classifier is and without the desk's workflow changing.
 
-## 10. Two SPEC amendments this forces
+## 10. Two SPEC amendments this forces — recorded as ADR-0067
+
+**A word of warning before the amendments: "presence" already means something
+else here.** ADR-0054 uses it for *an account's presence on a brand* — the
+membership that decides what a brand may show or send. That is unrelated to
+the online/away/checked-in signal of §5. Where it matters, prefer **connection
+state** or **admission badge** over the bare word.
+
+Both amendments below are settled in **ADR-0067**, not left as footnotes in a
+feature's spec:
 
 Written with their reasons, not quietly contradicted:
 
