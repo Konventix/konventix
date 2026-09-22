@@ -148,7 +148,7 @@ Nothing consumes these in 0.9.0. They exist so Messaging can notify a participan
 
 ## 8. Capabilities, activation, GDPR, observability
 
-- **Capability**: one — `ManageAgenda` (`agenda.manage-agenda`), covering items, tracks and the competition selection. Reading is public. Added to `permissions:sync` (ADR-0013); granted to the Event Admin default role.
+- **Capability**: one — `ManageAgenda` (`agenda.manage-agenda`), covering items, tracks and the competition selection. Reading is public. Added to `permissions:sync` (ADR-0013); granted by Agenda's own default role `agenda.programme-editor` ("Programme Editor"). *Amended 2026-09-22, during Task 5:* this line originally said "granted to the Event Admin default role", which cannot be built — `DefaultRole::of()` refuses a role that grants another module's capability (ADR-0013), and Event ships no default role at all. Platform's `platform.brand-admin` is `everything` and already holds it; the role above is the grant for somebody who is not the brand admin.
 - **Activation**: Pennant feature `agenda`, gated at all four enforcement points (ADR-0003). With it off: no public programme route, no admin page, no hub card, and the Competition listeners short-circuit. Nothing else degrades — no module depends on Agenda.
 - **GDPR**: none. A programme holds no personal data — `speaker` is a plain value an organizer typed, published deliberately on a public page, and is not a user reference. If speaker accounts ever arrive, they arrive with a handler.
 - **Observability** (ADR-0059): counter `agenda_items_published_total{brand}`; a panel on the platform dashboard. No alert — an unpublished programme is a planning state, not an incident.

@@ -89,6 +89,32 @@ it('shows the dashboard header and every core module\'s slot contribution', func
             }));
 });
 
+/**
+ * ADR-0003's third enforcement point, for a link *out* of this page. The
+ * dashboard offers a way into Agenda's programme editor, and that editor
+ * does not exist for a brand with the module off — so the button must not
+ * either. `SlotRegistry` cannot make this call: it gates on the ambient
+ * brand, and the operator admin host resolves none (ADR-0029), so the
+ * controller asks `isActiveForBrand()` with the event's own brand and sends
+ * the answer as a prop.
+ */
+it('offers the programme editor only to a brand that has Agenda on', function (): void {
+    [, $admin] = eventsAdminOperator();
+
+    $brand = $this->withBrand();
+    $event = Event::factory()->create();
+
+    $this->actingAs($admin)
+        ->get("http://admin.eventsadmin.test/admin/events/{$event->id}")
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('modules.agenda', false));
+
+    $this->activateModule('agenda', $brand);
+
+    $this->actingAs($admin)
+        ->get("http://admin.eventsadmin.test/admin/events/{$event->id}")
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('modules.agenda', true));
+});
+
 it('404s the dashboard for an unknown event ulid', function (): void {
     [, $admin] = eventsAdminOperator();
 

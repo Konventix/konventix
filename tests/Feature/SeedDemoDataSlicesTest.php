@@ -267,7 +267,11 @@ it('seeds brand theming, module activation, roles and favorites', function () {
     expect(Feature::for($brand)->active($gate->featureName('competition')))->toBeTrue()
         ->and(Feature::for($brand)->active($gate->featureName('resources')))->toBeTrue()
         ->and(Feature::for($brand)->active($gate->featureName('staffing')))->toBeTrue()
-        ->and(Feature::for($brand)->active($gate->featureName('agenda')))->toBeFalse();
+        // On since 0.9.0, when Agenda stopped being a scaffold — a seeded
+        // brand now has a programme editor and a public timetable.
+        ->and(Feature::for($brand)->active($gate->featureName('agenda')))->toBeTrue()
+        // Still a scaffold, and the one that keeps the gate visible here.
+        ->and(Feature::for($brand)->active($gate->featureName('sponsoring')))->toBeFalse();
 
     $roles = Role::query()->where('brand_id', $brand->getKey())->get();
     expect($roles->pluck('name')->all())->toContain('Brand Admin', 'Registration Desk', 'Content Editor')

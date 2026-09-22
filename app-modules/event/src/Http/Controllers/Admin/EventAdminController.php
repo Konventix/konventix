@@ -20,6 +20,7 @@ use Konventix\Event\Models\Venue;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
 use Konventix\Platform\Media\MediaLibrary;
 use Konventix\Platform\Models\Scopes\BrandScope;
+use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Operators\ConsoleSelection;
 use Konventix\Platform\Slots\SlotRegistry;
 
@@ -40,7 +41,10 @@ class EventAdminController
 {
     use HasDataTableQuery;
 
-    public function __construct(private readonly SlotRegistry $slots) {}
+    public function __construct(
+        private readonly SlotRegistry $slots,
+        private readonly ModuleGate $modules,
+    ) {}
 
     public function index(Request $request, ConsoleSelection $selection): Response
     {
@@ -116,6 +120,20 @@ class EventAdminController
                 'timezone' => $model->timezone,
             ],
             'transitions' => $this->legalTransitions($model),
+            // Enforcement point 3 (ADR-0003) for a link *out* of this page
+            // rather than a card rendered inside it, so `SlotRegistry`
+            // cannot carry it: that registry gates on the *ambient* brand,
+            // and the operator admin host resolves none (ADR-0029), so
+            // every gateable module's contribution would be hidden here
+            // whatever the brand had switched on. `isActiveForBrand()` is
+            // the explicit-brand form written for exactly this — the same
+            // call `AgendaAdminController` makes to decide whether the
+            // editor exists at all, asked here so the button does not
+            // offer a 404. Event names the module, never its code
+            // (ADR-0004); `ContentController` asks Platform the same way.
+            'modules' => [
+                'agenda' => $this->modules->isActiveForBrand('agenda', (string) $model->brand_id),
+            ],
             'slots' => $this->slots->for('event.admin.dashboard')
                 ->map(fn (array $entry): array => [
                     'module' => $entry['module'],

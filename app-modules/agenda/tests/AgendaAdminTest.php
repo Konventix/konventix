@@ -14,6 +14,14 @@ use Konventix\Agenda\Models\Track;
  * Every test creates its brand-owned rows before the first admin-host
  * request: that host resolves no brand and hardens `BrandScope` to nothing
  * (`.ai/rules/tests.md`).
+ *
+ * The console host is in the **URL**, not in `withServerVariables()`:
+ * `MakesHttpRequests::prepareUrlForRequest()` runs the path through `url()`
+ * first, so Symfony's `Request::create()` always finds a host in the URI and
+ * overwrites `HTTP_HOST` with `localhost` — the server variable never
+ * survives. `EnsureOperatorHost` then 404s every request here, which is what
+ * pipeline 1942 found. Absolute URLs are how every other module's console
+ * tests do it.
  */
 it('refuses the editor without the capability and serves it with', function (): void {
     $brand = $this->withBrand();
@@ -22,8 +30,7 @@ it('refuses the editor without the capability and serves it with', function (): 
     [$operator, $admin] = agendaAdminOperator();
 
     $this->actingAs($admin)
-        ->withServerVariables(['HTTP_HOST' => $operator->admin_host])
-        ->get("/admin/events/{$event->getKey()}/agenda")
+        ->get("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda")
         ->assertInertia(fn ($page) => $page->component('admin/agenda/Edit')->has('tracks')->has('locations')->has('items'));
 });
 
@@ -40,8 +47,7 @@ it('serves the editor for an event that is still a draft', function (): void {
     [$operator, $admin] = agendaAdminOperator();
 
     $this->actingAs($admin)
-        ->withServerVariables(['HTTP_HOST' => $operator->admin_host])
-        ->get("/admin/events/{$event->getKey()}/agenda")
+        ->get("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda")
         ->assertOk()
         ->assertInertia(fn ($page) => $page->component('admin/agenda/Edit'));
 });
@@ -53,8 +59,7 @@ it('refuses the editor to an admin without ManageAgenda', function (): void {
     [$operator, $admin] = agendaAdminOperator(['platform.access-admin']);
 
     $this->actingAs($admin)
-        ->withServerVariables(['HTTP_HOST' => $operator->admin_host])
-        ->get("/admin/events/{$event->getKey()}/agenda")
+        ->get("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda")
         ->assertForbidden();
 });
 
@@ -65,8 +70,7 @@ it('saves tracks, locations and an item in one submit', function (): void {
     [$operator, $admin] = agendaAdminOperator();
 
     $this->actingAs($admin)
-        ->withServerVariables(['HTTP_HOST' => $operator->admin_host])
-        ->put("/admin/events/{$event->getKey()}/agenda", [
+        ->put("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda", [
             'tracks' => [['id' => null, 'name' => 'Bühne', 'position' => 1]],
             'locations' => [['id' => null, 'name' => 'Halle 3', 'venueId' => null, 'position' => 1]],
         ])
@@ -87,9 +91,9 @@ it('adds, publishes and cancels one item through their own endpoints', function 
     $event = agendaPublishedEvent($brand);
     [$operator, $admin] = agendaAdminOperator();
 
-    $console = $this->actingAs($admin)->withServerVariables(['HTTP_HOST' => $operator->admin_host]);
+    $console = $this->actingAs($admin);
 
-    $console->post("/admin/events/{$event->getKey()}/agenda/items", [
+    $console->post("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/items", [
         'id' => null,
         'title' => 'Lötkurs',
         'description' => null,
@@ -105,11 +109,11 @@ it('adds, publishes and cancels one item through their own endpoints', function 
 
     expect($item->state)->toBe(ItemState::Draft);
 
-    $console->post("/admin/events/{$event->getKey()}/agenda/items/{$item->getKey()}/publish")->assertRedirect();
+    $console->post("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/items/{$item->getKey()}/publish")->assertRedirect();
 
     expect($item->refresh()->state)->toBe(ItemState::Published);
 
-    $console->post("/admin/events/{$event->getKey()}/agenda/items/{$item->getKey()}/cancel", [
+    $console->post("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/items/{$item->getKey()}/cancel", [
         'reason' => 'Referent krank',
     ])->assertRedirect();
 
@@ -128,8 +132,7 @@ it('refuses an item with neither a start nor an end', function (): void {
     [$operator, $admin] = agendaAdminOperator();
 
     $this->actingAs($admin)
-        ->withServerVariables(['HTTP_HOST' => $operator->admin_host])
-        ->post("/admin/events/{$event->getKey()}/agenda/items", [
+        ->post("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/items", [
             'title' => 'Irgendwann',
             'startsAt' => null,
             'endsAt' => null,
@@ -149,7 +152,6 @@ it('will not publish an item belonging to another event', function (): void {
     [$operator, $admin] = agendaAdminOperator();
 
     $this->actingAs($admin)
-        ->withServerVariables(['HTTP_HOST' => $operator->admin_host])
-        ->post("/admin/events/{$event->getKey()}/agenda/items/{$stranger->getKey()}/publish")
+        ->post("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda/items/{$stranger->getKey()}/publish")
         ->assertNotFound();
 });

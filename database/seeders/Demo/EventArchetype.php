@@ -54,20 +54,25 @@ enum EventArchetype: string
 
     /**
      * Gateable modules switched on for the brand. Kernel and Core modules are
-     * always on and never appear here; the remaining scaffolds stay off,
-     * which is what makes the gate visible on the brand page. `competition`
-     * is the one module deliberately toggled between archetypes to
-     * demonstrate the gate (ADR-0003) — `community` runs on both, the same
-     * way `resources`/`staffing` do, so its profile walls (Task 9) are
-     * demonstrable on every seeded brand rather than half of them.
+     * always on and never appear here; the remaining scaffolds — `sponsoring`,
+     * `newsletter`, `game-ops`, `extensibility` — stay off, which is what
+     * makes the gate visible on the brand page. `competition` is the one
+     * module deliberately toggled between archetypes to demonstrate the gate
+     * (ADR-0003) — `community` runs on both, the same way `resources`/
+     * `staffing` do, so its profile walls (Task 9) are demonstrable on every
+     * seeded brand rather than half of them.
+     *
+     * `agenda` joined that list in 0.9.0, when it stopped being a scaffold: a
+     * LAN and a trade fair both publish a programme, and with it off the demo
+     * could show neither the programme editor nor the public timetable.
      *
      * @return list<string>
      */
     public function activeModules(): array
     {
         return match ($this) {
-            self::Lan => ['competition', 'resources', 'staffing', 'community'],
-            self::Convention => ['resources', 'staffing', 'community'],
+            self::Lan => ['competition', 'resources', 'staffing', 'community', 'agenda'],
+            self::Convention => ['resources', 'staffing', 'community', 'agenda'],
         };
     }
 

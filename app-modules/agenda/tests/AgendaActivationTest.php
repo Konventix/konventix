@@ -43,9 +43,11 @@ it('disappears entirely when the brand has not activated it', function (): void 
 
     $this->get("/events/{$event->slug}/programm")->assertNotFound();
 
+    // Absolute URL, not `withServerVariables()` — see `AgendaAdminTest`'s
+    // docblock: the server variable never reaches the request, and this
+    // assertion would pass for the wrong reason.
     $this->actingAs($admin)
-        ->withServerVariables(['HTTP_HOST' => $operator->admin_host])
-        ->get("/admin/events/{$event->getKey()}/agenda")
+        ->get("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda")
         ->assertNotFound();
 });
 

@@ -11,6 +11,7 @@ use Konventix\Admission\Actions\ClaimAdmission;
 use Konventix\Admission\Actions\IssueAdmissionClaimLink;
 use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Models\Admission;
+use Konventix\Agenda\Models\EventSummary as AgendaEventSummary;
 use Konventix\Commerce\Models\Invoice;
 use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Product;
@@ -430,6 +431,17 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             $parameter === 'slug' && $name === 'registration.attendees.index' => RegistrationEventSummary::withoutBrandScope()
                 ->where('brand_id', $brand->getKey())
                 ->where('attendee_list_visibility', 'public')
+                ->value('slug'),
+            // The public programme resolves its slug against Agenda's own
+            // read model (ADR-0004 — the route never sees Event's model) and
+            // 404s for an event whose lifecycle state is not public, exactly
+            // as `EventSummary::hasPublicProgramme()` decides. A published
+            // event of the brand is what makes this page a page; an empty
+            // programme still renders, because having planned nothing yet is
+            // not an error.
+            $parameter === 'slug' && $name === 'agenda.programme' => AgendaEventSummary::withoutBrandScope()
+                ->where('brand_id', $brand->getKey())
+                ->whereIn('state', ['published', 'running', 'concluded'])
                 ->value('slug'),
             // `venue.show` 404s unless the venue belongs to a publicly
             // visible event; the seed assigns each brand's first venue to

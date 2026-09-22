@@ -39,6 +39,15 @@ type EventHeader = {
 const props = defineProps<{
     event: EventHeader;
     transitions: string[];
+    /**
+     * Which gateable modules this event's brand has switched on, for the
+     * links *out* of this page. A card rendered inside it comes through
+     * `slots` and is gated server-side; a link cannot, because
+     * `SlotRegistry` gates on the ambient brand and the operator admin host
+     * resolves none (ADR-0029). The controller asks `isActiveForBrand()`
+     * instead and sends the answer here (ADR-0003, enforcement point 3).
+     */
+    modules: Record<string, boolean>;
     slots: SlotContribution[];
 }>();
 
@@ -160,11 +169,18 @@ function refresh(): void {
                         Live hub
                     </Link>
                 </Button>
-                <!-- Agenda's editor. A plain link, not a slot contribution:
-                     this is a way *to* another module's page, not a card
-                     rendered inside this one, and a brand with Agenda off
-                     simply finds a 404 there (ADR-0003). -->
-                <Button as-child variant="secondary" size="sm">
+                <!-- Agenda's editor. A plain link, not a slot
+                     contribution: this is a way *to* another module's page,
+                     not a card rendered inside this one. Hidden when the
+                     brand has Agenda off, because that editor then does not
+                     exist (ADR-0003) and a button onto a 404 is not a
+                     gate. -->
+                <Button
+                    v-if="props.modules.agenda"
+                    as-child
+                    variant="secondary"
+                    size="sm"
+                >
                     <Link :href="editAgenda(props.event.id).url">
                         <CalendarClock class="size-4" />
                         Programme

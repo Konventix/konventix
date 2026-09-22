@@ -15,6 +15,7 @@ use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Events\EventRescheduled;
 use Konventix\Event\Events\EventStarted;
 use Konventix\Event\Events\EventUnpublished;
+use Konventix\Event\Events\VenueAssigned;
 use Konventix\Event\Models\Event as EventModel;
 use Konventix\Event\Models\Venue;
 
