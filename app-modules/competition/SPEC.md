@@ -45,6 +45,21 @@ the flows.
 - **Interest** — a person's public "interested to play" entry on a
   competition, shown next to the entered teams so people can find each
   other, and the organizer's pool for filling incomplete teams (D-CMP-17).
+- **Results, reports and disputes** (D-CMP-19, design §8) — what each side
+  *claims* happened (`match_result_reports`, keyed by slot position so a
+  correction that re-routes entrants cannot invalidate a claim's keys), the
+  dispute two disagreeing claims open, and the desk's resolution with its
+  **mandatory** note. A recorded result is changed only by a correction, and a
+  correction **cascades**: downstream slots are re-routed through the
+  progression graph and every downstream match that was played on the old
+  result is voided. `finished_event_emitted_at` survives a void, so a replayed
+  match emits no second `MatchFinished` (D-CMP-12).
+- **Match history** (`competition_match_history`, design §8.6) — an
+  append-only timeline per match: scheduled, rescheduled, reported, confirmed,
+  disputed, resolved, recorded, corrected, voided by correction, cancelled,
+  plus `checked_in` and GameOps' `session_live` / `session_failed`, which are
+  reserved and written by nothing in 0.9. This is #116's "nachvollziehbare
+  Historie pro Match" without the chat, shown to both sides and to the desk.
 - **ParticipantProfile** — the module's read model of a person as a competitor
   (display name, tag), populated from Identity events (ADR-0004). Competition
   never reads Identity's `User` model.
@@ -339,7 +354,17 @@ GameOps is built against; the remaining rows are **proposed**.
 | `SignupOpened` / `SignupClosed` (D-CMP-15) | Signup opens (publish into an open window, reopen, scheduler tick) or shuts | `competition_id`, `event_id`, `brand_id`, `entrant_count`, `at` |
 | `EntrantRegistered` / `EntrantWithdrawn` / `EntrantCheckedIn` | An entrant joins, leaves, or is checked in | `entrant_id`, `competition_id`, `team_id`, `member_user_ids` (list of ULIDs), `reason` (withdrawn) |
 | `CompetitionStarted` / `CompetitionFinished` / `CompetitionCancelled` (D-CMP-15) | The lifecycle moves | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `status`, `at` |
-| `MatchResultReported` / `MatchDisputed` / `MatchDisputeResolved` (D-CMP-19) | A side reports; the sides disagree; the desk decides | `match_id`, `competition_id`, `entrant_id`, `user_id`, `at` |
+| `MatchResultReported` / `MatchDisputed` / `MatchDisputeResolved` (D-CMP-19) | A side reports; the sides disagree; the desk decides | `match_id`, `competition_id`, `brand_id`, `entrant_id`, `user_id`, `at` |
+
+Competition's own `MatchResultReported` is **not** GameOps' proposed event of
+the same name under "Consumes": same words, opposite direction. A participant's
+claim waits for the other side (§8.2); a handler's reported score records
+directly (D-CMP-11).
+
+The resolution note of `MatchDisputeResolved` is deliberately **not** on the
+payload. §8.4 requires it and both sides are shown it, but it is free text one
+participant wrote about another, and a contract event is read by modules with
+no business holding it. It lives one row away, in `competition_match_history`.
 
 ## Consumes
 

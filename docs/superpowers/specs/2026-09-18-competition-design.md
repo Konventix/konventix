@@ -630,3 +630,151 @@ out; the console says so on the check-in page.
 and a "never mind" travelling as a contract event would be consumed as a fact
 in its own right. Worth revisiting if a consumer ever provisions on
 `EntrantCheckedIn`.
+
+### §8.1, 2026-09-23 — `result_submission_mode` was enforced nowhere
+
+§8.1 names two knobs. The leaderboard slice implemented `proof_policy` and
+left the other one stored but unread: a repo-wide search found
+`result_submission_mode` only in the admin form, the `Data` object and the two
+lifecycle Actions that write it. Nothing consulted it, so a `desk_only`
+competition's verification queue filled with numbers typed by the competitors
+and, once §8.2's report path existed, would have taken their match reports
+too.
+
+Both submission Actions now ask it — `ReportMatchResult` refuses a participant
+report and `SubmitScoreEntry` refuses a participant score entry, while the
+desk path (`asOrganizer`) is never refused, because "the desk can always
+record". The refusal is in the Action and not only on the form, on the same
+standing as every other guard in this module: a client that ignores the
+interface must still be turned away.
+
+The column defaults to `desk_only`, so this changed the meaning of every
+existing test that submitted a score as a participant against a factory-made
+competition. `LeaderboardTest`'s stage helper now sets `participants`
+explicitly rather than inheriting the default.
+
+### §8.2, 2026-09-23 — a counter-report that agrees is a confirmation
+
+§8.2 draws step 2 as two branches: the other side **confirms**, or it
+**reports different scores** and the match is disputed. The implementation
+adds the third case the two branches leave out — the other side reports the
+*same* scores. Treating that as a disagreement would leave a match stuck
+because both sides pressed "report" instead of "confirm", which is a bug and
+not a rule, so `ReportMatchResult` compares the two claims and finalises when
+they agree. `ConfirmMatchResult` remains a separate Action and takes no
+scores at all: a confirming side saying "what they wrote is right" should not
+be re-typing numbers it could mistype.
+
+Two consequences worth naming. Reports are keyed by **slot position**, as
+§8.2 writes them, because a correction re-routes entrants through the
+progression graph (§8.5) and the slot is the stable thing over a match's life;
+comparing two claims is then an identity comparison of two maps with the same
+keys. And a side that reports twice replaces its own row rather than filing a
+second claim — a unique index on `(competition_match_id, entrant_id)` says the
+same thing — so the table carries `updated_at` where §8.2's sketch named only
+`created_at`.
+
+### §8.4, 2026-09-23 — the desk hears about a dispute from its screen, not a message
+
+§8.2 says "the desk is notified" when a match is disputed, and §12 lists
+Messaging as the channel for it. Competition has no list of who is on the
+desk: capabilities are per-brand role rows (ADR-0013) and `SendMessage`
+addresses one person. The opposing **roster** is notified when a result is
+reported (`competition.result-reported`), which is the half §8.2 can address;
+the desk's half is §9's open-dispute panel and §13's
+`competition_disputes_open` alert, both of which want to exist anyway.
+
+Read the other way round, §8.4's two capabilities settle something §8.2 leaves
+open: "`RecordResults` before a result exists, `CorrectResults` after" only
+means anything if a side can contest a result that is **already recorded**. So
+a *report* on a finished match is refused (§8.2, point 4) and a *dispute* on
+one is not — and resolving that dispute runs as a correction, with §8.5's
+cascade and no second `MatchFinished`.
+
+Also unbuilt from §8.4: the second thing it says can be disputed, "a rejected
+score entry that the participant contests". `RejectScoreEntry` records the
+rejection with its mandatory note and the participant can resubmit, but a
+leaderboard stage has no match to hang a dispute row on, and inventing a
+second dispute table for it would have been a bigger decision than this slice
+should take alone. The desk can verify an entry it rejected in error.
+
+### §8.5, 2026-09-23 — the correction note is mandatory exactly when something is voided
+
+§8.5 attaches the organizer's "mandatory `note`" to the
+`voided_by_correction` history row. A correction that changes nobody's
+position downstream — a rewritten score line with the same winner, or a
+correction in the last round — voids nothing and therefore owes no note, and
+the desk cannot know in advance which kind it is making. `CorrectMatchResult`
+therefore walks the successors and refuses the moment it finds the first
+result it would have to take away without a reason; the whole correction runs
+in one transaction, so a refusal leaves it unmade rather than half made.
+
+Two things the void does beyond what §8.5 lists, both for the same reason —
+the match is now between different teams:
+
+- the claims filed on it are **deleted**, because confirming one of them
+  afterwards would record a result nobody played;
+- `reported_at`, `disputed_at` and `dispute_resolved_at` are cleared.
+
+And one thing it deliberately does not do: `finished_event_emitted_at` is
+untouched, which is the whole of D-CMP-12 and is what `CorrectionCascadeTest`
+pins.
+
+`AdvanceBracket` was left alone. It fills slots and skips an edge whose
+outcome is null, because "not known yet" is the normal state of a bracket
+being played; a correction is the one caller for which a null outcome means
+the opposite — somebody who *was* there no longer belongs — so the emptying
+lives in `CorrectMatchResult` beside it rather than changing what advancing
+means for every other caller.
+
+### §8.6, 2026-09-23 — three kinds ship unwritten
+
+`MatchHistoryKind` carries all eleven kinds §8.6 lists plus GameOps'
+`session_live` and `session_failed`, so a rendered timeline does not change
+shape in 0.10 and the two modules cannot disagree about what the kinds are
+called. Nothing in 0.9 writes those two, and nothing writes `checked_in`
+either: check-in in this slice is per competition (§6), not per match. A test
+asserts the case list and that a match played end to end writes none of the
+three.
+
+`ScheduleMatch` writes `scheduled` and `rescheduled` but still emits neither
+`MatchRescheduled` nor `MatchCancelled` — §12 lists both as "as proposed in
+the SPEC", and a match cancellation has no Action at all yet. They belong with
+§9's scheduling panel.
+
+### §8.7, 2026-09-23 — the library takes the upload; it does not yet guard the read
+
+§8.7 asks the implementation to "confirm the library supports
+participant-originated uploads with per-object read authorization; if it does
+not, that becomes a Platform change *before* proofs ship, not a Competition
+workaround". It confirms half of it.
+
+**Uploads.** Platform's `StoreMediaUpload` takes an explicit brand and an
+uploader, so nothing in it is console-only; what was console-only was the
+*door*. `Actions\StoreProofImage` is the participant's door: it checks the
+competition's `proof_policy` and the caller's membership in the side, then
+hands the file to Platform's Action. Competition stores no file, knows no disk
+and builds no path (ADR-0035). The HTTP endpoint is
+`POST /tournaments/{competition}/proofs`, `auth` only, with §8.7's bounds —
+8 MB, image types, never SVG (#252).
+
+**The gate has to be at the door, not at the submission.** `proof_media_id` is
+a ULID, so by the time `SubmitScoreEntry` or `ReportMatchResult` can refuse a
+proof the image is already written. A `proof_policy` of `none` — the column's
+default — checked only at submission time would accept the upload, reject the
+participant's whole result over the attachment, and leave an orphaned object
+behind. The policy is therefore asked before a byte is stored; the two
+submission guards stay as backstops. `ProofPolicy::None` **refuses** rather
+than ignores, because §8.1's three values are the three answers to "may or
+must a result carry a proof" and a `none` that accepted and dropped the image
+would be `optional` under another name.
+
+**Reads are owed.** `MediaFileController` is deliberately unauthenticated and
+brand-agnostic (its own docblock says so), there is no per-item privacy flag,
+and no private disk is configured for media. So §8.7's "readable only by the
+two sides and the desk through a proxied route" does not hold: a proof is
+readable by anyone holding its ULID. That is the Platform change §8.7
+mandates, and it is recorded as owed in Competition's `TODO.md`. Nothing in
+this module moves when it lands — a media ULID is a media ULID whichever door
+it came in through — but **the participant-facing upload control should not
+ship until it does** (§10's slice).

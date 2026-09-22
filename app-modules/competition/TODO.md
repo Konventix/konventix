@@ -42,10 +42,37 @@ ADR-0062). The build order for #32, each item its own merge request:
       seed-order drag (§9 is the desk's), the `Tournament Desk` role (§11),
       and GDPR export plus the `competition_score_entries_unverified`
       metric for the new table (§13).
-- [ ] Results (D-CMP-19): `match_result_reports`, report / confirm /
-      dispute / resolve Actions, proofs through the media library, the
-      cascading correction that voids downstream results, and
-      `competition_match_history`.
+- [x] Results (D-CMP-19, #300): `match_result_reports` and
+      `competition_match_history`; `ReportMatchResult` / `ConfirmMatchResult`
+      / `DisputeMatchResult` / `ResolveDispute`, plus `RejectScoreEntry`,
+      which §8.3 owed and the leaderboard slice left here; the cascading
+      correction that re-routes the progression graph and voids every
+      downstream result played on the old one, with
+      `finished_event_emitted_at` surviving the void so a replay emits no
+      second `MatchFinished` (D-CMP-12). **Both of §8.1's knobs are now
+      enforced in Actions, not only offered on the form**: `proof_policy`
+      through `Proofs\ProofGate`, and `result_submission_mode`, which nothing
+      had checked — a `desk_only` competition now refuses a participant score
+      entry as well as a participant report.
+      Left for the slices that own them: the console dialogs and the
+      participant match page that drive all of this (§9, §10 — the Actions
+      and the upload endpoint are here, no screen is); the `Tournament Desk`
+      role and the capability checks at the routes (§11); GDPR export and
+      anonymisation for the two new tables plus `competition_disputes_open`,
+      its 30-minute alert and the dashboard row (§13); `MatchCancelled` and
+      `MatchRescheduled` as events — `ScheduleMatch` writes the history rows
+      but emits neither, and a match cancellation has no Action at all.
+- [ ] **Owed by Platform before proofs ship (design §8.7).** The media
+      library takes the upload — `StoreProofImage` hands the file to
+      `StoreMediaUpload` (ADR-0035) after checking the policy and the roster,
+      so a `none` competition refuses before a byte is stored. What it does
+      **not** have is the read half §8.7 asks for: a private disk and
+      per-object read authorization, "readable only by the two sides and the
+      desk through a proxied route". `MediaFileController` is deliberately
+      unauthenticated and brand-agnostic, and there is no per-item privacy
+      flag. Until Platform grows one, a proof is readable by anyone holding
+      its ULID. §8.7 is explicit that this is a Platform change and not a
+      Competition workaround; recorded in the design's §14.
 - [ ] Desk and public pages (D-CMP-20..22): seed order, generate / reset,
       per-round scheduling, the ported canvas bracket with its table view,
       event tournament index, competition, match and team pages, polling
