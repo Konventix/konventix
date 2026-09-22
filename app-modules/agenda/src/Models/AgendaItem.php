@@ -46,6 +46,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $cancelled_reason
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read Track|null $track
+ * @property-read Location|null $location
  */
 class AgendaItem extends Model
 {

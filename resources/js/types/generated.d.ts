@@ -141,6 +141,34 @@ declare namespace Konventix {
                 readonly venueId: string | null;
                 readonly position: number;
             };
+            export type NowNextCardData = {
+                readonly now: Konventix.Agenda.Data.ProgrammeCellData | null;
+                readonly next: Konventix.Agenda.Data.ProgrammeCellData | null;
+                readonly programmeUrl: string;
+            };
+            export type ProgrammeCellData = {
+                readonly itemId: string;
+                readonly title: string;
+                readonly speaker: string | null;
+                readonly location: string | null;
+                readonly startsAt: string | null;
+                readonly endsAt: string | null;
+                readonly rowSpan: number;
+                readonly cancelled: boolean;
+                readonly cancelledReason: string | null;
+            };
+            export type ProgrammeDayData = {
+                readonly dayId: string;
+                readonly label: string;
+                readonly date: string;
+                readonly trackNames: string[];
+                readonly rows: Konventix.Agenda.Data.ProgrammeRowData[];
+                readonly untracked: Konventix.Agenda.Data.ProgrammeCellData[];
+            };
+            export type ProgrammeRowData = {
+                readonly time: string;
+                readonly cells: Konventix.Agenda.Data.ProgrammeCellData[][];
+            };
             export type TrackData = {
                 readonly id: string | null;
                 readonly name: string;
