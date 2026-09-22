@@ -19,11 +19,26 @@ use Konventix\Agenda\Models\Track;
  * `agenda_items.track_id`, and it is why the editor can reorganize the
  * grid without losing the programme.
  *
- * Two details that are not free:
+ * Three details that are not free, all of them about the same index —
+ * `agenda_tracks` is unique on (event_id, name), and Postgres checks it
+ * immediately, one row at a time:
  *
- * - The deletions happen *before* the writes. `agenda_tracks` is unique on
- *   (event_id, name), so renaming "Bühne" to a name a departing track
- *   still holds would collide if the order were the other way round.
+ * - The deletions happen *before* the writes, so renaming "Bühne" to a name
+ *   a departing track still holds does not collide with a row that is on
+ *   its way out.
+ * - The surviving rows are then renamed *twice*: first to a placeholder, in
+ *   the same pass as the deletions, and only afterwards to the name the
+ *   payload asked for. Without that first phase, swapping two names in one
+ *   submit — "Bühne"→"Foyer" while "Foyer"→"Bühne" — raises
+ *   `SQLSTATE[23505]` on the first of the two writes, rolls the transaction
+ *   back, and loses every other rename and reorder the operator made in the
+ *   same save. Neither name is duplicated *within* the payload, so
+ *   `TrackData`'s `distinct` rule cannot see it; this is the same two-phase
+ *   shape `Konventix\Event\Actions\SyncEventDays` gives `sequence`.
+ *   The placeholder is written through the loaded model on purpose: a bulk
+ *   `UPDATE` would leave the in-memory rows holding their old names, the
+ *   final `save()` would find nothing dirty, and the placeholders would
+ *   stay in the database.
  * - Every read escapes `BrandScope` and filters on the brand by hand. The
  *   editor runs on the operator admin host, where the scope hardens to
  *   zero rows (ADR-0029), so a scoped read would find no existing tracks
@@ -57,7 +72,11 @@ final class SaveTracks
             foreach ($existing as $track) {
                 if (! in_array($track->id, $kept, true)) {
                     $track->delete();
+
+                    continue;
                 }
+
+                $track->forceFill(['name' => self::placeholderName($track->id)])->save();
             }
 
             foreach ($tracks as $track) {
@@ -77,5 +96,18 @@ final class SaveTracks
                 ])->save();
             }
         });
+    }
+
+    /**
+     * The name a surviving row wears between the two phases: its own ULID
+     * behind a fixed marker, padded past the 80 characters `TrackData`
+     * allows a name. Unique per row by construction, so two placeholders
+     * cannot collide with each other, and longer than any name the form
+     * accepts, so a placeholder cannot collide with a real one either. The
+     * column is a plain `string` (255), which leaves room for it.
+     */
+    private static function placeholderName(string $id): string
+    {
+        return str_pad("~agenda-renaming~{$id}", 96, '~');
     }
 }

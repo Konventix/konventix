@@ -17,7 +17,10 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  * and without a foreign key (ADR-0014) — display context only, so the rule
  * checks the shape and nothing else. `id` works exactly as it does on
  * `TrackData`: null for a place the editor has just added, the existing
- * ULID otherwise.
+ * ULID otherwise — and so does `distinct:ignore_case` on the name, which
+ * refuses two places called "Halle 3" in one submit rather than letting
+ * `agenda_locations`' unique(event_id, name) raise a 23505 that takes the
+ * rest of the save down with it. See `TrackData` for the reasoning in full.
  */
 #[TypeScript]
 final class LocationData extends Data
@@ -36,7 +39,7 @@ final class LocationData extends Data
     {
         return [
             'id' => ['nullable', 'ulid'],
-            'name' => ['required', 'string', 'max:80'],
+            'name' => ['required', 'string', 'max:80', 'distinct:ignore_case'],
             'venueId' => ['nullable', 'ulid'],
             'position' => ['required', 'integer', 'min:0'],
         ];

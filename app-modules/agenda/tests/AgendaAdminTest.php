@@ -81,6 +81,37 @@ it('saves tracks, locations and an item in one submit', function (): void {
 });
 
 /**
+ * `agenda_tracks` and `agenda_locations` are both unique on
+ * (event_id, name), and a unique violation inside the Action's transaction
+ * would be a 500 *and* the loss of every other rename and reorder in the
+ * same submit. The rule is on the Data class, so the error arrives on the
+ * offending row's own indexed key and the editor can show it there.
+ */
+it('refuses two tracks or two places with the same name in one submit', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('agenda');
+    $event = agendaPublishedEvent($brand);
+    [$operator, $admin] = agendaAdminOperator();
+
+    $this->actingAs($admin)
+        ->put("http://{$operator->admin_host}/admin/events/{$event->getKey()}/agenda", [
+            'tracks' => [
+                ['id' => null, 'name' => 'Bühne', 'position' => 1],
+                // Case alone is a typo, not a second track.
+                ['id' => null, 'name' => 'bühne', 'position' => 2],
+            ],
+            'locations' => [
+                ['id' => null, 'name' => 'Halle 3', 'venueId' => null, 'position' => 1],
+                ['id' => null, 'name' => 'Halle 3', 'venueId' => null, 'position' => 2],
+            ],
+        ])
+        ->assertSessionHasErrors(['tracks.0.name', 'tracks.1.name', 'locations.0.name', 'locations.1.name']);
+
+    expect(Track::withoutBrandScope()->where('event_id', $event->getKey())->count())->toBe(0)
+        ->and(Location::withoutBrandScope()->where('event_id', $event->getKey())->count())->toBe(0);
+});
+
+/**
  * An item is written through its own endpoint, because publishing and
  * calling off are separate acts with separate announcements behind them
  * (design §7) — `AgendaItemData` deliberately carries no `state`.

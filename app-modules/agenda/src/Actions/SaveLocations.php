@@ -22,9 +22,12 @@ use Konventix\Agenda\Models\Location;
  * editor is expected to ask first.
  *
  * The deletions run before the writes because `agenda_locations` is unique
- * on (event_id, name), and every read escapes `BrandScope` and filters the
- * brand by hand because this runs on the operator admin host, where the
- * scope hardens to zero rows (ADR-0029).
+ * on (event_id, name), a surviving row is renamed to a placeholder first
+ * and to its final name afterwards so that swapping two places' names in
+ * one submit cannot raise a 23505 and take the rest of the save with it,
+ * and every read escapes `BrandScope` and filters the brand by hand because
+ * this runs on the operator admin host, where the scope hardens to zero
+ * rows (ADR-0029). `SaveTracks`' docblock works all three through.
  *
  * `venue_id` is Event's venue by ULID and without a foreign key
  * (ADR-0014) — display context, written through unverified.
@@ -51,7 +54,11 @@ final class SaveLocations
             foreach ($existing as $location) {
                 if (! in_array($location->id, $kept, true)) {
                     $location->delete();
+
+                    continue;
                 }
+
+                $location->forceFill(['name' => self::placeholderName($location->id)])->save();
             }
 
             foreach ($locations as $location) {
@@ -72,5 +79,16 @@ final class SaveLocations
                 ])->save();
             }
         });
+    }
+
+    /**
+     * `SaveTracks::placeholderName()`'s twin: the row's own ULID behind a
+     * fixed marker, padded past the 80 characters `LocationData` allows a
+     * name, so it can collide neither with another placeholder nor with a
+     * name the form would accept.
+     */
+    private static function placeholderName(string $id): string
+    {
+        return str_pad("~agenda-renaming~{$id}", 96, '~');
     }
 }

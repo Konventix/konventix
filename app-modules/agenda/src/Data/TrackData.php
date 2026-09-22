@@ -15,9 +15,20 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  *
  * `id` is null for a track the editor has just added and carries the ULID
  * of an existing row otherwise — `SaveTracks` takes the whole set at once
- * and uses that to tell "renamed" from "new". Uniqueness of the name per
- * event is the table's unique index, not a rule here: it needs the event
- * this set belongs to, which the Action knows and the Data does not.
+ * and uses that to tell "renamed" from "new".
+ *
+ * `distinct` on the name is the *payload's* half of `agenda_tracks`'
+ * unique(event_id, name). The controller lifts these rules onto
+ * `tracks.*.`, so the rule compares the submitted set against itself and
+ * fails on the offending row's own indexed key, which the editor renders
+ * beside that row. Without it two columns typed "Bühne" reach Postgres,
+ * raise `SQLSTATE[23505]`, and roll the surrounding transaction back —
+ * losing every other rename and reorder in the same submit, with no field
+ * to point at. `ignore_case`, because two places that differ only in case
+ * are a typo rather than two places; the index is stricter about nothing
+ * and laxer about that one thing. The *stored* set is still the table's
+ * index to guard: that needs the event this payload belongs to, which the
+ * Action knows and the Data does not.
  */
 #[TypeScript]
 final class TrackData extends Data
@@ -35,7 +46,7 @@ final class TrackData extends Data
     {
         return [
             'id' => ['nullable', 'ulid'],
-            'name' => ['required', 'string', 'max:80'],
+            'name' => ['required', 'string', 'max:80', 'distinct:ignore_case'],
             'position' => ['required', 'integer', 'min:0'],
         ];
     }

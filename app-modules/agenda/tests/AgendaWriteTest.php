@@ -223,3 +223,55 @@ it('replaces the place set and leaves the items of a vanished place placeless', 
         ->and($talk->fresh()->location_id)->toBe($hall->id)
         ->and($meetup->fresh()->location_id)->toBeNull();
 });
+
+/**
+ * The case `distinct` cannot see: neither name is duplicated in the
+ * payload, and both of them are already taken in the database. Without the
+ * placeholder phase this is `SQLSTATE[23505]` on the first write, a 500,
+ * and the loss of everything else in the same submit.
+ */
+it('swaps two track names in one save', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    app(SaveTracks::class)->handle($eventId, $brand->id, [
+        TrackData::from(['id' => null, 'name' => 'Bühne', 'position' => 1]),
+        TrackData::from(['id' => null, 'name' => 'Foyer', 'position' => 2]),
+    ]);
+    $stage = Track::query()->where('name', 'Bühne')->firstOrFail();
+    $foyer = Track::query()->where('name', 'Foyer')->firstOrFail();
+
+    app(SaveTracks::class)->handle($eventId, $brand->id, [
+        TrackData::from(['id' => $stage->id, 'name' => 'Foyer', 'position' => 1]),
+        TrackData::from(['id' => $foyer->id, 'name' => 'Bühne', 'position' => 2]),
+    ]);
+
+    expect(Track::query()->where('event_id', $eventId)->count())->toBe(2)
+        ->and($stage->fresh()->name)->toBe('Foyer')
+        ->and($foyer->fresh()->name)->toBe('Bühne');
+});
+
+it('swaps two place names in one save, and leaves a place nobody renamed alone', function (): void {
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    app(SaveLocations::class)->handle($eventId, $brand->id, [
+        LocationData::from(['id' => null, 'name' => 'Halle 3', 'venueId' => null, 'position' => 1]),
+        LocationData::from(['id' => null, 'name' => 'Foyer', 'venueId' => null, 'position' => 2]),
+        LocationData::from(['id' => null, 'name' => 'Zeltplatz', 'venueId' => null, 'position' => 3]),
+    ]);
+    $hall = Location::query()->where('name', 'Halle 3')->firstOrFail();
+    $foyer = Location::query()->where('name', 'Foyer')->firstOrFail();
+    $camp = Location::query()->where('name', 'Zeltplatz')->firstOrFail();
+
+    app(SaveLocations::class)->handle($eventId, $brand->id, [
+        LocationData::from(['id' => $hall->id, 'name' => 'Foyer', 'venueId' => null, 'position' => 1]),
+        LocationData::from(['id' => $foyer->id, 'name' => 'Halle 3', 'venueId' => null, 'position' => 2]),
+        LocationData::from(['id' => $camp->id, 'name' => 'Zeltplatz', 'venueId' => null, 'position' => 3]),
+    ]);
+
+    // The untouched row matters: it is renamed to a placeholder and back in
+    // the same transaction, so a phase that forgot to write the final name
+    // would leave it wearing the placeholder.
+    expect($hall->fresh()->name)->toBe('Foyer')
+        ->and($foyer->fresh()->name)->toBe('Halle 3')
+        ->and($camp->fresh()->name)->toBe('Zeltplatz');
+});
