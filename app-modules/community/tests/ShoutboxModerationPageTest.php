@@ -18,6 +18,7 @@ use Konventix\Community\Models\EventPresence;
 use Konventix\Community\Models\Room;
 use Konventix\Community\Models\RoomMute;
 use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\HubAccess;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
@@ -42,20 +43,45 @@ use Spatie\Permission\PermissionRegistrar;
  */
 
 /**
- * An operator with an admin host and a user holding the given capabilities
- * on it, granted the way `permissions:sync` materialises them —
- * `agendaAdminOperator()`'s shape. The host is this file's own:
- * `operators.admin_host` is unique.
+ * The operator that owns `$brand`, given an admin host and a user holding
+ * the given capabilities on it — granted the way `permissions:sync`
+ * materialises them, `agendaAdminOperator()`'s shape.
+ *
+ * The desk only serves rooms whose brand belongs to the admin host's own
+ * operator, so the operator here is the brand's, not a fresh one. The host
+ * is this file's own: `operators.admin_host` is unique.
  *
  * @param  list<string>|null  $permissions
  * @return array{0: Operator, 1: User}
  */
-function shoutboxDeskOperator(?array $permissions = null): array
+function shoutboxDeskOperator(Brand $brand, ?array $permissions = null): array
+{
+    $operator = Operator::query()->findOrFail($brand->operator_id);
+
+    return [$operator, shoutboxDeskGrant($operator, 'admin.shoutbox.test', $permissions)];
+}
+
+/**
+ * A second operator with its own admin host and a full desk grant — the
+ * moderator of somebody else's installation.
+ *
+ * @return array{0: Operator, 1: User}
+ */
+function shoutboxDeskForeignOperator(): array
+{
+    $operator = Operator::factory()->create();
+
+    return [$operator, shoutboxDeskGrant($operator, 'admin.shoutbox-elsewhere.test', null)];
+}
+
+/**
+ * @param  list<string>|null  $permissions
+ */
+function shoutboxDeskGrant(Operator $operator, string $host, ?array $permissions): User
 {
     $permissions ??= ['platform.access-admin', Permission::ModerateCommunity->value];
 
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.shoutbox.test'])->save();
+    $operator->forceFill(['admin_host' => $host])->save();
 
     $registrar = app(PermissionRegistrar::class);
     $registrar->setPermissionsTeamId($operator->getKey());
@@ -76,7 +102,7 @@ function shoutboxDeskOperator(?array $permissions = null): array
 
     $registrar->setPermissionsTeamId(null);
 
-    return [$operator, $organizer];
+    return $organizer;
 }
 
 function shoutboxDeskUrl(Operator $operator, string $eventId, string $path = ''): string
@@ -97,7 +123,7 @@ it('lets an organizer with ModerateCommunity and no admission remove, mute and l
     $line = app(PostMessage::class)->handle($room, $authorId, new PostMessageData('Unfug'));
     $report = app(ReportMessage::class)->handle($line, (string) Str::ulid(), new ReportData('Beleidigend'));
 
-    [$operator, $organizer] = shoutboxDeskOperator();
+    [$operator, $organizer] = shoutboxDeskOperator($brand);
 
     // Never scanned in, never admitted: neither Platform's hub access nor
     // Community's badge has heard of this person.
@@ -182,7 +208,7 @@ it('reverses its own verbs: unlock, lift a mute, dismiss a report', function ():
     app(MuteParticipant::class)->handle($room, $authorId, (string) Str::ulid(), 'Abkühlen', null);
     app(LockRoom::class)->handle($room, (string) Str::ulid());
 
-    [$operator, $organizer] = shoutboxDeskOperator();
+    [$operator, $organizer] = shoutboxDeskOperator($brand);
 
     $this->actingAs($organizer)->delete(shoutboxDeskUrl($operator, $eventId, '/lock'))->assertRedirect();
     $this->actingAs($organizer)->delete(shoutboxDeskUrl($operator, $eventId, "/mutes/{$authorId}"))->assertRedirect();
@@ -209,7 +235,7 @@ it('refuses the desk to an admin without ModerateCommunity', function (): void {
     $eventId = (string) Str::ulid();
     $room = Room::factory()->create(['subject_id' => $eventId]);
 
-    [$operator, $admin] = shoutboxDeskOperator(['platform.access-admin']);
+    [$operator, $admin] = shoutboxDeskOperator($brand, ['platform.access-admin']);
 
     $this->actingAs($admin)->get(shoutboxDeskUrl($operator, $eventId))->assertForbidden();
     $this->actingAs($admin)->post(shoutboxDeskUrl($operator, $eventId, '/lock'))->assertForbidden();
@@ -231,7 +257,7 @@ it('enforces the mute reason and duration at the form', function (): void {
     Room::factory()->create(['subject_id' => $eventId]);
     $authorId = (string) Str::ulid();
 
-    [$operator, $organizer] = shoutboxDeskOperator();
+    [$operator, $organizer] = shoutboxDeskOperator($brand);
     $mute = shoutboxDeskUrl($operator, $eventId, "/mutes/{$authorId}");
 
     $this->actingAs($organizer)
@@ -253,12 +279,12 @@ it('enforces the mute reason and duration at the form', function (): void {
 });
 
 it('finds no desk for a brand with community switched off', function (): void {
-    $this->withBrand();
+    $brand = $this->withBrand();
 
     $eventId = (string) Str::ulid();
     $room = Room::factory()->create(['subject_id' => $eventId]);
 
-    [$operator, $organizer] = shoutboxDeskOperator();
+    [$operator, $organizer] = shoutboxDeskOperator($brand);
 
     $this->actingAs($organizer)->get(shoutboxDeskUrl($operator, $eventId))->assertNotFound();
     $this->actingAs($organizer)->post(shoutboxDeskUrl($operator, $eventId, '/lock'))->assertNotFound();
@@ -272,11 +298,11 @@ it('finds no desk for a brand with community switched off', function (): void {
  * and nothing to act on.
  */
 it('renders an empty desk for a wall nobody has opened, and refuses to act on it', function (): void {
-    $this->withBrand();
+    $brand = $this->withBrand();
 
     $eventId = (string) Str::ulid();
 
-    [$operator, $organizer] = shoutboxDeskOperator();
+    [$operator, $organizer] = shoutboxDeskOperator($brand);
 
     $this->actingAs($organizer)
         ->get(shoutboxDeskUrl($operator, $eventId))
@@ -290,4 +316,32 @@ it('renders an empty desk for a wall nobody has opened, and refuses to act on it
     $this->actingAs($organizer)->post(shoutboxDeskUrl($operator, $eventId, '/lock'))->assertNotFound();
 
     expect(Room::withoutBrandScope()->count())->toBe(0);
+});
+
+/**
+ * The room is found by event id across the whole installation, so the desk
+ * itself has to refuse a room whose brand belongs to another operator — a
+ * moderator on operator Y's admin host must not read or act on operator
+ * X's wall, even holding `ModerateCommunity` and knowing the event id.
+ */
+it('hides another operator\'s wall from a desk holding ModerateCommunity', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
+
+    $eventId = (string) Str::ulid();
+    $room = Room::factory()->create(['subject_id' => $eventId]);
+    $line = app(PostMessage::class)->handle($room, (string) Str::ulid(), new PostMessageData('Nur für die eigene Orga'));
+
+    [$elsewhere, $stranger] = shoutboxDeskForeignOperator();
+
+    expect($elsewhere->getKey())->not->toBe($brand->operator_id);
+
+    $this->actingAs($stranger)->get(shoutboxDeskUrl($elsewhere, $eventId))->assertNotFound();
+    $this->actingAs($stranger)->post(shoutboxDeskUrl($elsewhere, $eventId, '/lock'))->assertNotFound();
+    $this->actingAs($stranger)
+        ->delete(shoutboxDeskUrl($elsewhere, $eventId, "/messages/{$line->id}"), ['reason' => 'Fremd'])
+        ->assertNotFound();
+
+    expect($room->refresh()->locked_at)->toBeNull()
+        ->and($line->refresh()->isRemoved())->toBeFalse();
 });

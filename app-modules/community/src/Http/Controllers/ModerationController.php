@@ -25,7 +25,9 @@ use Konventix\Community\Models\MessageReport;
 use Konventix\Community\Models\Room;
 use Konventix\Community\Providers\CommunityServiceProvider;
 use Konventix\Community\Rooms\ModerationDesk;
+use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Modules\ModuleGate;
+use Konventix\Platform\Operators\OperatorContext;
 
 /**
  * Operator console: one event's shoutbox desk (design §8, ADR-0029) — the
@@ -43,7 +45,8 @@ use Konventix\Platform\Modules\ModuleGate;
  * is the room's own: `community_rooms` is unique on the subject, so an
  * event id names at most one room, and `ModuleGate::isActiveForBrand()`
  * with that room's brand is what makes a brand with `community` off find no
- * desk (ADR-0003) — `AgendaAdminController`'s division.
+ * desk (ADR-0003) — `AgendaAdminController`'s division. The room's brand
+ * must also belong to this admin host's operator (`ensureReachable()`).
  *
  * **The console never creates a room.** It knows the event only by the id
  * in its URL — Community keeps no event read model — so it has no brand to
@@ -63,7 +66,7 @@ final class ModerationController
         $room = $this->find($event);
 
         if ($room !== null) {
-            $this->ensureActive($room);
+            $this->ensureReachable($room);
         }
 
         return Inertia::render('admin/community/Shoutbox', [
@@ -193,19 +196,43 @@ final class ModerationController
 
     /**
      * The room a write acts on, or a 404 — for an event with no room yet,
-     * and for one whose brand has `community` switched off.
+     * for one on another operator's brand, and for one whose brand has
+     * `community` switched off.
      */
     private function room(string $event): Room
     {
         $room = $this->find($event) ?? abort(404);
 
-        $this->ensureActive($room);
+        $this->ensureReachable($room);
 
         return $room;
     }
 
-    private function ensureActive(Room $room): void
+    /**
+     * Two things the room lookup cannot say by itself, because it finds the
+     * room by event id across every brand of the installation:
+     *
+     * 1. **the room's brand belongs to the operator whose admin host this
+     *    is** (`OperatorContext`, set by `EnsureOperatorHost`) — the
+     *    capability was checked against that operator's team, so without
+     *    this a moderator of operator Y who knew an event id of operator X
+     *    could read X's queue and act on X's wall. Platform's own consoles
+     *    scope the same way (`BrandMenuAdminController`);
+     * 2. `community` is active for that brand (ADR-0003) — the admin host
+     *    resolves no brand for the route middleware to gate on.
+     *
+     * Both answer 404: a wall this desk may not see is a wall it does not
+     * know about.
+     */
+    private function ensureReachable(Room $room): void
     {
+        $operator = app(OperatorContext::class)->current() ?? abort(404);
+
+        abort_unless(
+            Brand::query()->whereKey($room->brand_id)->where('operator_id', $operator->getKey())->exists(),
+            404,
+        );
+
         abort_unless(
             app(ModuleGate::class)->isActiveForBrand(CommunityServiceProvider::moduleName(), $room->brand_id),
             404,
