@@ -22,6 +22,9 @@ use Konventix\Competition\Gdpr\CompetitionGdprHandler;
 use Konventix\Competition\Listeners\ProjectAdmissionPresence;
 use Konventix\Competition\Listeners\ProjectEligibilityOnRegistrationEvents;
 use Konventix\Competition\Listeners\ProjectParticipantProfile;
+use Konventix\Competition\Seeding\RandomSeedSource;
+use Konventix\Competition\Seeding\SeedSourceRegistry;
+use Konventix\Competition\Seeding\SignupField;
 use Konventix\Competition\Standings\Calculators\DoubleEliminationStandingsCalculator;
 use Konventix\Competition\Standings\Calculators\GroupStandingsCalculator;
 use Konventix\Competition\Standings\Calculators\PointsStandingsCalculator;
@@ -93,6 +96,21 @@ class CompetitionServiceProvider extends ModuleServiceProvider
             $registry->register(new PointsStandingsCalculator);
             $registry->register(new SwissStandingsCalculator);
             $registry->register(new GroupStandingsCalculator);
+
+            return $registry;
+        });
+
+        // Where a stage's field comes from (design §7.3). One entry today:
+        // a stage seeded from signup, ordered at random until the desk drags
+        // it (`ManualSeedSource`, which is an explicit override and therefore
+        // never registered). `PreviousStageSeedSource` is the second entry
+        // and the reason this is a registry at all — adding it is this one
+        // `register()` call and nothing else, because `SeedStage` already
+        // asks here and already passes nothing but the stage.
+        $this->app->singleton(SeedSourceRegistry::class, function ($app): SeedSourceRegistry {
+            $registry = new SeedSourceRegistry;
+
+            $registry->register(new RandomSeedSource($app->make(SignupField::class)));
 
             return $registry;
         });

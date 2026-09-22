@@ -27,10 +27,21 @@ ADR-0062). The build order for #32, each item its own merge request:
       from `UserProfileUpdated`.
 - [ ] Check-in (D-CMP-18): the presence read model from Admission's events,
       `CheckInEntrant` / `UndoCheckIn`, self-service window, desk list.
-- [ ] Leaderboard format (D-CMP-16): `competition_score_entries`,
-      `LeaderboardSettings`, `LeaderboardStandingsCalculator`, submit and
-      verify Actions; `entry_source` / `advance_count` on stages and the
-      `SeedSource` seam, single stage in the UI.
+- [x] Leaderboard format (D-CMP-16, #299): `competition_score_entries`,
+      `LeaderboardSettings`, `LeaderboardStandingsCalculator`,
+      `SubmitScoreEntry` / `VerifyScoreEntry`; `entry_source` /
+      `advance_count` on stages and the `SeedSource` seam
+      (`SignupField` + `RandomSeedSource` / `ManualSeedSource`,
+      `SeedStage`), plus `RegenerateBracket` — §7.5's "regeneration is
+      allowed until the first result", which `GenerateBracket`'s flat
+      refusal could not express. `StageFormat` is now the closed set of
+      stage formats, since `FormatRegistry` holds only the five that draw a
+      bracket and a leaderboard draws none. Left for the slices that own
+      them: rejecting a score entry with a note and the dispute it shares a
+      screen with (§8.3 is results'), the desk's verification queue and the
+      seed-order drag (§9 is the desk's), the `Tournament Desk` role (§11),
+      and GDPR export plus the `competition_score_entries_unverified`
+      metric for the new table (§13).
 - [ ] Results (D-CMP-19): `match_result_reports`, report / confirm /
       dispute / resolve Actions, proofs through the media library, the
       cascading correction that voids downstream results, and

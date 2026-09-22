@@ -287,10 +287,26 @@ makes participant submission safe.
 ### How a plan becomes a bracket
 
 Generators are pure and never touch the database. `GenerateBracket` is the only
-writer: it resolves the stage's entrants into seed order, asks the registry for
-the format, and persists the returned plan as matches, slots, and
-`match_connections` edges. It refuses to regenerate a stage rather than
-orphaning recorded results.
+writer: it takes the stage's field in seed order from `SignupField`, asks the
+registry for the format, and persists the returned plan as matches, slots, and
+`match_connections` edges. It refuses to run twice rather than orphaning
+recorded results.
+
+**Seeding is its own step** (D-CMP-20, design §7.3/§7.5). `SeedStage` asks a
+`SeedSource` for the order and writes `entrants.seed`; `SeedSourceRegistry`
+resolves the stage's `entry_source` to one. `RandomSeedSource` is the default
+and `ManualSeedSource` carries the desk's drag order as an explicit override.
+`PreviousStageSeedSource` — the one that reads the preceding stage's standings
+and takes its `advance_count` — is the reason the seam exists and is not built:
+adding it is one `register()` call, and no caller changes.
+
+**Regeneration is allowed until the first result.** `RegenerateBracket` deletes
+a stage's matches, slots, edges and standings and draws it again, so a desk
+that spots a wrong seeding fixes it instead of living with it. Both it and
+`SeedStage` refuse once any match of the stage is finished, has a winner, or
+carries a score — seeds break ties in every calculator, so renumbering after a
+result rewrites the table the results produced. Regenerating does **not**
+re-seed: a hand-dragged order survives the redraw.
 
 `AdvanceBracket` walks those edges: given a finished match it moves the winner
 (and, in double elimination, the loser) into the slot the graph names. It is
