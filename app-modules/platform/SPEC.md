@@ -88,7 +88,12 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
     admitted to on this brand, answered from `platform_hub_access` and cached
     under `hub-access:{brand}:{user}` for ten minutes, memoised per request and
     per viewer. It is what the shared `activeEvent` prop and the topbar pill
-    are built from. A guest costs nothing: no cache read, no query.
+    are built from. A guest costs nothing: no cache read, no query. A member
+    costs that read plus one `hub-layout:{event}` read per active event —
+    `hubReplacesHome` rides on `ActiveEventData` so the topbar and
+    `StaticPageController::home()` decide the home switch from one answer, and
+    it is deliberately not baked into the per-member key, which nothing
+    forgets when a layout changes.
   - Two projections, both rebuildable by replay and neither of them a source
     of truth: `platform_hub_access` (`Models\HubAccess`) from Admission's
     four participant events, and `platform_hub_layouts`

@@ -18,12 +18,26 @@ use Konventix\Platform\Models\HubAccess;
  * admitted to what. Registered in
  * `PlatformServiceProvider::registerListeners()`.
  *
- * Every handler is idempotent so a redelivered event changes nothing: the
- * row is keyed by `(event_id, user_id)`, `handleAdmitted()` upserts by
- * that key, and the other three tolerate a row that is already flipped,
- * already carrying the new value, or already gone. Each ends by forgetting
- * the member's cache entry, so the next request sees the change rather than
- * the TTL.
+ * The row **converges** on redelivery rather than every handler being
+ * strictly idempotent, and the difference matters to three callers.
+ * The row is keyed by `(event_id, user_id)`; `handleAdmitted()` upserts by
+ * that key and the other three tolerate a row that is already flipped,
+ * already carrying the new value, or already gone. But `handleAdmitted()`
+ * writes `on_site: true` unconditionally — a false→true admission *is* an
+ * accepted `in` scan — so a redelivered `ParticipantAdmitted` can put
+ * somebody who has since left back on site until the next presence event
+ * corrects it. That is the contract on purpose: admission asserts presence,
+ * `handlePresenceChanged()` corrects it, and the order of the two is what
+ * makes the pair right.
+ *
+ * Which is why `ProjectEventPresence`'s unique-collision branch and its
+ * marker retries can afford to deliver `ParticipantAdmitted` twice, and why
+ * `admission:replay-presence` always emits `ParticipantPresenceChanged`
+ * with the row's `last_direction` straight after the admission it replays —
+ * a replay without it would put everyone who had gone home back on site.
+ *
+ * Each handler ends by forgetting the member's cache entry, so the next
+ * request sees the change rather than the TTL.
  *
  * The events arrive from queue workers with no ambient brand, so every
  * query escapes the brand scope by the payload's own brand id (ADR-0010),

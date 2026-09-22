@@ -186,7 +186,11 @@ reading either.
   handlers behind those events are not queued, so one of them throwing fails
   the job after the row was saved; deciding "did this transition?" from the
   saved row would let the retry swallow the event for good. The markers move
-  only after the dispatch, so a retry re-emits exactly once.
+  only after the dispatch, so a retry re-emits exactly once. Null means
+  nothing has been announced yet and is never defaulted to a value on
+  insert — a row that reached `hub_access = false` with the marker still
+  null is one two dispatches died on, and the sweeps keep picking it up
+  until it is settled.
   `admission:replay-presence` re-emits `ParticipantAdmitted` and
   `ParticipantPresenceChanged` for every row that still has access (`--event`
   scopes it), and `--event=… --seed` rebuilds an event's rows from its

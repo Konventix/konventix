@@ -299,11 +299,21 @@ vendor/bin/sail artisan admission:replay-presence --event=EVENT_ULID --seed
 It walks that event's **accepted** check-ins oldest first through the same
 projection a live scan uses, so the rows, the day windows and the
 `ParticipantAdmitted` events come out identical; a holder whose last scan was
-`out` gets the hub with a grey dot, not a green one. It then runs the window
-sweep once, so a row rebuilt from an earlier day does not claim access it has
-already lost. Rejected scans and scans that never resolved to an admission are
-skipped, as they were on the day. Safe to run twice — every consumer upserts —
-and safe to run while the event is live.
+`out` gets the hub with a grey dot, not a green one. Rejected scans and scans
+that never resolved to an admission are skipped, as they were on the day. Safe
+to run twice — every consumer upserts — and safe to run while the event is
+live.
+
+One thing it does that is **not** scoped by `--event` and not scoped by brand:
+it finishes with one run of the window sweep, the same pass
+`admission:close-presence-windows` makes every minute, so a row it rebuilt from
+an earlier day does not sit there claiming access it has already lost. That
+pass ends every expired window **on the deployment** and emits
+`ParticipantHubAccessEnded` for each, across all brands — which is what the
+scheduler would have done a minute later anyway, and is a no-op for rows
+already closed. It prints no count of its own; the seed line counts scans, not
+endings. If the scheduler role is healthy there is nothing here to think
+about; if it has been down, expect the sweep's backlog to clear on this run.
 
 **A participant was scanned in and has no pill.** Work down, in this order:
 
@@ -345,6 +355,36 @@ and safe to run while the event is live.
    answer should be impossible — but forgetting it by hand is harmless and
    settles the question:
    `vendor/bin/sail artisan tinker --execute 'Cache::forget("hub-access:BRAND_ULID:USER_ULID");'`
+
+**A pill that will not go away.** The inverse, and the one worth knowing by
+name: the event is over — or the admission was revoked, or the day ended — and
+the participant still has the pill and still reaches `/live`.
+
+1. **Is Admission's row closed?** `admission_event_presence` for that event and
+   user. `hub_access = false` there but a `platform_hub_access` row still
+   standing means the ending was decided and never announced, or announced and
+   never projected: Admission's side is right and Platform's is stale.
+2. **Both rows still open?** Then nothing decided the ending. For a
+   `once_per_day` window that is the scheduler (see **The sweep** above); for a
+   concluded or cancelled event it is the queued listener on Event's own event,
+   the same chain as step 1 of the previous list.
+3. **The repair either way is the projection, not the row.** Deciding an ending
+   twice is safe — the presence row carries what has actually been announced,
+   so a second pass emits once and only for what is genuinely outstanding:
+
+   ```
+   vendor/bin/sail artisan admission:close-presence-windows
+   ```
+
+   for a window that should have closed, and for anything else the event's own
+   close path. Do **not** delete the `platform_hub_access` row by hand; it comes
+   back on the next admission and the presence row still says access was never
+   ended.
+4. **Green dot on somebody who left?** That is `on_site`, a badge and never a
+   gate. `ParticipantAdmitted` asserts it true by definition and the presence
+   event that follows corrects it, so a redelivered admission can flip it back
+   for as long as it takes the next presence event to arrive. A check-out scan,
+   or `admission:replay-presence --event=EVENT_ULID`, settles it.
 
 **A layout change did not apply.** The operator's composition per event —
 card order, hidden cards, and the "Startseite wird zum Hub" switch — is saved

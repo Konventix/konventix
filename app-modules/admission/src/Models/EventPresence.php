@@ -27,7 +27,11 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * actually carried out of this module. They move only after the event was
  * dispatched, so a job that dies between the save and the dispatch re-emits
  * on its retry instead of deciding, from the already-saved row, that
- * nothing transitioned (D-HUB-01).
+ * nothing transitioned (D-HUB-01). Null means *nothing has been announced
+ * yet* and is never defaulted to a value on insert: false would assert an
+ * announcement that was never made, and a row that ended up `hub_access =
+ * false` with a null marker is a row two dispatches died on, which
+ * `ProjectEventPresence::unsettled()` has to keep picking up.
  *
  * @property string $id
  * @property string $brand_id

@@ -285,23 +285,42 @@ final class ProjectEventPresence
 
     /**
      * "Not settled yet": the row still has access, or it lost access
-     * without the platform ever being told. Everything else — access
-     * already gone *and* already announced — is done with.
+     * without the platform ever being told, or nothing about it has ever
+     * been announced at all. Only a row whose access is gone *and* whose
+     * going was announced is done with.
+     *
+     * The third term is not belt and braces. A freshly inserted row carries
+     * `announced_hub_access = null`, and a scan whose admitted announcement
+     * exhausted its retries leaves it there: the event then concludes,
+     * `endRow()` writes `hub_access = false` and emits — and if *that*
+     * dispatch dies too the row is `(false, null)`, which neither of the
+     * first two terms matches. Nothing would ever look at it again,
+     * `platform_hub_access` would keep its row, and the participant would
+     * keep the pill and `/live` after the event ended — the exact silence
+     * these markers exist to break. `admission:replay-presence` cannot
+     * repair it either; it replays rows that still have access.
+     *
+     * Null is the right sentinel and is deliberately not defaulted to false
+     * on insert: false asserts an announcement that was never made. The
+     * widening does pull in rows that lost access without ever having been
+     * announced admitted, and `endRow()` then emits
+     * `ParticipantHubAccessEnded` for one of them — which is a no-op
+     * against `ProjectHubAccess::handleEnded()`'s `delete()`.
      *
      * @param  Builder<EventPresence>  $query
      */
     private function unsettled(Builder $query): void
     {
-        $query->where('hub_access', true)->orWhere('announced_hub_access', true);
+        $query->where('hub_access', true)
+            ->orWhere('announced_hub_access', true)
+            ->orWhereNull('announced_hub_access');
     }
 
     /**
-     * Rows that still have access, plus the rows whose loss of access was
-     * never announced — a job that saved `hub_access = false` and then died
-     * before its event got out would otherwise never be picked up again,
-     * because it no longer matches "still has access". Ending twice still
-     * emits once, now by the marker rather than by the flag, and the count
-     * only counts the rows that actually lost access here.
+     * Every row `unsettled()` still has something to say about — see there
+     * for why "still has access" alone is not the filter. Ending twice
+     * still emits once, now by the marker rather than by the flag, and the
+     * count only counts the rows that actually lost access here.
      *
      * Chunked by id because the loop mutates the very column the query
      * filters on — offset paging would skip every other page.
@@ -329,6 +348,16 @@ final class ProjectEventPresence
      * decided it: the state first, the event second, the acknowledgement
      * last. Returns whether this call is what took the access away, so a
      * pass that only finishes an interrupted one is not counted twice.
+     *
+     * On such a finishing pass the emitted `reason` can disagree with the
+     * `access_ended_reason` already stamped on the row: a `day_ended` sweep
+     * that died before its dispatch, later picked up by `EventConcluded`,
+     * announces `concluded` while the column still says `day_ended`. The
+     * column is not re-stamped on purpose — it records which door the
+     * access actually left through, which the first pass got right, and the
+     * runbook reads it for exactly that (`docs/operations.md`, step 3). The
+     * event's `reason` is a display and metric label, and `handleEnded()`
+     * deletes the row whatever it says.
      */
     private function endRow(EventPresence $presence, HubAccessEndReason $reason, CarbonImmutable $at): bool
     {

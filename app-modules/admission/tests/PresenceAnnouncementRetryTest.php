@@ -44,13 +44,14 @@ beforeEach(function (): void {
 });
 
 /**
- * Registers a listener that throws the first time it is handed the event
- * and counts the deliveries that got through afterwards.
+ * Registers a listener that throws the first time it is handed the event —
+ * or every time, with `$alwaysThrows`, which is the job that exhausts its
+ * retries — and counts the deliveries that got through afterwards.
  *
  * @param  class-string  $event
  * @return object{delivered: int, survived: int}
  */
-function presenceAnnouncementTrap(string $event): object
+function presenceAnnouncementTrap(string $event, bool $alwaysThrows = false): object
 {
     $counters = new class
     {
@@ -59,10 +60,10 @@ function presenceAnnouncementTrap(string $event): object
         public int $survived = 0;
     };
 
-    EventBus::listen($event, function () use ($counters): void {
+    EventBus::listen($event, function () use ($counters, $alwaysThrows): void {
         $counters->delivered++;
 
-        if ($counters->delivered === 1) {
+        if ($alwaysThrows || $counters->delivered === 1) {
             throw new RuntimeException('the handler behind this event blew up');
         }
 
@@ -152,4 +153,55 @@ it('re-emits ParticipantPresenceChanged on the retry so the on-site badge cannot
 
     $attempt();
     expect($trap->delivered)->toBe(2);
+});
+
+/**
+ * The third state, and the one that produces the inverse symptom: a pill
+ * that will not go away.
+ *
+ * A freshly inserted row carries `announced_hub_access = null`. If the
+ * admitted announcement exhausts its retries, the marker stays null — and
+ * when the event then concludes, `endRow()` flips `hub_access` and emits,
+ * and if *that* dispatch dies too the row is `(false, null)`. A filter of
+ * "still has access, or lost it having been announced" matches neither
+ * term, so nothing would ever look at the row again: Platform keeps its
+ * `platform_hub_access` row and the participant keeps the pill and `/live`
+ * after the event is over. `admission:replay-presence` cannot repair it
+ * either — it replays rows that still have access.
+ */
+it('still finishes a row whose admitted announcement never got out either', function (): void {
+    // The admitted announcement fails for good: three attempts, all thrown.
+    $admitted = presenceAnnouncementTrap(ParticipantAdmitted::class, alwaysThrows: true);
+    $action = app(ProjectEventPresence::class);
+
+    foreach (range(1, 3) as $ignored) {
+        expect(fn () => $action->checkIn($this->brand->id, $this->eventId, $this->admission->id, 'in', $this->scannedAt))
+            ->toThrow(RuntimeException::class);
+    }
+
+    expect($admitted->survived)->toBe(0)
+        ->and(EventPresence::query()->where('user_id', $this->holder->id)->firstOrFail())
+        ->hub_access->toBeTrue()
+        ->announced_hub_access->toBeNull();
+
+    // The event concludes, and that announcement dies once as well.
+    $ended = presenceAnnouncementTrap(ParticipantHubAccessEnded::class);
+    $sweep = fn (): int => $action->endForEvent($this->brand->id, $this->eventId, HubAccessEndReason::Concluded, $this->scannedAt);
+
+    expect($sweep)->toThrow(RuntimeException::class);
+
+    $row = EventPresence::query()->where('user_id', $this->holder->id)->firstOrFail();
+    expect($row->hub_access)->toBeFalse()
+        ->and($row->announced_hub_access)->toBeNull();
+
+    // Neither "has access" nor "was announced gone" — and it still has to
+    // be picked up, or the pill never goes away.
+    $sweep();
+
+    expect($ended->survived)->toBe(1)
+        ->and(EventPresence::query()->where('user_id', $this->holder->id)->firstOrFail()->announced_hub_access)->toBeFalse();
+
+    // Settled now: a further sweep says nothing.
+    $sweep();
+    expect($ended->delivered)->toBe(2);
 });

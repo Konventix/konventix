@@ -13,8 +13,12 @@ use Konventix\Platform\Models\HubAccess;
 
 /**
  * Which running event the signed-in user is admitted to on this brand
- * (design §5.1). Scoped per request; one cache read for a member, none at
- * all for a guest — the guest home page must stay as cheap as it is.
+ * (design §5.1). Scoped per request. A guest costs nothing at all — no
+ * cache read, no query — and the guest home page stays as cheap as it was.
+ * A member costs one cache read for the projection, plus one more per
+ * active event for that event's layout, which is where `hubReplacesHome`
+ * comes from; in practice that is one or two, since a person is admitted
+ * to one event at a time.
  *
  * The cache holds plain arrays under `hub-access:{brand}:{user}` and all
  * four `ProjectHubAccess` handlers forget that key, so a stale answer
