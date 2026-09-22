@@ -44,6 +44,42 @@ class Entrant extends Model
     }
 
     /**
+     * The states that hold a slot against the participant limit (design
+     * §5.4). Wider than `isActive()` on purpose: an `incomplete` roster is
+     * not in the bracket and not playable, but it keeps its place until the
+     * organizer fills it from the interested list or declines it — otherwise
+     * the fill-up at signup close would have nothing left to fill.
+     *
+     * @return list<string>
+     */
+    public static function slotHoldingStates(): array
+    {
+        return [
+            EntrantState::Incomplete->value,
+            EntrantState::Registered->value,
+            EntrantState::CheckedIn->value,
+        ];
+    }
+
+    /**
+     * How many entrants hold a slot in a competition — the number the
+     * participant limit is measured against and the one `SignupClosed`
+     * carries (design §4, §5.4).
+     *
+     * Escapes `BrandScope` and states the brand itself: the console runs on
+     * the admin host, where the scope hardens to zero rows (ADR-0029), and a
+     * relation count would re-apply it (.ai/rules/app-modules-src.md).
+     */
+    public static function countSlotHolders(string $brandId, string $competitionId): int
+    {
+        return self::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('competition_id', $competitionId)
+            ->whereIn('state', self::slotHoldingStates())
+            ->count();
+    }
+
+    /**
      * @return BelongsTo<Competition, $this>
      */
     public function competition(): BelongsTo

@@ -4,6 +4,7 @@ import {
     ClipboardList,
     FileSearch,
     FileText,
+    Gamepad2,
     Gauge,
     HardDrive,
     HeartPulse,
@@ -26,6 +27,7 @@ import {
     Store,
     Ticket,
     Timer,
+    Trophy,
     Users,
 } from '@lucide/vue';
 import type { Component } from 'vue';
@@ -44,6 +46,7 @@ const iconMap: Record<string, Component> = {
     'clipboard-list': ClipboardList,
     'file-search': FileSearch,
     'file-text': FileText,
+    'gamepad-2': Gamepad2,
     'hard-drive': HardDrive,
     'heart-pulse': HeartPulse,
     'layout-grid': LayoutGrid,
@@ -66,6 +69,7 @@ const iconMap: Record<string, Component> = {
     store: Store,
     ticket: Ticket,
     timer: Timer,
+    trophy: Trophy,
     users: Users,
 };
 

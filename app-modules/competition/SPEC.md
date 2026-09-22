@@ -29,7 +29,9 @@ the flows.
   text, its check-in and result-submission policy, and its **lifecycle
   status** (D-CMP-15): `Draft → Published → SignupClosed → Running →
   Finished`, `Cancelled` from anything but `Finished`, transitions enforced
-  by the enum. `SignupClosed` exists so an organizer can close signups and
+  by the enum (`Published → Draft` unpublishes, `SignupClosed → Published`
+  reopens). The **format is not here**: it belongs to the stage (design
+  §7.1), and `competitions.format` was dropped with the lifecycle. `SignupClosed` exists so an organizer can close signups and
   resolve incomplete teams before anything starts. Where the discipline is a
   video game, `Discipline` references the game by GameOps game ULID and is
   itself the source of record for team size, duration hints and draws
@@ -316,10 +318,11 @@ GameOps is built against; the remaining rows are **proposed**.
 | `MatchResultCorrected` *(proposed, decision log Round 6, D-CMP-12)* | The tournament desk corrects an already-recorded result | `match_id`, `competition_id`, `previous_winner_entrant_id`, `winner_entrant_id`, `scores` (scalars per entrant), `corrected_by_user_id`, `corrected_at` |
 | `MatchCancelled` *(proposed)* | A scheduled match will not be played | `match_id`, `competition_id`, `cancelled_at`, `reason` |
 | `MatchRescheduled` *(proposed)* | A scheduled match moves in time | `match_id`, `competition_id`, `previous_scheduled_at`, `scheduled_at` |
-| `CompetitionPublished` *(proposed)* | A competition becomes publicly visible | `competition_id`, `event_id`, `game_id`, `game_mode`, `max_participants`, `team_size` |
-| `SignupOpened` / `SignupClosed` *(proposed)* | The signup window opens or closes | `competition_id`, `event_id`, `opened_at` / `closed_at`, `entrant_count` |
+| `CompetitionPublished` (D-CMP-15) | A competition becomes publicly visible | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `name`, `status`, `starts_at`, `at` |
+| `CompetitionRescheduled` (D-CMP-15) | An announced competition's `starts_at` moves | `competition_id`, `event_id`, `brand_id`, `previous_starts_at`, `starts_at`, `at` |
+| `SignupOpened` / `SignupClosed` (D-CMP-15) | Signup opens (publish into an open window, reopen, scheduler tick) or shuts | `competition_id`, `event_id`, `brand_id`, `entrant_count`, `at` |
 | `EntrantRegistered` / `EntrantWithdrawn` / `EntrantCheckedIn` | An entrant joins, leaves, or is checked in | `entrant_id`, `competition_id`, `team_id`, `member_user_ids` (list of ULIDs), `reason` (withdrawn) |
-| `CompetitionStarted` / `CompetitionFinished` / `CompetitionCancelled` (D-CMP-15) | The lifecycle moves | `competition_id`, `event_id`, `discipline_id`, `status`, `at` |
+| `CompetitionStarted` / `CompetitionFinished` / `CompetitionCancelled` (D-CMP-15) | The lifecycle moves | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `status`, `at` |
 | `MatchResultReported` / `MatchDisputed` / `MatchDisputeResolved` (D-CMP-19) | A side reports; the sides disagree; the desk decides | `match_id`, `competition_id`, `entrant_id`, `user_id`, `at` |
 
 ## Consumes

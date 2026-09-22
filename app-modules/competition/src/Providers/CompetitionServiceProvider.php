@@ -22,6 +22,8 @@ use Konventix\Competition\Standings\Calculators\SwissStandingsCalculator;
 use Konventix\Competition\Standings\StandingsCalculatorRegistry;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Navigation\NavigationItem;
+use Konventix\Platform\Navigation\NavigationRegistry;
 use Konventix\Platform\Permissions\DefaultRole;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationSubmitted;
@@ -82,6 +84,39 @@ class CompetitionServiceProvider extends ModuleServiceProvider
 
             return $registry;
         });
+    }
+
+    /**
+     * Design §9: the two console screens this slice ships, in the operator
+     * area (ADR-0029). Admin entries carry no brand gate — there is no brand
+     * on that host — so the capability is the only filter, and the registry
+     * applies it at render time.
+     *
+     * `order` sits with Resources' pair (40/41): both are things an
+     * organizer configures per event rather than daily operations.
+     */
+    protected function registerNavigation(): void
+    {
+        $this->app->make(NavigationRegistry::class)->add(
+            new NavigationItem(
+                module: 'competition',
+                label: 'Competitions',
+                url: '/admin/competitions',
+                icon: 'trophy',
+                order: 50,
+                permission: Permission::ViewCompetitions->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+            new NavigationItem(
+                module: 'competition',
+                label: 'Disciplines',
+                url: '/admin/disciplines',
+                icon: 'gamepad-2',
+                order: 51,
+                permission: Permission::ManageDisciplines->value,
+                area: NavigationItem::AREA_ADMIN,
+            ),
+        );
     }
 
     protected function registerListeners(): void

@@ -10,11 +10,17 @@ Design settled 2026-09-18 in
 `docs/superpowers/specs/2026-09-18-competition-design.md` (D-CMP-15..25,
 ADR-0062). The build order for #32, each item its own merge request:
 
-- [ ] Lifecycle and admin CRUD (D-CMP-15): `CompetitionStatus` with enforced
-      transitions and `SignupClosed`; drop `competitions.format` in favour
-      of the first stage; `starts_at`, `max_entrants`, description and
-      rules, the check-in and result knobs; discipline CRUD; the admin
-      pages behind `ManageDisciplines` / `ManageCompetitions`.
+- [x] Lifecycle and admin CRUD (D-CMP-15, #296): `CompetitionStatus` with
+      enforced transitions and `SignupClosed`; `competitions.format`
+      dropped in favour of the first stage; `starts_at`, `max_entrants`,
+      description and rules, the check-in and result knobs; discipline
+      CRUD; the admin pages behind `ManageDisciplines` /
+      `ManageCompetitions`. Left for the slices that own them:
+      `EntrantState::Incomplete` exists but nothing moves an entrant into
+      it yet (§5.4 is signup's), the scheduler tick that closes signup when
+      `signup_closes_at` passes and opens it when the window arrives (§4),
+      and the automatic `Finished` when the last stage's final result lands
+      (§8).
 - [ ] Signup (D-CMP-17): captain `role`, `invite_code`, the interested list,
       `incomplete` entrants, `FillIncompleteEntrant` / `DeclineIncompleteEntrant`
       at close, `/my/tournaments` and join-by-code; `ParticipantProfile`
