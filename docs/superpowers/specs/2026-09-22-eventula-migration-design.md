@@ -142,15 +142,19 @@ Sechs Konten brauchen eine Entscheidung und stehen darum fest in
 
 | Eventula-Id | Eventula-Username | Handle | Warum |
 |---|---|---|---|
-| 45 | `fedcellar@gmail.com` | `fedcellar` | Slugify ergäbe `fedcellar-gmail-com` und machte eine E-Mail-Adresse zum öffentlichen Handle |
-| 211 | `atzetooon@googlemail.com` | `atzetooon` | dito |
-| 304 | `timo_stern@hotmail.de` | `timo-stern` | dito |
+| 45 | *(E-Mail-Adresse)* | `fedcellar` | Slugify ergäbe `<lokalteil>-<domain>-<tld>` und machte eine E-Mail-Adresse zum öffentlichen Handle |
+| 211 | *(E-Mail-Adresse)* | `atzetooon` | dito |
+| 304 | *(E-Mail-Adresse)* | `timo-stern` | dito |
 | 178 | `NJ` | `nj-sx` | zwei Zeichen, unter der Mindestlänge 3 |
 | 252 | `NN` | `nn-sx` | dito |
 | 402 | `¯\_(ツ)_/¯` | `trollusername` | nicht slugifizierbar; Handle vom Betreiber vergeben |
 
 Alle sechs haben Käufe in Eventula und sind darum im Umfang; sie lassen sich
 nicht durch Weglassen lösen.
+
+Die drei Adressen selbst stehen hier nicht — der Handle ist die Entscheidung,
+die Adresse ist das Datum der Person. Nachzusehen sind sie im Dump unter den
+genannten Ids.
 
 ### Rollen
 
