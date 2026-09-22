@@ -68,8 +68,13 @@ admission_event_presence
   window_ends_at nullable      -- instant; null = open until the event concludes
   hub_access bool              -- derived, kept current so consumers never do date math
   access_ended_reason nullable enum(day_ended|concluded|cancelled|revoked)
+  day_label nullable           -- the event day this scan counted against, as the pill says it
+  announced_hub_access nullable bool   -- what the participant events have actually carried out
+  announced_direction nullable enum(in|out)
   unique (event_id, user_id)
 ```
+
+`day_label` was there from the first migration and missing from this list until the whole-branch review. The two `announced_*` columns came out of it (fix round 2): the projection runs from a queued job whose participant-event handlers are **not** queued, so one of them throwing fails the job after the row was saved — and a transition read off the saved row would let the retry decide nothing happened and swallow the event for good. The markers move only once the event has been dispatched, so a retry re-emits exactly once. `admission:replay-presence` re-emits from these rows, and `--seed` rebuilds them from an event's accepted check-ins for a release that lands mid-event.
 
 ### 4.2 Rules
 
@@ -113,7 +118,7 @@ A per-day setting on the event day (Event module: `event_days.day_ends_at`, buil
 
 ### 5.1 `hub_access` projection and `ActiveEventContext`
 
-Platform keeps `platform_hub_access (brand_id, user_id, event_id, admission_id, event_slug, event_name, day_label, admitted_at, window_ends_at, on_site bool, unique(event_id, user_id))`, written by `Listeners\ProjectHubAccess` on the three Admission events and on nothing else. It is a projection: dropping and replaying rebuilds it.
+Platform keeps `platform_hub_access (brand_id, user_id, event_id, admission_id, event_slug, event_name, day_label, admitted_at, window_ends_at, on_site bool, unique(event_id, user_id))`, written by `Listeners\ProjectHubAccess` on the four Admission participant events (`ParticipantAdmitted`, `ParticipantPresenceChanged`, `ParticipantAdmissionReplaced`, `ParticipantHubAccessEnded`) and on nothing else. It is a projection: dropping and replaying rebuilds it.
 
 **Correction (built 2026-09-22):** there are no `EventDetailsUpdated`/`EventRescheduled` listeners. The event's name, slug and day label travel on `ParticipantAdmitted` itself (§4.3), so the row is complete the moment it is written and Platform keeps no projection of Event's days or details. The one Event event Platform does listen to is `EventHubLayoutChanged` (§6), which is about the operator's composition, not about a person. A name edited mid-event therefore reaches the pill on the participant's next admission, which is the right trade for a display string.
 
@@ -152,7 +157,7 @@ The read side is `visibleCards(Authenticatable $user)` and `visibleLinks(Authent
 ### 5.3 Tests
 
 - registry hides a card whose module is off / whose permission the viewer lacks;
-- cache is forgotten on each of the three Admission events;
+- cache is forgotten on each of the four Admission participant events;
 - latest admission wins with two running events; `all()` returns both;
 - guest `/` and guest `/news` perform no `platform_hub_access` query.
 

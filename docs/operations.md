@@ -341,7 +341,7 @@ and safe to run while the event is live.
    the blunt form of the same repair. Idempotent either way.
 5. **Both tables right, still no pill?** It is the cache. Platform answers the
    shell from **`hub-access:{brand}:{user}`** (TTL 600s, the brand's and the
-   user's ULIDs). All three Admission events forget that key, so a stale
+   user's ULIDs). All four Admission participant events forget that key, so a stale
    answer should be impossible — but forgetting it by hand is harmless and
    settles the question:
    `vendor/bin/sail artisan tinker --execute 'Cache::forget("hub-access:BRAND_ULID:USER_ULID");'`

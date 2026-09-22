@@ -16,9 +16,10 @@ use Konventix\Platform\Models\HubAccess;
  * (design §5.1). Scoped per request; one cache read for a member, none at
  * all for a guest — the guest home page must stay as cheap as it is.
  *
- * The cache holds plain arrays under `hub-access:{brand}:{user}` and the
- * `ProjectHubAccess` handlers forget that key, so a stale answer
- * lives at most until the next admission, presence change or ending —
+ * The cache holds plain arrays under `hub-access:{brand}:{user}` and all
+ * four `ProjectHubAccess` handlers forget that key, so a stale answer
+ * lives at most until the next admission, presence change, re-point or
+ * ending —
  * and never longer than `TTL_SECONDS` if a forget is missed. Escapes the
  * brand scope by the resolved brand's own id (ADR-0010) so the answer is
  * the same whether or not a global scope is in effect.

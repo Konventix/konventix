@@ -91,7 +91,7 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
     are built from. A guest costs nothing: no cache read, no query.
   - Two projections, both rebuildable by replay and neither of them a source
     of truth: `platform_hub_access` (`Models\HubAccess`) from Admission's
-    three participant events, and `platform_hub_layouts`
+    four participant events, and `platform_hub_layouts`
     (`Models\HubLayout`, read through `Hub\HubLayoutResolver`,
     `hub-layout:{event}`) from Event's `EventHubLayoutChanged`. Platform reads
     neither module's tables (ADR-0004).
