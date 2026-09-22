@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Konventix\Competition\Database\Factories\EntrantFactory;
 use Konventix\Competition\Enums\EntrantState;
+use Konventix\Competition\Enums\WithdrawalReason;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
@@ -25,6 +26,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property EntrantState $state
  * @property int|null $seed
  * @property Carbon|null $checked_in_at
+ * @property WithdrawalReason|null $withdrawal_reason
+ * @property Carbon|null $left_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -35,7 +38,10 @@ class Entrant extends Model
     /** @use HasFactory<EntrantFactory> */
     use HasFactory, HasUlids;
 
-    protected $fillable = ['competition_id', 'competition_team_id', 'state', 'seed', 'checked_in_at'];
+    protected $fillable = [
+        'competition_id', 'competition_team_id', 'state', 'seed', 'checked_in_at',
+        'withdrawal_reason', 'left_at',
+    ];
 
     /** Whether this entrant still occupies a place in the competition. */
     public function isActive(): bool
@@ -80,6 +86,25 @@ class Entrant extends Model
     }
 
     /**
+     * The roster behind this entrant, as plain user ULIDs and oldest member
+     * first — what `EntrantRegistered`, `EntrantWithdrawn` and
+     * `MatchScheduled` carry, and what a notification is addressed to.
+     *
+     * Read through the team rather than stored on the entrant: a join or a
+     * leave changes the roster without touching the entry, and a copy here
+     * would go stale the first time somebody used the invite code.
+     *
+     * @return list<string>
+     */
+    public function memberUserIds(): array
+    {
+        /** @var CompetitionTeam|null $team */
+        $team = CompetitionTeam::withoutBrandScope()->whereKey($this->competition_team_id)->first();
+
+        return $team?->memberUserIds() ?? [];
+    }
+
+    /**
      * @return BelongsTo<Competition, $this>
      */
     public function competition(): BelongsTo
@@ -100,7 +125,13 @@ class Entrant extends Model
      */
     protected function casts(): array
     {
-        return ['state' => EntrantState::class, 'seed' => 'integer', 'checked_in_at' => 'datetime'];
+        return [
+            'state' => EntrantState::class,
+            'seed' => 'integer',
+            'checked_in_at' => 'datetime',
+            'withdrawal_reason' => WithdrawalReason::class,
+            'left_at' => 'datetime',
+        ];
     }
 
     protected static function newFactory(): EntrantFactory

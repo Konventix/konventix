@@ -17,6 +17,8 @@ use Konventix\Commerce\Models\Product;
 use Konventix\Commerce\Models\SettlementAccount;
 use Konventix\Community\Models\CommunityMember;
 use Konventix\Community\Models\CommunityProfile;
+use Konventix\Competition\Models\Competition;
+use Konventix\Competition\Models\Discipline;
 use Konventix\Compliance\Models\DataSubjectRequest;
 use Konventix\Compliance\Models\Policy;
 use Konventix\Content\Models\ContentEntry;
@@ -547,6 +549,19 @@ function dryRunParameters(RoutingRoute $route, Brand $brand, ?User $member = nul
             // The console's category screen (`admin.resource-types.edit`) —
             // `DemoResourcesSeeder::seedCatalogue()` already seeds these.
             $parameter === 'resourceType' => ResourceType::withoutBrandScope()->where('brand_id', $brand->getKey())->first(),
+            // The competition console (design §9, §5.4, #296/#297).
+            // `DemoCompetitionSeeder` gives the LAN archetype two
+            // disciplines and a played-out Main Cup, so the competition
+            // form, the entrants panel and the discipline editor all have a
+            // real row of that brand to point at. The trade-fair archetype
+            // carries no competitions at all — the module gate working, not
+            // a gap — and this walk runs the console against the LAN.
+            $parameter === 'competition' => Competition::withoutBrandScope()
+                ->where('brand_id', $brand->getKey())
+                ->first(),
+            $parameter === 'discipline' => Discipline::withoutBrandScope()
+                ->where('brand_id', $brand->getKey())
+                ->first(),
             // Always null — konventix:seed sends no mail, so no brand ever
             // has a MessageRecord — which is exactly why the route this
             // parameter belongs to is also listed in dryRunSkippedRoutes().
@@ -643,6 +658,14 @@ function dryRunFeatureGatedRoutePrefixes(): array
         // both seeded archetypes — walking it here would only prove the
         // 404 `EnsureFeatureIsActive` already gives, not a working page.
         'commerce.waiting-room.' => 'commerce:waiting-room',
+        // Competition is a gateable module (ADR-0003), and `konventix:seed`
+        // switches it on for the LAN archetype only — a trade fair runs no
+        // tournaments. Its participant pages 404 behind
+        // `ensure-module:competition` for the fair, which is the gate
+        // working; walking them there would only prove the 404
+        // `EnsureModuleIsActive` already gives. The feature name is the one
+        // `ModuleGate::featureName()` builds.
+        'competition.' => 'module:competition',
     ];
 }
 

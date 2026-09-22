@@ -76,3 +76,60 @@ it('keeps the GameOps-facing events free of anything but scalars and ULIDs', fun
         expect($source)->not->toContain('Konventix\\Competition\\Models');
     }
 });
+
+it('never imports an Identity model, only Identity events', function (): void {
+    // #297 acceptance criterion 3, and design §10: "every page shows names
+    // from ParticipantProfile, never from Identity". Identity owns accounts;
+    // the profile of record travels on `UserProfileUpdated` (ADR-0051 §6) and
+    // is projected into this module's own read model.
+    //
+    // The `Konventix\Identity\Events\` import is the sanctioned exception —
+    // events are the public contract between modules (ADR-0004) — so this
+    // test forbids the *models* namespace precisely, not the whole vendor.
+    $violations = [];
+
+    foreach (competitionSourceFiles() as $file) {
+        if (preg_match('/^use\s+Konventix\\\\Identity\\\\Models\\\\/m', $file['contents']) === 1) {
+            $violations[] = $file['path'];
+        }
+    }
+
+    expect($violations)->toBe([], implode("\n", [
+        'Competition must never import an Identity model. Users are referenced',
+        'by plain ULID (ADR-0014) and their names come from ParticipantProfile,',
+        'projected from UserProfileUpdated (ADR-0004, design §10).',
+        '',
+        ...$violations,
+    ]));
+});
+
+it('keeps the roster-carrying events free of anything but scalars and ULIDs', function (): void {
+    // `EntrantRegistered` and `EntrantWithdrawn` gained `member_user_ids`
+    // (#297). A roster is a list of ULIDs and must stay one: the moment a
+    // model leaks onto a contract payload, every consumer is coupled to this
+    // module's schema (ADR-0004).
+    foreach (['EntrantRegistered', 'EntrantWithdrawn'] as $event) {
+        $source = (string) file_get_contents(
+            base_path("app-modules/competition/src/Events/{$event}.php")
+        );
+
+        expect($source)->not->toContain('Konventix\\Competition\\Models')
+            ->and($source)->not->toContain('Konventix\\Identity')
+            ->and($source)->toContain('final readonly class');
+    }
+});
+
+it('keeps every Competition contract event final and readonly', function (): void {
+    // ADR-0004: a payload a consumer can mutate is not a contract. Cheap to
+    // assert here, and it catches the event somebody adds in a hurry.
+    $directory = new DirectoryIterator(base_path('app-modules/competition/src/Events'));
+
+    foreach ($directory as $file) {
+        if (! $file->isFile() || $file->getExtension() !== 'php') {
+            continue;
+        }
+
+        expect((string) file_get_contents($file->getPathname()))
+            ->toContain('final readonly class', "{$file->getFilename()} must declare a final readonly class.");
+    }
+});

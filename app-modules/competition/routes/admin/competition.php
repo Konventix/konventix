@@ -23,6 +23,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Competition\Http\Controllers\Admin\CompetitionAdminController;
 use Konventix\Competition\Http\Controllers\Admin\DisciplineAdminController;
+use Konventix\Competition\Http\Controllers\Admin\EntrantAdminController;
 
 // Disciplines (design §9): what is being contested, and its defaults.
 Route::get('/disciplines', [DisciplineAdminController::class, 'index'])->name('admin.disciplines.index');
@@ -37,3 +38,32 @@ Route::post('/competitions', [CompetitionAdminController::class, 'store'])->name
 Route::get('/competitions/{competition}/edit', [CompetitionAdminController::class, 'edit'])->name('admin.competitions.edit');
 Route::put('/competitions/{competition}', [CompetitionAdminController::class, 'update'])->name('admin.competitions.update');
 Route::post('/competitions/{competition}/transition', [CompetitionAdminController::class, 'transition'])->name('admin.competitions.transition');
+
+/*
+ * The field of one competition (design §5.2, §5.4, §5.5): §5.4's prompt for
+ * every incomplete roster, and the organizer powers behind `ManageEntrants`.
+ * Each method opens with its own `Gate::authorize()` — the admin host has no
+ * brand to gate on, so the capability is the only filter.
+ */
+Route::get('/competitions/{competition}/entrants', [EntrantAdminController::class, 'index'])
+    ->name('admin.competitions.entrants');
+
+Route::post('/entrants/{entrant}/fill', [EntrantAdminController::class, 'fill'])
+    ->name('admin.entrants.fill');
+Route::post('/entrants/{entrant}/decline', [EntrantAdminController::class, 'decline'])
+    ->name('admin.entrants.decline');
+Route::post('/entrants/{entrant}/withdraw', [EntrantAdminController::class, 'withdraw'])
+    ->name('admin.entrants.withdraw');
+Route::post('/entrants/{entrant}/disqualify', [EntrantAdminController::class, 'disqualify'])
+    ->name('admin.entrants.disqualify');
+
+Route::put('/competition-teams/{team}', [EntrantAdminController::class, 'renameTeam'])
+    ->name('admin.competition-teams.rename');
+Route::post('/competition-teams/{team}/invite-code', [EntrantAdminController::class, 'regenerateCode'])
+    ->name('admin.competition-teams.invite-code');
+Route::post('/competition-teams/{team}/members', [EntrantAdminController::class, 'addMember'])
+    ->name('admin.competition-teams.members.add');
+Route::delete('/competition-teams/{team}/members', [EntrantAdminController::class, 'removeMember'])
+    ->name('admin.competition-teams.members.remove');
+Route::post('/competition-teams/{team}/members/move', [EntrantAdminController::class, 'moveMember'])
+    ->name('admin.competition-teams.members.move');

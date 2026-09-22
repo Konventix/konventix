@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Gdpr;
 
+use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\CompetitionTeamMember;
+use Konventix\Competition\Models\ParticipantProfile;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\GdprHandler;
 use Konventix\Compliance\Gdpr\SubjectRef;
@@ -12,12 +14,20 @@ use Konventix\Compliance\Gdpr\SubjectRef;
 /**
  * Competition's contribution to GDPR export and deletion.
  *
- * Same shape as Staffing's: the export shows which teams a person played in,
- * and deletion has nothing to scrub because a membership row is a pair of
- * ULIDs. Results and standings are a public record of a competition that took
- * place — removing a player from a finished bracket would falsify the
- * tournament rather than protect them, and the name is rendered from
- * Identity's tombstone in any case.
+ * The export shows which teams a person played in, in what role, and which
+ * competitions they put their name down for.
+ *
+ * Two things **are** scrubbed on deletion, and they are the two that hold
+ * something other than ULIDs: the `ParticipantProfile` row, which carries a
+ * display name and a username, and the interested-list rows, whose free-text
+ * note the person wrote themselves and which are public on the competition
+ * page.
+ *
+ * Nothing else is. Results, standings and team membership are a public record
+ * of a competition that took place — removing a player from a finished
+ * bracket would falsify the tournament rather than protect them, and a
+ * membership row is a pair of ULIDs whose name now renders from Identity's
+ * tombstone through the projection above.
  */
 final class CompetitionGdprHandler implements GdprHandler
 {
@@ -41,7 +51,18 @@ final class CompetitionGdprHandler implements GdprHandler
                 ->get()
                 ->map(fn (CompetitionTeamMember $member): array => [
                     'competition_team_id' => $member->competition_team_id,
+                    'role' => $member->role->value,
                     'joined_at' => $member->created_at?->toIso8601String(),
+                ])
+                ->all(),
+            'interests' => CompetitionInterest::withoutBrandScope()
+                ->where('user_id', $subjectId)
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn (CompetitionInterest $interest): array => [
+                    'competition_id' => $interest->competition_id,
+                    'note' => $interest->note,
+                    'registered_at' => $interest->created_at?->toIso8601String(),
                 ])
                 ->all(),
         ];
@@ -49,6 +70,16 @@ final class CompetitionGdprHandler implements GdprHandler
 
     public function delete(SubjectRef $subject, DeletionMode $mode): void
     {
-        // Nothing to scrub — see the class docblock.
+        if (! $subject->isAccountBacked()) {
+            return;
+        }
+
+        // The name read model and the public notes — see the class docblock
+        // for what is deliberately left standing.
+        ParticipantProfile::query()->whereKey($subject->userId)->delete();
+
+        CompetitionInterest::withoutBrandScope()
+            ->where('user_id', $subject->userId)
+            ->delete();
     }
 }

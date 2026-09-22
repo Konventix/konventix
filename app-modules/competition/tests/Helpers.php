@@ -3,12 +3,15 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
 use Konventix\Platform\Models\Permission as PermissionModel;
 use Konventix\Platform\Models\Role;
 use Konventix\Platform\Operators\ConsoleEventSources;
+use Konventix\Registration\Events\RegistrationConfirmed;
+use Konventix\Registration\Events\RegistrationSubmitted;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
@@ -78,4 +81,68 @@ function competitionConsoleEvent(Brand $brand, string $name = 'SXLan 2027', ?str
     ]);
 
     return $eventId;
+}
+
+/**
+ * Somebody who may enter (design §5.1, D-CMP-05): a confirmed registration
+ * for the event, arriving the only sanctioned way — through Registration's
+ * contract events, never by writing Competition's read model directly
+ * (ADR-0004, ADR-0006). Returns the user's ULID.
+ *
+ * Lives here rather than in a test file because two of this module's files
+ * call it: under `--parallel` each worker loads only the files it was handed,
+ * so a helper declared in one `*Test.php` does not exist in the worker
+ * running the other (.ai/rules/tests.md).
+ */
+function competitionEligibleUser(string $eventId, string $brandId, ?string $userId = null): string
+{
+    $userId ??= (string) Str::ulid();
+    $registrationId = (string) Str::ulid();
+
+    event(new RegistrationSubmitted(
+        registrationId: $registrationId,
+        registrationTypeId: (string) Str::ulid(),
+        eventId: $eventId,
+        brandId: $brandId,
+        registrantUserId: $userId,
+        settlement: 'free',
+        confirmationGate: 'on_submit',
+        submittedAt: now()->toIso8601String(),
+    ));
+
+    event(new RegistrationConfirmed(
+        registrationId: $registrationId,
+        registrationTypeId: (string) Str::ulid(),
+        eventId: $eventId,
+        brandId: $brandId,
+        registrantUserId: $userId,
+        confirmedAt: now()->toIso8601String(),
+        grants: [],
+    ));
+
+    return $userId;
+}
+
+/**
+ * A name in Competition's own read model (design §10), projected the only
+ * way it ever is: from Identity's `UserProfileUpdated`. No test in this
+ * module writes `competition_participant_profiles` by hand, and none imports
+ * Identity's `User` — which is exactly what the third acceptance criterion of
+ * #297 asks for.
+ */
+function competitionParticipantName(string $userId, string $displayName, string $username): void
+{
+    event(new UserProfileUpdated(
+        userId: $userId,
+        email: $username.'@example.test',
+        displayName: $displayName,
+        username: $username,
+        tagline: null,
+        statusEmoji: null,
+        socialLinks: [],
+        visibility: 'internal',
+        listedInAttendees: true,
+        locale: 'de',
+        updatedAt: now()->toIso8601String(),
+    ));
 }

@@ -10,6 +10,7 @@ use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Events\MatchScheduled;
 use Konventix\Competition\Exceptions\IllegalMatchStateTransitionException;
 use Konventix\Competition\Models\CompetitionMatch;
+use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchSlot;
 
 /**
@@ -24,6 +25,10 @@ use Konventix\Competition\Models\MatchSlot;
  * anything that is not a video game (ADR-0024). GameOps hearing a scheduled
  * quiz simply finds nothing to provision, which is the plugin-shaped
  * behaviour the ADR is after.
+ *
+ * The rosters travel with it (#297): a server is configured with players, and
+ * GameOps resolving entrant ids back into people would mean reading this
+ * module, which is the direction the dependency must never run.
  */
 final class ScheduleMatch
 {
@@ -60,10 +65,35 @@ final class ScheduleMatch
                 round: $match->round,
                 scheduledAt: $at->toIso8601String(),
                 entrantIds: array_values(array_map(strval(...), $entrantIds)),
+                memberUserIds: $this->rostersFor(array_values($entrantIds)),
             ));
 
             return $match->refresh();
         });
+    }
+
+    /**
+     * The roster behind each side, keyed by entrant ULID. `withoutBrandScope()`
+     * because a schedule may be written from a queue worker or the admin host,
+     * where the scope reads zero rows (ADR-0029).
+     *
+     * @param  list<mixed>  $entrantIds
+     * @return array<string, list<string>>
+     */
+    private function rostersFor(array $entrantIds): array
+    {
+        $rosters = [];
+
+        foreach ($entrantIds as $entrantId) {
+            /** @var Entrant|null $entrant */
+            $entrant = Entrant::withoutBrandScope()->whereKey((string) $entrantId)->first();
+
+            if ($entrant !== null) {
+                $rosters[(string) $entrantId] = $entrant->memberUserIds();
+            }
+        }
+
+        return $rosters;
     }
 
     private function guardTransition(CompetitionMatch $match): void

@@ -33,6 +33,82 @@ final class CompetitionEntryException extends RuntimeException
         ));
     }
 
+    public static function teamsAtDifferentEvents(string $fromTeamId, string $toTeamId): self
+    {
+        return new self(sprintf(
+            'Teams [%s] and [%s] belong to different events; a team is per event (D-CMP-14), so there is '
+            .'no move between them.',
+            $fromTeamId,
+            $toTeamId,
+        ));
+    }
+
+    public static function competitionFull(string $competitionId, int $maxEntrants): self
+    {
+        return new self(sprintf(
+            'Competition [%s] already holds its limit of %d entrants; an incomplete roster holds a slot '
+            .'too until it is filled or declined (design §5.4).',
+            $competitionId,
+            $maxEntrants,
+        ));
+    }
+
+    public static function emptyRoster(string $teamId): self
+    {
+        return new self(sprintf('Team [%s] has nobody on it; an empty roster cannot enter anything.', $teamId));
+    }
+
+    public static function unknownInviteCode(string $code): self
+    {
+        return new self(sprintf('No team of this event uses the invite code [%s].', $code));
+    }
+
+    public static function alreadyOnTeam(string $userId, string $teamId): self
+    {
+        return new self(sprintf('User [%s] is already on team [%s].', $userId, $teamId));
+    }
+
+    public static function rosterFull(string $teamId, int $teamSize): self
+    {
+        return new self(sprintf(
+            'Team [%s] already fields %d player(s), which is the discipline\'s team size; there are no '
+            .'substitutes in this slice (design §5.2).',
+            $teamId,
+            $teamSize,
+        ));
+    }
+
+    public static function notOnTeam(string $userId, string $teamId): self
+    {
+        return new self(sprintf('User [%s] is not on team [%s].', $userId, $teamId));
+    }
+
+    public static function notTheCaptain(string $userId, string $teamId): self
+    {
+        return new self(sprintf('User [%s] does not captain team [%s].', $userId, $teamId));
+    }
+
+    public static function entrantNotIncomplete(string $entrantId): self
+    {
+        return new self(sprintf(
+            'Entrant [%s] is not incomplete; only an incomplete roster is filled up or declined (design §5.4).',
+            $entrantId,
+        ));
+    }
+
+    public static function entrantAlreadyLeft(string $entrantId): self
+    {
+        return new self(sprintf('Entrant [%s] has already withdrawn or been disqualified.', $entrantId));
+    }
+
+    public static function competitionOver(string $competitionId): self
+    {
+        return new self(sprintf(
+            'Competition [%s] is finished or cancelled; its field is history and does not change.',
+            $competitionId,
+        ));
+    }
+
     public static function wrongEvent(string $competitionId, string $teamId): self
     {
         return new self(sprintf(
