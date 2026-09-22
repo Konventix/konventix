@@ -256,6 +256,46 @@ so a typo stops the run instead of quietly backfilling nothing.
 not a backfill, and it invalidates whatever a reader has cached, so it is
 for a changed generator and nothing else.
 
+## The brand's Reverb credentials
+
+Realtime — the waiting room's ticks, the notification bell, the shoutbox —
+runs over one shared Reverb server with **one application per brand**
+(ADR-0025). The brand's ULID is the application id, and the
+`reverb_app_key` / `reverb_app_secret` columns on its row sign
+subscriptions. A client holding one brand's key cannot subscribe to
+another brand's channels: the isolation is by credential, not by channel
+name and not by process.
+
+**Nothing has to be provisioned.** The brand model mints a key and a secret
+when the row is created, and `konventix:install` fills them in for a brand
+that predates the columns. `REVERB_APP_KEY` in the deployment's ConfigMap
+is empty **on purpose** and must stay that way: with
+`REVERB_APP_PROVIDER=brands` the applications come from the rows, and the
+variable is shipped present-and-empty only because `routes/channels.php`
+builds a Pusher client at boot with string-typed parameters, so an absent
+variable is a fatal `TypeError` on every artisan command. Setting it would
+not help a brand; it belongs to the `config` provider, which this
+deployment does not use (#224).
+
+**What a missing key looks like.** The brand's pages log
+`You must pass your app key when you instantiate Pusher` in the browser
+console and no realtime feature works, while everything else on the page is
+fine. `HandleInertiaRequests` passes the current brand's key to the page as
+`reverb.key`, so an empty column reaches the browser as an empty key.
+Confirm with a websocket handshake against
+`https://<brand-host>/ws/app/<key>`: a healthy application answers
+`pusher:connection_established`.
+
+**Rotating one brand's credentials** is a deliberate act for a leaked
+secret, not a schedule. There is no rotate command today: write new random
+40-character values into the brand's two columns, and every currently
+connected client of that brand drops and reconnects with the key its next
+page load carries. Do it when the brand is quiet, and never in the middle
+of a sale — the waiting room's ticks are what tell a queued buyer their
+turn has come. A command that does this with a warning and a confirmation
+is worth having before the first production rotation; it does not exist
+yet.
+
 ## Mail quota
 
 The default mail transport sits behind a mailbox provider that refuses
