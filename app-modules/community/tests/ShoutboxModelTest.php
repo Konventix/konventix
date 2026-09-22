@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -69,4 +70,27 @@ it('orders messages chronologically by id', function (): void {
 
     expect(Message::query()->where('room_id', $room->id)->orderBy('id')->pluck('id')->all())
         ->toBe([$first->id, $second->id]);
+});
+
+it('keeps the tombstone and the lock triple out of mass assignment', function (): void {
+    $this->withBrand();
+
+    $room = Room::factory()->create();
+    $message = Message::factory()->for($room)->create();
+
+    // No database CHECK ties `deleted_at`/`deleted_by_user_id`/
+    // `deleted_reason` together, or the room's three lock columns: the
+    // Actions writing all of each triple in one `forceFill` is the only
+    // thing that keeps them consistent. So the columns are off `$fillable`,
+    // and the next `update()` — a retention sweep, an eraser, an admin
+    // quick-action — cannot set one of them in passing. Outside production
+    // `Model::shouldBeStrict()` turns that into a throw; in production it is
+    // silently discarded. Either way the column is not written, which is
+    // the guarantee this pins.
+    rescue(fn () => $message->fill(['deleted_at' => CarbonImmutable::now()->utc()]), report: false);
+    rescue(fn () => $room->fill(['locked_at' => CarbonImmutable::now()->utc()]), report: false);
+
+    expect($message->deleted_at)->toBeNull()
+        ->and($message->isRemoved())->toBeFalse()
+        ->and($room->locked_at)->toBeNull();
 });

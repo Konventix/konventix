@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Konventix\Community\Actions\LockRoom;
@@ -10,6 +11,8 @@ use Konventix\Community\Actions\MuteParticipant;
 use Konventix\Community\Actions\PostMessage;
 use Konventix\Community\Actions\UnlockRoom;
 use Konventix\Community\Data\PostMessageData;
+use Konventix\Community\Enums\RoomSubject;
+use Konventix\Community\Enums\ShoutboxRefusal;
 use Konventix\Community\Events\ShoutboxMessagePosted;
 use Konventix\Community\Exceptions\ShoutboxWriteException;
 use Konventix\Community\Models\Message;
@@ -231,4 +234,141 @@ it('publishes ShoutboxMessagePosted once, carrying no body', function (): void {
         ->and($posted->brandId)->toBe($brand->getKey())
         ->and($posted->eventId)->toBe($room->subject_id)
         ->and($posted->authorUserId)->toBe($userId);
+});
+
+it('does not silence a whole room because one person in it was muted', function (): void {
+    $this->withBrand();
+    $this->freezeTime();
+
+    $room = Room::factory()->create();
+    $mutedUserId = (string) Str::ulid();
+    $otherUserId = (string) Str::ulid();
+
+    app(MuteParticipant::class)->handle($room, $mutedUserId, (string) Str::ulid(), 'Spam', 10);
+
+    // Dropping `where('user_id', …)` from the mute gate would silence
+    // everybody in the room the moment one person was muted, and every
+    // other case in this file would stay green.
+    $message = app(PostMessage::class)->handle($room, $otherUserId, new PostMessageData('Ich war das nicht'));
+
+    expect($message->exists)->toBeTrue()
+        // …while the person who *was* muted is still refused, so this
+        // cannot pass by the gate having been removed altogether.
+        ->and(fn () => app(PostMessage::class)->handle($room, $mutedUserId, new PostMessageData('Doch')))
+        ->toThrow(ShoutboxWriteException::class);
+});
+
+it('does not silence a person everywhere because they were muted in one room', function (): void {
+    $this->withBrand();
+    $this->freezeTime();
+
+    $room = Room::factory()->create();
+    $otherRoom = Room::factory()->create();
+    $userId = (string) Str::ulid();
+
+    app(MuteParticipant::class)->handle($room, $userId, (string) Str::ulid(), 'Spam', 10);
+
+    // Mutes are per room (design §4.3). Dropping `where('room_id', …)`
+    // would make every mute global — which is a decision sub-project B has
+    // to take deliberately when match rooms arrive, not one the gate makes
+    // by accident.
+    $message = app(PostMessage::class)->handle($otherRoom, $userId, new PostMessageData('Anderer Raum'));
+
+    expect($message->exists)->toBeTrue()
+        ->and(fn () => app(PostMessage::class)->handle($room, $userId, new PostMessageData('Hier nicht')))
+        ->toThrow(ShoutboxWriteException::class);
+});
+
+it('holds the posted event until the caller\'s own transaction commits', function (): void {
+    $this->withBrand();
+    Event::fake([ShoutboxMessagePosted::class]);
+
+    $room = Room::factory()->create();
+    $userId = (string) Str::ulid();
+
+    // The moment a caller wraps this Action — a console verb that mutes and
+    // removes in one unit, an import, a retention path — the Action's own
+    // `DB::transaction()` becomes a savepoint, and a dispatch placed after
+    // that transaction returns would leave while the outer one can still
+    // roll back. `DB::afterCommit()` is what makes "after the commit" a
+    // guarantee rather than a convention.
+    DB::transaction(function () use ($room, $userId): void {
+        app(PostMessage::class)->handle($room, $userId, new PostMessageData('Im Aufruf des Aufrufers'));
+
+        Event::assertNotDispatched(ShoutboxMessagePosted::class);
+    });
+
+    Event::assertDispatchedTimes(ShoutboxMessagePosted::class, 1);
+});
+
+it('refuses a room whose subject is not an event, rather than publishing a match id as an event id', function (): void {
+    $this->withBrand();
+
+    $room = Room::factory()->create(['subject_type' => RoomSubject::Match]);
+
+    // `ShoutboxMessagePosted.eventId` is filled from `$room->subject_id`
+    // (design §9). For a match room that would be a `competition_matches`
+    // ULID travelling in a field named for an event, silently — so the
+    // Action refuses until sub-project B has decided what the payload says.
+    expect(fn () => app(PostMessage::class)->handle($room, (string) Str::ulid(), new PostMessageData('Hallo')))
+        ->toThrow(InvalidArgumentException::class)
+        ->and(Message::query()->where('room_id', $room->id)->count())->toBe(0);
+});
+
+it('names a machine-readable cause and a countdown for the sixth message, so no surface reads the German', function (): void {
+    $this->withBrand();
+    $this->freezeTime();
+
+    $room = Room::factory()->create();
+    $userId = (string) Str::ulid();
+    $post = app(PostMessage::class);
+
+    foreach (range(1, 5) as $index) {
+        $post->handle($room, $userId, new PostMessageData("Nachricht {$index}"));
+    }
+
+    try {
+        $post->handle($room, $userId, new PostMessageData('Nachricht 6'));
+        $this->fail('The sixth message in ten seconds was accepted.');
+    } catch (ShoutboxWriteException $refusal) {
+        // ADR-0001 keeps exactly one copy of the German sentence, which
+        // only works if the surface has another way to ask what happened:
+        // Task 5 renders the countdown from the number and puts the
+        // sentence on the field the cause names.
+        expect($refusal->cause)->toBe(ShoutboxRefusal::TooManyMessages)
+            ->and($refusal->cause->field())->toBe('body')
+            ->and($refusal->retryAfterSeconds)->toBeGreaterThan(0)
+            ->and($refusal->retryAfterSeconds)->toBeLessThanOrEqual(PostMessage::WINDOW_SECONDS);
+    }
+});
+
+it('counts a timed mute down in seconds and leaves an indefinite one with nothing to count', function (): void {
+    $this->withBrand();
+    $this->freezeTime();
+
+    $room = Room::factory()->create();
+    $timedUserId = (string) Str::ulid();
+    $indefiniteUserId = (string) Str::ulid();
+    $moderatorId = (string) Str::ulid();
+
+    app(MuteParticipant::class)->handle($room, $timedUserId, $moderatorId, 'Spam', 10);
+    app(MuteParticipant::class)->handle($room, $indefiniteUserId, $moderatorId, 'Dauerhaft', null);
+
+    try {
+        app(PostMessage::class)->handle($room, $timedUserId, new PostMessageData('Hallo'));
+        $this->fail('A muted participant was allowed to post.');
+    } catch (ShoutboxWriteException $refusal) {
+        expect($refusal->cause)->toBe(ShoutboxRefusal::Muted)
+            ->and($refusal->retryAfterSeconds)->toBe(600);
+    }
+
+    try {
+        app(PostMessage::class)->handle($room, $indefiniteUserId, new PostMessageData('Hallo'));
+        $this->fail('An indefinitely muted participant was allowed to post.');
+    } catch (ShoutboxWriteException $refusal) {
+        // "Bis zum Ende des Events" has no moment to count down to, and
+        // null says so rather than a surface inventing one.
+        expect($refusal->cause)->toBe(ShoutboxRefusal::Muted)
+            ->and($refusal->retryAfterSeconds)->toBeNull();
+    }
 });

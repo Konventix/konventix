@@ -38,12 +38,28 @@ use Konventix\Community\Models\Message;
  */
 final class RemoveMessage
 {
+    /**
+     * The `varchar(255)` of `community_messages.deleted_reason` (spec §4.2),
+     * checked here rather than left to the column: an overflow is a 500 and,
+     * worse, a constraint violation that aborts whatever transaction the
+     * console had open around it (`.ai/rules/tests.md`).
+     */
+    public const int MAX_REASON_LENGTH = 255;
+
     public function handle(Message $message, string $byUserId, string $reason): Message
     {
         $reason = trim($reason);
 
         if ($reason === '') {
             throw new InvalidArgumentException('A removal needs a reason; the tombstone is what the desk reads back.');
+        }
+
+        if (mb_strlen($reason) > self::MAX_REASON_LENGTH) {
+            throw new InvalidArgumentException(sprintf(
+                'A removal reason is at most %d characters; `deleted_reason` is a varchar(%d).',
+                self::MAX_REASON_LENGTH,
+                self::MAX_REASON_LENGTH,
+            ));
         }
 
         if ($message->isRemoved()) {
@@ -61,15 +77,19 @@ final class RemoveMessage
             ])->save();
         });
 
-        // After the commit — see `PostMessage::handle()` for why.
-        event(new ShoutboxMessageRemoved(
+        // After the commit, and through `DB::afterCommit()` so that it is
+        // still after the commit when a caller wraps this Action in a
+        // transaction of its own — see `PostMessage::handle()` for why.
+        $removed = new ShoutboxMessageRemoved(
             messageId: $message->id,
             roomId: $message->room_id,
             brandId: $message->brand_id,
             removedByUserId: $byUserId,
             reason: $reason,
             removedAt: $now->toIso8601String(),
-        ));
+        );
+
+        DB::afterCommit(static fn () => event($removed));
 
         return $message;
     }

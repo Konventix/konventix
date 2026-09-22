@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Konventix\Community\Actions\LockRoom;
@@ -12,11 +13,14 @@ use Konventix\Community\Actions\RemoveMessage;
 use Konventix\Community\Actions\ReportMessage;
 use Konventix\Community\Actions\ResolveReport;
 use Konventix\Community\Actions\UnmuteParticipant;
+use Konventix\Community\Data\MuteData;
 use Konventix\Community\Data\PostMessageData;
 use Konventix\Community\Data\ReportData;
 use Konventix\Community\Enums\ReportState;
+use Konventix\Community\Enums\ShoutboxRefusal;
 use Konventix\Community\Events\ShoutboxMessageRemoved;
 use Konventix\Community\Events\ShoutboxMessageReported;
+use Konventix\Community\Exceptions\ShoutboxWriteException;
 use Konventix\Community\Models\Message;
 use Konventix\Community\Models\MessageReport;
 use Konventix\Community\Models\Room;
@@ -277,4 +281,170 @@ it('sets the lock triple together and does not rewrite it on a second lock', fun
     expect($room->locked_at)->not->toBeNull()
         ->and($room->locked_by_user_id)->toBe($firstModerator)
         ->and($room->locked_reason)->toBe('Eskaliert');
+});
+
+it('holds the removal and report events until the caller\'s own transaction commits', function (): void {
+    $this->withBrand();
+    Event::fake([ShoutboxMessageRemoved::class, ShoutboxMessageReported::class]);
+
+    $room = Room::factory()->create();
+    $message = Message::factory()->for($room)->create();
+
+    // Filing the desk's own report and removing the line in one unit is an
+    // ordinary thing for a console verb to do — and it turns each Action's
+    // `DB::transaction()` into a savepoint, so a dispatch placed after that
+    // transaction returns would broadcast a removal the outer transaction
+    // could still roll back.
+    DB::transaction(function () use ($message): void {
+        app(ReportMessage::class)->handle($message, (string) Str::ulid(), new ReportData(null));
+        app(RemoveMessage::class)->handle($message, (string) Str::ulid(), 'Insult');
+
+        Event::assertNotDispatched(ShoutboxMessageReported::class);
+        Event::assertNotDispatched(ShoutboxMessageRemoved::class);
+    });
+
+    Event::assertDispatchedTimes(ShoutboxMessageReported::class, 1);
+    Event::assertDispatchedTimes(ShoutboxMessageRemoved::class, 1);
+});
+
+it('refuses a moderation reason longer than its column, in the Action rather than at the database', function (): void {
+    $this->withBrand();
+
+    $room = Room::factory()->create();
+    $message = Message::factory()->for($room)->create();
+    $moderatorId = (string) Str::ulid();
+
+    // All three columns are a `varchar(255)`, and `SQLSTATE[22001] value
+    // too long` is a 500 that takes the surrounding transaction with it
+    // (.ai/rules/tests.md). Each Action is what has to say no, and each
+    // reads the constant that names its own column.
+    expect(fn () => app(RemoveMessage::class)->handle($message, $moderatorId, str_repeat('a', RemoveMessage::MAX_REASON_LENGTH + 1)))
+        ->toThrow(InvalidArgumentException::class)
+        ->and(fn () => app(MuteParticipant::class)->handle($room, (string) Str::ulid(), $moderatorId, str_repeat('a', MuteData::MAX_REASON_LENGTH + 1), 10))
+        ->toThrow(InvalidArgumentException::class)
+        ->and(fn () => app(LockRoom::class)->handle($room, $moderatorId, str_repeat('a', LockRoom::MAX_REASON_LENGTH + 1)))
+        ->toThrow(InvalidArgumentException::class)
+        // Refused before any of them wrote anything.
+        ->and(Message::query()->findOrFail($message->id)->deleted_at)->toBeNull()
+        ->and(RoomMute::query()->where('room_id', $room->id)->count())->toBe(0)
+        ->and($room->refresh()->locked_at)->toBeNull();
+
+    // The boundary is the column's own length, not one short of it.
+    $atTheLimit = app(RemoveMessage::class)->handle($message, $moderatorId, str_repeat('b', RemoveMessage::MAX_REASON_LENGTH));
+
+    expect($atTheLimit->deleted_reason)->toHaveLength(RemoveMessage::MAX_REASON_LENGTH);
+});
+
+it('refuses a report note longer than its column, in German and with a cause the page can branch on', function (): void {
+    $this->withBrand();
+
+    $room = Room::factory()->create();
+    $message = Message::factory()->for($room)->create();
+
+    // The one length a *participant* reaches directly: a client that
+    // ignores the form's `maxlength` must be told what is wrong, not handed
+    // a 500 — which is exactly what the body cap exists to prevent.
+    try {
+        app(ReportMessage::class)->handle(
+            $message,
+            (string) Str::ulid(),
+            new ReportData(str_repeat('a', ReportData::MAX_NOTE_LENGTH + 1)),
+        );
+        $this->fail('A note longer than its column was accepted.');
+    } catch (ShoutboxWriteException $refusal) {
+        expect($refusal->getMessage())->toContain('maximal 255 Zeichen')
+            ->and($refusal->cause)->toBe(ShoutboxRefusal::NoteTooLong)
+            // On the note field, not on the compose box.
+            ->and($refusal->cause->field())->toBe('note');
+    }
+
+    $atTheLimit = app(ReportMessage::class)->handle(
+        $message,
+        (string) Str::ulid(),
+        new ReportData(str_repeat('b', ReportData::MAX_NOTE_LENGTH)),
+    );
+
+    expect(MessageReport::query()->where('message_id', $message->id)->count())->toBe(1)
+        ->and($atTheLimit->note)->toHaveLength(ReportData::MAX_NOTE_LENGTH);
+});
+
+it('keeps the first resolver when a second moderator closes the same report', function (): void {
+    $this->withBrand();
+    $this->travelTo(CarbonImmutable::parse('2026-10-17 02:10:00Z'));
+
+    $room = Room::factory()->create();
+    $message = Message::factory()->for($room)->create();
+    $report = app(ReportMessage::class)->handle($message, (string) Str::ulid(), new ReportData(null));
+    $firstModerator = (string) Str::ulid();
+
+    app(ResolveReport::class)->handle($report, $firstModerator, ReportState::Resolved);
+    $afterFirst = MessageReport::query()->findOrFail($report->id);
+
+    // 04:30, a console tab loaded before 02:10, and a click on Dismiss.
+    // Both states are terminal, so the second act is a no-op — freshly
+    // loaded, so the guard is proved to read persisted state rather than
+    // the instance the first call wrote to.
+    $this->travelTo(CarbonImmutable::parse('2026-10-17 04:30:00Z'));
+
+    $returned = app(ResolveReport::class)->handle(
+        MessageReport::query()->findOrFail($report->id),
+        (string) Str::ulid(),
+        ReportState::Dismissed,
+    );
+
+    $stored = MessageReport::query()->findOrFail($report->id);
+
+    expect($returned->state)->toBe(ReportState::Resolved)
+        ->and($stored->state)->toBe(ReportState::Resolved)
+        // Losing who worked the item is the whole point of the guard.
+        ->and($stored->resolved_by_user_id)->toBe($firstModerator)
+        ->and($stored->resolved_at?->equalTo($afterFirst->resolved_at))->toBeTrue();
+});
+
+it('answers a report that lost the race with the report already on file', function (): void {
+    $this->withBrand();
+    Event::fake([ShoutboxMessageReported::class]);
+
+    $room = Room::factory()->create();
+    $message = Message::factory()->for($room)->create();
+    $reporterId = (string) Str::ulid();
+
+    // A genuinely simultaneous pair cannot be staged in one process on one
+    // connection, so the *miss* is staged instead: the row exists, but
+    // under a brand the Action's own read filters out. That is exactly the
+    // state the losing request is in — it reads nothing and then meets
+    // `unique(message_id, reporter_user_id)`, which is brand-blind.
+    $onFile = new MessageReport([
+        'message_id' => $message->id,
+        'reporter_user_id' => $reporterId,
+        'note' => 'Zuerst',
+        'state' => ReportState::Open,
+    ]);
+    $onFile->forceFill(['brand_id' => (string) Str::ulid()])->save();
+
+    $answer = app(ReportMessage::class)->handle($message, $reporterId, new ReportData('Gleichzeitig'));
+
+    // One act, one report, one event — and no QueryException at somebody
+    // who pressed a button twice in the same instant.
+    expect($answer->id)->toBe($onFile->id)
+        ->and($answer->note)->toBe('Zuerst')
+        ->and(MessageReport::withoutBrandScope()->where('message_id', $message->id)->count())->toBe(1);
+
+    Event::assertNotDispatched(ShoutboxMessageReported::class);
+});
+
+it('leaves a closed room alone rather than locking it shut for good', function (): void {
+    $this->withBrand();
+
+    $room = Room::factory()->create(['closed_at' => CarbonImmutable::now()->utc()]);
+
+    app(LockRoom::class)->handle($room, (string) Str::ulid(), 'Eskaliert');
+
+    // `UnlockRoom` refuses to clear a lock on a closed room, so a lock
+    // applied to one would be permanent and the console would show the wall
+    // as "gesperrt" with nothing able to clear it. A closed wall refuses
+    // every post on its own, so the lock buys nothing either.
+    expect($room->refresh()->locked_at)->toBeNull()
+        ->and($room->locked_by_user_id)->toBeNull()
+        ->and($room->locked_reason)->toBeNull();
 });

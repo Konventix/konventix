@@ -44,13 +44,20 @@ class Room extends Model
 
     protected $table = 'community_rooms';
 
+    /**
+     * The lock triple and `closed_at` are deliberately **not** here. No
+     * database CHECK ties `locked_at`, `locked_by_user_id` and
+     * `locked_reason` together — `LockRoom` and `UnlockRoom` writing all
+     * three in one `forceFill` is the only thing that does — and `closed_at`
+     * starts the retention clock, which is not something a mass assignment
+     * should be able to set in passing. All four are written through
+     * `forceFill` (or, in tests, an unguarded factory).
+     *
+     * @var list<string>
+     */
     protected $fillable = [
         'subject_type',
         'subject_id',
-        'locked_at',
-        'locked_by_user_id',
-        'locked_reason',
-        'closed_at',
     ];
 
     /**

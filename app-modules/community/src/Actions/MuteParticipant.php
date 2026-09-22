@@ -48,6 +48,19 @@ final class MuteParticipant
             throw new InvalidArgumentException('A mute needs a reason; the muted person is shown it.');
         }
 
+        if (mb_strlen($reason) > MuteData::MAX_REASON_LENGTH) {
+            // The column is a `varchar(255)` (spec §4.3) and would refuse
+            // this with `SQLSTATE[22001]` — a 500 that also aborts whatever
+            // transaction the console had open around it
+            // (`.ai/rules/tests.md`). `MuteData` declares the length for the
+            // form; this is where a caller that skipped the form meets it.
+            throw new InvalidArgumentException(sprintf(
+                'A mute reason is at most %d characters; the muted person reads it, and `reason` is a varchar(%d).',
+                MuteData::MAX_REASON_LENGTH,
+                MuteData::MAX_REASON_LENGTH,
+            ));
+        }
+
         if ($minutes !== null && ($minutes < 1 || $minutes > MuteData::MAX_MINUTES)) {
             throw new InvalidArgumentException(sprintf(
                 'A timed mute runs between 1 and %d minutes; pass null for the rest of the event.',

@@ -18,6 +18,13 @@ use Konventix\Community\Models\MessageReport;
  * `Open` is refused here rather than silently reopening a report, because
  * "un-resolve" is not a moderation verb D-COM-08 gives anyone.
  *
+ * **Terminal is enforced, not only stated.** A report that is already
+ * resolved or dismissed is returned untouched, the way `RemoveMessage` and
+ * `LockRoom` treat an act that already happened. Two moderators working
+ * the queue from tabs loaded minutes apart is the ordinary way a second
+ * call arrives, and rewriting the triple would erase who actually worked
+ * the item with nothing left anywhere to say it happened.
+ *
  * `state`, `resolved_by_user_id` and `resolved_at` are written together:
  * no constraint ties them, and a resolved report with no resolver is a row
  * the console cannot attribute.
@@ -36,6 +43,10 @@ final class ResolveReport
     {
         if ($state === ReportState::Open) {
             throw new InvalidArgumentException('A report is resolved or dismissed; reopening one is not a moderation verb.');
+        }
+
+        if ($report->state !== ReportState::Open) {
+            return $report;
         }
 
         return DB::transaction(function () use ($report, $byUserId, $state): MessageReport {

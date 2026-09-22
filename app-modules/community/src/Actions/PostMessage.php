@@ -7,7 +7,9 @@ namespace Konventix\Community\Actions;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use InvalidArgumentException;
 use Konventix\Community\Data\PostMessageData;
+use Konventix\Community\Enums\RoomSubject;
 use Konventix\Community\Events\ShoutboxMessagePosted;
 use Konventix\Community\Exceptions\ShoutboxWriteException;
 use Konventix\Community\Models\Message;
@@ -43,6 +45,15 @@ use Konventix\Community\Models\RoomMute;
  * shoutbox-post` (`CommunityServiceProvider`): only the Action has resolved
  * the room, so only the Action can hold a per-room budget, and only the
  * Action is reached by a caller who skipped the route.
+ *
+ * Before any of the four, one invariant: the room's subject must be an
+ * **event**. `ShoutboxMessagePosted` publishes `eventId` on the module's
+ * contract (spec §9) and this Action is what fills it, from
+ * `$room->subject_id`. That is every room 0.9.0 creates — and the day
+ * sub-project B creates a match room it would stop being true silently, a
+ * `competition_matches` ULID travelling in a field named for an event, with
+ * nothing raised and nothing logged. The guard makes that a decision B has
+ * to take rather than a wrong value it inherits.
  */
 final class PostMessage
 {
@@ -59,11 +70,14 @@ final class PostMessage
     /**
      * @throws ShoutboxWriteException when the room, a mute, the length or
      *                                the rate limit refuses the post
+     * @throws InvalidArgumentException when the room's subject is not an
+     *                                  event, which `eventId` assumes
      */
     public function handle(Room $room, string $authorUserId, PostMessageData $data): Message
     {
         $now = CarbonImmutable::now()->utc();
 
+        $this->guardRoomSubjectIsEvent($room);
         $this->guardRoomAcceptsPosts($room);
         $this->guardNotMuted($room, $authorUserId, $now);
         $body = $this->guardBody($data->body);
@@ -89,16 +103,48 @@ final class PostMessage
         // Task 4 makes this same class a `ShouldBroadcastNow` event, and a
         // broadcast that left before the row was committed would tell a
         // client to fetch a message the next connection cannot see yet.
-        event(new ShoutboxMessagePosted(
+        //
+        // `DB::afterCommit()` rather than a line placed after
+        // `DB::transaction()` returns: the placement alone only means
+        // "after the commit" while this Action opens the outermost
+        // transaction. A caller that wraps it — a console verb muting and
+        // removing in one unit, an import, a retention path — turns the
+        // transaction above into a savepoint, and the dispatch would leave
+        // while the outer transaction is still open. This defers to the
+        // outermost commit and runs immediately when there is none, so the
+        // guarantee is enforced rather than conventional.
+        $posted = new ShoutboxMessagePosted(
             messageId: $message->id,
             roomId: $room->id,
             brandId: $room->brand_id,
             eventId: $room->subject_id,
             authorUserId: $authorUserId,
             postedAt: $now->toIso8601String(),
-        ));
+        );
+
+        DB::afterCommit(static fn () => event($posted));
 
         return $message;
+    }
+
+    /**
+     * The one invariant behind `ShoutboxMessagePosted.eventId` (spec §9).
+     * English and an `InvalidArgumentException`, because a room whose
+     * subject is not an event is a programmer's decision that has not been
+     * taken yet, not an answer a participant is owed (ADR-0001).
+     */
+    private function guardRoomSubjectIsEvent(Room $room): void
+    {
+        if ($room->subject_type !== RoomSubject::Event) {
+            throw new InvalidArgumentException(sprintf(
+                'Room [%s] hangs off a %s, not an event, so `ShoutboxMessagePosted.eventId` would carry that '
+                .'id in a field named for an event (spec §9). Decide what the payload says for a %s room '
+                .'before this Action accepts a post in one.',
+                $room->id,
+                $room->subject_type->value,
+                $room->subject_type->value,
+            ));
+        }
     }
 
     /**

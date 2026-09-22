@@ -49,13 +49,21 @@ class Message extends Model
 
     protected $table = 'community_messages';
 
+    /**
+     * The tombstone triple is deliberately **not** here. `deleted_at`,
+     * `deleted_by_user_id` and `deleted_reason` are tied together by no
+     * database CHECK — `RemoveMessage` writing all three in one `forceFill`
+     * is the only thing that keeps them consistent — so an ordinary
+     * `update()` from a retention sweep, an eraser or an admin quick-action
+     * could otherwise set one of them and leave a tombstone the console
+     * cannot explain. Off `$fillable`, that write has to be deliberate.
+     *
+     * @var list<string>
+     */
     protected $fillable = [
         'room_id',
         'author_user_id',
         'body',
-        'deleted_at',
-        'deleted_by_user_id',
-        'deleted_reason',
     ];
 
     public function isRemoved(): bool
