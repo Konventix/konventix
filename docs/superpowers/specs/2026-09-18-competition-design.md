@@ -545,22 +545,54 @@ for (roster and Steam IDs); it is additive.
 
 *(append only)*
 
-### §6, 2026-09-23 — door presence also listens to `AdmissionIssued`
+### §6, 2026-09-23 — door presence also listens to `AdmissionIssued` and `AdmissionOwnershipAnnounced`
 
-§6 names `AdmissionHolderAssigned` / `AdmissionHolderUnassigned` as the
-source of *who holds* an admission. That is incomplete:
-`AdmissionHolderAssigned` is emitted when an initially **unassigned**
-admission is claimed (ADR-0032), while the ordinary case — somebody buys a
-ticket for themselves — names the holder on `AdmissionIssued` and emits no
-second event. Listening to §6's list alone would leave `holder_user_id` null
-for most people at the door and every `requires_event_check_in` competition
-would refuse its whole field.
+*(Corrected 2026-09-23 in the fix round on this task: the first version of this
+entry gave a reason that is not true of the code. It claimed a self-bought
+ticket names its holder on `AdmissionIssued`. It does not.)*
 
-`Listeners\ProjectAdmissionPresence` therefore also consumes `AdmissionIssued`
-and `AdmissionOwnershipAnnounced` (#292's backfill, so admissions issued
-before this read model existed appear in it). Both are strictly additive, both
-are public events, and Resources' `ProjectAdmission` consumes the same set for
-the same reason.
+**§6 is right about the main path.** `AdmissionHolderAssigned` is how an
+ordinary attendee's admission gets a holder, and it stays the main path.
+`Admission\Actions\IssueAdmissionsForRegistration` writes `holder_user_id`
+**null** on every registration-derived admission and emits
+`AdmissionIssued(holderUserId: null)`; the holder is named afterwards by
+`ClaimAdmission` or `AssignHolder`, and those emit `AdmissionHolderAssigned`
+(ADR-0032). Nearly every row in `competition_admission_presence` learns who
+holds it there.
+
+`Listeners\ProjectAdmissionPresence` nevertheless consumes two further events,
+as **additions** to §6's list and not as a replacement for it:
+
+1. **`AdmissionIssued`, for crew badges.**
+   `Admission\Actions\IssueCrewAdmission` is the one path that creates an
+   admission already `Assigned` — a badge belongs to a named person from the
+   moment it exists — and names the holder on `AdmissionIssued` alone,
+   emitting no second event. Without this listen no crew member is ever at the
+   door as far as this read model is concerned.
+2. **`AdmissionOwnershipAnnounced`, for the backfill** (#292's
+   `admission:announce-ownership`). It is the only way an admission that
+   predates this read model enters it at all: its issue and its claim happened
+   before anything was listening.
+
+Both are strictly additive, both are public events, and Resources'
+`ProjectAdmission` consumes the identical five events
+(`ResourcesServiceProvider`) for the identical two reasons.
+
+### §6, 2026-09-23 — what the module gate on door presence costs
+
+The six presence listens short-circuit when `competition` is off for the
+brand the event names (ADR-0003, #298's second acceptance criterion), unlike
+the eligibility and name projections, which are ungated so a brand switching
+the module on mid-event finds them filled.
+
+Recorded because the trade-off is **not** "cheap to miss".
+`AdmissionOwnershipAnnounced` restates who holds an admission and whether it
+stands, and carries **no scan timestamp**. A brand that enables `competition`
+after the doors opened therefore gets its rows and its holders back from the
+backfill and can never get `checked_in_at` back — every
+`requires_event_check_in` team is refused until each of its members is
+physically re-scanned at the entrance. The gate is mandated and stays; the
+recovery path belongs in the operator documentation (§13's slice).
 
 ### §6, 2026-09-23 — check-in desk on its own route, not `…/{id}/desk`
 

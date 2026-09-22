@@ -158,18 +158,25 @@ class CompetitionServiceProvider extends ModuleServiceProvider
         // `competition_admission_presence` (ADR-0004). Nothing here ever
         // queries Admission.
         //
-        // **These five ARE gated**, on the brand each event names, unlike the
+        // **These six ARE gated**, on the brand each event names, unlike the
         // two projections above: door presence is worth nothing to a brand
-        // that runs no tournaments, it matters only for the hours of one
-        // event, and #298 asks for the short circuit by name. The gate lives
-        // inside the listener because these events arrive on the entrance
-        // host, on a webhook and from a console command, none of which
-        // carries a brand in context (ADR-0003).
+        // that runs no tournaments, and #298 asks for the short circuit by
+        // name. The gate lives inside the listener because these events
+        // arrive on the entrance host, on a webhook and from a console
+        // command, none of which carries a brand in context (ADR-0003). What
+        // it costs is not nothing: `AdmissionOwnershipAnnounced` carries no
+        // scan timestamp, so a brand that switches the module on mid-event
+        // cannot recover `checked_in_at` — the listener's class docblock has
+        // that in full.
         //
-        // `AdmissionIssued` is listened to although §6 names only the holder
-        // events: a self-bought ticket names its holder there and emits no
-        // `AdmissionHolderAssigned` at all. See the listener's own note and
-        // the design's §14.
+        // `AdmissionHolderAssigned` is the main path and §6 is right about
+        // it: a registration-derived admission is issued with `holder_user_id`
+        // null and is named later. The other two are additions for the cases
+        // that path never reaches — a crew badge, which names its holder on
+        // `AdmissionIssued` and emits nothing else, and the #292 backfill,
+        // which is the only way an admission older than this read model
+        // enters it. Resources consumes the same five (`ResourcesServiceProvider`).
+        // See the listener's own notes and the design's §14.
         Event::listen(AdmissionIssued::class, [ProjectAdmissionPresence::class, 'handleIssued']);
         Event::listen(AdmissionHolderAssigned::class, [ProjectAdmissionPresence::class, 'handleHolderAssigned']);
         Event::listen(AdmissionHolderUnassigned::class, [ProjectAdmissionPresence::class, 'handleHolderUnassigned']);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Gdpr;
 
+use Konventix\Competition\Models\AdmissionPresence;
 use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\CompetitionTeamMember;
 use Konventix\Competition\Models\ParticipantProfile;
@@ -17,11 +18,20 @@ use Konventix\Compliance\Gdpr\SubjectRef;
  * The export shows which teams a person played in, in what role, and which
  * competitions they put their name down for.
  *
- * Two things **are** scrubbed on deletion, and they are the two that hold
- * something other than ULIDs: the `ParticipantProfile` row, which carries a
- * display name and a username, and the interested-list rows, whose free-text
- * note the person wrote themselves and which are public on the competition
- * page.
+ * Three things **are** scrubbed on deletion. Two of them hold something other
+ * than ULIDs: the `ParticipantProfile` row, which carries a display name and
+ * a username, and the interested-list rows, whose free-text note the person
+ * wrote themselves and which are public on the competition page.
+ *
+ * The third is `competition_admission_presence.holder_user_id`, which is a
+ * user ULID — the one place this module records that a named person was
+ * physically at a door at a time. The row survives and the person leaves it,
+ * which is the shape Admission's own tombstone has and the shape Resources
+ * already uses for the same column (`ResourcesGdprHandler`, #292 §10): the
+ * scan is the *admission's* fact and the count of who came through the
+ * entrance must not move because somebody asked to be forgotten. Export is
+ * not owed for it — it is a projection of facts Admission's own handler
+ * exports, and §13's list of what this module exports does not name it.
  *
  * Nothing else is. Results, standings and team membership are a public record
  * of a competition that took place — removing a player from a finished
@@ -81,5 +91,13 @@ final class CompetitionGdprHandler implements GdprHandler
         CompetitionInterest::withoutBrandScope()
             ->where('user_id', $subject->userId)
             ->delete();
+
+        // The door read model follows Admission's own tombstone: the row
+        // stays — the scan is the admission's — the person leaves it. The
+        // roster check matches on `holder_user_id`, so nulling it is also
+        // what stops the projection counting them.
+        AdmissionPresence::withoutBrandScope()
+            ->where('holder_user_id', $subject->userId)
+            ->update(['holder_user_id' => null]);
     }
 }

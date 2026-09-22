@@ -37,11 +37,20 @@ use Konventix\Platform\Modules\ModuleGate;
  * **Gated on the *event's* brand** (ADR-0003), not the request's: a scan at
  * the door runs on the entrance host, a revocation on a webhook, and neither
  * carries Competition's brand in context. A brand that does not run
- * tournaments stores none of this. Unlike the eligibility and name
- * projections — which are deliberately ungated so a brand switching
- * Competition on mid-event finds them already filled — this one is cheap to
- * miss: door presence matters for the hours of one event, and #298's second
- * acceptance criterion asks for the short circuit by name.
+ * tournaments stores none of this, and #298's second acceptance criterion
+ * asks for the short circuit by name.
+ *
+ * **What the gate costs is not small, and this is the honest version.** The
+ * eligibility and name projections are deliberately ungated so a brand that
+ * switches Competition on mid-event finds them already filled. This one
+ * cannot be caught up the same way: the backfill event
+ * `AdmissionOwnershipAnnounced` carries who holds an admission and whether it
+ * still stands, and **no scan timestamp at all**. So a brand that enables
+ * `competition` after the doors opened gets its rows and its holders back and
+ * never gets `checked_in_at` back — every `requires_event_check_in` team is
+ * refused until each of its members is physically re-scanned at the entrance.
+ * The gate is mandated (ADR-0003, #298) and stays; the recovery path is an
+ * operator-documentation question, not a silent one.
  *
  * Registered explicitly in `CompetitionServiceProvider::registerListeners()`;
  * modular's event discovery is off and must stay off (.ai/rules/listeners.md).
@@ -52,14 +61,26 @@ use Konventix\Platform\Modules\ModuleGate;
 final class ProjectAdmissionPresence
 {
     /**
-     * **`AdmissionIssued` is on this list although design §6 names only
-     * `AdmissionHolderAssigned`.** `AdmissionHolderAssigned` is emitted when
-     * an initially *unassigned* admission is claimed (ADR-0032); the ordinary
-     * case — somebody buys a ticket for themselves — names the holder on
-     * `AdmissionIssued` and never emits a second event. Listening to the
-     * design's list alone would leave `holder_user_id` null for most people
-     * at the door, and every `requires_event_check_in` competition would
-     * refuse its whole field. Recorded as a deviation in the design's §14.
+     * **`AdmissionIssued` is an addition to §6's list, not a replacement for
+     * it.** `AdmissionHolderAssigned` stays the main path for an ordinary
+     * attendee and §6 is right about that: `IssueAdmissionsForRegistration`
+     * writes `holder_user_id` **null** on every registration-derived
+     * admission and emits `AdmissionIssued(holderUserId: null)`; the holder
+     * is named later, by `ClaimAdmission` or `AssignHolder`, which is what
+     * emits `AdmissionHolderAssigned` (ADR-0032).
+     *
+     * `AdmissionIssued` earns its place for the one case that never emits a
+     * second event: **a crew badge**. `IssueCrewAdmission` creates the
+     * admission already `Assigned` — a badge belongs to a named person from
+     * the moment it exists — and names the holder on `AdmissionIssued` alone.
+     * Without this handler no crew member would ever be at the door as far as
+     * this read model is concerned.
+     *
+     * The other addition, `AdmissionOwnershipAnnounced`, is the only way an
+     * admission that predates this read model enters it at all (see
+     * `handleOwnershipAnnounced()`). Resources' `ProjectAdmission` consumes
+     * the identical five events for the identical two reasons. Recorded in
+     * the design's §14.
      */
     public function handleIssued(AdmissionIssued $event): void
     {
@@ -69,6 +90,13 @@ final class ProjectAdmissionPresence
         ]);
     }
 
+    /**
+     * **The main path, and the one §6 names.** An ordinary attendee's
+     * admission is issued with no holder and gets one here, when the ticket
+     * is claimed or an organizer assigns a name to it. Nearly every row in
+     * this table learns its `holder_user_id` from this handler; the other two
+     * cover a crew badge and the backfill.
+     */
     public function handleHolderAssigned(AdmissionHolderAssigned $event): void
     {
         $this->upsert($event->admissionId, $event->brandId, [
@@ -145,7 +173,13 @@ final class ProjectAdmissionPresence
     /**
      * The backfill (#292's `admission:announce-ownership`): every admission
      * that existed before this read model did needs one announcement to
-     * appear in it. A revoked one is removed rather than stored.
+     * appear in it, and this is the **only** way such a row ever gets here —
+     * the issue and the claim happened before anything was listening. A
+     * revoked one is removed rather than stored.
+     *
+     * It restates who holds an admission and whether it stands. It does
+     * **not** carry a scan timestamp, which is why the class docblock says
+     * what a missed projection costs.
      */
     public function handleOwnershipAnnounced(AdmissionOwnershipAnnounced $event): void
     {

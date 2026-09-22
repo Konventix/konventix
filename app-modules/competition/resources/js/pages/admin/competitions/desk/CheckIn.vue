@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
+import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
 
@@ -13,7 +14,10 @@ import { formatDateTime } from '@/lib/datetime';
  * `requiresEventCheckIn` each roster member is marked with whether the
  * **event door** has seen them — projected into this module's own read model
  * from Admission's events, never queried out of Admission — so a refusal is
- * visible before the button is pressed rather than after.
+ * visible before the button is pressed rather than after. And when a click
+ * *is* refused anyway, the controller's field error is rendered on that
+ * entrant's own row: a button that silently does nothing is the one thing a
+ * desk with a queue behind it cannot work with.
  *
  * **Both buttons are always offered, whatever the mode** (§6): the desk may
  * check a team in and take it back regardless of whether the competition is
@@ -67,12 +71,45 @@ function stillOutside(entrant: EntrantRow): Member[] {
     return entrant.members.filter((member) => !member.atTheDoor);
 }
 
+/**
+ * The controller answers a refused check-in with a field error on `entrant`
+ * (`ValidationException`), which names who is still outside. Without this the
+ * click is silent and the desk is left pressing a button that does nothing —
+ * the worst thing to happen at a table with a queue behind it. Keyed by
+ * entrant so the message appears on the row it belongs to.
+ */
+const refusals = ref<Record<string, string | undefined>>({});
+
 function checkIn(entrant: EntrantRow): void {
-    router.post(`/entrants/${entrant.id}/check-in`, {}, { preserveScroll: true });
+    refusals.value = { ...refusals.value, [entrant.id]: undefined };
+
+    router.post(
+        `/entrants/${entrant.id}/check-in`,
+        {},
+        {
+            preserveScroll: true,
+            onError: (errors) => {
+                refusals.value = {
+                    ...refusals.value,
+                    [entrant.id]: errors.entrant,
+                };
+            },
+        },
+    );
 }
 
 function undo(entrant: EntrantRow): void {
-    router.delete(`/entrants/${entrant.id}/check-in`, { preserveScroll: true });
+    refusals.value = { ...refusals.value, [entrant.id]: undefined };
+
+    router.delete(`/entrants/${entrant.id}/check-in`, {
+        preserveScroll: true,
+        onError: (errors) => {
+            refusals.value = {
+                ...refusals.value,
+                [entrant.id]: errors.entrant,
+            };
+        },
+    });
 }
 </script>
 
@@ -160,6 +197,8 @@ function undo(entrant: EntrantRow): void {
                         {{ stillOutside(entrant).length }} player(s) have not been through the door yet; the
                         check-in will refuse.
                     </p>
+
+                    <InputError :message="refusals[entrant.id]" />
                 </div>
 
                 <Button size="sm" @click="checkIn(entrant)">Check in</Button>
@@ -179,6 +218,8 @@ function undo(entrant: EntrantRow): void {
                     <span class="text-sm text-success">
                         Checked in {{ formatDateTime(entrant.checkedInAt) }}
                     </span>
+
+                    <InputError :message="refusals[entrant.id]" />
                 </div>
 
                 <Button variant="outline" size="sm" @click="undo(entrant)">Undo check-in</Button>

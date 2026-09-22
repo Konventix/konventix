@@ -151,16 +151,22 @@ final class CompetitionEntryException extends RuntimeException
     }
 
     /**
-     * @param  list<string>  $missingUserIds
+     * The missing people are named, not identified. This message is shown to
+     * whoever pressed the button — a desk with a queue behind it, or a
+     * captain on `/my/tournaments` — so the caller resolves display names
+     * through `ParticipantProfile::displayNamesFor()` first: a ULID on screen
+     * tells nobody who is still outside, and is a handle to probe at worst.
+     *
+     * @param  list<string>  $missingNames  Display names, in roster order.
      */
-    public static function rosterNotAtTheDoor(string $entrantId, array $missingUserIds): self
+    public static function rosterNotAtTheDoor(string $entrantId, array $missingNames): self
     {
         return new self(sprintf(
             'Entrant [%s] cannot be checked in: this competition requires every roster member at the '
             .'event door, and %d of them (%s) have not been scanned in (design §6).',
             $entrantId,
-            count($missingUserIds),
-            implode(', ', $missingUserIds),
+            count($missingNames),
+            implode(', ', $missingNames),
         ));
     }
 }

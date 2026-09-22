@@ -5,8 +5,10 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Konventix\Admission\Events\AdmissionCheckedIn;
+use Konventix\Admission\Events\AdmissionHolderAssigned;
 use Konventix\Admission\Events\AdmissionHolderUnassigned;
 use Konventix\Admission\Events\AdmissionIssued;
+use Konventix\Admission\Events\AdmissionOwnershipAnnounced;
 use Konventix\Admission\Events\AdmissionRevoked;
 use Konventix\Competition\Actions\CheckInEntrant;
 use Konventix\Competition\Actions\CreateTeam;
@@ -19,12 +21,15 @@ use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Events\EntrantCheckedIn;
 use Konventix\Competition\Exceptions\CompetitionEntryException;
+use Konventix\Competition\Gdpr\CompetitionGdprHandler;
 use Konventix\Competition\Models\AdmissionPresence;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchSlot;
 use Konventix\Competition\Models\Stage;
+use Konventix\Compliance\Enums\DeletionMode;
+use Konventix\Compliance\Gdpr\SubjectRef;
 use Konventix\Identity\Models\User;
 
 /**
@@ -41,9 +46,15 @@ use Konventix\Identity\Models\User;
  *    events and nothing here ever queries Admission (ADR-0004). The
  *    projection is idempotent, replayable, and short-circuits when
  *    `competition` is off for the event's brand (#298's second acceptance
- *    criterion, ADR-0003).
+ *    criterion, ADR-0003). **All three ways into that table are exercised**:
+ *    the ordinary attendee (issued anonymous, then
+ *    `AdmissionHolderAssigned` — the main path), the crew badge (holder named
+ *    on `AdmissionIssued`, no second event) and the #292 backfill
+ *    (`AdmissionOwnershipAnnounced`).
  * 3. **Readiness reaches the bracket.** A competition that checks its teams
  *    in seeds the checked-in ones only (§7.5).
+ * 4. **A GDPR erasure takes the person out of the door read model** and
+ *    leaves the scan standing, the way Resources does it for the same column.
  *
  * Helper names are process-global across every module's suite
  * (.ai/rules/tests.md); the ones only this file uses are prefixed
@@ -87,10 +98,21 @@ function checkInTestEnter(Competition $competition, string $brandId, string $eve
 }
 
 /**
- * The door sees somebody, the only way Competition ever learns it: Admission's
- * public events. `AdmissionIssued` names the holder — that is how an ordinary
- * self-bought ticket gets one, without ever emitting
- * `AdmissionHolderAssigned` — and `AdmissionCheckedIn` is the scan.
+ * The door sees somebody holding a **crew badge**, the shorter of the two
+ * shapes Admission emits.
+ *
+ * `IssueCrewAdmission` is the one path that names the holder on
+ * `AdmissionIssued` and emits no second event — a badge belongs to a named
+ * person from the moment it exists — so this is the whole of it: the issue,
+ * then `AdmissionCheckedIn` for the scan.
+ *
+ * **This is not the ordinary attendee's shape.** That one is
+ * `checkInTestAttendeeScan()`, which is the main path §6 names: a
+ * registration-derived admission is issued with `holder_user_id` null and
+ * gets its holder on `AdmissionHolderAssigned`. Both are exercised here on
+ * purpose — a suite that only knew this one would stay green with
+ * `handleHolderAssigned()` deleted, and every ordinary ticket would lose its
+ * door presence.
  *
  * Returns the admission's ULID so a test can revoke or unassign it.
  */
@@ -119,6 +141,61 @@ function checkInTestScan(string $brandId, string $eventId, string $userId, strin
         eventDayId: null,
         checkpointId: null,
         direction: $direction,
+        scannedAt: now()->toIso8601String(),
+    ));
+
+    return $admissionId;
+}
+
+/**
+ * The door sees an **ordinary attendee**, the way it really happens — the
+ * main path of design §6, in the order Admission emits it:
+ *
+ * 1. `AdmissionIssued` with `holderUserId: null`. Every registration-derived
+ *    admission is issued anonymous (`IssueAdmissionsForRegistration`); the
+ *    buyer is a different column and a group booking buys for other people.
+ * 2. `AdmissionHolderAssigned`, when the ticket is claimed or an organizer
+ *    assigns a name (`ClaimAdmission` / `AssignHolder`, ADR-0032). This is
+ *    where `holder_user_id` comes from for nearly everybody at the door.
+ * 3. `AdmissionCheckedIn`, the scan.
+ *
+ * Returns the admission's ULID.
+ */
+function checkInTestAttendeeScan(string $brandId, string $eventId, string $userId): string
+{
+    $admissionId = (string) Str::ulid();
+    $registrationId = (string) Str::ulid();
+
+    event(new AdmissionIssued(
+        admissionId: $admissionId,
+        registrationId: $registrationId,
+        eventId: $eventId,
+        brandId: $brandId,
+        role: 'attendee',
+        holderUserId: null,
+        issuedAt: now()->toIso8601String(),
+        buyerUserId: $userId,
+    ));
+
+    event(new AdmissionHolderAssigned(
+        admissionId: $admissionId,
+        registrationId: $registrationId,
+        eventId: $eventId,
+        brandId: $brandId,
+        holderUserId: $userId,
+        viaClaimLink: true,
+        assignedAt: now()->toIso8601String(),
+    ));
+
+    event(new AdmissionCheckedIn(
+        checkInId: (string) Str::ulid(),
+        admissionId: $admissionId,
+        registrationId: $registrationId,
+        eventId: $eventId,
+        brandId: $brandId,
+        eventDayId: null,
+        checkpointId: null,
+        direction: 'in',
         scannedAt: now()->toIso8601String(),
     ));
 
@@ -286,6 +363,153 @@ it('refuses a check-in while a roster member has not been seen at the event door
     checkInTestScan($brand->id, $eventId, $member);
 
     expect(app(CheckInEntrant::class)->handle($entrant->refresh())->state)->toBe(EntrantState::CheckedIn);
+});
+
+it('lets an ordinary attendee through the door the way Admission really emits it', function (): void {
+    // **The main path of §6, end to end.** A registration-derived admission
+    // is issued with `holder_user_id` NULL
+    // (`IssueAdmissionsForRegistration`), gets its holder on
+    // `AdmissionHolderAssigned` when it is claimed (ADR-0032), and is then
+    // scanned. The test above uses the crew-badge shape, where the holder
+    // arrives on `AdmissionIssued`; without this one `handleHolderAssigned()`
+    // could be deleted and the suite would stay green while every ordinary
+    // ticket lost its door presence.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    $eventId = (string) Str::ulid();
+    $competition = checkInTestCompetition($eventId, CheckInMode::Desk, teamSize: 2, overrides: [
+        'requires_event_check_in' => true,
+    ]);
+
+    $captain = competitionEligibleUser($eventId, $brand->id);
+    $member = competitionEligibleUser($eventId, $brand->id);
+    $entrant = checkInTestEnter($competition, $brand->id, $eventId, 'Selbst gekauft', [$captain, $member]);
+
+    // An admission that is issued and never claimed names nobody, so its
+    // holder is not at the door however often it is scanned.
+    $unclaimed = (string) Str::ulid();
+    event(new AdmissionIssued(
+        admissionId: $unclaimed,
+        registrationId: (string) Str::ulid(),
+        eventId: $eventId,
+        brandId: $brand->id,
+        role: 'attendee',
+        holderUserId: null,
+        issuedAt: now()->toIso8601String(),
+        buyerUserId: $captain,
+    ));
+    event(new AdmissionCheckedIn(
+        checkInId: (string) Str::ulid(),
+        admissionId: $unclaimed,
+        registrationId: (string) Str::ulid(),
+        eventId: $eventId,
+        brandId: $brand->id,
+        eventDayId: null,
+        checkpointId: null,
+        direction: 'in',
+        scannedAt: now()->toIso8601String(),
+    ));
+
+    expect(AdmissionPresence::withoutBrandScope()->whereKey($unclaimed)->first()->holder_user_id)->toBeNull()
+        ->and(AdmissionPresence::seenAtTheDoor($brand->id, $eventId, [$captain, $member]))->toBe([])
+        ->and(fn () => app(CheckInEntrant::class)->handle($entrant))
+        ->toThrow(CompetitionEntryException::class);
+
+    checkInTestAttendeeScan($brand->id, $eventId, $captain);
+
+    expect(AdmissionPresence::missingAtTheDoor($brand->id, $eventId, [$captain, $member]))->toBe([$member]);
+
+    checkInTestAttendeeScan($brand->id, $eventId, $member);
+
+    expect(AdmissionPresence::seenAtTheDoor($brand->id, $eventId, [$captain, $member]))
+        ->toEqualCanonicalizing([$captain, $member])
+        ->and(app(CheckInEntrant::class)->handle($entrant->refresh())->state)->toBe(EntrantState::CheckedIn);
+});
+
+it('lets the #292 backfill put a pre-existing admission into the read model', function (): void {
+    // `AdmissionOwnershipAnnounced` is the only way an admission that is
+    // older than this read model ever enters it: its issue and its claim
+    // happened before anything was listening. Without
+    // `handleOwnershipAnnounced()` a brand that switched the module on would
+    // see an empty table and refuse every `requires_event_check_in` team.
+    //
+    // It restates the holder and the state, and carries **no scan
+    // timestamp** — so the backfill alone brings the row back and not the
+    // door, which is exactly the recovery gap the listener's docblock names.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    $eventId = (string) Str::ulid();
+    $competition = checkInTestCompetition($eventId, CheckInMode::Desk, overrides: [
+        'requires_event_check_in' => true,
+    ]);
+
+    $captain = competitionEligibleUser($eventId, $brand->id);
+    $entrant = checkInTestEnter($competition, $brand->id, $eventId, 'Von früher', [$captain]);
+
+    $admissionId = (string) Str::ulid();
+    $revokedAdmission = (string) Str::ulid();
+
+    event(new AdmissionOwnershipAnnounced(
+        admissionId: $admissionId,
+        registrationId: (string) Str::ulid(),
+        eventId: $eventId,
+        brandId: $brand->id,
+        holderUserId: $captain,
+        buyerUserId: $captain,
+        state: 'assigned',
+    ));
+
+    // The announcement knows who holds it and nothing about a scan, so the
+    // door has still not seen anybody.
+    expect(AdmissionPresence::withoutBrandScope()->whereKey($admissionId)->first()->holder_user_id)->toBe($captain)
+        ->and(AdmissionPresence::seenAtTheDoor($brand->id, $eventId, [$captain]))->toBe([])
+        ->and(fn () => app(CheckInEntrant::class)->handle($entrant))
+        ->toThrow(CompetitionEntryException::class);
+
+    // The scan that follows lands on the row the backfill created.
+    event(new AdmissionCheckedIn(
+        checkInId: (string) Str::ulid(),
+        admissionId: $admissionId,
+        registrationId: (string) Str::ulid(),
+        eventId: $eventId,
+        brandId: $brand->id,
+        eventDayId: null,
+        checkpointId: null,
+        direction: 'in',
+        scannedAt: now()->toIso8601String(),
+    ));
+
+    expect(AdmissionPresence::seenAtTheDoor($brand->id, $eventId, [$captain]))->toBe([$captain])
+        ->and(app(CheckInEntrant::class)->handle($entrant->refresh())->state)->toBe(EntrantState::CheckedIn);
+
+    // The backfill walks revoked admissions too, and one of those clears the
+    // row rather than restating it — a re-run after somebody's ticket was
+    // cancelled must not put them back at the door.
+    event(new AdmissionOwnershipAnnounced(
+        admissionId: $revokedAdmission,
+        registrationId: null,
+        eventId: $eventId,
+        brandId: $brand->id,
+        holderUserId: $captain,
+        buyerUserId: null,
+        state: 'assigned',
+    ));
+
+    expect(AdmissionPresence::withoutBrandScope()->whereKey($revokedAdmission)->exists())->toBeTrue();
+
+    event(new AdmissionOwnershipAnnounced(
+        admissionId: $revokedAdmission,
+        registrationId: null,
+        eventId: $eventId,
+        brandId: $brand->id,
+        holderUserId: $captain,
+        buyerUserId: null,
+        state: 'revoked',
+    ));
+
+    expect(AdmissionPresence::withoutBrandScope()->whereKey($revokedAdmission)->exists())->toBeFalse();
 });
 
 it('ignores the door entirely when the competition does not require it', function (): void {
@@ -525,6 +749,41 @@ it('projects nothing while the competition module is off for the event brand', f
     expect(AdmissionPresence::withoutBrandScope()->where('brand_id', $brand->id)->count())->toBe(0);
 });
 
+it('takes the person out of the door read model on a GDPR erasure and leaves the scan standing', function (): void {
+    // `competition_admission_presence.holder_user_id` is a user ULID — the
+    // one place this module records that a named person stood at a door at a
+    // time — so erasure may not wait for §13's slice.
+    //
+    // The row stays and the person leaves it, which is the shape Admission's
+    // own tombstone has and the shape Resources already uses for the same
+    // column (`ResourcesGdprHandler`, #292 §10): the scan is the
+    // *admission's* fact, and how many people came through the entrance must
+    // not change because somebody asked to be forgotten.
+    $brand = $this->withBrand();
+    $this->activateModule('competition', $brand);
+
+    $eventId = (string) Str::ulid();
+    $forgotten = competitionEligibleUser($eventId, $brand->id);
+    $stays = competitionEligibleUser($eventId, $brand->id);
+
+    $admissionId = checkInTestAttendeeScan($brand->id, $eventId, $forgotten);
+    checkInTestAttendeeScan($brand->id, $eventId, $stays);
+
+    expect(AdmissionPresence::seenAtTheDoor($brand->id, $eventId, [$forgotten, $stays]))
+        ->toEqualCanonicalizing([$forgotten, $stays]);
+
+    (new CompetitionGdprHandler)->delete(SubjectRef::forUser($forgotten), DeletionMode::Erase);
+
+    $row = AdmissionPresence::withoutBrandScope()->whereKey($admissionId)->first();
+
+    expect($row)->not->toBeNull()
+        ->and($row->holder_user_id)->toBeNull()
+        // The scan itself is untouched: the admission was at the door.
+        ->and($row->checked_in_at)->not->toBeNull()
+        // And nobody else's presence moved.
+        ->and(AdmissionPresence::seenAtTheDoor($brand->id, $eventId, [$forgotten, $stays]))->toBe([$stays]);
+});
+
 it('403s the check-in desk without the CheckInEntrants capability', function (): void {
     $brand = $this->withBrand();
     $eventId = competitionConsoleEvent($brand);
@@ -576,10 +835,15 @@ it('shows the desk who the door has seen and checks a team in from there', funct
             ->where('entrants.0.members.1.atTheDoor', false));
 
     // The door still owes one player, so the desk's button refuses with a
-    // field error rather than a 500.
+    // field error rather than a 500 — and the error names the person, not
+    // their ULID: the desk has to be able to shout a name across the hall.
     $this->actingAs($admin)
         ->post('http://admin.tournaments.test/admin/entrants/'.$entrant->getKey().'/check-in')
         ->assertSessionHasErrors('entrant');
+
+    expect(session('errors')->first('entrant'))
+        ->toContain('Mitspieler')
+        ->not->toContain($member);
 
     checkInTestScan($brand->id, $eventId, $member);
 

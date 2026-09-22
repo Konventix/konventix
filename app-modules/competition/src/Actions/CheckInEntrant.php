@@ -13,6 +13,7 @@ use Konventix\Competition\Models\AdmissionPresence;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionTeam;
 use Konventix\Competition\Models\Entrant;
+use Konventix\Competition\Models\ParticipantProfile;
 
 /**
  * A team says it is here (design §6, D-CMP-18).
@@ -147,8 +148,12 @@ final class CheckInEntrant
      * Competition's own projection of Admission's public events — and never
      * from Admission's tables (ADR-0004).
      *
-     * The refusal names who is missing, because "somebody is not here" is
-     * useless at a desk with a queue behind it.
+     * The refusal names who is missing — by **display name**, from this
+     * module's own `ParticipantProfile` read model — because "somebody is not
+     * here" is useless at a desk with a queue behind it, and a ULID is no
+     * better: nobody at the table can turn one into a person. A member with
+     * no profile row yet falls back to a dash, which is the projection's own
+     * rule and still counts towards the number.
      *
      * @param  list<string>  $roster
      */
@@ -161,7 +166,10 @@ final class CheckInEntrant
         );
 
         if ($missing !== []) {
-            throw CompetitionEntryException::rosterNotAtTheDoor((string) $entrant->getKey(), $missing);
+            throw CompetitionEntryException::rosterNotAtTheDoor(
+                (string) $entrant->getKey(),
+                array_values(ParticipantProfile::displayNamesFor($missing)),
+            );
         }
     }
 }
