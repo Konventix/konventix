@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
-use Konventix\Admission\Enums\HubAccessEndReason;
 use Konventix\Admission\Events\ParticipantAdmissionReplaced;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Events\ParticipantPresenceChanged;
@@ -73,7 +72,7 @@ it('clears the badge on ParticipantHubAccessEnded', function (): void {
 
     event(hubAdmitted($brand->getKey(), $userId, $eventId));
 
-    event(new ParticipantHubAccessEnded($userId, $eventId, $brand->getKey(), HubAccessEndReason::Concluded->value, now()->toIso8601String()));
+    event(new ParticipantHubAccessEnded($userId, $eventId, $brand->getKey(), 'concluded', now()->toIso8601String()));
 
     expect(
         EventPresence::withoutBrandScope()
@@ -138,7 +137,7 @@ it('is idempotent replaying ParticipantHubAccessEnded', function (): void {
 
     event(hubAdmitted($brand->getKey(), $userId, $eventId));
 
-    $ended = new ParticipantHubAccessEnded($userId, $eventId, $brand->getKey(), HubAccessEndReason::Revoked->value, now()->toIso8601String());
+    $ended = new ParticipantHubAccessEnded($userId, $eventId, $brand->getKey(), 'revoked', now()->toIso8601String());
     event($ended);
     event($ended);
 
