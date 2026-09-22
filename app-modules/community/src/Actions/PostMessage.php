@@ -163,26 +163,15 @@ final class PostMessage
     }
 
     /**
-     * The strongest mute in force, if any: `expires_at` null — "for the
-     * rest of the event" (spec §4.3) — outranks any timed one, which is
-     * what `NULLS FIRST` buys. `community_room_mutes` is a log rather than
-     * current state, so a person may legitimately carry several rows.
-     *
-     * `withoutBrandScope()->where('brand_id', …)` rather than the ambient
-     * scope: this Action is also reachable from paths where no brand is
-     * resolved, and `BrandScope` hardens such a query to zero rows
-     * (ADR-0029, `.ai/rules/app-modules-src.md`) — a mute lookup that
-     * silently read nothing would let every muted person post.
+     * The strongest mute in force, if any — `RoomMute::strongestInForce()`
+     * says which row that is and why it escapes the brand scope.
+     * `community_room_mutes` is a log rather than current state, so a person
+     * may legitimately carry several rows. The room page asks the same
+     * question to tell the person before they type.
      */
     private function guardNotMuted(Room $room, string $authorUserId, CarbonImmutable $now): void
     {
-        $mute = RoomMute::withoutBrandScope()
-            ->where('brand_id', $room->brand_id)
-            ->where('room_id', $room->id)
-            ->where('user_id', $authorUserId)
-            ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', $now))
-            ->orderByRaw('expires_at DESC NULLS FIRST')
-            ->first();
+        $mute = RoomMute::strongestInForce($room, $authorUserId, $now);
 
         if ($mute instanceof RoomMute) {
             throw ShoutboxWriteException::muted($mute->reason, $mute->expires_at, $now);

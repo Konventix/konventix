@@ -18,6 +18,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use Konventix\Community\Http\Controllers\ProfileCommentController;
 use Konventix\Community\Http\Controllers\ProfileController;
+use Konventix\Community\Http\Controllers\RoomController;
 
 // The account's public page (ADR-0051 §7, ADR-0052). Deliberately NOT in an
 // auth group: a guest may view a `public` profile, and every other denial
@@ -43,3 +44,24 @@ Route::post('/u/{username}/comments/{comment}/react', [ProfileCommentController:
 Route::delete('/u/{username}/comments/{comment}/react', [ProfileCommentController::class, 'unreact'])
     ->where('username', '[A-Za-z0-9-]{1,64}')
     ->name('community.profile.comments.unreact');
+
+// The event shoutbox (design §8). `auth` only: whether this member may read
+// the wall is `RoomController`'s question — the room is derived from their
+// own running event and `RoomChannel::join()` decides, so a member nobody
+// admitted gets a 404 rather than a redirect. `/live/shoutbox` sits beside
+// Platform's `/live` hub and deliberately not behind its
+// `ensure-active-event`, whose home-with-a-toast is the hub's answer, not
+// this page's. Posting also passes the coarse half of D-COM-09's budget
+// (`throttle:shoutbox-post`, `CommunityServiceProvider`).
+Route::middleware('auth')->prefix('live/shoutbox')->name('community.shoutbox.')->group(function (): void {
+    Route::get('/', [RoomController::class, 'show'])->name('show');
+    Route::get('/messages', [RoomController::class, 'messages'])->name('messages');
+    Route::post('/messages', [RoomController::class, 'store'])
+        ->middleware('throttle:shoutbox-post')
+        ->name('messages.store');
+    Route::post('/messages/{message}/report', [RoomController::class, 'report'])
+        ->whereUlid('message')
+        ->name('messages.report');
+    Route::post('/presence', [RoomController::class, 'presence'])->name('presence');
+    Route::delete('/presence', [RoomController::class, 'leave'])->name('presence.leave');
+});

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Community\Models;
 
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -54,6 +56,41 @@ class RoomMute extends Model
     public function isActiveAt(CarbonImmutable $instant): bool
     {
         return $this->expires_at === null || $this->expires_at->greaterThan($instant);
+    }
+
+    /**
+     * The strongest mute holding this person in this room at `$now`, or
+     * null: `expires_at` null — "for the rest of the event" (spec §4.3) —
+     * outranks any timed one, which is what `NULLS FIRST` buys, and a later
+     * expiry outranks an earlier one. `PostMessage` refuses on it and the
+     * room page tells the person about it, so both read the same row.
+     *
+     * `withoutBrandScope()->forBrand()` with the room's own brand rather
+     * than the ambient scope: this is also reached from paths where no brand
+     * is resolved, and `BrandScope` hardens such a query to zero rows
+     * (ADR-0029, `.ai/rules/app-modules-src.md`) — a lookup that silently
+     * read nothing would let every muted person post.
+     */
+    public static function strongestInForce(Room $room, string $userId, CarbonInterface $now): ?self
+    {
+        return self::withoutBrandScope()
+            ->forBrand($room->brand_id)
+            ->where('room_id', $room->id)
+            ->where('user_id', $userId)
+            ->inForce($now)
+            ->orderByRaw('expires_at DESC NULLS FIRST')
+            ->first();
+    }
+
+    /**
+     * Mutes still holding at `$now`: no expiry, or one still ahead.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeInForce(Builder $query, CarbonInterface $now): Builder
+    {
+        return $query->where(fn (Builder $inner) => $inner->whereNull('expires_at')->orWhere('expires_at', '>', $now));
     }
 
     /**

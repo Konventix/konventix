@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Community\Exceptions;
 
 use Carbon\CarbonInterface;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\ValidationException;
 use Konventix\Community\Enums\ShoutboxRefusal;
 use RuntimeException;
 
@@ -144,6 +146,43 @@ final class ShoutboxWriteException extends RuntimeException
             ShoutboxRefusal::NoteTooLong,
             sprintf('Dein Hinweis ist zu lang: maximal %d Zeichen.', $maximum),
         );
+    }
+
+    /**
+     * The refusal as the compose box receives it: a validation error on the
+     * field `$cause->field()` names, carrying this sentence and nothing
+     * parsed out of it (see the class docblock), plus the two
+     * machine-readable halves — `cause` to branch on and
+     * `retryAfterSeconds` for the countdown a timed mute or the rate limit
+     * shows.
+     *
+     * A `ValidationException` so that every surface handles a refusal the
+     * way it handles any invalid input; its response is set explicitly only
+     * because the countdown's number has no place in Laravel's default
+     * validation body.
+     */
+    public function toValidationException(): ValidationException
+    {
+        $exception = ValidationException::withMessages([$this->cause->field() => [$this->getMessage()]]);
+        $exception->response = $this->toJsonResponse(422);
+
+        return $exception;
+    }
+
+    /**
+     * The body `toValidationException()` answers with, at any status —
+     * `CommunityServiceProvider`'s `shoutbox-post` limiter answers a
+     * flood with this same body at 429, so the compose box reads one shape
+     * whichever of the two halves of D-COM-09 refused the post.
+     */
+    public function toJsonResponse(int $status): JsonResponse
+    {
+        return new JsonResponse([
+            'message' => $this->getMessage(),
+            'errors' => [$this->cause->field() => [$this->getMessage()]],
+            'cause' => $this->cause->value,
+            'retryAfterSeconds' => $this->retryAfterSeconds,
+        ], $status);
     }
 
     /**

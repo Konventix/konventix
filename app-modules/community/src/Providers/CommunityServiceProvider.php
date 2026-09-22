@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Konventix\Community\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
@@ -12,7 +14,10 @@ use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Events\ParticipantPresenceChanged;
 use Konventix\Community\Actions\PostMessage;
+use Konventix\Community\Data\ShoutboxCardData;
+use Konventix\Community\Exceptions\ShoutboxWriteException;
 use Konventix\Community\Gdpr\CommunityGdprHandler;
+use Konventix\Community\Hub\ShoutboxCard;
 use Konventix\Community\Listeners\ProjectAdmissionBadge;
 use Konventix\Community\Listeners\ProjectCommunityMember;
 use Konventix\Community\Listeners\ProjectCommunityProfile;
@@ -22,6 +27,9 @@ use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
+use Konventix\Platform\Data\ActiveEventData;
+use Konventix\Platform\Hub\HubCard;
+use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
@@ -92,7 +100,39 @@ class CommunityServiceProvider extends ModuleServiceProvider
         RateLimiter::for('shoutbox-post', fn (Request $request): Limit => Limit::perSecond(
             PostMessage::MAX_PER_WINDOW,
             PostMessage::WINDOW_SECONDS,
-        )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown')));
+        )->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip() ?? 'unknown'))
+            // The same refusal `PostMessage` throws, at 429: whichever half
+            // of the budget refuses, the compose box reads one body — the
+            // German sentence on `body` and the countdown's seconds.
+            ->response(static fn (Request $request, array $headers): JsonResponse => ShoutboxWriteException::tooManyMessages(
+                (int) ($headers['Retry-After'] ?? PostMessage::WINDOW_SECONDS),
+            )->toJsonResponse(429)->withHeaders($headers)));
+    }
+
+    /**
+     * The live hub's shoutbox card (design §8): the last few lines and an
+     * inline compose box, for the admitted participants the hub is for.
+     * Order 30, after Admission's ticket and Agenda's "Jetzt / Gleich" —
+     * the code the door scans and what is on come first.
+     *
+     * No `permission`: reading the wall is admission, not a capability
+     * (D-COM-03), and the hub renders only for an admitted member. The
+     * registry hides the card on a brand with `community` off (ADR-0003).
+     *
+     * `static fn`, and `ShoutboxCard` resolved inside it: the registry is a
+     * singleton that outlives the request under Octane
+     * (`.ai/rules/providers.md`).
+     */
+    protected function registerHub(): void
+    {
+        $this->app->make(HubRegistry::class)->add(new HubCard(
+            module: 'community',
+            key: 'community.shoutbox',
+            label: 'Shoutbox',
+            component: 'community/hub/ShoutboxCard',
+            payload: static fn (ActiveEventData $event, Authenticatable $user): ShoutboxCardData => app(ShoutboxCard::class)($event, $user),
+            order: 30,
+        ));
     }
 
     /**

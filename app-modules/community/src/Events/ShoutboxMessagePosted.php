@@ -8,6 +8,7 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Konventix\Community\Broadcasting\RoomChannel;
+use Konventix\Community\Data\ShoutboxLineData;
 use Konventix\Community\Models\CommunityProfile;
 use Konventix\Community\Models\Message;
 
@@ -98,6 +99,10 @@ final readonly class ShoutboxMessagePosted implements ShouldBroadcastNow, Should
      * impossible; the client then has the id and can fetch the line
      * itself rather than render an empty one.
      *
+     * The shape is `ShoutboxLineData`'s, the same class every HTTP read of
+     * the wall uses, so the socket and the page cannot disagree about what
+     * a line is.
+     *
      * **Two reads, two scoping conventions, both deliberate.** `Message` is
      * brand-owned (`BelongsToBrand`), and a broadcast can leave from any
      * context — a console request, a queue worker, the operator admin host,
@@ -119,14 +124,14 @@ final readonly class ShoutboxMessagePosted implements ShouldBroadcastNow, Should
             ->where('brand_id', $this->brandId)
             ->find($this->messageId);
 
-        return [
-            'id' => $this->messageId,
-            'roomId' => $this->roomId,
-            'authorUserId' => $this->authorUserId,
-            'authorDisplayName' => $this->authorDisplayName(),
-            'body' => $message?->body,
-            'postedAt' => $this->postedAt,
-        ];
+        return (new ShoutboxLineData(
+            id: $this->messageId,
+            roomId: $this->roomId,
+            authorUserId: $this->authorUserId,
+            authorDisplayName: $this->authorDisplayName(),
+            body: $message?->body,
+            postedAt: $this->postedAt,
+        ))->toArray();
     }
 
     /**

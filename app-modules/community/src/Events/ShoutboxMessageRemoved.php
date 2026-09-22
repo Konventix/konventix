@@ -8,6 +8,7 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Konventix\Community\Broadcasting\RoomChannel;
+use Konventix\Community\Data\ShoutboxTombstoneData;
 
 /**
  * An organizer removed a shoutbox line (spec §9, D-COM-08).
@@ -74,14 +75,20 @@ final readonly class ShoutboxMessageRemoved implements ShouldBroadcastNow, Shoul
     }
 
     /**
+     * `ShoutboxTombstoneData`'s shape, and only that: the same class the
+     * room page and the reconciliation fetch replay a removal through, so a
+     * client that missed this broadcast and catches up over HTTP is told
+     * exactly what this payload tells it — and never `reason` or
+     * `removedByUserId`.
+     *
      * @return array<string, mixed>
      */
     public function broadcastWith(): array
     {
-        return [
-            'id' => $this->messageId,
-            'roomId' => $this->roomId,
-            'removedAt' => $this->removedAt,
-        ];
+        return (new ShoutboxTombstoneData(
+            id: $this->messageId,
+            roomId: $this->roomId,
+            removedAt: $this->removedAt,
+        ))->toArray();
     }
 }

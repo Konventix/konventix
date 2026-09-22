@@ -555,6 +555,125 @@ declare namespace Konventix {
                 'standard' | 'reverse_charge' | 'small_business';
         }
     }
+    namespace Community {
+        namespace Data {
+            export type ModerationLineData = {
+                readonly id: string;
+                readonly authorUserId: string;
+                readonly authorDisplayName: string | null;
+                readonly body: string;
+                readonly postedAt: string;
+                readonly removedAt: string | null;
+                readonly removedReason: string | null;
+            };
+            export type ModerationMuteData = {
+                readonly userId: string;
+                readonly displayName: string | null;
+                readonly reason: string;
+                readonly expiresAt: string | null;
+                readonly mutedAt: string;
+            };
+            export type ModerationReportData = {
+                readonly id: string;
+                readonly messageId: string;
+                readonly authorUserId: string;
+                readonly authorDisplayName: string | null;
+                readonly body: string;
+                readonly removedAt: string | null;
+                readonly reporterDisplayName: string | null;
+                readonly note: string | null;
+                readonly reportedAt: string;
+            };
+            export type ModerationRoomData = {
+                readonly id: string;
+                readonly lockedAt: string | null;
+                readonly lockedReason: string | null;
+                readonly closedAt: string | null;
+            };
+            export type MuteData = {
+                readonly reason: string;
+                readonly minutes: number | null;
+            };
+            export type PostMessageData = {
+                readonly body: string;
+            };
+            export type ReportData = {
+                readonly note: string | null;
+            };
+            export type ShoutboxCardData = {
+                readonly wall: Konventix.Community.Data.ShoutboxWallData;
+                readonly roomUrl: string;
+                readonly messagesUrl: string;
+                readonly postUrl: string;
+            };
+            export type ShoutboxFeedData = {
+                readonly lines: Array<
+                    | Konventix.Community.Data.ShoutboxLineData
+                    | Konventix.Community.Data.ShoutboxTombstoneData
+                >;
+                readonly hasMore: boolean;
+            };
+            export type ShoutboxLineData = {
+                readonly id: string;
+                readonly roomId: string;
+                readonly authorUserId: string;
+                readonly authorDisplayName: string | null;
+                readonly body: string | null;
+                readonly postedAt: string;
+            };
+            export type ShoutboxModerationData = {
+                readonly eventId: string;
+                readonly room: Konventix.Community.Data.ModerationRoomData | null;
+                readonly reports: Konventix.Community.Data.ModerationReportData[];
+                readonly mutes: Konventix.Community.Data.ModerationMuteData[];
+                readonly lines: Konventix.Community.Data.ModerationLineData[];
+                readonly muteReasonMaxLength: number;
+            };
+            export type ShoutboxPresenceData = {
+                readonly userId: string;
+                readonly displayName: string | null;
+                readonly status: Konventix.Community.Enums.ConnectionStatus;
+                readonly checkedIn: boolean;
+            };
+            export type ShoutboxRoomData = {
+                readonly eventName: string | null;
+                readonly wall: Konventix.Community.Data.ShoutboxWallData;
+                readonly presence: Konventix.Community.Data.ShoutboxPresenceData[];
+                readonly noteMaxLength: number;
+            };
+            export type ShoutboxTombstoneData = {
+                readonly id: string;
+                readonly roomId: string;
+                readonly removedAt: string;
+            };
+            export type ShoutboxWallData = {
+                readonly roomId: string;
+                readonly lines: Array<
+                    | Konventix.Community.Data.ShoutboxLineData
+                    | Konventix.Community.Data.ShoutboxTombstoneData
+                >;
+                readonly hasOlder: boolean;
+                readonly notice: string | null;
+                readonly mute: string | null;
+                readonly retryAfterSeconds: number | null;
+                readonly maxLength: number;
+            };
+        }
+        namespace Enums {
+            export type ConnectionStatus = 'online' | 'away' | 'offline';
+            export type Permission = 'community.moderate-community';
+            export type ReportState = 'open' | 'resolved' | 'dismissed';
+            export type RoomSubject = 'event' | 'match' | 'competition';
+            export type ShoutboxRefusal =
+                | 'room_locked'
+                | 'room_closed'
+                | 'muted'
+                | 'message_empty'
+                | 'message_too_long'
+                | 'too_many_messages'
+                | 'note_too_long';
+        }
+    }
     namespace Competition {
         namespace Enums {
             export type DisciplineKind =
