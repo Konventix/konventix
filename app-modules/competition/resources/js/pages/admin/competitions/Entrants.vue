@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -54,14 +54,22 @@ const props = defineProps<{
 
 const picked = ref<Record<string, string[]>>({});
 
-const incomplete = computed(() => props.entrants.filter((entrant) => entrant.state === 'incomplete'));
+const incomplete = computed(() =>
+    props.entrants.filter((entrant) => entrant.state === 'incomplete'),
+);
 
 const active = computed(() =>
-    props.entrants.filter((entrant) => entrant.state === 'registered' || entrant.state === 'checked_in'),
+    props.entrants.filter(
+        (entrant) =>
+            entrant.state === 'registered' || entrant.state === 'checked_in',
+    ),
 );
 
 const gone = computed(() =>
-    props.entrants.filter((entrant) => entrant.state === 'withdrawn' || entrant.state === 'disqualified'),
+    props.entrants.filter(
+        (entrant) =>
+            entrant.state === 'withdrawn' || entrant.state === 'disqualified',
+    ),
 );
 
 function selection(entrantId: string): string[] {
@@ -84,24 +92,44 @@ function fill(entrant: EntrantRow): void {
     router.post(
         `/entrants/${entrant.id}/fill`,
         { userIds: selection(entrant.id) },
-        { preserveScroll: true, onSuccess: () => (picked.value = { ...picked.value, [entrant.id]: [] }) },
+        {
+            preserveScroll: true,
+            onSuccess: () =>
+                (picked.value = { ...picked.value, [entrant.id]: [] }),
+        },
     );
 }
 
 function decline(entrant: EntrantRow): void {
-    router.post(`/entrants/${entrant.id}/decline`, {}, { preserveScroll: true });
+    router.post(
+        `/entrants/${entrant.id}/decline`,
+        {},
+        { preserveScroll: true },
+    );
 }
 
 function withdraw(entrant: EntrantRow): void {
-    router.post(`/entrants/${entrant.id}/withdraw`, {}, { preserveScroll: true });
+    router.post(
+        `/entrants/${entrant.id}/withdraw`,
+        {},
+        { preserveScroll: true },
+    );
 }
 
 function disqualify(entrant: EntrantRow): void {
-    router.post(`/entrants/${entrant.id}/disqualify`, {}, { preserveScroll: true });
+    router.post(
+        `/entrants/${entrant.id}/disqualify`,
+        {},
+        { preserveScroll: true },
+    );
 }
 
 function regenerate(entrant: EntrantRow): void {
-    router.post(`/competition-teams/${entrant.teamId}/invite-code`, {}, { preserveScroll: true });
+    router.post(
+        `/competition-teams/${entrant.teamId}/invite-code`,
+        {},
+        { preserveScroll: true },
+    );
 }
 </script>
 
@@ -127,8 +155,9 @@ function regenerate(entrant: EntrantRow): void {
         <section v-if="incomplete.length > 0" class="flex flex-col gap-4">
             <h2 class="text-lg font-medium text-text">Incomplete rosters</h2>
             <p class="text-sm text-text-muted">
-                Each of these holds a slot. Fill it from the interested list, or decline it and free the slot.
-                The competition cannot start while any of them is left.
+                Each of these holds a slot. Fill it from the interested list, or
+                decline it and free the slot. The competition cannot start while
+                any of them is left.
             </p>
 
             <article
@@ -136,16 +165,27 @@ function regenerate(entrant: EntrantRow): void {
                 :key="entrant.id"
                 class="flex flex-col gap-3 rounded-xl border border-border bg-surface-raised p-4"
             >
-                <div class="flex flex-wrap items-baseline justify-between gap-2">
-                    <h3 class="font-medium text-text">{{ entrant.teamName }}</h3>
-                    <span class="text-sm text-warning">{{ entrant.missing }} player(s) short</span>
+                <div
+                    class="flex flex-wrap items-baseline justify-between gap-2"
+                >
+                    <h3 class="font-medium text-text">
+                        {{ entrant.teamName }}
+                    </h3>
+                    <span class="text-sm text-warning"
+                        >{{ entrant.missing }} player(s) short</span
+                    >
                 </div>
 
                 <ul class="flex flex-wrap gap-2 text-sm text-text-muted">
-                    <li v-for="member in entrant.members" :key="member.userId">{{ member.displayName }}</li>
+                    <li v-for="member in entrant.members" :key="member.userId">
+                        {{ member.displayName }}
+                    </li>
                 </ul>
 
-                <fieldset v-if="props.interested.length > 0" class="flex flex-col gap-2">
+                <fieldset
+                    v-if="props.interested.length > 0"
+                    class="flex flex-col gap-2"
+                >
                     <legend class="text-sm text-text-muted">Interested</legend>
 
                     <label
@@ -154,27 +194,51 @@ function regenerate(entrant: EntrantRow): void {
                         class="flex items-start gap-2 text-sm text-text"
                     >
                         <Checkbox
-                            :model-value="selection(entrant.id).includes(person.userId)"
+                            :model-value="
+                                selection(entrant.id).includes(person.userId)
+                            "
                             @update:model-value="
                                 (value: boolean | 'indeterminate') =>
-                                    toggle(entrant.id, person.userId, value === true)
+                                    toggle(
+                                        entrant.id,
+                                        person.userId,
+                                        value === true,
+                                    )
                             "
                         />
                         <span>
                             {{ person.displayName }}
-                            <span v-if="person.note" class="text-text-muted">— {{ person.note }}</span>
+                            <span v-if="person.note" class="text-text-muted"
+                                >— {{ person.note }}</span
+                            >
                         </span>
                     </label>
                 </fieldset>
 
-                <p v-else class="text-sm text-text-muted">Nobody registered interest in this competition.</p>
+                <p v-else class="text-sm text-text-muted">
+                    Nobody registered interest in this competition.
+                </p>
 
                 <div class="flex flex-wrap gap-2">
-                    <Button size="sm" :disabled="selection(entrant.id).length === 0" @click="fill(entrant)">
+                    <Button
+                        size="sm"
+                        :disabled="selection(entrant.id).length === 0"
+                        @click="fill(entrant)"
+                    >
                         Fill up
                     </Button>
-                    <Button variant="outline" size="sm" @click="decline(entrant)">Decline</Button>
-                    <Button variant="ghost" size="sm" @click="regenerate(entrant)">New invite code</Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        @click="decline(entrant)"
+                        >Decline</Button
+                    >
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        @click="regenerate(entrant)"
+                        >New invite code</Button
+                    >
                 </div>
             </article>
         </section>
@@ -182,7 +246,9 @@ function regenerate(entrant: EntrantRow): void {
         <section class="flex flex-col gap-3">
             <h2 class="text-lg font-medium text-text">Entered</h2>
 
-            <p v-if="active.length === 0" class="text-sm text-text-muted">No full roster has entered yet.</p>
+            <p v-if="active.length === 0" class="text-sm text-text-muted">
+                No full roster has entered yet.
+            </p>
 
             <article
                 v-for="entrant in active"
@@ -190,26 +256,46 @@ function regenerate(entrant: EntrantRow): void {
                 class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised p-4"
             >
                 <div class="flex min-w-0 flex-col">
-                    <span class="font-medium text-text">{{ entrant.teamName }}</span>
+                    <span class="font-medium text-text">{{
+                        entrant.teamName
+                    }}</span>
                     <span class="text-sm text-text-muted">
-                        {{ entrant.members.map((member) => member.displayName).join(', ') }}
+                        {{
+                            entrant.members
+                                .map((member) => member.displayName)
+                                .join(', ')
+                        }}
                     </span>
                 </div>
 
                 <div class="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" @click="withdraw(entrant)">Withdraw</Button>
-                    <Button variant="outline" size="sm" @click="disqualify(entrant)">Disqualify</Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        @click="withdraw(entrant)"
+                        >Withdraw</Button
+                    >
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        @click="disqualify(entrant)"
+                        >Disqualify</Button
+                    >
                 </div>
             </article>
         </section>
 
         <section v-if="gone.length > 0" class="flex flex-col gap-2">
-            <h2 class="text-lg font-medium text-text">No longer in the field</h2>
+            <h2 class="text-lg font-medium text-text">
+                No longer in the field
+            </h2>
 
             <ul class="flex flex-col gap-1 text-sm text-text-muted">
                 <li v-for="entrant in gone" :key="entrant.id">
                     {{ entrant.teamName }} — {{ entrant.state }}
-                    <template v-if="entrant.withdrawalReason"> ({{ entrant.withdrawalReason }})</template>
+                    <template v-if="entrant.withdrawalReason">
+                        ({{ entrant.withdrawalReason }})</template
+                    >
                 </li>
             </ul>
         </section>

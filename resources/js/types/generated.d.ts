@@ -678,11 +678,96 @@ declare namespace Konventix {
         }
     }
     namespace Competition {
+        namespace Data {
+            export type CompetitionData = {
+                readonly eventId: string;
+                readonly disciplineId: string;
+                readonly name: string;
+                readonly slug: string;
+                readonly stageName: string;
+                readonly stageFormat: string;
+                readonly checkInMode: Konventix.Competition.Enums.CheckInMode;
+                readonly checkInOpensMinutesBefore: number;
+                readonly requiresEventCheckIn: boolean;
+                readonly resultSubmissionMode: Konventix.Competition.Enums.ResultSubmissionMode;
+                readonly proofPolicy: Konventix.Competition.Enums.ProofPolicy;
+                readonly description: string | null;
+                readonly rules: string | null;
+                readonly maxEntrants: number | null;
+                readonly signupOpensAt: string | null;
+                readonly signupClosesAt: string | null;
+                readonly startsAt: string | null;
+                readonly stageSettings: Record<string, any> | null;
+            };
+            export type CompetitionRowData = {
+                readonly id: string;
+                readonly name: string;
+                readonly slug: string;
+                readonly status: Konventix.Competition.Enums.CompetitionStatus;
+                readonly eventName: string;
+                readonly disciplineName: string;
+                readonly stageFormat: string;
+                readonly entrants: number;
+                readonly maxEntrants: number | null;
+                readonly startsAt: string | null;
+                readonly nextStatus: Konventix.Competition.Enums.CompetitionStatus | null;
+                readonly nextLabel: string | null;
+            };
+            export type DisciplineData = {
+                readonly kind: Konventix.Competition.Enums.DisciplineKind;
+                readonly name: string;
+                readonly slug: string;
+                readonly teamSize: number;
+                readonly avgMatchMinutes: number;
+                readonly allowDraws: boolean;
+                readonly gameId: string | null;
+            };
+            export type DisciplineRowData = {
+                readonly id: string;
+                readonly name: string;
+                readonly slug: string;
+                readonly kind: Konventix.Competition.Enums.DisciplineKind;
+                readonly brandName: string;
+                readonly teamSize: number;
+                readonly avgMatchMinutes: number;
+                readonly allowDraws: boolean;
+                readonly gameId: string | null;
+                readonly competitions: number;
+            };
+        }
         namespace Enums {
+            export type CheckInMode = 'none' | 'self_service' | 'desk';
+            export type CompetitionStatus =
+                | 'draft'
+                | 'published'
+                | 'signup_closed'
+                | 'running'
+                | 'finished'
+                | 'cancelled';
             export type DisciplineKind =
                 'video_game' | 'tabletop' | 'quiz' | 'judged';
             export type EntrantState =
-                'registered' | 'checked_in' | 'withdrawn' | 'disqualified';
+                | 'incomplete'
+                | 'registered'
+                | 'checked_in'
+                | 'withdrawn'
+                | 'disqualified';
+            export type LeaderboardAggregate = 'best' | 'sum' | 'average';
+            export type LeaderboardDirection = 'higher' | 'lower';
+            export type MatchHistoryKind =
+                | 'scheduled'
+                | 'rescheduled'
+                | 'checked_in'
+                | 'reported'
+                | 'confirmed'
+                | 'disputed'
+                | 'resolved'
+                | 'recorded'
+                | 'corrected'
+                | 'voided_by_correction'
+                | 'cancelled'
+                | 'session_live'
+                | 'session_failed';
             export type MatchState =
                 'pending' | 'scheduled' | 'live' | 'finished' | 'cancelled';
             export type Permission =
@@ -690,8 +775,25 @@ declare namespace Konventix {
                 | 'competition.manage-disciplines'
                 | 'competition.manage-competitions'
                 | 'competition.manage-entrants'
+                | 'competition.check-in-entrants'
                 | 'competition.record-results'
                 | 'competition.correct-results';
+            export type ProofPolicy = 'none' | 'optional' | 'required';
+            export type ResultSubmissionMode = 'desk_only' | 'participants';
+            export type StageEntrySource = 'signup' | 'previous_stage';
+            export type StageFormat =
+                | 'single_elimination'
+                | 'double_elimination'
+                | 'round_robin'
+                | 'group_stage'
+                | 'swiss'
+                | 'leaderboard';
+            export type TeamRole = 'captain' | 'member';
+            export type WithdrawalReason =
+                | 'incomplete_roster'
+                | 'captain_withdrew'
+                | 'organizer_withdrew'
+                | 'disqualified';
         }
     }
     namespace Compliance {

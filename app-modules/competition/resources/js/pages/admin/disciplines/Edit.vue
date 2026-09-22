@@ -172,7 +172,9 @@ function submit(): void {
                                 The duration hint the schedule reads; nothing
                                 enforces it.
                             </p>
-                            <InputError :message="form.errors.avgMatchMinutes" />
+                            <InputError
+                                :message="form.errors.avgMatchMinutes"
+                            />
                         </div>
                         <label class="flex items-center gap-2 text-sm">
                             <input

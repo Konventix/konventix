@@ -34,7 +34,12 @@ import {
 const props = defineProps<{
     brands: { id: string; name: string }[];
     events: { id: string; name: string; brandId: string }[];
-    disciplines: { id: string; name: string; brandId: string; teamSize: number }[];
+    disciplines: {
+        id: string;
+        name: string;
+        brandId: string;
+        teamSize: number;
+    }[];
     options: { stageFormat: string[] };
     selection: { brandId: string | null; eventId: string | null };
 }>();
@@ -53,7 +58,8 @@ const form = useForm({
     startsAt: '',
     stageName: 'Playoffs',
     stageFormat: props.options.stageFormat[0] ?? 'single_elimination',
-    stageSettings: null as Record<string, unknown> | null,
+    stageSettings:
+        null as Konventix.Competition.Data.CompetitionData['stageSettings'],
     checkInMode: 'none',
     checkInOpensMinutesBefore: 60,
     requiresEventCheckIn: false,
@@ -193,8 +199,8 @@ function submit(): void {
                                 </option>
                             </select>
                             <p class="text-xs text-text-muted">
-                                Team size, duration hint and draws come from
-                                the discipline.
+                                Team size, duration hint and draws come from the
+                                discipline.
                             </p>
                             <InputError :message="form.errors.disciplineId" />
                         </div>
@@ -269,7 +275,9 @@ function submit(): void {
                             <InputError :message="form.errors.stageFormat" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="competition-max">Participant limit</Label>
+                            <Label for="competition-max"
+                                >Participant limit</Label
+                            >
                             <Input
                                 id="competition-max"
                                 v-model.number="form.maxEntrants"

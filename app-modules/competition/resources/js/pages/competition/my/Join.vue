@@ -61,16 +61,26 @@ function submit(): void {
                     maxlength="32"
                     class="font-mono tracking-[0.3em] uppercase"
                     :aria-invalid="form.errors.code ? 'true' : undefined"
-                    :aria-describedby="form.errors.code ? 'invite-code-error' : 'invite-code-hint'"
+                    :aria-describedby="
+                        form.errors.code
+                            ? 'invite-code-error'
+                            : 'invite-code-hint'
+                    "
                     @blur="form.code = normalize(form.code)"
                 />
                 <p id="invite-code-hint" class="text-sm text-text-muted">
                     Acht Zeichen. 0, O, 1 und I kommen in Codes nie vor.
                 </p>
-                <InputError id="invite-code-error" :message="form.errors.code" />
+                <InputError
+                    id="invite-code-error"
+                    :message="form.errors.code"
+                />
             </div>
 
-            <Button type="submit" :disabled="form.processing || form.code.length === 0">
+            <Button
+                type="submit"
+                :disabled="form.processing || form.code.length === 0"
+            >
                 Beitreten
             </Button>
         </form>

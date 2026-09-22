@@ -120,8 +120,8 @@ function submit(): void {
                         </option>
                     </select>
                     <p class="text-xs text-text-muted">
-                        A video game is one kind of discipline, not the only
-                        one — a table-football table and a quiz are others.
+                        A video game is one kind of discipline, not the only one
+                        — a table-football table and a quiz are others.
                     </p>
                     <InputError :message="form.errors.kind" />
                 </div>

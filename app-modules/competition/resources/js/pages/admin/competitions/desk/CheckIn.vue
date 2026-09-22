@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -58,9 +58,13 @@ const props = defineProps<{
     entrants: EntrantRow[];
 }>();
 
-const checkedIn = computed(() => props.entrants.filter((entrant) => entrant.state === 'checked_in'));
+const checkedIn = computed(() =>
+    props.entrants.filter((entrant) => entrant.state === 'checked_in'),
+);
 
-const waiting = computed(() => props.entrants.filter((entrant) => entrant.state !== 'checked_in'));
+const waiting = computed(() =>
+    props.entrants.filter((entrant) => entrant.state !== 'checked_in'),
+);
 
 /** Who this team is still missing at the door — the reason a check-in refuses. */
 function stillOutside(entrant: EntrantRow): Member[] {
@@ -123,35 +127,50 @@ function undo(entrant: EntrantRow): void {
             :description="`${checkedIn.length} of ${props.entrants.length} team(s) checked in.`"
         />
 
-        <section class="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4 text-sm">
+        <section
+            class="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4 text-sm"
+        >
             <p class="text-text">
                 Mode: <strong>{{ props.competition.checkInModeLabel }}</strong>
                 <template v-if="props.competition.requiresEventCheckIn">
-                    — every roster member must have been scanned at the event door.
+                    — every roster member must have been scanned at the event
+                    door.
                 </template>
             </p>
 
-            <p v-if="props.competition.checkInMode === 'self_service'" class="text-text-muted">
+            <p
+                v-if="props.competition.checkInMode === 'self_service'"
+                class="text-text-muted"
+            >
                 <template v-if="props.competition.selfServiceOpensAt">
                     Captains may check in from
-                    {{ formatDateTime(props.competition.selfServiceOpensAt) }} ({{
-                        props.competition.checkInOpensMinutesBefore
-                    }}
+                    {{ formatDateTime(props.competition.selfServiceOpensAt) }}
+                    ({{ props.competition.checkInOpensMinutesBefore }}
                     minutes before the start) until the competition starts —
-                    {{ props.competition.selfServiceIsOpen ? 'the window is open now' : 'not open yet' }}.
+                    {{
+                        props.competition.selfServiceIsOpen
+                            ? 'the window is open now'
+                            : 'not open yet'
+                    }}.
                 </template>
                 <template v-else>
-                    This competition has no start time, so the self-service window never opens. Set one on the
-                    competition, or check the teams in here.
+                    This competition has no start time, so the self-service
+                    window never opens. Set one on the competition, or check the
+                    teams in here.
                 </template>
             </p>
 
-            <p v-else-if="props.competition.checkInMode === 'none'" class="text-text-muted">
-                This competition does not require a check-in: every entered team counts as ready. You may still
-                tick teams off here.
+            <p
+                v-else-if="props.competition.checkInMode === 'none'"
+                class="text-text-muted"
+            >
+                This competition does not require a check-in: every entered team
+                counts as ready. You may still tick teams off here.
             </p>
 
-            <p v-else class="text-text-muted">Only this desk checks teams in.</p>
+            <p v-else class="text-text-muted">
+                Only this desk checks teams in.
+            </p>
 
             <p>
                 <Link
@@ -166,7 +185,9 @@ function undo(entrant: EntrantRow): void {
         <section class="flex flex-col gap-3">
             <h2 class="text-lg font-medium text-text">Waiting</h2>
 
-            <p v-if="waiting.length === 0" class="text-sm text-text-muted">Every team is checked in.</p>
+            <p v-if="waiting.length === 0" class="text-sm text-text-muted">
+                Every team is checked in.
+            </p>
 
             <article
                 v-for="entrant in waiting"
@@ -174,28 +195,41 @@ function undo(entrant: EntrantRow): void {
                 class="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-surface-raised p-4"
             >
                 <div class="flex min-w-0 flex-col gap-1">
-                    <span class="font-medium text-text">{{ entrant.teamName }}</span>
+                    <span class="font-medium text-text">{{
+                        entrant.teamName
+                    }}</span>
 
                     <ul class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
                         <li
                             v-for="member in entrant.members"
                             :key="member.userId"
                             :class="
-                                props.competition.requiresEventCheckIn && !member.atTheDoor
+                                props.competition.requiresEventCheckIn &&
+                                !member.atTheDoor
                                     ? 'text-warning'
                                     : 'text-text-muted'
                             "
                         >
                             {{ member.displayName }}
-                            <template v-if="props.competition.requiresEventCheckIn">
-                                — {{ member.atTheDoor ? 'at the door' : 'not scanned' }}
+                            <template
+                                v-if="props.competition.requiresEventCheckIn"
+                            >
+                                —
+                                {{
+                                    member.atTheDoor
+                                        ? 'at the door'
+                                        : 'not scanned'
+                                }}
                             </template>
                         </li>
                     </ul>
 
-                    <p v-if="stillOutside(entrant).length > 0" class="text-sm text-warning">
-                        {{ stillOutside(entrant).length }} player(s) have not been through the door yet; the
-                        check-in will refuse.
+                    <p
+                        v-if="stillOutside(entrant).length > 0"
+                        class="text-sm text-warning"
+                    >
+                        {{ stillOutside(entrant).length }} player(s) have not
+                        been through the door yet; the check-in will refuse.
                     </p>
 
                     <InputError :message="refusals[entrant.id]" />
@@ -214,7 +248,9 @@ function undo(entrant: EntrantRow): void {
                 class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised p-4"
             >
                 <div class="flex min-w-0 flex-col">
-                    <span class="font-medium text-text">{{ entrant.teamName }}</span>
+                    <span class="font-medium text-text">{{
+                        entrant.teamName
+                    }}</span>
                     <span class="text-sm text-success">
                         Checked in {{ formatDateTime(entrant.checkedInAt) }}
                     </span>
@@ -222,7 +258,9 @@ function undo(entrant: EntrantRow): void {
                     <InputError :message="refusals[entrant.id]" />
                 </div>
 
-                <Button variant="outline" size="sm" @click="undo(entrant)">Undo check-in</Button>
+                <Button variant="outline" size="sm" @click="undo(entrant)"
+                    >Undo check-in</Button
+                >
             </article>
         </section>
     </div>

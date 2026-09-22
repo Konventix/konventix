@@ -10,7 +10,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUnsavedChanges } from '@/composables/useUnsavedChanges';
-import { formatDateTime, toInstant, toLocalDateTimeInput } from '@/lib/datetime';
+import {
+    formatDateTime,
+    toInstant,
+    toLocalDateTimeInput,
+} from '@/lib/datetime';
 import {
     index as competitionsIndex,
     transition as transitionCompetition,
@@ -40,7 +44,12 @@ type Props = {
         entrants: number;
     };
     events: { id: string; name: string; brandId: string }[];
-    disciplines: { id: string; name: string; brandId: string; teamSize: number }[];
+    disciplines: {
+        id: string;
+        name: string;
+        brandId: string;
+        teamSize: number;
+    }[];
     options: {
         stageFormat: string[];
         checkInMode: string[];
@@ -203,8 +212,8 @@ function move(status: string): void {
                                 </option>
                             </select>
                             <p class="text-xs text-text-muted">
-                                Frozen once teams have entered — teams belong
-                                to one event.
+                                Frozen once teams have entered — teams belong to
+                                one event.
                             </p>
                             <InputError :message="form.errors.eventId" />
                         </div>
