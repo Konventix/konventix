@@ -168,7 +168,7 @@ class MessagingServiceProvider extends ModuleServiceProvider
                 module: 'messaging',
                 label: 'Message templates',
                 url: '/admin/messages/templates',
-                icon: 'file-text',
+                icon: 'layout-template',
                 order: 42,
                 permission: Permission::ManageMessageTemplates->value,
                 area: NavigationItem::AREA_ADMIN,

@@ -307,7 +307,7 @@ class RegistrationServiceProvider extends ModuleServiceProvider
                 // One of `resources/js/lib/navIcons.ts`'s known names — a
                 // module names an icon, it does not import a component
                 // (ADR-0003), and an unknown name silently falls back.
-                icon: 'book-open-check',
+                icon: 'badge-percent',
                 order: 22,
                 permission: Permission::ManageEntryConditions->value,
                 area: NavigationItem::AREA_ADMIN,

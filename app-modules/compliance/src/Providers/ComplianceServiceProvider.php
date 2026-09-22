@@ -554,7 +554,7 @@ class ComplianceServiceProvider extends ModuleServiceProvider
                 module: 'compliance',
                 label: 'Policies',
                 url: '/admin/policies',
-                icon: 'shield',
+                icon: 'scale',
                 order: 30,
                 permission: Permission::ViewPolicies->value,
                 area: NavigationItem::AREA_ADMIN,

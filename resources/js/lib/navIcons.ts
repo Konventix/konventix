@@ -1,5 +1,9 @@
 import {
+    Activity,
+    Armchair,
+    BadgePercent,
     BookOpenCheck,
+    Building,
     Calendar,
     ClipboardList,
     FileSearch,
@@ -10,20 +14,28 @@ import {
     House,
     Image,
     Landmark,
+    LayoutDashboard,
     LayoutGrid,
+    LayoutTemplate,
     LifeBuoy,
+    ListChecks,
     Mail,
     MapPin,
+    Menu,
     MessageSquare,
     Newspaper,
+    Package,
+    PanelBottom,
     Puzzle,
     Receipt,
+    Scale,
     ScrollText,
     Send,
     Shield,
     ShoppingBag,
     ShoppingCart,
     Store,
+    Tags,
     Ticket,
     Timer,
     Users,
@@ -38,8 +50,25 @@ import type { Component } from 'vue';
  * the name back into one. It lives here rather than in either shell because
  * the operator console and the brand topbar draw from the same registry and
  * would otherwise keep two copies of the same list in sync.
+ *
+ * In the console's collapsed sidebar the icon is all there is, so every
+ * console entry names an icon of its own that this map knows (#320);
+ * `navIcons.test.ts` reads the providers and fails on an unknown name or
+ * two console entries sharing one.
  */
 const iconMap: Record<string, Component> = {
+    activity: Activity,
+    armchair: Armchair,
+    'badge-percent': BadgePercent,
+    building: Building,
+    'layout-dashboard': LayoutDashboard,
+    'layout-template': LayoutTemplate,
+    'list-checks': ListChecks,
+    menu: Menu,
+    package: Package,
+    'panel-bottom': PanelBottom,
+    scale: Scale,
+    tags: Tags,
     'book-open-check': BookOpenCheck,
     'clipboard-list': ClipboardList,
     'file-search': FileSearch,

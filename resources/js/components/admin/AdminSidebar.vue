@@ -109,11 +109,24 @@ const groups = computed(() => {
             <SidebarMenu>
                 <SidebarMenuItem>
                     <SidebarMenuButton size="lg" as-child>
+                        <!--
+                            Collapsed, the logo alone (#320). Its own square
+                            box fills the 32 px collapsed button and keeps the
+                            mark out of the button's `[&>svg]:size-4`; the two
+                            text lines hide rather than show a letter each
+                            through the button's overflow.
+                        -->
                         <Link :href="dashboard().url">
-                            <AppLogoIcon
-                                class="size-6 fill-current text-sidebar-foreground"
-                            />
-                            <div class="grid flex-1 text-left leading-tight">
+                            <div
+                                class="flex aspect-square size-8 shrink-0 items-center justify-center"
+                            >
+                                <AppLogoIcon
+                                    class="size-6 fill-current text-sidebar-foreground"
+                                />
+                            </div>
+                            <div
+                                class="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden"
+                            >
                                 <span class="truncate text-sm font-semibold">
                                     {{ admin?.operatorName ?? 'Operator' }}
                                 </span>

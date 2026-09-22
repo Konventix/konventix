@@ -1197,7 +1197,7 @@ class CommerceServiceProvider extends ModuleServiceProvider
                 module: 'commerce',
                 label: 'Products',
                 url: '/admin/products',
-                icon: 'shopping-bag',
+                icon: 'package',
                 order: 24,
                 permission: Permission::ViewProducts->value,
                 area: NavigationItem::AREA_ADMIN,
