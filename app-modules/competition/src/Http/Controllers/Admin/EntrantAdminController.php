@@ -23,6 +23,7 @@ use Konventix\Competition\Actions\WithdrawEntrant;
 use Konventix\Competition\Enums\Permission;
 use Konventix\Competition\Enums\WithdrawalReason;
 use Konventix\Competition\Exceptions\CompetitionEntryException;
+use Konventix\Competition\Http\Controllers\Admin\Concerns\ScopesToOperator;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionInterest;
 use Konventix\Competition\Models\CompetitionTeam;
@@ -47,11 +48,15 @@ use Konventix\Competition\Models\ParticipantProfile;
  * Runs on the admin host, where `BrandScope` hardens every brand-owned query
  * to zero rows (ADR-0029): every query here escapes it deliberately and
  * states the brand it was handed.
+ * Every row it is handed must belong to one of the admin host's own brands
+ * (`ScopesToOperator`); another operator's answers 404.
  *
  * Console copy is English.
  */
 class EntrantAdminController
 {
+    use ScopesToOperator;
+
     public function index(string $competition): Response
     {
         Gate::authorize(Permission::ViewCompetitions->value);
@@ -251,19 +256,31 @@ class EntrantAdminController
 
     private function findCompetition(string $competition): Competition
     {
-        /** @var Competition */
-        return Competition::withoutBrandScope()->findOrFail($competition);
+        /** @var Competition $model */
+        $model = Competition::withoutBrandScope()->findOrFail($competition);
+
+        $this->ensureOperatorOwns($model->brand_id);
+
+        return $model;
     }
 
     private function findEntrant(string $entrant): Entrant
     {
-        /** @var Entrant */
-        return Entrant::withoutBrandScope()->findOrFail($entrant);
+        /** @var Entrant $model */
+        $model = Entrant::withoutBrandScope()->findOrFail($entrant);
+
+        $this->ensureOperatorOwns($model->brand_id);
+
+        return $model;
     }
 
     private function findTeam(string $team): CompetitionTeam
     {
-        /** @var CompetitionTeam */
-        return CompetitionTeam::withoutBrandScope()->findOrFail($team);
+        /** @var CompetitionTeam $model */
+        $model = CompetitionTeam::withoutBrandScope()->findOrFail($team);
+
+        $this->ensureOperatorOwns($model->brand_id);
+
+        return $model;
     }
 }

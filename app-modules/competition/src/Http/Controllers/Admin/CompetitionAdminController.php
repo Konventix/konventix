@@ -28,6 +28,7 @@ use Konventix\Competition\Enums\ProofPolicy;
 use Konventix\Competition\Enums\ResultSubmissionMode;
 use Konventix\Competition\Enums\StageFormat;
 use Konventix\Competition\Exceptions\IllegalCompetitionStateTransitionException;
+use Konventix\Competition\Http\Controllers\Admin\Concerns\ScopesToOperator;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\Discipline;
 use Konventix\Competition\Models\Entrant;
@@ -58,10 +59,14 @@ use Konventix\Platform\Operators\ConsoleSelection;
  * query to zero rows (ADR-0029): every query escapes it deliberately, and
  * counts are grouped queries rather than `withCount()`, which would
  * re-apply the scope on the counted model (.ai/rules/app-modules-src.md).
+ * Because nothing else narrows them, every read and write is held to the
+ * admin host's own brands (`ScopesToOperator`): another operator's
+ * competition answers 404, and its events never reach a picker here.
  */
 class CompetitionAdminController
 {
     use HasDataTableQuery;
+    use ScopesToOperator;
 
     public function index(Request $request, ConsoleSelection $selection, ConsoleEventSources $sources): Response
     {
@@ -76,6 +81,7 @@ class CompetitionAdminController
         ];
 
         $competitions = Competition::withoutBrandScope()
+            ->whereIn('brand_id', $this->operatorBrandIds())
             ->when($request->filled('search'), function ($query) use ($request): void {
                 $query->where('name', 'ilike', '%'.$request->string('search')->trim().'%');
             })
@@ -133,8 +139,8 @@ class CompetitionAdminController
                     nextLabel: $nextLabel,
                 ))->toArray();
             }),
-            'brands' => $this->brandOptions(),
-            'events' => $sources->eventsFor(null),
+            'brands' => $this->operatorBrandOptions(),
+            'events' => $this->operatorEvents($sources),
             'options' => $this->formOptions(),
             'filters' => $this->currentFilters($request, $sort, $perPage, $filters),
         ]);
@@ -145,8 +151,8 @@ class CompetitionAdminController
         Gate::authorize(Permission::ManageCompetitions->value);
 
         return Inertia::render('admin/competitions/Create', [
-            'brands' => $this->brandOptions(),
-            'events' => $sources->eventsFor(null),
+            'brands' => $this->operatorBrandOptions(),
+            'events' => $this->operatorEvents($sources),
             'disciplines' => $this->disciplineOptions(),
             'options' => $this->formOptions(),
             'selection' => [
@@ -161,6 +167,8 @@ class CompetitionAdminController
         Gate::authorize(Permission::ManageCompetitions->value);
 
         $brandId = $request->validate(['brand_id' => ['required', 'ulid', 'exists:brands,id']])['brand_id'];
+        $this->ensureOperatorOwns($brandId);
+
         $data = CompetitionData::validateAndCreate($request->all());
 
         $this->guardEvent($sources, $brandId, $data->eventId);
@@ -269,8 +277,28 @@ class CompetitionAdminController
 
     private function find(string $competition): Competition
     {
-        /** @var Competition */
-        return Competition::withoutBrandScope()->findOrFail($competition);
+        /** @var Competition $model */
+        $model = Competition::withoutBrandScope()->findOrFail($competition);
+
+        $this->ensureOperatorOwns($model->brand_id);
+
+        return $model;
+    }
+
+    /**
+     * Every event the console knows, less those of another operator's
+     * brands.
+     *
+     * @return list<array{id: string, name: string, brandId: string}>
+     */
+    private function operatorEvents(ConsoleEventSources $sources): array
+    {
+        $brandIds = $this->operatorBrandIds();
+
+        return array_values(array_filter(
+            $sources->eventsFor(null),
+            fn (array $event): bool => in_array($event['brandId'], $brandIds, true),
+        ));
     }
 
     private function firstStage(Competition $competition): ?Stage
@@ -309,6 +337,7 @@ class CompetitionAdminController
     private function disciplineOptions(?string $brandId = null): array
     {
         return array_values(Discipline::withoutBrandScope()
+            ->whereIn('brand_id', $this->operatorBrandIds())
             ->when($brandId !== null, fn ($query) => $query->where('brand_id', $brandId))
             ->orderBy('name')
             ->get()

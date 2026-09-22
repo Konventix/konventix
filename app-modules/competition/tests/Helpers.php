@@ -41,6 +41,12 @@ use Spatie\Permission\PermissionRegistrar;
  * where no brand resolves — every test that needs a brand-owned row after
  * such a request creates it first.
  *
+ * The operator is **the installation's one operator** — the same one
+ * `BrandFactory` hangs every brand on, whichever of the two was created
+ * first — because every console controller answers 404 for a brand of
+ * another operator (`ScopesToOperator`). Pass `$operator` and a distinct
+ * `$host` for somebody else's installation: `operators.admin_host` is unique.
+ *
  * @param  list<string>  $permissions
  * @return array{0: Operator, 1: User}
  */
@@ -49,10 +55,10 @@ function competitionOperator(array $permissions = [
     'competition.view-competitions',
     'competition.manage-competitions',
     'competition.manage-disciplines',
-]): array
+], ?Operator $operator = null, string $host = 'admin.tournaments.test'): array
 {
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.tournaments.test'])->save();
+    $operator ??= Operator::query()->orderBy('created_at')->orderBy('id')->first() ?? Operator::factory()->create();
+    $operator->forceFill(['admin_host' => $host])->save();
 
     $registrar = app(PermissionRegistrar::class);
     $registrar->setPermissionsTeamId($operator->getKey());

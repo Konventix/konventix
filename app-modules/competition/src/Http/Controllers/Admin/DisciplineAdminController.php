@@ -15,6 +15,7 @@ use Konventix\Competition\Data\DisciplineData;
 use Konventix\Competition\Data\DisciplineRowData;
 use Konventix\Competition\Enums\DisciplineKind;
 use Konventix\Competition\Enums\Permission;
+use Konventix\Competition\Http\Controllers\Admin\Concerns\ScopesToOperator;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\Discipline;
 use Konventix\Platform\Http\Concerns\HasDataTableQuery;
@@ -32,11 +33,14 @@ use Konventix\Platform\Operators\ConsoleSelection;
  * Runs on the admin host, where `BrandScope` hardens every brand-owned
  * query to zero rows (ADR-0029): every query here escapes it deliberately,
  * counts included — a `withCount()` would re-apply the scope on the counted
- * model and read zero (.ai/rules/app-modules-src.md).
+ * model and read zero (.ai/rules/app-modules-src.md). Because nothing else
+ * narrows them, every read and write is held to the admin host's own brands
+ * (`ScopesToOperator`): another operator's discipline answers 404.
  */
 class DisciplineAdminController
 {
     use HasDataTableQuery;
+    use ScopesToOperator;
 
     public function index(Request $request, ConsoleSelection $selection): Response
     {
@@ -49,9 +53,10 @@ class DisciplineAdminController
             'kind' => $this->resolveFilters($request, ['kind' => array_column(DisciplineKind::cases(), 'value')])['kind'],
         ];
 
-        $brandNames = Brand::query()->pluck('name', 'id');
+        $brandNames = Brand::query()->whereIn('id', $this->operatorBrandIds())->pluck('name', 'id');
 
         $disciplines = Discipline::withoutBrandScope()
+            ->whereIn('brand_id', $this->operatorBrandIds())
             ->when($request->filled('search'), function ($query) use ($request): void {
                 $query->where('name', 'ilike', '%'.$request->string('search')->trim().'%');
             })
@@ -83,7 +88,7 @@ class DisciplineAdminController
                 gameId: $discipline->game_id,
                 competitions: (int) ($competitionCounts[$discipline->getKey()] ?? 0),
             ))->toArray()),
-            'brands' => $this->brandOptions(),
+            'brands' => $this->operatorBrandOptions(),
             'options' => $this->kindOptions(),
             'filters' => $this->currentFilters($request, $sort, $perPage, $filters),
         ]);
@@ -94,6 +99,8 @@ class DisciplineAdminController
         Gate::authorize(Permission::ManageDisciplines->value);
 
         $brandId = $request->validate(['brand_id' => ['required', 'ulid', 'exists:brands,id']])['brand_id'];
+        $this->ensureOperatorOwns($brandId);
+
         $discipline = $createDiscipline->handle($brandId, DisciplineData::validateAndCreate($request->all()));
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Discipline created.')]);
@@ -141,8 +148,12 @@ class DisciplineAdminController
 
     private function find(string $discipline): Discipline
     {
-        /** @var Discipline */
-        return Discipline::withoutBrandScope()->findOrFail($discipline);
+        /** @var Discipline $model */
+        $model = Discipline::withoutBrandScope()->findOrFail($discipline);
+
+        $this->ensureOperatorOwns($model->brand_id);
+
+        return $model;
     }
 
     /**
