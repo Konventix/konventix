@@ -21,6 +21,11 @@ use Konventix\Platform\Models\HubAccess;
  * and never longer than `TTL_SECONDS` if a forget is missed. Escapes the
  * brand scope by the resolved brand's own id (ADR-0010) so the answer is
  * the same whether or not a global scope is in effect.
+ *
+ * The answer is memoised per request: a request that fires an Admission
+ * event and then reads the context sees the pre-event answer — fine, since
+ * scans are operator-driven and the participant's next request is the one
+ * that shows them the hub.
  */
 final class ActiveEventContext
 {

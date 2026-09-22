@@ -26,12 +26,22 @@ it('resolves the admitted event for the signed-in user from one cached read', fu
         ->and(Cache::has("hub-access:{$brand->id}:{$user->id}"))->toBeTrue();
 });
 
-it('is null for a user nobody admitted and for a guest', function (): void {
+it('is null for a guest', function (): void {
     $this->withBrand();
-    expect(app(ActiveEventContext::class)->current())->toBeNull();
 
-    $this->actingAs(User::factory()->create());
     expect(app(ActiveEventContext::class)->current())->toBeNull();
+});
+
+// A separate test on purpose: the context is scoped and memoises its
+// answer, so a guest read in the same request would hand the signed-in
+// read the memo and this branch would never run.
+it('is null for a signed-in user nobody admitted, and caches that answer', function (): void {
+    $brand = $this->withBrand();
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    expect(app(ActiveEventContext::class)->current())->toBeNull()
+        ->and(Cache::has(ActiveEventContext::key($brand->id, $user->id)))->toBeTrue();
 });
 
 it('prefers the most recent admission and lists all', function (): void {
