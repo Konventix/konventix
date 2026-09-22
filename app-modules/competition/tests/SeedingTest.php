@@ -179,12 +179,30 @@ describe('seed sources (§7.5)', function (): void {
         app(SeedStage::class)->handle($stage, new ManualSeedSource([$fourth, $third, $second, $first]));
         app(SeedStage::class)->handle($stage, new ManualSeedSource([$second, $first]));
 
-        // No entrant keeps a stale number from the previous order.
+        // Derived by hand from the code, step by step:
+        //
+        // 1. The first call writes the full drag order: fourth=1, third=2,
+        //    second=3, first=4.
+        // 2. The second call asks `ManualSeedSource::seedOrder()` for the
+        //    order BEFORE anything is cleared — `SeedStage::handle()` computes
+        //    it first and nulls the old seeds only afterwards. So
+        //    `SignupField::entrantIds()` (`seed IS NULL`, then `seed`, then
+        //    `created_at`) reads the field in the previous seed order:
+        //    [fourth, third, second, first].
+        // 3. `seedOrder()` takes the dragged pair [second, first] and appends
+        //    the undragged rest in that field order, skipping the two already
+        //    placed: [second, first] + [fourth, third].
+        // 4. `SeedStage` clears every seed and numbers that list from one:
+        //    second=1, first=2, fourth=3, third=4.
+        //
+        // So the undragged pair keeps its relative order from the previous
+        // shuffle (fourth ahead of third), not creation order — and no
+        // entrant keeps a stale number from the previous order.
         expect(seedingTestSeeds($stage))->toEqual([
             $second => 1,
             $first => 2,
-            $third => 3,
-            $fourth => 4,
+            $fourth => 3,
+            $third => 4,
         ]);
     });
 });

@@ -26,9 +26,15 @@ use RuntimeException;
  *
  * An entrant in the field that the list **leaves out** is appended behind the
  * given order, in the field's own stable order, rather than being left
- * unseeded. A partial drag — "these four are the strong ones, sort the rest
- * out yourselves" — is a real thing a desk does, and a bracket missing
- * everybody who was not dragged is not what it asked for.
+ * unseeded. That order is `SignupField::entrantIds()`'s — seeded entrants by
+ * their current seed, then the unseeded oldest first — read *before*
+ * `SeedStage` clears the old seeds. So on a field that was already seeded,
+ * the undragged entrants keep their relative order from the previous seeding,
+ * not their creation order.
+ *
+ * A partial drag — "these four are the strong ones, sort the rest out
+ * yourselves" — is a real thing a desk does, and a bracket missing everybody
+ * who was not dragged is not what it asked for.
  */
 final class ManualSeedSource implements SeedSource
 {
