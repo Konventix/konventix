@@ -50,9 +50,14 @@ const links = computed(() =>
             <Heading
                 as="h1"
                 :title="hub.event.eventName ?? 'Live'"
-                :description="[hub.event.dayLabel, windowHint].filter(Boolean).join(' · ')"
+                :description="
+                    [hub.event.dayLabel, windowHint].filter(Boolean).join(' · ')
+                "
             />
-            <Badge :variant="hub.event.onSite ? 'default' : 'secondary'" data-test="on-site-badge">
+            <Badge
+                :variant="hub.event.onSite ? 'default' : 'secondary'"
+                data-test="on-site-badge"
+            >
                 <span
                     class="mr-1 inline-block size-2 rounded-full"
                     :class="hub.event.onSite ? 'bg-success' : 'bg-text-muted'"
@@ -62,8 +67,16 @@ const links = computed(() =>
             </Badge>
         </div>
 
-        <nav v-if="hub.events.length > 1" class="flex flex-wrap gap-2" aria-label="Events">
-            <span v-for="e in hub.events" :key="e.eventId" class="text-sm text-text-muted">
+        <nav
+            v-if="hub.events.length > 1"
+            class="flex flex-wrap gap-2"
+            aria-label="Events"
+        >
+            <span
+                v-for="e in hub.events"
+                :key="e.eventId"
+                class="text-sm text-text-muted"
+            >
                 {{ e.eventName }}
             </span>
         </nav>
