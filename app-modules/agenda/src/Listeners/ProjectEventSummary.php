@@ -41,6 +41,22 @@ use Konventix\Event\Events\EventUnpublished;
  */
 final class ProjectEventSummary
 {
+    /**
+     * `EventCreated` says nothing about the state, so neither does this:
+     * `state` stays null and `project()`'s `array_filter` leaves the column
+     * alone. For a genuinely new event that is a `null` state, which
+     * `EventSummary::hasPublicProgramme()` reads exactly as it would read
+     * `draft` — and a draft is what `CreateEvent`, the only emitter, always
+     * makes.
+     *
+     * Writing `'draft'` here would be a guess about another module's state
+     * rather than a fact the payload carries, and the guess only stays true
+     * while this event is never re-delivered. `ReplayEventDetailsCommand`
+     * deliberately does not replay it today, but "the state we invented is
+     * safe because nobody replays creation" is an invariant owned by
+     * another module's command; not inventing one costs nothing and owes
+     * nobody anything.
+     */
     public function handleCreated(EventCreated $event): void
     {
         $this->project(
@@ -49,10 +65,6 @@ final class ProjectEventSummary
             slug: $event->slug,
             name: $event->name,
             timezone: $event->timezone,
-            // `CreateEvent` is the only emitter and it always creates a
-            // draft, so the state is the event's meaning rather than a
-            // field it carries.
-            state: 'draft',
         );
     }
 

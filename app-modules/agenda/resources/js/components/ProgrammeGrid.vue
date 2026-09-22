@@ -163,7 +163,10 @@ function isCovered(rowIndex: number, column: number): boolean {
                         >
                             {{ formatTime(row.time) }}
                         </th>
-                        <template v-for="column in props.columns">
+                        <!-- The key belongs on the `<template>` that carries
+                             the `v-for`, not on the children it renders; the
+                             inner `v-for` over the cells keeps its own. -->
+                        <template v-for="column in props.columns" :key="column">
                             <td
                                 v-for="cell in cellsAt(row, column)"
                                 :key="cell.itemId"
@@ -207,7 +210,6 @@ function isCovered(rowIndex: number, column: number): boolean {
                                     cellsAt(row, column).length === 0 &&
                                     !isCovered(rowIndex, column)
                                 "
-                                :key="`${row.time}-${column}-empty`"
                                 class="border-b border-l border-border p-2"
                             ></td>
                         </template>

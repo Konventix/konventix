@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Konventix\Agenda\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Carbon;
 use Konventix\Agenda\Database\Factories\TrackFactory;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
@@ -20,13 +20,18 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * (ADR-0014). Deleting a track leaves its items untracked rather than
  * deleting a programme entry somebody published.
  *
+ * The timestamps are `CarbonImmutable` and not `Illuminate\Support\Carbon`:
+ * `AppServiceProvider` calls `Date::use(CarbonImmutable::class)`, so that is
+ * what the framework hands back — and PHPStan believes the annotation
+ * rather than checking it (.ai/rules/src.md, #312).
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $event_id
  * @property string $name
  * @property int $position
- * @property Carbon|null $created_at
- * @property Carbon|null $updated_at
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $updated_at
  */
 class Track extends Model
 {

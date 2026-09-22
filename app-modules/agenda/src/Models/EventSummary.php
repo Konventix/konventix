@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Konventix\Agenda\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Carbon;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
@@ -26,6 +26,11 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * No factory: rows exist only through `Listeners\ProjectEventSummary`, so a
  * test emits `EventCreated`/`EventDaysChanged` rather than inventing one.
  *
+ * The timestamps are `CarbonImmutable` and not `Illuminate\Support\Carbon`:
+ * `AppServiceProvider` calls `Date::use(CarbonImmutable::class)`, so that is
+ * what the framework hands back — and PHPStan believes the annotation
+ * rather than checking it (.ai/rules/src.md, #312).
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $event_id
@@ -34,8 +39,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $timezone
  * @property string|null $state
  * @property array<int, mixed>|null $days
- * @property Carbon|null $created_at
- * @property Carbon|null $updated_at
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $updated_at
  */
 class EventSummary extends Model
 {
@@ -76,6 +81,9 @@ class EventSummary extends Model
      * `event:replay-details --with-state` re-emits each event's current
      * lifecycle event, and is the rollout step for a brand activating
      * Agenda on events it already had (`docs/operations.md` § Programme).
+     * The same run re-emits `EventDaysChanged`, which the `days` column has
+     * the identical gap in — and that one opens the page on nothing rather
+     * than refusing it, which is the harder half to notice.
      *
      * The editor deliberately does not ask this question — a draft event is
      * exactly when a programme gets built.

@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Carbon;
 use Konventix\Agenda\Database\Factories\AgendaItemFactory;
 use Konventix\Agenda\Enums\ItemState;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
@@ -31,6 +30,11 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * leaves the item placeless instead of deleting it. `speaker` is a plain
  * value: an external speaker needs no account.
  *
+ * Every datetime here is a `CarbonImmutable`, the timestamps included:
+ * `AppServiceProvider` calls `Date::use(CarbonImmutable::class)`, so that is
+ * what a cast and `now()` hand back — and PHPStan believes the annotation
+ * rather than checking it (.ai/rules/src.md, #312).
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $event_id
@@ -44,8 +48,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string|null $speaker
  * @property ItemState $state
  * @property string|null $cancelled_reason
- * @property Carbon|null $created_at
- * @property Carbon|null $updated_at
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $updated_at
  * @property-read Track|null $track
  * @property-read Location|null $location
  */
