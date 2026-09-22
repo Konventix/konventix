@@ -7,6 +7,8 @@ namespace Konventix\Admission\Actions;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Konventix\Admission\Enums\HubAccessEndReason;
 use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
@@ -35,6 +37,12 @@ final class ProjectEventPresence
 
     public function checkIn(string $brandId, string $eventId, string $admissionId, string $direction, CarbonImmutable $scannedAt): ?EventPresence
     {
+        // An offline batch carries the device's own offset
+        // (`SynchronizeScanBatch`), and the datetime cast writes a Carbon's
+        // wall-clock digits without converting it — so anchor to UTC first
+        // or a +02:00 scan lands two hours late in the table.
+        $scannedAt = $scannedAt->utc();
+
         $admission = Admission::withoutBrandScope()->where('brand_id', $brandId)->find($admissionId);
 
         // A claim-link holder without an account has nothing to sign in to;
@@ -43,11 +51,7 @@ final class ProjectEventPresence
             return null;
         }
 
-        $presence = EventPresence::withoutBrandScope()
-            ->where('brand_id', $brandId)
-            ->where('event_id', $eventId)
-            ->where('user_id', $admission->holder_user_id)
-            ->first();
+        $presence = $this->rowFor($brandId, $eventId, $admission->holder_user_id);
 
         if ($direction === 'out') {
             if ($presence === null || $presence->last_direction === 'out') {
@@ -69,14 +73,7 @@ final class ProjectEventPresence
         $hadAccess = $presence?->hub_access === true;
         $wasIn = $presence?->last_direction === 'in';
 
-        $presence ??= (new EventPresence)->forceFill([
-            'brand_id' => $brandId,
-            'event_id' => $eventId,
-            'user_id' => $admission->holder_user_id,
-            'first_admitted_at' => $scannedAt,
-        ]);
-
-        $presence->forceFill([
+        $admitted = [
             'admission_id' => $admissionId,
             'last_check_in_at' => $scannedAt,
             'last_direction' => 'in',
@@ -84,7 +81,40 @@ final class ProjectEventPresence
             'hub_access' => true,
             'access_ended_reason' => null,
             'day_label' => $window['day_label'],
-        ])->save();
+        ];
+
+        if ($presence === null) {
+            $presence = (new EventPresence)->forceFill([
+                'brand_id' => $brandId,
+                'event_id' => $eventId,
+                'user_id' => $admission->holder_user_id,
+                'first_admitted_at' => $scannedAt,
+                ...$admitted,
+            ]);
+
+            try {
+                // Its own transaction on purpose: from the queue that is one
+                // statement, and under a caller's open transaction it is a
+                // savepoint — so a refused INSERT on Postgres aborts only
+                // itself, never the surrounding work.
+                DB::transaction(static fn () => $presence->save());
+            } catch (UniqueConstraintViolationException $collision) {
+                // Two lanes scanned the same holder within a second and the
+                // sibling job's INSERT won `unique(event_id, user_id)`. The
+                // other job's row is *the* row — re-read it and take the
+                // update path below, so this scan's instant and admission
+                // still land and the two events fire exactly once across
+                // both jobs.
+                $presence = $this->rowFor($brandId, $eventId, $admission->holder_user_id)
+                    ?? throw $collision;
+                $hadAccess = $presence->hub_access;
+                $wasIn = $presence->last_direction === 'in';
+            }
+        }
+
+        if (! $presence->wasRecentlyCreated) {
+            $presence->forceFill($admitted)->save();
+        }
 
         if (! $hadAccess) {
             event(new ParticipantAdmitted(
@@ -105,6 +135,19 @@ final class ProjectEventPresence
         }
 
         return $presence;
+    }
+
+    /**
+     * The one row a holder has at an event (`unique(event_id, user_id)`),
+     * read by the payload's own brand — never through the ambient scope.
+     */
+    private function rowFor(string $brandId, string $eventId, string $userId): ?EventPresence
+    {
+        return EventPresence::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('event_id', $eventId)
+            ->where('user_id', $userId)
+            ->first();
     }
 
     public function endForEvent(string $brandId, string $eventId, HubAccessEndReason $reason, CarbonImmutable $at): int
