@@ -411,3 +411,34 @@ tests:
             exp_annotations:
               summary: "A support report has been waiting unopened for more than an hour"
               runbook: "docs/operations.md#konventixsupportunseen"
+
+  # Design §7 / ADR-0059: a shoutbox broadcast that fails is swallowed so the
+  # accepted line is not refused, which makes it silent by construction.
+  # sxlan fails one in two (fires); xpertise fails one in ten, under the
+  # 20% line (stays quiet); console has a single failure and nothing else,
+  # which is 100% but under the five-broadcast floor (stays quiet).
+  - interval: 1m
+    input_series:
+      - series: 'konventix_community_shoutbox_broadcasts_total{job="konventix", brand="sxlan", outcome="failed"}'
+        values: '0+1x20'
+      - series: 'konventix_community_shoutbox_broadcasts_total{job="konventix", brand="sxlan", outcome="sent"}'
+        values: '0+1x20'
+      - series: 'konventix_community_shoutbox_broadcasts_total{job="konventix", brand="xpertise", outcome="failed"}'
+        values: '0+1x20'
+      - series: 'konventix_community_shoutbox_broadcasts_total{job="konventix", brand="xpertise", outcome="sent"}'
+        values: '0+9x20'
+      - series: 'konventix_community_shoutbox_broadcasts_total{job="konventix", brand="console", outcome="failed"}'
+        values: '0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        groupname: konventix.app
+        alertname: KonventixShoutboxBroadcastFailing
+        exp_alerts: []
+      - eval_time: 15m
+        groupname: konventix.app
+        alertname: KonventixShoutboxBroadcastFailing
+        exp_alerts:
+          - exp_labels: {brand: sxlan, severity: warning, team: konventix}
+            exp_annotations:
+              summary: "Over 20% of shoutbox broadcasts for sxlan failed in 10 minutes"
+              runbook: "docs/operations.md#konventixshoutboxbroadcastfailing"

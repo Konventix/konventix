@@ -89,7 +89,9 @@ final class ModerationDesk
                         authorDisplayName: $names[$message->author_user_id] ?? null,
                         body: $message->body,
                         removedAt: $message->deleted_at?->toIso8601String(),
-                        reporterDisplayName: $names[$report->reporter_user_id] ?? null,
+                        // Null once the reporter was erased (GDPR, design
+                        // §7): the report stays, the person does not.
+                        reporterDisplayName: $report->reporter_user_id === null ? null : ($names[$report->reporter_user_id] ?? null),
                         note: $report->note,
                         reportedAt: $report->created_at?->toIso8601String() ?? '',
                     );

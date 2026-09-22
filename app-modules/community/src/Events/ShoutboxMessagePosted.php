@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Konventix\Community\Events;
 
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
-use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Konventix\Community\Broadcasting\RoomChannel;
 use Konventix\Community\Data\ShoutboxLineData;
 use Konventix\Community\Models\CommunityProfile;
@@ -35,39 +33,47 @@ use Konventix\Community\Models\Message;
  * so that it survives serialisation onto a queue unchanged.
  *
  * **The broadcast is a second, separate payload, and the two must not be
- * confused.** `ShouldBroadcastNow` makes this class the browser's message
- * too (design §8, the notification bell's proven path), but the class's own
- * constructor properties — what a PHP listener in another module receives —
- * stay ULIDs and scalars with no body text, exactly as the paragraph above
- * says. What the page has to render travels only inside `broadcastWith()`'s
- * return value, which is built for one private channel whose subscribers
- * the room already authorised. So both halves of §9 hold: no consumer of
- * the domain event is handed user-generated text, and the chat does not
- * round-trip a fetch per line.
+ * confused.** This class also carries the browser's message (design §8,
+ * the notification bell's proven path), but its own constructor properties
+ * — what a PHP listener in another module receives — stay ULIDs and
+ * scalars with no body text, exactly as the paragraph above says. What the
+ * page has to render travels only inside `broadcastWith()`'s return value,
+ * which is built for one private channel whose subscribers the room
+ * already authorised. So both halves of §9 hold: no consumer of the domain
+ * event is handed user-generated text, and the chat does not round-trip a
+ * fetch per line.
  *
- * `ShouldBroadcastNow` rather than `ShouldBroadcast` for the bell's reason:
- * this is dispatched from `PostMessage` after the commit, in the request
- * that accepted the line, and a queued broadcast would only add a hop to
- * say the same thing a fraction of a second later.
+ * **Community sends the broadcast itself, and it must not fail the
+ * write.** `broadcastOn()`, `broadcastAs()` and `broadcastWith()` describe
+ * the wire message; `Listeners\BroadcastToRoom` sends it, immediately and
+ * in the request that accepted the line — the bell's `Now` — and it is
+ * the first listener registered for this event. The class deliberately
+ * implements neither `ShouldBroadcastNow` nor `ShouldRescue`:
  *
- * **A broadcast that fails must not fail the write.** `PostMessage`
- * dispatches this *after* the commit, so by the time Reverb is asked the
- * row is already durable — and a `BroadcastException` thrown out of
- * `event()` would therefore tell a participant their line was refused when
- * it was in fact accepted. They retype it and the wall carries it twice.
- * Reverb throwing is not hypothetical: it has been seen on the dev
- * instance. `ShouldRescue` is the framework's own answer —
- * `BroadcastManager::queue()` wraps the dispatch in `rescue()`, which
- * `report()`s the failure to the exception handler and swallows it — so the
- * broadcast stays `Now`, the after-the-commit ordering the reviewer asked
- * for is untouched, and no try/catch is bolted on by hand.
+ * - `PostMessage` dispatches this *after* the commit, so by the time
+ *   Reverb is asked the row is already durable, and a `BroadcastException`
+ *   thrown out of `event()` would tell a participant their line was
+ *   refused when it was in fact accepted. They retype it and the wall
+ *   carries it twice. Reverb throwing is not hypothetical: it has been
+ *   seen on the dev instance.
+ * - `ShouldRescue` did answer that (Task 4) — `BroadcastManager::queue()`
+ *   wraps the dispatch in `rescue()` — but it swallows the failure where
+ *   nothing in Community can see it, which made a failed broadcast silent
+ *   by construction. A silent failure earns a metric and an alert
+ *   (ADR-0059, `.ai/rules/observability.md`), so the rescue moved into
+ *   `BroadcastToRoom`, which reports the failure exactly as `rescue()` did
+ *   and counts it: `community_shoutbox_broadcasts_total{outcome}`.
+ * - `ShouldBroadcastNow` alone, with a try/catch around `event()`, would
+ *   not do: the framework's dispatcher broadcasts *before* it calls any
+ *   listener, so a throw there would skip every listener of the event —
+ *   the posted-lines counter today, auto-moderation later (D-COM-02).
  *
  * (`NotificationReceived` needs none of this: the bell broadcasts from
  * inside `SendQueuedMessage`, where a throw fails a queued job that retries
  * and no participant's write is on the line. The difference is where the
  * dispatch happens, not the transport.)
  */
-final readonly class ShoutboxMessagePosted implements ShouldBroadcastNow, ShouldRescue
+final readonly class ShoutboxMessagePosted
 {
     public function __construct(
         public string $messageId,

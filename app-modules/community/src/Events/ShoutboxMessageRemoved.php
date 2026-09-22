@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Konventix\Community\Events;
 
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
-use Illuminate\Contracts\Broadcasting\ShouldRescue;
 use Konventix\Community\Broadcasting\RoomChannel;
 use Konventix\Community\Data\ShoutboxTombstoneData;
 
@@ -24,9 +22,9 @@ use Konventix\Community\Data\ShoutboxTombstoneData;
  *
  * `removedAt` is an ISO-8601 string; see `ShoutboxMessagePosted`.
  *
- * **The broadcast payload is narrower than this one, not wider.**
- * `ShouldBroadcastNow` tells every client in the room to turn the line into
- * a tombstone, and a tombstone "carries neither body nor author to other
+ * **The broadcast payload is narrower than this one, not wider.** The
+ * broadcast tells every client in the room to turn the line into a
+ * tombstone, and a tombstone "carries neither body nor author to other
  * participants" (spec §4.2) — so `broadcastWith()` sends the message id,
  * the room and the instant, and deliberately leaves out both `reason` and
  * `removedByUserId`. The organizer's note is the desk's, and the desk reads
@@ -36,24 +34,13 @@ use Konventix\Community\Data\ShoutboxTombstoneData;
  * See `ShoutboxMessagePosted` for why the domain payload and the wire
  * payload are two separate things.
  *
- * **A broadcast that fails must not fail the write.** `PostMessage`
- * dispatches this *after* the commit, so by the time Reverb is asked the
- * row is already durable — and a `BroadcastException` thrown out of
- * `event()` would therefore tell a participant their line was refused when
- * it was in fact accepted. They retype it and the wall carries it twice.
- * Reverb throwing is not hypothetical: it has been seen on the dev
- * instance. `ShouldRescue` is the framework's own answer —
- * `BroadcastManager::queue()` wraps the dispatch in `rescue()`, which
- * `report()`s the failure to the exception handler and swallows it — so the
- * broadcast stays `Now`, the after-the-commit ordering the reviewer asked
- * for is untouched, and no try/catch is bolted on by hand.
- *
- * (`NotificationReceived` needs none of this: the bell broadcasts from
- * inside `SendQueuedMessage`, where a throw fails a queued job that retries
- * and no participant's write is on the line. The difference is where the
- * dispatch happens, not the transport.)
+ * **A broadcast that fails must not fail the write**, and must not be
+ * silent either. `Listeners\BroadcastToRoom` sends this after the commit,
+ * reports a failure and counts it; `ShoutboxMessagePosted`'s docblock says
+ * why the framework's `ShouldBroadcastNow` + `ShouldRescue` pair gave way to
+ * it.
  */
-final readonly class ShoutboxMessageRemoved implements ShouldBroadcastNow, ShouldRescue
+final readonly class ShoutboxMessageRemoved
 {
     public function __construct(
         public string $messageId,

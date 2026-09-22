@@ -524,8 +524,10 @@ Agenda's and Registration's projections (the latter only fills
 `public_since` `whereNull`), Compliance's `StartRetentionClock`
 (`updateOrCreate` on the event id, with the event's own `concluded_at`), and
 Admission's `EndHubAccessOnEventClosed`, whose sweep skips every presence
-row that is already settled and therefore emits nothing on a second pass.
-Compliance's wildcard audit listener ignores all seven: none of them
+row that is already settled and therefore emits nothing on a second pass,
+and Community's `CloseRoomOnEventConcluded` (added with the shoutbox), which
+closes only a room whose `closed_at` is still empty, from the event's own
+`concluded_at`, so a replay never moves the retention clock. Compliance's wildcard audit listener ignores all seven: none of them
 implements `AuditableEvent`. **Adding a listener to one of those seven
 events puts it on this list** — if it is not idempotent, this flag stops
 being safe and the note belongs here.
@@ -533,6 +535,56 @@ being safe and the note belongs here.
 Without the flag the command touches no lifecycle state and is still the
 right one for the ticket read models (see **Backfilling the ticket's read
 models**), which now get the day set out of the same run.
+
+## Shoutbox
+
+The event's wall (`app-modules/community`, design
+`docs/superpowers/specs/2026-09-23-shoutbox-design.md`, ADR-0067). Admitted
+participants read and post at `/live/shoutbox` and on the hub card; an
+organizer with `community.moderate-community` works the desk at
+`admin/events/{event}/shoutbox`. The module is gateable: a brand with
+`community` off has no wall, no card, no desk, and none of Community's
+listeners do anything for it.
+
+**Retention: 30 days after the event concluded** (D-COM-05).
+`EventConcluded` sets the room's `closed_at` to the conclusion instant; the
+wall is readable but refuses posts from then on. `community:sweep-shoutbox`
+runs **daily** (`withoutOverlapping()`) and, for every room closed at least
+30 days ago, deletes its messages, the reports on them and its mutes. The
+room row stays as a tombstone, so an old link opens onto an empty, closed
+room rather than a 404. The sweep runs across every brand and is not gated
+on `community`: switching the module off does not stop a closed wall's clock.
+It is safe to run by hand at any time (`php artisan community:sweep-shoutbox`
+in the scheduler or web pod); a room already swept has nothing left to
+delete. If the scheduler role was down for days, the next run catches up —
+there is no window it can miss.
+
+One gap to know: a room is closed only by `EventConcluded` *while
+`community` is on for the brand*. A brand that switches the module off
+between opening its wall and concluding the event leaves that room open,
+and the sweep never reaches it. Turn the module back on and run
+`event:replay-details --with-state --event=<event ulid>`, which re-emits
+`EventConcluded` with the stored conclusion instant (see **Programme** for
+why that replay is safe).
+
+**GDPR.** Community's handler exports the subject's own lines (removed ones
+too), the reports they filed, the mutes held against them and their
+admission badges. Erasure deletes their lines outright together with the
+reports on them, anonymises the reports they filed (reporter and note
+nulled, the report kept), nulls their ULID wherever they acted as a
+moderator on somebody else's row (who removed a line, locked a room, placed
+a mute, resolved a report), and deletes their mutes and badges. Online and
+away are never on disk, so there is nothing to erase for them.
+
+**What to watch** (Platform dashboard, row "Shoutbox").
+`konventix_community_messages_posted_total{brand}` counts lines accepted.
+`konventix_community_shoutbox_broadcasts_total{brand,outcome}` counts the
+live push of a line or a removal to the room, `sent` or `failed`. A failed
+push never fails the post — the line is already saved and appears for
+everyone on their next reload or reconnect — so this counter and
+`KonventixShoutboxBroadcastFailing` are the only places a Reverb outage on
+the wall shows. The matching exception is reported, so the Logs dashboard
+has its message.
 
 ## The brand's Reverb credentials
 
@@ -1005,6 +1057,21 @@ there is no separate "acknowledge" control to forget. If the inbox looks
 empty while this is firing, check the brand filter: the gauge counts every
 brand *and* the console-filed reports, and the console ones appear under no
 brand at all.
+
+### KonventixShoutboxBroadcastFailing
+
+More than a fifth of a brand's shoutbox broadcasts failed over ten
+minutes, with at least five attempted (see **Shoutbox** above). Participants
+can still post — every line is saved — but nobody sees anybody else's line
+until they reload, so the wall has stopped being live. The cause is almost
+always Reverb: check the reverb role is up (`KonventixRoleUnavailable` fires
+beside this if it is not) and that the brand's application credentials are
+in place (**The brand's Reverb credentials**). The reported exception in the
+Logs dashboard names the failure; a `QueryException` instead of a
+`BroadcastException` means the broadcast could not read the line it was
+sending, which points at the database rather than Reverb. Nothing needs
+replaying once Reverb is back: clients catch up over HTTP when their socket
+reconnects.
 
 ### KonventixRoleUnavailable
 

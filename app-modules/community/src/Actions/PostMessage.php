@@ -100,9 +100,10 @@ final class PostMessage
         });
 
         // Dispatched **after** the commit, not inside the transaction:
-        // Task 4 makes this same class a `ShouldBroadcastNow` event, and a
-        // broadcast that left before the row was committed would tell a
-        // client to fetch a message the next connection cannot see yet.
+        // `Listeners\BroadcastToRoom` sends this same event to the room's
+        // channel as it is dispatched, and a broadcast that left before the
+        // row was committed would tell a client to fetch a message the next
+        // connection cannot see yet.
         //
         // `DB::afterCommit()` rather than a line placed after
         // `DB::transaction()` returns: the placement alone only means

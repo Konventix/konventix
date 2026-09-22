@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Community\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,16 +15,24 @@ use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Events\ParticipantPresenceChanged;
 use Konventix\Community\Actions\PostMessage;
+use Konventix\Community\Console\SweepExpiredRoomsCommand;
 use Konventix\Community\Data\ShoutboxCardData;
+use Konventix\Community\Events\ShoutboxMessagePosted;
+use Konventix\Community\Events\ShoutboxMessageRemoved;
 use Konventix\Community\Exceptions\ShoutboxWriteException;
 use Konventix\Community\Gdpr\CommunityGdprHandler;
 use Konventix\Community\Hub\ShoutboxCard;
+use Konventix\Community\Listeners\BroadcastToRoom;
+use Konventix\Community\Listeners\CloseRoomOnEventConcluded;
+use Konventix\Community\Listeners\Metrics\RecordShoutboxMetrics;
 use Konventix\Community\Listeners\ProjectAdmissionBadge;
 use Konventix\Community\Listeners\ProjectCommunityMember;
 use Konventix\Community\Listeners\ProjectCommunityProfile;
 use Konventix\Community\Listeners\ProjectEventParticipation;
+use Konventix\Community\Metrics\CommunityMetrics;
 use Konventix\Community\Presence\ConnectionState;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventConcluded;
 use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
@@ -31,6 +40,7 @@ use Konventix\Platform\Data\ActiveEventData;
 use Konventix\Platform\Hub\HubCard;
 use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Observability\MetricCatalog;
 use Konventix\Registration\Events\RegistrationCancelled;
 use Konventix\Registration\Events\RegistrationConfirmed;
 use Konventix\Registration\Events\RegistrationRejected;
@@ -57,13 +67,47 @@ class CommunityServiceProvider extends ModuleServiceProvider
      * `parent::boot()` first — it loads the route files that will name
      * `throttle:shoutbox-post`, and the limiter itself is resolved per
      * request rather than at registration (Support's and Commerce's named
-     * limiters are the same shape).
+     * limiters are the same shape). The metric catalogue and the console
+     * command are the two things the base class has no hook for, the same
+     * reasoning `AdmissionServiceProvider` gives.
      */
     public function boot(): void
     {
         parent::boot();
 
         $this->configureRateLimiting();
+        $this->registerMetrics();
+
+        // The shoutbox's retention sweep (design §7), scheduled in
+        // registerSchedule() and runnable by hand from docs/operations.md.
+        $this->commands([
+            SweepExpiredRoomsCommand::class,
+        ]);
+    }
+
+    /**
+     * Community's metrics (ADR-0059): catalogue entry here, recorders in
+     * registerListeners() — `RecordShoutboxMetrics` for posted lines and
+     * `BroadcastToRoom`, which counts the broadcast where it is sent.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...CommunityMetrics::definitions());
+    }
+
+    /**
+     * The shoutbox's 30-day clock (design §7, D-COM-05) runs out by the
+     * calendar, not by an event anybody emits, so a sweep has to notice.
+     * Daily is ample for a clock measured in days; `withoutOverlapping()`
+     * because a run that deletes a large wall must not stack a second pass
+     * on the same rooms. `callAfterResolving` so the scheduler is only built
+     * in the role that runs it (the base class hook's own reasoning).
+     */
+    protected function registerSchedule(): void
+    {
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $schedule->command(SweepExpiredRoomsCommand::class)->daily()->withoutOverlapping();
+        });
     }
 
     /**
@@ -149,6 +193,12 @@ class CommunityServiceProvider extends ModuleServiceProvider
      * registered for the three participant events it consumes —
      * `ParticipantAdmissionReplaced` deliberately excluded, see its own
      * docblock.
+     *
+     * `CloseRoomOnEventConcluded` (design §7) gates itself on the event's
+     * brand and starts the retention clock. `BroadcastToRoom` is registered
+     * **first** for both shoutbox events, so the room hears about a change
+     * before any other listener reacts to it — see its docblock for why it,
+     * and not the framework's `ShouldRescue`, sends the broadcast.
      */
     protected function registerListeners(): void
     {
@@ -162,6 +212,10 @@ class CommunityServiceProvider extends ModuleServiceProvider
         Event::listen(ParticipantAdmitted::class, ProjectAdmissionBadge::class);
         Event::listen(ParticipantPresenceChanged::class, ProjectAdmissionBadge::class);
         Event::listen(ParticipantHubAccessEnded::class, ProjectAdmissionBadge::class);
+        Event::listen(EventConcluded::class, CloseRoomOnEventConcluded::class);
+        Event::listen(ShoutboxMessagePosted::class, BroadcastToRoom::class);
+        Event::listen(ShoutboxMessageRemoved::class, BroadcastToRoom::class);
+        Event::listen(ShoutboxMessagePosted::class, RecordShoutboxMetrics::class);
     }
 
     /**

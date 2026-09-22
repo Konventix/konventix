@@ -25,12 +25,14 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * `isActiveAt()` is how a caller asks whether a given row is still in
  * force. `room_id` is a real FK — same module (ADR-0014) — while `user_id`
  * and `muted_by_user_id` are plain ULIDs, because accounts are Identity's.
+ * `muted_by_user_id` is nullable: erasing the organizer who placed a mute
+ * anonymises it and leaves the mute in force (`CommunityGdprHandler`).
  *
  * @property string $id
  * @property string $brand_id
  * @property string $room_id
  * @property string $user_id
- * @property string $muted_by_user_id
+ * @property string|null $muted_by_user_id
  * @property string $reason
  * @property CarbonImmutable|null $expires_at
  * @property CarbonImmutable|null $created_at

@@ -66,7 +66,7 @@ final class ShoutboxBroadcastSpyBroadcaster implements Broadcaster
     /** @var list<array{channels: list<string>, event: string, payload: array<string, mixed>}> */
     public array $sent = [];
 
-    /** Stands in for Reverb being down — what `ShouldRescue` has to absorb. */
+    /** Stands in for Reverb being down — what `BroadcastToRoom` has to absorb. */
     public bool $throws = false;
 
     public function auth($request)
@@ -102,8 +102,8 @@ final class ShoutboxBroadcastSpyBroadcaster implements Broadcaster
 
 /**
  * Swaps the default broadcast connection for a spy. `phpunit.xml` sets
- * `BROADCAST_CONNECTION=null`, so without this a `ShouldBroadcastNow` event
- * broadcasts into `NullBroadcaster` and proves nothing.
+ * `BROADCAST_CONNECTION=null`, so without this a shoutbox broadcast
+ * lands in `NullBroadcaster` and proves nothing.
  */
 function shoutboxBroadcastSpy(bool $throws = false): ShoutboxBroadcastSpyBroadcaster
 {
@@ -392,7 +392,7 @@ it('broadcasts a removal as a bare tombstone, without the reason or the organize
 // The broadcast leaves *after* the commit (`PostMessage`), so by the time
 // Reverb is asked the row is durable: a throw here would refuse a line the
 // database has already accepted, the participant would retype it, and the
-// wall would carry it twice. `ShouldRescue` is what stops that — the
+// wall would carry it twice. `BroadcastToRoom` is what stops that — the
 // failure is reported, not raised.
 it('keeps a committed line committed when the broadcast itself fails', function (): void {
     $this->withBrand();

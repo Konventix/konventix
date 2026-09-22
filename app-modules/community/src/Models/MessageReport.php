@@ -22,12 +22,15 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  *
  * `message_id` is a real FK — same module (ADR-0014); a message purged by
  * the retention sweep takes its reports with it. `reporter_user_id` and
- * `resolved_by_user_id` are plain ULIDs, because accounts are Identity's.
+ * `resolved_by_user_id` are plain ULIDs, because accounts are Identity's,
+ * and both are nullable: GDPR erasure anonymises a reporter or a resolver
+ * rather than deleting the report, which stays a fact about the message
+ * (design §7, `CommunityGdprHandler`).
  *
  * @property string $id
  * @property string $brand_id
  * @property string $message_id
- * @property string $reporter_user_id
+ * @property string|null $reporter_user_id
  * @property string|null $note
  * @property ReportState $state
  * @property string|null $resolved_by_user_id

@@ -177,6 +177,19 @@ groups:
           summary: "A support report has been waiting unopened for more than an hour"
           runbook: "docs/operations.md#konventixsupportunseen"
 
+      - alert: KonventixShoutboxBroadcastFailing
+        expr: |
+          sum by (brand) (increase(konventix_community_shoutbox_broadcasts_total{job="__RELEASE__", outcome="failed"}[10m]))
+          /
+          sum by (brand) (increase(konventix_community_shoutbox_broadcasts_total{job="__RELEASE__"}[10m]))
+          > 0.2
+          and sum by (brand) (increase(konventix_community_shoutbox_broadcasts_total{job="__RELEASE__"}[10m])) >= 5
+        for: 5m
+        labels: {severity: warning, team: konventix}
+        annotations:
+          summary: "Over 20% of shoutbox broadcasts for {{ $labels.brand }} failed in 10 minutes"
+          runbook: "docs/operations.md#konventixshoutboxbroadcastfailing"
+
   - name: konventix.platform
     rules:
       - alert: KonventixDatabaseBackupMissing

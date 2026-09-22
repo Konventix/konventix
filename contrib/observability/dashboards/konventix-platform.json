@@ -2704,11 +2704,247 @@
     {
       "id": 51,
       "type": "row",
-      "title": "Runtime",
+      "title": "Shoutbox",
       "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 108,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Lines posted (range)",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 0,
+        "y": 109
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_community_messages_posted_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Shoutbox lines accepted (design §7). On event day it should move; flat while the hub is being viewed means nobody can post.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 52
+    },
+    {
+      "type": "stat",
+      "title": "Broadcasts failed (range)",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 4,
+        "y": 109
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_community_shoutbox_broadcasts_total{job=\"$release\", outcome=\"failed\"}[$__range]))",
+          "legendFormat": "",
+          "range": true
+        }
+      ],
+      "description": "Lines and removals that were saved but never reached the room live. The failure is swallowed so the post still succeeds, so this is the only place it shows. KonventixShoutboxBroadcastFailing fires on a failure rate over 20% for five minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 53
+    },
+    {
+      "type": "timeseries",
+      "title": "Lines posted per hour by brand",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 8,
+        "y": 109
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (brand) (increase(konventix_community_messages_posted_total{job=\"$release\"}[1h]))",
+          "legendFormat": "{{brand}}",
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 54
+    },
+    {
+      "type": "timeseries",
+      "title": "Broadcasts per minute by outcome",
+      "gridPos": {
+        "w": 8,
+        "h": 8,
+        "x": 16,
+        "y": 109
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum by (brand, outcome) (rate(konventix_community_shoutbox_broadcasts_total{job=\"$release\"}[5m])) * 60",
+          "legendFormat": "{{brand}} {{outcome}}",
+          "range": true
+        }
+      ],
+      "description": "sent against failed. A failed broadcast leaves the line on the wall for the next reload or reconnect; only the live push is lost.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 55
+    },
+    {
+      "id": 56,
+      "type": "row",
+      "title": "Runtime",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 117,
         "w": 24,
         "h": 1
       },
@@ -2721,7 +2957,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 109
+        "y": 118
       },
       "targets": [
         {
@@ -2766,7 +3002,7 @@
           "sort": "desc"
         }
       },
-      "id": 52
+      "id": 57
     },
     {
       "type": "timeseries",
@@ -2775,7 +3011,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 109
+        "y": 118
       },
       "targets": [
         {
@@ -2820,7 +3056,7 @@
           "sort": "desc"
         }
       },
-      "id": 53
+      "id": 58
     },
     {
       "type": "timeseries",
@@ -2829,7 +3065,7 @@
         "w": 12,
         "h": 8,
         "x": 0,
-        "y": 117
+        "y": 126
       },
       "targets": [
         {
@@ -2874,7 +3110,7 @@
           "sort": "desc"
         }
       },
-      "id": 54
+      "id": 59
     },
     {
       "type": "timeseries",
@@ -2883,7 +3119,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 117
+        "y": 126
       },
       "targets": [
         {
@@ -2928,16 +3164,16 @@
           "sort": "desc"
         }
       },
-      "id": 55
+      "id": 60
     },
     {
-      "id": 56,
+      "id": 61,
       "type": "row",
       "title": "Database",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 125,
+        "y": 134,
         "w": 24,
         "h": 1
       },
@@ -2950,7 +3186,7 @@
         "w": 6,
         "h": 4,
         "x": 0,
-        "y": 126
+        "y": 135
       },
       "targets": [
         {
@@ -3004,7 +3240,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 57
+      "id": 62
     },
     {
       "type": "stat",
@@ -3013,7 +3249,7 @@
         "w": 6,
         "h": 4,
         "x": 6,
-        "y": 126
+        "y": 135
       },
       "targets": [
         {
@@ -3063,7 +3299,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 58
+      "id": 63
     },
     {
       "type": "timeseries",
@@ -3072,7 +3308,7 @@
         "w": 12,
         "h": 8,
         "x": 12,
-        "y": 126
+        "y": 135
       },
       "targets": [
         {
@@ -3117,7 +3353,7 @@
           "sort": "desc"
         }
       },
-      "id": 59
+      "id": 64
     }
   ]
 }

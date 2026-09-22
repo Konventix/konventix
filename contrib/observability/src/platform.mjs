@@ -87,6 +87,12 @@ export default dashboard({
             timeseries('Open reports by brand', [prom(`konventix_support_requests_open{${J}}`, '{{brand}}')], { w: 8, description: 'The brand host the report came in on; `console` is a report filed on the operator console, which has no brand (ADR-0063).' }),
             timeseries('State changes per hour', [prom(`sum by (state) (increase(konventix_support_request_transitions_total{${J}}[1h]))`, 'into {{state}}')], { w: 8 }),
         ]),
+        row('Shoutbox', [
+            stat('Lines posted (range)', [prom(`sum(increase(konventix_community_messages_posted_total{${J}}[$__range]))`)], { description: 'Shoutbox lines accepted (design §7). On event day it should move; flat while the hub is being viewed means nobody can post.' }),
+            stat('Broadcasts failed (range)', [prom(`sum(increase(konventix_community_shoutbox_broadcasts_total{${J}, outcome="failed"}[$__range]))`)], { thresholds: thresholds('green', [1, 'orange']), description: 'Lines and removals that were saved but never reached the room live. The failure is swallowed so the post still succeeds, so this is the only place it shows. KonventixShoutboxBroadcastFailing fires on a failure rate over 20% for five minutes.' }),
+            timeseries('Lines posted per hour by brand', [prom(`sum by (brand) (increase(konventix_community_messages_posted_total{${J}}[1h]))`, '{{brand}}')], { w: 8 }),
+            timeseries('Broadcasts per minute by outcome', [prom(`sum by (brand, outcome) (rate(konventix_community_shoutbox_broadcasts_total{${J}}[5m])) * 60`, '{{brand}} {{outcome}}')], { w: 8, description: 'sent against failed. A failed broadcast leaves the line on the wall for the next reload or reconnect; only the live push is lost.' }),
+        ]),
         row('Runtime', [
             timeseries('CPU per role', [prom(`sum by (container) (rate(container_cpu_usage_seconds_total{${K}, container!="", container!="POD"}[5m]))`, '{{container}}')], { unit: 'short' }),
             timeseries('Memory per role', [prom(`sum by (container) (container_memory_working_set_bytes{${K}, container!="", container!="POD"})`, '{{container}}')], { unit: 'bytes' }),
