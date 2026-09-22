@@ -5,12 +5,14 @@ declare(strict_types=1);
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia;
 use Konventix\Commerce\Health\WaitingRoomCheck;
 use Konventix\Commerce\Jobs\AdmitWaitingRoomBatch;
 use Konventix\Commerce\Models\WaitingRoomSettings;
 use Konventix\Commerce\WaitingRoom\AdmitFromWaitingRoom;
 use Konventix\Commerce\WaitingRoom\TicketCookie;
+use Konventix\Commerce\WaitingRoom\TicketHandoff;
 use Konventix\Commerce\WaitingRoom\WaitingRoomStore;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Cookies\CookieRegistry;
@@ -82,7 +84,7 @@ it('redirects a newcomer to the waiting room and sets the ticket cookie', functi
 
     $response = $this->get('/shop');
 
-    $response->assertRedirect('/waiting-room');
+    $response->assertRedirectContains('/waiting-room');
 
     $cookieValue = waitingRoomCookieValue($response, $brand);
     expect($cookieValue)->not->toBeNull()
@@ -128,7 +130,7 @@ it('admits from the head of the queue, letting the admitted ticket through while
 
     $this->withCookie(TicketCookie::name($brand->getKey()), $secondCookie)
         ->get('/shop')
-        ->assertRedirect('/waiting-room');
+        ->assertRedirectContains('/waiting-room');
 });
 
 it('lets an admission expire after the settings TTL', function (): void {
@@ -150,7 +152,7 @@ it('lets an admission expire after the settings TTL', function (): void {
 
     $this->withCookie(TicketCookie::name($brand->getKey()), $cookieValue)
         ->get('/shop')
-        ->assertRedirect('/waiting-room');
+        ->assertRedirectContains('/waiting-room');
 
     Carbon::setTestNow();
 });
@@ -172,7 +174,7 @@ it('ignores a forged cookie and issues a new ticket', function (): void {
 
     $response = $this->withCookie(TicketCookie::name($brand->getKey()), $forged)->get('/shop');
 
-    $response->assertRedirect('/waiting-room');
+    $response->assertRedirectContains('/waiting-room');
 
     $newTicketId = TicketCookie::parse(waitingRoomCookieValue($response, $brand));
     expect($newTicketId)->not->toBeNull()
@@ -247,16 +249,166 @@ it('still passes an admitted, unexpired signed-in user through without disturbin
         ->and($store->isAdmitted($brand->getKey(), $firstId))->toBeTrue();
 });
 
-it('caps new tickets from one IP and refuses the sixth', function (): void {
+/*
+|--------------------------------------------------------------------------
+| A client that keeps no cookie, and the refusal when the cap is spent (#221)
+|--------------------------------------------------------------------------
+|
+| Laravel's test client carries no cookie from one call to the next unless
+| a test hands it one with `withCookie()`, so a plain sequence of `get()`
+| calls IS a cookie-less client — which is what made the old capping test
+| below pass while demonstrating the bug rather than the fix.
+*/
+
+/**
+ * Follows redirects the way `curl -L` does — no cookie jar — and returns
+ * every response it collected, so a test can assert both where the walk
+ * ended and how many hops it took to get there.
+ *
+ * @return list<TestResponse>
+ */
+function waitingRoomWalk($test, string $url, int $maxHops = 10): array
+{
+    $responses = [];
+
+    for ($hop = 0; $hop < $maxHops; $hop++) {
+        $response = $test->get($url);
+        $responses[] = $response;
+
+        if (! $response->baseResponse->isRedirect()) {
+            return $responses;
+        }
+
+        $url = (string) $response->headers->get('Location');
+    }
+
+    return $responses;
+}
+
+it('spends one ticket on a cookie-less walk of the shop instead of looping through the whole hourly budget', function (): void {
     $brand = $this->withBrand();
     $this->activateFeature('commerce:shop', $brand);
     $this->activateFeature('commerce:waiting-room', $brand);
 
+    $walk = waitingRoomWalk($this, '/shop');
+
+    // `/shop` -> `/waiting-room?ticket=...`, and that is the end of it.
+    expect($walk)->toHaveCount(2);
+    end($walk)->assertOk()->assertInertia(fn (AssertableInertia $page) => $page
+        ->component('waiting-room/Show')
+        ->where('position', 1));
+
+    // The whole point: one ticket, not five. A second walk is a second
+    // arrival and may legitimately cost a second ticket — what must never
+    // happen again is one walk eating the hour.
+    expect(app(WaitingRoomStore::class)->depth($brand->getKey()))->toBe(1);
+});
+
+it('starts a cookie-less walk from the waiting room page itself without spending more than one ticket', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    // `/waiting-room` -> `/shop` -> `/waiting-room?ticket=...`: three hops,
+    // one ticket, and it terminates.
+    $walk = waitingRoomWalk($this, '/waiting-room');
+
+    expect($walk)->toHaveCount(3);
+    end($walk)->assertOk();
+    expect(app(WaitingRoomStore::class)->depth($brand->getKey()))->toBe(1);
+});
+
+it('prefers the ticket cookie over the handoff token, so an ordinary browser is unaffected', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    $first = $this->get('/shop');
+    $firstId = TicketCookie::parse(waitingRoomCookieValue($first, $brand));
+
+    $second = $this->get('/shop');
+    $secondId = TicketCookie::parse(waitingRoomCookieValue($second, $brand));
+
+    // The second visitor's handoff token on the URL, the first visitor's
+    // cookie in the jar: the cookie wins and the page reports position 1.
+    $this->withCookie(TicketCookie::name($brand->getKey()), waitingRoomCookieValue($first, $brand))
+        ->get('/waiting-room?'.TicketHandoff::QUERY_PARAMETER.'='.TicketHandoff::issue($secondId))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('waiting-room/Show')
+            ->where('position', 1));
+
+    expect($firstId)->not->toBe($secondId);
+});
+
+it('ignores a forged handoff token and sends the visitor back to the shop', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    $ticketId = TicketCookie::parse(waitingRoomCookieValue($this->get('/shop'), $brand));
+
+    // A real ticket id, a signature that is not ours.
+    $forged = $ticketId.'.0000000000000000000000000000000000000000000000000000000000000000';
+
+    $this->get('/waiting-room?'.TicketHandoff::QUERY_PARAMETER.'='.$forged)
+        ->assertRedirect(route('commerce.shop.index'));
+
+    expect(TicketHandoff::parse($forged))->toBeNull()
+        ->and(TicketHandoff::parse(TicketHandoff::issue($ticketId)))->toBe($ticketId);
+});
+
+it('never lets a handoff token open the door the cookie opens', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    $ticketId = TicketCookie::parse(waitingRoomCookieValue($this->get('/shop'), $brand));
+    app(AdmitFromWaitingRoom::class)->handle($brand, 1);
+
+    // Admitted, and the token proves it on the holding page — but the gate
+    // reads cookies only, so the token cannot walk anyone into `/shop`.
+    $this->get('/shop?'.TicketHandoff::QUERY_PARAMETER.'='.TicketHandoff::issue($ticketId))
+        ->assertRedirectContains('/waiting-room');
+});
+
+it('refuses the sixth new ticket from one IP with Retry-After and a page that names the wait', function (): void {
+    $brand = $this->withBrand();
+    $this->activateFeature('commerce:shop', $brand);
+    $this->activateFeature('commerce:waiting-room', $brand);
+
+    // Five separate arrivals, each holding no cookie — five tickets, which
+    // is the cap (#133 owns its size, not this test).
     for ($i = 0; $i < 5; $i++) {
-        $this->get('/shop')->assertRedirect('/waiting-room');
+        $this->get('/shop')->assertRedirectContains('/waiting-room');
     }
 
-    $this->get('/shop')->assertStatus(429);
+    $response = $this->get('/shop');
+
+    $response->assertStatus(429);
+
+    $retryAfter = (int) $response->headers->get('Retry-After');
+    expect($retryAfter)->toBeGreaterThan(0)
+        ->and($retryAfter)->toBeLessThanOrEqual(3600);
+
+    // The header and the page say the same thing, and the page says it in
+    // words: a fresh hourly window is 3600s, which reads as 60 minutes.
+    $response->assertSee('Please try again in about 60 minutes.')
+        ->assertSee('429');
+});
+
+it('reads the seconds left in the per-IP window from the store', function (): void {
+    $brand = $this->withBrand();
+    $store = app(WaitingRoomStore::class);
+    $ipHash = hash('sha256', '203.0.113.7');
+
+    // Nothing counted yet: the honest answer is the whole window, so a
+    // refusal can always put a usable number in `Retry-After`.
+    expect($store->ipWindowResetsIn($brand->getKey(), $ipHash))->toBe(3600);
+
+    $store->incrementIpAttempts($brand->getKey(), $ipHash);
+
+    expect($store->ipWindowResetsIn($brand->getKey(), $ipHash))->toBeGreaterThan(0)
+        ->and($store->ipWindowResetsIn($brand->getKey(), $ipHash))->toBeLessThanOrEqual(3600);
 });
 
 it('lets an operator holding commerce.manage-products on this brand bypass the queue', function (): void {

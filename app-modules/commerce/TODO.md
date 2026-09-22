@@ -6,6 +6,24 @@
 
 ## Next (Phase 1 PoC — no payment; keep Commerce dormant and prove the boundary)
 
+- [x] The waiting room stops burning quota on a cookie-less client, and
+      says so when it refuses (#221). The gate's redirect now repeats the
+      ticket it just issued in the query string (`WaitingRoom/TicketHandoff`,
+      `?ticket=`, HMAC-signed under its own domain prefix), and
+      `WaitingRoomController` reads the cookie first and that token second —
+      so `curl -L /shop` lands on the holding page instead of bouncing back
+      to `/shop` for a second ticket, and one cookie-less walk costs one of
+      the hour's five per-IP tickets rather than all five. The token is
+      deliberately weaker than the cookie: only the holding page and its
+      status endpoint read it, never the gate, so it can show a queue
+      position and never open the door. When the cap IS spent,
+      `IssueWaitingRoomTicket` answers 429 with `Retry-After` (seconds from
+      the new `WaitingRoomStore::ipWindowResetsIn()`) and a message naming
+      the wait, rendered by `resources/views/errors/429.blade.php` — the
+      framework's `errors::minimal` mechanism every other error page here
+      already uses, not a second one. The size of the cap is #133's and
+      `TRUSTED_PROXIES` is #178's; neither moved.
+
 - [x] The checkout's contract-consent gate is a route alias now (round 4,
       Task 33, ADR-0066; D-CPL-13/14). The six routes that conclude a
       purchase — `cart.choose`/`cart.confirm`/`cart.checkout` and the two

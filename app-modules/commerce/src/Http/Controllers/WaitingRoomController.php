@@ -12,6 +12,7 @@ use Inertia\Response;
 use Konventix\Commerce\Data\WaitingRoomStatusData;
 use Konventix\Commerce\Models\WaitingRoomSettings;
 use Konventix\Commerce\WaitingRoom\TicketCookie;
+use Konventix\Commerce\WaitingRoom\TicketHandoff;
 use Konventix\Commerce\WaitingRoom\WaitingRoomStore;
 use Konventix\Platform\Brands\BrandContext;
 
@@ -35,12 +36,12 @@ final class WaitingRoomController
     public function __construct(private readonly WaitingRoomStore $store) {}
 
     /**
-     * A visitor with no valid ticket cookie has nothing to show here —
-     * they are sent to `/shop`, which the gate will queue them from
-     * afresh rather than this page minting a ticket of its own. One
-     * already holding an admitted, unexpired ticket (a bookmark, the back
-     * button) is sent straight on to where it was heading; showing them a
-     * queue position they no longer have would be a lie.
+     * A visitor with no ticket at all — neither cookie nor handoff — has
+     * nothing to show here: they are sent to `/shop`, which the gate will
+     * queue them from afresh rather than this page minting a ticket of its
+     * own. One already holding an admitted, unexpired ticket (a bookmark,
+     * the back button) is sent straight on to where it was heading;
+     * showing them a queue position they no longer have would be a lie.
      */
     public function show(Request $request, BrandContext $brandContext): Response|RedirectResponse
     {
@@ -96,10 +97,28 @@ final class WaitingRoomController
         return response()->json(WaitingRoomStatusData::ofStore($this->store, $brandId, $ticketId));
     }
 
+    /**
+     * The cookie first, the gate's handoff token second (#221). A client
+     * that kept the cookie never reaches the second branch, so nothing
+     * about an ordinary browser's visit changes; one that could not keep
+     * it is answered from the token the gate put in the redirect instead
+     * of being bounced back to `/shop` to mint another ticket. Both are
+     * HMAC-signed over `APP_KEY` in their own domain — a forged or
+     * tampered value reads as "no ticket", never as someone else's place
+     * in the queue ({@see TicketHandoff} for why the token is the weaker
+     * of the two on purpose).
+     */
     private function ticketId(Request $request, string $brandId): ?string
     {
         $raw = $request->cookie(TicketCookie::name($brandId));
+        $fromCookie = TicketCookie::parse(is_string($raw) ? $raw : null);
 
-        return TicketCookie::parse(is_string($raw) ? $raw : null);
+        if ($fromCookie !== null) {
+            return $fromCookie;
+        }
+
+        $handoff = $request->query(TicketHandoff::QUERY_PARAMETER);
+
+        return TicketHandoff::parse(is_string($handoff) ? $handoff : null);
     }
 }

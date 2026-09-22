@@ -24,7 +24,13 @@ use Symfony\Component\HttpFoundation\Response;
  * 3. An admitted, unexpired ticket — see {@see IssueWaitingRoomTicket}.
  *
  * Otherwise a ticket is issued or re-read, its cookie is set on the
- * redirect, and the visitor is sent to the holding page.
+ * redirect, and the visitor is sent to the holding page — with the ticket
+ * repeated in the redirect's query string ({@see TicketHandoff}). The
+ * cookie is still the credential; the query parameter only lets the
+ * holding page answer a client that could not keep it, instead of bouncing
+ * it back here for a second ticket. That bounce was the loop of #221: a
+ * cookie-less `curl -L /shop` spent all five of the hour's per-IP tickets
+ * in one walk.
  *
  * `BrandContext` is resolved at call time, not constructor-injected — this
  * class is bound with `bind()` (a fresh instance per resolution), so
@@ -56,7 +62,9 @@ final class CommerceWaitingRoomGate implements WaitingRoomGate
             return null;
         }
 
-        $response = redirect()->route('commerce.waiting-room.show');
+        $response = redirect()->route('commerce.waiting-room.show', [
+            TicketHandoff::QUERY_PARAMETER => TicketHandoff::issue($ticket->id),
+        ]);
 
         $response->headers->setCookie(cookie(
             name: TicketCookie::name($brand->getKey()),

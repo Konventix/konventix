@@ -153,6 +153,16 @@ final class RedisWaitingRoomStore implements WaitingRoomStore
         return $count;
     }
 
+    public function ipWindowResetsIn(string $brandId, string $ipHash): int
+    {
+        // phpredis answers -1 for a key with no expiry and -2 for one that
+        // is already gone; both mean "no deadline to read", and the honest
+        // answer then is the whole window rather than zero.
+        $ttl = (int) $this->connection()->ttl($this->ipKey($brandId, $ipHash));
+
+        return $ttl > 0 ? $ttl : self::IP_TTL_SECONDS;
+    }
+
     public function recordAdmissionRun(string $brandId): void
     {
         $this->connection()->set($this->lastAdmissionKey($brandId), CarbonImmutable::now()->toIso8601String());

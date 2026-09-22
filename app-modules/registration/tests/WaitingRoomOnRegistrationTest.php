@@ -21,7 +21,7 @@ it('redirects the registration form to the waiting room while the feature is on'
 
     $this->actingAs($user)
         ->get("/events/{$type->event_id}/register/{$type->id}")
-        ->assertRedirect('/waiting-room');
+        ->assertRedirectContains('/waiting-room');
 });
 
 it('renders the registration form as usual while the waiting room feature is off', function (): void {

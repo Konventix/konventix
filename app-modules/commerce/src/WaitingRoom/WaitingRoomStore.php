@@ -96,6 +96,16 @@ interface WaitingRoomStore
     public function incrementIpAttempts(string $brandId, string $ipHash): int;
 
     /**
+     * How many seconds are left before this IP's attempt counter resets —
+     * what the refusal's `Retry-After` header and its page both need in
+     * order to say when to come back (#221). Falls back to the full window
+     * when the counter carries no readable deadline, and never answers
+     * less than a second, so a caller can put the number in a header
+     * unchecked.
+     */
+    public function ipWindowResetsIn(string $brandId, string $ipHash): int;
+
+    /**
      * Stamps "an admission run happened for this brand, now" (Task 13) —
      * what `AdmitWaitingRoomBatch::handle()` calls on every run it reaches,
      * whether or not anyone was actually admitted, and what

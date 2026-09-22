@@ -133,6 +133,17 @@ final class ArrayWaitingRoomStore implements WaitingRoomStore
         return $state['count'];
     }
 
+    public function ipWindowResetsIn(string $brandId, string $ipHash): int
+    {
+        $state = $this->ipAttempts[$brandId][$ipHash] ?? null;
+
+        if ($state === null) {
+            return 3600;
+        }
+
+        return max(1, $state['resetAt'] - time());
+    }
+
     public function recordAdmissionRun(string $brandId): void
     {
         $this->lastAdmission[$brandId] = CarbonImmutable::now();

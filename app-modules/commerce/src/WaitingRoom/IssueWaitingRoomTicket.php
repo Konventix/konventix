@@ -7,6 +7,7 @@ namespace Konventix\Commerce\WaitingRoom;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Konventix\Platform\Models\Brand;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Issues, or re-reads, the visitor's waiting-room ticket (ADR-0047 point
@@ -33,6 +34,18 @@ use Konventix\Platform\Models\Brand;
  *    floor) is charged only here, then a fresh ticket is enqueued —
  *    `enqueue()` overwrites the user mapping too, so case 2 finds the new
  *    ticket next time.
+ *
+ * Once the cap is spent the refusal says so (#221): a 429 carrying
+ * `Retry-After` in seconds until the counter's own window resets, and a
+ * message naming that wait, rendered by `resources/views/errors/429.blade.php`
+ * through the framework's error views — the same mechanism every other
+ * error page in this application already uses. It used to be a bare
+ * `abort(429)`: a blank page, no header, no hint when to come back.
+ *
+ * The size of the cap is not this issue's (#133 owns it) and neither is
+ * `TRUSTED_PROXIES` (#178) — but note that closing the redirect loop
+ * changes what five tickets buy in practice, because a cookie-less walk
+ * now costs one of them instead of all five.
  */
 final class IssueWaitingRoomTicket
 {
@@ -65,13 +78,49 @@ final class IssueWaitingRoomTicket
         $ipHash = hash('sha256', $request->ip() ?? '');
 
         if ($this->store->incrementIpAttempts($brandId, $ipHash) > self::IP_CAP) {
-            abort(429);
+            $this->refuse($this->store->ipWindowResetsIn($brandId, $ipHash));
         }
 
         $ticketId = (string) Str::ulid();
         $this->store->enqueue($brandId, $ticketId, $request->fullUrl(), $userId);
 
         return $this->ticketFor($brandId, $ticketId);
+    }
+
+    /**
+     * The refusal the per-IP cap answers with. `Retry-After` is the
+     * seconds the counter's window still has to run, which is exactly when
+     * a new ticket becomes available again, and the message repeats it in
+     * words so the rendered page says the same thing the header does.
+     */
+    private function refuse(int $retryAfter): never
+    {
+        abort(
+            Response::HTTP_TOO_MANY_REQUESTS,
+            $this->waitMessage($retryAfter),
+            ['Retry-After' => (string) $retryAfter],
+        );
+    }
+
+    /**
+     * Whole minutes once the wait is a minute or more — a visitor reads
+     * "about 47 minutes" and knows what to do with it, where "2820
+     * seconds" is arithmetic homework. Under a minute it stays in seconds
+     * rather than rounding up to a minute that has already passed.
+     */
+    private function waitMessage(int $retryAfter): string
+    {
+        if ($retryAfter < 60) {
+            return trans_choice(
+                'The waiting room has handed out every ticket it can for your network in the past hour. Please try again in about a second.|The waiting room has handed out every ticket it can for your network in the past hour. Please try again in about :count seconds.',
+                max(1, $retryAfter),
+            );
+        }
+
+        return trans_choice(
+            'The waiting room has handed out every ticket it can for your network in the past hour. Please try again in about a minute.|The waiting room has handed out every ticket it can for your network in the past hour. Please try again in about :count minutes.',
+            (int) ceil($retryAfter / 60),
+        );
     }
 
     private function isKnown(string $brandId, string $ticketId): bool
