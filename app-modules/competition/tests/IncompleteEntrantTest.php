@@ -65,6 +65,21 @@ function incompleteTestFiveOnFive(string $brandId, string $eventId): Competition
 }
 
 /**
+ * A one-player contest, for the §5.5 cases that have to reach `Running` —
+ * `start` refuses while anything is `incomplete`, so a field of solo entrants
+ * is the shortest honest way there.
+ */
+function incompleteTestSolo(string $brandId, string $eventId): Competition
+{
+    $discipline = Discipline::factory()->teamSize(1)->create();
+
+    return Competition::factory()->create([
+        'discipline_id' => $discipline->getKey(),
+        'event_id' => $eventId,
+    ]);
+}
+
+/**
  * @param  list<string>  $userIds
  */
 function incompleteTestTeamOf(string $brandId, string $eventId, string $name, array $userIds): CompetitionTeam
@@ -249,25 +264,84 @@ it('refuses a fill-up of somebody who holds no confirmed registration', function
     app(FillIncompleteEntrant::class)->handle($entrant, [(string) Str::ulid()]);
 })->throws(CompetitionEntryException::class);
 
-it('lets a captain withdraw until Running, and the organizer at any time', function (): void {
-    // §5.5. The captain's reach ends where other people's scheduled evening
-    // begins; the desk's does not.
+it('lets a captain withdraw before Running and refuses once the tournament has started', function (): void {
+    // §5.5: "a captain may withdraw the team until `Running`". The reach ends
+    // where other people's scheduled evening begins.
+    //
+    // The first round's version of this test never reached `Running` at all,
+    // so `WithdrawEntrant::guardBeforeRunning()` would have survived its own
+    // deletion. This one starts the tournament.
     $brand = $this->withBrand();
     $eventId = (string) Str::ulid();
-    $competition = incompleteTestFiveOnFive($brand->id, $eventId);
+    $competition = incompleteTestSolo($brand->id, $eventId);
 
-    $captain = competitionEligibleUser($eventId, $brand->id);
-    $team = incompleteTestTeamOf($brand->id, $eventId, 'Zieht zurück', [$captain]);
-    $entrant = app(EnterCompetition::class)->handle($competition, $team);
+    $pullsOut = incompleteTestTeamOf($brand->id, $eventId, 'Zieht zurück', [
+        competitionEligibleUser($eventId, $brand->id),
+    ]);
+    $stays = incompleteTestTeamOf($brand->id, $eventId, 'Bleibt', [
+        competitionEligibleUser($eventId, $brand->id),
+    ]);
 
-    app(WithdrawEntrant::class)->handle($entrant, WithdrawalReason::CaptainWithdrew);
+    $early = app(EnterCompetition::class)->handle($competition, $pullsOut);
+    $late = app(EnterCompetition::class)->handle($competition, $stays);
 
-    expect($entrant->refresh()->state)->toBe(EntrantState::Withdrawn)
-        ->and($entrant->withdrawal_reason)->toBe(WithdrawalReason::CaptainWithdrew);
+    // Before the bracket is drawn, the captain's own decision stands.
+    app(WithdrawEntrant::class)->handle($early, WithdrawalReason::CaptainWithdrew);
+
+    expect($early->refresh()->state)->toBe(EntrantState::Withdrawn)
+        ->and($early->withdrawal_reason)->toBe(WithdrawalReason::CaptainWithdrew);
 
     // Withdrawing twice is refused rather than silently recorded again.
-    expect(fn () => app(WithdrawEntrant::class)->handle($entrant, WithdrawalReason::OrganizerWithdrew))
+    expect(fn () => app(WithdrawEntrant::class)->handle($early, WithdrawalReason::OrganizerWithdrew))
         ->toThrow(CompetitionEntryException::class);
+
+    Stage::factory()->create(['competition_id' => $competition->getKey(), 'generated_at' => now()]);
+    app(CloseSignup::class)->handle($competition);
+    app(StartCompetition::class)->handle($competition->refresh());
+
+    expect($competition->refresh()->status)->toBe(CompetitionStatus::Running);
+
+    // Now the captain cannot: matches are scheduled against this team.
+    expect(fn () => app(WithdrawEntrant::class)->handle($late, WithdrawalReason::CaptainWithdrew))
+        ->toThrow(CompetitionEntryException::class);
+
+    expect($late->refresh()->state)->toBe(EntrantState::Registered);
+});
+
+it('lets the organizer withdraw a team after the tournament has started', function (): void {
+    // §5.5's other half: "the organizer may withdraw or disqualify at any
+    // time (`ManageEntrants`)". A team that has gone home is a fact the desk
+    // must be able to record whatever the clock says — and unlike a
+    // disqualification it does not forfeit the pending matches, because a
+    // withdrawal is usually a round being redrawn by hand.
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $competition = incompleteTestSolo($brand->id, $eventId);
+
+    $team = incompleteTestTeamOf($brand->id, $eventId, 'Fährt heim', [
+        competitionEligibleUser($eventId, $brand->id),
+    ]);
+    $entrant = app(EnterCompetition::class)->handle($competition, $team);
+
+    Stage::factory()->create(['competition_id' => $competition->getKey(), 'generated_at' => now()]);
+    app(CloseSignup::class)->handle($competition);
+    app(StartCompetition::class)->handle($competition->refresh());
+
+    $match = CompetitionMatch::factory()->create(['competition_id' => $competition->getKey()]);
+    $slot = new MatchSlot([
+        'competition_match_id' => $match->getKey(),
+        'entrant_id' => $entrant->getKey(),
+        'position' => 1,
+    ]);
+    $slot->forceFill(['brand_id' => $match->brand_id])->save();
+
+    app(WithdrawEntrant::class)->handle($entrant, WithdrawalReason::OrganizerWithdrew);
+
+    expect($entrant->refresh()->state)->toBe(EntrantState::Withdrawn)
+        ->and($entrant->withdrawal_reason)->toBe(WithdrawalReason::OrganizerWithdrew)
+        // Not forfeited: that is `DisqualifyEntrant`'s doing, and the
+        // difference between the two is the whole reason they are separate.
+        ->and($match->refresh()->state)->toBe(MatchState::Pending);
 });
 
 it('forfeits a disqualified entrant pending matches so the bracket advances normally', function (): void {

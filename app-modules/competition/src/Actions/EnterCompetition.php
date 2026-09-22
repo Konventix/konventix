@@ -37,6 +37,13 @@ use Konventix\Competition\Models\Entrant;
  * refuses while any entrant is still `incomplete`, so the state cannot leak
  * into a bracket.
  *
+ * **A roster too large is refused outright**, which is not the same question.
+ * Being short is a state the design has a whole workflow for; being five
+ * people in a one-player contest is not a state at all, and there are no
+ * substitutes in this slice (§5.2). It is a named refusal rather than a
+ * silent `registered`, because the silent version puts five member ULIDs
+ * behind a side the bracket will only ever field one of.
+ *
  * Double entry is stopped by a partial unique index rather than a check —
  * a double-tapped signup button is exactly the race a read-then-write loses,
  * and a bracket containing the same team twice is a tournament nobody can
@@ -89,7 +96,22 @@ final class EnterCompetition
                 throw CompetitionEntryException::emptyRoster((string) $team->getKey());
             }
 
-            $state = count($roster) >= $this->teamSizeFor($competition)
+            $teamSize = $this->teamSizeFor($competition);
+
+            // A roster too *large* is refused by name rather than quietly
+            // registered. `>=` alone would have read a five-person squad
+            // entering a 1v1 as complete and seeded five people behind a
+            // one-player side; there are no substitutes in this slice (§5.2).
+            if (count($roster) > $teamSize) {
+                throw CompetitionEntryException::rosterFull(
+                    (string) $team->getKey(),
+                    (string) $competition->getKey(),
+                    $teamSize,
+                    count($roster),
+                );
+            }
+
+            $state = count($roster) === $teamSize
                 ? EntrantState::Registered
                 : EntrantState::Incomplete;
 

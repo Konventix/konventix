@@ -80,17 +80,20 @@ class CompetitionTeam extends Model
     }
 
     /**
-     * Normalizes what somebody typed: people paste codes with spaces, in
-     * lower case, and occasionally swap the excluded glyphs back in because
-     * their eye insists the `0` was a zero. The last part is deliberate
-     * forgiveness, not a widened alphabet — `0` can only ever have been `O`.
+     * Normalizes what somebody typed: people paste codes with spaces, with
+     * dashes, and in lower case. That is all there is to forgive.
+     *
+     * An earlier version also mapped `0 → O` and `1 → I`, which was
+     * incoherent: **all four** glyphs are outside `ALPHABET`, so it rewrote
+     * one character that can never appear in a code into another character
+     * that can never appear in a code. Nothing is printed for a reader to
+     * mistype in the first place — the alphabet is the whole mechanism — so
+     * a code containing any of the four simply does not match, and the join
+     * form says so in the one sentence it says for every refusal.
      */
     public static function normalizeInviteCode(string $code): string
     {
-        return strtr(
-            strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $code) ?? ''),
-            ['0' => 'O', '1' => 'I'],
-        );
+        return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $code) ?? '');
     }
 
     /**

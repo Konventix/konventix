@@ -41,7 +41,8 @@ trait MaintainsTeamRoster
 {
     /**
      * Puts a person on a roster. Refuses an ineligible person, a duplicate,
-     * and a roster already at the discipline's team size.
+     * and a join that would take the roster past what one of the team's
+     * contests allows.
      */
     protected function addRosterMember(CompetitionTeam $team, string $userId): CompetitionTeamMember
     {
@@ -53,11 +54,7 @@ trait MaintainsTeamRoster
             throw CompetitionEntryException::alreadyOnTeam($userId, (string) $team->getKey());
         }
 
-        $bound = $this->rosterBound($team);
-
-        if ($bound !== null && count($team->memberUserIds()) >= $bound) {
-            throw CompetitionEntryException::rosterFull((string) $team->getKey(), $bound);
-        }
+        $this->guardRosterBounds($team, count($team->memberUserIds()) + 1);
 
         $member = new CompetitionTeamMember([
             'competition_team_id' => (string) $team->getKey(),
@@ -122,20 +119,54 @@ trait MaintainsTeamRoster
     }
 
     /**
-     * How many people the roster may hold: the largest `team_size` among the
-     * disciplines of the competitions this team currently holds a slot in.
+     * Refuses a roster of `$wouldBeSize` if **any** competition this team
+     * currently holds a slot in could not field it (design §5.2: "roster size
+     * is bounded above by `disciplines.team_size`: a join beyond it is
+     * refused. No substitutes in this slice.").
      *
-     * The largest, not the smallest, because a team entered in a 5v5 and a
-     * 1v1 at the same event is a legitimate shape (§5.2: "a team is per event
-     * and may enter several competitions") and the narrower contest is
-     * bounded where it is enforced — `SyncEntrantCompleteness` marks that
-     * entry `incomplete` rather than the roster refusing a sixth player.
+     * Per competition, not one number across all of them. An earlier version
+     * took the largest `team_size` the team was entered under, on the theory
+     * that a narrower contest would be caught later by
+     * `SyncEntrantCompleteness` marking that entry `incomplete`. It would
+     * not: completeness asks `roster >= team_size`, so a roster of five
+     * against a `team_size` of one reads as *complete* and the 1v1 entrant
+     * seeds into its bracket with five people behind a one-player side. The
+     * smallest bound is the only one that is always safe, and naming the
+     * competition in the refusal is what makes it actionable.
      *
-     * Null means unbounded: a team that has entered nothing yet has nothing
-     * to be measured against, and refusing its second member would make the
-     * usual order of operations — gather the squad, then enter — impossible.
+     * No bound at all before the first entry: a team that has entered nothing
+     * has nothing to be measured against, and refusing its second member
+     * would make the usual order of operations — gather the squad, then
+     * enter — impossible.
+     *
+     * The consequence is deliberate and worth stating: a squad entered in a
+     * 1v1 cannot grow to five for the 5v5 beside it. Teams are per event and
+     * a person may be on several of them, so the answer is a second team for
+     * the solo contest, not a roster that means something different in each
+     * bracket.
      */
-    protected function rosterBound(CompetitionTeam $team): ?int
+    protected function guardRosterBounds(CompetitionTeam $team, int $wouldBeSize): void
+    {
+        foreach ($this->rosterBounds($team) as $competitionId => $teamSize) {
+            if ($wouldBeSize > $teamSize) {
+                throw CompetitionEntryException::rosterFull(
+                    (string) $team->getKey(),
+                    $competitionId,
+                    $teamSize,
+                    $wouldBeSize,
+                );
+            }
+        }
+    }
+
+    /**
+     * What each contest this team currently holds a slot in can field,
+     * tightest first — so the refusal above names the competition that
+     * actually cannot take the roster, not merely the first one queried.
+     *
+     * @return array<string, int> competition ULID => the discipline's team_size
+     */
+    protected function rosterBounds(CompetitionTeam $team): array
     {
         $competitionIds = Entrant::withoutBrandScope()
             ->where('brand_id', $team->brand_id)
@@ -144,18 +175,24 @@ trait MaintainsTeamRoster
             ->pluck('competition_id');
 
         if ($competitionIds->isEmpty()) {
-            return null;
+            return [];
         }
 
-        $disciplineIds = Competition::withoutBrandScope()
-            ->whereIn('id', $competitionIds)
-            ->pluck('discipline_id');
+        $competitions = Competition::withoutBrandScope()->whereIn('id', $competitionIds)->get();
 
-        $bound = Discipline::withoutBrandScope()
-            ->whereIn('id', $disciplineIds)
-            ->max('team_size');
+        $teamSizes = Discipline::withoutBrandScope()
+            ->whereIn('id', $competitions->pluck('discipline_id')->unique())
+            ->pluck('team_size', 'id');
 
-        return $bound === null ? null : (int) $bound;
+        $bounds = [];
+
+        foreach ($competitions as $competition) {
+            $bounds[(string) $competition->getKey()] = max(1, (int) ($teamSizes[$competition->discipline_id] ?? 1));
+        }
+
+        asort($bounds);
+
+        return $bounds;
     }
 
     /**

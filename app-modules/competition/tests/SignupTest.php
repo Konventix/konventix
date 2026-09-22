@@ -110,11 +110,18 @@ it('lets somebody join with the invite code and refuses an unknown one', functio
         ->toThrow(CompetitionEntryException::class);
 });
 
-it('forgives the case, the spaces and the glyphs a person cannot have typed', function (): void {
-    // A code arrives lower case, with spaces, and with a zero where the
-    // alphabet only ever had an O. Widening the alphabet would be the wrong
-    // fix; normalising what was typed is the right one.
-    expect(CompetitionTeam::normalizeInviteCode(' ab-cd 0f1h '))->toBe('ABCDOFIH');
+it('forgives the case, the spaces and the dashes, and nothing else', function (): void {
+    // A code arrives lower case, with spaces, with dashes. That is the whole
+    // list. An earlier version also mapped 0 to O and 1 to I, which was
+    // incoherent — all four glyphs are outside ALPHABET, so it rewrote one
+    // impossible character into another — and this test pinned the
+    // incoherence as if it were the feature.
+    expect(CompetitionTeam::normalizeInviteCode(' ab-cd 0f1h '))->toBe('ABCD0F1H')
+        // A code carrying any of the four excluded glyphs simply does not
+        // match. Nothing is printed for a reader to mistype in the first
+        // place; the alphabet is the whole mechanism.
+        ->and(CompetitionTeam::normalizeInviteCode('ABCD0F1H'))
+        ->not->toMatch('/^['.CompetitionTeam::ALPHABET.']{8}$/');
 });
 
 it('refuses a join by somebody with no confirmed registration', function (): void {
@@ -146,6 +153,83 @@ it('refuses a join beyond the discipline team size', function (): void {
 
     expect(fn () => app(JoinTeamByCode::class)->handle($brand->id, $team->invite_code, $third))
         ->toThrow(CompetitionEntryException::class);
+});
+
+it('bounds a roster per competition, not by the widest contest it entered', function (): void {
+    // The bug the first round shipped. Taking the LARGEST team_size a team is
+    // entered under let a squad in both a 5v5 and a 1v1 grow to five, and
+    // `SyncEntrantCompleteness` then read `roster >= team_size` as *complete*
+    // for the 1v1 too — five member ULIDs behind a one-player side. The bound
+    // is per competition now: a join is refused when ANY contest the team
+    // holds a slot in could not field the result.
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+
+    $fiveOnFive = signupTestCompetition($brand->id, teamSize: 5, eventId: $eventId);
+    $solo = signupTestCompetition($brand->id, teamSize: 1, eventId: $eventId);
+
+    $captain = competitionEligibleUser($eventId, $brand->id);
+    $second = competitionEligibleUser($eventId, $brand->id);
+
+    $team = app(CreateTeam::class)->handle($brand->id, $eventId, 'Beides', $captain);
+
+    $bigEntry = app(EnterCompetition::class)->handle($fiveOnFive, $team);
+    $soloEntry = app(EnterCompetition::class)->handle($solo, $team->refresh());
+
+    expect($bigEntry->state)->toBe(EntrantState::Incomplete)
+        ->and($soloEntry->state)->toBe(EntrantState::Registered);
+
+    // The 1v1 is the tightest bound, and it is the one that refuses — by
+    // name, and naming the competition that cannot field the roster.
+    expect(fn () => app(JoinTeamByCode::class)->handle($brand->id, $team->refresh()->invite_code, $second))
+        ->toThrow(CompetitionEntryException::class, (string) $solo->getKey());
+
+    expect($team->refresh()->memberUserIds())->toBe([$captain])
+        ->and($soloEntry->refresh()->state)->toBe(EntrantState::Registered);
+});
+
+it('refuses an entry whose roster is already too large for that contest', function (): void {
+    // The other half of the same bug, and independent of it: `count($roster)
+    // >= team_size` registered a three-person squad in a 1v1, and
+    // `rosterBounds()` is empty for a team that has entered nothing, so no
+    // earlier guard caught it either. Being short is a state §5.4 has a
+    // workflow for; being three people in a one-player contest is not a state
+    // at all.
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+    $solo = signupTestCompetition($brand->id, teamSize: 1, eventId: $eventId);
+
+    $captain = competitionEligibleUser($eventId, $brand->id);
+    $second = competitionEligibleUser($eventId, $brand->id);
+    $third = competitionEligibleUser($eventId, $brand->id);
+
+    $team = app(CreateTeam::class)->handle($brand->id, $eventId, 'Zu viele', $captain);
+    app(JoinTeamByCode::class)->handle($brand->id, $team->invite_code, $second);
+    app(JoinTeamByCode::class)->handle($brand->id, $team->refresh()->invite_code, $third);
+
+    expect(fn () => app(EnterCompetition::class)->handle($solo, $team->refresh()))
+        ->toThrow(CompetitionEntryException::class, 'would field 3 player(s)')
+        ->and(Entrant::countSlotHolders($brand->id, (string) $solo->getKey()))->toBe(0);
+});
+
+it('leaves a team unbounded until it has entered something', function (): void {
+    // "Gather the squad, then enter" is the usual order of operations, and a
+    // bound before the first entry would make it impossible.
+    $brand = $this->withBrand();
+    $eventId = (string) Str::ulid();
+
+    $captain = competitionEligibleUser($eventId, $brand->id);
+    $team = app(CreateTeam::class)->handle($brand->id, $eventId, 'Sammelt sich', $captain);
+
+    for ($i = 0; $i < 4; $i++) {
+        app(JoinTeamByCode::class)->handle(
+            $brand->id,
+            $team->refresh()->invite_code,
+            competitionEligibleUser($eventId, $brand->id),
+        );
+    }
+
+    expect($team->refresh()->memberUserIds())->toHaveCount(5);
 });
 
 it('rotates captaincy to the longest-standing member when the captain leaves', function (): void {

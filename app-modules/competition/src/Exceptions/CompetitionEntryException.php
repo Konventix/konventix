@@ -68,12 +68,19 @@ final class CompetitionEntryException extends RuntimeException
         return new self(sprintf('User [%s] is already on team [%s].', $userId, $teamId));
     }
 
-    public static function rosterFull(string $teamId, int $teamSize): self
-    {
+    public static function rosterFull(
+        string $teamId,
+        string $competitionId,
+        int $teamSize,
+        int $rosterSize,
+    ): self {
         return new self(sprintf(
-            'Team [%s] already fields %d player(s), which is the discipline\'s team size; there are no '
-            .'substitutes in this slice (design §5.2).',
+            'Team [%s] would field %d player(s), and competition [%s] allows %d — there are no substitutes '
+            .'in this slice (design §5.2). The bound is per competition: a roster is refused when any '
+            .'contest the team holds a slot in could not field it.',
             $teamId,
+            $rosterSize,
+            $competitionId,
             $teamSize,
         ));
     }

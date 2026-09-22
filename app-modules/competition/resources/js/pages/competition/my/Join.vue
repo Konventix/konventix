@@ -13,7 +13,8 @@ import { Label } from '@/components/ui/label';
  * The field is prefilled from `?code=`, so a captain can paste one link into
  * Discord instead of a code eight people have to retype. Normalising happens
  * on the server as well; what happens here is only so the field shows the
- * same characters the server will look up.
+ * same characters the server will look up — spaces and dashes out, upper
+ * case, eight characters.
  *
  * Participant copy is German (ADR-0001).
  *
@@ -25,15 +26,10 @@ const props = defineProps<{ code: string }>();
 
 const form = useForm({ code: props.code ?? '' });
 
-const alphabet = /[^A-Za-z0-9]/g;
+const nonAlphanumeric = /[^A-Za-z0-9]/g;
 
 function normalize(value: string): string {
-    return value
-        .replace(alphabet, '')
-        .toUpperCase()
-        .replace(/0/g, 'O')
-        .replace(/1/g, 'I')
-        .slice(0, 8);
+    return value.replace(nonAlphanumeric, '').toUpperCase().slice(0, 8);
 }
 
 function submit(): void {
@@ -69,7 +65,7 @@ function submit(): void {
                     @blur="form.code = normalize(form.code)"
                 />
                 <p id="invite-code-hint" class="text-sm text-text-muted">
-                    Acht Zeichen. Die Ziffern 0 und 1 kommen nicht vor — gemeint sind O und I.
+                    Acht Zeichen. 0, O, 1 und I kommen in Codes nie vor.
                 </p>
                 <InputError id="invite-code-error" :message="form.errors.code" />
             </div>

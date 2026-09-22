@@ -24,7 +24,17 @@ use Konventix\Competition\Models\Entrant;
  * would eventually forget, and the symptom — a three-player team seeded into
  * a 5v5 bracket — surfaces at the desk on the day.
  *
- * Two deliberate limits:
+ * **Complete means exactly the team size, not "at least".** `>=` was the
+ * earlier comparison and it was wrong in a way that only showed up across two
+ * competitions: a five-person squad entered in both a 5v5 and a 1v1 read as
+ * *complete* for the 1v1 too, and seeded five member ULIDs behind a
+ * one-player side. Both doors onto a roster now refuse an oversized one by
+ * name — `EnterCompetition` for the entry, `MaintainsTeamRoster` for the
+ * join — so this branch cannot see one any more. If it somehow did, landing
+ * in §5.4's prompt where an organizer can decline it is strictly better than
+ * seeding it, which is the other reason the comparison is exact.
+ *
+ * Two deliberate limits beyond that:
  *
  * - **Only `incomplete` ↔ `registered`.** A `checked_in` entrant is left
  *   alone; check-in is §6's business and a roster change after it is a
@@ -63,7 +73,7 @@ final class SyncEntrantCompleteness
                     continue;
                 }
 
-                $target = $rosterSize >= $this->teamSizeFor($competition)
+                $target = $rosterSize === $this->teamSizeFor($competition)
                     ? EntrantState::Registered
                     : EntrantState::Incomplete;
 
