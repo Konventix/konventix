@@ -35,6 +35,7 @@ use Konventix\Platform\Http\Middleware\EnsureFeatureIsActive;
 use Konventix\Platform\Http\Middleware\EnsureModuleIsActive;
 use Konventix\Platform\Http\Middleware\EnsureWaitingRoomAdmission;
 use Konventix\Platform\Hub\ActiveEventContext;
+use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Legal\NoPublicLegalTexts;
 use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Listeners\GuardNonProductionMail;
@@ -165,6 +166,7 @@ class PlatformServiceProvider extends ModuleServiceProvider
         // may safely share across requests.
         $this->app->singleton(ModuleGate::class);
         $this->app->singleton(NavigationRegistry::class);
+        $this->app->singleton(HubRegistry::class);
         $this->app->singleton(SlotRegistry::class);
         $this->app->singleton(BlockRegistry::class);
         $this->app->singleton(ConsoleEventSources::class);
