@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Platform\Hub;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Platform\Brands\BrandContext;
@@ -13,6 +14,7 @@ use Konventix\Platform\Data\HubCardData;
 use Konventix\Platform\Data\HubLinkData;
 use Konventix\Platform\Data\HubPageData;
 use Konventix\Platform\Observability\Metrics;
+use Throwable;
 
 /**
  * Builds the live hub page (design §7.1) for the signed-in member's current
@@ -28,6 +30,9 @@ use Konventix\Platform\Observability\Metrics;
  * Every dependency is resolved through the container, never held across
  * requests: `ActiveEventContext` is scoped and this class is built per
  * request too (`.ai/rules/providers.md`).
+ *
+ * Every payload and URL closure runs behind a guard — see `drop()`. One
+ * module's failure costs its own card, never the page.
  */
 final class HubPage
 {
@@ -50,26 +55,72 @@ final class HubPage
         $cardData = [];
         $linkData = [];
 
+        $brand = BrandSlugs::of(app(BrandContext::class)->currentOrFail()->id);
+
         foreach ($orderedKeys as $key) {
-            if ($cards->has($key)) {
-                $card = $cards[$key];
-                $cardData[] = new HubCardData($card->key, $card->label, $card->component, ($card->payload)($event, $user));
-            } elseif ($links->has($key)) {
-                $link = $links[$key];
-                $linkData[] = new HubLinkData($link->key, $link->label, $link->url === null ? null : ($link->url)($event, $user), $link->component, $link->icon);
+            $item = $cards[$key] ?? $links[$key] ?? null;
+
+            if ($item === null) {
+                continue;
+            }
+
+            try {
+                if ($item instanceof HubCard) {
+                    $cardData[] = new HubCardData($item->key, $item->label, $item->component, ($item->payload)($event, $user));
+                } else {
+                    $linkData[] = new HubLinkData($item->key, $item->label, $item->url === null ? null : ($item->url)($event, $user), $item->component, $item->icon);
+                }
+            } catch (Throwable $exception) {
+                $this->drop($exception, $item, $brand);
             }
         }
 
         // D-HUB-04: a page view is the one operational fact the hub has —
         // whether admitted people actually reach it on the day. The brand
         // is the label, never the event or the person (`.ai/rules/observability.md`);
-        // `currentOrFail()` because an active event exists only on a brand.
-        app(Metrics::class)->increment('platform_hub_views_total', [
-            'brand' => BrandSlugs::of(app(BrandContext::class)->currentOrFail()->id),
-        ]);
+        // `currentOrFail()` above because an active event exists only on a brand.
+        app(Metrics::class)->increment('platform_hub_views_total', ['brand' => $brand]);
 
         return Inertia::render('platform/live/Hub', [
             'hub' => new HubPageData($event, $this->context->all()->values()->all(), $cardData, $linkData),
+        ]);
+    }
+
+    /**
+     * Contain one contributor's failure: drop the entry, record it, and let
+     * the rest of the page render.
+     *
+     * Platform cannot vet a foreign module's payload — it does not know what
+     * the closure reads or what it may throw, and by ADR-0003 it must not
+     * care. So the shell holds the guarantee instead: a brand whose entrance
+     * signing key has been retired makes `IssueAdmissionToken` refuse to sign
+     * and `admission.my-ticket` throw, and without this the event-day page
+     * would 500 for everyone on that brand — including the `Hilfe` link that
+     * is the participant's only way to say so.
+     *
+     * A dropped card is not a blank card: the page renders without it, the
+     * same way a component name nothing ships under renders nothing. The
+     * counter is what tells the operator it happened, per module rather than
+     * per key — the key is in the log line, and ids and free text stay out of
+     * labels (`.ai/rules/observability.md`).
+     *
+     * No alert rule of its own, deliberately: `Log::error` already trips
+     * `KonventixErrorsLogged`, so the page is paged for. The counter answers
+     * the next question — which module, on which brand, how often — which is
+     * what the dashboard panel is for.
+     */
+    private function drop(Throwable $exception, HubCard|HubLink $item, string $brand): void
+    {
+        Log::error('A live-hub contribution failed and was dropped (D-HUB-05).', [
+            'module' => $item->module,
+            'key' => $item->key,
+            'exception' => $exception::class,
+            'reason' => $exception->getMessage(),
+        ]);
+
+        app(Metrics::class)->increment('platform_hub_card_failures_total', [
+            'brand' => $brand,
+            'module' => $item->module,
         ]);
     }
 

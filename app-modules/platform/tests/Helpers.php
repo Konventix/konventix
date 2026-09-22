@@ -97,14 +97,20 @@ function operatorWithThemeAdmin(array $capabilities = ['platform.access-admin', 
  * what `ActiveEventContextTest` and `ActiveEventSharedPropTest` feed the
  * `platform_hub_access` projection with. Display fields are fixed so the
  * assertions have something to compare; only the ids and the instant vary.
+ *
+ * `$admissionId` defaults to an invented ULID, which is all a test about
+ * the *context* needs. A test that renders the hub against the real
+ * registry passes a real admission's id instead: since D-HUB-05 the
+ * `admission.my-ticket` card looks that admission up, and an id nobody
+ * issued would be dropped by `HubPage`'s guard rather than rendered.
  */
-function hubAdmitted(string $brandId, string $userId, string $eventId, string $admittedAt = '2026-10-16T18:00:00Z'): ParticipantAdmitted
+function hubAdmitted(string $brandId, string $userId, string $eventId, string $admittedAt = '2026-10-16T18:00:00Z', ?string $admissionId = null): ParticipantAdmitted
 {
     return new ParticipantAdmitted(
         userId: $userId,
         eventId: $eventId,
         brandId: $brandId,
-        admissionId: (string) Str::ulid(),
+        admissionId: $admissionId ?? (string) Str::ulid(),
         admittedAt: $admittedAt,
         windowEndsAt: null,
         dayLabel: 'Freitag',

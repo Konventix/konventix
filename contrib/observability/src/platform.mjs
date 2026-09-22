@@ -22,6 +22,7 @@ export default dashboard({
             stat('Oldest pending job', [prom(`max(konventix_queue_oldest_pending_job_age{${J}})`)], { unit: 's', thresholds: thresholds('green', [30, 'orange'], [60, 'red']) }),
             stat('Errors logged (range)', [prom(`sum(increase(konventix_log_records_total{${J}, level=~"error|critical|alert|emergency"}[$__range]))`)], { thresholds: thresholds('green', [1, 'red']) }),
             stat('Hub views', [prom(`sum(increase(konventix_platform_hub_views_total{${J}}[$__range]))`)], { description: 'Live-hub page views (D-HUB-04).' }),
+            stat('Hub cards dropped', [prom(`sum(increase(konventix_platform_hub_card_failures_total{${J}}[$__range]))`, '{{module}}')], { thresholds: thresholds('green', [1, 'red']), description: 'Live-hub contributions whose payload threw and were dropped, by module (D-HUB-05). Above zero means a card is missing from the event-day page.' }),
         ]),
         row('HTTP', [
             timeseries('Requests per second by status class', [prom(`sum by (class) (label_replace(rate(konventix_http_requests_total{${J}}[5m]), "class", "$1xx", "status", "(.).."))`, '{{class}}')], { stack: true }),

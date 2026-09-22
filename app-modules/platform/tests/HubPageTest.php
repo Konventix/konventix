@@ -8,7 +8,10 @@ use Konventix\Event\Events\EventHubLayoutChanged;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Data\ActiveEventData;
 use Konventix\Platform\Hub\HubCard;
+use Konventix\Platform\Hub\HubLink;
 use Konventix\Platform\Hub\HubRegistry;
+use Prometheus\CollectorRegistry;
+use Prometheus\RenderTextFormat;
 use Spatie\LaravelData\Data;
 
 /**
@@ -18,6 +21,19 @@ use Spatie\LaravelData\Data;
 final class HubPageTestPayload extends Data
 {
     public function __construct(public string $hello) {}
+}
+
+/**
+ * The value of the one sample of `$metric` in a rendered scrape, or 0.0
+ * when the metric is absent. Reads the value rather than matching the whole
+ * line, because promphp orders a metric's labels as it was registered and a
+ * literal `{brand="…",module="…"}` assertion would pin that ordering.
+ */
+function metricSampleValue(string $rendered, string $metric): float
+{
+    preg_match('/^'.preg_quote($metric, '/').'(?:\{[^}]*\})? ([0-9.e+-]+)$/m', $rendered, $match);
+
+    return (float) ($match[1] ?? 0.0);
 }
 
 function hubPageCard(string $key, int $order = 100): HubCard
@@ -76,4 +92,37 @@ it('never runs the payload of a card the layout hides', function (): void {
         ->component('platform/live/Hub')
         ->where('hub.cards.0.key', 'platform.shown')
         ->count('hub.cards', 1));
+});
+
+// D-HUB-05 review: Platform cannot vet a foreign module's payload
+// (ADR-0003), so the shell contains it. Without this guard a brand whose
+// entrance signing key was retired would get a 500 at `/live` on event day
+// — including the `Hilfe` link that is the only way to report it.
+it('drops a contribution whose closure throws, renders the rest, and counts it', function (): void {
+    $brand = $this->withBrand();
+    $user = User::factory()->create();
+    event(hubAdmitted($brand->id, $user->id, (string) Str::ulid()));
+    app(HubRegistry::class)->add(
+        hubPageCard('platform.fine', 1),
+        new HubCard('platform', 'platform.broken', 'broken', 'platform/hub/TestCard', function (): never {
+            throw new RuntimeException('a card payload blew up');
+        }, null, 2),
+        new HubLink('platform', 'platform.broken-link', 'broken link', function (): never {
+            throw new RuntimeException('a link url blew up');
+        }, order: 3),
+        new HubLink('platform', 'platform.fine-link', 'fine link', fn (): string => '/somewhere', order: 4),
+    );
+
+    $this->actingAs($user)->get('/live')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('hub.cards.0.key', 'platform.fine')
+            ->count('hub.cards', 1)
+            ->where('hub.links.0.key', 'platform.fine-link')
+            ->count('hub.links', 1));
+
+    $rendered = (new RenderTextFormat)->render(app(CollectorRegistry::class)->getMetricFamilySamples());
+
+    expect($rendered)->toContain('konventix_platform_hub_card_failures_total')
+        ->and(metricSampleValue($rendered, 'konventix_platform_hub_card_failures_total'))->toBe(2.0);
 });

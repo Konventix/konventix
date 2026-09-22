@@ -484,7 +484,66 @@
       "id": 8
     },
     {
-      "id": 9,
+      "type": "stat",
+      "title": "Hub cards dropped",
+      "gridPos": {
+        "w": 4,
+        "h": 4,
+        "x": 4,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "VictoriaMetrics"
+          },
+          "expr": "sum(increase(konventix_platform_hub_card_failures_total{job=\"$release\"}[$__range]))",
+          "legendFormat": "{{module}}",
+          "range": true
+        }
+      ],
+      "description": "Live-hub contributions whose payload threw and were dropped, by module (D-HUB-05). Above zero means a card is missing from the event-day page.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "orientation": "auto"
+      },
+      "id": 9
+    },
+    {
+      "id": 10,
       "type": "row",
       "title": "HTTP",
       "collapsed": false,
@@ -548,7 +607,7 @@
           "sort": "desc"
         }
       },
-      "id": 10
+      "id": 11
     },
     {
       "type": "timeseries",
@@ -612,7 +671,7 @@
           "sort": "desc"
         }
       },
-      "id": 11
+      "id": 12
     },
     {
       "type": "timeseries",
@@ -666,10 +725,10 @@
           "sort": "desc"
         }
       },
-      "id": 12
+      "id": 13
     },
     {
-      "id": 13,
+      "id": 14,
       "type": "row",
       "title": "Queues",
       "collapsed": false,
@@ -733,7 +792,7 @@
           "sort": "desc"
         }
       },
-      "id": 14
+      "id": 15
     },
     {
       "type": "timeseries",
@@ -787,7 +846,7 @@
           "sort": "desc"
         }
       },
-      "id": 15
+      "id": 16
     },
     {
       "type": "timeseries",
@@ -851,7 +910,7 @@
           "sort": "desc"
         }
       },
-      "id": 16
+      "id": 17
     },
     {
       "type": "timeseries",
@@ -905,7 +964,7 @@
           "sort": "desc"
         }
       },
-      "id": 17
+      "id": 18
     },
     {
       "type": "stat",
@@ -964,7 +1023,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 18
+      "id": 19
     },
     {
       "type": "stat",
@@ -1022,7 +1081,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 19
+      "id": 20
     },
     {
       "type": "stat",
@@ -1076,7 +1135,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 20
+      "id": 21
     },
     {
       "type": "stat",
@@ -1131,7 +1190,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 21
+      "id": 22
     },
     {
       "type": "stat",
@@ -1189,7 +1248,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 22
+      "id": 23
     },
     {
       "type": "stat",
@@ -1247,7 +1306,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 23
+      "id": 24
     },
     {
       "type": "timeseries",
@@ -1331,10 +1390,10 @@
           "sort": "desc"
         }
       },
-      "id": 24
+      "id": 25
     },
     {
-      "id": 25,
+      "id": 26,
       "type": "row",
       "title": "Health",
       "collapsed": false,
@@ -1426,7 +1485,7 @@
           "showLegend": true
         }
       },
-      "id": 26
+      "id": 27
     },
     {
       "type": "timeseries",
@@ -1481,7 +1540,7 @@
           "sort": "desc"
         }
       },
-      "id": 27
+      "id": 28
     },
     {
       "type": "timeseries",
@@ -1535,10 +1594,10 @@
           "sort": "desc"
         }
       },
-      "id": 28
+      "id": 29
     },
     {
-      "id": 29,
+      "id": 30,
       "type": "row",
       "title": "Consent and conditions",
       "collapsed": false,
@@ -1603,7 +1662,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 30
+      "id": 31
     },
     {
       "type": "stat",
@@ -1658,7 +1717,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 31
+      "id": 32
     },
     {
       "type": "stat",
@@ -1721,7 +1780,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 32
+      "id": 33
     },
     {
       "type": "stat",
@@ -1776,7 +1835,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 33
+      "id": 34
     },
     {
       "type": "stat",
@@ -1830,7 +1889,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 34
+      "id": 35
     },
     {
       "type": "stat",
@@ -1889,7 +1948,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 35
+      "id": 36
     },
     {
       "type": "timeseries",
@@ -1943,7 +2002,7 @@
           "sort": "desc"
         }
       },
-      "id": 36
+      "id": 37
     },
     {
       "type": "timeseries",
@@ -2008,7 +2067,7 @@
           "sort": "desc"
         }
       },
-      "id": 37
+      "id": 38
     },
     {
       "type": "timeseries",
@@ -2063,7 +2122,7 @@
           "sort": "desc"
         }
       },
-      "id": 38
+      "id": 39
     },
     {
       "type": "timeseries",
@@ -2117,7 +2176,7 @@
           "sort": "desc"
         }
       },
-      "id": 39
+      "id": 40
     },
     {
       "type": "timeseries",
@@ -2181,10 +2240,10 @@
           "sort": "desc"
         }
       },
-      "id": 40
+      "id": 41
     },
     {
-      "id": 41,
+      "id": 42,
       "type": "row",
       "title": "Support",
       "collapsed": false,
@@ -2249,7 +2308,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 42
+      "id": 43
     },
     {
       "type": "stat",
@@ -2308,7 +2367,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 43
+      "id": 44
     },
     {
       "type": "stat",
@@ -2363,7 +2422,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 44
+      "id": 45
     },
     {
       "type": "stat",
@@ -2422,7 +2481,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 45
+      "id": 46
     },
     {
       "type": "timeseries",
@@ -2476,7 +2535,7 @@
           "sort": "desc"
         }
       },
-      "id": 46
+      "id": 47
     },
     {
       "type": "timeseries",
@@ -2531,7 +2590,7 @@
           "sort": "desc"
         }
       },
-      "id": 47
+      "id": 48
     },
     {
       "type": "timeseries",
@@ -2585,10 +2644,10 @@
           "sort": "desc"
         }
       },
-      "id": 48
+      "id": 49
     },
     {
-      "id": 49,
+      "id": 50,
       "type": "row",
       "title": "Runtime",
       "collapsed": false,
@@ -2652,7 +2711,7 @@
           "sort": "desc"
         }
       },
-      "id": 50
+      "id": 51
     },
     {
       "type": "timeseries",
@@ -2706,7 +2765,7 @@
           "sort": "desc"
         }
       },
-      "id": 51
+      "id": 52
     },
     {
       "type": "timeseries",
@@ -2760,7 +2819,7 @@
           "sort": "desc"
         }
       },
-      "id": 52
+      "id": 53
     },
     {
       "type": "timeseries",
@@ -2814,10 +2873,10 @@
           "sort": "desc"
         }
       },
-      "id": 53
+      "id": 54
     },
     {
-      "id": 54,
+      "id": 55,
       "type": "row",
       "title": "Database",
       "collapsed": false,
@@ -2890,7 +2949,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 55
+      "id": 56
     },
     {
       "type": "stat",
@@ -2949,7 +3008,7 @@
         "textMode": "value",
         "orientation": "auto"
       },
-      "id": 56
+      "id": 57
     },
     {
       "type": "timeseries",
@@ -3003,7 +3062,7 @@
           "sort": "desc"
         }
       },
-      "id": 57
+      "id": 58
     }
   ]
 }

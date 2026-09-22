@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
 use Konventix\Admission\Data\MyTicketCardData;
 use Konventix\Admission\Enums\ReentryPolicy;
 use Konventix\Admission\Models\Admission;
@@ -59,4 +60,34 @@ it('falls back to the open-door hint when the event carries no profile', functio
 
     expect($payload->eventName)->toBeNull()
         ->and($payload->reentryHint)->toContain('jederzeit');
+});
+
+// The card, through the real thing: the hub registry every provider filled
+// at boot, the `/live` route, and a hub access driven by the id of an
+// admission that was actually issued. The two Platform page tests render
+// against a registry they own (`hubIsolatedRegistry()`), so without this
+// one nothing would notice the card 500ing the page it is the first thing
+// on — which is exactly what the first review round found.
+it('renders on /live against the registry every module filled at boot', function (): void {
+    $brand = $this->withBrand();
+    ticketSigningKey($brand);
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    EntranceEventProfile::factory()->create(['event_id' => $eventId, 'reentry_policy' => ReentryPolicy::OncePerDay]);
+    $holder = ticketPerson();
+    $admission = Admission::factory()->create(['event_id' => $eventId, 'holder_user_id' => $holder->id]);
+    $user = User::factory()->create(['id' => $holder->id]);
+    event(hubAdmitted($brand->id, $user->id, $eventId, admissionId: $admission->id));
+
+    // First of the cards because D-HUB-05 orders it first (order 10, ahead
+    // of Content's 20) — the ticket is what somebody at the door opens the
+    // hub for.
+    $this->actingAs($user)->get('/live')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('platform/live/Hub')
+            ->where('hub.cards.0.key', 'admission.my-ticket')
+            ->where('hub.cards.0.payload.admissionId', $admission->id)
+            ->where('hub.cards.0.payload.qrSvg', fn (string $svg): bool => str_contains($svg, '<svg'))
+            ->where('hub.cards.0.payload.reentryHint', fn (string $hint): bool => str_contains($hint, 'täglich')));
 });
