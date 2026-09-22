@@ -46,7 +46,9 @@ use Konventix\Platform\Modules\ModuleGate;
  *    and the admission check answer for whichever brand the request
  *    resolved, so without this a moderator of brand A — or a participant
  *    admitted on brand A — would be handed brand B's room;
- * 4. capability, else admission.
+ * 4. capability, else admission — the capability for the `$user` the
+ *    broadcaster authenticated, and the admission for that same person,
+ *    asserted rather than assumed (see `isAdmittedToSubject()`).
  *
  * The two scoped bindings are resolved inside `join()` rather than
  * constructor-injected. Laravel `make()`s a channel class per authorisation
@@ -90,7 +92,7 @@ final class RoomChannel
             return false;
         }
 
-        return $this->moderates($user) || $this->isAdmittedToSubject($room);
+        return $this->moderates($user) || $this->isAdmittedToSubject($user, $room);
     }
 
     /**
@@ -112,15 +114,54 @@ final class RoomChannel
      * creating them (ADR-0067 "Consequences"), and answering "admitted?"
      * for a subject that is not an event would be inventing sub-project B's
      * access rule a release early.
+     *
+     * **The person is pinned, not assumed.** `ActiveEventContext::all()`
+     * answers for the *ambient* viewer — it resolves `auth()->id()` itself
+     * and memoises on brand plus that id — while the broadcaster hands this
+     * class the `$user` it authenticated. Today the two are always the same
+     * person, because `Broadcaster::retrieveUser()` returns
+     * `$request->user()` when the registration passes no `guards` option
+     * and `routes/channels.php` passes none. That is a property of one line
+     * of configuration, not a guarantee: adding `['guards' => ['sanctum',
+     * 'web']]` to support a token client lets `retrieveUser()` return
+     * sanctum user B while the session cookie still authenticates user A,
+     * and the capability half would then answer for B while this half
+     * answered for A. So the identity is asserted here rather than
+     * inherited from the ambient container, and a mismatch — including a
+     * caller with no authenticated user at all, such as a console probe or
+     * a test that forgets `actingAs` — refuses. Refusing is the safe
+     * direction: a moderator still reaches the room through `moderates()`,
+     * which was always explicit about whose capability it reads.
      */
-    private function isAdmittedToSubject(Room $room): bool
+    private function isAdmittedToSubject(Authenticatable $user, Room $room): bool
     {
         if ($room->subject_type !== RoomSubject::Event) {
+            return false;
+        }
+
+        if (! $this->isTheAmbientViewer($user)) {
             return false;
         }
 
         return app(ActiveEventContext::class)
             ->all()
             ->contains(fn (ActiveEventData $event): bool => $event->eventId === $room->subject_id);
+    }
+
+    /**
+     * Whether the user the broadcaster authenticated is the same person
+     * `auth()` resolves — the precondition for reading an answer that was
+     * computed for the ambient viewer.
+     */
+    private function isTheAmbientViewer(Authenticatable $user): bool
+    {
+        $viewer = auth()->id();
+        $subject = $user->getAuthIdentifier();
+
+        if ($viewer === null || ! is_scalar($subject)) {
+            return false;
+        }
+
+        return (string) $viewer === (string) $subject;
     }
 }

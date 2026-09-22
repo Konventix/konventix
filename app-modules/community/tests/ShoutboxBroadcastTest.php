@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Broadcasting\BroadcastException;
 use Illuminate\Contracts\Broadcasting\Broadcaster;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -18,6 +20,7 @@ use Konventix\Community\Data\PostMessageData;
 use Konventix\Community\Enums\ConnectionStatus;
 use Konventix\Community\Enums\Permission;
 use Konventix\Community\Events\ShoutboxMessagePosted;
+use Konventix\Community\Events\ShoutboxMessageRemoved;
 use Konventix\Community\Models\EventPresence;
 use Konventix\Community\Models\Message;
 use Konventix\Community\Models\Room;
@@ -44,9 +47,15 @@ use Spatie\Permission\PermissionRegistrar;
  *    listener receives ULIDs and scalars (spec §9); the body exists only
  *    inside `broadcastWith()`'s return. One test reads the event's public
  *    properties by reflection and asserts the body is in none of them.
- * 3. **Connection state touches no table at all.** Asserted by counting
- *    every row of every table in the schema before and after, not by
- *    failing to look for a model.
+ * 3. **Connection state touches no table at all.** Asserted three ways at
+ *    once, because each one alone has a blind spot: the query log (an
+ *    `UPDATE` to a column on an existing row moves no row count), a row
+ *    census of every table in the schema (a write through a second
+ *    connection or a table appearing mid-test), and the cache store pointed
+ *    at the database for the length of the window (`phpunit.xml` sets
+ *    `CACHE_STORE=array`, so a `Cache::put()` reimplementation — the most
+ *    plausible way ADR-0067 decision 3 gets broken by accident — would
+ *    otherwise write nowhere and pass everything).
  *
  * Helper and class names are prefixed `shoutboxBroadcast*` — Pest helpers
  * and classes declared in a test file are process-global across every
@@ -144,8 +153,14 @@ function shoutboxBroadcastModerator(string $brandId): User
 /**
  * Every row of every table in the test schema. The point of counting all of
  * them rather than naming one is that ADR-0067 decision 3 forbids *any*
- * table holding connection state — including a cache table, which is how
- * this rule would most plausibly be broken by accident.
+ * table holding connection state.
+ *
+ * What this alone proves is narrow and worth being exact about: no `INSERT`
+ * into any table between the two calls, and no table appearing in the
+ * schema mid-test. It says nothing about an `UPDATE` to a column on a row
+ * that already exists — that is what `shoutboxBroadcastWrites()` is for —
+ * and nothing about a cache write unless the cache store is pointed at the
+ * database first, which the test that uses it does.
  *
  * @return array<string, int>
  */
@@ -161,6 +176,64 @@ function shoutboxBroadcastTableCensus(): array
     ksort($census);
 
     return $census;
+}
+
+/**
+ * The write statements among a recorded query log. `INSERT`, `UPDATE` and
+ * `DELETE` are the three shapes ADR-0067 decision 3 forbids, and the middle
+ * one is the one a row census cannot see: writing connection state into
+ * `community_members.last_seen_at` moves no count anywhere.
+ *
+ * Reads are deliberately allowed through — `enterRoom()` authorises, and
+ * authorising means reading the room, the module's activation and the
+ * admission projection.
+ *
+ * @param  list<string>  $queries
+ * @return list<string>
+ */
+function shoutboxBroadcastWrites(array $queries): array
+{
+    return array_values(array_filter(
+        $queries,
+        fn (string $sql): bool => preg_match('/^\s*(insert|update|delete|truncate|copy)\b/i', $sql) === 1,
+    ));
+}
+
+/**
+ * Every declared property of an event object, whatever its visibility, and
+ * in declaration order. Public-only would let a `private string $body` slip
+ * past the pin below — unreachable from `$event->…`, but the claim these
+ * tests make is "the domain payload cannot carry text", not "cannot carry
+ * it publicly".
+ *
+ * @return array<string, mixed>
+ */
+function shoutboxBroadcastProperties(object $event): array
+{
+    $properties = [];
+
+    foreach ((new ReflectionClass($event))->getProperties() as $property) {
+        $properties[$property->getName()] = $property->getValue($event);
+    }
+
+    return $properties;
+}
+
+/**
+ * The constructor's parameter names, so that the pin catches a widening
+ * that somehow did not land as a property too.
+ *
+ * @param  class-string  $class
+ * @return list<string>
+ */
+function shoutboxBroadcastConstructorParameters(string $class): array
+{
+    $constructor = (new ReflectionClass($class))->getConstructor();
+
+    return array_map(
+        fn (ReflectionParameter $parameter): string => $parameter->getName(),
+        $constructor?->getParameters() ?? [],
+    );
 }
 
 /**
@@ -340,73 +413,200 @@ it('keeps a committed line committed when the broadcast itself fails', function 
     Exceptions::assertReported(BroadcastException::class);
 });
 
+// I2: the broadcaster hands `join()` the user IT authenticated, while
+// `ActiveEventContext` answers for whoever `auth()` resolves. Those are the
+// same person only because `routes/channels.php` registers the pattern with
+// no `guards` option — a configuration detail, not a guarantee. The
+// discriminator is deliberately the way round that FAILS without the check:
+// the ambient viewer is admitted and the handed-in user is not, so a channel
+// trusting the ambient answer would hand a stranger the room.
+it('refuses a subscriber the broadcaster authenticated when somebody else is the ambient viewer', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
+
+    $eventId = (string) Str::ulid();
+    $room = Room::factory()->create(['subject_id' => $eventId]);
+
+    $admitted = User::factory()->create();
+    event(hubAdmitted($brand->getKey(), $admitted->id, $eventId));
+    $this->actingAs($admitted);
+
+    // Nobody admitted this account to anything. Under a `guards` option it
+    // is what `Broadcaster::retrieveUser()` could hand in while the session
+    // cookie still authenticates the admitted one.
+    $imposter = User::factory()->create();
+
+    $channel = new RoomChannel;
+
+    expect($channel->join($imposter, $room->id))->toBeFalse()
+        // The control: the same room, the same ambient viewer, asked about
+        // the person who really is signed in.
+        ->and($channel->join($admitted, $room->id))->toBeTrue();
+});
+
 // The heart of the §9 tension: the same class is both a module contract and
 // a browser message, and only the second half may carry what was typed.
+// BOTH events are pinned — a `public string $body` added to the removal
+// would otherwise put a removed participant's text on the module's public
+// contract with every test in this file still green (M2) — and the pin
+// enumerates every visibility, not only public ones (M3).
 it('hands a PHP listener ULIDs and scalars only, and the body to the browser alone', function (): void {
     $this->withBrand();
 
     $body = 'Wo ist die Schlange für den Lötkurs?';
     $room = Room::factory()->create();
-    $captured = null;
+    $posted = null;
+    $removed = null;
 
-    Event::listen(ShoutboxMessagePosted::class, function (ShoutboxMessagePosted $event) use (&$captured): void {
-        $captured = $event;
+    Event::listen(ShoutboxMessagePosted::class, function (ShoutboxMessagePosted $event) use (&$posted): void {
+        $posted = $event;
     });
 
-    app(PostMessage::class)->handle($room, (string) Str::ulid(), new PostMessageData($body));
+    Event::listen(ShoutboxMessageRemoved::class, function (ShoutboxMessageRemoved $event) use (&$removed): void {
+        $removed = $event;
+    });
 
-    expect($captured)->toBeInstanceOf(ShoutboxMessagePosted::class);
+    $message = app(PostMessage::class)->handle($room, (string) Str::ulid(), new PostMessageData($body));
+    app(RemoveMessage::class)->handle($message, (string) Str::ulid(), 'Spam');
 
-    $properties = [];
+    expect($posted)->toBeInstanceOf(ShoutboxMessagePosted::class)
+        ->and($removed)->toBeInstanceOf(ShoutboxMessageRemoved::class);
 
-    foreach ((new ReflectionClass($captured))->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
-        $properties[$property->getName()] = $property->getValue($captured);
-    }
+    $postedProperties = shoutboxBroadcastProperties($posted);
+    $removedProperties = shoutboxBroadcastProperties($removed);
 
-    expect(array_keys($properties))->toBe(['messageId', 'roomId', 'brandId', 'eventId', 'authorUserId', 'postedAt'])
-        ->and($properties)->each->toBeString()
-        ->and(implode('|', $properties))->not->toContain($body)
+    expect(array_keys($postedProperties))->toBe(['messageId', 'roomId', 'brandId', 'eventId', 'authorUserId', 'postedAt'])
+        ->and(shoutboxBroadcastConstructorParameters(ShoutboxMessagePosted::class))
+        ->toBe(['messageId', 'roomId', 'brandId', 'eventId', 'authorUserId', 'postedAt'])
+        ->and($postedProperties)->each->toBeString()
+        ->and(implode('|', $postedProperties))->not->toContain($body)
         // ...and the wire payload, the one place it is allowed to be.
-        ->and($captured->broadcastWith()['body'])->toBe($body);
+        ->and($posted->broadcastWith()['body'])->toBe($body);
+
+    expect(array_keys($removedProperties))->toBe(['messageId', 'roomId', 'brandId', 'removedByUserId', 'reason', 'removedAt'])
+        ->and(shoutboxBroadcastConstructorParameters(ShoutboxMessageRemoved::class))
+        ->toBe(['messageId', 'roomId', 'brandId', 'removedByUserId', 'reason', 'removedAt'])
+        ->and($removedProperties)->each->toBeString()
+        ->and(implode('|', $removedProperties))->not->toContain($body)
+        // An exact compare, not `toHaveKeys`: the tombstone's wire payload
+        // is the one place in this module where the wire carries LESS than
+        // the domain event, so an addition to it has to fail here.
+        ->and($removed->broadcastWith())->toBe([
+            'id' => $message->id,
+            'roomId' => $room->id,
+            'removedAt' => $removed->removedAt,
+        ]);
 });
 
-// ADR-0067 decision 3. The census is every table in the schema, counted
-// before and after: a column, a new table or a database-backed cache entry
-// would all move at least one of those numbers.
-it('writes connection state to Redis and to no table at all', function (): void {
-    $this->withBrand();
+// M5: claiming presence in a room is a claim about a room one has to be
+// allowed into, so `enterRoom()` runs the same four checks the channel
+// subscription runs and refuses rather than writing. Task 5's heartbeat
+// route inherits that whatever middleware it ends up carrying.
+it('refuses to record presence for an account the room would not admit', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
 
     if (! shoutboxBroadcastRedisReachable()) {
         $this->markTestSkipped('Redis unreachable');
     }
 
+    $eventId = (string) Str::ulid();
+    $room = Room::factory()->create(['subject_id' => $eventId]);
+
+    $stranger = User::factory()->create();
+    $this->actingAs($stranger);
+
     $state = app(ConnectionState::class);
-    $userId = (string) Str::ulid();
-    $roomId = (string) Str::ulid();
+
+    expect(function () use ($state, $room, $stranger): void {
+        $state->enterRoom($room, $stranger);
+    })->toThrow(AuthorizationException::class)
+        // Refused means nothing was written, not "written and hidden".
+        ->and($state->forRoom($room))->toBe([]);
+
+    Redis::connection()->del(ConnectionState::roomKey($brand->getKey(), $room->id));
+});
+
+// ADR-0067 decision 3, proved three ways because each one alone has a hole:
+// the query log catches an UPDATE to a column the census cannot see, the
+// census catches a write the query log would miss, and pointing the cache
+// store at the database for the length of the window is what makes the
+// `Cache::put()` back door visible at all under `CACHE_STORE=array`.
+it('writes connection state to Redis and to no table at all', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
+
+    if (! shoutboxBroadcastRedisReachable()) {
+        $this->markTestSkipped('Redis unreachable');
+    }
+
+    $eventId = (string) Str::ulid();
+    $room = Room::factory()->create(['subject_id' => $eventId]);
+
+    $user = User::factory()->create();
+    event(hubAdmitted($brand->getKey(), $user->id, $eventId));
+    $this->actingAs($user);
+
+    $state = app(ConnectionState::class);
+    $brandId = $brand->getKey();
+
+    // One authorised round trip BEFORE the window opens, so that everything
+    // the four checks legitimately write — the Pennant row, the memoised
+    // admission projection, spatie's permission cache — is already warm and
+    // the window contains only this class's own work.
+    $state->enterRoom($room, $user);
+    $state->leaveRoom($room, $user);
+
+    // The back door, wired open. `phpunit.xml:40` sets CACHE_STORE=array, so
+    // a reimplementation reaching for `Cache::put('community:connection:…')`
+    // would write nowhere and pass a row census untouched. Pointed at the
+    // database store it writes a `cache` row instead, which both the query
+    // log and the census below refuse.
+    config(['cache.default' => 'database']);
 
     $before = shoutboxBroadcastTableCensus();
 
-    $state->online($userId);
-    $state->enterRoom($roomId, $userId);
+    /** @var list<string> $queries */
+    $queries = [];
 
-    expect($state->forRoom($roomId))->toBe([$userId => ConnectionStatus::Online]);
+    DB::listen(function (QueryExecuted $query) use (&$queries): void {
+        $queries[] = $query->sql;
+    });
 
-    $state->away($userId);
+    $state->online($brandId, $user);
+    $state->enterRoom($room, $user);
 
-    expect($state->forRoom($roomId))->toBe([$userId => ConnectionStatus::Away]);
+    expect($state->forRoom($room))->toBe([$user->id => ConnectionStatus::Online])
+        ->and($state->statusFor($brandId, $user->id))->toBe(ConnectionStatus::Online);
+
+    $state->away($brandId, $user);
+
+    expect($state->forRoom($room))->toBe([$user->id => ConnectionStatus::Away]);
 
     // A heartbeat that stopped decays to Away on its own, with no sweep and
     // nothing written: the read derives it from the instant in the key.
-    $state->online($userId);
+    $state->online($brandId, $user);
     $this->travel(ConnectionState::ONLINE_SECONDS + 1)->seconds();
 
-    expect($state->forRoom($roomId))->toBe([$userId => ConnectionStatus::Away]);
+    expect($state->forRoom($room))->toBe([$user->id => ConnectionStatus::Away]);
+
+    $state->leaveRoom($room, $user);
+
+    expect($state->forRoom($room))->toBe([]);
+
+    // Snapshotted here: the closing census queries every table itself.
+    $executed = $queries;
 
     $this->travelBack();
+    config(['cache.default' => 'array']);
 
-    Redis::connection()->del(ConnectionState::connectionKey($userId), ConnectionState::roomKey($roomId));
+    Redis::connection()->del(
+        ConnectionState::connectionKey($brandId, $user->id),
+        ConnectionState::roomKey($brandId, $room->id),
+    );
 
-    expect(shoutboxBroadcastTableCensus())->toBe($before)
+    expect(shoutboxBroadcastWrites($executed))->toBe([])
+        ->and(shoutboxBroadcastTableCensus())->toBe($before)
         ->and(Schema::hasTable('community_connection_state'))->toBeFalse()
         ->and(Schema::hasTable('community_connections'))->toBeFalse()
         ->and(Schema::hasTable('community_room_presence'))->toBeFalse()

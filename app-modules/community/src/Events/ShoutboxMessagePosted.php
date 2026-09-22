@@ -98,11 +98,26 @@ final readonly class ShoutboxMessagePosted implements ShouldBroadcastNow, Should
      * impossible; the client then has the id and can fetch the line
      * itself rather than render an empty one.
      *
+     * **Two reads, two scoping conventions, both deliberate.** `Message` is
+     * brand-owned (`BelongsToBrand`), and a broadcast can leave from any
+     * context — a console request, a queue worker, the operator admin host,
+     * where `BrandScope` hardens to `WHERE 1=0` (`.ai/rules/app-modules-src.md`)
+     * — so the global scope is escaped and the brand is re-applied by hand
+     * from the event's own `brandId`. That is a *narrower* read than
+     * `withoutBrandScope()->find()` alone, not a wider one: the row must
+     * belong to the brand this event was raised for. `CommunityProfile`
+     * needs neither half, because it is operator-global by design
+     * (ADR-0016, ADR-0004) — no `BelongsToBrand`, therefore no `BrandScope`
+     * to escape and no brand column to filter on. One line apart they look
+     * asymmetric; the asymmetry is the two models', not this method's.
+     *
      * @return array<string, mixed>
      */
     public function broadcastWith(): array
     {
-        $message = Message::withoutBrandScope()->find($this->messageId);
+        $message = Message::withoutBrandScope()
+            ->where('brand_id', $this->brandId)
+            ->find($this->messageId);
 
         return [
             'id' => $this->messageId,
@@ -118,6 +133,12 @@ final readonly class ShoutboxMessagePosted implements ShouldBroadcastNow, Should
      * From Community's own profile read model (ADR-0004) — Identity's user
      * is never imported. Null for an account Community has not yet heard
      * of; the client falls back to whatever it shows for a nameless author.
+     *
+     * `query()` with no brand escape is correct here and not an oversight:
+     * `community_profiles` carries no `brand_id` and the model uses no
+     * `BelongsToBrand`, because accounts are operator-global (ADR-0016). A
+     * `withoutBrandScope()` on it would be escaping a scope that was never
+     * applied.
      */
     private function authorDisplayName(): ?string
     {

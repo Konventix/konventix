@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace Konventix\Community\Presence;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Support\Facades\Redis;
+use InvalidArgumentException;
+use Konventix\Community\Broadcasting\RoomChannel;
 use Konventix\Community\Enums\ConnectionStatus;
+use Konventix\Community\Models\Room;
 
 /**
  * The **ephemeral** half of design §5: who is connected (Online/Away) and
@@ -34,6 +39,27 @@ use Konventix\Community\Enums\ConnectionStatus;
  * the client having to say so, and a client that knows its tab is hidden
  * calls `away()` to say so sooner. One write per heartbeat, no sweeps.
  *
+ * **Every key carries the brand** (ADR-0010). No collision was possible
+ * without it — both ids are ULIDs — but every other read in this module is
+ * brand-scoped, and a per-brand read of the keyspace had nothing to filter
+ * on. The brand is never taken from the ambient `BrandContext`: the room
+ * axis reads it off the `Room` it was handed, and the connection axis takes
+ * it as an argument, so nothing here depends on request state.
+ *
+ * **Who may write, and who may read.** A write says something about *this*
+ * account, so every write takes the `Authenticatable` the request
+ * authenticated and derives the id from it — an account id can never arrive
+ * from a request body and claim somebody else's presence. `enterRoom()`
+ * goes one step further and is **authorised**, not merely identified: it
+ * puts the room through `RoomChannel::join()`, the same four checks the
+ * channel subscription makes, and throws when they refuse. Task 5's
+ * heartbeat route therefore cannot become an unauthenticated-by-design way
+ * to insert an arbitrary account into an arbitrary brand's room presence
+ * set, whatever middleware that route ends up carrying. The reads
+ * (`statusFor()`, `forRoom()`) take plain ids and a `Room`, and are the
+ * caller's to gate: they only ever disclose the connection axis of accounts
+ * that are already in the room the caller named.
+ *
  * Stateless by construction: the Redis connection is resolved per call and
  * nothing is kept on `$this`, so the scoped binding in
  * `CommunityServiceProvider` cannot carry one request's data into the next
@@ -57,23 +83,23 @@ final class ConnectionState
     /**
      * A heartbeat: this account has a live connection right now.
      */
-    public function online(string $userId): void
+    public function online(string $brandId, Authenticatable $user): void
     {
-        $this->write($userId, ConnectionStatus::Online);
+        $this->write($brandId, self::accountId($user), ConnectionStatus::Online);
     }
 
     /**
      * The client saying its tab is hidden, rather than the read deriving it
      * from a stale heartbeat. Same key, same TTL — only the status differs.
      */
-    public function away(string $userId): void
+    public function away(string $brandId, Authenticatable $user): void
     {
-        $this->write($userId, ConnectionStatus::Away);
+        $this->write($brandId, self::accountId($user), ConnectionStatus::Away);
     }
 
-    public function statusFor(string $userId): ConnectionStatus
+    public function statusFor(string $brandId, string $userId): ConnectionStatus
     {
-        $value = $this->connection()->get(self::connectionKey($userId));
+        $value = $this->connection()->get(self::connectionKey($brandId, $userId));
 
         return $this->decode(is_string($value) ? $value : null);
     }
@@ -83,19 +109,39 @@ final class ConnectionState
      * A sorted set scored by the instant, so a stale member is pruned by
      * score on the next read and the key itself expires when a room goes
      * quiet.
+     *
+     * **Authorised, not merely identified.** Claiming presence in a room is
+     * a claim about a room one has to be allowed into, so this delegates to
+     * `RoomChannel::join()` — the room exists, `community` is active for its
+     * brand, the resolved brand is its brand, and the person holds either
+     * the moderation capability or an admission to the room's event. One
+     * decision, written once, so the presence axis and the channel cannot
+     * drift apart into two different answers about the same room.
+     *
+     * @throws AuthorizationException when those four checks refuse
      */
-    public function enterRoom(string $roomId, string $userId): void
+    public function enterRoom(Room $room, Authenticatable $user): void
     {
-        $redis = $this->connection();
-        $key = self::roomKey($roomId);
+        if (! app(RoomChannel::class)->join($user, $room->id)) {
+            throw new AuthorizationException("This account may not enter room [{$room->id}].");
+        }
 
-        $redis->zadd($key, CarbonImmutable::now()->getTimestamp(), $userId);
+        $redis = $this->connection();
+        $key = self::roomKey($room->brand_id, $room->id);
+
+        $redis->zadd($key, CarbonImmutable::now()->getTimestamp(), self::accountId($user));
         $redis->expire($key, self::TTL_SECONDS);
     }
 
-    public function leaveRoom(string $roomId, string $userId): void
+    /**
+     * Leaving needs no authorisation — it removes exactly the caller's own
+     * member and can only ever narrow what the room discloses. It still
+     * takes the authenticated user rather than an id, so that a request
+     * cannot evict somebody else.
+     */
+    public function leaveRoom(Room $room, Authenticatable $user): void
     {
-        $this->connection()->zrem(self::roomKey($roomId), $userId);
+        $this->connection()->zrem(self::roomKey($room->brand_id, $room->id), self::accountId($user));
     }
 
     /**
@@ -111,10 +157,10 @@ final class ConnectionState
      *
      * @return array<string, ConnectionStatus> account ULID => status
      */
-    public function forRoom(string $roomId): array
+    public function forRoom(Room $room): array
     {
         $redis = $this->connection();
-        $key = self::roomKey($roomId);
+        $key = self::roomKey($room->brand_id, $room->id);
 
         $redis->zremrangebyscore($key, '-inf', (string) (CarbonImmutable::now()->getTimestamp() - self::TTL_SECONDS));
 
@@ -128,7 +174,7 @@ final class ConnectionState
 
         foreach ($members as $member) {
             $userId = (string) $member;
-            $status = $this->statusFor($userId);
+            $status = $this->statusFor($room->brand_id, $userId);
 
             if ($status === ConnectionStatus::Offline) {
                 continue;
@@ -146,20 +192,37 @@ final class ConnectionState
      * `keys()` result into `del()` double-prefixes and deletes nothing
      * (`RedisWaitingRoomStoreTest`'s trap).
      */
-    public static function connectionKey(string $userId): string
+    public static function connectionKey(string $brandId, string $userId): string
     {
-        return "community:connection:{$userId}";
+        return "community:{$brandId}:connection:{$userId}";
     }
 
-    public static function roomKey(string $roomId): string
+    public static function roomKey(string $brandId, string $roomId): string
     {
-        return "community:room:{$roomId}:active";
+        return "community:{$brandId}:room:{$roomId}:active";
     }
 
-    private function write(string $userId, ConnectionStatus $status): void
+    /**
+     * The account ULID behind an authenticated user. `getAuthIdentifier()`
+     * is `mixed` on the contract, so the one shape this application uses —
+     * a scalar key — is asserted here rather than cast blindly into a
+     * Redis key.
+     */
+    private static function accountId(Authenticatable $user): string
+    {
+        $id = $user->getAuthIdentifier();
+
+        if (! is_scalar($id)) {
+            throw new InvalidArgumentException('An authenticated user must carry a scalar identifier.');
+        }
+
+        return (string) $id;
+    }
+
+    private function write(string $brandId, string $userId, ConnectionStatus $status): void
     {
         $this->connection()->setex(
-            self::connectionKey($userId),
+            self::connectionKey($brandId, $userId),
             self::TTL_SECONDS,
             $status->value.':'.CarbonImmutable::now()->getTimestamp(),
         );
