@@ -217,6 +217,9 @@ Two commands, safe to re-run, neither one specific to a single event:
   after backfilling a venue onto an event that predates this deploy — the
   command does not run itself. Since #292 the same run also carries each
   event's `banner_media_id` into both summaries.
+  Since 0.9.0 it also takes `--with-state`, which re-emits each event's
+  current lifecycle event — the extra step Agenda's programme needs, and
+  nothing the two ticket summaries here care about. See **Programme**.
 - `vendor/bin/sail artisan admission:announce-ownership` — re-emits the
   narrow `AdmissionOwnershipAnnounced` event for every admission (#292), so
   Resources' `resource_admissions` read model — who holds and who bought
@@ -412,6 +415,82 @@ means a participant is looking at a gap — the matching `Log::error` names the
 card key, and `KonventixErrorsLogged` is what pages for it. Admission's side
 is `konventix_admission_hub_access_total{brand,outcome}`, with `outcome`
 `admitted` or one of the four end reasons.
+
+## Programme
+
+The event's timetable (`app-modules/agenda`, design
+`docs/superpowers/specs/2026-09-23-timetable-design.md`). An organizer
+composes it in the console at `admin/events/{event}/agenda` with the
+capability `agenda.manage-agenda`; everybody else reads it at
+`/events/{slug}/programm`, with no account and no ticket. The module is
+gateable, so a brand that has not switched `agenda` on has no programme at
+all: no public page, no editor, no hub card, and nothing logged about any of
+them.
+
+**The public page holds no cache and is brand-scoped.** Every request builds
+the grid from `agenda_items` for the brand the host resolved to, so a change
+in the editor is on the page on the next reload — there is no cache to bust
+and no warm-up step after a deploy. The flip side is that it is a database
+read per view; it is a plain indexed query per event day and has no fan-out,
+but it is worth knowing before a link goes into a newsletter.
+
+**What to watch.** `konventix_agenda_items_published_total{brand}` on the
+Platform dashboard ("Programme items published") counts items that became
+publicly visible — one increment per item, never for a re-publish, so it is
+items and not button presses. There is **no alert on it, on purpose**: a
+programme that is empty, or that has not moved for weeks, is a brand still
+planning, which is most of an event's life. An empty programme is not an
+incident, and the page renders an empty state rather than an error. What
+*would* be an incident shows up elsewhere: a throwing hub card is
+`konventix_platform_hub_card_failures_total{module="agenda"}` (see **Live
+hub**), and a 500 on the public page is `KonventixHttp5xxRate`.
+
+### Turning the programme on for an event that already exists
+
+Agenda keeps its own read model of each event — `agenda_event_summaries`,
+holding the slug the public URL resolves by, the name, the timezone, the day
+set and the **lifecycle state** — projected from Event's contract events
+(ADR-0004: Agenda may not read Event's tables). An event that was created
+before this module shipped has emitted none of those since, so after the
+deploy its row is missing or its `state` is `null` — and a `null` state is
+"nobody has told us yet", which the public page refuses. The symptom is
+exact: the editor works, the organizer publishes items, and
+`/events/{slug}/programm` answers **404** for a published event whose
+programme plainly exists. It stays that way until that event's next
+lifecycle transition, which for an event that is already published may be
+never.
+
+So after activating `agenda` for a brand whose events predate it, run:
+
+```
+vendor/bin/sail artisan event:replay-details --with-state
+```
+
+`--with-state` is what makes this a fix rather than a half one: without it
+the run backfills the slug, name, timezone and venue, and leaves the state
+`null`. It re-emits the **one** lifecycle event that says what state each
+event is in now — `EventAnnounced`, `EventPublished`, `EventStarted`,
+`EventConcluded`, `EventCancelled` or `EventArchived` — never the path that
+led there, and nothing at all for a draft, which has no lifecycle event and
+needs none. The stored timestamps (published, cancelled, concluded,
+archived) are replayed exactly; `Announced` and `Running` keep no timestamp
+column anywhere, so those two fall back to the row's `updated_at`, which no
+consumer reads for anything but display.
+
+Safe to re-run, and safe with the flag: every listener registered on those
+seven events was checked for idempotency before the option existed —
+Agenda's and Registration's projections (the latter only fills
+`public_since` `whereNull`), Compliance's `StartRetentionClock`
+(`updateOrCreate` on the event id, with the event's own `concluded_at`), and
+Admission's `EndHubAccessOnEventClosed`, whose sweep skips every presence
+row that is already settled and therefore emits nothing on a second pass.
+Compliance's wildcard audit listener ignores all seven: none of them
+implements `AuditableEvent`. **Adding a listener to one of those seven
+events puts it on this list** — if it is not idempotent, this flag stops
+being safe and the note belongs here.
+
+Without the flag the command is unchanged and still the right one for the
+ticket read models (see **Backfilling the ticket's read models**).
 
 ## The brand's Reverb credentials
 

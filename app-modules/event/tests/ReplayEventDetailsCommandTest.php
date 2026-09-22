@@ -5,9 +5,16 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Konventix\Event\Actions\AssignVenue;
+use Konventix\Event\Enums\EventLifecycleState;
+use Konventix\Event\Events\EventAnnounced;
+use Konventix\Event\Events\EventArchived;
+use Konventix\Event\Events\EventCancelled;
+use Konventix\Event\Events\EventConcluded;
 use Konventix\Event\Events\EventDetailsUpdated;
+use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Events\EventRescheduled;
-use Konventix\Event\Events\VenueAssigned;
+use Konventix\Event\Events\EventStarted;
+use Konventix\Event\Events\EventUnpublished;
 use Konventix\Event\Models\Event as EventModel;
 use Konventix\Event\Models\Venue;
 
@@ -137,4 +144,128 @@ it('does not re-emit VenueAssigned for a venue that is not primary', function ()
     $this->artisan('event:replay-details', ['--event' => $event->id])->assertSuccessful();
 
     Event::assertNotDispatched(VenueAssigned::class);
+});
+
+/**
+ * `--with-state` (0.9.0): the three events above name and schedule a row,
+ * but say nothing about the event's lifecycle state. Agenda's
+ * `agenda_event_summaries` is the first read model whose whole public
+ * surface hangs off that state, and an event that predates the module has
+ * emitted no lifecycle event since — so without this, a brand activating
+ * Agenda gets a programme editor that works and a public page that 404s
+ * until the event's next transition, which may be never.
+ *
+ * The seven lifecycle classes are all faked together in these tests so that
+ * "only one was emitted" is an assertion and not an assumption. The helper's
+ * name is prefixed because Pest helper names are process-global across every
+ * module's test files (`.ai/rules/tests.md`).
+ *
+ * @return list<class-string>
+ */
+function eventReplayLifecycleEvents(): array
+{
+    return [
+        EventAnnounced::class,
+        EventPublished::class,
+        EventUnpublished::class,
+        EventStarted::class,
+        EventConcluded::class,
+        EventCancelled::class,
+        EventArchived::class,
+    ];
+}
+
+it('says nothing about the lifecycle without the flag', function (): void {
+    EventModel::factory()->create(['state' => EventLifecycleState::Published, 'published_at' => '2027-01-02 09:00:00']);
+
+    Event::fake(eventReplayLifecycleEvents());
+
+    $this->artisan('event:replay-details')->assertSuccessful();
+
+    Event::assertNotDispatched(EventPublished::class);
+});
+
+it('re-emits the one lifecycle event the event is in now, with its stored timestamp', function (): void {
+    $event = EventModel::factory()->create([
+        'state' => EventLifecycleState::Concluded,
+        'published_at' => '2027-01-02 09:00:00',
+        'concluded_at' => '2027-06-17 22:00:00',
+    ]);
+
+    Event::fake(eventReplayLifecycleEvents());
+
+    $this->artisan('event:replay-details', ['--with-state' => true])
+        ->expectsOutputToContain('Re-emitted the lifecycle state of 1 event(s)')
+        ->assertSuccessful();
+
+    Event::assertDispatchedTimes(EventConcluded::class, 1);
+    Event::assertDispatched(
+        EventConcluded::class,
+        fn (EventConcluded $e): bool => $e->eventId === $event->id
+            && $e->brandId === $event->brand_id
+            && $e->concludedAt === $event->concluded_at->toIso8601String(),
+    );
+
+    // Only the current state, never the path that led to it: replaying
+    // EventPublished for a concluded event would tell Registration the
+    // event went public today.
+    Event::assertNotDispatched(EventPublished::class);
+});
+
+it('re-emits a cancellation with the reason the row still carries', function (): void {
+    $event = EventModel::factory()->create([
+        'state' => EventLifecycleState::Cancelled,
+        'reason_code' => 'venue_lost',
+        'cancelled_at' => '2027-03-01 08:30:00',
+    ]);
+
+    Event::fake(eventReplayLifecycleEvents());
+
+    $this->artisan('event:replay-details', ['--with-state' => true])->assertSuccessful();
+
+    Event::assertDispatched(
+        EventCancelled::class,
+        fn (EventCancelled $e): bool => $e->eventId === $event->id
+            && $e->reasonCode === 'venue_lost'
+            && $e->cancelledAt === $event->cancelled_at->toIso8601String(),
+    );
+});
+
+it('emits nothing for a draft, which has no lifecycle event to re-emit', function (): void {
+    EventModel::factory()->create(['state' => EventLifecycleState::Draft]);
+
+    Event::fake(eventReplayLifecycleEvents());
+
+    $this->artisan('event:replay-details', ['--with-state' => true])
+        ->expectsOutputToContain('Re-emitted the lifecycle state of 0 event(s)')
+        ->assertSuccessful();
+
+    foreach (eventReplayLifecycleEvents() as $class) {
+        Event::assertNotDispatched($class);
+    }
+});
+
+it('never re-emits EventUnpublished, because Announced is what an unpublished event is', function (): void {
+    EventModel::factory()->create(['state' => EventLifecycleState::Announced]);
+
+    Event::fake(eventReplayLifecycleEvents());
+
+    $this->artisan('event:replay-details', ['--with-state' => true])->assertSuccessful();
+
+    Event::assertDispatchedTimes(EventAnnounced::class, 1);
+    Event::assertNotDispatched(EventUnpublished::class);
+});
+
+it('fills in a timestamp for the two states that store none', function (): void {
+    $event = EventModel::factory()->create(['state' => EventLifecycleState::Running, 'published_at' => '2027-01-02 09:00:00']);
+
+    Event::fake(eventReplayLifecycleEvents());
+
+    $this->artisan('event:replay-details', ['--with-state' => true])->assertSuccessful();
+
+    Event::assertDispatched(
+        EventStarted::class,
+        fn (EventStarted $e): bool => $e->eventId === $event->id
+            && $e->startedAt === $event->updated_at->toIso8601String(),
+    );
 });

@@ -7,8 +7,12 @@ namespace Konventix\Agenda\Providers;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Event;
 use Konventix\Agenda\Data\NowNextCardData;
+use Konventix\Agenda\Enums\Permission;
+use Konventix\Agenda\Events\AgendaItemPublished;
 use Konventix\Agenda\Hub\NowNextCard;
+use Konventix\Agenda\Listeners\Metrics\RecordAgendaMetrics;
 use Konventix\Agenda\Listeners\ProjectEventSummary;
+use Konventix\Agenda\Metrics\AgendaMetrics;
 use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCancelled;
@@ -24,6 +28,8 @@ use Konventix\Platform\Data\ActiveEventData;
 use Konventix\Platform\Hub\HubCard;
 use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
+use Konventix\Platform\Observability\MetricCatalog;
+use Konventix\Platform\Permissions\DefaultRole;
 
 /**
  * Registers everything this module owns. Registration is unconditional and
@@ -40,6 +46,51 @@ class AgendaServiceProvider extends ModuleServiceProvider
     public static function moduleName(): string
     {
         return 'agenda';
+    }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->registerMetrics();
+    }
+
+    /**
+     * Agenda's one metric (ADR-0059, design §8), registered the way every
+     * module registers its own: the catalogue entry here, the recorder in
+     * `registerListeners()`. The host never learns this name — it asks the
+     * catalogue.
+     */
+    protected function registerMetrics(): void
+    {
+        $this->app->make(MetricCatalog::class)->register(...AgendaMetrics::definitions());
+    }
+
+    /**
+     * ADR-0045, design §8: one starting point per brand, because there is
+     * one capability. The person who composes the published programme —
+     * items, tracks, places, and in half two the competition selection —
+     * is one job, and `Permission` has exactly one case for it.
+     *
+     * The design says "granted to the Event Admin default role"; it is
+     * granted here instead, and that is the same grant. A default role may
+     * only carry its own module's capabilities (`DefaultRole::of()` refuses
+     * anything else — ADR-0013, Platform may not name another module's
+     * enum), Event ships no default role at all, and Platform's Brand Admin
+     * is `everything` and therefore already holds `agenda.manage-agenda`.
+     * What was missing was a grant an operator can hand to somebody who is
+     * *not* the brand admin, which is this one.
+     *
+     * Materialized per brand by `permissions:sync` and on activation; a row
+     * the operator has since edited is never rewritten.
+     *
+     * @return list<DefaultRole>
+     */
+    public function defaultRoles(): array
+    {
+        return [
+            DefaultRole::of('agenda.programme-editor', 'Programme Editor', Permission::ManageAgenda),
+        ];
     }
 
     /**
@@ -74,6 +125,12 @@ class AgendaServiceProvider extends ModuleServiceProvider
         Event::listen(EventConcluded::class, [ProjectEventSummary::class, 'handleLifecycle']);
         Event::listen(EventCancelled::class, [ProjectEventSummary::class, 'handleLifecycle']);
         Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleLifecycle']);
+
+        // The counter behind the platform dashboard's "Programme items
+        // published" (ADR-0059). No gate check: `AgendaItemPublished` is
+        // this module's own event and cannot fire for a brand that has the
+        // module off.
+        Event::listen(AgendaItemPublished::class, [RecordAgendaMetrics::class, 'handleItemPublished']);
     }
 
     /**

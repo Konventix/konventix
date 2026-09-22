@@ -68,10 +68,14 @@ class EventSummary extends Model
      * A `null` state is "nobody has told us yet", and the answer to that is
      * no — refusing is the safe default when we cannot tell, the same call
      * `ModuleGate::isActive()` makes for a missing brand. It is reachable:
-     * `event:replay-details` re-emits neither `EventCreated` nor any
-     * lifecycle event, so an event backfilled into this read model has no
-     * state until its next transition. That is a gap in the backfill, not a
-     * reason to open the page.
+     * an event that predates this module has emitted no lifecycle event
+     * since, so it arrives here stateless and its programme has no public
+     * page until its next transition — which for an already-published event
+     * may be never. That is a gap in the *backfill*, not a reason to open
+     * the page, and the backfill is where it was closed:
+     * `event:replay-details --with-state` re-emits each event's current
+     * lifecycle event, and is the rollout step for a brand activating
+     * Agenda on events it already had (`docs/operations.md` § Programme).
      *
      * The editor deliberately does not ask this question — a draft event is
      * exactly when a programme gets built.
