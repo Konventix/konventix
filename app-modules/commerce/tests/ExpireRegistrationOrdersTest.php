@@ -8,6 +8,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Konventix\Commerce\Actions\ExpireRegistrationOrders;
+use Konventix\Commerce\Actions\RecordPaymentFailure;
 use Konventix\Commerce\Actions\RecordPaymentSuccess;
 use Konventix\Commerce\Enums\HostedPaymentState;
 use Konventix\Commerce\Enums\OrderStatus;
@@ -449,4 +450,112 @@ it('sweeps one brand at a time when asked to', function (): void {
     expect($sweptOrder->refresh()->status)->toBe(OrderStatus::Cancelled)
         ->and($otherOrder->refresh()->status)->toBe(OrderStatus::Pending)
         ->and($other->getKey())->not->toBe($swept->getKey());
+});
+
+it('gives an order that only starts failing today its full unreachable grace (#249)', function (): void {
+    // Operator decision D-0.8.2-4. The valve counted from the end of the
+    // payment window, which for a direct registration order is an hour
+    // after it was placed — so an order placed weeks ago arrived here with
+    // the valve long expired and the very first answer the provider could
+    // not give cancelled it, with none of the day it promises. The clock
+    // starts at the first failed attempt instead.
+    $this->withBrand();
+    expiryTestHostedAccount();
+
+    config(['commerce.sweeps.unknown_payment_grace_hours' => 24]);
+
+    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::Unreachable);
+    $order->forceFill([
+        'created_at' => now()->subDays(30),
+        'first_failed_attempt_at' => now()->subHours(2),
+    ])->save();
+
+    Event::fake([OrderCancelled::class]);
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+
+    Event::assertNotDispatched(OrderCancelled::class);
+
+    // Its own clock still ends it, a day after the failure started.
+    $order->forceFill(['first_failed_attempt_at' => now()->subHours(25)])->save();
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Cancelled);
+});
+
+it('falls back to the payment window for an order that predates the stamp (#249)', function (): void {
+    // A row written before `orders.first_failed_attempt_at` existed carries
+    // no stamp, and its clock is the payment window's end exactly as before.
+    $this->withBrand();
+    expiryTestHostedAccount();
+
+    config(['commerce.sweeps.unknown_payment_grace_hours' => 24]);
+
+    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::Unreachable);
+    $order->forceFill(['created_at' => now()->subDays(2), 'first_failed_attempt_at' => null])->save();
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Cancelled);
+});
+
+it('never shortens a valve with a failure older than the payment window (#249)', function (): void {
+    // The later of the two moments, not the stamp alone: a failed attempt
+    // from before the window closed must not pull the deadline forward.
+    // Holding is the safe direction — a sweep that cancels on "I do not
+    // know" releases the seat of an order somebody has paid for (#231).
+    $this->withBrand();
+    expiryTestHostedAccount();
+
+    config(['commerce.sweeps.in_flight_grace_days' => 14]);
+
+    $order = expiryTestOrderWithOpenHostedPayment(HostedPaymentState::InFlight);
+    $order->forceFill([
+        'created_at' => now()->subDays(13),
+        // Before the window even closed, so the window's end is the clock.
+        'first_failed_attempt_at' => now()->subDays(13),
+    ])->save();
+
+    $this->artisan('commerce:expire-registration-orders')->assertSuccessful();
+
+    expect($order->refresh()->status)->toBe(OrderStatus::Pending);
+});
+
+it('stamps the first failed attempt on the order, once (#249)', function (): void {
+    $this->withBrand();
+
+    $order = expiryTestDirectOrder();
+
+    $payment = Payment::factory()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_MOLLIE,
+        'external_id' => 'tr_stamp_1',
+        'amount' => (string) $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(RecordPaymentFailure::class)->handle($payment, 'failed');
+
+    $stampedAt = $order->refresh()->first_failed_attempt_at;
+
+    expect($stampedAt)->not->toBeNull();
+
+    // A second, later attempt does not move it: the decision names the
+    // *first* failed attempt, so retrying does not push the valve out.
+    $this->travel(2)->hours();
+
+    $second = Payment::factory()->create([
+        'order_id' => $order->id,
+        'provider' => SettlementAccount::PROVIDER_MOLLIE,
+        'external_id' => 'tr_stamp_2',
+        'amount' => (string) $order->total_gross,
+        'currency' => $order->currency,
+    ]);
+
+    app(RecordPaymentFailure::class)->handle($second, 'failed');
+
+    expect($order->refresh()->first_failed_attempt_at->equalTo($stampedAt))->toBeTrue();
 });

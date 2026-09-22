@@ -556,13 +556,18 @@ BaFin/ZAG licensing.
   Stripe's `charge.dispute.*`/`charge.refunded` webhooks and from Mollie's
   and Unzer's fetch-back adapters. `commerce:reconcile-payments` — hourly
   (#71). Asks each PSP what really happened to a `pending` payment between
-  15 minutes and 7 days old, and re-reads every settled Mollie/Unzer
-  payment of the last 90 days for chargebacks and dashboard refunds.
-  Corrections go through the same Actions the webhooks use and are logged
-  at warning with "found by reconciliation"; each one raises the
-  `payment-reconciled` operator notice. Pending *Unzer* payments are out of
-  scope until `UnzerApi` carries an order-id lookup — a Paypage id is not a
-  payment id. `commerce:cancel-unpaid-reversals` — daily at 07:05
+  15 minutes and 7 days old — Stripe by checkout session, Mollie by payment
+  id and Unzer by `UnzerApi::fetchPaymentByOrderId()`, which starts from the
+  `orderId` the Paypage carries, our own `Payment` ULID (#191) — and
+  re-reads every settled Mollie/Unzer payment of the last 90 days for
+  chargebacks and dashboard refunds. Corrections go through the same
+  Actions the webhooks use and are logged at warning with "found by
+  reconciliation"; each one raises the `payment-reconciled` operator
+  notice. A Stripe dispute the sweep finds *closed* closes the open
+  reversal row this deployment already holds for it, to the status
+  `StripeReversalCatchUp::CLOSING_STATUSES` names — the same map
+  `charge.dispute.closed` reads, through the same `RecordPaymentReversal`
+  (#249). `commerce:cancel-unpaid-reversals` — daily at 07:05
   (ADR-0057 point 4). Cancels every order whose final `return`/`dispute`
   reversal passed its `repay_due_on` unpaid, issuing a credit note with
   reason `cancellation` where an invoice exists. An order with a

@@ -44,6 +44,32 @@ use Konventix\Commerce\Settlement\MinorUnits;
 final class StripeReversalCatchUp
 {
     /**
+     * What a Stripe dispute status that **closes** a dispute means for the
+     * reversal row — the one map, read by `StripeWebhookController::
+     * disputeClosed()` for the signed event and by this class for the
+     * fetched list (#249).
+     *
+     * `lost` is money gone: the reversal becomes final and the receivable
+     * revives (ADR-0057 point 3). `won` is money that stayed, so the row is
+     * withdrawn. `warning_closed` — an early fraud warning closed without
+     * ever becoming a dispute — is the same fact and gets the same answer;
+     * the webhook used to acknowledge it without touching the row, which
+     * left an `Open` reversal for a warning that had been closed standing in
+     * the operator's work list, the same defect #249 filed against the
+     * sweep. Every other status leaves the dispute running.
+     *
+     * One map rather than two because both sides move real money and a
+     * drift between them would be silent.
+     *
+     * @var array<string, ReversalStatus>
+     */
+    public const array CLOSING_STATUSES = [
+        'lost' => ReversalStatus::Final,
+        'won' => ReversalStatus::Withdrawn,
+        'warning_closed' => ReversalStatus::Withdrawn,
+    ];
+
+    /**
      * The reversals Stripe holds against `$payment`'s payment intent, in
      * the shape `RecordPaymentReversal::handle()` takes.
      *
@@ -94,21 +120,104 @@ final class StripeReversalCatchUp
      * receivable identically (ADR-0057 point 1), and the kind only says
      * which story the operator reads.
      *
-     * `won` and `warning_closed` are skipped: the money stayed, so there is
-     * nothing to revive, and inventing a withdrawn row for a dispute this
-     * deployment never heard of would tell the operator about a decision
-     * that cost nothing. A dispute we *did* hear of already has its row,
-     * which its own `charge.dispute.closed` event withdrew.
+     * A dispute Stripe reports as **closed** is where #249 lives. `won` and
+     * `warning_closed` used to be skipped outright, on the grounds that the
+     * money stayed and there was nothing to revive. True for a dispute this
+     * deployment never heard of; wrong for one it did — a
+     * `charge.dispute.closed` lost on the way here (the endpoint was
+     * unreachable, #232) left the `Open` row its `created` event had written
+     * standing in the operator's work list for ever. A closing status now
+     * closes such a row, and is still skipped where there is none.
+     *
+     * Neither the status it closes to nor the treatment of the receivable is
+     * decided here: `CLOSING_STATUSES` is the map
+     * `StripeWebhookController::disputeClosed()` reads too, and the
+     * transition is `RecordPaymentReversal`'s, the same Action the webhook
+     * calls. Money is moved by one piece of code, not by two that have to
+     * agree.
      *
      * @param  array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}  $dispute
      * @return array{kind: ReversalKind, status: ReversalStatus, amount: string, currency: string, providerReference: string, reasonCode: ?string, feeAmount: ?string, occurredAt: Carbon}|null
      */
     private function dispute(array $dispute, Payment $payment): ?array
     {
-        if (in_array($dispute['status'], ['won', 'warning_closed'], true)) {
+        $closesAs = self::CLOSING_STATUSES[$dispute['status']] ?? null;
+
+        if ($closesAs === null) {
+            // Still running. `occurred_at` is when it began, which is what
+            // the operator's list shows.
+            return $this->mapped($dispute, $payment, ReversalStatus::Open, $this->occurredAt($dispute['created']));
+        }
+
+        $existing = PaymentReversal::forProviderReference($payment->provider, $dispute['id']);
+
+        if ($existing === null) {
+            // Nothing to close. A dispute *lost* while this deployment never
+            // heard of it is still a reversal that has to be recorded — #235's
+            // own case — and one that was won or warned-and-closed cost
+            // nothing, so inventing a withdrawn row would tell an operator
+            // about money that never left.
+            return $closesAs === ReversalStatus::Final
+                ? $this->mapped($dispute, $payment, ReversalStatus::Final, $this->occurredAt($dispute['created']))
+                : null;
+        }
+
+        if ($existing->status !== ReversalStatus::Open) {
+            // Already decided, and `RecordPaymentReversal` treats a decided
+            // reversal as terminal — so the second run over the same dispute
+            // changes nothing, here or there.
             return null;
         }
 
+        return $this->closes($existing, $dispute, $closesAs);
+    }
+
+    /**
+     * An `Open` row and the decision Stripe has since made about it (#249).
+     *
+     * **The moment is now, never the dispute's `created`.** This shape
+     * carries no closing timestamp, and `RecordPaymentReversal` writes the
+     * moment it is handed to `finalized_at`, which is what `repay_due_on`
+     * counts from. Dating a dispute lost today back to the week it was opened
+     * would put the payer's deadline in the past and let
+     * `commerce:cancel-unpaid-reversals` cancel the order on its next run
+     * with no days at all — the trap
+     * `StripeWebhookController::recordDispute()` avoids by taking the
+     * event's timestamp rather than the dispute's.
+     *
+     * The row's own values travel rather than the API's: the amount, the
+     * currency, the reason and the fee were decided when the row was
+     * written, and `RecordPaymentReversal::transition()` reads none of them
+     * anyway. Sending the row's own back is what keeps that true if it ever
+     * does.
+     *
+     * @param  array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}  $dispute
+     * @return array{kind: ReversalKind, status: ReversalStatus, amount: string, currency: string, providerReference: string, reasonCode: ?string, feeAmount: ?string, occurredAt: Carbon}
+     */
+    private function closes(PaymentReversal $existing, array $dispute, ReversalStatus $closesAs): array
+    {
+        return [
+            'kind' => $existing->kind,
+            'status' => $closesAs,
+            'amount' => (string) $existing->amount,
+            'currency' => $existing->currency,
+            'providerReference' => $dispute['id'],
+            'reasonCode' => $existing->reason_code,
+            'feeAmount' => $existing->fee_amount === null ? null : (string) $existing->fee_amount,
+            'occurredAt' => Carbon::now(),
+        ];
+    }
+
+    /**
+     * One dispute as the API reports it, in the shape
+     * `RecordPaymentReversal::handle()` takes. Null for a currency
+     * `MinorUnits` refuses, which is the same drop the webhook makes.
+     *
+     * @param  array{id: string, status: string, amount: int, currency: string, reason: ?string, fee: ?int, created: ?int}  $dispute
+     * @return array{kind: ReversalKind, status: ReversalStatus, amount: string, currency: string, providerReference: string, reasonCode: ?string, feeAmount: ?string, occurredAt: Carbon}|null
+     */
+    private function mapped(array $dispute, Payment $payment, ReversalStatus $status, Carbon $occurredAt): ?array
+    {
         $currency = $this->currency($dispute['currency'], $payment);
         $amount = $this->toDecimal($dispute['amount'], $currency);
 
@@ -118,7 +227,7 @@ final class StripeReversalCatchUp
 
         return [
             'kind' => ReversalKind::Dispute,
-            'status' => $dispute['status'] === 'lost' ? ReversalStatus::Final : ReversalStatus::Open,
+            'status' => $status,
             'amount' => $amount,
             'currency' => $currency,
             'providerReference' => $dispute['id'],
@@ -126,7 +235,7 @@ final class StripeReversalCatchUp
             'feeAmount' => $dispute['fee'] === null
                 ? null
                 : $this->toDecimal(abs($dispute['fee']), $currency),
-            'occurredAt' => $this->occurredAt($dispute['created']),
+            'occurredAt' => $occurredAt,
         ];
     }
 

@@ -92,6 +92,11 @@ final class SettlementAdminTestFakeUnzer implements UnzerApi
         return new UnzerPaymentSnapshot(id: $paymentId, state: 'pending', orderId: null);
     }
 
+    public function fetchPaymentByOrderId(string $orderId, string $privateKey): ?UnzerPaymentSnapshot
+    {
+        return null;
+    }
+
     public function refundPayment(string $paymentId, float $amount, string $privateKey): string
     {
         return 'chg_test_fake';

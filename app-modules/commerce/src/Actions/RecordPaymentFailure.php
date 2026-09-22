@@ -7,6 +7,7 @@ namespace Konventix\Commerce\Actions;
 use Illuminate\Support\Facades\DB;
 use Konventix\Commerce\Enums\PaymentStatus;
 use Konventix\Commerce\Events\PaymentFailed;
+use Konventix\Commerce\Models\Order;
 use Konventix\Commerce\Models\Payment;
 
 /**
@@ -39,6 +40,8 @@ final class RecordPaymentFailure
                 'failed_at' => now(),
             ])->save();
 
+            $this->stampFirstFailedAttempt($locked);
+
             event(new PaymentFailed(
                 paymentId: $locked->id,
                 orderId: $locked->order_id,
@@ -51,5 +54,32 @@ final class RecordPaymentFailure
 
             return $locked->refresh();
         });
+    }
+
+    /**
+     * The moment the release valves of #231 count from (operator decision
+     * D-0.8.2-4, #249). Before the column they counted from the end of the
+     * order's payment window, which for a direct registration order is its
+     * `created_at` plus an hour — so an order placed weeks ago whose payer
+     * only starts failing today reached both expiry sweeps with the valve
+     * already expired, and the first answer a provider could not give
+     * cancelled it with no grace at all.
+     *
+     * Stamped **once** and never moved: the decision names the *first*
+     * failed attempt, so a payer who retries five times does not push the
+     * valve out five times. `whereNull` in the statement rather than a read
+     * and a write makes that idempotent in the database rather than in this
+     * method — two failures committing at the same moment cannot both win.
+     *
+     * `withoutBrandScope()` (ADR-0010): this runs on the stateless api
+     * surface and from console sweeps, where no brand is resolved from a
+     * host.
+     */
+    private function stampFirstFailedAttempt(Payment $payment): void
+    {
+        Order::withoutBrandScope()
+            ->whereKey($payment->order_id)
+            ->whereNull('first_failed_attempt_at')
+            ->update(['first_failed_attempt_at' => $payment->failed_at]);
     }
 }

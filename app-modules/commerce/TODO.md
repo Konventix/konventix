@@ -171,12 +171,14 @@
       Stornierung/Cancellation rather than Erstattung/Refund (ADR-0057
       point 4): its own arm in the reason map and its own sentence in the
       `commerce.credit-note-issued` template.
-- [ ] `commerce:reconcile-payments` skips *pending* Unzer payments (#71): a
-      pending payment's `external_id` is the Paypage id and
-      `UnzerApi::fetchPayment()` needs a payment id, which only exists from
-      settlement onward. Add `fetchPaymentByOrderId` to `UnzerApi` /
-      `SdkUnzerApi` (our `Payment` ULID is the Unzer `orderId`) and drop the
-      provider filter on the pending pass.
+- [x] #191 — `commerce:reconcile-payments --pending` covers Unzer (release
+      0.8.2, Task 5). `UnzerApi::fetchPaymentByOrderId()` starts from the
+      `orderId` the Paypage carries — our `Payment` ULID, not the Paypage id
+      the issue assumed — over the SDK's own `fetchPaymentByOrderId()`;
+      `API.310.100.003` (no payment for that order id) is null rather than an
+      exception, because a Paypage nobody paid is a state and a rejected key
+      is not. `reconcileUnzerPending()` mirrors `UnzerWebhookController`'s
+      pending `match`.
 - [ ] The `payment-reconciled` operator notice fires per corrected payment
       *and* per newly found reversal (#71), reusing the same kind because
       the underlying fact is identical ("the notification path lost
@@ -322,9 +324,17 @@
       `Actions\Concerns\AsksThePspBeforeCancelling`): paid is booked through
       the ordinary success path, money the provider says is travelling is
       held for a fortnight, a silent provider for a day, and the operators
-      are told when either horizon releases an order. Unzer still cannot be
-      asked about a pending Paypage — its `external_id` is a Paypage id and
-      the API takes a payment id — so those orders are cancelled as before.
+      are told when either horizon releases an order. Both horizons count
+      from the later of the order's payment window and
+      `orders.first_failed_attempt_at` since #249 (D-0.8.2-4).
+- [ ] `UnzerSettlementAdapter::hostedPaymentState()` still answers
+      `Unanswerable` for every pending Paypage (#231), so the expiry sweeps
+      cancel an Unzer order without asking. The reason it gave is gone since
+      #191: `UnzerApi::fetchPaymentByOrderId()` reaches a pending payment by
+      our own ULID. Mapping Unzer's states onto `HostedPaymentState` is a
+      money decision of its own — which of `pending`, `partly` and `payment
+      review` is `InFlight` — so it is a follow-up, not a side effect of the
+      reconciliation fix.
 - [x] #233 — the cart writes take their locks in one order (release 0.8.1,
       Task 3): `Actions\Concerns\LocksTheCartBeforeItsLines` is the one
       place that locks the parent `carts` row, and

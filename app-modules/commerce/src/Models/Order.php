@@ -42,6 +42,14 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * information: `IssueInvoiceOnOrderPaid` treats that as nothing to issue,
  * not an error.
  *
+ * `first_failed_attempt_at` is when a payment against this order was first
+ * refused — stamped once by `RecordPaymentFailure` and never moved
+ * (operator decision D-0.8.2-4, #249). It is the moment the two release
+ * valves of #231 count from in `Settlement\HostedPaymentProbe`, so an
+ * order placed weeks before its payer's first failed attempt is no longer
+ * cancelled the first time a provider cannot answer for it. Null where no
+ * attempt ever failed, and on every row written before the column existed.
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $settles_type
@@ -57,6 +65,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property TaxTreatment $tax_treatment
  * @property string $price_display
  * @property Carbon|null $paid_at
+ * @property Carbon|null $first_failed_attempt_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -104,6 +113,7 @@ class Order extends Model
             'total_gross' => 'decimal:2',
             'tax_treatment' => TaxTreatment::class,
             'paid_at' => 'datetime',
+            'first_failed_attempt_at' => 'datetime',
         ];
     }
 

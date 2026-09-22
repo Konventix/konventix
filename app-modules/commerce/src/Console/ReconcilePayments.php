@@ -269,11 +269,17 @@ final class ReconcilePayments extends Command
     }
 
     /**
-     * Unzer is absent: a pending Unzer payment's `external_id` is the
-     * Paypage id, and `UnzerApi::fetchPayment()` takes a *payment* id,
-     * which only exists once the payment was charged and is stored on
-     * `provider_transaction_id` at settlement. Correlating one before that
-     * needs Unzer's own order-id lookup, which the seam does not carry.
+     * All three providers since #191. Unzer used to be absent because a
+     * pending Unzer payment's `external_id` is the *Paypage* id and
+     * `UnzerApi::fetchPayment()` takes a payment id, which does not exist
+     * until the payer completes the Paypage; the way in is
+     * `UnzerApi::fetchPaymentByOrderId()`, which starts from the `orderId`
+     * the Paypage carries — our own `Payment` ULID (`UnzerSettlementAdapter::
+     * startCheckout()`), not the Paypage id the issue assumed.
+     *
+     * `external_id` stays required for Unzer too even though the lookup does
+     * not use it: a row without one never reached a Paypage at all, so the
+     * provider has nothing to be asked about.
      *
      * @return Builder<Payment>
      */
@@ -281,7 +287,11 @@ final class ReconcilePayments extends Command
     {
         $query = Payment::withoutBrandScope()
             ->where('status', PaymentStatus::Pending)
-            ->whereIn('provider', [SettlementAccount::PROVIDER_STRIPE, SettlementAccount::PROVIDER_MOLLIE])
+            ->whereIn('provider', [
+                SettlementAccount::PROVIDER_STRIPE,
+                SettlementAccount::PROVIDER_MOLLIE,
+                SettlementAccount::PROVIDER_UNZER,
+            ])
             ->whereNotNull('external_id')
             ->where('created_at', '<=', now()->subMinutes(self::PENDING_MIN_AGE_MINUTES))
             ->where('created_at', '>=', now()->subDays(self::PENDING_MAX_AGE_DAYS));
@@ -336,6 +346,7 @@ final class ReconcilePayments extends Command
         match ($payment->provider) {
             SettlementAccount::PROVIDER_STRIPE => $this->reconcileStripePending($payment, $recordSuccess, $recordFailure),
             SettlementAccount::PROVIDER_MOLLIE => $this->reconcileMolliePending($payment, $recordSuccess, $recordFailure),
+            SettlementAccount::PROVIDER_UNZER => $this->reconcileUnzerPending($payment, $recordSuccess, $recordFailure),
             default => null,
         };
     }
@@ -579,6 +590,71 @@ final class ReconcilePayments extends Command
             $expired ? 'expired' : 'failed',
             $reasonCode,
         );
+    }
+
+    /**
+     * Mirrors `UnzerWebhookController`'s pending `match` exactly (#191),
+     * asked on a schedule instead of on a notification.
+     *
+     * Unzer notifies per *account*, so a notification lost between Unzer and
+     * this deployment is lost for every payment on that account at once —
+     * which is what made a provider missing from the hourly pass worth an
+     * issue of its own. The question is asked by the `orderId` the Paypage
+     * carries, our own `Payment` ULID, because a pending payment has no
+     * Unzer payment id yet.
+     *
+     * A null snapshot is Unzer saying it holds no payment for that order:
+     * the Paypage was opened and nobody has paid. Nothing to decide, and the
+     * ordinary expiry sweeps own that order's clock.
+     */
+    private function reconcileUnzerPending(
+        Payment $payment,
+        RecordPaymentSuccess $recordSuccess,
+        RecordPaymentFailure $recordFailure,
+    ): void {
+        $account = $this->accountFor($payment);
+        $privateKey = $account?->credentials['private_key'] ?? null;
+
+        if (! is_string($privateKey) || $privateKey === '') {
+            return;
+        }
+
+        $snapshot = app(UnzerApi::class)->fetchPaymentByOrderId($payment->id, $privateKey);
+
+        if ($snapshot === null) {
+            return;
+        }
+
+        match ($snapshot->state) {
+            'completed' => $this->applyUnzerSuccess($payment, $snapshot->id, $recordSuccess),
+            'canceled' => $this->applyTransition(
+                $payment,
+                fn () => $recordFailure->handle($payment, 'canceled'),
+                'failed',
+                'canceled',
+            ),
+            // pending / partly / payment review: nothing this sweep may
+            // decide from, exactly as in the webhook. `chargeback` on a
+            // payment that never settled here is not a reversal either —
+            // nothing settled to reverse — and the settled pass owns that
+            // question anyway.
+            default => null,
+        };
+    }
+
+    /**
+     * The same two steps `UnzerWebhookController::settle()` takes, in the
+     * same order: the Unzer payment id is stamped first, because a refund
+     * cancels the *payment* and the Paypage id cannot address it, and only
+     * then does the ordinary success path run.
+     */
+    private function applyUnzerSuccess(Payment $payment, string $unzerPaymentId, RecordPaymentSuccess $recordSuccess): void
+    {
+        if ($unzerPaymentId !== '') {
+            $payment->forceFill(['provider_transaction_id' => $unzerPaymentId])->save();
+        }
+
+        $this->applyTransition($payment, fn () => $recordSuccess->handle($payment), 'succeeded', 'completed');
     }
 
     private function reconcileSettled(Payment $payment, RecordPaymentReversal $recordReversal): void

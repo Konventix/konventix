@@ -72,6 +72,32 @@ final class UnzerAdapterTestFakeApi implements UnzerApi
         );
     }
 
+    /** @var list<array{orderId: string, privateKey: string}> */
+    public array $orderIdFetches = [];
+
+    /**
+     * Whether Unzer holds a payment for the order id at all (#191): a
+     * Paypage nobody has paid answers `API.310.100.003`, which the seam
+     * translates to null.
+     */
+    public bool $hasPaymentForOrderId = true;
+
+    public function fetchPaymentByOrderId(string $orderId, string $privateKey): ?UnzerPaymentSnapshot
+    {
+        $this->orderIdFetches[] = ['orderId' => $orderId, 'privateKey' => $privateKey];
+
+        if (! $this->hasPaymentForOrderId) {
+            return null;
+        }
+
+        return new UnzerPaymentSnapshot(
+            id: 's-pay-for-'.$orderId,
+            state: $this->fetchState,
+            orderId: $orderId,
+            chargebacks: $this->fetchChargebacks,
+        );
+    }
+
     public bool $refuseRefund = false;
 
     public function refundPayment(string $paymentId, float $amount, string $privateKey): string

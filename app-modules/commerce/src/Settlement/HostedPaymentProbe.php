@@ -98,9 +98,27 @@ final class HostedPaymentProbe
      * `Unanswerable` are decisions in themselves, and "we did not ask" is
      * not evidence of anything.
      *
-     * **Both clocks start at the end of the order's payment window, not at
-     * `orders.created_at`** (fix round 3, review F-1), and the window is
-     * `PaymentWindow`'s (finding 4).
+     * **Both clocks start at the later of the order's payment window and
+     * its first failed attempt** — never at `orders.created_at` (fix round
+     * 3, review F-1; operator decision D-0.8.2-4 of 2026-09-22, #249). The
+     * window is `PaymentWindow`'s (finding 4); the failure is
+     * `orders.first_failed_attempt_at`, stamped once by
+     * `RecordPaymentFailure`.
+     *
+     * The second half is what #249 adds. A direct registration order's
+     * window ends an hour after it was placed, so an order placed weeks ago
+     * whose payer only starts failing today arrived here with both valves
+     * long past — and the first answer the provider could not give cancelled
+     * it on the spot, with none of the day or fortnight the valve promises.
+     * The later of the two moments is the one honest start: it can only ever
+     * hold an order longer, and holding is the safe direction (#231, "a sweep
+     * that cancels on 'I do not know' releases the seat of an order somebody
+     * has paid for").
+     *
+     * A row written before the column exists carries no stamp, so its clock
+     * is the payment window's end exactly as before — which for the
+     * registration orders this defect was found on is `orders.created_at`
+     * plus the window.
      *
      * For a **cart** order that matters twice over: `PlaceOrderFromCart`
      * reuses a `checked_out` cart's still-`pending` order and pushes
@@ -113,24 +131,50 @@ final class HostedPaymentProbe
      *
      * A **direct registration** order has no such retry: its window is
      * `PaymentWindow::MINUTES` from placement and nothing moves it (review
-     * nit 26). The clock is still the window's end rather than the order's
-     * creation, so the two kinds are described and computed the same way.
+     * nit 26), which is why the first failed attempt is the only thing that
+     * can move its clock at all. Both kinds are described and computed the
+     * same way.
      */
     public function holdExpired(Order $order, HostedPaymentState $state): bool
     {
-        $windowEndsAt = $this->windowEndsAt($order);
+        $startsAt = $this->clockStartsAt($order);
 
-        if ($windowEndsAt === null) {
+        if ($startsAt === null) {
             return false;
         }
 
         $deadline = match ($state) {
-            HostedPaymentState::Unreachable => $windowEndsAt->copy()->addHours($this->configuredOrDefault('commerce.sweeps.unknown_payment_grace_hours', 24)),
-            HostedPaymentState::InFlight => $windowEndsAt->copy()->addDays($this->configuredOrDefault('commerce.sweeps.in_flight_grace_days', 14)),
+            HostedPaymentState::Unreachable => $startsAt->copy()->addHours($this->configuredOrDefault('commerce.sweeps.unknown_payment_grace_hours', 24)),
+            HostedPaymentState::InFlight => $startsAt->copy()->addDays($this->configuredOrDefault('commerce.sweeps.in_flight_grace_days', 14)),
             default => null,
         };
 
         return $deadline !== null && $deadline->isPast();
+    }
+
+    /**
+     * The moment both valves count from: the later of the order's payment
+     * window and its first failed attempt (D-0.8.2-4, #249).
+     *
+     * Null where the order has no payment window at all — the probe's safe
+     * direction, unchanged: no window, no valve, nothing this sweep may
+     * cancel on a clock. A first failed attempt is not a window of its own,
+     * so an invoiced order the dunning ladder owns stays out of reach of
+     * both clocks however often its payer's card is refused.
+     */
+    private function clockStartsAt(Order $order): ?CarbonInterface
+    {
+        $windowEndsAt = $this->windowEndsAt($order);
+
+        if ($windowEndsAt === null) {
+            return null;
+        }
+
+        $firstFailure = $order->first_failed_attempt_at;
+
+        return $firstFailure !== null && $firstFailure->greaterThan($windowEndsAt)
+            ? $firstFailure
+            : $windowEndsAt;
     }
 
     /**

@@ -179,6 +179,23 @@ final class ReconciliationTestUnzerApi implements UnzerApi
         return new UnzerPaypageSnapshot(id: 'ppg_unused', redirectUrl: 'https://paypage.unzer.test/unused');
     }
 
+    /**
+     * Order ids the pending pass asked about (#191) — our own `Payment`
+     * ULIDs, which is what the Paypage carries as its `orderId`.
+     *
+     * @var list<string>
+     */
+    public array $orderIdFetches = [];
+
+    /**
+     * The Unzer payment id the Paypage produced once it was paid, or null
+     * for a Paypage Unzer holds no payment for at all — the ordinary answer
+     * for one nobody has paid yet.
+     */
+    public ?string $pendingPaymentId = null;
+
+    public string $pendingState = 'pending';
+
     public function fetchPayment(string $paymentId, string $privateKey): UnzerPaymentSnapshot
     {
         $this->fetches[] = $paymentId;
@@ -188,6 +205,21 @@ final class ReconciliationTestUnzerApi implements UnzerApi
             state: $this->state,
             orderId: null,
             chargebacks: $this->chargebacks,
+        );
+    }
+
+    public function fetchPaymentByOrderId(string $orderId, string $privateKey): ?UnzerPaymentSnapshot
+    {
+        $this->orderIdFetches[] = $orderId;
+
+        if ($this->pendingPaymentId === null) {
+            return null;
+        }
+
+        return new UnzerPaymentSnapshot(
+            id: $this->pendingPaymentId,
+            state: $this->pendingState,
+            orderId: $orderId,
         );
     }
 
@@ -939,4 +971,287 @@ it('leaves a Stripe dispute the provider has not decided open', function (): voi
     expect(PaymentReversal::withoutBrandScope()->sole()->status)->toBe(ReversalStatus::Open)
         ->and($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
         ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+/**
+ * A settled Stripe payment carrying an **open** dispute row, the state
+ * `charge.dispute.created` leaves behind (#249). Built by letting the sweep
+ * itself record it, so the row is exactly the one the webhook would have
+ * written rather than a factory's idea of it.
+ *
+ * @return array{0: Order, 1: Payment, 2: ReconciliationTestStripeApi}
+ */
+function reconciliationTestOpenDispute(string $reference = 'dp_recon_closing'): array
+{
+    [$order, $payment] = reconciliationTestStripeSettled();
+
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->reversals = [
+        'disputes' => [[
+            'id' => $reference,
+            'status' => 'needs_response',
+            'amount' => 11900,
+            'currency' => 'eur',
+            'reason' => 'fraudulent',
+            'fee' => null,
+            'created' => now()->subDays(20)->getTimestamp(),
+        ]],
+        'refunds' => [],
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    test()->artisan('commerce:reconcile-payments --settled')->assertSuccessful();
+
+    expect(PaymentReversal::withoutBrandScope()->sole()->status)->toBe(ReversalStatus::Open);
+
+    return [$order, $payment, $stripe];
+}
+
+it('closes an open reversal when the sweep finds the dispute was won (#249)', function (): void {
+    // The `charge.dispute.closed` never arrived — the endpoint was
+    // unreachable (#232) — so before this fix the row stayed `Open` and the
+    // case sat in the operator's work list for ever. `won` withdraws it,
+    // which is what the webhook would have done.
+    [$order, $payment, $stripe] = reconciliationTestOpenDispute();
+
+    $stripe->reversals['disputes'][0]['status'] = 'won';
+
+    Event::fake([PaymentReversed::class]);
+
+    $this->artisan('commerce:reconcile-payments --settled')->assertSuccessful();
+
+    $reversal = PaymentReversal::withoutBrandScope()->sole();
+
+    expect($reversal->status)->toBe(ReversalStatus::Withdrawn)
+        ->and($reversal->finalized_at)->not->toBeNull()
+        // The money stayed: nothing about the receivable moves.
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+
+    Event::assertNotDispatched(PaymentReversed::class);
+
+    // A second run changes nothing: a decided reversal is terminal.
+    $this->artisan('commerce:reconcile-payments --settled')->assertSuccessful();
+
+    expect(PaymentReversal::withoutBrandScope()->count())->toBe(1)
+        ->and(PaymentReversal::withoutBrandScope()->sole()->status)->toBe(ReversalStatus::Withdrawn)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+it('closes an open reversal and revives the receivable when the sweep finds the dispute was lost (#249)', function (): void {
+    // The other direction, and the one that moves money: exactly what
+    // `charge.dispute.closed` with status `lost` would have produced —
+    // `RecordPaymentReversal`, one Action, one outcome (ADR-0057 point 7).
+    [$order, $payment] = reconciliationTestOpenDispute('dp_recon_lost_late');
+
+    /** @var ReconciliationTestStripeApi $stripe */
+    $stripe = app(StripeApi::class);
+    $stripe->reversals['disputes'][0]['status'] = 'lost';
+
+    Event::fake([PaymentReversed::class]);
+
+    $this->artisan('commerce:reconcile-payments --settled')->assertSuccessful();
+
+    $reversal = PaymentReversal::withoutBrandScope()->sole();
+
+    expect($reversal->status)->toBe(ReversalStatus::Final)
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Reversed)
+        ->and($order->refresh()->status)->toBe(OrderStatus::PaymentReversed)
+        // The deadline counts from the moment the sweep learned of the
+        // closure, never from the day the dispute was opened twenty days
+        // ago — otherwise `commerce:cancel-unpaid-reversals` would cancel
+        // the order on its next run and the payer would get no days at all.
+        ->and($reversal->repay_due_on->isFuture())->toBeTrue();
+
+    Event::assertDispatchedTimes(PaymentReversed::class, 1);
+
+    $this->artisan('commerce:reconcile-payments --settled')->assertSuccessful();
+
+    expect(PaymentReversal::withoutBrandScope()->count())->toBe(1)
+        ->and(PaymentReversal::withoutBrandScope()->sole()->status)->toBe(ReversalStatus::Final)
+        ->and($order->refresh()->status)->toBe(OrderStatus::PaymentReversed);
+
+    Event::assertDispatchedTimes(PaymentReversed::class, 1);
+});
+
+it('closes an open reversal when an early fraud warning was closed (#249)', function (): void {
+    // `warning_closed` decides nothing about the money, but it does decide
+    // the dispute — and a row left `Open` for a warning Stripe has closed is
+    // the same permanent work-list entry.
+    [$order, $payment] = reconciliationTestOpenDispute('dp_recon_warning');
+
+    /** @var ReconciliationTestStripeApi $stripe */
+    $stripe = app(StripeApi::class);
+    $stripe->reversals['disputes'][0]['status'] = 'warning_closed';
+
+    $this->artisan('commerce:reconcile-payments --settled')->assertSuccessful();
+
+    expect(PaymentReversal::withoutBrandScope()->sole()->status)->toBe(ReversalStatus::Withdrawn)
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+it('writes no row for a won dispute this deployment never heard of (#249)', function (): void {
+    // Unchanged from #235, and the reason `closes()` needs a row to close:
+    // a withdrawn row for a dispute nobody here ever saw would tell the
+    // operator about a decision that cost nothing.
+    reconciliationTestStripeSettled();
+
+    $stripe = new ReconciliationTestStripeApi;
+    $stripe->reversals = [
+        'disputes' => [[
+            'id' => 'dp_recon_never_heard',
+            'status' => 'won',
+            'amount' => 11900,
+            'currency' => 'eur',
+            'reason' => null,
+            'fee' => null,
+            'created' => now()->subDays(10)->getTimestamp(),
+        ]],
+        'refunds' => [],
+    ];
+    app()->instance(StripeApi::class, $stripe);
+
+    $this->artisan('commerce:reconcile-payments --settled')
+        ->expectsOutputToContain('0 reversal(s) found')
+        ->assertSuccessful();
+
+    expect(PaymentReversal::withoutBrandScope()->count())->toBe(0);
+});
+
+it('settles a pending Unzer payment whose Paypage was paid after the notification was lost (#191)', function (): void {
+    // Unzer notifies per *account*, so a notification lost between Unzer and
+    // this deployment is lost for every payment on that account at once —
+    // and until this the hourly pass skipped the provider entirely.
+    $this->withBrand();
+
+    $account = SettlementAccount::factory()->create([
+        'provider' => SettlementAccount::PROVIDER_UNZER,
+        'provider_account_id' => null,
+        'credentials' => ['private_key' => 's-priv-pending'],
+    ]);
+
+    $order = Order::factory()->create([
+        'status' => OrderStatus::Pending,
+        'total_gross' => '45.00',
+        'currency' => 'EUR',
+    ]);
+
+    $payment = Payment::factory()->create([
+        'order_id' => $order->id,
+        'settlement_account_id' => $account->id,
+        'provider' => SettlementAccount::PROVIDER_UNZER,
+        // The Paypage id, which is *not* what the lookup uses.
+        'external_id' => 'ppg_recon_pending',
+        'amount' => '45.00',
+        'currency' => 'EUR',
+    ]);
+
+    reconciliationTestAge($payment, 60);
+
+    $unzer = new ReconciliationTestUnzerApi;
+    $unzer->pendingPaymentId = 's-pay-recon-pending';
+    $unzer->pendingState = 'completed';
+    app()->instance(UnzerApi::class, $unzer);
+
+    Event::fake([OrderPaid::class]);
+
+    $this->artisan('commerce:reconcile-payments --pending')
+        ->expectsOutputToContain('1 corrected')
+        ->assertSuccessful();
+
+    // Asked by our own `Payment` ULID, the `orderId` the Paypage carries —
+    // never by the Paypage id, which addresses no payment.
+    expect($unzer->orderIdFetches)->toBe([$payment->id])
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        // Stamped for the eventual refund, which cancels the *payment*.
+        ->and($payment->provider_transaction_id)->toBe('s-pay-recon-pending')
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+
+    Event::assertDispatchedTimes(OrderPaid::class, 1);
+
+    // A second run changes nothing, and does not even ask: the payment has
+    // left `pending`, so it is no longer a candidate at all. (Output is not
+    // asserted here — only the first `artisan()` call of a test captures
+    // it.)
+    $this->artisan('commerce:reconcile-payments --pending')->assertSuccessful();
+
+    expect($unzer->orderIdFetches)->toBe([$payment->id])
+        ->and($order->refresh()->status)->toBe(OrderStatus::Paid);
+});
+
+it('fails a pending Unzer payment the payer cancelled at the Paypage (#191)', function (): void {
+    $this->withBrand();
+
+    $account = SettlementAccount::factory()->create([
+        'provider' => SettlementAccount::PROVIDER_UNZER,
+        'provider_account_id' => null,
+        'credentials' => ['private_key' => 's-priv-cancel'],
+    ]);
+
+    $order = Order::factory()->create(['status' => OrderStatus::Pending, 'total_gross' => '45.00', 'currency' => 'EUR']);
+
+    $payment = Payment::factory()->create([
+        'order_id' => $order->id,
+        'settlement_account_id' => $account->id,
+        'provider' => SettlementAccount::PROVIDER_UNZER,
+        'external_id' => 'ppg_recon_cancelled',
+        'amount' => '45.00',
+        'currency' => 'EUR',
+    ]);
+
+    reconciliationTestAge($payment, 60);
+
+    $unzer = new ReconciliationTestUnzerApi;
+    $unzer->pendingPaymentId = 's-pay-recon-cancelled';
+    $unzer->pendingState = 'canceled';
+    app()->instance(UnzerApi::class, $unzer);
+
+    $this->artisan('commerce:reconcile-payments --pending')->assertSuccessful();
+
+    // The order stays pending: a failed attempt settles nothing and a new
+    // checkout may follow (`RecordPaymentFailure`).
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Failed)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Pending)
+        // D-0.8.2-4: the release valves of #231 count from here, not from
+        // the day the order was placed (#249).
+        ->and($order->first_failed_attempt_at)->not->toBeNull();
+});
+
+it('leaves a pending Unzer payment alone while Unzer holds no payment for it (#191)', function (): void {
+    // A Paypage that was opened and never paid: Unzer answers
+    // `API.310.100.003` and the seam turns that into null. Nothing decided,
+    // and the expiry sweeps own that order's clock.
+    $this->withBrand();
+
+    $account = SettlementAccount::factory()->create([
+        'provider' => SettlementAccount::PROVIDER_UNZER,
+        'provider_account_id' => null,
+        'credentials' => ['private_key' => 's-priv-unpaid'],
+    ]);
+
+    $order = Order::factory()->create(['status' => OrderStatus::Pending, 'total_gross' => '45.00', 'currency' => 'EUR']);
+
+    $payment = Payment::factory()->create([
+        'order_id' => $order->id,
+        'settlement_account_id' => $account->id,
+        'provider' => SettlementAccount::PROVIDER_UNZER,
+        'external_id' => 'ppg_recon_unpaid',
+        'amount' => '45.00',
+        'currency' => 'EUR',
+    ]);
+
+    reconciliationTestAge($payment, 60);
+
+    $unzer = new ReconciliationTestUnzerApi;
+    $unzer->pendingPaymentId = null;
+    app()->instance(UnzerApi::class, $unzer);
+
+    $this->artisan('commerce:reconcile-payments --pending')
+        ->expectsOutputToContain('0 corrected')
+        ->assertSuccessful();
+
+    expect($unzer->orderIdFetches)->toBe([$payment->id])
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Pending)
+        ->and($order->refresh()->status)->toBe(OrderStatus::Pending);
 });

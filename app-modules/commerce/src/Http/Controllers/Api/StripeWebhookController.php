@@ -244,17 +244,24 @@ class StripeWebhookController
     }
 
     /**
-     * `lost` finalises the dispute opened above, `won` withdraws it. Every
-     * other closing status (`warning_closed`) decides nothing about the
-     * money and is acknowledged without a record.
+     * `lost` finalises the dispute opened above; `won` and `warning_closed`
+     * withdraw it. A status that closes nothing is acknowledged without a
+     * record.
+     *
+     * The map is `StripeReversalCatchUp::CLOSING_STATUSES` rather than one
+     * written here (#249): the reconciliation sweep has to close an open
+     * reversal exactly as this event would, and two maps of the same money
+     * would drift silently. `warning_closed` reaching a record at all is that
+     * change — it used to be acknowledged and dropped, which left the `Open`
+     * row `charge.dispute.created` had written standing for ever, the same
+     * defect #249 filed against the sweep.
      */
     private function disputeClosed(StripeEvent $event, RecordPaymentReversal $recordReversal): JsonResponse
     {
-        $status = match ($event->data->object->status ?? null) {
-            'lost' => ReversalStatus::Final,
-            'won' => ReversalStatus::Withdrawn,
-            default => null,
-        };
+        $reported = $event->data->object->status ?? null;
+        $status = is_string($reported)
+            ? StripeReversalCatchUp::CLOSING_STATUSES[$reported] ?? null
+            : null;
 
         return $status === null
             ? response()->json(['received' => true])

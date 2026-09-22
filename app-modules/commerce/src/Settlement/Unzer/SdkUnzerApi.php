@@ -6,8 +6,10 @@ namespace Konventix\Commerce\Settlement\Unzer;
 
 use Konventix\Commerce\Settlement\Unzer\UnzerPaymentSnapshot as PaymentSnapshot;
 use RuntimeException;
+use UnzerSDK\Constants\ApiResponseCodes;
 use UnzerSDK\Constants\TransactionTypes;
 use UnzerSDK\Constants\WebhookEvents;
+use UnzerSDK\Exceptions\UnzerApiException;
 use UnzerSDK\Resources\EmbeddedResources\Paypage\Urls;
 use UnzerSDK\Resources\Payment as UnzerPayment;
 use UnzerSDK\Resources\V2\Paypage;
@@ -60,6 +62,55 @@ final class SdkUnzerApi implements UnzerApi
             orderId: $payment->getOrderId(),
             chargebacks: $this->chargebacks($payment),
         );
+    }
+
+    /**
+     * `GET /payments?orderId=` behind the SDK's `fetchPaymentByOrderId()`
+     * (#191). The order id is our `Payment` ULID, stamped on the Paypage at
+     * `createPaypage()`, so a pending payment is addressable long before
+     * Unzer has a payment id of its own.
+     *
+     * Unzer answers a 404 with `API.310.100.003` when it holds no payment
+     * for that order id — the Paypage was opened and nobody paid — and that
+     * is a state the sweep reads, not an error it reports. Every other
+     * `UnzerApiException` propagates: a rejected or expired key has to reach
+     * the caller as the failure it is, rather than looking like a payer who
+     * never paid, which is the one distinction the hourly pass depends on.
+     */
+    public function fetchPaymentByOrderId(string $orderId, string $privateKey): ?PaymentSnapshot
+    {
+        try {
+            $payment = new Unzer($privateKey)->fetchPaymentByOrderId($orderId);
+        } catch (UnzerApiException $e) {
+            if ($this->isPaymentNotFound($e)) {
+                return null;
+            }
+
+            throw $e;
+        }
+
+        return new PaymentSnapshot(
+            id: $payment->getId() ?? '',
+            state: $payment->getStateName(),
+            orderId: $payment->getOrderId() ?? $orderId,
+            chargebacks: $this->chargebacks($payment),
+        );
+    }
+
+    /**
+     * Whether Unzer's answer was "I hold no payment for that order id".
+     *
+     * `UnzerApiException` puts the API's dotted code — `API.310.100.003`
+     * here — into `Exception::$code`, which `Throwable::getCode()` still
+     * declares `int`; the SDK compares it against `ApiResponseCodes`
+     * constants the same way. Loose comparison rather than `===` because of
+     * that declared type, and it is exact in practice: since PHP 8 an
+     * integer never equals a non-numeric string, so a genuine integer code
+     * cannot match this constant by accident.
+     */
+    private function isPaymentNotFound(UnzerApiException $e): bool
+    {
+        return in_array($e->getCode(), [ApiResponseCodes::API_ERROR_PAYMENT_NOT_FOUND], false);
     }
 
     /**
