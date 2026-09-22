@@ -10,7 +10,6 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Platform\Blocks\StaticPageRenderer;
 use Konventix\Platform\Hub\ActiveEventContext;
-use Konventix\Platform\Hub\HubLayoutResolver;
 use Konventix\Platform\Hub\HubPage;
 use Konventix\Platform\Models\StaticPage;
 use Konventix\Platform\Operators\OperatorContext;
@@ -33,7 +32,9 @@ use Konventix\Platform\Pages\PageAccess;
  * it never becomes the live hub. During an event whose operator turned the
  * switch on (D-HUB-04, design §7.3), `/` shows an admitted member the hub
  * page instead of the brand's home, and the logo in the topbar points at
- * `/home` so the plain page stays one click away.
+ * `/home` so the plain page stays one click away. Whether the switch is on
+ * travels on `ActiveEventData` itself (`hubReplacesHome`), so this
+ * controller and the topbar decide it from one answer.
  */
 class StaticPageController
 {
@@ -41,7 +42,6 @@ class StaticPageController
         private readonly StaticPageRenderer $renderer,
         private readonly PageAccess $access,
         private readonly ActiveEventContext $context,
-        private readonly HubLayoutResolver $layouts,
         private readonly HubPage $hub,
     ) {}
 
@@ -85,7 +85,7 @@ class StaticPageController
         if ($request->user() !== null) {
             $active = $this->context->current();
 
-            if ($active !== null && $this->layouts->for($active->eventId)['hubReplacesHome']) {
+            if ($active?->hubReplacesHome === true) {
                 return $this->hub->render($request);
             }
         }

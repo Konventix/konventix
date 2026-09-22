@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Platform\Hub;
 
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Konventix\Platform\Brands\BrandContext;
@@ -16,7 +17,7 @@ use Konventix\Platform\Models\HubAccess;
  * all for a guest — the guest home page must stay as cheap as it is.
  *
  * The cache holds plain arrays under `hub-access:{brand}:{user}` and the
- * three `ProjectHubAccess` handlers forget that key, so a stale answer
+ * `ProjectHubAccess` handlers forget that key, so a stale answer
  * lives at most until the next admission, presence change or ending —
  * and never longer than `TTL_SECONDS` if a forget is missed. Escapes the
  * brand scope by the resolved brand's own id (ADR-0010) so the answer is
@@ -41,7 +42,10 @@ final class ActiveEventContext
     /** The brand-and-user the memo above was resolved for. */
     private ?string $resolvedFor = null;
 
-    public function __construct(private readonly BrandContext $brands) {}
+    public function __construct(
+        private readonly BrandContext $brands,
+        private readonly HubLayoutResolver $layouts,
+    ) {}
 
     /**
      * The most recent admission, or null for a guest and for a member
@@ -74,16 +78,24 @@ final class ActiveEventContext
             return $this->resolved = Collection::make();
         }
 
+        // `hubReplacesHome` is deliberately kept *out* of this key. It is the
+        // operator's switch, not the projection's, and it has a cache of its
+        // own that `ProjectHubLayout` forgets on every save — baked in here
+        // it would instead go stale for the whole TTL, for every admitted
+        // member at once, every time the operator flipped it.
         /** @var list<array<string, mixed>> $rows */
         $rows = Cache::remember(self::key($brand->id, (string) $userId), self::TTL_SECONDS, fn (): array => HubAccess::withoutBrandScope()
             ->where('brand_id', $brand->id)
             ->where('user_id', (string) $userId)
             ->orderByDesc('admitted_at')
             ->get()
-            ->map(fn (HubAccess $row): array => $row->toActiveEvent()->toArray())
+            ->map(fn (HubAccess $row): array => Arr::except($row->toActiveEvent()->toArray(), 'hubReplacesHome'))
             ->all());
 
-        return $this->resolved = Collection::make($rows)->map(fn (array $row): ActiveEventData => ActiveEventData::from($row));
+        return $this->resolved = Collection::make($rows)->map(fn (array $row): ActiveEventData => ActiveEventData::from([
+            ...$row,
+            'hubReplacesHome' => $this->layouts->for((string) $row['eventId'])['hubReplacesHome'],
+        ]));
     }
 
     public static function key(string $brandId, string $userId): string

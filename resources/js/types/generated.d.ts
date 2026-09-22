@@ -995,6 +995,7 @@ declare namespace Konventix {
                 readonly admittedAt: string;
                 readonly windowEndsAt: string | null;
                 readonly onSite: boolean;
+                readonly hubReplacesHome: boolean;
             };
             export type AdminFavoriteData = {
                 label: string;

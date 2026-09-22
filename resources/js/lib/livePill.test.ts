@@ -10,6 +10,7 @@ const admitted: Konventix.Platform.Data.ActiveEventData = {
     admittedAt: '2026-09-22T09:00:00+00:00',
     windowEndsAt: null,
     onSite: true,
+    hubReplacesHome: false,
 };
 
 describe('livePillFor', () => {
@@ -22,6 +23,7 @@ describe('livePillFor', () => {
             label: 'Kon Fest',
             href: '/live',
             onSite: true,
+            hubReplacesHome: false,
         });
     });
 
@@ -33,5 +35,15 @@ describe('livePillFor', () => {
 
     it('carries the off-site state through for the dot colour', () => {
         expect(livePillFor({ ...admitted, onSite: false })?.onSite).toBe(false);
+    });
+
+    // The topbar swaps the logo's target on this and on nothing else: being
+    // admitted is not the same as the operator having moved the home page.
+    it('carries the operator home switch through, and it is off by default', () => {
+        expect(livePillFor(admitted)?.hubReplacesHome).toBe(false);
+        expect(
+            livePillFor({ ...admitted, hubReplacesHome: true })
+                ?.hubReplacesHome,
+        ).toBe(true);
     });
 });

@@ -182,6 +182,8 @@ Brand host, middleware `auth`, then `ensure-active-event` (Platform): no `active
 
 `StaticPageController::home`: after the admin-host branch, if the request has a user and `ActiveEventContext::current()` is set and that event's layout has `hub_replaces_home`, render the hub page (same controller path as `/live`, no redirect). Otherwise the existing home. Guests never reach the check. The logo/"Home" nav entry then points at `/home`, a new route rendering the plain brand home unconditionally, so the public page stays reachable while the hub occupies `/`.
 
+**As built (fix round 2, 2026-09-22):** the switch travels to the frontend on `ActiveEventData` as `hubReplacesHome`, which `ActiveEventContext` resolves from `HubLayoutResolver` when it hands a row out — for admitted members only, so a guest still costs no query, and deliberately *not* baked into `hub-access:{brand}:{user}`, which has no reason to be forgotten when a layout changes. `livePillFor()` passes it through and the topbar swaps the logo's target on **that**, not on the pill: being admitted is not the same as the operator having moved the home page, and keyed off the pill alone the logo sent every admitted member to `/home` on brands that never flipped the switch. `StaticPageController::home` reads the same field instead of asking the resolver a second time.
+
 ### 7.4 Tests
 
 - guest `/live` → login; authenticated without access → `/` with flash; with access → 200 with the cards in layout order and hidden cards absent;

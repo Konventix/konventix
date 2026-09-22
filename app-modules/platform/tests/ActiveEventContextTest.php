@@ -9,6 +9,7 @@ use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Events\ParticipantPresenceChanged;
 use Konventix\Compliance\Enums\DeletionMode;
 use Konventix\Compliance\Gdpr\SubjectRef;
+use Konventix\Event\Events\EventHubLayoutChanged;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Gdpr\HubAccessGdprHandler;
 use Konventix\Platform\Hub\ActiveEventContext;
@@ -162,4 +163,34 @@ it('forgets the cached answer on erasure, on every brand the subject was admitte
 
     expect(Cache::has(ActiveEventContext::key($brand->id, $user->id)))->toBeFalse()
         ->and(Cache::has(ActiveEventContext::key($second->id, $user->id)))->toBeFalse();
+});
+
+/**
+ * The operator's switch travels on the member's own `ActiveEventData`
+ * (design §7.3), because the topbar has to swap the logo's target on it —
+ * being admitted is not the same as the home page having moved. It is
+ * resolved from `HubLayoutResolver`, whose cache the layout's own listener
+ * forgets, and deliberately not baked into `hub-access:{brand}:{user}`,
+ * which nothing forgets when a layout changes.
+ */
+it('carries the operator home switch, and follows a layout change without the access key being forgotten', function (): void {
+    $brand = $this->withBrand();
+    $user = User::factory()->create();
+    $eventId = (string) Str::ulid();
+    event(hubAdmitted($brand->id, $user->id, $eventId));
+    $this->actingAs($user);
+
+    expect(app(ActiveEventContext::class)->current()?->hubReplacesHome)->toBeFalse();
+
+    event(new EventHubLayoutChanged($eventId, $brand->id, [], true));
+
+    // The per-member key is untouched by a layout change; only the memo has
+    // to go, which a new request would drop anyway.
+    expect(Cache::has(ActiveEventContext::key($brand->id, $user->id)))->toBeTrue();
+
+    $this->app->forgetScopedInstances();
+    $this->withBrand($brand);
+    $this->actingAs($user);
+
+    expect(app(ActiveEventContext::class)->current()?->hubReplacesHome)->toBeTrue();
 });

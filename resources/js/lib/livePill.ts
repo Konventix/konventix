@@ -2,6 +2,7 @@ export type LivePill = {
     label: string;
     href: string;
     onSite: boolean;
+    hubReplacesHome: boolean;
 };
 
 /**
@@ -14,6 +15,12 @@ export type LivePill = {
  * pill stays away; an event without a public name still gets a pill, it just
  * says "Live". `onSite` is passed through for the dot — green while the
  * viewer is on site, muted once they have left.
+ *
+ * `hubReplacesHome` is the operator's switch (design §7.3), not "is this
+ * viewer admitted": only when it is on does `/` show this member the hub,
+ * and only then does the logo have to lead to the plain home at `/home`
+ * instead. Keyed off the pill alone, the logo sent every admitted member
+ * there whether or not the switch was ever flipped.
  */
 export function livePillFor(
     activeEvent: Konventix.Platform.Data.ActiveEventData | null,
@@ -26,5 +33,6 @@ export function livePillFor(
         label: activeEvent.eventName ?? 'Live',
         href: '/live',
         onSite: activeEvent.onSite,
+        hubReplacesHome: activeEvent.hubReplacesHome,
     };
 }

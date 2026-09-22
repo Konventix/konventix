@@ -21,6 +21,7 @@ import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { livePillFor } from '@/lib/livePill';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { home, login, register } from '@/routes';
+import { plain as plainHome } from '@/routes/home';
 import type { BrandNavItem } from '@/types/navigation';
 
 /**
@@ -47,6 +48,12 @@ import type { BrandNavItem } from '@/types/navigation';
  * not a module import. Whether the viewer is at an event arrives as the
  * shared `activeEvent` prop, and the pill only renders what that prop says —
  * the topbar never asks the Admission module anything.
+ *
+ * The logo's target moves with the operator's switch, not with the pill
+ * (design §7.3): only when `hubReplacesHome` is on is this member's `/` the
+ * hub, and only then does the brand's home page live at `/home`. An
+ * admitted member on a brand that never flipped the switch keeps the
+ * ordinary `/`.
  */
 const page = usePage();
 const mobileMenuOpen = ref(false);
@@ -101,7 +108,7 @@ function handleLogout(): void {
                 class="mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6"
             >
                 <Link
-                    :href="livePill ? '/home' : home()"
+                    :href="livePill?.hubReplacesHome ? plainHome() : home()"
                     class="min-w-0 text-text"
                 >
                     <AppLogo />
@@ -198,7 +205,7 @@ function handleLogout(): void {
         >
             <div class="flex min-w-0 items-center gap-6">
                 <Link
-                    :href="livePill ? '/home' : home()"
+                    :href="livePill?.hubReplacesHome ? plainHome() : home()"
                     class="min-w-0 text-text"
                 >
                     <AppLogo />
