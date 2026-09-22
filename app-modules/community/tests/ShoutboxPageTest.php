@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -240,6 +241,68 @@ it('replays everything after a cursor, a removed line as nothing but the broadca
         ->assertJsonPath('hasMore', false)
         ->assertJsonCount(1, 'lines')
         ->assertJsonPath('lines.0.id', $cursor->id);
+});
+
+/**
+ * The gap an id cursor cannot see: a line the client already held, removed
+ * while its socket was down. The previous answer's `syncedAt` comes back as
+ * `since`, and the removal returns in exactly the broadcast's tombstone
+ * shape. A removal from before `since` — which the client already applied —
+ * is not sent again.
+ */
+it('replays the removal of a line the client already held, since its last answer', function (): void {
+    $this->travelTo(CarbonImmutable::parse('2026-10-17 20:00:00Z'));
+
+    $brand = $this->withBrand();
+    $this->activateModule('community', $brand);
+
+    $eventId = (string) Str::ulid();
+    $ada = shoutboxPageAdmitted($brand, $eventId, 'Ada');
+
+    $this->actingAs($ada)->get('/live/shoutbox')->assertOk();
+    $room = Room::withoutBrandScope()->sole();
+
+    $post = app(PostMessage::class);
+    $older = $post->handle($room, $ada->id, new PostMessageData('Schon vorher entfernt'));
+    $held = $post->handle($room, $ada->id, new PostMessageData('Wird entfernt, während der Socket weg ist'));
+
+    app(RemoveMessage::class)->handle($older, (string) Str::ulid(), 'Früher');
+
+    // The client's last answer before its socket dropped.
+    $this->travelTo(CarbonImmutable::parse('2026-10-17 20:00:10Z'));
+
+    $syncedAt = $this->actingAs($ada)
+        ->getJson('/live/shoutbox/messages?'.http_build_query(['after' => $held->id]))
+        ->assertOk()
+        ->assertJsonPath('removed', [])
+        ->json('syncedAt');
+
+    expect($syncedAt)->toBe('2026-10-17T20:00:10+00:00');
+
+    // Removed while the client was away.
+    $this->travelTo(CarbonImmutable::parse('2026-10-17 20:00:20Z'));
+    $organizerId = (string) Str::ulid();
+    app(RemoveMessage::class)->handle($held, $organizerId, 'Insult');
+
+    $this->travelTo(CarbonImmutable::parse('2026-10-17 20:00:30Z'));
+
+    $feed = $this->actingAs($ada)
+        ->getJson('/live/shoutbox/messages?'.http_build_query(['after' => $held->id, 'since' => $syncedAt]))
+        ->assertOk()
+        ->json();
+
+    $held->refresh();
+
+    expect($feed['lines'])->toBe([])
+        ->and($feed['syncedAt'])->toBe('2026-10-17T20:00:30+00:00')
+        ->and($feed['removed'])->toBe([[
+            'id' => $held->id,
+            'roomId' => $room->id,
+            'removedAt' => $held->deleted_at?->toIso8601String(),
+        ]])
+        ->and(json_encode($feed))->not->toContain('Insult')
+        ->and(json_encode($feed))->not->toContain($organizerId)
+        ->and(json_encode($feed))->not->toContain('Wird entfernt');
 });
 
 it('tells a muted participant the reason and the remaining time, before and when they post', function (): void {

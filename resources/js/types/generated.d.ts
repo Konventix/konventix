@@ -612,6 +612,8 @@ declare namespace Konventix {
                     | Konventix.Community.Data.ShoutboxTombstoneData
                 >;
                 readonly hasMore: boolean;
+                readonly removed: Konventix.Community.Data.ShoutboxTombstoneData[];
+                readonly syncedAt: string;
             };
             export type ShoutboxLineData = {
                 readonly id: string;
@@ -657,6 +659,7 @@ declare namespace Konventix {
                 readonly mute: string | null;
                 readonly retryAfterSeconds: number | null;
                 readonly maxLength: number;
+                readonly syncedAt: string;
             };
         }
         namespace Enums {

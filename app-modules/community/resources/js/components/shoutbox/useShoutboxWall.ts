@@ -16,10 +16,17 @@ import { mergeAll, newestId, oldestId, remove, upsert } from './wall';
  * it was rendered with.
  *
  * **A dropped socket must not freeze the wall silently.** Every time the
- * connection reports `connected` — the first time included, which also
- * catches what was posted between the server render and the subscription —
- * the wall asks for everything after the newest line it holds. Removals come
- * back from that fetch as tombstones in the broadcast's own shape.
+ * room channel reports `subscribed` — the first subscription, which catches
+ * what was posted between the server render and the subscription even when
+ * the socket itself was already open (the bell opens it on every page), and
+ * every re-subscription pusher makes after a reconnect — the wall asks for
+ * everything after the newest line it holds, plus every removal since its
+ * last answer (`syncedAt`), so a line it already showed does not survive a
+ * removal it missed. Removals come back in the broadcast's own tombstone
+ * shape. A mount onto a channel another holder already subscribed catches
+ * up once by itself, since `subscribed` will not fire again for it.
+ * Overlapping requests for a catch-up collapse into one run plus at most one
+ * follow-up.
  *
  * **Optimistic, then reconciled** (design §8): a sent line shows at once as
  * pending; the server's answer replaces it with the real line, the
@@ -234,26 +241,61 @@ export function useShoutboxWall(
         return (await response.json()) as Feed;
     }
 
-    /** Everything since the newest line held — the reconnect's catch-up. */
-    async function catchUp(): Promise<void> {
-        try {
-            for (
-                let pageCount = 0;
-                pageCount < MAX_CATCH_UP_PAGES;
-                pageCount++
-            ) {
-                const feed = await fetchFeed({
-                    after: newestId(entries.value) ?? FIRST_ULID,
-                });
+    /** The server's instant for the last answer — what `since` asks from. */
+    let syncedAt = wall.syncedAt;
+    let catchingUp = false;
+    let catchUpAgain = false;
 
-                entries.value = mergeAll(entries.value, feed.lines);
+    /**
+     * Everything since the newest line held, and every removal since the
+     * last answer. The first page's `syncedAt` becomes the next `since`:
+     * later pages only carry newer lines, and a removal they report again
+     * is applied twice to no effect.
+     */
+    async function runCatchUp(): Promise<void> {
+        const since = syncedAt;
+        let nextSyncedAt: string | null = null;
 
-                if (!feed.hasMore) {
-                    return;
-                }
+        for (let pageCount = 0; pageCount < MAX_CATCH_UP_PAGES; pageCount++) {
+            const feed = await fetchFeed({
+                after: newestId(entries.value) ?? FIRST_ULID,
+                since,
+            });
+
+            nextSyncedAt ??= feed.syncedAt;
+            entries.value = feed.removed.reduce(
+                remove,
+                mergeAll(entries.value, feed.lines),
+            );
+
+            if (!feed.hasMore) {
+                break;
             }
+        }
+
+        if (nextSyncedAt !== null) {
+            syncedAt = nextSyncedAt;
+        }
+    }
+
+    async function catchUp(): Promise<void> {
+        if (catchingUp) {
+            catchUpAgain = true;
+
+            return;
+        }
+
+        catchingUp = true;
+
+        try {
+            do {
+                catchUpAgain = false;
+                await runCatchUp();
+            } while (catchUpAgain);
         } catch {
-            // The lines already on screen stand; the next reconnect asks again.
+            // The lines already on screen stand; the next subscription asks again.
+        } finally {
+            catchingUp = false;
         }
     }
 
@@ -286,8 +328,13 @@ export function useShoutboxWall(
         entries.value = remove(entries.value, tombstone);
     };
 
-    const onConnected = (): void => {
-        void catchUp();
+    /** False once unmounted: a shared channel keeps this callback. */
+    let active = true;
+
+    const onSubscribed = (): void => {
+        if (active) {
+            void catchUp();
+        }
     };
 
     let subscribed = false;
@@ -305,23 +352,27 @@ export function useShoutboxWall(
 
         const name = channelFor(wall.roomId);
 
+        const alreadyHeld = (holders.get(name) ?? 0) > 0;
+
         try {
             echo()
                 .private(name)
+                .subscribed(onSubscribed)
                 .listen('.shoutbox.message.posted', onPosted)
                 .listen('.shoutbox.message.removed', onRemoved);
-            echo<'reverb'>().connector.pusher.connection.bind(
-                'connected',
-                onConnected,
-            );
             holders.set(name, (holders.get(name) ?? 0) + 1);
             subscribed = true;
         } catch {
             // No push on this page; the rendered lines stand.
         }
+
+        if (alreadyHeld) {
+            void catchUp();
+        }
     });
 
     onBeforeUnmount(() => {
+        active = false;
         stopCountdown();
 
         if (!subscribed) {
@@ -332,11 +383,6 @@ export function useShoutboxWall(
         const left = (holders.get(name) ?? 1) - 1;
 
         try {
-            echo<'reverb'>().connector.pusher.connection.unbind(
-                'connected',
-                onConnected,
-            );
-
             if (left <= 0) {
                 holders.delete(name);
                 echo().leave(name);

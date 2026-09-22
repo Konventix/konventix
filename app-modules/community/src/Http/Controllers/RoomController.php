@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Community\Http\Controllers;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\JsonResponse;
@@ -70,6 +71,8 @@ final class RoomController
     /**
      * One page of the wall by id: `after` for the reconciliation a client
      * runs when its socket comes back, `before` for scrolling upward.
+     * `since` — the `syncedAt` of the client's previous answer — adds the
+     * removals of lines it already holds (`WallReader::after()`).
      */
     public function messages(Request $request): JsonResponse
     {
@@ -78,12 +81,16 @@ final class RoomController
         $validated = $request->validate([
             'after' => ['required_without:before', 'nullable', 'ulid'],
             'before' => ['required_without:after', 'nullable', 'ulid'],
+            'since' => ['nullable', 'date'],
         ]);
 
         $after = $validated['after'] ?? null;
         $before = $validated['before'] ?? null;
+        $since = $validated['since'] ?? null;
 
-        $feed = is_string($after) ? $this->wall->after($room, $after) : $this->wall->before($room, (string) $before);
+        $feed = is_string($after)
+            ? $this->wall->after($room, $after, is_string($since) ? CarbonImmutable::parse($since)->utc() : null)
+            : $this->wall->before($room, (string) $before);
 
         return new JsonResponse($feed->toArray());
     }

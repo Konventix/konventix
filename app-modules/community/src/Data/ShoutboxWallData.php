@@ -22,6 +22,8 @@ use Spatie\TypeScriptTransformer\Attributes\TypeScript;
  *
  * `lines` holds lines and tombstones in one list, ordered by id — the
  * transformer cannot name a union element type, so it is spelled out.
+ * `syncedAt` is the server's instant for this render: the first catch-up
+ * asks for removals since it (`ShoutboxFeedData`).
  */
 #[TypeScript]
 final class ShoutboxWallData extends Data
@@ -38,5 +40,6 @@ final class ShoutboxWallData extends Data
         public readonly ?string $mute,
         public readonly ?int $retryAfterSeconds,
         public readonly int $maxLength,
+        public readonly string $syncedAt,
     ) {}
 }

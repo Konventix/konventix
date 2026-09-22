@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Community\Rooms;
 
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Konventix\Community\Data\PostMessageData;
@@ -61,6 +62,7 @@ final class WallReader
 
     public function wall(Room $room, string $viewerId, int $lines): ShoutboxWallData
     {
+        $syncedAt = $this->syncInstant();
         $rows = $this->messages($room)->orderByDesc('id')->limit($lines + 1)->get();
         $mute = $this->muteRefusal($room, $viewerId);
 
@@ -72,26 +74,48 @@ final class WallReader
             mute: $mute?->getMessage(),
             retryAfterSeconds: $mute?->retryAfterSeconds,
             maxLength: PostMessageData::MAX_BODY_LENGTH,
+            syncedAt: $syncedAt,
         );
     }
 
     /**
      * Everything since `$cursor`, oldest first — the reconciliation a client
      * runs when its socket comes back, so a dropped connection does not
-     * leave the wall silently frozen. Lines removed in the meantime come
-     * back as tombstones.
+     * leave the wall silently frozen. Lines newer than the cursor that were
+     * removed in the meantime come back as tombstones among `lines`.
+     *
+     * `$since` covers what the id cursor cannot: a line the client already
+     * held that was removed while it was away. It is the `syncedAt` of the
+     * client's previous answer, and `removed` carries a tombstone for every
+     * line of this room removed at or after it. "At or after", because
+     * `deleted_at` is stored to the second and `syncedAt` is printed to the
+     * second — a removal in the same second as the last answer is sent
+     * again rather than missed, and applying a tombstone twice changes
+     * nothing. A row filter over the room's own index; no new column.
      */
-    public function after(Room $room, string $cursor): ShoutboxFeedData
+    public function after(Room $room, string $cursor, ?CarbonInterface $since = null): ShoutboxFeedData
     {
+        $syncedAt = $this->syncInstant();
+
         $rows = $this->messages($room)
             ->where('id', '>', $cursor)
             ->orderBy('id')
             ->limit(self::CATCH_UP_LIMIT + 1)
             ->get();
 
+        $removed = $since === null ? [] : $this->messages($room)
+            ->where('id', '<=', $cursor)
+            ->where('deleted_at', '>=', $since)
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Message $message): ShoutboxTombstoneData => $this->tombstoneOf($message))
+            ->all();
+
         return new ShoutboxFeedData(
             lines: $this->present($rows->take(self::CATCH_UP_LIMIT)),
             hasMore: $rows->count() > self::CATCH_UP_LIMIT,
+            removed: $removed,
+            syncedAt: $syncedAt,
         );
     }
 
@@ -109,6 +133,8 @@ final class WallReader
         return new ShoutboxFeedData(
             lines: $this->present($rows->take(self::PAGE_SIZE)->reverse()),
             hasMore: $rows->count() > self::PAGE_SIZE,
+            removed: [],
+            syncedAt: $this->syncInstant(),
         );
     }
 
@@ -188,13 +214,31 @@ final class WallReader
 
         return $messages
             ->map(fn (Message $message): array => ($message->isRemoved()
-                ? new ShoutboxTombstoneData(
-                    id: $message->id,
-                    roomId: $message->room_id,
-                    removedAt: $message->deleted_at?->toIso8601String() ?? '',
-                )
+                ? $this->tombstoneOf($message)
                 : $this->lineOf($message, $names))->toArray())
             ->all();
+    }
+
+    /**
+     * The broadcast's tombstone shape and nothing else — never the reason,
+     * the organizer, the body or the author (spec §4.2).
+     */
+    private function tombstoneOf(Message $message): ShoutboxTombstoneData
+    {
+        return new ShoutboxTombstoneData(
+            id: $message->id,
+            roomId: $message->room_id,
+            removedAt: $message->deleted_at?->toIso8601String() ?? '',
+        );
+    }
+
+    /**
+     * The server's instant for one answer, to the second — what the client
+     * hands back as `since` on its next catch-up.
+     */
+    private function syncInstant(): string
+    {
+        return CarbonImmutable::now()->utc()->toIso8601String();
     }
 
     /**
