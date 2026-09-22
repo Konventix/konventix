@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
+import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/datetime';
 
@@ -25,7 +27,11 @@ import { formatDateTime } from '@/lib/datetime';
  * says in words that the orga does it, and `none` says nothing at all
  * because there is nothing to do. The server decides `canCheckIn` and the
  * Action refuses anything this page gets wrong — the button is a
- * convenience, never the rule.
+ * convenience, never the rule. When it refuses, the reason is rendered on
+ * the entry: `canCheckIn` cannot know whether the whole roster has been
+ * through the event door, so a click that is allowed here can still be
+ * turned down there, and a button that silently does nothing is the one
+ * outcome a participant cannot act on.
  *
  * There is deliberately **no "create a team" form here**. A team is started
  * from the competition you want to enter (§10's competition page), where the
@@ -99,8 +105,35 @@ function withdraw(entry: Entry): void {
     router.delete(`/my/tournaments/entries/${entry.id}`, { preserveScroll: true });
 }
 
+/**
+ * `canCheckIn` says the mode and the window allow it; it does **not** know
+ * whether the whole roster has been through the event door, which only the
+ * Action can answer. So the button is offered and the check-in can still
+ * refuse — and the controller answers with a field error on `entrant`
+ * naming who is still outside. Without this the captain clicks "Einchecken"
+ * and nothing whatsoever happens, which reads as a broken page.
+ *
+ * Keyed by entry, so the message lands on the entry it belongs to. Same
+ * shape as `Join.vue`'s refusal: the server's message, verbatim.
+ */
+const refusals = ref<Record<string, string | undefined>>({});
+
 function checkIn(entry: Entry): void {
-    router.post(`/my/tournaments/entries/${entry.id}/check-in`, {}, { preserveScroll: true });
+    refusals.value = { ...refusals.value, [entry.id]: undefined };
+
+    router.post(
+        `/my/tournaments/entries/${entry.id}/check-in`,
+        {},
+        {
+            preserveScroll: true,
+            onError: (errors) => {
+                refusals.value = {
+                    ...refusals.value,
+                    [entry.id]: errors.entrant,
+                };
+            },
+        },
+    );
 }
 
 /**
@@ -211,6 +244,8 @@ function canWithdraw(entry: Entry): boolean {
                             Anmeldung zurückziehen
                         </Button>
                     </div>
+
+                    <InputError class="w-full" :message="refusals[entry.id]" />
                 </li>
             </ul>
 

@@ -235,11 +235,21 @@ Two knobs on the competition:
 
 The door fact comes from a new read model `competition_admission_presence`
 (`brand_id`, `event_id`, `admission_id`, `holder_user_id` nullable,
-`checked_in_at` nullable), projected from `AdmissionHolderAssigned` /
-`AdmissionHolderUnassigned` (who holds it) and `AdmissionCheckedIn` (that
-it was scanned, direction `in`), and cleared by `AdmissionRevoked`. Both
-listeners are idempotent and replayable (ADR-0004); this is the same shape
-Resources built for #292. The check-in Action reads only this table.
+`checked_in_at` nullable), projected from six of Admission's public events:
+
+| Event | What it contributes |
+|---|---|
+| `AdmissionHolderAssigned` | **Who holds it — the main path.** An ordinary attendee's admission is issued with `holder_user_id` null and is named later, when the ticket is claimed or an organizer assigns a name (ADR-0032). Nearly every row learns its holder here. |
+| `AdmissionHolderUnassigned` | The admission lost its holder. The row and the scan stay; only `holder_user_id` is cleared. |
+| `AdmissionCheckedIn` | That it was scanned, direction `in`. The **first** `in` scan is kept and never moved. |
+| `AdmissionRevoked` | Clears the row: a revoked admission admits nobody. |
+| `AdmissionIssued` | *Addition, for crew badges.* `IssueCrewAdmission` is the one path that creates an admission already assigned and names its holder here, emitting no second event — without this listen no crew member is ever at the door. |
+| `AdmissionOwnershipAnnounced` | *Addition, for the #292 backfill.* The only way an admission older than this read model enters it at all: its issue and its claim happened before anything was listening. It restates the holder and the state and carries **no scan timestamp**. |
+
+The two additions are additions, not replacements — `AdmissionHolderAssigned`
+stays the main path for an ordinary attendee. Every listener is idempotent and
+replayable (ADR-0004); this is the same shape Resources built for #292, and it
+consumes the identical set. The check-in Action reads only this table.
 
 `CheckInEntrant` writes `entrants.checked_in_at` and moves the state to
 `checked_in`; `UndoCheckIn` reverses it. Bracket generation from a
@@ -549,7 +559,10 @@ for (roster and Steam IDs); it is additive.
 
 *(Corrected 2026-09-23 in the fix round on this task: the first version of this
 entry gave a reason that is not true of the code. It claimed a self-bought
-ticket names its holder on `AdmissionIssued`. It does not.)*
+ticket names its holder on `AdmissionIssued`. It does not. §6's own
+source-event list was amended in the same round and now carries all six events
+with a clause each, so a reader who never reaches §14 still gets the true
+list — GameOps builds on it in 0.10. This entry records why it changed.)*
 
 **§6 is right about the main path.** `AdmissionHolderAssigned` is how an
 ordinary attendee's admission gets a holder, and it stays the main path.
