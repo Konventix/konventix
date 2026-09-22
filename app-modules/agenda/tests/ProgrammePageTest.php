@@ -5,6 +5,8 @@ declare(strict_types=1);
 use Konventix\Agenda\Actions\CancelAgendaItem;
 use Konventix\Agenda\Models\AgendaItem;
 use Konventix\Agenda\Models\EventSummary;
+use Konventix\Event\Events\EventPublished;
+use Konventix\Event\Events\EventUnpublished;
 
 /**
  * The public programme (design §6): the one surface of this module that
@@ -48,9 +50,48 @@ it('learns the slug, name, timezone and days from Event contract events alone', 
         ->and($summary->slug)->toBe('agenda-testcon')
         ->and($summary->name)->toBe('Agenda Testcon')
         ->and($summary->timezone)->toBe('Europe/Berlin')
+        ->and($summary->state)->toBe('published')
         ->and($summary->programmeDays())->toHaveCount(2)
         ->and($summary->programmeDays()[0]['date'])->toBe('2026-11-20')
         ->and($summary->programmeDays()[0]['label'])->toBe('Freitag');
+});
+
+/**
+ * A programme is only an announcement once the event is one. An organizer
+ * building next year's schedule must not publish it by accident to anyone
+ * who guesses the slug — the editor is where that work happens, and it
+ * stays open (see `AgendaAdminTest`).
+ */
+it('does not serve the programme of an event that is still a draft', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('agenda');
+    $event = agendaPublishedEvent($brand, publish: false);
+    agendaPublishedItem($event->getKey(), 'Eröffnung', '2026-11-20T13:00:00Z', '2026-11-20T14:00:00Z');
+
+    $this->get("/events/{$event->slug}/programm")->assertNotFound();
+});
+
+it('serves it again once the event is published, and stops when it is unpublished', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('agenda');
+    $event = agendaPublishedEvent($brand, publish: false);
+    agendaPublishedItem($event->getKey(), 'Eröffnung', '2026-11-20T13:00:00Z', '2026-11-20T14:00:00Z');
+
+    event(new EventPublished(
+        eventId: $event->getKey(),
+        brandId: $brand->getKey(),
+        publishedAt: '2026-09-01 12:00:00',
+    ));
+
+    $this->get("/events/{$event->slug}/programm")->assertOk();
+
+    // Unpublishing returns the event to `Announced`, which is not public.
+    event(new EventUnpublished(
+        eventId: $event->getKey(),
+        brandId: $brand->getKey(),
+    ));
+
+    $this->get("/events/{$event->slug}/programm")->assertNotFound();
 });
 
 it('404s on a slug this module has never been told about', function (): void {

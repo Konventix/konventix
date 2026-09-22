@@ -5,15 +5,23 @@ declare(strict_types=1);
 namespace Konventix\Agenda\Listeners;
 
 use Konventix\Agenda\Models\EventSummary;
+use Konventix\Event\Events\EventAnnounced;
+use Konventix\Event\Events\EventArchived;
+use Konventix\Event\Events\EventCancelled;
+use Konventix\Event\Events\EventConcluded;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventDetailsUpdated;
+use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Events\EventRescheduled;
+use Konventix\Event\Events\EventStarted;
+use Konventix\Event\Events\EventUnpublished;
 
 /**
- * Keeps Agenda's copy of an event's slug, name, timezone and day set
- * (ADR-0004, design §3) — mirrors `Konventix\Admission\Listeners\
- * ProjectEventSummary`, which is the shape this module copied.
+ * Keeps Agenda's copy of an event's slug, name, timezone, day set and
+ * lifecycle state (ADR-0004, design §3) — mirrors
+ * `Konventix\Admission\Listeners\ProjectEventSummary`, which is the shape
+ * this module copied.
  *
  * Every `Konventix\Event\Events\*` import is the one sanctioned
  * cross-module dependency; everything past this line sees scalars only.
@@ -41,6 +49,41 @@ final class ProjectEventSummary
             slug: $event->slug,
             name: $event->name,
             timezone: $event->timezone,
+            // `CreateEvent` is the only emitter and it always creates a
+            // draft, so the state is the event's meaning rather than a
+            // field it carries.
+            state: 'draft',
+        );
+    }
+
+    /**
+     * Every lifecycle transition Event announces, in one handler: each of
+     * these events *is* a state rather than carrying one, so the class is
+     * the payload. Registered seven times in
+     * `AgendaServiceProvider::registerListeners()`.
+     *
+     * Unpublishing returns an event to `Announced`, which is
+     * `UnpublishEvent`'s own target state — not to `Draft`, and certainly
+     * not to nothing.
+     *
+     * This is what keeps a draft event's programme off the public web
+     * (`EventSummary::hasPublicProgramme()`); the editor is deliberately
+     * not gated on it.
+     */
+    public function handleLifecycle(
+        EventAnnounced|EventArchived|EventCancelled|EventConcluded|EventPublished|EventStarted|EventUnpublished $event,
+    ): void {
+        $this->project(
+            eventId: $event->eventId,
+            brandId: $event->brandId,
+            state: match ($event::class) {
+                EventAnnounced::class, EventUnpublished::class => 'announced',
+                EventPublished::class => 'published',
+                EventStarted::class => 'running',
+                EventConcluded::class => 'concluded',
+                EventCancelled::class => 'cancelled',
+                EventArchived::class => 'archived',
+            },
         );
     }
 
@@ -124,6 +167,7 @@ final class ProjectEventSummary
         ?string $slug = null,
         ?string $name = null,
         ?string $timezone = null,
+        ?string $state = null,
         ?array $days = null,
     ): void {
         $summary = EventSummary::withoutBrandScope()
@@ -136,6 +180,7 @@ final class ProjectEventSummary
             'slug' => $slug,
             'name' => $name,
             'timezone' => $timezone,
+            'state' => $state,
             'days' => $days,
         ], static fn (mixed $value): bool => $value !== null))->save();
     }

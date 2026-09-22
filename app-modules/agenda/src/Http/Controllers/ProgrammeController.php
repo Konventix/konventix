@@ -39,6 +39,13 @@ final class ProgrammeController
         /** @var EventSummary $summary */
         $summary = EventSummary::query()->where('slug', $slug)->firstOrFail();
 
+        // A programme is only an announcement once the event itself is one.
+        // A draft event's schedule is a workbench: reachable by guessing a
+        // slug, it would publish next year's half-finished plan by accident.
+        // The *editor* stays open for exactly that event — that is where a
+        // programme gets built.
+        abort_unless($summary->hasPublicProgramme(), 404);
+
         $timezone = $summary->eventTimezone();
 
         return Inertia::render('agenda/Programme', [

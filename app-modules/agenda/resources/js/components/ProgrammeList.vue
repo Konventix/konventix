@@ -63,14 +63,6 @@ const entries = computed<Entry[]>(() => {
 </script>
 
 <template>
-    <!--
-    datetime-raw: cell.startsAt
-    datetime-raw: cell.endsAt
-    datetime-raw: entry.time
-    A programme time is the organizer's wall clock in the event's own zone
-    (ADR-0027), already resolved by ProgrammeBuilder — printed exactly as
-    promised and never converted to the reader's. See components/programmeTime.ts.
--->
     <ol class="flex flex-col gap-3">
         <li
             v-for="entry in entries"

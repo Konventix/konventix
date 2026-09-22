@@ -9,6 +9,7 @@ use Konventix\Agenda\Enums\Permission as AgendaPermission;
 use Konventix\Agenda\Models\AgendaItem;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
+use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Models\Event;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
@@ -55,8 +56,13 @@ function agendaItemData(array $overrides = []): AgendaItemData
  * and `fake()->timezone()` would make them irreproducible.
  *
  * Two days, so that `ProgrammeBuilder` omitting the empty one is visible.
+ *
+ * `$publish` is what puts the event into a state whose programme is
+ * public. A test after the draft case passes false and gets the same event
+ * with nothing but `EventCreated` behind it — which is exactly how a
+ * half-built programme looks in production.
  */
-function agendaPublishedEvent(Brand $brand, string $timezone = 'Europe/Berlin'): Event
+function agendaPublishedEvent(Brand $brand, string $timezone = 'Europe/Berlin', bool $publish = true): Event
 {
     $event = Event::factory()->published()->create([
         'name' => 'Agenda Testcon',
@@ -85,6 +91,14 @@ function agendaPublishedEvent(Brand $brand, string $timezone = 'Europe/Berlin'):
             ['day_id' => (string) Str::ulid(), 'date' => '2026-11-21', 'sequence' => 2, 'label' => 'Samstag'],
         ],
     ));
+
+    if ($publish) {
+        event(new EventPublished(
+            eventId: $event->getKey(),
+            brandId: $brand->getKey(),
+            publishedAt: '2026-09-01 12:00:00',
+        ));
+    }
 
     return $event;
 }

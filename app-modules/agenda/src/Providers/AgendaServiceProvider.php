@@ -9,10 +9,17 @@ use Illuminate\Support\Facades\Event;
 use Konventix\Agenda\Data\NowNextCardData;
 use Konventix\Agenda\Hub\NowNextCard;
 use Konventix\Agenda\Listeners\ProjectEventSummary;
+use Konventix\Event\Events\EventAnnounced;
+use Konventix\Event\Events\EventArchived;
+use Konventix\Event\Events\EventCancelled;
+use Konventix\Event\Events\EventConcluded;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventDetailsUpdated;
+use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Events\EventRescheduled;
+use Konventix\Event\Events\EventStarted;
+use Konventix\Event\Events\EventUnpublished;
 use Konventix\Platform\Data\ActiveEventData;
 use Konventix\Platform\Hub\HubCard;
 use Konventix\Platform\Hub\HubRegistry;
@@ -36,11 +43,12 @@ class AgendaServiceProvider extends ModuleServiceProvider
     }
 
     /**
-     * Agenda's read model of the four event facts the programme needs — the
+     * Agenda's read model of the five event facts the programme needs — the
      * slug the public URL resolves by, the name, the timezone every wall
-     * clock is promised in (ADR-0027) and the day set the switcher is built
-     * from. This module may not read Event's tables (ADR-0004), so these
-     * projections are the only path by which any of it arrives.
+     * clock is promised in (ADR-0027), the day set the switcher is built
+     * from, and the lifecycle state that decides whether the public page
+     * resolves at all. This module may not read Event's tables (ADR-0004),
+     * so these projections are the only path by which any of it arrives.
      *
      * Deliberately **not** short-circuited on the Pennant gate, unlike a
      * listener that *does* something: a brand that switches Agenda on
@@ -54,6 +62,18 @@ class AgendaServiceProvider extends ModuleServiceProvider
         Event::listen(EventDetailsUpdated::class, [ProjectEventSummary::class, 'handleDetailsUpdated']);
         Event::listen(EventRescheduled::class, [ProjectEventSummary::class, 'handleRescheduled']);
         Event::listen(EventDaysChanged::class, [ProjectEventSummary::class, 'handleDaysChanged']);
+
+        // The event's own lifecycle, which decides whether the *public*
+        // programme page resolves at all: a draft event's schedule must not
+        // be reachable by guessing a slug. One handler, seven events —
+        // each of them is a state rather than carrying one.
+        Event::listen(EventAnnounced::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventPublished::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventUnpublished::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventStarted::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventConcluded::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventCancelled::class, [ProjectEventSummary::class, 'handleLifecycle']);
+        Event::listen(EventArchived::class, [ProjectEventSummary::class, 'handleLifecycle']);
     }
 
     /**

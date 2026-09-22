@@ -9,10 +9,12 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Agenda's read model of the four event facts the programme needs
+     * Agenda's read model of the five event facts the programme needs
      * (design §3, ADR-0004): the slug the public URL is resolved by, the
      * name the page is headed with, the timezone every wall clock on it is
-     * read in (ADR-0027), and the day set the switcher is built from.
+     * read in (ADR-0027), the day set the switcher is built from, and the
+     * event's lifecycle state, which decides whether the public page
+     * resolves at all.
      *
      * Agenda may not read Event's tables, so it keeps its own copy,
      * projected from `EventCreated` / `EventDetailsUpdated` /
@@ -48,6 +50,17 @@ return new class extends Migration
             $table->string('slug')->nullable();
             $table->string('name')->nullable();
             $table->string('timezone')->nullable();
+
+            // Event's own lifecycle, as a plain string: Agenda may import
+            // Event's `Events\` namespace and nothing else (ADR-0004), so
+            // `EventLifecycleState` is out of reach and the value is
+            // carried as the scalar it already is on the wire. It decides
+            // whether the *public* page resolves at all — a draft event's
+            // programme must not be reachable by guessing a slug, while
+            // its editor stays open, because that is where a programme is
+            // built.
+            $table->string('state')->nullable();
+
             $table->json('days')->nullable();
 
             $table->timestamps();

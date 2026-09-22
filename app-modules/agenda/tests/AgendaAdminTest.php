@@ -27,6 +27,25 @@ it('refuses the editor without the capability and serves it with', function (): 
         ->assertInertia(fn ($page) => $page->component('admin/agenda/Edit')->has('tracks')->has('locations')->has('items'));
 });
 
+/**
+ * The other half of the draft rule: the public page of a draft event 404s
+ * (see `ProgrammePageTest`), and its editor does not — a programme is built
+ * before the event is announced, which is the whole point of having a draft
+ * state.
+ */
+it('serves the editor for an event that is still a draft', function (): void {
+    $brand = $this->withBrand();
+    $this->activateModule('agenda');
+    $event = agendaPublishedEvent($brand, publish: false);
+    [$operator, $admin] = agendaAdminOperator();
+
+    $this->actingAs($admin)
+        ->withServerVariables(['HTTP_HOST' => $operator->admin_host])
+        ->get("/admin/events/{$event->getKey()}/agenda")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('admin/agenda/Edit'));
+});
+
 it('refuses the editor to an admin without ManageAgenda', function (): void {
     $brand = $this->withBrand();
     $this->activateModule('agenda');

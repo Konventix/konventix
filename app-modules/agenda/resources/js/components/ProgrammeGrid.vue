@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { formatTime } from '@/lib/datetime';
 import { timeLabel } from './programmeTime';
 
 /**
@@ -80,14 +81,6 @@ function isCovered(rowIndex: number, column: number): boolean {
 </script>
 
 <template>
-    <!--
-    datetime-raw: cell.startsAt
-    datetime-raw: cell.endsAt
-    datetime-raw: row.time
-    A programme time is the organizer's wall clock in the event's own zone
-    (ADR-0027), already resolved by ProgrammeBuilder — printed exactly as
-    promised and never converted to the reader's. See components/programmeTime.ts.
--->
     <div class="flex flex-col gap-6">
         <!-- Design §5: the full-width band above the grid, which is also
              where an all-day item belongs. No rowspan here — this is a
@@ -168,7 +161,7 @@ function isCovered(rowIndex: number, column: number): boolean {
                             scope="row"
                             class="border-b border-border p-2 font-mono font-normal text-text-muted"
                         >
-                            {{ row.time }}
+                            {{ formatTime(row.time) }}
                         </th>
                         <template v-for="column in props.columns">
                             <td
