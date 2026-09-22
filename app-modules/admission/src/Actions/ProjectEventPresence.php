@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Enums\HubAccessEndReason;
 use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
@@ -159,13 +160,47 @@ final class ProjectEventPresence
         );
     }
 
+    /**
+     * The admission that let a person in is gone (design §4.2) — but a
+     * person can hold several for one event, a crew badge beside a bought
+     * ticket, and losing one of them is not losing the event (ruling,
+     * 2026-09-22). So the row moves over to an admission of theirs that
+     * still stands and access continues; only when none is left does it
+     * end with `revoked`. The lookup excludes the revoked admission by id
+     * rather than trusting its state, since the caller may run before or
+     * after that state change is visible.
+     */
     public function endForAdmission(string $brandId, string $admissionId, HubAccessEndReason $reason, CarbonImmutable $at): int
     {
-        return $this->end(
-            EventPresence::withoutBrandScope()->where('brand_id', $brandId)->where('admission_id', $admissionId),
-            $reason,
-            $at,
-        );
+        $ended = 0;
+
+        $rows = EventPresence::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('admission_id', $admissionId)
+            ->where('hub_access', true)
+            ->get();
+
+        foreach ($rows as $presence) {
+            $survivor = Admission::withoutBrandScope()
+                ->where('brand_id', $brandId)
+                ->where('event_id', $presence->event_id)
+                ->where('holder_user_id', $presence->user_id)
+                ->whereKeyNot($admissionId)
+                ->where('state', '!=', AdmissionState::Revoked)
+                ->orderBy('id')
+                ->first();
+
+            if ($survivor !== null) {
+                $presence->forceFill(['admission_id' => $survivor->id])->save();
+
+                continue;
+            }
+
+            $this->endRow($presence, $reason, $at);
+            $ended++;
+        }
+
+        return $ended;
     }
 
     /**
@@ -195,12 +230,22 @@ final class ProjectEventPresence
 
         $query->where('hub_access', true)->orderBy('id')->chunkById(200, function (Collection $rows) use ($reason, $at, &$ended): void {
             foreach ($rows as $presence) {
-                $presence->forceFill(['hub_access' => false, 'access_ended_reason' => $reason])->save();
-                event(new ParticipantHubAccessEnded($presence->user_id, $presence->event_id, $presence->brand_id, $reason->value, $at->toIso8601String()));
+                $this->endRow($presence, $reason, $at);
                 $ended++;
             }
         });
 
         return $ended;
+    }
+
+    /**
+     * One row loses access and the platform hears of it — the same two
+     * writes whichever path (event closed, window expired, admission
+     * revoked) decided it.
+     */
+    private function endRow(EventPresence $presence, HubAccessEndReason $reason, CarbonImmutable $at): void
+    {
+        $presence->forceFill(['hub_access' => false, 'access_ended_reason' => $reason])->save();
+        event(new ParticipantHubAccessEnded($presence->user_id, $presence->event_id, $presence->brand_id, $reason->value, $at->toIso8601String()));
     }
 }

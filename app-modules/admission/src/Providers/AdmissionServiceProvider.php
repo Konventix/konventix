@@ -12,11 +12,14 @@ use Konventix\Admission\Enums\Permission;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Admission\Events\AdmissionHolderAssigned;
 use Konventix\Admission\Events\AdmissionHolderUnassigned;
+use Konventix\Admission\Events\AdmissionRevoked;
 use Konventix\Admission\Events\CheckInRejected;
 use Konventix\Admission\Events\ClaimLinkIssued;
 use Konventix\Admission\Events\ClaimLinkRevoked;
 use Konventix\Admission\Events\ClaimLinkSent;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
+use Konventix\Admission\Listeners\EndHubAccessOnAdmissionRevoked;
+use Konventix\Admission\Listeners\EndHubAccessOnEventClosed;
 use Konventix\Admission\Listeners\FillBuyerOnRegistrationOwnershipAnnounced;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationAmended;
 use Konventix\Admission\Listeners\IssueAdmissionsOnRegistrationConfirmed;
@@ -35,6 +38,8 @@ use Konventix\Admission\Listeners\RevokeUnitsOnRegistrationQuantityReduced;
 use Konventix\Admission\Metrics\AdmissionMetrics;
 use Konventix\Admission\Support\BuildTicketManager;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
+use Konventix\Event\Events\EventCancelled;
+use Konventix\Event\Events\EventConcluded;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventDetailsUpdated;
@@ -240,6 +245,15 @@ class AdmissionServiceProvider extends ModuleServiceProvider
             AdmissionCheckedIn::class,
             ProjectPresenceOnAdmissionCheckedIn::class,
         );
+
+        // D-HUB-01, design §4.2: access ends with the event or with the
+        // ticket. A closed event empties every row of it; a revoked
+        // admission ends only its holder's — or hands the row to another
+        // admission of theirs that still stands. Both queued after commit,
+        // like the projection above.
+        Event::listen(EventConcluded::class, [EndHubAccessOnEventClosed::class, 'handleConcluded']);
+        Event::listen(EventCancelled::class, [EndHubAccessOnEventClosed::class, 'handleCancelled']);
+        Event::listen(AdmissionRevoked::class, EndHubAccessOnAdmissionRevoked::class);
 
         // Admission's own metric (ADR-0059, design doc §9): the one
         // rejection reason among CheckInRejected's nine that answers
