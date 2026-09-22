@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Actions\SendClaimLink;
 use Konventix\Admission\Console\AnnounceAdmissionOwnershipCommand;
 use Konventix\Admission\Console\CloseExpiredPresenceWindowsCommand;
+use Konventix\Admission\Console\ReplayPresenceCommand;
 use Konventix\Admission\Console\RotateEntranceSigningKeyCommand;
 use Konventix\Admission\Data\MyTicketCardData;
 use Konventix\Admission\Enums\Permission;
@@ -114,11 +115,14 @@ class AdmissionServiceProvider extends ModuleServiceProvider
         $this->registerMetrics();
 
         // The Resources read-model backfill (#292), the entrance signing
-        // key's own lifecycle command (#287) and the hub window sweep
-        // (D-HUB-01, scheduled in registerSchedule()); see each command.
+        // key's own lifecycle command (#287), the hub window sweep
+        // (D-HUB-01, scheduled in registerSchedule()) and the presence
+        // replay behind it (the rollout step and the repair, docs/operations.md);
+        // see each command.
         $this->commands([
             AnnounceAdmissionOwnershipCommand::class,
             CloseExpiredPresenceWindowsCommand::class,
+            ReplayPresenceCommand::class,
             RotateEntranceSigningKeyCommand::class,
         ]);
     }

@@ -180,6 +180,19 @@ reading either.
   `ParticipantAdmitted` and its siblings. Exported and deleted (both modes)
   by the GDPR handler: a presence without a person means nothing. Counted
   on `admission_hub_access_total{brand, outcome}`.
+  `announced_hub_access` and `announced_direction` are not state but the
+  acknowledgement of it — the values the participant events have actually
+  carried out of the module. The projection runs from a queued job and the
+  handlers behind those events are not queued, so one of them throwing fails
+  the job after the row was saved; deciding "did this transition?" from the
+  saved row would let the retry swallow the event for good. The markers move
+  only after the dispatch, so a retry re-emits exactly once.
+  `admission:replay-presence` re-emits `ParticipantAdmitted` and
+  `ParticipantPresenceChanged` for every row that still has access (`--event`
+  scopes it), and `--event=… --seed` rebuilds an event's rows from its
+  accepted check-ins — the rollout step for a release that lands mid-event,
+  when everybody already inside would otherwise have no hub
+  (`docs/operations.md`).
 - **Validity evaluation** — the single authority that decides whether a
   presented token grants entry right now.
 - **Revocation and blocking** — including house bans and lost-badge

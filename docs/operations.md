@@ -285,6 +285,26 @@ midnight while the hall is still full. Events with re-entry `once_only` or
 `unlimited` have no window at all and stay open until the event is concluded
 or cancelled.
 
+**Rolling the hub out while an event runs.** `admission_event_presence` only
+starts filling from the moment 0.9.0 is deployed, and a pill is written by a
+*scan*, not by a ticket — so a release that lands on the Saturday leaves
+everybody already inside the hall without a hub, and on an `unlimited`
+re-entry event they may never scan again to get one. Seed them from the scans
+that already happened, once, per running event:
+
+```
+vendor/bin/sail artisan admission:replay-presence --event=EVENT_ULID --seed
+```
+
+It walks that event's **accepted** check-ins oldest first through the same
+projection a live scan uses, so the rows, the day windows and the
+`ParticipantAdmitted` events come out identical; a holder whose last scan was
+`out` gets the hub with a grey dot, not a green one. It then runs the window
+sweep once, so a row rebuilt from an earlier day does not claim access it has
+already lost. Rejected scans and scans that never resolved to an admission are
+skipped, as they were on the day. Safe to run twice — every consumer upserts —
+and safe to run while the event is live.
+
 **A participant was scanned in and has no pill.** Work down, in this order:
 
 1. **Is the queue running?** Nothing about the hub happens on the door's own
@@ -308,7 +328,17 @@ or cancelled.
    written in the same job — Admission writes its row and emits
    `ParticipantAdmitted`, Platform's listener projects it there and then — so
    a presence row without a hub-access row means Platform's listener threw.
-   The log has it; the job will have been retried up to three times.
+   The log has it; the job will have been retried up to three times. That is
+   what the replay is for — it re-emits `ParticipantAdmitted` and
+   `ParticipantPresenceChanged` from the presence rows that still have access,
+   so Platform's side is rebuilt from the contract and not by hand:
+
+   ```
+   vendor/bin/sail artisan admission:replay-presence --event=EVENT_ULID
+   ```
+
+   Without `--event` it replays every admitted row on the deployment, which is
+   the blunt form of the same repair. Idempotent either way.
 5. **Both tables right, still no pill?** It is the cache. Platform answers the
    shell from **`hub-access:{brand}:{user}`** (TTL 600s, the brand's and the
    user's ULIDs). All three Admission events forget that key, so a stale
