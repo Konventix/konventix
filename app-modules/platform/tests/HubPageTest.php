@@ -25,6 +25,10 @@ function hubPageCard(string $key, int $order = 100): HubCard
     return new HubCard('platform', $key, $key, 'platform/hub/TestCard', fn (ActiveEventData $e, $u): Data => new HubPageTestPayload($e->eventId), null, $order);
 }
 
+// This file is about the page, not about the four launch contributions
+// D-HUB-05 registers at boot — see `hubIsolatedRegistry()`.
+beforeEach(fn () => hubIsolatedRegistry());
+
 it('redirects a guest to login and a non-admitted member home with a flash', function (): void {
     $this->withBrand();
     $this->get('/live')->assertRedirect('/login');

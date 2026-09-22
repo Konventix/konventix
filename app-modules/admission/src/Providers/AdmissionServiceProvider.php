@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Konventix\Admission\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Actions\SendClaimLink;
 use Konventix\Admission\Console\AnnounceAdmissionOwnershipCommand;
 use Konventix\Admission\Console\CloseExpiredPresenceWindowsCommand;
 use Konventix\Admission\Console\RotateEntranceSigningKeyCommand;
+use Konventix\Admission\Data\MyTicketCardData;
 use Konventix\Admission\Enums\Permission;
 use Konventix\Admission\Events\AdmissionCheckedIn;
 use Konventix\Admission\Events\AdmissionHolderAssigned;
@@ -22,6 +24,7 @@ use Konventix\Admission\Events\ClaimLinkSent;
 use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Gdpr\AdmissionGdprHandler;
+use Konventix\Admission\Hub\MyTicketCard;
 use Konventix\Admission\Listeners\EndHubAccessOnAdmissionRevoked;
 use Konventix\Admission\Listeners\EndHubAccessOnEventClosed;
 use Konventix\Admission\Listeners\FillBuyerOnRegistrationOwnershipAnnounced;
@@ -57,7 +60,10 @@ use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
+use Konventix\Platform\Data\ActiveEventData;
 use Konventix\Platform\Events\BrandCreated;
+use Konventix\Platform\Hub\HubCard;
+use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -321,6 +327,35 @@ class AdmissionServiceProvider extends ModuleServiceProvider
                 area: NavigationItem::AREA_ACCOUNT,
             ),
         );
+    }
+
+    /**
+     * The first thing an admitted participant wants on the day (D-HUB-05):
+     * the code the door scans. Registered unconditionally at boot like the
+     * navigation entry above — `HubRegistry` gates by module activation and
+     * viewer capability when the hub renders (ADR-0003), and this module is
+     * Core, so the gate is a formality it still goes through.
+     *
+     * No `permission`, and none is missing: the card is built from the
+     * member's *own* hub access, which is not a capability anybody can be
+     * granted — the same reasoning `registerNavigation()` gives above.
+     *
+     * `static fn`, and `MyTicketCard` resolved inside it: the registry is a
+     * singleton that outlives the request under Octane, and a closure
+     * capturing `$this` would pin this provider — with its container — in
+     * the worker's memory (`.ai/rules/providers.md`). `SlotRegistry`'s
+     * ticket-manager contribution below is the same shape.
+     */
+    protected function registerHub(): void
+    {
+        $this->app->make(HubRegistry::class)->add(new HubCard(
+            module: 'admission',
+            key: 'admission.my-ticket',
+            label: 'Mein Ticket',
+            component: 'admission/hub/MyTicketCard',
+            payload: static fn (ActiveEventData $event, Authenticatable $user): MyTicketCardData => app(MyTicketCard::class)($event, $user),
+            order: 10,
+        ));
     }
 
     /**

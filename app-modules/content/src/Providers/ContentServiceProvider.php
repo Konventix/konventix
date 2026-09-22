@@ -4,15 +4,21 @@ declare(strict_types=1);
 
 namespace Konventix\Content\Providers;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Event;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Content\Blocks\Types\LatestNewsBlock;
+use Konventix\Content\Data\AnnouncementsCardData;
 use Konventix\Content\Enums\Permission;
 use Konventix\Content\Gdpr\ContentGdprHandler;
+use Konventix\Content\Hub\AnnouncementsCard;
 use Konventix\Content\Listeners\ProjectAuthor;
 use Konventix\Identity\Events\UserProfileUpdated;
 use Konventix\Identity\Events\UserRegistered;
 use Konventix\Platform\Blocks\BlockRegistry;
+use Konventix\Platform\Data\ActiveEventData;
+use Konventix\Platform\Hub\HubCard;
+use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -104,6 +110,32 @@ class ContentServiceProvider extends ModuleServiceProvider
                 area: NavigationItem::AREA_ADMIN,
             ),
         );
+    }
+
+    /**
+     * What the organizers said today, on the live hub (D-HUB-05). Boot-time
+     * and unconditional, like the navigation entries above — `HubRegistry`
+     * gates by module activation and viewer capability when the hub renders
+     * (ADR-0003).
+     *
+     * No `permission`: `/news` is open to anyone, so a card that teases it
+     * has nothing narrower to ask for.
+     *
+     * `static fn` with `AnnouncementsCard` resolved inside it: the registry
+     * is a singleton that outlives the request under Octane, and a closure
+     * capturing `$this` would pin this provider — and its container — in the
+     * worker for good (`.ai/rules/providers.md`).
+     */
+    protected function registerHub(): void
+    {
+        $this->app->make(HubRegistry::class)->add(new HubCard(
+            module: 'content',
+            key: 'content.announcements',
+            label: 'Ankündigungen',
+            component: 'content/hub/AnnouncementsCard',
+            payload: static fn (ActiveEventData $event, Authenticatable $user): AnnouncementsCardData => app(AnnouncementsCard::class)($event, $user),
+            order: 20,
+        ));
     }
 
     /**

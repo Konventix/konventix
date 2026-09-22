@@ -19,6 +19,8 @@ use Konventix\Messaging\Templates\MessageTemplate;
 use Konventix\Messaging\Templates\TemplateRegistry;
 use Konventix\Messaging\Topics\Topic;
 use Konventix\Messaging\Topics\TopicRegistry;
+use Konventix\Platform\Hub\HubLink;
+use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -251,6 +253,33 @@ class SupportServiceProvider extends ModuleServiceProvider
                 area: NavigationItem::AREA_ACCOUNT,
             ),
         );
+    }
+
+    /**
+     * "Hilfe" on the live hub (D-HUB-05): the one thing a participant
+     * needs when everything else on the page is wrong.
+     *
+     * A `component` instead of a `url`, and the only one of the four launch
+     * contributions that needs it: the report dialog is already on the
+     * page, so the link opens it rather than navigating away from the event
+     * the person is standing at. `HelpLink.vue` calls the module's own
+     * `useSupportDialog()` — the same shared state the topbar launcher
+     * opens, so the two can never disagree about whether it is open.
+     *
+     * `order: 90`, last: help is where you go when the rest did not
+     * answer. No `permission` — reporting is open to anybody who reached
+     * the hub, and Support is kernel-style (ADR-0063), so the module gate
+     * `HubRegistry` applies passes for every brand.
+     */
+    protected function registerHub(): void
+    {
+        $this->app->make(HubRegistry::class)->add(new HubLink(
+            module: 'support',
+            key: 'support.help',
+            label: 'Hilfe',
+            component: 'support/hub/HelpLink',
+            order: 90,
+        ));
     }
 
     /**

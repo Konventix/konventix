@@ -8,6 +8,11 @@ use Inertia\Testing\AssertableInertia as Assert;
 use Konventix\Event\Events\EventHubLayoutChanged;
 use Konventix\Identity\Models\User;
 
+// Renders `/` against a hub registry this file owns: which component the
+// home route answers with is the subject, not what the four D-HUB-05
+// launch contributions build — see `hubIsolatedRegistry()`.
+beforeEach(fn () => hubIsolatedRegistry());
+
 it('renders the hub at / for an admitted member when the switch is on, and the home for everyone else', function (): void {
     $brand = $this->withBrand();
     $admitted = User::factory()->create();

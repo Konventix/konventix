@@ -54,6 +54,7 @@ abstract class ModuleServiceProvider extends ServiceProvider
         $this->registerPolicies();
         $this->registerListeners();
         $this->registerNavigation();
+        $this->registerHub();
         $this->registerFeatures();
         $this->registerBrandFeatures();
         $this->registerCookies();
@@ -218,6 +219,21 @@ abstract class ModuleServiceProvider extends ServiceProvider
      * filters by active feature at render time.
      */
     protected function registerNavigation(): void {}
+
+    /**
+     * Cards and links this module contributes to the live hub (design §5.2,
+     * D-HUB-05), registered with Platform's `HubRegistry` — the sibling of
+     * `registerNavigation()` above, and unconditional for the same reason:
+     * the registry gates by module activation and viewer capability when
+     * the hub is rendered, so a module never inspects feature state to
+     * decide whether to register (ADR-0003).
+     *
+     * A card's payload and a link's URL are closures the registry stores
+     * and `HubPage` runs per request; the registry is a singleton that
+     * outlives a request under Octane, so such a closure resolves its own
+     * scoped bindings when it runs and captures none (`.ai/rules/providers.md`).
+     */
+    protected function registerHub(): void {}
 
     /**
      * Pennant feature definitions. A gateable module defines its own feature

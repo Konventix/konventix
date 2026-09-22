@@ -41,6 +41,14 @@ declare namespace Konventix {
                 readonly invite: Konventix.Admission.Data.InviteStateData | null;
                 readonly seat: Konventix.Admission.Data.TicketSeatData | null;
             };
+            export type MyTicketCardData = {
+                readonly admissionId: string;
+                readonly eventName: string | null;
+                readonly role: string;
+                readonly qrSvg: string;
+                readonly ticketUrl: string;
+                readonly reentryHint: string;
+            };
             export type MyTicketData = {
                 readonly id: string;
                 readonly eventId: string;
@@ -564,6 +572,16 @@ declare namespace Konventix {
     }
     namespace Content {
         namespace Data {
+            export type AnnouncementItemData = {
+                readonly title: string;
+                readonly teaser: string | null;
+                readonly url: string;
+                readonly publishedAt: string;
+            };
+            export type AnnouncementsCardData = {
+                readonly entries: Konventix.Content.Data.AnnouncementItemData[];
+                readonly newsUrl: string;
+            };
             export type ContentEntryData = {
                 readonly type: Konventix.Content.Enums.ContentType;
                 readonly title: string;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Resources\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Events\AdmissionHolderAssigned;
 use Konventix\Admission\Events\AdmissionHolderUnassigned;
@@ -15,6 +16,9 @@ use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Event\Events\EventCreated;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventRescheduled;
+use Konventix\Platform\Data\ActiveEventData;
+use Konventix\Platform\Hub\HubLink;
+use Konventix\Platform\Hub\HubRegistry;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
 use Konventix\Platform\Navigation\NavigationRegistry;
@@ -172,6 +176,35 @@ class ResourcesServiceProvider extends ModuleServiceProvider
                 area: NavigationItem::AREA_ADMIN,
             ),
         );
+    }
+
+    /**
+     * "Mein Sitzplatz" on the live hub (D-HUB-05): a link, not a card —
+     * the seat picker is a page of its own (#292 §6.4) and there is
+     * nothing about a seat worth restating beside the ticket.
+     *
+     * The URL is a closure because it names the member's *admission*, which
+     * is a fact about the running event and cannot be known at boot; the
+     * registry resolves it per request. `static`, and the route built
+     * inside: `HubRegistry` is a singleton that outlives the request under
+     * Octane and would otherwise pin this provider (`.ai/rules/providers.md`).
+     *
+     * No `permission`: the picker authorises on the claim row behind the
+     * admission (see `routes/web/resources.php`), which is ownership, not a
+     * capability anybody can be granted. The module *is* gateable, so a
+     * brand without seating never sees the link — `HubRegistry` applies
+     * that gate itself (ADR-0003).
+     */
+    protected function registerHub(): void
+    {
+        $this->app->make(HubRegistry::class)->add(new HubLink(
+            module: 'resources',
+            key: 'resources.my-seat',
+            label: 'Mein Sitzplatz',
+            url: static fn (ActiveEventData $event, Authenticatable $user): string => route('resources.admission-seat.show', $event->admissionId, absolute: false),
+            icon: 'armchair',
+            order: 10,
+        ));
     }
 
     /**
