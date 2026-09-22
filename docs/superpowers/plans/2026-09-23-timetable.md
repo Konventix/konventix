@@ -447,7 +447,7 @@ it('makes a row per distinct time and spans an item across the rows it covers', 
         ->and($days[0]->rows)->toHaveCount(3)
         ->and($days[0]->rows[0]->time)->toBe('14:00')
         ->and($days[0]->rows[0]->cells[0][0]->title)->toBe('Eröffnung')
-        ->and($days[0]->rows[0]->cells[0][0]->rowSpan)->toBe(3)   // 14:00 → 15:00 spans the 14:15 row too
+        ->and($days[0]->rows[0]->cells[0][0]->rowSpan)->toBe(2)   // half-open: covers 14:00 and 14:15, not the 15:00 boundary
         ->and($days[0]->rows[1]->time)->toBe('14:15')
         ->and($days[0]->rows[1]->cells[1][0]->title)->toBe('Lötkurs')
         ->and($days[0]->rows[1]->cells[1][0]->rowSpan)->toBe(1);  // no end → one row
@@ -532,7 +532,7 @@ One query per call: `AgendaItem::query()->visible()->where('event_id', $eventId)
 Per day (`$days` in order):
 1. Select the items whose `starts_at` — or, when there is none, `ends_at` — falls on that day's `date` **in the event's timezone** (`->setTimezone($timezone)->toDateString()`).
 2. Collect the distinct local `H:i` times: every `starts_at` and every `ends_at` of the day's items, sorted. These are the rows.
-3. For each track (by `position`), place each item in the row of its start (or its end, for an end-only item) with `rowSpan` = the number of row boundaries it covers (1 when it has no end).
+3. For each track (by `position`), place each item in the row of its start (or its end, for an end-only item) with **half-open** `rowSpan` = (index of the first row at or after `ends_at`) − (index of the start row), clamped to ≥ 1; 1 when it has no end. Half-open, because rows are time *boundaries*: with Eröffnung 14:00–15:00 followed by Bandcheck 15:00–16:00 in one track, an inclusive span would make both claim the 15:00 row and break the table.
 4. Items with `track_id = null` go to `untracked`, in time order.
 5. A day with no items is omitted from the result entirely.
 
