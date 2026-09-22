@@ -12,30 +12,49 @@ use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCancelled;
 use Konventix\Event\Events\EventConcluded;
+use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Events\EventRescheduled;
 use Konventix\Event\Events\EventStarted;
 use Konventix\Event\Events\VenueAssigned;
 use Konventix\Event\Models\Event;
+use Konventix\Event\Models\EventDay;
 
 /**
- * Re-emits `EventRescheduled`, `EventDetailsUpdated` and, for an event with
- * a primary venue, `VenueAssigned` — for every event (or one), carrying the
- * row's current values. Read models in other modules project from these
- * events and therefore only know events that changed after the projection
- * existed; Resources' `resource_event_windows` was the first that needed a
- * backfill when a brand switches the module on mid-season, and Admission's
- * `admission_event_summaries` (design doc §13) is the first that needs the
- * venue too. A replay rebuilds them from the contract, which is what
- * ADR-0004 promises — the same shape as `identity:replay-profiles`.
+ * Re-emits `EventRescheduled`, `EventDetailsUpdated`, `EventDaysChanged`
+ * and, for an event with a primary venue, `VenueAssigned` — for every event
+ * (or one), carrying the row's current values. Read models in other modules
+ * project from these events and therefore only know events that changed
+ * after the projection existed; Resources' `resource_event_windows` was the
+ * first that needed a backfill when a brand switches the module on
+ * mid-season, and Admission's `admission_event_summaries` (design doc §13)
+ * is the first that needs the venue too. A replay rebuilds them from the
+ * contract, which is what ADR-0004 promises — the same shape as
+ * `identity:replay-profiles`.
  *
  * Order matters and is deliberate: the schedule first, because it is the
  * event that can *create* a projection's row (it carries the times and,
- * since S0, the brand); the details second, because they only *name* a row
- * that already exists; the venue third, because without a row already
- * standing there is nothing to attach a `LOCATION` to. Idempotent by
- * construction: every consumer upserts.
+ * since S0, the brand); the day set second, because it belongs to the
+ * schedule and every consumer of it replaces its own copy wholesale; the
+ * details third, because they only *name* a row that already exists; the
+ * venue last, because without a row already standing there is nothing to
+ * attach a `LOCATION` to. Idempotent by construction: every consumer
+ * upserts.
+ *
+ * `EventDaysChanged` is not gated on a flag, for the same reason the three
+ * around it are not: it carries the *complete current* day set rather than
+ * a transition, so re-emitting it tells a consumer what is true now and
+ * nothing about how it got there. Its only two listeners replace their own
+ * copy outright — Agenda's `ProjectEventSummary::handleDaysChanged()` and
+ * Admission's `ProjectEventDaysOnEventDaysChanged` → `ProjectEntranceEventProfile::days()`
+ * — and it implements no `AuditableEvent`, so Compliance's wildcard
+ * subscriber ignores it. Both read models had the same silent gap: without
+ * this, Agenda's `agenda_event_summaries.days` stays `NULL` and a
+ * backfilled event's public programme renders empty however many items are
+ * published, and Admission's `entrance_event_profiles.days` stays `NULL`
+ * and a door has no day calendar to resolve a scan against. An event with
+ * no day rows emits the empty set, which is its true current value.
  *
  * `VenueAssigned` is re-fired only for the event's *primary* venue
  * (`Event::primaryVenue()`) — a secondary venue is never re-emitted here,
@@ -51,7 +70,7 @@ use Konventix\Event\Models\Event;
  * surface hangs off that state — an event backfilled without it keeps a
  * `null` state and its programme has no public page at all until the next
  * transition, which for a published event may be never. Off by default,
- * because the three events above name and schedule a row while a lifecycle
+ * because the four events above name and schedule a row while a lifecycle
  * event is a transition, and re-announcing one is only safe as long as
  * every listener on the seven is idempotent. That was verified module by
  * module when the option was added (see `docs/operations.md`); anyone
@@ -67,7 +86,7 @@ final class ReplayEventDetailsCommand extends Command
         {--with-state : Also re-emit the current lifecycle event of each event, for read models that hold the lifecycle state}
         {--chunk=200 : Events per database round trip}';
 
-    protected $description = 'Re-emit EventRescheduled, EventDetailsUpdated and the primary VenueAssigned for existing events so downstream read models can be rebuilt';
+    protected $description = 'Re-emit EventRescheduled, EventDaysChanged, EventDetailsUpdated and the primary VenueAssigned for existing events so downstream read models can be rebuilt';
 
     public function handle(): int
     {
@@ -86,6 +105,8 @@ final class ReplayEventDetailsCommand extends Command
         $states = 0;
 
         $query->chunkById($chunk, function (Collection $events) use (&$replayed, &$states, $withState): void {
+            $daysByEvent = self::dayRowsOf($events);
+
             /** @var Event $event */
             foreach ($events as $event) {
                 event(new EventRescheduled(
@@ -94,6 +115,12 @@ final class ReplayEventDetailsCommand extends Command
                     endsAt: $event->ends_at->format('Y-m-d H:i:s'),
                     timezone: $event->timezone,
                     brandId: $event->brand_id,
+                ));
+
+                event(new EventDaysChanged(
+                    eventId: $event->id,
+                    brandId: $event->brand_id,
+                    days: $daysByEvent[$event->id] ?? [],
                 ));
 
                 event(new EventDetailsUpdated(
@@ -144,6 +171,41 @@ final class ReplayEventDetailsCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The day rows of a whole chunk, in `EventDaysChanged`'s payload shape
+     * and `sequence` order, keyed by event id. One query per chunk rather
+     * than one per event, and rebuilt from the same five fields
+     * `Actions\SyncEventDays` emits, so a replayed payload is
+     * indistinguishable from the one the editor fires.
+     *
+     * `withoutBrandScope()` constrained by event id, exactly as
+     * `SyncEventDays::daysOf()` does and for the same reason: `EventDay` is
+     * brand-owned, so a scoped read from a console request that happens to
+     * carry an operator context (ADR-0029) would come back empty and this
+     * command would quietly tell every consumer that every event lost its
+     * days (.ai/rules/app-modules-src.md).
+     *
+     * @param  Collection<int, Event>  $events
+     * @return array<string, list<array{day_id: string, date: string, sequence: int, label: string|null, day_ends_at: string|null}>>
+     */
+    private static function dayRowsOf(Collection $events): array
+    {
+        return EventDay::withoutBrandScope()
+            ->whereIn('event_id', $events->modelKeys())
+            ->orderBy('sequence')
+            ->get()
+            ->groupBy('event_id')
+            ->map(fn (Collection $days): array => array_values($days
+                ->map(fn (EventDay $day): array => [
+                    'day_id' => $day->id,
+                    'date' => $day->date->toDateString(),
+                    'sequence' => $day->sequence,
+                    'label' => $day->label,
+                    'day_ends_at' => $day->day_ends_at,
+                ])->all()))
+            ->all();
     }
 
     /**

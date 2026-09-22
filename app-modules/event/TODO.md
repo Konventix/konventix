@@ -87,6 +87,13 @@
       `EventRescheduled` gained a trailing nullable `brandId` for the same
       reason: a projection with no row for the event yet has no other way
       to learn which brand to insert under (Seating S0, #S0).
+      Since 0.9.0 it also re-emits `EventDaysChanged` with the event's
+      current `event_days` rows, unflagged like the three around it because
+      it carries a complete current set rather than a transition — that is
+      what fills Admission's `entrance_event_profiles.days` and Agenda's
+      `agenda_event_summaries.days` for events older than either read model
+      — and `--with-state`, which re-emits the one lifecycle event the event
+      is in now (Agenda's public programme hangs off that state).
 
 - [x] The events list defaults its brand filter from the console selection,
       cleared per list with `brand=all`. Only the brand half applies: this

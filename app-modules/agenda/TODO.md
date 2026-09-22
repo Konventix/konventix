@@ -65,4 +65,9 @@ is waiting on anything here:
       programme instead of a 404. Every listener on Event's seven lifecycle
       events was checked for idempotency first; the list is in
       `docs/operations.md`, and a new listener on one of them owes the same
-      check.
+      check. The same run now re-emits `EventDaysChanged` too, unflagged
+      (whole-branch review, I1): without it `agenda_event_summaries.days`
+      stayed `NULL` and a backfilled event's programme rendered **empty**
+      with a 200 however many items were published — the harder half of the
+      gap to notice. Its two listeners were audited the same way, and
+      Admission's `entrance_event_profiles.days` is filled by the same run.

@@ -217,7 +217,10 @@ Two commands, safe to re-run, neither one specific to a single event:
   after backfilling a venue onto an event that predates this deploy — the
   command does not run itself. Since #292 the same run also carries each
   event's `banner_media_id` into both summaries.
-  Since 0.9.0 it also takes `--with-state`, which re-emits each event's
+  Since 0.9.0 the run also re-emits `EventDaysChanged` with each event's
+  current day set, which fills Admission's `entrance_event_profiles.days`
+  and Agenda's `agenda_event_summaries.days` for events that predate those
+  read models; and it takes `--with-state`, which re-emits each event's
   current lifecycle event — the extra step Agenda's programme needs, and
   nothing the two ticket summaries here care about. See **Programme**.
 - `vendor/bin/sail artisan admission:announce-ownership` — re-emits the
@@ -452,13 +455,17 @@ holding the slug the public URL resolves by, the name, the timezone, the day
 set and the **lifecycle state** — projected from Event's contract events
 (ADR-0004: Agenda may not read Event's tables). An event that was created
 before this module shipped has emitted none of those since, so after the
-deploy its row is missing or its `state` is `null` — and a `null` state is
-"nobody has told us yet", which the public page refuses. The symptom is
-exact: the editor works, the organizer publishes items, and
-`/events/{slug}/programm` answers **404** for a published event whose
-programme plainly exists. It stays that way until that event's next
-lifecycle transition, which for an event that is already published may be
-never.
+deploy its row is missing, and a row built by a replay that carries no day
+set has `days` `NULL` while its `state` is `null` too. Both gaps are
+visible, and they look nothing alike. A `null` state is "nobody has told us
+yet", which the public page refuses: the editor works, the organizer
+publishes items, and `/events/{slug}/programm` answers **404** for a
+published event whose programme plainly exists. A `NULL` day set is worse to
+diagnose, because the page answers **200** — the programme is built day by
+day, so with no days there are no rows, and the reader gets "Für diese
+Veranstaltung ist noch kein Programm veröffentlicht." over a programme in
+which every item is published. Either stays that way until somebody touches
+the event again in Event's console.
 
 So after activating `agenda` for a brand whose events predate it, run:
 
@@ -466,16 +473,34 @@ So after activating `agenda` for a brand whose events predate it, run:
 vendor/bin/sail artisan event:replay-details --with-state
 ```
 
-`--with-state` is what makes this a fix rather than a half one: without it
-the run backfills the slug, name, timezone and venue, and leaves the state
-`null`. It re-emits the **one** lifecycle event that says what state each
-event is in now — `EventAnnounced`, `EventPublished`, `EventStarted`,
+That run backfills the slug, the name, the timezone, the venue **and the day
+set**: `EventDaysChanged` is re-emitted for every event from its current
+`event_days` rows, with no flag, because it carries the complete current set
+rather than a transition — the same reason the schedule and the details need
+none. Admission's `entrance_event_profiles.days` is filled by the same
+event, so a door of a pre-existing event gets its day calendar out of this
+run too, and an event with no days emits the empty set, which is its true
+current value.
+
+`--with-state` is what the *state* needs, and it is the flag that closes the
+404: it re-emits the **one** lifecycle event that says what state each event
+is in now — `EventAnnounced`, `EventPublished`, `EventStarted`,
 `EventConcluded`, `EventCancelled` or `EventArchived` — never the path that
 led there, and nothing at all for a draft, which has no lifecycle event and
 needs none. The stored timestamps (published, cancelled, concluded,
 archived) are replayed exactly; `Announced` and `Running` keep no timestamp
 column anywhere, so those two fall back to the row's `updated_at`, which no
 consumer reads for anything but display.
+
+`EventDaysChanged` was held to the same standard before it joined the
+unflagged three: it has exactly two registered listeners — Agenda's
+`ProjectEventSummary::handleDaysChanged()` and Admission's
+`ProjectEventDaysOnEventDaysChanged` → `ProjectEntranceEventProfile::days()`
+— and both replace their own copy of the day set outright, so a second pass
+writes the same row. It implements no `AuditableEvent`, so Compliance's
+wildcard subscriber ignores it, and no metric is recorded on it. **A new
+listener on `EventDaysChanged` owes the same check**, exactly as one on the
+seven lifecycle events does.
 
 Safe to re-run, and safe with the flag: every listener registered on those
 seven events was checked for idempotency before the option existed —
@@ -489,8 +514,9 @@ implements `AuditableEvent`. **Adding a listener to one of those seven
 events puts it on this list** — if it is not idempotent, this flag stops
 being safe and the note belongs here.
 
-Without the flag the command is unchanged and still the right one for the
-ticket read models (see **Backfilling the ticket's read models**).
+Without the flag the command touches no lifecycle state and is still the
+right one for the ticket read models (see **Backfilling the ticket's read
+models**), which now get the day set out of the same run.
 
 ## The brand's Reverb credentials
 

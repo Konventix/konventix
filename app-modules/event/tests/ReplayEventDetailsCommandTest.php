@@ -10,6 +10,7 @@ use Konventix\Event\Events\EventAnnounced;
 use Konventix\Event\Events\EventArchived;
 use Konventix\Event\Events\EventCancelled;
 use Konventix\Event\Events\EventConcluded;
+use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Events\EventDetailsUpdated;
 use Konventix\Event\Events\EventPublished;
 use Konventix\Event\Events\EventRescheduled;
@@ -17,6 +18,7 @@ use Konventix\Event\Events\EventStarted;
 use Konventix\Event\Events\EventUnpublished;
 use Konventix\Event\Events\VenueAssigned;
 use Konventix\Event\Models\Event as EventModel;
+use Konventix\Event\Models\EventDay;
 use Konventix\Event\Models\Venue;
 
 /**
@@ -70,12 +72,15 @@ it('re-emits the schedule and the details of every event with its current values
     );
 });
 
-it('emits the schedule before the details, so a window exists before it is named', function (): void {
+it('emits the schedule, then the days, then the details, so a window exists before it is named', function (): void {
     EventModel::factory()->create();
 
     $order = [];
     Event::listen(EventRescheduled::class, function () use (&$order): void {
         $order[] = 'rescheduled';
+    });
+    Event::listen(EventDaysChanged::class, function () use (&$order): void {
+        $order[] = 'days';
     });
     Event::listen(EventDetailsUpdated::class, function () use (&$order): void {
         $order[] = 'details';
@@ -83,7 +88,7 @@ it('emits the schedule before the details, so a window exists before it is named
 
     $this->artisan('event:replay-details')->assertSuccessful();
 
-    expect($order)->toBe(['rescheduled', 'details']);
+    expect($order)->toBe(['rescheduled', 'days', 'details']);
 });
 
 it('replays a single event with --event', function (): void {
@@ -132,6 +137,53 @@ it('re-emits VenueAssigned for the primary venue and nothing for an event withou
             && $e->isPrimary === true,
     );
     expect($withoutVenue)->not->toBeNull(); // the second event exists; VenueAssigned fired only once above.
+});
+
+/**
+ * `EventDaysChanged` is replayed unconditionally, like the schedule and the
+ * details and unlike the lifecycle events behind `--with-state`: it carries
+ * the complete current day set rather than a transition, and both its
+ * consumers replace their own copy of it wholesale. Without it, Agenda's
+ * `agenda_event_summaries.days` and Admission's
+ * `entrance_event_profiles.days` stay `NULL` for every event that predates
+ * their module — a public programme that renders empty however many items
+ * are published, and a door with no calendar to resolve a scan against.
+ */
+it('re-emits the day set in sequence order, with the fields SyncEventDays sends', function (): void {
+    $event = EventModel::factory()->create();
+    // Created out of order on purpose: the payload's order is the day
+    // `sequence`, never the insertion order.
+    EventDay::factory()->forEvent($event, 2)->create(['date' => '2027-06-16', 'label' => 'Samstag', 'day_ends_at' => '03:00']);
+    EventDay::factory()->forEvent($event, 1)->create(['date' => '2027-06-15', 'label' => 'Freitag']);
+
+    Event::fake([EventDaysChanged::class]);
+
+    $this->artisan('event:replay-details')->assertSuccessful();
+
+    Event::assertDispatchedTimes(EventDaysChanged::class, 1);
+    Event::assertDispatched(
+        EventDaysChanged::class,
+        fn (EventDaysChanged $e): bool => $e->eventId === $event->id
+            && $e->brandId === $event->brand_id
+            && count($e->days) === 2
+            && $e->days[0]['date'] === '2027-06-15'
+            && $e->days[0]['sequence'] === 1
+            && $e->days[0]['label'] === 'Freitag'
+            && $e->days[0]['day_ends_at'] === null
+            && $e->days[1]['date'] === '2027-06-16'
+            && $e->days[1]['sequence'] === 2
+            && $e->days[1]['day_ends_at'] === '03:00',
+    );
+});
+
+it('re-emits an empty day set for an event that has none, because that is its current set', function (): void {
+    EventModel::factory()->create();
+
+    Event::fake([EventDaysChanged::class]);
+
+    $this->artisan('event:replay-details')->assertSuccessful();
+
+    Event::assertDispatched(EventDaysChanged::class, fn (EventDaysChanged $e): bool => $e->days === []);
 });
 
 it('does not re-emit VenueAssigned for a venue that is not primary', function (): void {
