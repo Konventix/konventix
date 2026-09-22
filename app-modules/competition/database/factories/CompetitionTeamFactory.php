@@ -26,6 +26,10 @@ class CompetitionTeamFactory extends Factory
             // Not fake()->words(): it is typed array|string whatever the flag,
             // and the unique index needs a plain string anyway.
             'name' => 'Team '.Str::upper(Str::random(6)),
+            // Every team carries one (design §5.2); the column is not
+            // nullable, so a factory without it fails at insert rather than
+            // in the test that reads it.
+            'invite_code' => CompetitionTeam::generateInviteCode(),
         ];
     }
 

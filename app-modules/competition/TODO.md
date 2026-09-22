@@ -10,25 +10,74 @@ Design settled 2026-09-18 in
 `docs/superpowers/specs/2026-09-18-competition-design.md` (D-CMP-15..25,
 ADR-0062). The build order for #32, each item its own merge request:
 
-- [ ] Lifecycle and admin CRUD (D-CMP-15): `CompetitionStatus` with enforced
-      transitions and `SignupClosed`; drop `competitions.format` in favour
-      of the first stage; `starts_at`, `max_entrants`, description and
-      rules, the check-in and result knobs; discipline CRUD; the admin
-      pages behind `ManageDisciplines` / `ManageCompetitions`.
+- [x] Lifecycle and admin CRUD (D-CMP-15, #296): `CompetitionStatus` with
+      enforced transitions and `SignupClosed`; `competitions.format`
+      dropped in favour of the first stage; `starts_at`, `max_entrants`,
+      description and rules, the check-in and result knobs; discipline
+      CRUD; the admin pages behind `ManageDisciplines` /
+      `ManageCompetitions`. Left for the slices that own them:
+      `EntrantState::Incomplete` exists but nothing moves an entrant into
+      it yet (§5.4 is signup's), the scheduler tick that closes signup when
+      `signup_closes_at` passes and opens it when the window arrives (§4),
+      and the automatic `Finished` when the last stage's final result lands
+      (§8).
 - [ ] Signup (D-CMP-17): captain `role`, `invite_code`, the interested list,
       `incomplete` entrants, `FillIncompleteEntrant` / `DeclineIncompleteEntrant`
       at close, `/my/tournaments` and join-by-code; `ParticipantProfile`
       from `UserProfileUpdated`.
 - [ ] Check-in (D-CMP-18): the presence read model from Admission's events,
       `CheckInEntrant` / `UndoCheckIn`, self-service window, desk list.
-- [ ] Leaderboard format (D-CMP-16): `competition_score_entries`,
-      `LeaderboardSettings`, `LeaderboardStandingsCalculator`, submit and
-      verify Actions; `entry_source` / `advance_count` on stages and the
-      `SeedSource` seam, single stage in the UI.
-- [ ] Results (D-CMP-19): `match_result_reports`, report / confirm /
-      dispute / resolve Actions, proofs through the media library, the
-      cascading correction that voids downstream results, and
-      `competition_match_history`.
+- [x] Leaderboard format (D-CMP-16, #299): `competition_score_entries`,
+      `LeaderboardSettings`, `LeaderboardStandingsCalculator`,
+      `SubmitScoreEntry` / `VerifyScoreEntry`; `entry_source` /
+      `advance_count` on stages and the `SeedSource` seam
+      (`SignupField` + `RandomSeedSource` / `ManualSeedSource`,
+      `SeedStage`), plus `RegenerateBracket` — §7.5's "regeneration is
+      allowed until the first result", which `GenerateBracket`'s flat
+      refusal could not express. `StageFormat` is now the closed set of
+      stage formats, since `FormatRegistry` holds only the five that draw a
+      bracket and a leaderboard draws none. Left for the slices that own
+      them: rejecting a score entry with a note and the dispute it shares a
+      screen with (§8.3 is results'), the desk's verification queue and the
+      seed-order drag (§9 is the desk's), the `Tournament Desk` role (§11),
+      and GDPR export plus the `competition_score_entries_unverified`
+      metric for the new table (§13).
+- [x] Results (D-CMP-19, #300): `match_result_reports` and
+      `competition_match_history`; `ReportMatchResult` / `ConfirmMatchResult`
+      / `DisputeMatchResult` / `ResolveDispute`, plus `RejectScoreEntry`,
+      which §8.3 owed and the leaderboard slice left here; the cascading
+      correction that re-routes the progression graph and voids every
+      downstream result played on the old one, with
+      `finished_event_emitted_at` surviving the void so a replay emits no
+      second `MatchFinished` (D-CMP-12). **Both of §8.1's knobs are now
+      enforced in Actions, not only offered on the form**: `proof_policy`
+      through `Proofs\ProofGate`, and `result_submission_mode`, which nothing
+      had checked — a `desk_only` competition now refuses a participant score
+      entry as well as a participant report.
+      Left for the slices that own them: the console dialogs and the
+      participant match page that drive all of this (§9, §10 — the Actions
+      and the upload endpoint are here, no screen is); the `Tournament Desk`
+      role and the capability checks at the routes (§11); GDPR export for
+      the two new tables (erasure is done: `CompetitionGdprHandler` nulls
+      every user ULID on score entries, reports and history rows and keeps
+      the rows) plus `competition_disputes_open`,
+      its 30-minute alert and the dashboard row (§13); `MatchCancelled` and
+      `MatchRescheduled` as events — `ScheduleMatch` writes the history rows
+      but emits neither, and a match cancellation has no Action at all.
+- [ ] **Owed by Platform before proofs ship (design §8.7).** The media
+      library takes the upload — `StoreProofImage` hands the file to
+      `StoreMediaUpload` (ADR-0035) after checking the policy and the roster,
+      so a `none` competition refuses before a byte is stored. What it does
+      **not** have is the read half §8.7 asks for: a private disk and
+      per-object read authorization, "readable only by the two sides and the
+      desk through a proxied route". `MediaFileController` is deliberately
+      unauthenticated and brand-agnostic, and there is no per-item privacy
+      flag. Until Platform grows one, a proof is readable by anyone holding
+      its ULID. §8.7 is explicit that this is a Platform change and not a
+      Competition workaround; recorded in the design's §14. The upload route
+      (`competition.proofs.store`) is **live ahead of it**, behind `auth` and
+      `throttle:6,1`; the participant screens must not offer an upload
+      control until the read half lands.
 - [ ] Desk and public pages (D-CMP-20..22): seed order, generate / reset,
       per-round scheduling, the ported canvas bracket with its table view,
       event tournament index, competition, match and team pages, polling

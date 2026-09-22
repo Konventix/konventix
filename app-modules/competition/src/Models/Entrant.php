@@ -10,7 +10,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Konventix\Competition\Database\Factories\EntrantFactory;
+use Konventix\Competition\Enums\CheckInMode;
 use Konventix\Competition\Enums\EntrantState;
+use Konventix\Competition\Enums\WithdrawalReason;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
@@ -25,6 +27,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property EntrantState $state
  * @property int|null $seed
  * @property Carbon|null $checked_in_at
+ * @property WithdrawalReason|null $withdrawal_reason
+ * @property Carbon|null $left_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -35,12 +39,86 @@ class Entrant extends Model
     /** @use HasFactory<EntrantFactory> */
     use HasFactory, HasUlids;
 
-    protected $fillable = ['competition_id', 'competition_team_id', 'state', 'seed', 'checked_in_at'];
+    protected $fillable = [
+        'competition_id', 'competition_team_id', 'state', 'seed', 'checked_in_at',
+        'withdrawal_reason', 'left_at',
+    ];
 
     /** Whether this entrant still occupies a place in the competition. */
     public function isActive(): bool
     {
         return in_array($this->state, [EntrantState::Registered, EntrantState::CheckedIn], true);
+    }
+
+    /**
+     * Whether this entrant counts as **ready** under a competition's check-in
+     * mode (design §6): with `none` a registered entrant is ready and there
+     * is nothing to do; otherwise readiness means checked in. Every page that
+     * says "ready" asks this, and bracket generation seeds exactly these
+     * (§7.5).
+     */
+    public function isReadyFor(CheckInMode $mode): bool
+    {
+        if (! $mode->requiresCheckIn()) {
+            return $this->isActive();
+        }
+
+        return $this->state === EntrantState::CheckedIn;
+    }
+
+    /**
+     * The states that hold a slot against the participant limit (design
+     * §5.4). Wider than `isActive()` on purpose: an `incomplete` roster is
+     * not in the bracket and not playable, but it keeps its place until the
+     * organizer fills it from the interested list or declines it — otherwise
+     * the fill-up at signup close would have nothing left to fill.
+     *
+     * @return list<string>
+     */
+    public static function slotHoldingStates(): array
+    {
+        return [
+            EntrantState::Incomplete->value,
+            EntrantState::Registered->value,
+            EntrantState::CheckedIn->value,
+        ];
+    }
+
+    /**
+     * How many entrants hold a slot in a competition — the number the
+     * participant limit is measured against and the one `SignupClosed`
+     * carries (design §4, §5.4).
+     *
+     * Escapes `BrandScope` and states the brand itself: the console runs on
+     * the admin host, where the scope hardens to zero rows (ADR-0029), and a
+     * relation count would re-apply it (.ai/rules/app-modules-src.md).
+     */
+    public static function countSlotHolders(string $brandId, string $competitionId): int
+    {
+        return self::withoutBrandScope()
+            ->where('brand_id', $brandId)
+            ->where('competition_id', $competitionId)
+            ->whereIn('state', self::slotHoldingStates())
+            ->count();
+    }
+
+    /**
+     * The roster behind this entrant, as plain user ULIDs and oldest member
+     * first — what `EntrantRegistered`, `EntrantWithdrawn` and
+     * `MatchScheduled` carry, and what a notification is addressed to.
+     *
+     * Read through the team rather than stored on the entrant: a join or a
+     * leave changes the roster without touching the entry, and a copy here
+     * would go stale the first time somebody used the invite code.
+     *
+     * @return list<string>
+     */
+    public function memberUserIds(): array
+    {
+        /** @var CompetitionTeam|null $team */
+        $team = CompetitionTeam::withoutBrandScope()->whereKey($this->competition_team_id)->first();
+
+        return $team?->memberUserIds() ?? [];
     }
 
     /**
@@ -64,7 +142,13 @@ class Entrant extends Model
      */
     protected function casts(): array
     {
-        return ['state' => EntrantState::class, 'seed' => 'integer', 'checked_in_at' => 'datetime'];
+        return [
+            'state' => EntrantState::class,
+            'seed' => 'integer',
+            'checked_in_at' => 'datetime',
+            'withdrawal_reason' => WithdrawalReason::class,
+            'left_at' => 'datetime',
+        ];
     }
 
     protected static function newFactory(): EntrantFactory

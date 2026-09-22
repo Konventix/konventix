@@ -29,7 +29,9 @@ the flows.
   text, its check-in and result-submission policy, and its **lifecycle
   status** (D-CMP-15): `Draft → Published → SignupClosed → Running →
   Finished`, `Cancelled` from anything but `Finished`, transitions enforced
-  by the enum. `SignupClosed` exists so an organizer can close signups and
+  by the enum (`Published → Draft` unpublishes, `SignupClosed → Published`
+  reopens). The **format is not here**: it belongs to the stage (design
+  §7.1), and `competitions.format` was dropped with the lifecycle. `SignupClosed` exists so an organizer can close signups and
   resolve incomplete teams before anything starts. Where the discipline is a
   video game, `Discipline` references the game by GameOps game ULID and is
   itself the source of record for team size, duration hints and draws
@@ -43,6 +45,21 @@ the flows.
 - **Interest** — a person's public "interested to play" entry on a
   competition, shown next to the entered teams so people can find each
   other, and the organizer's pool for filling incomplete teams (D-CMP-17).
+- **Results, reports and disputes** (D-CMP-19, design §8) — what each side
+  *claims* happened (`match_result_reports`, keyed by slot position so a
+  correction that re-routes entrants cannot invalidate a claim's keys), the
+  dispute two disagreeing claims open, and the desk's resolution with its
+  **mandatory** note. A recorded result is changed only by a correction, and a
+  correction **cascades**: downstream slots are re-routed through the
+  progression graph and every downstream match that was played on the old
+  result is voided. `finished_event_emitted_at` survives a void, so a replayed
+  match emits no second `MatchFinished` (D-CMP-12).
+- **Match history** (`competition_match_history`, design §8.6) — an
+  append-only timeline per match: scheduled, rescheduled, reported, confirmed,
+  disputed, resolved, recorded, corrected, voided by correction, cancelled,
+  plus `checked_in` and GameOps' `session_live` / `session_failed`, which are
+  reserved and written by nothing in 0.9. This is #116's "nachvollziehbare
+  Historie pro Match" without the chat, shown to both sides and to the desk.
 - **ParticipantProfile** — the module's read model of a person as a competitor
   (display name, tag), populated from Identity events (ADR-0004). Competition
   never reads Identity's `User` model.
@@ -285,10 +302,26 @@ makes participant submission safe.
 ### How a plan becomes a bracket
 
 Generators are pure and never touch the database. `GenerateBracket` is the only
-writer: it resolves the stage's entrants into seed order, asks the registry for
-the format, and persists the returned plan as matches, slots, and
-`match_connections` edges. It refuses to regenerate a stage rather than
-orphaning recorded results.
+writer: it takes the stage's field in seed order from `SignupField`, asks the
+registry for the format, and persists the returned plan as matches, slots, and
+`match_connections` edges. It refuses to run twice rather than orphaning
+recorded results.
+
+**Seeding is its own step** (D-CMP-20, design §7.3/§7.5). `SeedStage` asks a
+`SeedSource` for the order and writes `entrants.seed`; `SeedSourceRegistry`
+resolves the stage's `entry_source` to one. `RandomSeedSource` is the default
+and `ManualSeedSource` carries the desk's drag order as an explicit override.
+`PreviousStageSeedSource` — the one that reads the preceding stage's standings
+and takes its `advance_count` — is the reason the seam exists and is not built:
+adding it is one `register()` call, and no caller changes.
+
+**Regeneration is allowed until the first result.** `RegenerateBracket` deletes
+a stage's matches, slots, edges and standings and draws it again, so a desk
+that spots a wrong seeding fixes it instead of living with it. Both it and
+`SeedStage` refuse once any match of the stage is finished, has a winner, or
+carries a score — seeds break ties in every calculator, so renumbering after a
+result rewrites the table the results produced. Regenerating does **not**
+re-seed: a hand-dragged order survives the redraw.
 
 `AdvanceBracket` walks those edges: given a finished match it moves the winner
 (and, in double elimination, the loser) into the slot the graph names. It is
@@ -316,11 +349,22 @@ GameOps is built against; the remaining rows are **proposed**.
 | `MatchResultCorrected` *(proposed, decision log Round 6, D-CMP-12)* | The tournament desk corrects an already-recorded result | `match_id`, `competition_id`, `previous_winner_entrant_id`, `winner_entrant_id`, `scores` (scalars per entrant), `corrected_by_user_id`, `corrected_at` |
 | `MatchCancelled` *(proposed)* | A scheduled match will not be played | `match_id`, `competition_id`, `cancelled_at`, `reason` |
 | `MatchRescheduled` *(proposed)* | A scheduled match moves in time | `match_id`, `competition_id`, `previous_scheduled_at`, `scheduled_at` |
-| `CompetitionPublished` *(proposed)* | A competition becomes publicly visible | `competition_id`, `event_id`, `game_id`, `game_mode`, `max_participants`, `team_size` |
-| `SignupOpened` / `SignupClosed` *(proposed)* | The signup window opens or closes | `competition_id`, `event_id`, `opened_at` / `closed_at`, `entrant_count` |
+| `CompetitionPublished` (D-CMP-15) | A competition becomes publicly visible | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `name`, `status`, `starts_at`, `at` |
+| `CompetitionRescheduled` (D-CMP-15) | An announced competition's `starts_at` moves | `competition_id`, `event_id`, `brand_id`, `previous_starts_at`, `starts_at`, `at` |
+| `SignupOpened` / `SignupClosed` (D-CMP-15) | Signup opens (publish into an open window, reopen, scheduler tick) or shuts | `competition_id`, `event_id`, `brand_id`, `entrant_count`, `at` |
 | `EntrantRegistered` / `EntrantWithdrawn` / `EntrantCheckedIn` | An entrant joins, leaves, or is checked in | `entrant_id`, `competition_id`, `team_id`, `member_user_ids` (list of ULIDs), `reason` (withdrawn) |
-| `CompetitionStarted` / `CompetitionFinished` / `CompetitionCancelled` (D-CMP-15) | The lifecycle moves | `competition_id`, `event_id`, `discipline_id`, `status`, `at` |
-| `MatchResultReported` / `MatchDisputed` / `MatchDisputeResolved` (D-CMP-19) | A side reports; the sides disagree; the desk decides | `match_id`, `competition_id`, `entrant_id`, `user_id`, `at` |
+| `CompetitionStarted` / `CompetitionFinished` / `CompetitionCancelled` (D-CMP-15) | The lifecycle moves | `competition_id`, `event_id`, `discipline_id`, `brand_id`, `status`, `at` |
+| `MatchResultReported` / `MatchDisputed` / `MatchDisputeResolved` (D-CMP-19) | A side reports; the sides disagree; the desk decides | `match_id`, `competition_id`, `brand_id`, `entrant_id`, `user_id`, `at` |
+
+Competition's own `MatchResultReported` is **not** GameOps' proposed event of
+the same name under "Consumes": same words, opposite direction. A participant's
+claim waits for the other side (§8.2); a handler's reported score records
+directly (D-CMP-11).
+
+The resolution note of `MatchDisputeResolved` is deliberately **not** on the
+payload. §8.4 requires it and both sides are shown it, but it is free text one
+participant wrote about another, and a contract event is read by modules with
+no business holding it. It lives one row away, in `competition_match_history`.
 
 ## Consumes
 

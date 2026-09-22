@@ -6,10 +6,13 @@ namespace Konventix\Competition\Actions;
 
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
+use Konventix\Competition\Data\MatchHistoryPayload;
+use Konventix\Competition\Enums\MatchHistoryKind;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Events\MatchScheduled;
 use Konventix\Competition\Exceptions\IllegalMatchStateTransitionException;
 use Konventix\Competition\Models\CompetitionMatch;
+use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchSlot;
 
 /**
@@ -24,6 +27,16 @@ use Konventix\Competition\Models\MatchSlot;
  * anything that is not a video game (ADR-0024). GameOps hearing a scheduled
  * quiz simply finds nothing to provision, which is the plugin-shaped
  * behaviour the ADR is after.
+ *
+ * The rosters travel with it (#297): a server is configured with players, and
+ * GameOps resolving entrant ids back into people would mean reading this
+ * module, which is the direction the dependency must never run.
+ *
+ * Two of §8.6's history kinds are written here: `scheduled` the first time a
+ * match is given a time, `rescheduled` when an existing one moves. They are
+ * different rows because they are different news to the people playing — "you
+ * are on at 14:00" and "you are no longer on at 14:00" — and the timeline is
+ * shown to the sides, not only to the desk.
  */
 final class ScheduleMatch
 {
@@ -32,15 +45,35 @@ final class ScheduleMatch
      */
     private const array LEGAL_FROM_STATES = [MatchState::Pending, MatchState::Scheduled];
 
-    public function handle(CompetitionMatch $match, CarbonInterface $at, ?string $gameMode = null): CompetitionMatch
-    {
-        return DB::transaction(function () use ($match, $at, $gameMode): CompetitionMatch {
+    public function __construct(
+        private readonly RecordMatchHistory $history,
+    ) {}
+
+    public function handle(
+        CompetitionMatch $match,
+        CarbonInterface $at,
+        ?string $gameMode = null,
+        ?string $scheduledByUserId = null,
+    ): CompetitionMatch {
+        return DB::transaction(function () use ($match, $at, $gameMode, $scheduledByUserId): CompetitionMatch {
             $this->guardTransition($match);
 
             $competition = $match->competition()->withoutGlobalScopes()->firstOrFail();
             $discipline = $competition->discipline()->withoutGlobalScopes()->firstOrFail();
 
+            $previouslyAt = $match->scheduled_at;
+
             $match->forceFill(['state' => MatchState::Scheduled, 'scheduled_at' => $at])->save();
+
+            $this->history->handle(
+                $match,
+                $previouslyAt === null ? MatchHistoryKind::Scheduled : MatchHistoryKind::Rescheduled,
+                new MatchHistoryPayload(
+                    scheduledAt: $at->toIso8601String(),
+                    previousScheduledAt: $previouslyAt?->toIso8601String(),
+                ),
+                $scheduledByUserId,
+            );
 
             $entrantIds = MatchSlot::withoutBrandScope()
                 ->where('competition_match_id', $match->id)
@@ -49,7 +82,7 @@ final class ScheduleMatch
                 ->pluck('entrant_id')
                 ->all();
 
-            event(new MatchScheduled(
+            $scheduled = new MatchScheduled(
                 matchId: $match->id,
                 competitionId: $competition->id,
                 eventId: $competition->event_id,
@@ -60,10 +93,39 @@ final class ScheduleMatch
                 round: $match->round,
                 scheduledAt: $at->toIso8601String(),
                 entrantIds: array_values(array_map(strval(...), $entrantIds)),
-            ));
+                memberUserIds: $this->rostersFor(array_values($entrantIds)),
+            );
+
+            DB::afterCommit(static function () use ($scheduled): void {
+                event($scheduled);
+            });
 
             return $match->refresh();
         });
+    }
+
+    /**
+     * The roster behind each side, keyed by entrant ULID. `withoutBrandScope()`
+     * because a schedule may be written from a queue worker or the admin host,
+     * where the scope reads zero rows (ADR-0029).
+     *
+     * @param  list<mixed>  $entrantIds
+     * @return array<string, list<string>>
+     */
+    private function rostersFor(array $entrantIds): array
+    {
+        $rosters = [];
+
+        foreach ($entrantIds as $entrantId) {
+            /** @var Entrant|null $entrant */
+            $entrant = Entrant::withoutBrandScope()->whereKey((string) $entrantId)->first();
+
+            if ($entrant !== null) {
+                $rosters[(string) $entrantId] = $entrant->memberUserIds();
+            }
+        }
+
+        return $rosters;
     }
 
     private function guardTransition(CompetitionMatch $match): void

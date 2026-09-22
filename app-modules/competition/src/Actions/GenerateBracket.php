@@ -8,9 +8,8 @@ use Illuminate\Support\Facades\DB;
 use Konventix\Competition\Brackets\FormatRegistry;
 use Konventix\Competition\Brackets\Plan\BracketPlan;
 use Konventix\Competition\Brackets\PlanWriter;
-use Konventix\Competition\Enums\EntrantState;
-use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\Stage;
+use Konventix\Competition\Seeding\SignupField;
 use RuntimeException;
 
 /**
@@ -25,13 +24,16 @@ use RuntimeException;
  * Refuses to run twice. Regenerating a bracket mid-tournament would orphan
  * results that already exist, so it is an explicit refusal rather than a
  * silent truncate — a destructive redraw should be a deliberate act with its
- * own Action, not a side effect of clicking generate again.
+ * own Action, not a side effect of clicking generate again. That Action is
+ * `RegenerateBracket` (design §7.5), and it is allowed until the first
+ * recorded result.
  */
 final class GenerateBracket
 {
     public function __construct(
         private readonly FormatRegistry $formats,
         private readonly PlanWriter $writer,
+        private readonly SignupField $field,
     ) {}
 
     public function handle(Stage $stage): BracketPlan
@@ -49,19 +51,12 @@ final class GenerateBracket
 
             // Seed order is the entrants' seeding, with unseeded entrants
             // falling in behind in a stable order — a bracket must be
-            // reproducible from the same field.
-            $entrantIds = Entrant::withoutBrandScope()
-                ->where('brand_id', $stage->brand_id)
-                ->where('competition_id', $stage->competition_id)
-                ->whereIn('state', [EntrantState::Registered->value, EntrantState::CheckedIn->value])
-                ->orderByRaw('seed IS NULL')
-                ->orderBy('seed')
-                ->orderBy('created_at')
-                ->pluck('id')
-                ->all();
-
+            // reproducible from the same field. `SignupField` owns the two
+            // rules that decide it (design §6, §7.5) so that this and the
+            // seed sources that *order* the same field cannot disagree about
+            // who is in it.
             $plan = $generator->generate(
-                array_values(array_map(strval(...), $entrantIds)),
+                $this->field->entrantIds($stage),
                 array_merge($generator->defaults(), $stage->settings ?? []),
             );
 

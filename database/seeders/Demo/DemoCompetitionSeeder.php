@@ -13,6 +13,7 @@ use Konventix\Competition\Actions\EnterCompetition;
 use Konventix\Competition\Actions\GenerateBracket;
 use Konventix\Competition\Actions\RecordMatchResult;
 use Konventix\Competition\Actions\ScheduleMatch;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\DisciplineKind;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Models\Competition;
@@ -145,7 +146,6 @@ final class DemoCompetitionSeeder
                 'discipline_id' => $disciplineId,
                 'name' => $name,
                 'slug' => $slug,
-                'format' => 'single_elimination',
             ]);
 
         if ($this->seedEntrants($competition, $players)->count() < self::FIELD_SIZE) {
@@ -158,6 +158,13 @@ final class DemoCompetitionSeeder
         ]);
 
         $this->generateBracket->handle($stage);
+
+        // Entering needs an open signup (`EnterCompetition`), so the field
+        // is assembled while the competition is still `Published` and the
+        // state follows the bracket rather than leading it (design §4). The
+        // demo writes it directly: the lifecycle Actions would emit contract
+        // events for a tournament that is being fabricated, not run.
+        $competition->forceFill(['status' => CompetitionStatus::Running])->save();
 
         return $stage;
     }

@@ -14,6 +14,15 @@ namespace Konventix\Competition\Enums;
  */
 enum EntrantState: string
 {
+    /**
+     * A roster below the discipline's `team_size` (D-CMP-17, design §5.4).
+     * It holds a slot against the participant limit — otherwise the fill-up
+     * at signup close would have nothing to fill — and `start` refuses while
+     * one exists. The roster Actions that move an entrant in and out of this
+     * state arrive with §5's own slice; the lifecycle only has to refuse.
+     */
+    case Incomplete = 'incomplete';
+
     case Registered = 'registered';
     case CheckedIn = 'checked_in';
     case Withdrawn = 'withdrawn';

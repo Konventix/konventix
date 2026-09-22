@@ -19,11 +19,19 @@ namespace Konventix\Competition\Events;
  * `gameId` and `gameMode` come from the discipline and are null for any
  * discipline that is not a video game (ADR-0024) — a quiz has no server to
  * provision, so GameOps simply never hears a usable one.
+ *
+ * `memberUserIds` is **additive** (design §5, #297): a map of entrant ULID to
+ * the roster behind it, in the same order `entrantIds` lists the sides.
+ * GameOps needs it from 0.10 onwards — a server is configured with players,
+ * not with entrant ids, and resolving them would mean asking Competition,
+ * which is the direction the dependency must never run. Still ULIDs only;
+ * names stay behind `ParticipantProfile` in this module.
  */
 final readonly class MatchScheduled
 {
     /**
      * @param  list<string>  $entrantIds
+     * @param  array<string, list<string>>  $memberUserIds  entrant ULID => roster, oldest member first
      */
     public function __construct(
         public string $matchId,
@@ -35,5 +43,6 @@ final readonly class MatchScheduled
         public int $round,
         public string $scheduledAt,
         public array $entrantIds,
+        public array $memberUserIds = [],
     ) {}
 }
