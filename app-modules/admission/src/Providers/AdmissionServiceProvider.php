@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Konventix\Admission\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Konventix\Admission\Actions\SendClaimLink;
 use Konventix\Admission\Console\AnnounceAdmissionOwnershipCommand;
+use Konventix\Admission\Console\CloseExpiredPresenceWindowsCommand;
 use Konventix\Admission\Console\RotateEntranceSigningKeyCommand;
 use Konventix\Admission\Enums\Permission;
 use Konventix\Admission\Events\AdmissionCheckedIn;
@@ -102,12 +104,29 @@ class AdmissionServiceProvider extends ModuleServiceProvider
 
         $this->registerMetrics();
 
-        // The Resources read-model backfill (#292) and the entrance signing
-        // key's own lifecycle command (#287); see each command.
+        // The Resources read-model backfill (#292), the entrance signing
+        // key's own lifecycle command (#287) and the hub window sweep
+        // (D-HUB-01, scheduled in registerSchedule()); see each command.
         $this->commands([
             AnnounceAdmissionOwnershipCommand::class,
+            CloseExpiredPresenceWindowsCommand::class,
             RotateEntranceSigningKeyCommand::class,
         ]);
+    }
+
+    /**
+     * The once-per-day hub window (D-HUB-01) ends by the clock, not by an
+     * event anybody emits, so a sweep has to notice it. `callAfterResolving`
+     * so the scheduler is only built in the role that runs it (the base
+     * class hook's own reasoning).
+     */
+    protected function registerSchedule(): void
+    {
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            // Design §4.2: a flip per row plus one event each; a run that falls
+            // behind must not stack a second pass and emit twice.
+            $schedule->command(CloseExpiredPresenceWindowsCommand::class)->everyMinute()->withoutOverlapping();
+        });
     }
 
     /**
