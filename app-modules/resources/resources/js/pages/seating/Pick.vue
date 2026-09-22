@@ -68,8 +68,8 @@ const props = defineProps<Props>();
 
 /**
  * Per-ticket mode (#292 §6.4): the same picker opened for one admission —
- * a single place, saved to the admission's own route, back to its ticket
- * page. Everything else — categories, plans, the poll — is the claim's and
+ * a single place, saved to the admission's own route, with the way back
+ * leading to its ticket page. Everything else — categories, plans, the poll — is the claim's and
  * unchanged. `maxPlaces` replaces `claim.quantity` as the selection cap.
  */
 const perTicket = computed(() => Boolean(props.admissionId));
@@ -119,6 +119,36 @@ const { availability } = useAvailabilityPoll(
 );
 const selected = ref<string[]>([...props.currentPlaceIds]);
 const hint = ref<string | null>(null);
+
+/*
+ * A save redirects back onto this page (#317) and the form keeps the
+ * component mounted, so the fresh props are taken over here rather than
+ * by a remount: the saved places become the selection, and the server's
+ * availability — the new place `mine`, the old one free again — replaces
+ * the polled map without waiting for the next tick. The selection is only
+ * reset when the saved places actually changed, so a refused save keeps
+ * what the person had picked next to the error.
+ */
+watch(
+    () => props.currentPlaceIds,
+    (ids, previous) => {
+        if (
+            ids.length === previous.length &&
+            ids.every((id) => previous.includes(id))
+        ) {
+            return;
+        }
+
+        selected.value = [...ids];
+        hint.value = null;
+    },
+);
+watch(
+    () => props.availability,
+    (fresh) => {
+        availability.value = { ...fresh.places };
+    },
+);
 
 /** Every place of every published plan, category id and all — the fixed set `categoriesHaveFreePlace` checks the live availability of. */
 const placeElements = computed(() =>

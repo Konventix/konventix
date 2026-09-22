@@ -70,7 +70,7 @@ it('saves one place for the ticket, answers availability, and gives the seat up 
 
     $this->actingAs($scene['holder'])
         ->post('/my/admissions/'.$scene['admission']->id.'/seat', ['placeIds' => [$a1->getKey()]])
-        ->assertRedirect('/my/tickets/'.$scene['admission']->id);
+        ->assertRedirect('/my/admissions/'.$scene['admission']->id.'/seat');
 
     $booking = ResourceBooking::query()->where('admission_id', $scene['admission']->id)->firstOrFail();
     expect($booking->resource_id)->toBe($a1->getKey())
@@ -102,7 +102,7 @@ it('swaps the ticket\'s place on a second post, releasing the old booking as rep
 
     $this->actingAs($scene['holder'])
         ->post('/my/admissions/'.$scene['admission']->id.'/seat', ['placeIds' => [$a1->getKey()]])
-        ->assertRedirect('/my/tickets/'.$scene['admission']->id);
+        ->assertRedirect('/my/admissions/'.$scene['admission']->id.'/seat');
 
     $old = ResourceBooking::query()->where('admission_id', $scene['admission']->id)->sole();
 
@@ -111,8 +111,20 @@ it('swaps the ticket\'s place on a second post, releasing the old booking as rep
     $this->actingAs($scene['holder'])
         ->from('/my/admissions/'.$scene['admission']->id.'/seat')
         ->post('/my/admissions/'.$scene['admission']->id.'/seat', ['placeIds' => [$a2->getKey()]])
-        ->assertRedirect('/my/tickets/'.$scene['admission']->id)
-        ->assertSessionHasNoErrors();
+        ->assertRedirect('/my/admissions/'.$scene['admission']->id.'/seat')
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('inertia.flash_data.toast.message', 'Your seat is saved.');
+
+    // #317: the picker the save lands back on shows the change — the new
+    // place is the ticket's own, the old one free again.
+    $this->actingAs($scene['holder'])
+        ->get('/my/admissions/'.$scene['admission']->id.'/seat')
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('seating/Pick')
+            ->where('currentPlaceIds', [$a2->getKey()])
+            ->where('availability.places.'.$a2->getKey(), 'mine')
+            ->where('availability.places.'.$a1->getKey(), 'free'));
 
     $new = ResourceBooking::query()
         ->where('admission_id', $scene['admission']->id)

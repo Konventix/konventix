@@ -137,6 +137,16 @@ event (#90).
 
 ## Done
 
+- [x] A seat change stays on the picker (#317): `SeatPickController::store()`
+      and `AdmissionSeatController::store()` redirect back onto their own
+      picker instead of the registration or ticket page, toast unchanged.
+      The form keeps the page mounted (Inertia's non-GET `preserveState`)
+      and scrolled; `Pick.vue` takes the fresh `currentPlaceIds` and
+      availability over from the new props, so the new place shows as
+      `mine` and the old one free without waiting for the poll. Giving a
+      seat up (`destroy()`) is started from the ticket page and still
+      returns there.
+
 - [x] The seat picker names and links its event (bugfix round 2026-09-21,
       Task 17b): `SeatClaimData.eventName`/`eventSlug` from
       `ResourceEventWindow` (Resources' own projection, ADR-0004), both

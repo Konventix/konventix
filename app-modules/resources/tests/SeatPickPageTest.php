@@ -272,7 +272,7 @@ it('serves availability as JSON to the owner and scopes it to the brand', functi
         ->assertNotFound();
 });
 
-it('saves the pick and returns to the registration page', function (): void {
+it('saves the pick and stays on the picker', function (): void {
     $brand = $this->withBrand();
     $this->activateModule('resources', $brand);
     $scene = seatPickScene($brand, places: 2);
@@ -280,7 +280,7 @@ it('saves the pick and returns to the registration page', function (): void {
     $this->actingAs($scene['user'])
         ->from('/my/registrations/'.$scene['registrationId'].'/seat')
         ->post('/my/registrations/'.$scene['registrationId'].'/seat', ['placeIds' => [$scene['places'][1]->getKey()]])
-        ->assertRedirect('/my/registrations/'.$scene['registrationId'])
+        ->assertRedirect('/my/registrations/'.$scene['registrationId'].'/seat')
         ->assertSessionHasNoErrors();
 
     $booking = ResourceBooking::query()->where('resource_id', $scene['places'][1]->getKey())->sole();
@@ -311,8 +311,9 @@ it('swaps the confirmed place for the posted one, releasing the old booking as r
     $this->actingAs($scene['user'])
         ->from('/my/registrations/'.$scene['registrationId'].'/seat')
         ->post('/my/registrations/'.$scene['registrationId'].'/seat', ['placeIds' => [$b->getKey()]])
-        ->assertRedirect('/my/registrations/'.$scene['registrationId'])
-        ->assertSessionHasNoErrors();
+        ->assertRedirect('/my/registrations/'.$scene['registrationId'].'/seat')
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('inertia.flash_data.toast.message', 'Your seat is saved.');
 
     $new = ResourceBooking::query()->where('resource_id', $b->getKey())->sole();
 

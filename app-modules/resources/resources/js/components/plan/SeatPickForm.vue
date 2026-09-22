@@ -14,6 +14,10 @@ import { firstPlaceIdsError } from './eligibility';
  * persisted before this submits, which is what lets a click on another
  * place swap the selection freely (`selectWithSwap`). Split out of
  * `Pick.vue` in the 2026-09-21 bugfix round for size only.
+ *
+ * A save answers with a redirect back onto the picker (#317); the form
+ * keeps the page mounted and its scroll position, and `Pick.vue` takes
+ * the fresh selection and availability over from the new props.
  */
 defineProps<{
     registrationId: string;
@@ -31,6 +35,7 @@ defineProps<{
                 : SeatPickController.store.form(registrationId)
         "
         #default="{ errors, processing }"
+        preserve-scroll
         class="flex flex-col gap-4"
     >
         <input

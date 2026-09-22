@@ -127,6 +127,8 @@ final class SeatPickController
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Your seat is saved.')]);
 
-        return to_route('registration.mine.show', ['registration' => $registration]);
+        // Back onto the picker, not away from it (#317): the page stays
+        // and refreshes, the new place marked `mine`, the old one free.
+        return to_route('resources.seating.pick', ['registration' => $registration]);
     }
 }
