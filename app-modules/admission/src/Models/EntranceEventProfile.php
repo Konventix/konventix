@@ -86,7 +86,7 @@ class EntranceEventProfile extends Model
      * so converting through UTC here would reintroduce exactly the drift that
      * ADR avoids.
      *
-     * @return array{day_id: string, date: string, sequence: int, label: string|null}|null
+     * @return array{day_id: string, date: string, sequence: int, label: string|null, day_ends_at?: string|null}|null
      */
     public function dayCovering(CarbonInterface $moment): ?array
     {
