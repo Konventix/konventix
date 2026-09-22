@@ -85,7 +85,11 @@ final class TicketPageController
                 placeRef: $seat->place_ref,
                 placeLabel: $seat->place_label,
             ),
-            registrationId: $admission->registration_id,
+            // The manager's way back to the registration, and the only key
+            // to its combined file (#316): a holder who did not buy the
+            // ticket gets null, so the page cannot even name the bundle
+            // route `TicketDownloadController::buyer()` would refuse them.
+            registrationId: $isManager ? $admission->registration_id : null,
         ))->toArray() + [
             // Resources decides who may pick the seat (§6.3) and contributes
             // the button through this slot — Admission never asks its

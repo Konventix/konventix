@@ -86,7 +86,12 @@ reading either.
   manager alike: the event band with the banner, the scan code as inline
   SVG of the *current* token (`Documents\TicketQr`, the same encoder the
   PDF uses), the seat, and Resources' seat button through the
-  `admission.ticket.show` slot. The claim link's signed URL serves both the
+  `admission.ticket.show` slot. Who downloads what (#316): the single
+  ticket's PDF (`/my/admissions/{admission}/ticket`) is its holder's; the
+  registration's combined file (`/my/registrations/{registration}/ticket`)
+  is its buyer's, offered on the registration page only. The ticket page
+  offers its own ticket and nothing more, and hands `registrationId` to
+  the manager alone. The claim link's signed URL serves both the
   landing page (GET) and the claim (POST). On the live hub the same code is
   the `admission.my-ticket` card (`Hub\MyTicketCard`, registered as a
   Platform `HubCard` at boot, D-HUB-05): the scan code, who it admits as

@@ -13,10 +13,11 @@ import TicketHolderBand from '../../../components/TicketHolderBand.vue';
  * One ticket, on screen (#292 §4.5): the event band with the banner, the
  * holder band with the scan code, and the ways out — the PDF, the
  * calendar file, and the seat picker when Resources opens it to this
- * viewer. The manager sees the same page as the holder: the PDF download
- * on it is the holder's route, which the manager cannot use for a ticket
- * they do not hold, so for them the download button points at the
- * registration's combined file instead.
+ * viewer. The page offers this one ticket and nothing more (#316): the PDF
+ * download is the holder's route, so it shows for the holder only. The
+ * registration's combined file lives on the registration page, for its
+ * buyer — a manager who does not hold this ticket reaches it through the
+ * "Registration" link below, never from here.
  *
  * The two file links are plain anchors, not Inertia `<Link>`s — they
  * stream a download, and an Inertia visit would expect a page back.
@@ -103,16 +104,6 @@ const props = defineProps<Props>();
                 >
                     <FileDown class="size-4" aria-hidden="true" />
                     Download PDF
-                </a>
-                <a
-                    v-else-if="props.isManager && props.registrationId"
-                    :href="
-                        TicketDownloadController.buyer.url(props.registrationId)
-                    "
-                    class="inline-flex min-h-11 items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-on-accent hover:bg-accent/90"
-                >
-                    <FileDown class="size-4" aria-hidden="true" />
-                    Download all tickets (PDF)
                 </a>
                 <Link
                     v-if="props.isManager && props.registrationId"

@@ -101,3 +101,62 @@ it('404s a revoked ticket even for its holder', function (): void {
 
     $this->actingAs($holder)->get('/my/tickets/'.$admission->id)->assertNotFound();
 });
+
+/**
+ * #316: the ticket page offers its own ticket and nothing more, and the
+ * registration's combined file belongs to its buyer. A holder the buyer
+ * handed one ticket of a larger registration gets no key to the bundle on
+ * the page (`registrationId` null) and a 403 on the bundle route, while
+ * their own ticket still downloads; the buyer keeps the whole file, and
+ * the registration id their page links back through.
+ */
+it('gives a holder who did not buy only their own ticket, and the buyer the whole registration', function (): void {
+    $brand = $this->withBrand();
+    ticketSigningKey($brand);
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    $buyer = User::factory()->create();
+    $holder = User::factory()->create();
+    $registrationId = (string) Str::ulid();
+
+    $held = Admission::factory()->forRegistration($registrationId)->create([
+        'event_id' => $eventId,
+        'buyer_user_id' => $buyer->id,
+        'holder_user_id' => $holder->id,
+        'state' => AdmissionState::Assigned,
+    ]);
+    $other = Admission::factory()->forRegistration($registrationId)->create([
+        'event_id' => $eventId,
+        'buyer_user_id' => $buyer->id,
+        'holder_user_id' => null,
+    ]);
+
+    $this->actingAs($holder)
+        ->get('/my/tickets/'.$held->id)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('isHolder', true)
+            ->where('isManager', false)
+            ->where('registrationId', null));
+
+    $this->actingAs($holder)->get('/my/registrations/'.$registrationId.'/ticket')->assertForbidden();
+    $this->actingAs($holder)->get('/my/admissions/'.$other->id.'/ticket')->assertForbidden();
+    $this->actingAs($holder)->get('/my/admissions/'.$held->id.'/ticket')->assertOk();
+
+    $this->actingAs($buyer)
+        ->get('/my/tickets/'.$held->id)
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('isHolder', false)
+            ->where('isManager', true)
+            ->where('registrationId', $registrationId));
+
+    $bundle = $this->actingAs($buyer)
+        ->get('/my/registrations/'.$registrationId.'/ticket')
+        ->assertOk();
+
+    $bytes = (string) $bundle->getContent();
+
+    expect($bundle->headers->get('Content-Type'))->toBe('application/pdf')
+        ->and(preg_match_all('/\/Type\s*\/Page(?!s)/', $bytes))->toBe(2);
+});

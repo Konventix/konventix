@@ -44,6 +44,7 @@ final class TicketPageData extends Data
         public readonly string $qrSvg,
         public readonly string $doorCode,
         public readonly ?TicketSeatData $seat,
+        /** Set for the registration's buyer only (#316); null for a mere holder and for a staff ticket. */
         public readonly ?string $registrationId,
     ) {}
 }

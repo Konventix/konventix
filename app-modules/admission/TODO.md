@@ -158,6 +158,13 @@
 
 ## Done
 
+- [x] The ticket page offers only its own ticket (#316): the manager's
+      "Download all tickets" button left `tickets/Show.vue` (the combined
+      file stays on the registration page's `TicketManagerSlot`), and
+      `TicketPageController` hands `registrationId` to the manager only.
+      Download rights recorded in SPEC.md; `TicketPageTest` pins the
+      holder's 403 on the bundle and the buyer's full file.
+
 - [x] "Mein Ticket" on the live hub (D-HUB-05, design 2026-09-22 §8, task
       15): `Hub\MyTicketCard` + `Data\MyTicketCardData` behind the
       `admission.my-ticket` `HubCard` registered in
