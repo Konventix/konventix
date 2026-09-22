@@ -23,6 +23,8 @@ declare module '@inertiajs/core' {
             /** The brand's own entries, rendered after `nav` (Task 20). */
             brandMenu: BrandMenuEntry[];
             accountNav: BrandNavItem[];
+            /** The event the viewer is admitted to right now; null for a guest. */
+            activeEvent: Konventix.Platform.Data.ActiveEventData | null;
             cart: { count: number };
             footer: {
                 links: Konventix.Platform.Data.FooterLinkData[];

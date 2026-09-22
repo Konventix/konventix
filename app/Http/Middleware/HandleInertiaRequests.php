@@ -19,6 +19,7 @@ use Konventix\Platform\Data\BrandMenuEntryData;
 use Konventix\Platform\Data\FooterLinkData;
 use Konventix\Platform\Enums\Permission as PlatformPermission;
 use Konventix\Platform\Environment\DeploymentEnvironment;
+use Konventix\Platform\Hub\ActiveEventContext;
 use Konventix\Platform\Models\AdminFavorite;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\FooterColumn;
@@ -130,6 +131,11 @@ class HandleInertiaRequests extends Middleware
                     ->map(fn (NavigationItem $item): array => $item->toArray())
                     ->all()
                 : [],
+            // The event this member is admitted to right now (D-HUB-01, design
+            // §5.1): one cache read for a signed-in user, nothing for a guest.
+            'activeEvent' => $request->user() !== null && app(BrandContext::class)->current() !== null
+                ? app(ActiveEventContext::class)->current()?->toArray()
+                : null,
             // Operator console shell data (ADR-0029): only present on the
             // admin host, capability-filtered by the registry.
             'admin' => app(OperatorContext::class)->hasOperator() ? [
