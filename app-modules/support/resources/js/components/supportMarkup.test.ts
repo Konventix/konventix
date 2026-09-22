@@ -124,6 +124,19 @@ describe('SupportRequestDialog.vue', () => {
     it('uses semantic tokens only (ADR-0008)', () => {
         expect(markup).not.toMatch(/\b(bg|text|border)-(zinc|gray|slate)-\d/);
     });
+
+    it('stays reachable on a phone: bounded by the visible viewport and scrollable', () => {
+        expect(markup).toContain('max-h-[85dvh]');
+        expect(markup).toContain('overflow-y-auto');
+
+        // `vh` is the viewport with the browser chrome hidden, so it leaves
+        // the footer below the fold on a first load — the bug this replaced.
+        expect(markup).not.toMatch(/max-h-\[\d+vh]/);
+
+        // An unprefixed max-width here beats the primitive's mobile gutter
+        // through tailwind-merge; the primitive caps the width at `sm:` up.
+        expect(markup).not.toMatch(/<DialogContent[^>]*\bmax-w-/);
+    });
 });
 
 describe('the reporter’s pages (S3, #307)', () => {

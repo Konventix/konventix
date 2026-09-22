@@ -242,7 +242,22 @@ function submit(): void {
         :open="open"
         @update:open="(value: boolean) => !value && emit('close')"
     >
-        <DialogContent class="max-w-lg">
+        <!--
+            Scrollable, and `dvh` rather than `vh`: this dialog is taller than
+            a phone screen once the category chips wrap and the disclosure is
+            open, and without a height bound the footer — Cancel and Send —
+            sat below the fold with nothing to scroll (reported on a phone
+            after the 0.8.0 rollout). `vh` is the *largest* viewport on
+            mobile, the one with the browser chrome hidden, so it leaves the
+            same fold on a first load; `dvh` is the visible one.
+
+            `max-w-lg` is deliberately gone rather than moved: the primitive
+            already carries `max-w-[calc(100%-2rem)] … sm:max-w-lg`, and
+            setting an unprefixed `max-w-lg` here beat the first of those
+            through tailwind-merge — which is why the dialog also sat edge to
+            edge on a narrow screen instead of keeping its gutter.
+        -->
+        <DialogContent class="max-h-[85dvh] overflow-y-auto">
             <DialogHeader>
                 <DialogTitle>Report a problem or give feedback</DialogTitle>
                 <DialogDescription>
