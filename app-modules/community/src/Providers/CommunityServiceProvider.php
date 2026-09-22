@@ -17,6 +17,7 @@ use Konventix\Community\Listeners\ProjectAdmissionBadge;
 use Konventix\Community\Listeners\ProjectCommunityMember;
 use Konventix\Community\Listeners\ProjectCommunityProfile;
 use Konventix\Community\Listeners\ProjectEventParticipation;
+use Konventix\Community\Presence\ConnectionState;
 use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Identity\Events\BrandMembershipProfileUpdated;
 use Konventix\Identity\Events\UserProfileUpdated;
@@ -55,6 +56,22 @@ class CommunityServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         $this->configureRateLimiting();
+    }
+
+    /**
+     * `scoped()`, not `singleton()`: this application runs on Octane, where
+     * a singleton survives every request a worker ever serves
+     * (`.ai/rules/providers.md`). `ConnectionState` holds nothing on `$this`
+     * today — it resolves its Redis connection per call — and the scoped
+     * binding is what keeps it that way if somebody later reaches for a
+     * memo, because a scoped instance is forgotten between requests.
+     *
+     * Bound rather than left to auto-resolution so that the binding, and
+     * therefore the lifetime rule, is written down somewhere.
+     */
+    protected function registerBindings(): void
+    {
+        $this->app->scoped(ConnectionState::class);
     }
 
     /**

@@ -4,6 +4,13 @@ declare(strict_types=1);
 
 namespace Konventix\Community\Events;
 
+use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
+use Konventix\Community\Broadcasting\RoomChannel;
+use Konventix\Community\Models\CommunityProfile;
+use Konventix\Community\Models\Message;
+
 /**
  * A shoutbox line was accepted (spec §9).
  *
@@ -25,8 +32,41 @@ namespace Konventix\Community\Events;
  *
  * `postedAt` is an ISO-8601 string, not a Carbon: a payload carries scalars
  * so that it survives serialisation onto a queue unchanged.
+ *
+ * **The broadcast is a second, separate payload, and the two must not be
+ * confused.** `ShouldBroadcastNow` makes this class the browser's message
+ * too (design §8, the notification bell's proven path), but the class's own
+ * constructor properties — what a PHP listener in another module receives —
+ * stay ULIDs and scalars with no body text, exactly as the paragraph above
+ * says. What the page has to render travels only inside `broadcastWith()`'s
+ * return value, which is built for one private channel whose subscribers
+ * the room already authorised. So both halves of §9 hold: no consumer of
+ * the domain event is handed user-generated text, and the chat does not
+ * round-trip a fetch per line.
+ *
+ * `ShouldBroadcastNow` rather than `ShouldBroadcast` for the bell's reason:
+ * this is dispatched from `PostMessage` after the commit, in the request
+ * that accepted the line, and a queued broadcast would only add a hop to
+ * say the same thing a fraction of a second later.
+ *
+ * **A broadcast that fails must not fail the write.** `PostMessage`
+ * dispatches this *after* the commit, so by the time Reverb is asked the
+ * row is already durable — and a `BroadcastException` thrown out of
+ * `event()` would therefore tell a participant their line was refused when
+ * it was in fact accepted. They retype it and the wall carries it twice.
+ * Reverb throwing is not hypothetical: it has been seen on the dev
+ * instance. `ShouldRescue` is the framework's own answer —
+ * `BroadcastManager::queue()` wraps the dispatch in `rescue()`, which
+ * `report()`s the failure to the exception handler and swallows it — so the
+ * broadcast stays `Now`, the after-the-commit ordering the reviewer asked
+ * for is untouched, and no try/catch is bolted on by hand.
+ *
+ * (`NotificationReceived` needs none of this: the bell broadcasts from
+ * inside `SendQueuedMessage`, where a throw fails a queued job that retries
+ * and no participant's write is on the line. The difference is where the
+ * dispatch happens, not the transport.)
  */
-final readonly class ShoutboxMessagePosted
+final readonly class ShoutboxMessagePosted implements ShouldBroadcastNow, ShouldRescue
 {
     public function __construct(
         public string $messageId,
@@ -36,4 +76,53 @@ final readonly class ShoutboxMessagePosted
         public string $authorUserId,
         public string $postedAt,
     ) {}
+
+    public function broadcastOn(): PrivateChannel
+    {
+        return new PrivateChannel(RoomChannel::nameFor($this->roomId));
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'shoutbox.message.posted';
+    }
+
+    /**
+     * The wire payload — the browser's, not a module's. The body is read
+     * here, at broadcast time, rather than carried on the event: it exists
+     * only inside this return value and never as a property another
+     * listener could reach.
+     *
+     * `body` is null when the row cannot be read back, which
+     * `PostMessage`'s after-the-commit dispatch is designed to make
+     * impossible; the client then has the id and can fetch the line
+     * itself rather than render an empty one.
+     *
+     * @return array<string, mixed>
+     */
+    public function broadcastWith(): array
+    {
+        $message = Message::withoutBrandScope()->find($this->messageId);
+
+        return [
+            'id' => $this->messageId,
+            'roomId' => $this->roomId,
+            'authorUserId' => $this->authorUserId,
+            'authorDisplayName' => $this->authorDisplayName(),
+            'body' => $message?->body,
+            'postedAt' => $this->postedAt,
+        ];
+    }
+
+    /**
+     * From Community's own profile read model (ADR-0004) — Identity's user
+     * is never imported. Null for an account Community has not yet heard
+     * of; the client falls back to whatever it shows for a nameless author.
+     */
+    private function authorDisplayName(): ?string
+    {
+        $name = CommunityProfile::query()->whereKey($this->authorUserId)->value('display_name');
+
+        return is_string($name) ? $name : null;
+    }
 }
