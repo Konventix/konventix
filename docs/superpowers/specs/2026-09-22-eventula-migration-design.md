@@ -159,16 +159,20 @@ einzige vorhandene Rolle ist „Operator Admin" auf der Operator-Brand. Schritt 
 führt darum zuerst `MaterializeDefaultRoles` für `sxlan` aus; das erzeugt
 `platform.brand-admin` („Brand Admin", ADR-0045).
 
-Von den 29 Eventula-Admins bekommen **18** diese Rolle: alle mit einem Login am
+Von den 29 Eventula-Admins bekommen **17** diese Rolle: alle mit einem Login am
 oder nach dem 30.10.2025 (SX30). Entscheidung des Betreibers vom 22.09.2026.
 
 Behalten: `Cheeseburglar`, `Nordisch`, `Mawiguk0`, `Treasure`, `Blinded`,
 `icewindow`, `BellaTheBatPony`, `Bigblacky03`, `TiRo`, `Kryp7x`, `Tenni`,
-`Freya`, `Lord_Rolf`, `Cpersy20`, `salad`, `ElPaca`, `Alphi`, `Olaf`.
+`Freya`, `Lord_Rolf`, `Cpersy20`, `salad`, `ElPaca`, `Alphi`.
 
 Als einfache Nutzer importiert (Konto und Historie bleiben, keine Rechte):
-`Valendas`, `acoknight`, `Biohörnchen`, `juypra`, `Mawis-test2`, `karo`,
-`derconno`, `aarux`, `Commander`, `Kiba`, `das_ichdu`.
+`Olaf`, `Valendas`, `acoknight`, `Biohörnchen`, `juypra`, `Mawis-test2`,
+`karo`, `derconno`, `aarux`, `Commander`, `Kiba`, `das_ichdu`.
+
+`Olaf` (letzter Login 16.10.2025) stand zuerst auf der Behalten-Liste, erfüllt
+den Stichtag aber nicht; der Betreiber hat am 22.09.2026 entschieden, dass die
+Regel gilt und nicht die Liste.
 
 > `das_ichdu` (Eventula-Id 932, angelegt am 05.03.2026) trägt `admin=1` und hat
 > sich **nie angemeldet**. Das ist unabhängig von dieser Migration auf der
@@ -181,9 +185,24 @@ Als einfache Nutzer importiert (Konto und Historie bleiben, keine Rechte):
 | events 2, 3, 4, 6, 7 | `Event` auf Brand `sxlan`, `state = concluded`, `concluded_at` = `end`, mit `slug`, `name`, `starts_at`/`ends_at`, ohne Venue |
 | event 9 (SX31) | gleicher Weg, danach `state = published` und **von Hand korrigiert** |
 | events 1, 5, 8 | nicht importiert |
-| die 61 `ticket_types` dieser sechs Events | je ein `RegistrationType`: `settlement = external`, `price_declaration` aus `price`, Grant `admission`/participant/1, `visibility` **nicht öffentlich** |
+| die 61 `ticket_types` dieser sechs Events | je ein `RegistrationType`: `settlement = external`, `price_declaration` aus `price`, Grant `admission`/participant/1, `visibility = link` |
+
+Eventula lässt zwei Ticketarten desselben Events denselben Namen tragen — SX27
+hat zweimal „Standard", zu 35 und zu 20 Euro, beide verkauft. Der Import
+erkennt eine vorhandene Ticketart an `event + name`; der Auszug macht die
+Namen darum vorher eindeutig, indem jeder weitere Träger seinen Preis
+angehängt bekommt. Ohne das entstünde eine Ticketart zu wenig und sechs
+Tickets hingen im Verkaufsschritt am falschen Preis.
 
 `timezone` ist `Europe/Berlin` (ADR-0027: Eventzeiten sind Wanduhrzeit).
+
+**Preise sind Endpreise.** Eventula speichert, was der Käufer zahlt; Konventix
+deklariert `unitAmountNet` und lässt Commerce die Steuer rechnen (ADR-0017).
+Der Sund-Xplosion e. V. ist Kleinunternehmer nach §19 UStG (Entscheidung des
+Betreibers, 22.09.2026), also trägt die Rechnung keine Umsatzsteuerzeile und
+der Eventula-Preis geht unverändert durch. Der Schalter sitzt auf dem
+Betreiber, nicht auf der Brand (ADR-0030), und gehört vor dem Import geprüft —
+stünde er falsch, würde aus 45,00 ein Endpreis von 53,55.
 
 `settlement = external` ist der Kern: darüber entsteht keine
 Commerce-Bestellung und damit keine Rechnungsnummer für Umsätze, die anderswo
