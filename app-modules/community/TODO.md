@@ -13,23 +13,45 @@ and the backlog below is still a starting point for that phase.
 
 - [ ] Slice 26 (galleries) is the next Community work in `docs/ROADMAP.md`;
       groups and clans come after it. Nothing else scheduled.
+- [ ] A shoutbox room is closed only by `EventConcluded` while `community` is
+      on for the brand (ADR-0003's listener gate), so a brand that switches
+      the module off between opening its wall and concluding the event keeps
+      that room open and outside the 30-day sweep. `docs/operations.md`
+      ("Shoutbox") has the manual repair; decide whether the close belongs
+      outside the gate, since it builds no read model and only starts a
+      retention clock on rows that already exist.
 
 ## Backlog (not before Phase 3)
 
-- [ ] Settle chat transport (polling, websockets, external service) — it changes
-      the deployment surface and deserves an ADR.
 - [ ] Decide how community read models are backfilled when a brand enables the
       feature late.
-- [ ] Define the capability catalog in `src/Enums/Permission.php`, including a
-      moderation dimension.
-- [ ] Chat messages and awards join `CommunityGdprHandler` when those shapes
-      exist — they are personal data, and their retention has to be answered
-      together with Compliance.
-- [ ] First migrations: brand-scoped (not event-scoped), ULID primary keys
-      (ADR-0014).
+- [ ] Awards join `CommunityGdprHandler` when that shape exists — personal
+      data, and its retention has to be answered together with Compliance.
 
 ## Done
 
+- [x] Shoutbox retention, gating, GDPR and observability (0.9.0 sub-project D
+      Task 6, design §7 and §12 items 7-10, ADR-0059, ADR-0067).
+      `CloseRoomOnEventConcluded` sets `closed_at` from the conclusion instant
+      (gated, idempotent); `community:sweep-shoutbox` runs daily without
+      overlapping and deletes a room's messages, reports and mutes 30 days
+      later, keeping the room tombstone. `CommunityGdprHandler` exports the
+      subject's lines, reports, mutes and admission badges; erasure deletes
+      their lines (and the reports on them), anonymises the reports they filed
+      (reporter and note), nulls their ULID in every moderator column on
+      other rows, and deletes their mutes and badges. Metrics
+      `community_messages_posted_total{brand}` and
+      `community_shoutbox_broadcasts_total{brand,outcome}`, panels on the
+      Platform dashboard, alert `KonventixShoutboxBroadcastFailing` — the
+      broadcast moved from the framework's `ShouldRescue` into
+      `Listeners\BroadcastToRoom` so a failure is counted, not only reported.
+      The report's resolve triple left `$fillable`. `SPEC.md` amended per
+      ADR-0067; the chat-transport, retention and presence questions closed.
+      `tests/ShoutboxRetentionTest.php`, `tests/ShoutboxActivationTest.php`.
+- [x] Capability catalog: `Permission::ModerateCommunity` (shoutbox Task 3),
+      held by the desk and granted without admission (D-COM-04).
+- [x] First shoutbox migrations (Task 1): brand-owned, ULID keys, rooms
+      carrying an event subject (ADR-0067 decision 1).
 - [x] Wall comments link the author's `@username` to their profile
       (ADR-0065, bugfix round 2026-09-21 Task 17a) — Wayfinder's
       `community.profile.show`, since this page only exists where the module
