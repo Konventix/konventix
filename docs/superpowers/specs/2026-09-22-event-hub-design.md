@@ -78,9 +78,9 @@ admission_event_presence
   - `once_only`, `unlimited` → `null`.
 - Desk check-out (`direction = out`): `last_direction = out`, `last_check_in_at`; `hub_access` unchanged. There is no other "out" today.
 - `EventConcluded`, `EventCancelled` → every row of the event: `hub_access = false`, reason `concluded`/`cancelled`.
-- `AdmissionRevoked` → the row whose `admission_id` matches: `hub_access = false`, reason `revoked`. A second valid admission of the same user re-admits them on the next scan.
+- `AdmissionRevoked` → the row whose `admission_id` matches: `hub_access = false`, reason `revoked`. ~~A second valid admission of the same user re-admits them on the next scan.~~ **As built** the row moves over to that surviving admission instead and access never lapses — see the survivor rule in §15.
 - `CloseExpiredPresenceWindows`, scheduled every minute with `withoutOverlapping()`: rows with `hub_access = true` and `window_ends_at <= now()` → `hub_access = false`, reason `day_ended`. The next day's accepted scan flips it back and computes the new window.
-- Listeners short-circuit when the `admission` module is off for the brand (ADR-0003); the whole feature is then absent, not broken.
+- **Correction (built 2026-09-22):** the listeners do *not* short-circuit on a module gate. Admission is a Core module — `AdmissionServiceProvider::$gateable = false` — so it is active for every brand and there is no `admission` feature to switch off (ADR-0003's fourth enforcement point has nothing to enforce here). What makes the feature absent for a brand that does not run a door is having nobody admitted: no accepted scan, no presence row, no `ParticipantAdmitted`, no pill and no `/live` (see §9 and §11.6).
 
 ### 4.3 Events emitted (ULIDs and scalars)
 
@@ -94,7 +94,7 @@ These are the contract for Platform (this design), Community's Checked-In presen
 
 ### 4.4 `day_ends_at`
 
-A per-day setting on the event day (Event module: `event_days.day_ends_at time nullable`; UI in the existing days editor, label "Tag endet um", hint "00:00 = Mitternacht; für Nächte bis 03:00 hier 03:00"). Travels on `EventDaysChanged` as an additional key in each day entry (additive change) and is mirrored into `EntranceEventProfile.days`. Admission's `dayCovering()` is unchanged — it still decides which *date* a scan belongs to; `day_ends_at` only fixes when that day's window closes.
+A per-day setting on the event day (Event module: `event_days.day_ends_at`, built as a nullable `varchar(5)` holding `HH:MM` rather than a `time` column, so the value round-trips unchanged through the form, the `EventDaysChanged` payload and Admission's projection; UI in the existing days editor, label "Tag endet um", hint "00:00 = Mitternacht; für Nächte bis 03:00 hier 03:00"). Travels on `EventDaysChanged` as an additional key in each day entry (additive change) and is mirrored into `EntranceEventProfile.days`. Admission's `dayCovering()` is unchanged — it still decides which *date* a scan belongs to; `day_ends_at` only fixes when that day's window closes.
 
 ### 4.5 Tests
 
@@ -112,30 +112,39 @@ A per-day setting on the event day (Event module: `event_days.day_ends_at time n
 
 ### 5.1 `hub_access` projection and `ActiveEventContext`
 
-Platform keeps `platform_hub_access (brand_id, user_id, event_id, event_slug, event_name, window_ends_at, day_label, on_site bool, unique(user_id, event_id))`, written by listeners on the three Admission events plus `EventDetailsUpdated`/`EventRescheduled` for the slug/name. It is a projection: dropping and replaying rebuilds it.
+Platform keeps `platform_hub_access (brand_id, user_id, event_id, admission_id, event_slug, event_name, day_label, admitted_at, window_ends_at, on_site bool, unique(event_id, user_id))`, written by `Listeners\ProjectHubAccess` on the three Admission events and on nothing else. It is a projection: dropping and replaying rebuilds it.
+
+**Correction (built 2026-09-22):** there are no `EventDetailsUpdated`/`EventRescheduled` listeners. The event's name, slug and day label travel on `ParticipantAdmitted` itself (§4.3), so the row is complete the moment it is written and Platform keeps no projection of Event's days or details. The one Event event Platform does listen to is `EventHubLayoutChanged` (§6), which is about the operator's composition, not about a person. A name edited mid-event therefore reaches the pill on the participant's next admission, which is the right trade for a display string.
 
 `ActiveEventContext` (request-scoped) answers `current(): ?ActiveEventData` for the authenticated user on the current brand from cache key `hub-access:{brand}:{user}` (TTL 10 min, forgotten by the same listeners). Guests: no call, no query. Several rows with access → the one with the latest `admitted_at`; `all()` feeds the switcher on the hub page. **The Inertia shared prop `activeEvent`** is this value or `null`; it is the only per-request cost the hub adds to the shell, and a test asserts a guest request performs zero hub queries.
 
 ### 5.2 `HubRegistry`
 
-Sibling of `NavigationRegistry`, same constructor (`ModuleGate`), same `visible()` semantics:
+Sibling of `NavigationRegistry`, same constructor (`ModuleGate`), same visibility semantics. **As built (2026-09-22)** — the shapes below replace the sketch this section first carried:
 
 ```php
 final class HubCard {
     public function __construct(
-        public string $module,        // gate, like NavigationItem
-        public string $key,           // 'admission.my-ticket'
-        public string $label,
-        public string $component,     // 'admission/hub/MyTicketCard'
-        public Closure $payload,      // fn(ActiveEventData, User): Data
-        public ?string $permission = null,
-        public int $order = 100,
+        public readonly string $module,        // gate, like NavigationItem
+        public readonly string $key,           // 'admission.my-ticket'
+        public readonly string $label,
+        public readonly string $component,     // 'admission/hub/MyTicketCard'
+        public readonly Closure $payload,      // fn(ActiveEventData, Authenticatable): Data
+        public readonly ?string $permission = null,
+        public readonly int $order = 100,
     ) {}
 }
-final class HubLink { module, key, label, string $routeName, array $routeParams (closure allowed), ?string $icon, ?string $permission, int $order }
+final class HubLink {
+    module, key, label,
+    ?Closure $url = null,        // fn(ActiveEventData, Authenticatable): string
+    ?string $component = null,   // renders the link itself when a plain anchor will not do
+    ?string $icon = null, ?string $permission = null, int $order = 100
+}
 ```
 
-`visible(ActiveEventData $event, User $user): Collection` filters by module gate and `$user->can($permission)`; payload closures are **not** invoked here. `HubController` invokes them only for cards that survive the layout (§6), so a hidden card costs nothing.
+A link carries a **URL closure**, not `routeName`/`routeParams`: where it points depends on the member's event (Resources' seat link names their admission), so it is resolved per request like a card's payload. A link that is not a navigation at all — Support's *Hilfe*, which opens the dialog already on the page — leaves `url` null and names a `component` instead.
+
+The read side is `visibleCards(Authenticatable $user)` and `visibleLinks(Authenticatable $user)`, not one `visible(ActiveEventData, User)`: the registry needs the viewer, never the event, and typing the viewer as `Authenticatable` keeps Platform from importing Identity's model (ADR-0004) — the capability check goes through `Gate::forUser($user)->allows($permission)`. Both filter by module gate and permission and sort by `order`, then label. Payload and URL closures are **not** invoked here; `HubPage` invokes them only for the entries that survive the layout (§6), so a hidden card costs nothing.
 
 ### 5.3 Tests
 
@@ -146,9 +155,9 @@ final class HubLink { module, key, label, string $routeName, array $routeParams 
 
 ## 6. Per-event composition (Event)
 
-`event_hub_layouts (id, brand_id, event_id unique, hub_replaces_home bool default false, cards json → HubLayoutData)` where `HubLayoutData` is `list<{key: string, visible: bool}>` in display order (typed `Data` cast, ADR-0009). Admin page `admin/events/{event}/hub` ("Live-Hub") behind Event's `ManageEvents`: a sortable list of every card and link Platform's registry knows (fetched through a Platform-provided `HubCatalogue` read — Event calls Platform's public service, never the reverse; Platform is the host module every module may depend on, as with navigation), on/off toggles, and the "Startseite wird zum Hub" switch with the note that it applies to signed-in admitted guests only and leaves the public home page cached.
+`event_hub_layouts (id, brand_id, event_id unique, hub_replaces_home bool default false, cards json)` where `cards` is `list<HubLayoutEntryData>` — `{key: string, visible: bool}` in display order (typed `Data` cast, ADR-0009); the save endpoint takes `UpdateHubLayoutData`. Admin page `admin/events/{event}/hub` ("Live-Hub") behind `Permission::UpdateEvent` (**correction:** there is no `ManageEvents` capability; Event's catalogue spells the write capability on an event `UpdateEvent`): a sortable list of every card and link Platform's registry knows (fetched through a Platform-provided `HubCatalogue` read — Event calls Platform's public service, never the reverse; Platform is the host module every module may depend on, as with navigation), on/off toggles, and the "Startseite wird zum Hub" switch with the note that it applies to signed-in admitted guests only and leaves the public home page cached.
 
-Event emits `EventHubLayoutChanged (event_id, brand_id)`; Platform forgets `hub-layout:{event}`. At render Platform merges: layout order first, unknown keys dropped, registry entries missing from the layout appended in registry order and visible (so a newly installed module's card appears without the operator touching anything).
+Event emits `EventHubLayoutChanged (event_id, brand_id, cards, hub_replaces_home)` — the whole layout, never a diff. Platform's `Listeners\ProjectHubLayout` writes it into its own `platform_hub_layouts` row and forgets `hub-layout:{event}`, so the hub page and the home branch read Platform's own table and never Event's (ADR-0004); `HubLayoutResolver::for($eventId)` is the one read, cached for 10 minutes, and the empty layout is cached too. At render Platform merges: layout order first, unknown keys dropped, registry entries missing from the layout appended in registry order and visible (so a newly installed module's card appears without the operator touching anything).
 
 Tests: reorder/hide round-trips; unknown key in a stale layout is ignored; new registry card appears at the end.
 
@@ -191,14 +200,17 @@ Brand host, middleware `auth`, then `ensure-active-event` (Platform): no `active
 
 While B–D are unmerged their modules register nothing; the hub shows fewer cards. No placeholder content.
 
-Arch tests: a card's PHP payload resolver imports only its own module; `resources/js/components/hub/*` of a module imports only its own module's types and shared `@/components/ui`. Every payload is a `Data` with `#[TypeScript]`.
+Arch tests: a card's PHP payload resolver imports only its own module; `resources/js/components/hub/*` of a module imports only its own module's generated helpers and the host's shared frontend. `tests/Feature/HubComponentBoundaryTest.php` is that test — it also pins the other half of the line, that the component *name* a module registers is under that module. Every payload is a `Data` with `#[TypeScript]`.
 
 ## 9. Capabilities, activation, GDPR, observability
 
-- **Capabilities**: none new for participants (access is presence, not permission). Event's existing `ManageEvents` guards the Live-Hub admin page.
-- **Activation**: the presence projection is Admission's and follows the `admission` gate; the shell parts are Platform's and always present but inert without `activeEvent`; the layout page is Event's. With Admission off for a brand nothing is ever admitted and the hub never appears — correct empty state.
+- **Capabilities**: none new for participants (access is presence, not permission). Event's existing `Permission::UpdateEvent` guards the Live-Hub admin page — the same capability that edits the event itself.
+- **Activation**: the presence projection is Admission's, and Admission is Core — always on, never gated (see the correction in §4.2). The shell parts are Platform's and always present but inert without `activeEvent`; the layout page is Event's. The empty state is therefore not "module off" but "nobody admitted": a brand that runs no door has no presence rows, no pill and a `/live` that redirects home.
 - **GDPR**: `admission_event_presence` and `platform_hub_access` are personal data: both modules' `GdprHandler`s export and delete them; anonymisation removes the rows (a presence without a person means nothing).
-- **Observability** (ADR-0059): Admission gauge `admission_participants_present{brand,event}` (rows with `last_direction = in` and `hub_access`), counter `admission_hub_access_ended_total{brand,reason}`; Platform counter `platform_hub_views_total{brand}`. Panels on the event dashboard row; no alert.
+- **Observability** (ADR-0059), **as built**: three counters, no gauge.
+  - Admission: `admission_hub_access_total{brand,outcome}` — one increment per participant the hub opened for (`outcome=admitted`) and one per access that ended, the outcome then being `HubAccessEndReason`'s backing string (`day_ended`, `concluded`, `cancelled`, `revoked`). It replaces both metrics this section first proposed: a gauge labelled by event would have put an id in a label (`.ai/rules/observability.md`), and one counter with an outcome answers what two would have.
+  - Platform: `platform_hub_views_total{brand}` (a hub render, whether at `/live` or on the home switch) and `platform_hub_card_failures_total{brand,module}` (a contribution whose closure threw and was dropped — see the implementation note on containment).
+  - Panels on the platform dashboard; no alert of their own, because a dropped card already logs an error and `KonventixErrorsLogged` covers that.
 
 ## 10. Data flow, end to end
 
@@ -206,7 +218,7 @@ Arch tests: a card's PHP payload resolver imports only its own module; `resource
 2. Admission `ProjectEventPresence`: holder user found → row upserted, `window_ends_at` per policy → `ParticipantAdmitted`.
 3. Platform `ProjectHubAccess`: `platform_hub_access` row, cache forgotten.
 4. The participant's next request: `HandleInertiaRequests` reads `hub-access:{brand}:{user}` → `activeEvent` shared → pill appears.
-5. `/live` (or `/` with the switch): `HubController` loads the event's layout, asks `HubRegistry::visible()`, runs payload closures for the visible cards, renders `Hub.vue`.
+5. `/live` (or `/` with the switch): `HubController` hands over to `Hub\HubPage`, which loads the event's layout, asks `HubRegistry::visibleCards()`/`visibleLinks()`, runs the payload and URL closures for the entries the layout keeps, renders `Hub.vue`.
 6. 00:00 (or `day_ends_at`): `CloseExpiredPresenceWindows` → `hub_access = false` → `ParticipantHubAccessEnded(day_ended)` → Platform row removed, cache forgotten → pill gone, `/live` redirects. Next morning's scan restarts at step 1.
 7. `EventConcluded` → every row closed → everyone loses the hub at once.
 
@@ -217,7 +229,7 @@ Arch tests: a card's PHP payload resolver imports only its own module; `resource
 3. `unlimited` event: still there the next morning; gone after `EventConcluded`.
 4. Operator turns on "Startseite wird zum Hub" → the admitted user's `/` is the hub, a guest's `/` is unchanged and performs no hub query, `/home` shows the plain home.
 5. Operator hides the Ankündigungen card and moves Mein Ticket last → `/live` reflects it without a deploy.
-6. Admission off for the brand → no presence rows, no pill, no errors, all listeners short-circuit.
+6. ~~Admission off for the brand~~ — Admission is Core and cannot be switched off (§4.2). The equivalent state is a brand that admits nobody: no presence rows, no pill, no errors, `/live` redirects home, and a guest's `/` performs no hub query.
 7. `permissions:sync`, pint, phpstan, and the arch tests (no cross-module model imports, card resolvers module-local) are green.
 
 ## 12. Decisions recorded (operator, 2026-09-22)
@@ -246,3 +258,46 @@ A ships first and alone is testable at a real event stage (§11).
 ## 14. Out of scope
 
 GameOps (0.10+), Competition Board #117 (post-1.0), push notifications for nudges (Messaging's web-push driver, D-MSG-02, slice 13), friends/"who is here" (Community, later), any hub content for people who are registered but not yet admitted (the existing `/my/*` pages serve them).
+
+## 15. Implementation notes (2026-09-22, sub-project A shipped)
+
+Four decisions the design did not anticipate, recorded here because they are
+the ones a reader of the code will otherwise wonder about. The corrections to
+what this document originally claimed are marked inline in §§4.2, 4.4, 5.1,
+5.2, 6 and 9.
+
+- **One module's failure costs its own card, never the page** (D-HUB-05
+  review). Platform cannot vet a foreign module's payload and by ADR-0003 must
+  not care what it reads, so `Hub\HubPage` runs every payload and URL closure
+  inside its own `try`: an entry whose closure throws is dropped, logged once
+  with its module and key, counted on
+  `platform_hub_card_failures_total{brand,module}`, and the rest of the page
+  renders. The case that forced it: a brand whose entrance signing key has been
+  retired makes `admission.my-ticket` throw, and without containment the
+  event-day page would 500 for everyone on that brand — including the *Hilfe*
+  link that is the participant's only way to say so. A dropped card is a gap,
+  not a blank placeholder.
+- **Every presence listener is queued and `afterCommit`.** The door must never
+  wait on the hub or fail over it (ADR-0033):
+  `ProjectPresenceOnAdmissionCheckedIn`, `EndHubAccessOnEventClosed` and
+  `EndHubAccessOnAdmissionRevoked` all implement `ShouldQueue` with
+  `$afterCommit = true`. A synchronous projection that hit the presence table's
+  unique key — two lanes scanning the same holder within a second — would roll
+  an *accepted* scan back; `afterCommit` additionally drops the job with a
+  rolled-back scan, so a presence row can never outlive the check-in that
+  caused it, and the revocation listener's survivor lookup (below) sees the
+  revoked state committed rather than a half-finished batch.
+- **A revoked admission ends access only if it was the last one.** §4.2 said
+  "`AdmissionRevoked` → the row whose `admission_id` matches loses access". As
+  built, `ProjectEventPresence::endForAdmission()` first looks for another
+  admission of the same holder at the same event that is not revoked; if one
+  exists the presence row is moved over to it and access continues, with no
+  `ParticipantHubAccessEnded` emitted. Only a holder with nothing left loses
+  the hub. Without this, cancelling one of a group booking's two tickets would
+  have thrown the holder out of an event they are standing in.
+- **The request memo remembers whose answer it holds.**
+  `Hub\ActiveEventContext` is a scoped binding that memoises its answer for the
+  request, and the memo is keyed by brand-and-user. A container that outlives
+  one viewer — the test runner reusing scoped instances between requests, or
+  any code switching the authenticated user mid-request — re-resolves instead
+  of handing the previous viewer's events to the next one.

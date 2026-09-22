@@ -6,6 +6,34 @@
 
 ## Next
 
+- [x] The live-event hub, Platform's half (0.9.0 sub-project A, design
+      2026-09-22, tasks 8–14). `platform_hub_access` + `Models\HubAccess`
+      projected from Admission's `ParticipantAdmitted`/
+      `ParticipantPresenceChanged`/`ParticipantHubAccessEnded` by
+      `Listeners\ProjectHubAccess`, and `platform_hub_layouts` +
+      `Models\HubLayout` projected from Event's `EventHubLayoutChanged` by
+      `Listeners\ProjectHubLayout` — the first listeners Platform has ever
+      had on another module's events, and SPEC's "Consumes" section now says
+      why that is a read model rather than an inversion.
+      `Hub\ActiveEventContext` (scoped, memoised per request *and per
+      viewer*, cache `hub-access:{brand}:{user}`, TTL 600) answers
+      `current()`/`all()` and feeds the shared `activeEvent` prop
+      (`Data\ActiveEventData`); a guest pays nothing, pinned by a
+      zero-query test. `Hub\HubRegistry` + `Hub\HubCard`/`Hub\HubLink`
+      (payload and URL closures, gated by module and capability, sorted by
+      `order`) with `Hub\HubCatalogue` as the read side Event's layout
+      editor calls. `Hub\HubLayoutResolver` (`hub-layout:{event}`, empty
+      layout cached too) and `Hub\HubPage`, which merges layout order with
+      the registry, resolves each surviving closure behind its own guard —
+      a contributor that throws loses its card, not the page
+      (`platform_hub_card_failures_total{brand,module}`) — and counts the
+      render on `platform_hub_views_total{brand}`. Routes: `/live`
+      (`platform.hub`) behind `auth` + the new `ensure-active-event`
+      middleware, the home switch in `StaticPageController::home()` and
+      `/home` (`home.plain`) beside it. Frontend: `pages/platform/live/
+      Hub.vue`, the topbar pill via `resources/js/lib/livePill.ts`.
+      `Gdpr\HubAccessGdprHandler` exports and erases the rows.
+
 - [x] `Events\BrandCreated` — the first of SPEC's proposed brand events to
       land (#287). Raised by `Actions\CreateBrand` after its transaction
       commits; Admission mints the brand's entrance signing key on it. The
@@ -37,6 +65,16 @@ depends on brand resolution and gating working.
       context.
 
 ## Backlog
+
+- [ ] An event switcher on the hub page for a member admitted to more than
+      one running event at once. `ActiveEventContext::all()` already answers
+      with every event, newest first, and `HubPageData` carries the list;
+      the page renders the first and offers no way to choose another.
+- [ ] The hub cards the neighbouring sub-projects bring: Competition's
+      "Nächste Spiele" and "Meine Competitions" (B), Agenda's "Jetzt /
+      Gleich" (C), Community's shoutbox (D). Nothing is needed here for
+      them — each module registers its own `HubCard` — but the hub is
+      deliberately thin until they land.
 
 - [x] Static pages in the brand menu, structured, with page visibility
       (bugfix round 2026-09-21, Task 20): `brand_menu_items` +

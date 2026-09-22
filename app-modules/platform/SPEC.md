@@ -73,6 +73,37 @@ those modules contain (ADR-0003, lessons-from-lancore #3).
   is server-persisted so it follows them across browsers. Transient view state
   — which nav groups are expanded — stays client-side and is not data.
 - **UI slot registry.** Named slots modules render into, gated per brand.
+- **The live-event hub** (design 2026-09-22, D-HUB-04/D-HUB-06). Platform owns
+  the shell, so it owns the place an admitted participant sees on the day.
+  - `Hub\HubRegistry` with `Hub\HubCard` and `Hub\HubLink` — the navigation
+    registry's sibling: modules register their event-day cards and links at
+    boot and Platform filters them per viewer by module gate and capability
+    (ADR-0003, ADR-0013). A card carries a **payload closure** and a link a
+    **URL closure**, never a value: what a card shows is a fact about one
+    member at one event, so it is resolved inside the request, and only for
+    the entries the operator's layout keeps. `Hub\HubCatalogue` is the read
+    side Event's layout editor calls — Event asks Platform what the registry
+    holds; Platform never calls Event.
+  - `Hub\ActiveEventContext` — which running event the signed-in member is
+    admitted to on this brand, answered from `platform_hub_access` and cached
+    under `hub-access:{brand}:{user}` for ten minutes, memoised per request and
+    per viewer. It is what the shared `activeEvent` prop and the topbar pill
+    are built from. A guest costs nothing: no cache read, no query.
+  - Two projections, both rebuildable by replay and neither of them a source
+    of truth: `platform_hub_access` (`Models\HubAccess`) from Admission's
+    three participant events, and `platform_hub_layouts`
+    (`Models\HubLayout`, read through `Hub\HubLayoutResolver`,
+    `hub-layout:{event}`) from Event's `EventHubLayoutChanged`. Platform reads
+    neither module's tables (ADR-0004).
+  - The page and the routes: `Hub\HubPage` builds the hub for both of them —
+    `/live` (`platform.hub`, behind `auth` and the `ensure-active-event`
+    middleware) and, when the operator set `hub_replaces_home` for the event,
+    the brand's `/` for an admitted signed-in member. `/home` (`home.plain`)
+    then keeps the plain brand home reachable. One contributor's failing
+    closure costs its own card, never the page.
+  - What Platform does **not** own here: who was let in (Admission's presence
+    and access window) and how a given event's hub is composed (Event's
+    `event_hub_layouts`). It holds copies of both, fed by their events.
 - **Target registry** (`Targets\TargetDirectory`, ADR-0066 §7.3,
   D-CPL-11). A boot-time registry in `SlotRegistry`'s shape that answers
   "name these ids for a picker": each owning module registers a
@@ -194,12 +225,27 @@ maintains from them.
 
 | Event | Owning module | Why |
 |---|---|---|
-| — | — | none by design |
+| `ParticipantAdmitted` | Admission | `Listeners\ProjectHubAccess` writes the `platform_hub_access` row that makes the pill and `/live` appear, and forgets the member's cache key. The event carries the event's name, slug and day label, so nothing else has to be looked up |
+| `ParticipantPresenceChanged` | Admission | Same listener: moves `on_site` on the row. A badge, never a gate (D-HUB-02) |
+| `ParticipantHubAccessEnded` | Admission | Same listener: removes the row — a row without access says nothing this table is for — whatever ended it (day, event, revocation) |
+| `EventHubLayoutChanged` | Event | `Listeners\ProjectHubLayout` writes `platform_hub_layouts` and forgets `hub-layout:{event}`, so the hub page reads the operator's composition from Platform's own table |
 
-Platform sits at the bottom of the dependency graph. Modules contribute to its
-registries at boot; they do not push state into it at runtime. A listener here
-on another module's event is an inverted dependency and should be treated as a
-design error rather than implemented.
+Platform sits at the bottom of the dependency graph, and for everything that
+describes a brand that is still absolute: modules contribute to its registries
+at boot; they do not push state into it at runtime.
+
+The live hub (design 2026-09-22) is the one deliberate exception, and it is
+worth being precise about why it is not the inverted dependency this section
+used to forbid outright. The shell has to answer, on every request, whether the
+signed-in member is admitted to a running event — and it may not read
+Admission's or Event's tables to find out (ADR-0004). The inversion would be
+Admission or Event *writing into* Platform, or Platform querying their models;
+a read model Platform maintains from their published events is neither. It
+knows nothing about what those modules contain, only what their event payloads
+carry, and dropping both tables and replaying rebuilds them.
+
+The bar stays exactly that high: a listener here that is not maintaining a
+Platform-owned read model from another module's public event is a design error.
 
 ## Capabilities
 

@@ -87,7 +87,12 @@ reading either.
   SVG of the *current* token (`Documents\TicketQr`, the same encoder the
   PDF uses), the seat, and Resources' seat button through the
   `admission.ticket.show` slot. The claim link's signed URL serves both the
-  landing page (GET) and the claim (POST).
+  landing page (GET) and the claim (POST). On the live hub the same code is
+  the `admission.my-ticket` card (`Hub\MyTicketCard`, registered as a
+  Platform `HubCard` at boot, D-HUB-05): the scan code, who it admits as
+  what, and the one sentence that says whether they may walk back in —
+  always `IssueAdmissionToken::current()`, never `rotate()`, because
+  opening the hub must not invalidate a code already on screen or on paper.
 - **`Models\AdmissionSeat`** (`admission_seats`) — which place an admission
   sits on, projected from Resources' `ResourceBookingConfirmed`/`Released`
   once they name an admission (#292 §5); the ticket page and the PDF name

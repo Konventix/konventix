@@ -256,6 +256,93 @@ so a typo stops the run instead of quietly backfilling nothing.
 not a backfill, and it invalidates whatever a reader has cached, so it is
 for a changed generator and nothing else.
 
+## Live hub
+
+While an event runs, a participant who has been let in at the door gets a
+**pill in the topbar** and a page at `/live` — their ticket, the event's
+announcements, their seat and the help dialog (design
+`docs/superpowers/specs/2026-09-22-event-hub-design.md`). Access is presence,
+not a permission: nobody grants it and nobody has to revoke it. It appears on
+the first accepted `in` scan and goes away on its own.
+
+Two things run it. **Admission** owns who is inside: an accepted scan writes
+`admission_event_presence` and emits `ParticipantAdmitted`; the event ending,
+the admission being revoked, or a once-per-day window passing emits
+`ParticipantHubAccessEnded`. **Platform** owns the shell: it projects those
+events into `platform_hub_access`, answers "which event is this person in"
+from one cache read, and renders the page.
+
+**The sweep.** `admission:close-presence-windows` runs **every minute**
+(`withoutOverlapping()`), and it is the only thing that notices a
+`once_per_day` window ending — that hour arrives by the clock, not by anything
+anybody emits. If the scheduler role is down, participants of a once-per-day
+event keep the hub past the day's end; nothing else breaks, and the next run
+catches up (the command only touches rows that still have access, so a late
+run ends each one once). The day's end is the event day's **`day_ends_at`**
+(`HH:MM`, set in the days editor, empty meaning 00:00 of the following day) —
+a LAN day that runs until 03:00 belongs in that field, or the hub goes dark at
+midnight while the hall is still full. Events with re-entry `once_only` or
+`unlimited` have no window at all and stay open until the event is concluded
+or cancelled.
+
+**A participant was scanned in and has no pill.** Work down, in this order:
+
+1. **Is the queue running?** Nothing about the hub happens on the door's own
+   request: the presence projection is a queued listener that runs after the
+   scan's transaction commits, deliberately, so the door can never wait on the
+   hub or fail over it. A stopped or backed-up worker delays every pill by
+   exactly the length of the backlog and leaves both tables below empty
+   (Horizon; `KonventixQueueBacklog`).
+2. **Is there a presence row?** `admission_event_presence` for that event and
+   user. Queue healthy, scan accepted and still no row means the admission has
+   **no holder account** (`admissions.holder_user_id` is null) — a claim link
+   nobody used. There is nothing to log in to, so there is deliberately no row
+   and no error; the fix is the claim, not the hub. A rejected scan writes
+   nothing either.
+3. **Row there, `hub_access = false`?** `access_ended_reason` says which of the
+   four doors it left through: `day_ended` (the window passed — the next
+   morning's scan re-opens it), `concluded`/`cancelled` (the event did), or
+   `revoked` (the admission that let them in was revoked, and no other
+   admission of theirs at that event survived).
+4. **Row there with access, but no `platform_hub_access` row?** The two are
+   written in the same job — Admission writes its row and emits
+   `ParticipantAdmitted`, Platform's listener projects it there and then — so
+   a presence row without a hub-access row means Platform's listener threw.
+   The log has it; the job will have been retried up to three times.
+5. **Both tables right, still no pill?** It is the cache. Platform answers the
+   shell from **`hub-access:{brand}:{user}`** (TTL 600s, the brand's and the
+   user's ULIDs). All three Admission events forget that key, so a stale
+   answer should be impossible — but forgetting it by hand is harmless and
+   settles the question:
+   `vendor/bin/sail artisan tinker --execute 'Cache::forget("hub-access:BRAND_ULID:USER_ULID");'`
+
+**A layout change did not apply.** The operator's composition per event —
+card order, hidden cards, and the "Startseite wird zum Hub" switch — is saved
+in Event (`admin/events/{event}/hub`, capability `event.update-event`) and
+projected into Platform's `platform_hub_layouts` on `EventHubLayoutChanged`.
+The page reads it through **`hub-layout:{event}`** (TTL 600s), forgotten on
+every save. A card that is registered but not in a saved layout is appended
+and visible, so a newly deployed module's card appears without anyone
+touching the page; a key in a layout that no module registers any more is
+dropped silently.
+
+**The home switch.** With "Startseite wird zum Hub" on, a signed-in admitted
+member's `/` *is* the hub. Guests and members nobody admitted see the ordinary
+home page and pay no hub query for it, and `/home` always serves the plain
+brand home — that is the URL to hand someone who needs to see the public page
+while the switch is on.
+
+**What to watch.** `konventix_platform_hub_views_total{brand}` counts hub
+renders (both routes) — on event day it should move; flat while people are
+being scanned in points at the chain above.
+`konventix_platform_hub_card_failures_total{brand,module}` counts
+contributions whose payload threw and were dropped: the page still renders,
+minus that card, and the module label says whose it was. Anything above zero
+means a participant is looking at a gap — the matching `Log::error` names the
+card key, and `KonventixErrorsLogged` is what pages for it. Admission's side
+is `konventix_admission_hub_access_total{brand,outcome}`, with `outcome`
+`admitted` or one of the four end reasons.
+
 ## The brand's Reverb credentials
 
 Realtime — the waiting room's ticks, the notification bell, the shoutbox —

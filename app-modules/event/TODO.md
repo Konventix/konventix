@@ -30,6 +30,21 @@
 
 ## Done
 
+- [x] The live hub's per-event half (0.9.0 sub-project A, design 2026-09-22,
+      tasks 1, 11 and 12). `event_days.day_ends_at` (`HH:MM`, nullable,
+      default 00:00 of the next day) in the days editor and on
+      `EventDaysChanged` as an additive key, so Admission can close a
+      once-per-day access window at 03:00 rather than at midnight.
+      `event_hub_layouts` + `Models\EventHubLayout` +
+      `Data\HubLayoutEntryData`/`UpdateHubLayoutData`, written whole by
+      `Actions\SaveEventHubLayout`, which emits `EventHubLayoutChanged` with
+      the complete layout. Admin page `admin/events/{event}/hub` behind
+      `Permission::UpdateEvent` — a sortable list of every card and link
+      Platform's `HubCatalogue` reports, on/off toggles and the "Startseite
+      wird zum Hub" switch — plus the "Live hub" link on the event
+      dashboard. Event stores Platform's registry keys and never Platform's
+      objects; unknown keys in a stale layout are the hub page's problem to
+      drop, not this module's to validate (ADR-0004).
 - [x] `CountdownBlock` links the event name (bugfix round 2026-09-21,
       Task 17b): `CountdownResolvedData.slug` under the hero's rule —
       set only when `isVisibleOnLanding()`, so a draft's countdown never

@@ -158,6 +158,18 @@
 
 ## Done
 
+- [x] "Mein Ticket" on the live hub (D-HUB-05, design 2026-09-22 §8, task
+      15): `Hub\MyTicketCard` + `Data\MyTicketCardData` behind the
+      `admission.my-ticket` `HubCard` registered in
+      `AdmissionServiceProvider::registerHub()` — event name, role, the
+      inline-SVG scan code from `Documents\TicketQr`, a relative link to
+      `/my/tickets/{admission}` and the re-entry sentence for the event's
+      policy. `current()`, never `rotate()`, so the hub cannot invalidate a
+      code already on screen; the closure resolves the builder per request
+      rather than capturing the provider in the Octane worker. The Vue side
+      is `resources/js/components/hub/MyTicketCard.vue`, which imports
+      nothing outside this module — `tests/Feature/HubComponentBoundaryTest.php`
+      in the host suite is what keeps it that way.
 - [x] Presence and hub access (D-HUB-01/02): `Models\EventPresence`
       (`admission_event_presence`) projected off an accepted scan by
       `ProjectPresenceOnAdmissionCheckedIn` (queued after commit);

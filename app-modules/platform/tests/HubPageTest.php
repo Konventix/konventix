@@ -80,10 +80,17 @@ it('never runs the payload of a card the layout hides', function (): void {
     $brand = $this->withBrand();
     $user = User::factory()->create();
     event(hubAdmitted($brand->id, $user->id, $eventId = (string) Str::ulid()));
+    $resolved = false;
     app(HubRegistry::class)->add(
         hubPageCard('platform.shown'),
-        new HubCard('platform', 'platform.hidden', 'hidden', 'platform/hub/TestCard', function (): never {
-            throw new RuntimeException('payload resolved for a hidden card');
+        // A flag, not a throw: `HubPage` contains a contributor's exception
+        // (see the containment test below), so a throwing sentinel here
+        // would be swallowed and this test would pass on a page that *did*
+        // resolve the hidden card.
+        new HubCard('platform', 'platform.hidden', 'hidden', 'platform/hub/TestCard', function () use (&$resolved): Data {
+            $resolved = true;
+
+            return new HubPageTestPayload('hidden');
         }),
     );
     event(new EventHubLayoutChanged($eventId, $brand->id, [['key' => 'platform.hidden', 'visible' => false]], false));
@@ -92,6 +99,8 @@ it('never runs the payload of a card the layout hides', function (): void {
         ->component('platform/live/Hub')
         ->where('hub.cards.0.key', 'platform.shown')
         ->count('hub.cards', 1));
+
+    expect($resolved)->toBeFalse();
 });
 
 // D-HUB-05 review: Platform cannot vet a foreign module's payload

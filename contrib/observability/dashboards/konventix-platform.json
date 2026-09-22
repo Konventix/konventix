@@ -499,7 +499,7 @@
             "type": "prometheus",
             "uid": "VictoriaMetrics"
           },
-          "expr": "sum(increase(konventix_platform_hub_card_failures_total{job=\"$release\"}[$__range]))",
+          "expr": "sum by (module) (increase(konventix_platform_hub_card_failures_total{job=\"$release\"}[$__range]))",
           "legendFormat": "{{module}}",
           "range": true
         }

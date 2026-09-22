@@ -43,6 +43,27 @@ models (lessons-from-lancore #1); this one imports none.
   picture. "Open in maps" is a plain OpenStreetMap link from the entrance's
   coordinates, falling back to the building's; there is no embedded map and no
   map dependency.
+- **The event's days**, including **when a day ends for the people inside it**
+  (`event_days.day_ends_at`, D-HUB-01): a nullable `HH:MM` string, null meaning
+  00:00 of the following day, so a LAN day that runs until 03:00 keeps the
+  live hub open until 03:00 instead of losing it at midnight. Stored as text
+  rather than a `time` column so the value round-trips unchanged through the
+  days editor, `EventDaysChanged` and Admission's projection of it. Event owns
+  the setting; what it *means* for a person's access is Admission's — the
+  date a scan belongs to is still `dayCovering()`'s answer, unchanged, and
+  `day_ends_at` only fixes when that day's access window closes.
+- **The live hub's per-event composition** (`event_hub_layouts`,
+  `Models\EventHubLayout`, design 2026-09-22 §6, D-HUB-06). One row per event:
+  the order and visibility of the cards and links Platform's registry holds,
+  as opaque keys (`Data\HubLayoutEntryData`), plus `hub_replaces_home` — the
+  operator's choice to let the brand's home page be the hub for signed-in
+  admitted members while this event runs. Written whole on every save by
+  `Actions\SaveEventHubLayout`, from the admin page
+  `admin/events/{event}/hub` — behind `Permission::UpdateEvent`, the same
+  capability that edits the event itself — which lists what Platform's
+  `HubCatalogue` reports. Event owns *which* cards and in which order; it owns
+  neither the cards themselves nor the page they render on, and it stores
+  Platform's keys rather than Platform's objects (ADR-0004).
 - **The event's own descriptive metadata** used by other modules for display:
   name, dates, timezone, venue city. Modules keep this as read models built from
   Event's events rather than querying Event tables.
@@ -98,9 +119,10 @@ Payloads carry ULIDs and scalars — never Eloquent models.
 | `EventCancelled` | The event will not take place | `event_id`, `brand_id`, `reason_code`, `cancelled_at` | implemented |
 | `EventConcluded` | The event has ended | `event_id`, `brand_id`, `concluded_at` | implemented |
 | `EventArchived` | The event is closed for all operations | `event_id`, `brand_id`, `archived_at` | implemented |
-| `EventDaysChanged` | The event's day set changed (D-ADM-04). Always carries the COMPLETE current set — consumers replace, never patch | `event_id`, `brand_id`, `days` (list of `{day_id, date, sequence, label}`) | implemented |
+| `EventDaysChanged` | The event's day set changed (D-ADM-04). Always carries the COMPLETE current set — consumers replace, never patch | `event_id`, `brand_id`, `days` (list of `{day_id, date, sequence, label, day_ends_at}` — `day_ends_at` (`HH:MM`, nullable) joined the day entry additively for the live hub, D-HUB-01) | implemented |
 | `EventReentryPolicyChanged` | The re-entry knob changed, **and at creation** — a consumer that hears only about changes never learns the policy of an event that was right from the start. Exists because ADR-0033 needs the policy decidable at a door with no network, and Admission may not read this module's models (ADR-0004). Carries the complete current value, like `EventDaysChanged` | `event_id`, `brand_id`, `reentry_policy` | implemented |
 | `EventAttendeeListPolicyChanged` | The attendee-list switch changed, **and at creation** (ADR-0064 §6) — same shape and same reason as `EventReentryPolicyChanged`: Registration renders the list from its projection and may not read this module's models (ADR-0004). Carries the complete current value, `off`/`members`/`public` | `event_id`, `brand_id`, `attendee_list_visibility` | implemented |
+| `EventHubLayoutChanged` | The operator saved the live hub's composition for an event (D-HUB-06). Carries the complete layout, never a diff, like `EventDaysChanged`: Platform replaces its projection row and forgets its cache. The card keys are Platform's registry keys, opaque here (ADR-0004) | `event_id`, `brand_id`, `cards` (list of `{key, visible}` in display order), `hub_replaces_home` | implemented |
 | `VenueCreated` | A venue is created for a brand | `venue_id`, `brand_id`, `name`, `city`, `country_code` | implemented |
 | `VenueUpdated` | Venue address or access details change | `venue_id`, `brand_id`, `name`, `city`, `country_code` | implemented |
 | `VenueAssigned` | A venue is attached to an event (D-EVT-15: says whether it is the primary) | `event_id`, `venue_id`, `brand_id`, `name`, `city`, `is_primary` | implemented |
