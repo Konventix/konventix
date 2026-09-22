@@ -97,6 +97,8 @@ declare namespace Konventix {
                 | 'reentry_not_permitted'
                 | 'wrong_event';
             export type CheckInResult = 'accepted' | 'rejected';
+            export type HubAccessEndReason =
+                'day_ended' | 'concluded' | 'cancelled' | 'revoked';
             export type Permission =
                 | 'admission.view-admissions'
                 | 'admission.issue-admissions'
@@ -962,6 +964,16 @@ declare namespace Konventix {
     }
     namespace Platform {
         namespace Data {
+            export type ActiveEventData = {
+                readonly eventId: string;
+                readonly eventSlug: string | null;
+                readonly eventName: string | null;
+                readonly admissionId: string;
+                readonly dayLabel: string | null;
+                readonly admittedAt: string;
+                readonly windowEndsAt: string | null;
+                readonly onSite: boolean;
+            };
             export type AdminFavoriteData = {
                 label: string;
                 url: string;

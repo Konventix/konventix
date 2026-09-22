@@ -9,6 +9,10 @@ use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Konventix\Admission\Events\ParticipantAdmitted;
+use Konventix\Admission\Events\ParticipantHubAccessEnded;
+use Konventix\Admission\Events\ParticipantPresenceChanged;
+use Konventix\Compliance\Gdpr\GdprHandlerRegistry;
 use Konventix\Platform\Blocks\BlockRegistry;
 use Konventix\Platform\Blocks\Types\CardsBlock;
 use Konventix\Platform\Blocks\Types\HeroBlock;
@@ -24,14 +28,17 @@ use Konventix\Platform\Enums\CookieCategory;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Environment\DeploymentEnvironment;
 use Konventix\Platform\Features\BrandFeatureRegistry;
+use Konventix\Platform\Gdpr\HubAccessGdprHandler;
 use Konventix\Platform\Http\Controllers\CaddyAskController;
 use Konventix\Platform\Http\Controllers\MediaFileController;
 use Konventix\Platform\Http\Middleware\EnsureFeatureIsActive;
 use Konventix\Platform\Http\Middleware\EnsureModuleIsActive;
 use Konventix\Platform\Http\Middleware\EnsureWaitingRoomAdmission;
+use Konventix\Platform\Hub\ActiveEventContext;
 use Konventix\Platform\Legal\NoPublicLegalTexts;
 use Konventix\Platform\Legal\PublicLegalTexts;
 use Konventix\Platform\Listeners\GuardNonProductionMail;
+use Konventix\Platform\Listeners\ProjectHubAccess;
 use Konventix\Platform\Modules\ModuleGate;
 use Konventix\Platform\Modules\ModuleServiceProvider;
 use Konventix\Platform\Navigation\NavigationItem;
@@ -149,6 +156,11 @@ class PlatformServiceProvider extends ModuleServiceProvider
         $this->app->scoped(BrandContext::class);
         $this->app->scoped(OperatorContext::class);
 
+        // Scoped for the same reason: it memoises which running event the
+        // signed-in member is admitted to (design §5.1), an answer that
+        // belongs to one request's user and brand and to no other.
+        $this->app->scoped(ActiveEventContext::class);
+
         // These hold only boot-time registrations, which a long-lived worker
         // may safely share across requests.
         $this->app->singleton(ModuleGate::class);
@@ -220,6 +232,23 @@ class PlatformServiceProvider extends ModuleServiceProvider
     protected function registerListeners(): void
     {
         Event::listen(MessageSending::class, GuardNonProductionMail::class);
+
+        // Admission's participant events feed the `hub_access` projection
+        // (design §5.1, ADR-0004): Platform learns who is admitted to what
+        // from these alone and never reads Admission's presence table.
+        Event::listen(ParticipantAdmitted::class, [ProjectHubAccess::class, 'handleAdmitted']);
+        Event::listen(ParticipantPresenceChanged::class, [ProjectHubAccess::class, 'handlePresenceChanged']);
+        Event::listen(ParticipantHubAccessEnded::class, [ProjectHubAccess::class, 'handleEnded']);
+    }
+
+    /**
+     * The `hub_access` projection is the one thing Platform holds about a
+     * person rather than about a brand (design §9); Compliance exports and
+     * erases it through this handler like every other module's.
+     */
+    protected function registerGdprExporters(): void
+    {
+        $this->app->make(GdprHandlerRegistry::class)->register(new HubAccessGdprHandler);
     }
 
     /**

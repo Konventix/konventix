@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Str;
+use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\Operator;
@@ -85,4 +87,25 @@ function operatorWithThemeAdmin(array $capabilities = ['platform.access-admin', 
     $registrar->setPermissionsTeamId(null);
 
     return [$operator, $admin, $brand];
+}
+
+/**
+ * The Admission event that opens the live hub for a person (design §5.1):
+ * what `ActiveEventContextTest` and `ActiveEventSharedPropTest` feed the
+ * `platform_hub_access` projection with. Display fields are fixed so the
+ * assertions have something to compare; only the ids and the instant vary.
+ */
+function hubAdmitted(string $brandId, string $userId, string $eventId, string $admittedAt = '2026-10-16T18:00:00Z'): ParticipantAdmitted
+{
+    return new ParticipantAdmitted(
+        userId: $userId,
+        eventId: $eventId,
+        brandId: $brandId,
+        admissionId: (string) Str::ulid(),
+        admittedAt: $admittedAt,
+        windowEndsAt: null,
+        dayLabel: 'Freitag',
+        eventName: 'Kon Fest',
+        eventSlug: 'kon-fest',
+    );
 }
