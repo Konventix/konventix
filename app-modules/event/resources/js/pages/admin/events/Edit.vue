@@ -52,7 +52,11 @@ type Props = {
         bannerMediaId: string | null;
         brandId: string;
     };
-    days: { date: string; label: string | null }[];
+    /**
+     * `day_ends_at` is the wire key, posted verbatim: `HH:MM` when the day
+     * ends after midnight (D-HUB-01), null for 00:00 of the next day.
+     */
+    days: { date: string; label: string | null; day_ends_at: string | null }[];
     venues: { id: string; name: string; city: string; isPrimary: boolean }[];
     availableVenues: { id: string; name: string; city: string }[];
     /** The brand's images for the banner picker (#292). */
@@ -151,7 +155,7 @@ function submit(): void {
 }
 
 function addDay(): void {
-    form.days.push({ date: '', label: null });
+    form.days.push({ date: '', label: null, day_ends_at: null });
 }
 
 function removeDay(index: number): void {
@@ -366,6 +370,16 @@ function promoteVenue(venueId: string): void {
                                 "
                             />
                         </div>
+                        <TimeField
+                            :id="`edit-day-${index}-ends`"
+                            :model-value="day.day_ends_at ?? ''"
+                            label="Tag endet um"
+                            class="w-32"
+                            :error="form.errors[`days.${index}.day_ends_at`]"
+                            @update:model-value="
+                                day.day_ends_at = String($event) || null
+                            "
+                        />
                         <Button
                             type="button"
                             variant="ghost"
@@ -385,6 +399,10 @@ function promoteVenue(venueId: string): void {
                         <Plus class="size-4" />
                         Add day
                     </Button>
+                    <p class="text-xs text-text-muted">
+                        Leer = 00:00. Zeiten vor 12:00 gelten als Nacht des
+                        Folgetags (03:00 = drei Uhr morgens nach diesem Tag).
+                    </p>
                     <InputError :message="form.errors.days" />
                 </CardContent>
             </Card>

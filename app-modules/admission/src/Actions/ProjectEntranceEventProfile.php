@@ -24,7 +24,7 @@ use Konventix\Admission\Models\EntranceEventProfile;
 final class ProjectEntranceEventProfile
 {
     /**
-     * @param  list<array{day_id: string, date: string, sequence: int, label: string|null}>  $days
+     * @param  list<array{day_id: string, date: string, sequence: int, label: string|null, day_ends_at?: string|null}>  $days
      */
     public function days(string $eventId, string $brandId, array $days): EntranceEventProfile
     {

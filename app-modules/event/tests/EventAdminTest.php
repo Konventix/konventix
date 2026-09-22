@@ -9,14 +9,9 @@ use Konventix\Event\Events\EventDaysChanged;
 use Konventix\Event\Models\Event;
 use Konventix\Event\Models\EventDay;
 use Konventix\Event\Models\Venue;
-use Konventix\Identity\Models\User;
 use Konventix\Platform\Models\Brand;
 use Konventix\Platform\Models\MediaItem;
 use Konventix\Platform\Models\MediaUsage;
-use Konventix\Platform\Models\Operator;
-use Konventix\Platform\Models\Permission as PermissionModel;
-use Konventix\Platform\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
 
 /**
  * ADR-0029: the event admin console — index and per-event dashboard — exists
@@ -27,33 +22,6 @@ use Spatie\Permission\PermissionRegistrar;
  * (`gateable = false`), so their cards are always present — no Pennant
  * activation needed for this test to see them.
  */
-function eventsAdminOperator(array $permissions = ['platform.access-admin', 'event.view-events']): array
-{
-    $operator = Operator::factory()->create();
-    $operator->forceFill(['admin_host' => 'admin.eventsadmin.test'])->save();
-
-    $registrar = app(PermissionRegistrar::class);
-    $registrar->setPermissionsTeamId($operator->getKey());
-
-    foreach ($permissions as $name) {
-        PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
-    }
-
-    $role = Role::query()->create([
-        'name' => 'Operator Admin',
-        'guard_name' => 'web',
-        'brand_id' => $operator->getKey(),
-    ]);
-    $role->givePermissionTo($permissions);
-
-    $admin = User::factory()->create();
-    $admin->assignRole($role);
-
-    $registrar->setPermissionsTeamId(null);
-
-    return [$operator, $admin];
-}
-
 it('404s the events index on a brand host', function (): void {
     eventsAdminOperator();
 
@@ -128,33 +96,6 @@ it('404s the dashboard for an unknown event ulid', function (): void {
         ->get('http://admin.eventsadmin.test/admin/events/01ARZ3NDEKTSV4RRFFQ69G5FAV')
         ->assertNotFound();
 });
-
-/**
- * @return array{0: User, 1: Event, 2: array<string, mixed>}
- */
-function eventsAdminEditable(): array
-{
-    [, $admin] = eventsAdminOperator(['platform.access-admin', 'event.update-event']);
-
-    test()->withBrand();
-    $event = Event::factory()->create([
-        'starts_at' => '2027-06-15 10:00:00',
-        'ends_at' => '2027-06-16 18:00:00',
-    ]);
-
-    $payload = [
-        'name' => $event->name,
-        'slug' => $event->slug,
-        'description' => $event->description,
-        'startsAt' => $event->starts_at->format('Y-m-d H:i:s'),
-        'endsAt' => $event->ends_at->format('Y-m-d H:i:s'),
-        'timezone' => $event->timezone,
-        'visibility' => $event->visibility->value,
-        'reentryPolicy' => $event->reentry_policy->value,
-    ];
-
-    return [$admin, $event, $payload];
-}
 
 // Regression: BrandScope hardens to zero rows on the admin host, so the day
 // sync used to see no existing days, re-insert the submitted date, and die on

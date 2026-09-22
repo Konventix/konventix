@@ -12,7 +12,10 @@ namespace Konventix\Event\Events;
 final readonly class EventDaysChanged
 {
     /**
-     * @param  list<array{day_id: string, date: string, sequence: int, label: string|null}>  $days
+     * `day_ends_at` (`HH:MM`, D-HUB-01) arrived additively for the live hub;
+     * null means 00:00 of the following day.
+     *
+     * @param  list<array{day_id: string, date: string, sequence: int, label: string|null, day_ends_at?: string|null}>  $days
      */
     public function __construct(
         public string $eventId,

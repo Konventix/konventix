@@ -21,12 +21,12 @@ use Konventix\Event\Models\EventDay;
  * `sequence` gets a two-phase write (offset, then final): the DB-level
  * unique(event_id, sequence) would otherwise collide mid-reorder.
  *
- * @phpstan-type DayInput array{date: string, label: string|null}
+ * @phpstan-type DayInput array{date: string, label: string|null, day_ends_at?: string|null}
  */
 final class SyncEventDays
 {
     /**
-     * @param  list<array{date: string, label: string|null}>  $days
+     * @param  list<DayInput>  $days
      */
     public function handle(Event $event, array $days): Event
     {
@@ -53,7 +53,11 @@ final class SyncEventDays
                 $current = $existing->get($day['date']);
 
                 if ($current !== null) {
-                    $current->forceFill(['sequence' => $sequence, 'label' => $day['label']])->save();
+                    $current->forceFill([
+                        'sequence' => $sequence,
+                        'label' => $day['label'],
+                        'day_ends_at' => $day['day_ends_at'] ?? null,
+                    ])->save();
 
                     continue;
                 }
@@ -63,6 +67,7 @@ final class SyncEventDays
                     'date' => $day['date'],
                     'sequence' => $sequence,
                     'label' => $day['label'],
+                    'day_ends_at' => $day['day_ends_at'] ?? null,
                 ]);
                 $row->brand_id = $event->brand_id;
                 $row->save();
@@ -79,6 +84,7 @@ final class SyncEventDays
                         'date' => $day->date->toDateString(),
                         'sequence' => $day->sequence,
                         'label' => $day->label,
+                        'day_ends_at' => $day->day_ends_at,
                     ])->all()),
             ));
 

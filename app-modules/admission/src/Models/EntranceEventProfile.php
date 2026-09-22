@@ -33,7 +33,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $brand_id
  * @property string $event_id
  * @property ReentryPolicy $reentry_policy
- * @property list<array{day_id: string, date: string, sequence: int, label: string|null}>|null $days
+ * @property list<array{day_id: string, date: string, sequence: int, label: string|null, day_ends_at?: string|null}>|null $days
  * @property int|null $poll_seconds
  * @property int|null $stale_after_seconds
  * @property Carbon|null $created_at

@@ -148,6 +148,7 @@ class EventAdminController
             'days' => $model->days()->withoutGlobalScope(BrandScope::class)->get()->map(fn (EventDay $day): array => [
                 'date' => $day->date->toDateString(),
                 'label' => $day->label,
+                'day_ends_at' => $day->day_ends_at,
             ])->all(),
             'venues' => $model->venues()->withoutGlobalScope(BrandScope::class)->get()->map(fn (Venue $venue): array => [
                 'id' => $venue->getKey(),
@@ -188,7 +189,11 @@ class EventAdminController
     }
 
     /**
-     * @return list<array{date: string, label: string|null}>
+     * `day_ends_at` is `HH:MM` on a 24-hour clock, exactly what
+     * `<input type="time">` submits (D-HUB-01); anything else is refused
+     * here rather than stored and misread by the hub's clock.
+     *
+     * @return list<array{date: string, label: string|null, day_ends_at: string|null}>
      */
     private function validatedDays(Request $request): array
     {
@@ -196,10 +201,15 @@ class EventAdminController
             'days' => ['array'],
             'days.*.date' => ['required', 'date_format:Y-m-d'],
             'days.*.label' => ['nullable', 'string', 'max:255'],
+            'days.*.day_ends_at' => ['nullable', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/'],
         ]);
 
         return array_values(array_map(
-            fn (array $day): array => ['date' => $day['date'], 'label' => $day['label'] ?? null],
+            fn (array $day): array => [
+                'date' => $day['date'],
+                'label' => $day['label'] ?? null,
+                'day_ends_at' => $day['day_ends_at'] ?? null,
+            ],
             $validated['days'] ?? [],
         ));
     }

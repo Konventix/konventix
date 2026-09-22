@@ -29,6 +29,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property Carbon $date
  * @property int $sequence
  * @property string|null $label
+ * @property string|null $day_ends_at `HH:MM`; null means 00:00 of the following day (D-HUB-01)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -39,7 +40,7 @@ class EventDay extends Model
     /** @use HasFactory<EventDayFactory> */
     use HasFactory, HasUlids;
 
-    protected $fillable = ['event_id', 'date', 'sequence', 'label'];
+    protected $fillable = ['event_id', 'date', 'sequence', 'label', 'day_ends_at'];
 
     /**
      * @return BelongsTo<Event, $this>
