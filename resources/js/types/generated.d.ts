@@ -1027,6 +1027,9 @@ declare namespace Konventix {
                 format: string;
                 tokens: Record<string, string>;
                 darkTokens: Record<string, string>;
+                overrides: string[];
+                darkOverrides: string[];
+                authoringGuide: Konventix.Platform.Data.ThemeAuthoringGuideData;
                 exportedAt: string | null;
                 brand: string | null;
             };
@@ -1080,6 +1083,13 @@ declare namespace Konventix {
             export type FooterLinksData = {
                 brandId: string | null;
                 links: Konventix.Platform.Data.FooterLinkData[];
+            };
+            export type ImportBrandThemeData = {
+                format: string;
+                tokens: Record<string, string>;
+                darkTokens: Record<string, string>;
+                overrides: string[] | null;
+                darkOverrides: string[] | null;
             };
             export type MediaItemData = {
                 id: string;
@@ -1148,6 +1158,14 @@ declare namespace Konventix {
                 readonly label: string;
                 readonly group: string | null;
             };
+            export type ThemeAuthoringGuideData = {
+                aboutThisFile: string[];
+                contrastRule: Konventix.Platform.Data.ThemeContrastRuleData;
+                tokens: Record<
+                    string,
+                    Konventix.Platform.Data.ThemeTokenReferenceData
+                >;
+            };
             export type ThemeCatalogData = {
                 groups: Konventix.Platform.Data.ThemeTokenGroupData[];
                 contrastPairs: Konventix.Platform.Data.ThemeContrastPairData[];
@@ -1155,6 +1173,11 @@ declare namespace Konventix {
             export type ThemeContrastPairData = {
                 text: string;
                 surface: string;
+            };
+            export type ThemeContrastRuleData = {
+                minimumRatio: number;
+                note: string;
+                pairs: Konventix.Platform.Data.ThemeContrastPairData[];
             };
             export type ThemeTokenDefinitionData = {
                 name: string;
@@ -1166,6 +1189,13 @@ declare namespace Konventix {
                 key: string;
                 label: string;
                 tokens: Konventix.Platform.Data.ThemeTokenDefinitionData[];
+            };
+            export type ThemeTokenReferenceData = {
+                label: string;
+                group: string;
+                groupLabel: string;
+                defaultLight: string;
+                defaultDark: string;
             };
             export type UpdateBrandData = {
                 name: string;

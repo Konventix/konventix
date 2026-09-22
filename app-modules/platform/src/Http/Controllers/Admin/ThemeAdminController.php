@@ -15,7 +15,7 @@ use Konventix\Platform\Actions\ExportBrandTheme;
 use Konventix\Platform\Actions\UpdateBrandTheme;
 use Konventix\Platform\Data\BrandSummaryData;
 use Konventix\Platform\Data\BrandThemeData;
-use Konventix\Platform\Data\BrandThemeExportData;
+use Konventix\Platform\Data\ImportBrandThemeData;
 use Konventix\Platform\Data\ThemeCatalogData;
 use Konventix\Platform\Enums\Permission;
 use Konventix\Platform\Models\Brand;
@@ -53,8 +53,11 @@ class ThemeAdminController
     }
 
     /**
-     * The theme as a `konventix.brand-theme/v1` file: canonical JSON, so two
-     * exports diff cleanly and an import of an export changes nothing.
+     * The theme as a `konventix.brand-theme/v2` file: canonical JSON, so two
+     * exports diff cleanly and an import of an export changes nothing. The
+     * file carries every catalog token at its effective value plus the
+     * reference an author needs, so it is a starting point for a new theme
+     * and not only a copy of this brand's.
      */
     public function export(Brand $brand, ExportBrandTheme $exportBrandTheme): StreamedResponse
     {
@@ -72,11 +75,13 @@ class ThemeAdminController
     }
 
     /**
-     * An uploaded export replaces both token maps. The file is read and
-     * decoded here; its envelope is `BrandThemeExportData`'s to validate and
-     * the maps go through `BrandThemeData` and `UpdateBrandTheme`, so an
-     * unknown token name, a bad colour or a failing contrast pair is refused
-     * with the same 422 a save gets — and the stored theme stays as it was.
+     * An uploaded theme file replaces both token maps. The file is read and
+     * decoded here; its envelope is `ImportBrandThemeData`'s to validate —
+     * both the v2 and the v1 marker are accepted — and the values it claims
+     * as the brand's own go through `BrandThemeData` and `UpdateBrandTheme`,
+     * so an unknown token name, a bad colour or a failing contrast pair is
+     * refused with the same 422 a save gets, and the stored theme stays as it
+     * was.
      */
     public function import(Request $request, Brand $brand, UpdateBrandTheme $updateBrandTheme): RedirectResponse
     {
@@ -97,7 +102,7 @@ class ThemeAdminController
             ]);
         }
 
-        $theme = BrandThemeExportData::validateAndCreate($document)->toThemeData();
+        $theme = ImportBrandThemeData::validateAndCreate($document)->toThemeData();
 
         $updateBrandTheme->handle($brand, $theme);
 

@@ -240,9 +240,13 @@ function submitImport(): void {
                     </h2>
                     <p class="text-xs text-text-muted">
                         The export is a
-                        <code>konventix.brand-theme/v1</code> file with both
-                        maps, ready to import into another brand. An import
-                        replaces both maps and is checked like a save.
+                        <code>konventix.brand-theme/v2</code> file: every token
+                        at its effective value in both schemes, which of them
+                        this brand overrides, and a reference block naming each
+                        token and the contrast rules — enough to hand to a
+                        designer or a coding agent as the starting point for a
+                        new theme. An import replaces both maps, is checked like
+                        a save, and still accepts a <code>v1</code> file.
                     </p>
                     <a
                         :href="exportTheme(brand.id).url"

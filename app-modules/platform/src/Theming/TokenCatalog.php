@@ -27,6 +27,14 @@ namespace Konventix\Platform\Theming;
  */
 final class TokenCatalog
 {
+    /**
+     * The BFSG contrast minimum every `contrastPairs()` entry must reach
+     * (ADR-0008). It lives here rather than inside `UpdateBrandTheme` because
+     * the theme export writes it into the file it hands an author, and the
+     * number the file states has to be the number the save enforces.
+     */
+    public const float MIN_CONTRAST_RATIO = 4.5;
+
     private function __construct() {}
 
     /**

@@ -145,6 +145,25 @@ depends on brand resolution and gating working.
 
 ## Done
 
+- [x] A theme export is a theme file somebody can author from (operator ask
+      2026-09-22, release 0.8.1 Task 6). The export envelope is now
+      `konventix.brand-theme/v2`: `tokens`/`darkTokens` carry the *effective*
+      value of every `TokenCatalog` token in both schemes (a brand that has
+      themed nothing downloads the complete default theme), `overrides`/
+      `darkOverrides` name the ones the brand owns, and `authoringGuide`
+      (`Data\ThemeAuthoringGuideData`, `ThemeContrastRuleData`,
+      `ThemeTokenReferenceData`) is a reference block with prose, per-token
+      label/group/defaults and the BFSG pairs plus the 4.5:1 minimum, which
+      moved to `TokenCatalog::MIN_CONTRAST_RATIO` so the file states the
+      number `UpdateBrandTheme` enforces. Reading the file is a second Data
+      object, `Data\ImportBrandThemeData` (ADR-0009, one per endpoint): it
+      accepts the v2 and the v1 marker, stores only what a file marks as the
+      brand's own, and treats a missing marker list as "all of these are
+      mine" — which is exactly what a v1 file and a hand-written file mean —
+      so a round trip never freezes the platform defaults into a brand. It
+      declares no `authoringGuide`, so a mangled guide cannot refuse a file
+      whose values are fine. `Edit.vue` says what the download contains.
+
 - [x] Brand theme export and import (2026-09-21 bugfix round, Task 10).
       `Data\BrandThemeExportData` (`konventix.brand-theme/v1` envelope:
       `format` validated with `In`, both token maps, `exportedAt` and the

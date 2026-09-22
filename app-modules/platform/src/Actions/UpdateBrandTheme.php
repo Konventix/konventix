@@ -29,8 +29,6 @@ use Konventix\Platform\Theming\TokenCatalog;
  */
 final class UpdateBrandTheme
 {
-    private const float MIN_CONTRAST_RATIO = 4.5;
-
     public function handle(Brand $brand, BrandThemeData $data): Brand
     {
         return DB::transaction(function () use ($brand, $data): Brand {
@@ -109,7 +107,7 @@ final class UpdateBrandTheme
 
             $ratio = ContrastRatio::ratio($effective[$pair['text']], $effective[$pair['surface']]);
 
-            if ($ratio < self::MIN_CONTRAST_RATIO) {
+            if ($ratio < TokenCatalog::MIN_CONTRAST_RATIO) {
                 throw ValidationException::withMessages([
                     $field => sprintf(
                         "In %s mode, '%s' on '%s' has a contrast ratio of %.2f:1, below the %.1f:1 BFSG minimum (ADR-0008).",
@@ -117,7 +115,7 @@ final class UpdateBrandTheme
                         $pair['text'],
                         $pair['surface'],
                         $ratio,
-                        self::MIN_CONTRAST_RATIO,
+                        TokenCatalog::MIN_CONTRAST_RATIO,
                     ),
                 ]);
             }
