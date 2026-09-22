@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Platform\Listeners;
 
 use Carbon\CarbonImmutable;
+use Konventix\Admission\Events\ParticipantAdmissionReplaced;
 use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Events\ParticipantPresenceChanged;
@@ -12,15 +13,17 @@ use Konventix\Platform\Hub\ActiveEventContext;
 use Konventix\Platform\Models\HubAccess;
 
 /**
- * Keeps `platform_hub_access` in step with Admission's participant events
- * (design §5.1, ADR-0004) — Platform's only knowledge of who is admitted
- * to what. Registered in `PlatformServiceProvider::registerListeners()`.
+ * Keeps `platform_hub_access` in step with Admission's four participant
+ * events (design §5.1, ADR-0004) — Platform's only knowledge of who is
+ * admitted to what. Registered in
+ * `PlatformServiceProvider::registerListeners()`.
  *
  * Every handler is idempotent so a redelivered event changes nothing: the
  * row is keyed by `(event_id, user_id)`, `handleAdmitted()` upserts by
- * that key, and the other two tolerate a row that is already flipped or
- * already gone. Each ends by forgetting the member's cache entry, so the
- * next request sees the change rather than the TTL.
+ * that key, and the other three tolerate a row that is already flipped,
+ * already carrying the new value, or already gone. Each ends by forgetting
+ * the member's cache entry, so the next request sees the change rather than
+ * the TTL.
  *
  * The events arrive from queue workers with no ambient brand, so every
  * query escapes the brand scope by the payload's own brand id (ADR-0010),
@@ -62,6 +65,23 @@ final class ProjectHubAccess
     {
         $this->rowFor($event->brandId, $event->eventId, $event->userId)
             ?->fill(['on_site' => $event->direction === 'in'])
+            ->save();
+
+        ActiveEventContext::forget($event->brandId, $event->userId);
+    }
+
+    /**
+     * Access did not change; the admission behind it did (D-HUB-01's
+     * survivor rule). This row *mirrors* `admission_id`, and the hub's
+     * "Mein Sitzplatz" link is built out of it, so a mirror left pointing
+     * at the revoked admission would send the participant to a ticket that
+     * no longer exists. A replacement for a row this table never admitted
+     * is a no-op, like a presence change.
+     */
+    public function handleAdmissionReplaced(ParticipantAdmissionReplaced $event): void
+    {
+        $this->rowFor($event->brandId, $event->eventId, $event->userId)
+            ?->fill(['admission_id' => $event->admissionId])
             ->save();
 
         ActiveEventContext::forget($event->brandId, $event->userId);

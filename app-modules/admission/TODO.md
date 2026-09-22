@@ -173,8 +173,9 @@
 - [x] Presence and hub access (D-HUB-01/02): `Models\EventPresence`
       (`admission_event_presence`) projected off an accepted scan by
       `ProjectPresenceOnAdmissionCheckedIn` (queued after commit);
-      `ParticipantAdmitted`, `ParticipantPresenceChanged` and
-      `ParticipantHubAccessEnded` as the public contract; access ended by
+      `ParticipantAdmitted`, `ParticipantPresenceChanged`,
+      `ParticipantHubAccessEnded` and — from fix round 1 —
+      `ParticipantAdmissionReplaced` as the public contract; access ended by
       `EndHubAccessOnEventClosed`, `EndHubAccessOnAdmissionRevoked` and
       the `admission:close-presence-windows` sweep. Presence rows
       are exported and deleted in both modes by `AdmissionGdprHandler`,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Konventix\Admission\Events\ParticipantAdmissionReplaced;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Events\ParticipantPresenceChanged;
 use Konventix\Compliance\Enums\DeletionMode;
@@ -87,6 +88,36 @@ it('drops the row and the cache when access ends, and flips on_site on presence 
         ->and(HubAccess::query()->firstOrFail()->on_site)->toBeFalse();
 
     event(new ParticipantHubAccessEnded($user->id, $eventId, $brand->id, 'concluded', now()->toIso8601String()));
+    expect(HubAccess::query()->count())->toBe(0);
+});
+
+// Fix round 1: a holder with two admissions who loses one keeps access on
+// the survivor, and the mirror has to follow — `ActiveEventData::admissionId`
+// is what Resources' "Mein Sitzplatz" link is built from, so a stale id
+// sends the participant to a revoked admission.
+it('re-points admission_id on a replacement and forgets the cache', function (): void {
+    $brand = $this->withBrand();
+    $user = User::factory()->create();
+    event(hubAdmitted($brand->id, $user->id, $eventId = (string) Str::ulid(), admissionId: $revoked = (string) Str::ulid()));
+    $this->actingAs($user);
+    expect(app(ActiveEventContext::class)->current()?->admissionId)->toBe($revoked)
+        ->and(Cache::has(ActiveEventContext::key($brand->id, $user->id)))->toBeTrue();
+
+    event(new ParticipantAdmissionReplaced($user->id, $eventId, $brand->id, $survivor = (string) Str::ulid(), now()->toIso8601String()));
+
+    expect(HubAccess::query()->firstOrFail()->admission_id)->toBe($survivor)
+        ->and(Cache::has(ActiveEventContext::key($brand->id, $user->id)))->toBeFalse();
+});
+
+// A replacement for somebody this table never admitted changes nothing,
+// like a presence change — the admission event is what carries a row into
+// being.
+it('ignores a replacement for a user it never admitted', function (): void {
+    $brand = $this->withBrand();
+    $user = User::factory()->create();
+
+    event(new ParticipantAdmissionReplaced($user->id, (string) Str::ulid(), $brand->id, (string) Str::ulid(), now()->toIso8601String()));
+
     expect(HubAccess::query()->count())->toBe(0);
 });
 

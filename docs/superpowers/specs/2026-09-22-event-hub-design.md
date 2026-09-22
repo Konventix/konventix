@@ -86,11 +86,12 @@ admission_event_presence
 
 | Event | When | Payload |
 |---|---|---|
-| `ParticipantAdmitted` | `hub_access` goes false→true (first admission, or first scan of a new day) | `user_id, event_id, brand_id, admission_id, admitted_at, window_ends_at (nullable), day_label (nullable)` |
+| `ParticipantAdmitted` | `hub_access` goes false→true (first admission, or first scan of a new day) | `user_id, event_id, brand_id, admission_id, admitted_at, window_ends_at (nullable), day_label (nullable), event_name (nullable), event_slug (nullable)` — the last two as built, which is why Platform needs no Event listener for the pill's display data (§5.1) |
 | `ParticipantPresenceChanged` | `last_direction` changed | `user_id, event_id, brand_id, direction, changed_at` |
 | `ParticipantHubAccessEnded` | `hub_access` goes true→false | `user_id, event_id, brand_id, reason, ended_at` |
+| `ParticipantAdmissionReplaced` | A revoked admission was replaced by a surviving one of the same holder at the same event — access never lapsed, only the admission behind it changed (added in fix round 1; see §15) | `user_id, event_id, brand_id, admission_id` (the **survivor**), `replaced_at` |
 
-These are the contract for Platform (this design), Community's Checked-In presence (D) and Competition's "is your team here?" (B, later). Nobody reads `admission_event_presence` from outside Admission.
+These are the contract for Platform (this design), Community's Checked-In presence (D) and Competition's "is your team here?" (B, later). Nobody may derive *access* from `ParticipantAdmissionReplaced`: access is unchanged by definition, and mirroring the id is the only reason it exists. Nobody reads `admission_event_presence` from outside Admission.
 
 ### 4.4 `day_ends_at`
 
@@ -294,7 +295,12 @@ what this document originally claimed are marked inline in §§4.2, 4.4, 5.1,
   exists the presence row is moved over to it and access continues, with no
   `ParticipantHubAccessEnded` emitted. Only a holder with nothing left loses
   the hub. Without this, cancelling one of a group booking's two tickets would
-  have thrown the holder out of an event they are standing in.
+  have thrown the holder out of an event they are standing in. The re-point
+  emits **`ParticipantAdmissionReplaced`** instead, and Platform's projection
+  keeps its mirror of `admission_id` in step with it: that id is what
+  Resources' *Mein Sitzplatz* link is built from, so a silent re-point would
+  have left the participant with a hub link pointing at the admission that had
+  just been revoked (found in review, fixed in fix round 1).
 - **The request memo remembers whose answer it holds.**
   `Hub\ActiveEventContext` is a scoped binding that memoises its answer for the
   request, and the memo is keyed by brand-and-user. A container that outlives

@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Enums\HubAccessEndReason;
 use Konventix\Admission\Events\AdmissionRevoked;
+use Konventix\Admission\Events\ParticipantAdmissionReplaced;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Listeners\EndHubAccessOnAdmissionRevoked;
 use Konventix\Admission\Listeners\EndHubAccessOnEventClosed;
@@ -58,7 +59,11 @@ it('ends only the revoked admission\'s access', function (): void {
 // Controller ruling (progress.md, Task 5): a person can hold a crew badge
 // and a bought ticket for the same event. Losing one of them is not
 // losing the event — the row moves over to the admission that still
-// stands and nobody is told their access ended.
+// stands and nobody is told their access ended. They *are* told the
+// admission changed (`ParticipantAdmissionReplaced`), because consumers
+// mirror that id: Platform's `platform_hub_access` carries it and
+// Resources' hub link is built out of it, so a silent re-point would
+// leave that link naming the revoked admission (fix round 1).
 it('keeps access on a second valid admission and re-points the row at it', function (): void {
     $crew = Admission::factory()->create([
         'event_id' => $this->eventId,
@@ -67,7 +72,7 @@ it('keeps access on a second valid admission and re-points the row at it', funct
         'role' => 'crew',
     ]);
     $this->admission->forceFill(['state' => AdmissionState::Revoked])->save();
-    EventBus::fake([ParticipantHubAccessEnded::class]);
+    EventBus::fake([ParticipantHubAccessEnded::class, ParticipantAdmissionReplaced::class]);
 
     event(new AdmissionRevoked(
         admissionId: $this->admission->id, registrationId: $this->admission->registration_id, eventId: $this->eventId, brandId: $this->brand->id,
@@ -79,6 +84,13 @@ it('keeps access on a second valid admission and re-points the row at it', funct
         ->and($row->access_ended_reason)->toBeNull()
         ->and($row->admission_id)->toBe($crew->id);
     EventBus::assertNotDispatched(ParticipantHubAccessEnded::class);
+    EventBus::assertDispatched(
+        ParticipantAdmissionReplaced::class,
+        fn (ParticipantAdmissionReplaced $e): bool => $e->admissionId === $crew->id
+            && $e->userId === $this->admission->holder_user_id
+            && $e->eventId === $this->eventId
+            && $e->brandId === $this->brand->id,
+    );
 });
 
 // The other admission must still stand: one already revoked earlier is
@@ -89,11 +101,14 @@ it('does not fall back on an admission that is itself revoked', function (): voi
         'holder_user_id' => $this->admission->holder_user_id,
     ]);
     $this->admission->forceFill(['state' => AdmissionState::Revoked])->save();
+    EventBus::fake([ParticipantAdmissionReplaced::class]);
 
     event(new AdmissionRevoked(
         admissionId: $this->admission->id, registrationId: $this->admission->registration_id, eventId: $this->eventId, brandId: $this->brand->id,
         revokedByUserId: null, reasonCode: 'registration_cancelled', revokedAt: now()->toIso8601String(),
     ));
+
+    EventBus::assertNotDispatched(ParticipantAdmissionReplaced::class);
 
     $row = EventPresence::query()->where('user_id', $this->admission->holder_user_id)->firstOrFail();
     expect($row->hub_access)->toBeFalse()

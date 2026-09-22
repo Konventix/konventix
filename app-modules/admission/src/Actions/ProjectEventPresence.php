@@ -11,6 +11,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Konventix\Admission\Enums\AdmissionState;
 use Konventix\Admission\Enums\HubAccessEndReason;
+use Konventix\Admission\Events\ParticipantAdmissionReplaced;
 use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Events\ParticipantPresenceChanged;
@@ -21,7 +22,7 @@ use Konventix\Admission\Models\EventSummary;
 use Konventix\Admission\Presence\PresenceWindow;
 
 /**
- * Maintains `admission_event_presence` (design §4.2) and emits the three
+ * Maintains `admission_event_presence` (design §4.2) and emits the four
  * participant events the rest of the platform reacts to. Takes scalars —
  * the listeners unpack the events — and escapes the brand scope by the
  * payload's own brand id, since it runs from queue workers with no
@@ -169,6 +170,12 @@ final class ProjectEventPresence
      * end with `revoked`. The lookup excludes the revoked admission by id
      * rather than trusting its state, since the caller may run before or
      * after that state change is visible.
+     *
+     * A re-point emits `ParticipantAdmissionReplaced`, never
+     * `ParticipantHubAccessEnded`: access did not end, but the admission id
+     * every consumer mirrors did change, and one of them builds a link out
+     * of it. Returns the number of rows that actually *lost* access, so a
+     * re-point counts as nothing ended.
      */
     public function endForAdmission(string $brandId, string $admissionId, HubAccessEndReason $reason, CarbonImmutable $at): int
     {
@@ -192,6 +199,19 @@ final class ProjectEventPresence
 
             if ($survivor !== null) {
                 $presence->forceFill(['admission_id' => $survivor->id])->save();
+
+                // Access is untouched, but the id consumers mirror is not:
+                // Platform's `platform_hub_access` carries `admission_id`
+                // and Resources' hub link is built out of it, so a silent
+                // re-point would leave that link naming the admission that
+                // was just revoked.
+                event(new ParticipantAdmissionReplaced(
+                    userId: $presence->user_id,
+                    eventId: $presence->event_id,
+                    brandId: $presence->brand_id,
+                    admissionId: $survivor->id,
+                    replacedAt: $at->toIso8601String(),
+                ));
 
                 continue;
             }

@@ -227,6 +227,7 @@ maintains from them.
 |---|---|---|
 | `ParticipantAdmitted` | Admission | `Listeners\ProjectHubAccess` writes the `platform_hub_access` row that makes the pill and `/live` appear, and forgets the member's cache key. The event carries the event's name, slug and day label, so nothing else has to be looked up |
 | `ParticipantPresenceChanged` | Admission | Same listener: moves `on_site` on the row. A badge, never a gate (D-HUB-02) |
+| `ParticipantAdmissionReplaced` | Admission | Same listener: the holder lost one admission and another of theirs survived, so access is unchanged and only the mirrored `admission_id` moves. Resources' hub seat link is built from that id, so a stale one points at a revoked admission |
 | `ParticipantHubAccessEnded` | Admission | Same listener: removes the row — a row without access says nothing this table is for — whatever ended it (day, event, revocation) |
 | `EventHubLayoutChanged` | Event | `Listeners\ProjectHubLayout` writes `platform_hub_layouts` and forgets `hub-layout:{event}`, so the hub page reads the operator's composition from Platform's own table |
 
@@ -243,6 +244,20 @@ Admission or Event *writing into* Platform, or Platform querying their models;
 a read model Platform maintains from their published events is neither. It
 knows nothing about what those modules contain, only what their event payloads
 carry, and dropping both tables and replaying rebuilds them.
+
+Be clear about what this costs, because the sentence above it is now literally
+false at the source level: `PlatformServiceProvider` and the two listeners
+`use Konventix\Admission\Events\Participant*` and
+`Konventix\Event\Events\EventHubLayoutChanged`, so Platform's *code* — not
+just its runtime behaviour — names two modules that sit above it, and neither
+could be removed from a build without Platform failing to boot. Event classes
+are the narrowest possible coupling (ULIDs and scalars, no models, no
+services), and that is the trade that was taken; it is still a trade.
+
+**ADR pending.** This exception is recorded here and in the live-hub design
+(`docs/superpowers/specs/2026-09-22-event-hub-design.md`), not yet in an ADR —
+writing one is a follow-up after the hub branch merges, and until it exists
+this section is the decision of record.
 
 The bar stays exactly that high: a listener here that is not maintaining a
 Platform-owned read model from another module's public event is a design error.

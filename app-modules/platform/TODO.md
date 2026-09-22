@@ -9,9 +9,9 @@
 - [x] The live-event hub, Platform's half (0.9.0 sub-project A, design
       2026-09-22, tasks 8–14). `platform_hub_access` + `Models\HubAccess`
       projected from Admission's `ParticipantAdmitted`/
-      `ParticipantPresenceChanged`/`ParticipantHubAccessEnded` by
-      `Listeners\ProjectHubAccess`, and `platform_hub_layouts` +
-      `Models\HubLayout` projected from Event's `EventHubLayoutChanged` by
+      `ParticipantPresenceChanged`/`ParticipantHubAccessEnded`/
+      `ParticipantAdmissionReplaced` by `Listeners\ProjectHubAccess`, and
+      `platform_hub_layouts` + `Models\HubLayout` projected from Event's `EventHubLayoutChanged` by
       `Listeners\ProjectHubLayout` — the first listeners Platform has ever
       had on another module's events, and SPEC's "Consumes" section now says
       why that is a read model rather than an inversion.

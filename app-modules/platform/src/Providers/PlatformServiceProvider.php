@@ -9,6 +9,7 @@ use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Konventix\Admission\Events\ParticipantAdmissionReplaced;
 use Konventix\Admission\Events\ParticipantAdmitted;
 use Konventix\Admission\Events\ParticipantHubAccessEnded;
 use Konventix\Admission\Events\ParticipantPresenceChanged;
@@ -265,6 +266,10 @@ class PlatformServiceProvider extends ModuleServiceProvider
         // from these alone and never reads Admission's presence table.
         Event::listen(ParticipantAdmitted::class, [ProjectHubAccess::class, 'handleAdmitted']);
         Event::listen(ParticipantPresenceChanged::class, [ProjectHubAccess::class, 'handlePresenceChanged']);
+        // The row mirrors `admission_id` and Resources' hub link is built
+        // out of it, so a survivor replacing a revoked admission has to
+        // reach the mirror too (D-HUB-01's survivor rule).
+        Event::listen(ParticipantAdmissionReplaced::class, [ProjectHubAccess::class, 'handleAdmissionReplaced']);
         Event::listen(ParticipantHubAccessEnded::class, [ProjectHubAccess::class, 'handleEnded']);
 
         // Event's layout event feeds the `hub_layouts` projection the same
