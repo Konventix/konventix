@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Konventix\Event\Events\EventHubLayoutChanged;
@@ -134,4 +135,37 @@ it('drops a contribution whose closure throws, renders the rest, and counts it',
 
     expect($rendered)->toContain('konventix_platform_hub_card_failures_total')
         ->and(metricSampleValue($rendered, 'konventix_platform_hub_card_failures_total'))->toBe(2.0);
+});
+
+/**
+ * `UpdateHubLayoutData::rules()` validates the entries one at a time and
+ * says nothing about the list, so a hand-built PUT can save the same key
+ * twice. The layout is an order, not a bag: the card renders once, and its
+ * payload runs once — which for the ticket card is the difference between
+ * showing a code and signing a second one.
+ */
+it('renders a key listed twice in the layout only once', function (): void {
+    $brand = $this->withBrand();
+    $user = User::factory()->create();
+    event(hubAdmitted($brand->id, $user->id, $eventId = (string) Str::ulid()));
+
+    $runs = 0;
+    app(HubRegistry::class)->add(new HubCard(
+        'platform', 'platform.once', 'Once', 'platform/hub/TestCard',
+        function (ActiveEventData $e, $u) use (&$runs): Data {
+            $runs++;
+
+            return new HubPageTestPayload($e->eventId);
+        },
+    ));
+
+    event(new EventHubLayoutChanged($eventId, $brand->id, [
+        ['key' => 'platform.once', 'visible' => true],
+        ['key' => 'platform.once', 'visible' => true],
+    ], false));
+
+    $this->actingAs($user)->get('/live')->assertInertia(fn (Assert $page) => $page
+        ->where('hub.cards', fn (Collection $cards): bool => $cards->pluck('key')->all() === ['platform.once']));
+
+    expect($runs)->toBe(1);
 });

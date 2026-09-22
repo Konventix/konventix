@@ -142,6 +142,14 @@ final class HubPage
      * Layout order first (visible only, unknown keys dropped), then everything
      * registered but not yet in the layout, in registry order (design §6).
      *
+     * Each key appears **once**, first position wins. `UpdateHubLayoutData`
+     * validates the entries one by one and has nothing to say about the list
+     * as a whole, so a hand-built PUT can save the same key twice — and the
+     * page would then render that card twice and run its payload twice, which
+     * for the ticket card means signing a second token nobody asked for. The
+     * layout is an order, not a bag, so the duplicate is dropped here rather
+     * than trusted.
+     *
      * @param  list<array{key: string, visible: bool}>  $layout
      * @param  list<string>  $registered
      * @return list<string>
@@ -150,16 +158,19 @@ final class HubPage
     {
         $listed = array_column($layout, 'key');
         $ordered = [];
+        $seen = [];
 
         foreach ($layout as $entry) {
-            if ($entry['visible'] && in_array($entry['key'], $registered, true)) {
+            if ($entry['visible'] && in_array($entry['key'], $registered, true) && ! isset($seen[$entry['key']])) {
                 $ordered[] = $entry['key'];
+                $seen[$entry['key']] = true;
             }
         }
 
         foreach ($registered as $key) {
-            if (! in_array($key, $listed, true)) {
+            if (! in_array($key, $listed, true) && ! isset($seen[$key])) {
                 $ordered[] = $key;
+                $seen[$key] = true;
             }
         }
 
