@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { CalendarClock, LayoutGrid, Pencil, RefreshCw } from '@lucide/vue';
+import {
+    CalendarClock,
+    LayoutGrid,
+    MessagesSquare,
+    Pencil,
+    RefreshCw,
+} from '@lucide/vue';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
 import { edit as editAgenda } from '@/routes/admin/events/agenda';
 import { edit as editHubLayout } from '@/routes/admin/events/hub';
+import { show as showShoutbox } from '@/routes/admin/events/shoutbox';
 
 /**
  * Composes Event's own header with contributions from other modules'
@@ -184,6 +191,20 @@ function refresh(): void {
                     <Link :href="editAgenda(props.event.id).url">
                         <CalendarClock class="size-4" />
                         Programme
+                    </Link>
+                </Button>
+                <!-- Community's shoutbox desk, on the same terms as the
+                     programme editor above: a way to another module's page,
+                     hidden when the brand has Community off. -->
+                <Button
+                    v-if="props.modules.community"
+                    as-child
+                    variant="secondary"
+                    size="sm"
+                >
+                    <Link :href="showShoutbox(props.event.id).url">
+                        <MessagesSquare class="size-4" />
+                        Shoutbox
                     </Link>
                 </Button>
                 <Button

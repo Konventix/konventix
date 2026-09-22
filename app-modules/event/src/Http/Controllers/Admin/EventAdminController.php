@@ -129,10 +129,12 @@ class EventAdminController
             // the explicit-brand form written for exactly this — the same
             // call `AgendaAdminController` makes to decide whether the
             // editor exists at all, asked here so the button does not
-            // offer a 404. Event names the module, never its code
+            // offer a 404. `community` answers the same question for the
+            // shoutbox desk (`ModerationController`). Event names the module, never its code
             // (ADR-0004); `ContentController` asks Platform the same way.
             'modules' => [
                 'agenda' => $this->modules->isActiveForBrand('agenda', (string) $model->brand_id),
+                'community' => $this->modules->isActiveForBrand('community', (string) $model->brand_id),
             ],
             'slots' => $this->slots->for('event.admin.dashboard')
                 ->map(fn (array $entry): array => [

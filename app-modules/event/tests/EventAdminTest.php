@@ -293,3 +293,25 @@ it('refuses a banner that belongs to another brand', function (): void {
 
     expect($event->fresh()->banner_media_id)->toBeNull();
 });
+
+/**
+ * The shoutbox desk's button follows the same rule as the programme
+ * editor's: `ModerationController` 404s for a brand with Community off, so
+ * the dashboard offers the button only when the event's brand has it on.
+ */
+it('offers the shoutbox desk only to a brand that has Community on', function (): void {
+    [, $admin] = eventsAdminOperator();
+
+    $brand = $this->withBrand();
+    $event = Event::factory()->create();
+
+    $this->actingAs($admin)
+        ->get("http://admin.eventsadmin.test/admin/events/{$event->id}")
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('modules.community', false));
+
+    $this->activateModule('community', $brand);
+
+    $this->actingAs($admin)
+        ->get("http://admin.eventsadmin.test/admin/events/{$event->id}")
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('modules.community', true));
+});
