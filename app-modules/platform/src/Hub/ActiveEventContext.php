@@ -25,7 +25,11 @@ use Konventix\Platform\Models\HubAccess;
  * The answer is memoised per request: a request that fires an Admission
  * event and then reads the context sees the pre-event answer — fine, since
  * scans are operator-driven and the participant's next request is the one
- * that shows them the hub.
+ * that shows them the hub. The memo remembers *whose* answer it holds, so
+ * it is never handed to a different viewer: a container that outlives one
+ * viewer — the test runner, which reuses scoped instances across requests,
+ * or any code switching the authenticated user mid-request — re-resolves
+ * instead of reading the previous one's events.
  */
 final class ActiveEventContext
 {
@@ -33,6 +37,9 @@ final class ActiveEventContext
 
     /** @var Collection<int, ActiveEventData>|null */
     private ?Collection $resolved = null;
+
+    /** The brand-and-user the memo above was resolved for. */
+    private ?string $resolvedFor = null;
 
     public function __construct(private readonly BrandContext $brands) {}
 
@@ -53,12 +60,15 @@ final class ActiveEventContext
      */
     public function all(): Collection
     {
-        if ($this->resolved !== null) {
+        $brand = $this->brands->current();
+        $userId = auth()->id();
+        $viewer = $brand === null || $userId === null ? 'none' : self::key($brand->id, (string) $userId);
+
+        if ($this->resolved !== null && $this->resolvedFor === $viewer) {
             return $this->resolved;
         }
 
-        $brand = $this->brands->current();
-        $userId = auth()->id();
+        $this->resolvedFor = $viewer;
 
         if ($brand === null || $userId === null) {
             return $this->resolved = Collection::make();

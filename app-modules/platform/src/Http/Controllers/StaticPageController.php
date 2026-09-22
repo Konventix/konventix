@@ -9,6 +9,9 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Konventix\Platform\Blocks\StaticPageRenderer;
+use Konventix\Platform\Hub\ActiveEventContext;
+use Konventix\Platform\Hub\HubLayoutResolver;
+use Konventix\Platform\Hub\HubPage;
 use Konventix\Platform\Models\StaticPage;
 use Konventix\Platform\Operators\OperatorContext;
 use Konventix\Platform\Pages\PageAccess;
@@ -25,12 +28,21 @@ use Konventix\Platform\Pages\PageAccess;
  * would confirm the slug exists (the rule Content's audience set). On `/`
  * the refused viewer sees the Welcome fallback instead: the root of a site
  * always answers, and a 404 there would be a broken site, not a hidden page.
+ *
+ * A third route, `/home`, is the same landing page with one difference:
+ * it never becomes the live hub. During an event whose operator turned the
+ * switch on (D-HUB-04, design §7.3), `/` shows an admitted member the hub
+ * page instead of the brand's home, and the logo in the topbar points at
+ * `/home` so the plain page stays one click away.
  */
 class StaticPageController
 {
     public function __construct(
         private readonly StaticPageRenderer $renderer,
         private readonly PageAccess $access,
+        private readonly ActiveEventContext $context,
+        private readonly HubLayoutResolver $layouts,
+        private readonly HubPage $hub,
     ) {}
 
     public function show(Request $request, string $slug): Response
@@ -53,7 +65,8 @@ class StaticPageController
      * The `/` landing route. If the current brand (BelongsToBrand's global
      * scope) has a published `home`-slug page this viewer may read, render
      * it through the same block pipeline as `/pages/{slug}`; otherwise fall
-     * back to the minimal Welcome page.
+     * back to the minimal Welcome page — unless the live hub has taken the
+     * root over for this viewer (D-HUB-04).
      */
     public function home(Request $request, OperatorContext $operator): Response|RedirectResponse
     {
@@ -66,6 +79,32 @@ class StaticPageController
             return redirect()->route('admin.dashboard');
         }
 
+        // D-HUB-04: for an admitted member whose event's operator turned the
+        // switch on, `/` is the hub. A guest never reaches the context call,
+        // so the public home page costs what it cost before.
+        if ($request->user() !== null) {
+            $active = $this->context->current();
+
+            if ($active !== null && $this->layouts->for($active->eventId)['hubReplacesHome']) {
+                return $this->hub->render($request);
+            }
+        }
+
+        return $this->brandHome($request);
+    }
+
+    /** The plain brand home, always — `/home` while the hub occupies `/`. */
+    public function plainHome(Request $request, OperatorContext $operator): Response|RedirectResponse
+    {
+        if ($operator->hasOperator()) {
+            return redirect()->route('admin.dashboard');
+        }
+
+        return $this->brandHome($request);
+    }
+
+    private function brandHome(Request $request): Response
+    {
         $home = StaticPage::query()
             ->where('slug', 'home')
             ->published()

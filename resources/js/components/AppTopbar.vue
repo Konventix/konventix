@@ -100,7 +100,10 @@ function handleLogout(): void {
             <div
                 class="mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6"
             >
-                <Link :href="home()" class="min-w-0 text-text">
+                <Link
+                    :href="livePill ? '/home' : home()"
+                    class="min-w-0 text-text"
+                >
                     <AppLogo />
                 </Link>
                 <div class="flex items-center gap-1">
@@ -194,7 +197,10 @@ function handleLogout(): void {
             class="mx-auto hidden max-w-7xl items-center justify-between gap-6 px-6 py-3 lg:flex"
         >
             <div class="flex min-w-0 items-center gap-6">
-                <Link :href="home()" class="min-w-0 text-text">
+                <Link
+                    :href="livePill ? '/home' : home()"
+                    class="min-w-0 text-text"
+                >
                     <AppLogo />
                 </Link>
                 <nav class="flex items-center gap-1" aria-label="Main">

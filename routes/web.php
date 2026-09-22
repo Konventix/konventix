@@ -23,6 +23,11 @@ use Spatie\Health\Http\Controllers\HealthCheckResultsController;
 // beside `show()`, so `/` and `/pages/{slug}` cannot drift apart.
 Route::get('/', [StaticPageController::class, 'home'])->name('home');
 
+// The same landing page, guaranteed plain: while an event's operator has
+// made `/` the live hub for admitted members (D-HUB-04), the topbar logo
+// points here so the brand's home page stays reachable.
+Route::get('/home', [StaticPageController::class, 'plainHome'])->name('home.plain');
+
 // Health results, in two shapes for two readers.
 //
 // The dashboard is part of the console: operator host, diagnostics capability,

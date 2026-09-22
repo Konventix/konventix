@@ -1,0 +1,42 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
+use Konventix\Event\Events\EventHubLayoutChanged;
+use Konventix\Identity\Models\User;
+
+it('renders the hub at / for an admitted member when the switch is on, and the home for everyone else', function (): void {
+    $brand = $this->withBrand();
+    $admitted = User::factory()->create();
+    $eventId = (string) Str::ulid();
+    event(hubAdmitted($brand->id, $admitted->id, $eventId));
+    event(new EventHubLayoutChanged($eventId, $brand->id, [], true));
+
+    $this->actingAs($admitted)->get('/')->assertInertia(fn (Assert $p) => $p->component('platform/live/Hub'));
+    $this->actingAs(User::factory()->create())->get('/')->assertInertia(fn (Assert $p) => $p->component('Welcome'));
+
+    DB::enableQueryLog();
+    $this->get('/')->assertInertia(fn (Assert $p) => $p->component('Welcome'));
+    expect(collect(DB::getQueryLog())->filter(fn (array $q): bool => str_contains($q['query'], 'platform_hub')))->toHaveCount(0);
+});
+
+it('keeps the plain home reachable at /home', function (): void {
+    $brand = $this->withBrand();
+    $admitted = User::factory()->create();
+    $eventId = (string) Str::ulid();
+    event(hubAdmitted($brand->id, $admitted->id, $eventId));
+    event(new EventHubLayoutChanged($eventId, $brand->id, [], true));
+
+    $this->actingAs($admitted)->get('/home')->assertInertia(fn (Assert $p) => $p->component('Welcome'));
+});
+
+it('leaves / alone when the switch is off', function (): void {
+    $brand = $this->withBrand();
+    $admitted = User::factory()->create();
+    event(hubAdmitted($brand->id, $admitted->id, (string) Str::ulid()));
+
+    $this->actingAs($admitted)->get('/')->assertInertia(fn (Assert $p) => $p->component('Welcome'));
+});

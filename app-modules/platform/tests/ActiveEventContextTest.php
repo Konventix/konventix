@@ -32,9 +32,9 @@ it('is null for a guest', function (): void {
     expect(app(ActiveEventContext::class)->current())->toBeNull();
 });
 
-// A separate test on purpose: the context is scoped and memoises its
-// answer, so a guest read in the same request would hand the signed-in
-// read the memo and this branch would never run.
+// A separate test on purpose: this branch writes a cache entry the guest
+// branch above never reaches, and reading both in one test would say
+// nothing about which of the two the memo answered from.
 it('is null for a signed-in user nobody admitted, and caches that answer', function (): void {
     $brand = $this->withBrand();
     $user = User::factory()->create();
