@@ -9,6 +9,7 @@ use Konventix\Competition\Brackets\FormatRegistry;
 use Konventix\Competition\Brackets\Plan\BracketPlan;
 use Konventix\Competition\Brackets\PlanWriter;
 use Konventix\Competition\Enums\EntrantState;
+use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\Stage;
 use RuntimeException;
@@ -50,10 +51,18 @@ final class GenerateBracket
             // Seed order is the entrants' seeding, with unseeded entrants
             // falling in behind in a stable order — a bracket must be
             // reproducible from the same field.
+            //
+            // **Which entrants are in the field depends on the check-in mode**
+            // (design §6, §7.5): a competition that checks its teams in seeds
+            // the checked-in ones only, and a no-show is simply not drawn.
+            // With `none` there is nothing to check in and `registered` is
+            // the whole field. `checked_in` is in both lists — a desk that
+            // ticked people off under `none` has not thereby excluded the
+            // rest.
             $entrantIds = Entrant::withoutBrandScope()
                 ->where('brand_id', $stage->brand_id)
                 ->where('competition_id', $stage->competition_id)
-                ->whereIn('state', [EntrantState::Registered->value, EntrantState::CheckedIn->value])
+                ->whereIn('state', $this->seedableStates($stage))
                 ->orderByRaw('seed IS NULL')
                 ->orderBy('seed')
                 ->orderBy('created_at')
@@ -71,5 +80,26 @@ final class GenerateBracket
 
             return $plan;
         });
+    }
+
+    /**
+     * The entrant states this stage's bracket may seed (design §6, §7.5).
+     *
+     * A stage whose competition has gone missing falls back to the wider
+     * list: generation is already refused elsewhere for a competition that
+     * does not exist, and a silent empty bracket is the worse failure.
+     *
+     * @return list<string>
+     */
+    private function seedableStates(Stage $stage): array
+    {
+        /** @var Competition|null $competition */
+        $competition = Competition::withoutBrandScope()->whereKey($stage->competition_id)->first();
+
+        if ($competition !== null && $competition->check_in_mode->requiresCheckIn()) {
+            return [EntrantState::CheckedIn->value];
+        }
+
+        return [EntrantState::Registered->value, EntrantState::CheckedIn->value];
     }
 }

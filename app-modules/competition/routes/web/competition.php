@@ -57,6 +57,16 @@ Route::middleware(['auth'])->group(function (): void {
         ->whereUlid('entrant')
         ->name('competition.my.entries.withdraw');
 
+    /*
+     * Self-service check-in (design §6): the captain, inside the window of
+     * `check_in_opens_minutes_before` minutes before `starts_at`. There is no
+     * undo here on purpose — §6 gives the captain one direction and the desk
+     * both.
+     */
+    Route::post('/my/tournaments/entries/{entrant}/check-in', [MyTournamentsController::class, 'checkIn'])
+        ->whereUlid('entrant')
+        ->name('competition.my.entries.check-in');
+
     Route::post('/tournaments/{competition}/interest', [InterestController::class, 'store'])
         ->whereUlid('competition')
         ->name('competition.interest.store');

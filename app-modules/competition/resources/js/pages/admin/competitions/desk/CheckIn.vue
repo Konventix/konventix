@@ -1,0 +1,188 @@
+<script setup lang="ts">
+import { computed } from 'vue';
+import { Head, Link, router } from '@inertiajs/vue3';
+import Heading from '@/components/Heading.vue';
+import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/datetime';
+
+/**
+ * The desk's check-in list (design §6).
+ *
+ * One row per entrant that is still in the field, and per row the one thing
+ * the person at the table needs: can this team go in. With
+ * `requiresEventCheckIn` each roster member is marked with whether the
+ * **event door** has seen them — projected into this module's own read model
+ * from Admission's events, never queried out of Admission — so a refusal is
+ * visible before the button is pressed rather than after.
+ *
+ * **Both buttons are always offered, whatever the mode** (§6): the desk may
+ * check a team in and take it back regardless of whether the competition is
+ * set to `none`, `self_service` or `desk`. The mode is context at the top of
+ * the page, not a condition on the controls — a desk that cannot correct what
+ * a captain got wrong is not a desk.
+ *
+ * Console copy is English. Timestamps go through `formatDateTime()`, which
+ * reads the operator's own zone and format (.ai/rules/js.md).
+ *
+ * a11y: the door state is a word, never colour alone, and every button
+ * carries its own text (.ai/rules/js.md).
+ */
+type Member = { userId: string; displayName: string; atTheDoor: boolean };
+
+type EntrantRow = {
+    id: string;
+    state: string;
+    teamName: string;
+    checkedInAt: string | null;
+    ready: boolean;
+    members: Member[];
+};
+
+const props = defineProps<{
+    competition: {
+        id: string;
+        name: string;
+        status: string;
+        checkInMode: string;
+        checkInModeLabel: string;
+        requiresEventCheckIn: boolean;
+        checkInOpensMinutesBefore: number;
+        startsAt: string | null;
+        selfServiceOpensAt: string | null;
+        selfServiceIsOpen: boolean;
+    };
+    entrants: EntrantRow[];
+}>();
+
+const checkedIn = computed(() => props.entrants.filter((entrant) => entrant.state === 'checked_in'));
+
+const waiting = computed(() => props.entrants.filter((entrant) => entrant.state !== 'checked_in'));
+
+/** Who this team is still missing at the door — the reason a check-in refuses. */
+function stillOutside(entrant: EntrantRow): Member[] {
+    if (!props.competition.requiresEventCheckIn) {
+        return [];
+    }
+
+    return entrant.members.filter((member) => !member.atTheDoor);
+}
+
+function checkIn(entrant: EntrantRow): void {
+    router.post(`/entrants/${entrant.id}/check-in`, {}, { preserveScroll: true });
+}
+
+function undo(entrant: EntrantRow): void {
+    router.delete(`/entrants/${entrant.id}/check-in`, { preserveScroll: true });
+}
+</script>
+
+<template>
+    <Head :title="`Check-in — ${props.competition.name}`" />
+
+    <div class="flex w-full flex-col gap-6 p-4">
+        <Heading
+            as="h1"
+            :title="`Check-in — ${props.competition.name}`"
+            :description="`${checkedIn.length} of ${props.entrants.length} team(s) checked in.`"
+        />
+
+        <section class="flex flex-col gap-2 rounded-xl border border-border bg-surface-raised p-4 text-sm">
+            <p class="text-text">
+                Mode: <strong>{{ props.competition.checkInModeLabel }}</strong>
+                <template v-if="props.competition.requiresEventCheckIn">
+                    — every roster member must have been scanned at the event door.
+                </template>
+            </p>
+
+            <p v-if="props.competition.checkInMode === 'self_service'" class="text-text-muted">
+                <template v-if="props.competition.selfServiceOpensAt">
+                    Captains may check in from
+                    {{ formatDateTime(props.competition.selfServiceOpensAt) }} ({{
+                        props.competition.checkInOpensMinutesBefore
+                    }}
+                    minutes before the start) until the competition starts —
+                    {{ props.competition.selfServiceIsOpen ? 'the window is open now' : 'not open yet' }}.
+                </template>
+                <template v-else>
+                    This competition has no start time, so the self-service window never opens. Set one on the
+                    competition, or check the teams in here.
+                </template>
+            </p>
+
+            <p v-else-if="props.competition.checkInMode === 'none'" class="text-text-muted">
+                This competition does not require a check-in: every entered team counts as ready. You may still
+                tick teams off here.
+            </p>
+
+            <p v-else class="text-text-muted">Only this desk checks teams in.</p>
+
+            <p>
+                <Link
+                    :href="`/competitions/${props.competition.id}/entrants`"
+                    class="underline underline-offset-4 hover:text-accent"
+                >
+                    Entrants and rosters
+                </Link>
+            </p>
+        </section>
+
+        <section class="flex flex-col gap-3">
+            <h2 class="text-lg font-medium text-text">Waiting</h2>
+
+            <p v-if="waiting.length === 0" class="text-sm text-text-muted">Every team is checked in.</p>
+
+            <article
+                v-for="entrant in waiting"
+                :key="entrant.id"
+                class="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-surface-raised p-4"
+            >
+                <div class="flex min-w-0 flex-col gap-1">
+                    <span class="font-medium text-text">{{ entrant.teamName }}</span>
+
+                    <ul class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                        <li
+                            v-for="member in entrant.members"
+                            :key="member.userId"
+                            :class="
+                                props.competition.requiresEventCheckIn && !member.atTheDoor
+                                    ? 'text-warning'
+                                    : 'text-text-muted'
+                            "
+                        >
+                            {{ member.displayName }}
+                            <template v-if="props.competition.requiresEventCheckIn">
+                                — {{ member.atTheDoor ? 'at the door' : 'not scanned' }}
+                            </template>
+                        </li>
+                    </ul>
+
+                    <p v-if="stillOutside(entrant).length > 0" class="text-sm text-warning">
+                        {{ stillOutside(entrant).length }} player(s) have not been through the door yet; the
+                        check-in will refuse.
+                    </p>
+                </div>
+
+                <Button size="sm" @click="checkIn(entrant)">Check in</Button>
+            </article>
+        </section>
+
+        <section v-if="checkedIn.length > 0" class="flex flex-col gap-3">
+            <h2 class="text-lg font-medium text-text">Checked in</h2>
+
+            <article
+                v-for="entrant in checkedIn"
+                :key="entrant.id"
+                class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised p-4"
+            >
+                <div class="flex min-w-0 flex-col">
+                    <span class="font-medium text-text">{{ entrant.teamName }}</span>
+                    <span class="text-sm text-success">
+                        Checked in {{ formatDateTime(entrant.checkedInAt) }}
+                    </span>
+                </div>
+
+                <Button variant="outline" size="sm" @click="undo(entrant)">Undo check-in</Button>
+            </article>
+        </section>
+    </div>
+</template>

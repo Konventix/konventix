@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -114,6 +114,15 @@ function regenerate(entrant: EntrantRow): void {
             :title="`Entrants — ${props.competition.name}`"
             :description="`Team size ${props.competition.teamSize}. ${active.length} full roster(s), ${incomplete.length} incomplete.`"
         />
+
+        <p class="text-sm">
+            <Link
+                :href="`/competitions/${props.competition.id}/check-in`"
+                class="underline underline-offset-4 hover:text-accent"
+            >
+                Check-in desk
+            </Link>
+        </p>
 
         <section v-if="incomplete.length > 0" class="flex flex-col gap-4">
             <h2 class="text-lg font-medium text-text">Incomplete rosters</h2>

@@ -117,4 +117,43 @@ final class CompetitionEntryException extends RuntimeException
             $competitionId,
         ));
     }
+
+    public static function selfServiceCheckInClosed(string $competitionId): self
+    {
+        return new self(sprintf(
+            'Competition [%s] is not accepting a self-service check-in right now: either the mode is not '
+            .'`self_service`, or the window before `starts_at` has not opened or has closed at start '
+            .'(design §6). The desk can always check a team in.',
+            $competitionId,
+        ));
+    }
+
+    public static function entrantNotCheckable(string $entrantId, string $state): self
+    {
+        return new self(sprintf(
+            'Entrant [%s] is `%s`; only a registered entrant is checked in — an incomplete roster is '
+            .'resolved first (design §5.4), and one that left the field does not come back.',
+            $entrantId,
+            $state,
+        ));
+    }
+
+    public static function entrantNotCheckedIn(string $entrantId): self
+    {
+        return new self(sprintf('Entrant [%s] is not checked in; there is nothing to undo.', $entrantId));
+    }
+
+    /**
+     * @param  list<string>  $missingUserIds
+     */
+    public static function rosterNotAtTheDoor(string $entrantId, array $missingUserIds): self
+    {
+        return new self(sprintf(
+            'Entrant [%s] cannot be checked in: this competition requires every roster member at the '
+            .'event door, and %d of them (%s) have not been scanned in (design §6).',
+            $entrantId,
+            count($missingUserIds),
+            implode(', ', $missingUserIds),
+        ));
+    }
 }

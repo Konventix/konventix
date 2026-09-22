@@ -9,10 +9,12 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Konventix\Competition\Actions\CheckInEntrant;
 use Konventix\Competition\Actions\CreateTeam;
 use Konventix\Competition\Actions\LeaveTeam;
 use Konventix\Competition\Actions\RegenerateInviteCode;
 use Konventix\Competition\Actions\WithdrawEntrant;
+use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\WithdrawalReason;
 use Konventix\Competition\Exceptions\CompetitionEntryException;
 use Konventix\Competition\Models\Competition;
@@ -98,14 +100,33 @@ final class MyTournamentsController
                         $team->memberUserIds(),
                     ),
                     'entries' => $entrants->get((string) $team->getKey(), collect())
-                        ->map(fn (Entrant $entrant): array => [
-                            'id' => (string) $entrant->getKey(),
-                            'state' => $entrant->state->value,
-                            'withdrawalReason' => $entrant->withdrawal_reason?->value,
-                            'withdrawalLabel' => $entrant->withdrawal_reason?->label(),
-                            'competitionName' => $competitions->get($entrant->competition_id)->name ?? '—',
-                            'competitionStatus' => $competitions->get($entrant->competition_id)?->status->value,
-                        ])
+                        ->map(function (Entrant $entrant) use ($competitions, $isCaptain): array {
+                            /** @var Competition|null $competition */
+                            $competition = $competitions->get($entrant->competition_id);
+
+                            return [
+                                'id' => (string) $entrant->getKey(),
+                                'state' => $entrant->state->value,
+                                'withdrawalReason' => $entrant->withdrawal_reason?->value,
+                                'withdrawalLabel' => $entrant->withdrawal_reason?->label(),
+                                'competitionName' => $competition->name ?? '—',
+                                'competitionStatus' => $competition?->status->value,
+                                // Check-in (§6). `checkInMode` is sent so the
+                                // page can say *why* there is no button —
+                                // "die Orga checkt euch am Desk ein" is an
+                                // answer, a missing button is not.
+                                'checkInMode' => $competition?->check_in_mode->value,
+                                'checkedInAt' => $entrant->checked_in_at?->toIso8601String(),
+                                'checkInOpensAt' => $competition?->selfServiceCheckInOpensAt()?->toIso8601String(),
+                                // The captain's button. Membership alone is
+                                // not enough — §6 says the captain does it —
+                                // and the Action refuses anything this misses.
+                                'canCheckIn' => $isCaptain
+                                    && $entrant->state === EntrantState::Registered
+                                    && $competition !== null
+                                    && $competition->selfServiceCheckInIsOpen(),
+                            ];
+                        })
                         ->values()
                         ->all(),
                 ];
@@ -189,6 +210,41 @@ final class MyTournamentsController
         }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Anmeldung zurückgezogen.')]);
+
+        return back();
+    }
+
+    /**
+     * The captain checks the team in themselves (design §6), during the
+     * window of `check_in_opens_minutes_before` minutes before `starts_at`.
+     *
+     * Everything that decides whether this is allowed lives in the Action —
+     * the mode, the window, and that this person really captains the team —
+     * so the page and the endpoint cannot drift apart. Here only the 404
+     * rule: an entry whose team you are not on does not exist as far as you
+     * are concerned.
+     *
+     * There is no self-service undo (§6 gives the captain one direction).
+     */
+    public function checkIn(Request $request, string $entrant, CheckInEntrant $checkIn): RedirectResponse
+    {
+        $userId = $this->actorId($request);
+
+        /** @var Entrant|null $model */
+        $model = Entrant::query()->whereKey($entrant)->first();
+        abort_if($model === null, 404);
+
+        /** @var CompetitionTeam|null $team */
+        $team = CompetitionTeam::query()->whereKey($model->competition_team_id)->first();
+        abort_if($team === null || ! $team->hasMember($userId), 404);
+
+        try {
+            $checkIn->handle($model, $userId);
+        } catch (CompetitionEntryException $e) {
+            return back()->withErrors(['entrant' => $e->getMessage()]);
+        }
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => __('Ihr seid eingecheckt.')]);
 
         return back();
     }

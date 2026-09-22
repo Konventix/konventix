@@ -544,3 +544,44 @@ for (roster and Steam IDs); it is additive.
 ## 14. Deviations found during implementation
 
 *(append only)*
+
+### §6, 2026-09-23 — door presence also listens to `AdmissionIssued`
+
+§6 names `AdmissionHolderAssigned` / `AdmissionHolderUnassigned` as the
+source of *who holds* an admission. That is incomplete:
+`AdmissionHolderAssigned` is emitted when an initially **unassigned**
+admission is claimed (ADR-0032), while the ordinary case — somebody buys a
+ticket for themselves — names the holder on `AdmissionIssued` and emits no
+second event. Listening to §6's list alone would leave `holder_user_id` null
+for most people at the door and every `requires_event_check_in` competition
+would refuse its whole field.
+
+`Listeners\ProjectAdmissionPresence` therefore also consumes `AdmissionIssued`
+and `AdmissionOwnershipAnnounced` (#292's backfill, so admissions issued
+before this read model existed appear in it). Both are strictly additive, both
+are public events, and Resources' `ProjectAdmission` consumes the same set for
+the same reason.
+
+### §6, 2026-09-23 — check-in desk on its own route, not `…/{id}/desk`
+
+§9 puts the check-in list inside the tournament desk. The desk is §9's own
+slice; §6's slice shipped the list at `/admin/competitions/{competition}/check-in`
+(`Admin\CheckInDeskController`, `admin/competitions/desk/CheckIn.vue`) so the
+two do not race for one controller. §9's slice may fold the panel in or link
+to it.
+
+### §6, 2026-09-23 — a self-service window needs a `starts_at`
+
+§6 defines the window as "`check_in_opens_minutes_before` minutes before
+`starts_at`". With `starts_at` unset there is no anchor, so
+`Competition::selfServiceCheckInIsOpen()` answers **false** rather than
+treating the missing bound as unbounded (which is what §4 does for the signup
+window). The desk can check teams in whatever the mode, so nobody is locked
+out; the console says so on the check-in page.
+
+### §6, 2026-09-23 — no `EntrantCheckedInUndone` event
+
+`UndoCheckIn` emits nothing. §12 names `EntrantCheckedIn` and no counterpart,
+and a "never mind" travelling as a contract event would be consumed as a fact
+in its own right. Worth revisiting if a consumer ever provisions on
+`EntrantCheckedIn`.

@@ -2,6 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
+import { formatDateTime } from '@/lib/datetime';
 
 /**
  * "Meine Turniere" (design §10): the teams this person is on, the entries
@@ -17,6 +18,14 @@ import { Button } from '@/components/ui/button';
  * either fill it from the interested list or ask (§5.4). Telling people their
  * entry is "unvollständig" without saying that it still counts is how a team
  * signs up twice.
+ *
+ * **Check-in (§6) appears here only when the captain may actually do it.**
+ * The mode decides: `self_service` gives the captain a button inside the
+ * window of `checkInOpensMinutesBefore` minutes before the start, `desk`
+ * says in words that the orga does it, and `none` says nothing at all
+ * because there is nothing to do. The server decides `canCheckIn` and the
+ * Action refuses anything this page gets wrong — the button is a
+ * convenience, never the rule.
  *
  * There is deliberately **no "create a team" form here**. A team is started
  * from the competition you want to enter (§10's competition page), where the
@@ -36,6 +45,10 @@ type Entry = {
     withdrawalLabel: string | null;
     competitionName: string;
     competitionStatus: string | null;
+    checkInMode: string | null;
+    checkedInAt: string | null;
+    checkInOpensAt: string | null;
+    canCheckIn: boolean;
 };
 
 type Team = {
@@ -84,6 +97,33 @@ function regenerate(team: Team): void {
 
 function withdraw(entry: Entry): void {
     router.delete(`/my/tournaments/entries/${entry.id}`, { preserveScroll: true });
+}
+
+function checkIn(entry: Entry): void {
+    router.post(`/my/tournaments/entries/${entry.id}/check-in`, {}, { preserveScroll: true });
+}
+
+/**
+ * What to say about check-in when there is no button: the window has not
+ * opened yet, the desk does it, or the team is already in. An empty string
+ * means there is nothing worth saying.
+ */
+function checkInHint(entry: Entry): string {
+    if (entry.state === 'checked_in') {
+        return 'Ihr seid eingecheckt.';
+    }
+
+    if (entry.checkInMode === 'desk') {
+        return 'Die Orga checkt euch am Turnier-Desk ein.';
+    }
+
+    if (entry.checkInMode === 'self_service' && !entry.canCheckIn) {
+        return entry.checkInOpensAt
+            ? `Check-in ab ${formatDateTime(entry.checkInOpensAt)}.`
+            : 'Der Check-in öffnet, sobald die Orga eine Startzeit gesetzt hat.';
+    }
+
+    return '';
 }
 
 function canWithdraw(entry: Entry): boolean {
@@ -155,14 +195,22 @@ function canWithdraw(entry: Entry): boolean {
                         </span>
                     </div>
 
-                    <Button
-                        v-if="team.isCaptain && canWithdraw(entry)"
-                        variant="outline"
-                        size="sm"
-                        @click="withdraw(entry)"
-                    >
-                        Anmeldung zurückziehen
-                    </Button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span v-if="checkInHint(entry)" class="text-xs text-text-muted">
+                            {{ checkInHint(entry) }}
+                        </span>
+
+                        <Button v-if="entry.canCheckIn" size="sm" @click="checkIn(entry)">Einchecken</Button>
+
+                        <Button
+                            v-if="team.isCaptain && canWithdraw(entry)"
+                            variant="outline"
+                            size="sm"
+                            @click="withdraw(entry)"
+                        >
+                            Anmeldung zurückziehen
+                        </Button>
+                    </div>
                 </li>
             </ul>
 

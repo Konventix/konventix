@@ -21,6 +21,7 @@ declare(strict_types=1);
  */
 
 use Illuminate\Support\Facades\Route;
+use Konventix\Competition\Http\Controllers\Admin\CheckInDeskController;
 use Konventix\Competition\Http\Controllers\Admin\CompetitionAdminController;
 use Konventix\Competition\Http\Controllers\Admin\DisciplineAdminController;
 use Konventix\Competition\Http\Controllers\Admin\EntrantAdminController;
@@ -67,3 +68,21 @@ Route::delete('/competition-teams/{team}/members', [EntrantAdminController::clas
     ->name('admin.competition-teams.members.remove');
 Route::post('/competition-teams/{team}/members/move', [EntrantAdminController::class, 'moveMember'])
     ->name('admin.competition-teams.members.move');
+
+/*
+ * The desk's check-in list (design §6, §9). Its own route rather than a panel
+ * inside `…/{competition}/desk`, which §9's own slice builds: the two would
+ * otherwise race for the same controller, and the check-in list is usable on
+ * its own at a table by the door.
+ *
+ * Everything here is `CheckInEntrants` — the desk may check a team in or take
+ * it back whatever the competition's mode says (§6), which is why neither
+ * write asks the mode.
+ */
+Route::get('/competitions/{competition}/check-in', [CheckInDeskController::class, 'index'])
+    ->name('admin.competitions.check-in');
+
+Route::post('/entrants/{entrant}/check-in', [CheckInDeskController::class, 'checkIn'])
+    ->name('admin.entrants.check-in');
+Route::delete('/entrants/{entrant}/check-in', [CheckInDeskController::class, 'undo'])
+    ->name('admin.entrants.check-in.undo');

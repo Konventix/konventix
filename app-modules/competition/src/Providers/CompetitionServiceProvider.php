@@ -5,6 +5,12 @@ declare(strict_types=1);
 namespace Konventix\Competition\Providers;
 
 use Illuminate\Support\Facades\Event;
+use Konventix\Admission\Events\AdmissionCheckedIn;
+use Konventix\Admission\Events\AdmissionHolderAssigned;
+use Konventix\Admission\Events\AdmissionHolderUnassigned;
+use Konventix\Admission\Events\AdmissionIssued;
+use Konventix\Admission\Events\AdmissionOwnershipAnnounced;
+use Konventix\Admission\Events\AdmissionRevoked;
 use Konventix\Competition\Brackets\FormatRegistry;
 use Konventix\Competition\Brackets\Formats\DoubleEliminationGenerator;
 use Konventix\Competition\Brackets\Formats\GroupStageGenerator;
@@ -13,6 +19,7 @@ use Konventix\Competition\Brackets\Formats\SingleEliminationGenerator;
 use Konventix\Competition\Brackets\Formats\SwissGenerator;
 use Konventix\Competition\Enums\Permission;
 use Konventix\Competition\Gdpr\CompetitionGdprHandler;
+use Konventix\Competition\Listeners\ProjectAdmissionPresence;
 use Konventix\Competition\Listeners\ProjectEligibilityOnRegistrationEvents;
 use Konventix\Competition\Listeners\ProjectParticipantProfile;
 use Konventix\Competition\Standings\Calculators\DoubleEliminationStandingsCalculator;
@@ -143,6 +150,32 @@ class CompetitionServiceProvider extends ModuleServiceProvider
         // dashes until each person happened to edit their profile.
         Event::listen(UserRegistered::class, [ProjectParticipantProfile::class, 'handle']);
         Event::listen(UserProfileUpdated::class, [ProjectParticipantProfile::class, 'handle']);
+
+        // What the door has seen (design §6). A competition may require that
+        // every roster member was scanned at the event entrance before the
+        // team is checked in, and Admission owns that fact — so it arrives on
+        // Admission's public events and is projected into this module's own
+        // `competition_admission_presence` (ADR-0004). Nothing here ever
+        // queries Admission.
+        //
+        // **These five ARE gated**, on the brand each event names, unlike the
+        // two projections above: door presence is worth nothing to a brand
+        // that runs no tournaments, it matters only for the hours of one
+        // event, and #298 asks for the short circuit by name. The gate lives
+        // inside the listener because these events arrive on the entrance
+        // host, on a webhook and from a console command, none of which
+        // carries a brand in context (ADR-0003).
+        //
+        // `AdmissionIssued` is listened to although §6 names only the holder
+        // events: a self-bought ticket names its holder there and emits no
+        // `AdmissionHolderAssigned` at all. See the listener's own note and
+        // the design's §14.
+        Event::listen(AdmissionIssued::class, [ProjectAdmissionPresence::class, 'handleIssued']);
+        Event::listen(AdmissionHolderAssigned::class, [ProjectAdmissionPresence::class, 'handleHolderAssigned']);
+        Event::listen(AdmissionHolderUnassigned::class, [ProjectAdmissionPresence::class, 'handleHolderUnassigned']);
+        Event::listen(AdmissionCheckedIn::class, [ProjectAdmissionPresence::class, 'handleCheckedIn']);
+        Event::listen(AdmissionRevoked::class, [ProjectAdmissionPresence::class, 'handleRevoked']);
+        Event::listen(AdmissionOwnershipAnnounced::class, [ProjectAdmissionPresence::class, 'handleOwnershipAnnounced']);
     }
 
     /**

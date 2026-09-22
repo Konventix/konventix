@@ -94,6 +94,60 @@ class Competition extends Model
     }
 
     /**
+     * When a self-service check-in opens: `check_in_opens_minutes_before`
+     * minutes before `starts_at` (design §6).
+     *
+     * **Null when `starts_at` is unset**, and that means the window never
+     * opens rather than "always open". The window is defined relative to the
+     * start; without a start there is no anchor, and a check-in weeks early
+     * answers none of the question check-in exists to ask. An organizer who
+     * wants self-service sets a start time — and the desk can check teams in
+     * whatever the mode, so nobody is locked out meanwhile.
+     */
+    public function selfServiceCheckInOpensAt(): ?CarbonInterface
+    {
+        if ($this->starts_at === null) {
+            return null;
+        }
+
+        return $this->starts_at->copy()->subMinutes($this->check_in_opens_minutes_before);
+    }
+
+    /**
+     * Whether a captain may check their team in right now (design §6).
+     *
+     * Three conditions, in the order they fail for different reasons: the
+     * mode has to allow self-service at all, the competition must not have
+     * started yet — the window "closes at `start`", and `Finished` and
+     * `Cancelled` are past that — and the clock must have reached the
+     * opening moment. The edge is inclusive: at exactly `starts_at` minus
+     * the lead minutes the window is open.
+     *
+     * There is no upper bound in the clock, on purpose. What shuts the window
+     * is the organizer starting the competition, not `starts_at` passing —
+     * a tournament that begins twenty minutes late must not lock out the team
+     * jogging in from the car park.
+     */
+    public function selfServiceCheckInIsOpen(?CarbonInterface $now = null): bool
+    {
+        if (! $this->check_in_mode->allowsSelfService()) {
+            return false;
+        }
+
+        if (in_array($this->status, [
+            CompetitionStatus::Running,
+            CompetitionStatus::Finished,
+            CompetitionStatus::Cancelled,
+        ], true)) {
+            return false;
+        }
+
+        $opensAt = $this->selfServiceCheckInOpensAt();
+
+        return $opensAt !== null && ! ($now ?? now())->lessThan($opensAt);
+    }
+
+    /**
      * @return BelongsTo<Discipline, $this>
      */
     public function discipline(): BelongsTo

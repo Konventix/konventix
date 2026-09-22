@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 use Konventix\Competition\Database\Factories\EntrantFactory;
+use Konventix\Competition\Enums\CheckInMode;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\WithdrawalReason;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
@@ -47,6 +48,22 @@ class Entrant extends Model
     public function isActive(): bool
     {
         return in_array($this->state, [EntrantState::Registered, EntrantState::CheckedIn], true);
+    }
+
+    /**
+     * Whether this entrant counts as **ready** under a competition's check-in
+     * mode (design §6): with `none` a registered entrant is ready and there
+     * is nothing to do; otherwise readiness means checked in. Every page that
+     * says "ready" asks this, and bracket generation seeds exactly these
+     * (§7.5).
+     */
+    public function isReadyFor(CheckInMode $mode): bool
+    {
+        if (! $mode->requiresCheckIn()) {
+            return $this->isActive();
+        }
+
+        return $this->state === EntrantState::CheckedIn;
     }
 
     /**
