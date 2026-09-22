@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -22,6 +23,15 @@ it('renders the hub at / for an admitted member when the switch is on, and the h
 
     $this->actingAs($admitted)->get('/')->assertInertia(fn (Assert $p) => $p->component('platform/live/Hub'));
     $this->actingAs(User::factory()->create())->get('/')->assertInertia(fn (Assert $p) => $p->component('Welcome'));
+
+    // A real anonymous request. `actingAs` stays in the guard for every later
+    // request in the same test and the scoped context survives a request
+    // boundary here, so without these three lines the "guest" below would be
+    // the member above, answered from a warm memo — and the query count
+    // would say nothing.
+    Auth::logout();
+    $this->app->forgetScopedInstances();
+    $this->withBrand($brand);
 
     DB::enableQueryLog();
     $this->get('/')->assertInertia(fn (Assert $p) => $p->component('Welcome'));

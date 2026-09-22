@@ -32,9 +32,8 @@ it('is null for a guest', function (): void {
     expect(app(ActiveEventContext::class)->current())->toBeNull();
 });
 
-// A separate test on purpose: this branch writes a cache entry the guest
-// branch above never reaches, and reading both in one test would say
-// nothing about which of the two the memo answered from.
+// A separate test only for readability — since the memo is keyed by viewer
+// (below), the guest read above and this one could safely share a test.
 it('is null for a signed-in user nobody admitted, and caches that answer', function (): void {
     $brand = $this->withBrand();
     $user = User::factory()->create();
@@ -42,6 +41,26 @@ it('is null for a signed-in user nobody admitted, and caches that answer', funct
 
     expect(app(ActiveEventContext::class)->current())->toBeNull()
         ->and(Cache::has(ActiveEventContext::key($brand->id, $user->id)))->toBeTrue();
+});
+
+// The memo is keyed by the viewer it was resolved for. A container that
+// outlives one viewer — the test runner, which reuses scoped instances
+// across requests, or any code switching the authenticated user mid-request
+// — must re-resolve rather than hand on the previous viewer's events.
+it('re-resolves when the viewer changes instead of handing on the previous memo', function (): void {
+    $brand = $this->withBrand();
+    $first = User::factory()->create();
+    $second = User::factory()->create();
+    event(hubAdmitted($brand->id, $first->id, $firstEvent = (string) Str::ulid()));
+    event(hubAdmitted($brand->id, $second->id, $secondEvent = (string) Str::ulid()));
+
+    $context = app(ActiveEventContext::class);
+
+    $this->actingAs($first);
+    expect($context->current()?->eventId)->toBe($firstEvent);
+
+    $this->actingAs($second);
+    expect($context->current()?->eventId)->toBe($secondEvent);
 });
 
 it('prefers the most recent admission and lists all', function (): void {
