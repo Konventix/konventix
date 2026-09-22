@@ -2,7 +2,20 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Str;
 use Konventix\Agenda\Data\AgendaItemData;
+use Konventix\Agenda\Enums\Permission as AgendaPermission;
+use Konventix\Agenda\Models\AgendaItem;
+use Konventix\Event\Events\EventCreated;
+use Konventix\Event\Events\EventDaysChanged;
+use Konventix\Event\Models\Event;
+use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\Operator;
+use Konventix\Platform\Models\Permission as PermissionModel;
+use Konventix\Platform\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Shared fixtures for the Agenda tests. Every function here is
@@ -28,4 +41,103 @@ function agendaItemData(array $overrides = []): AgendaItemData
         'trackId' => null, 'locationId' => null, 'locationNote' => null, 'speaker' => null,
         'startsAt' => '2026-11-20T15:00:00+01:00', 'endsAt' => '2026-11-20T16:30:00+01:00',
     ], $overrides));
+}
+
+/**
+ * A published event of the given brand, with Agenda's own read model
+ * already filled the way it is in production: by emitting Event's contract
+ * events, not by writing `agenda_event_summaries` by hand. A factory row
+ * emits nothing, so a test that skipped this would be testing a projection
+ * that never ran.
+ *
+ * Fixed times and a fixed zone rather than the factory's random ones: every
+ * assertion about a programme is an assertion about a wall clock (ADR-0027),
+ * and `fake()->timezone()` would make them irreproducible.
+ *
+ * Two days, so that `ProgrammeBuilder` omitting the empty one is visible.
+ */
+function agendaPublishedEvent(Brand $brand, string $timezone = 'Europe/Berlin'): Event
+{
+    $event = Event::factory()->published()->create([
+        'name' => 'Agenda Testcon',
+        'slug' => 'agenda-testcon',
+        'starts_at' => '2026-11-20 10:00:00',
+        'ends_at' => '2026-11-21 18:00:00',
+        'timezone' => $timezone,
+    ]);
+
+    event(new EventCreated(
+        eventId: $event->getKey(),
+        brandId: $brand->getKey(),
+        slug: $event->slug,
+        name: $event->name,
+        startsAt: '2026-11-20 10:00:00',
+        endsAt: '2026-11-21 18:00:00',
+        timezone: $timezone,
+        predecessorEventId: null,
+    ));
+
+    event(new EventDaysChanged(
+        eventId: $event->getKey(),
+        brandId: $brand->getKey(),
+        days: [
+            ['day_id' => (string) Str::ulid(), 'date' => '2026-11-20', 'sequence' => 1, 'label' => 'Freitag'],
+            ['day_id' => (string) Str::ulid(), 'date' => '2026-11-21', 'sequence' => 2, 'label' => 'Samstag'],
+        ],
+    ));
+
+    return $event;
+}
+
+/**
+ * One published programme entry. The instants are anchored to UTC the way
+ * `SaveAgendaItem` anchors them, so a test may pass any offset it likes and
+ * still store the moment it meant.
+ */
+function agendaPublishedItem(string $eventId, string $title, string $startsAt, ?string $endsAt = null): AgendaItem
+{
+    return AgendaItem::factory()->forEvent($eventId)->published()->create([
+        'title' => $title,
+        'starts_at' => CarbonImmutable::parse($startsAt)->utc(),
+        'ends_at' => $endsAt === null ? null : CarbonImmutable::parse($endsAt)->utc(),
+    ]);
+}
+
+/**
+ * An operator with an admin host and a user holding the given capabilities
+ * on it, granted the way `permissions:sync` materialises them (a role
+ * scoped to the operator plus the assignment) — `eventsAdminOperator()`'s
+ * shape, with Agenda's own capability as the default. The host is fixed and
+ * distinct from every other module's: `operators.admin_host` is unique.
+ *
+ * @param  list<string>  $permissions
+ * @return array{0: Operator, 1: User}
+ */
+function agendaAdminOperator(?array $permissions = null): array
+{
+    $permissions ??= ['platform.access-admin', AgendaPermission::ManageAgenda->value];
+
+    $operator = Operator::factory()->create();
+    $operator->forceFill(['admin_host' => 'admin.agendaadmin.test'])->save();
+
+    $registrar = app(PermissionRegistrar::class);
+    $registrar->setPermissionsTeamId($operator->getKey());
+
+    foreach ($permissions as $name) {
+        PermissionModel::query()->firstOrCreate(['name' => $name, 'guard_name' => 'web']);
+    }
+
+    $role = Role::query()->create([
+        'name' => 'Agenda Admin',
+        'guard_name' => 'web',
+        'brand_id' => $operator->getKey(),
+    ]);
+    $role->givePermissionTo($permissions);
+
+    $admin = User::factory()->create();
+    $admin->assignRole($role);
+
+    $registrar->setPermissionsTeamId(null);
+
+    return [$operator, $admin];
 }

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
-import { LayoutGrid, Pencil, RefreshCw } from '@lucide/vue';
+import { CalendarClock, LayoutGrid, Pencil, RefreshCw } from '@lucide/vue';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { resolveRegisteredComponent } from '@/lib/moduleComponents';
+import { edit as editAgenda } from '@/routes/admin/events/agenda';
 import { edit as editHubLayout } from '@/routes/admin/events/hub';
 
 /**
@@ -157,6 +158,16 @@ function refresh(): void {
                     <Link :href="editHubLayout(props.event.id).url">
                         <LayoutGrid class="size-4" />
                         Live hub
+                    </Link>
+                </Button>
+                <!-- Agenda's editor. A plain link, not a slot contribution:
+                     this is a way *to* another module's page, not a card
+                     rendered inside this one, and a brand with Agenda off
+                     simply finds a 404 there (ADR-0003). -->
+                <Button as-child variant="secondary" size="sm">
+                    <Link :href="editAgenda(props.event.id).url">
+                        <CalendarClock class="size-4" />
+                        Programme
                     </Link>
                 </Button>
                 <Button
