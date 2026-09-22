@@ -145,6 +145,44 @@ it('cancels with a reason and keeps the row', function (): void {
     EventBus::assertDispatched(AgendaItemCancelled::class, fn (AgendaItemCancelled $e): bool => $e->reason === 'Referent krank');
 });
 
+/**
+ * Design §7's trigger is "a *published* item is cancelled". A draft was
+ * never on the page, so there is nobody to tell — announcing it would have
+ * a consumer mail "Lötkurs 15:00 fällt aus" for something that never
+ * happened. The state still has to be written: the editor's list shows it.
+ */
+it('calls a draft off without announcing it', function (): void {
+    $brand = $this->withBrand();
+    $item = app(SaveAgendaItem::class)->handle((string) Str::ulid(), $brand->id, agendaItemData());
+    EventBus::fake([AgendaItemCancelled::class]);
+
+    app(CancelAgendaItem::class)->handle($item->fresh(), 'doch kein Referent');
+
+    expect($item->fresh()->state)->toBe(ItemState::Cancelled)
+        ->and($item->fresh()->cancelled_reason)->toBe('doch kein Referent');
+    EventBus::assertNotDispatched(AgendaItemCancelled::class);
+});
+
+/**
+ * The other half of the same rule: always persist, emit only on the
+ * transition. An organizer correcting the reason on an item that is
+ * already off must see the correction stick, and the participants must not
+ * be told a second time.
+ */
+it('corrects the reason of an item that is already off, silently', function (): void {
+    $brand = $this->withBrand();
+    $item = app(SaveAgendaItem::class)->handle((string) Str::ulid(), $brand->id, agendaItemData());
+    app(PublishAgendaItem::class)->handle($item);
+    app(CancelAgendaItem::class)->handle($item->fresh(), 'Referent krank');
+    EventBus::fake([AgendaItemCancelled::class]);
+
+    app(CancelAgendaItem::class)->handle($item->fresh(), 'verschoben auf Sonntag');
+
+    expect($item->fresh()->cancelled_reason)->toBe('verschoben auf Sonntag')
+        ->and($item->fresh()->state)->toBe(ItemState::Cancelled);
+    EventBus::assertNotDispatched(AgendaItemCancelled::class);
+});
+
 it('replaces the track set while keeping the ids of tracks that stay', function (): void {
     $brand = $this->withBrand();
     $eventId = (string) Str::ulid();
