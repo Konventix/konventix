@@ -165,6 +165,17 @@ function dryRunSkippedRoutes(): array
         // owns, so there is no URL the controller would serve.
         // `CheckoutContractConsentGateTest` walks both steps.
         'commerce.pay.order.confirm' => 'no order owned by the walking member after seeding',
+
+        // The event shoutbox (design §8, D-COM-03) is for a member admitted
+        // to the running event, and both screens answer 404 to anyone else
+        // by design — not a redirect, because the room is derived from the
+        // viewer's own admission and there is no room to send them to.
+        // `konventix:seed` scans nobody in at a door, so the walking member
+        // has no running event and there is no URL this walk could build
+        // that the controller would serve. `ShoutboxPageTest` walks both,
+        // for an admitted participant and for a stranger.
+        'community.shoutbox.show' => 'room page for an admitted participant; 404s for anyone else by design',
+        'community.shoutbox.messages' => 'JSON catch-up feed for an admitted participant; 404s for anyone else by design',
     ];
 }
 
