@@ -32,7 +32,9 @@ use Throwable;
  * request too (`.ai/rules/providers.md`).
  *
  * Every payload and URL closure runs behind a guard — see `drop()`. One
- * module's failure costs its own card, never the page.
+ * module's failure costs its own card, never the page. A URL closure that
+ * answers null is not a failure: the link withdraws itself and the rest of
+ * the row renders (`HubLink`).
  */
 final class HubPage
 {
@@ -67,9 +69,21 @@ final class HubPage
             try {
                 if ($item instanceof HubCard) {
                     $cardData[] = new HubCardData($item->key, $item->label, $item->component, ($item->payload)($event, $user));
-                } else {
-                    $linkData[] = new HubLinkData($item->key, $item->label, $item->url === null ? null : ($item->url)($event, $user), $item->component, $item->icon);
+
+                    continue;
                 }
+
+                $url = $item->url === null ? null : ($item->url)($event, $user);
+
+                // A URL closure that answers null withdraws its own link
+                // (`HubLink`): the module looked at this member and found
+                // nothing to point at. A link rendering through a component
+                // has no URL and is not withdrawing anything.
+                if ($url === null && $item->url !== null) {
+                    continue;
+                }
+
+                $linkData[] = new HubLinkData($item->key, $item->label, $url, $item->component, $item->icon);
             } catch (Throwable $exception) {
                 $this->drop($exception, $item, $brand);
             }

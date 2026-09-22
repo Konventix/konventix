@@ -137,13 +137,15 @@ final class HubCard {
 }
 final class HubLink {
     module, key, label,
-    ?Closure $url = null,        // fn(ActiveEventData, Authenticatable): string
+    ?Closure $url = null,        // fn(ActiveEventData, Authenticatable): ?string
     ?string $component = null,   // renders the link itself when a plain anchor will not do
     ?string $icon = null, ?string $permission = null, int $order = 100
 }
 ```
 
 A link carries a **URL closure**, not `routeName`/`routeParams`: where it points depends on the member's event (Resources' seat link names their admission), so it is resolved per request like a card's payload. A link that is not a navigation at all — Support's *Hilfe*, which opens the dialog already on the page — leaves `url` null and names a `component` instead.
+
+**A link may withdraw itself (fix round 2, 2026-09-22).** The URL closure returns `?string`, and `null` means "not for this viewer after all": `HubPage` drops the entry rather than rendering it. Module gate and capability are decided from what the registry knows at boot, but some links depend on a fact only the member's own data carries — *Mein Sitzplatz* points at a seat claim, and a crew admission has no `registration_id` and therefore never a claim, so the link led every one of them to the picker's 404. A link rendering through a `component` has no URL to withdraw and is always shown.
 
 The read side is `visibleCards(Authenticatable $user)` and `visibleLinks(Authenticatable $user)`, not one `visible(ActiveEventData, User)`: the registry needs the viewer, never the event, and typing the viewer as `Authenticatable` keeps Platform from importing Identity's model (ADR-0004) — the capability check goes through `Gate::forUser($user)->allows($permission)`. Both filter by module gate and permission and sort by `order`, then label. Payload and URL closures are **not** invoked here; `HubPage` invokes them only for the entries that survive the layout (§6), so a hidden card costs nothing.
 
@@ -193,7 +195,7 @@ Brand host, middleware `auth`, then `ensure-active-event` (Platform): no `active
 |---|---|---|---|---|
 | Admission | card **Mein Ticket**: badge QR for the active event, holder name, re-entry hint from the policy | `admission/hub/MyTicketCard` | `MyTicketCardData` (existing ticket page data, reused) | A |
 | Content | card **Ankündigungen**: latest 3 published entries with `event_id` = active event, link to `/news` | `content/hub/AnnouncementsCard` | `AnnouncementsCardData` | A |
-| Resources | link **Mein Sitzplatz** → the holder's seat page (`/my/admissions/{admission}/seat`) | — | route params closure | A |
+| Resources | link **Mein Sitzplatz** → the holder's seat page (`/my/admissions/{admission}/seat`), **hidden when there is no seat claim behind the admission** — the closure asks `FindSeatClaimForAdmission`, the same action the picker authorises on, and answers null for a crew badge or an unclaimed registration (§5.2) | — | route params closure | A |
 | Support | link **Hilfe** → opens the support dialog (`useSupportDialog().open()`) | — | client-side action, no route | A |
 | Competition | cards **Nächste Spiele**, **Meine Competitions** | `competition/hub/*` | see B's design addendum | B |
 | Agenda | card **Jetzt / Gleich** | `agenda/hub/NowNextCard` | C | C |

@@ -194,6 +194,15 @@ class ResourcesServiceProvider extends ModuleServiceProvider
      * capability anybody can be granted. The module *is* gateable, so a
      * brand without seating never sees the link — `HubRegistry` applies
      * that gate itself (ADR-0003).
+     *
+     * The closure answers null — and the link withdraws itself (`HubLink`)
+     * — when this member has no seat claim behind the admission. That is
+     * not an edge case: a crew admission has no `registration_id` and
+     * therefore never a claim, and a registration whose seats nobody
+     * claimed has none either. The picker's own answer for all of them is
+     * a 404, so offering the link at all was offering a dead end. Asking
+     * the same action the controller asks is what keeps the two from
+     * drifting apart.
      */
     protected function registerHub(): void
     {
@@ -201,7 +210,10 @@ class ResourcesServiceProvider extends ModuleServiceProvider
             module: 'resources',
             key: 'resources.my-seat',
             label: 'Mein Sitzplatz',
-            url: static fn (ActiveEventData $event, Authenticatable $user): string => route('resources.admission-seat.show', $event->admissionId, absolute: false),
+            url: static fn (ActiveEventData $event, Authenticatable $user): ?string => app(FindSeatClaimForAdmission::class)
+                ->handle($event->admissionId, (string) $user->getAuthIdentifier()) === null
+                    ? null
+                    : route('resources.admission-seat.show', $event->admissionId, absolute: false),
             icon: 'armchair',
             order: 10,
         ));
