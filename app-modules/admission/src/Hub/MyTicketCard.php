@@ -35,10 +35,14 @@ use Konventix\Platform\Data\ActiveEventData;
  * and the normal scope is exactly the right filter (ADR-0010) — an
  * admission belonging to another brand must not resolve at all.
  *
- * `$user` goes unread on purpose. The member this card is for is already
- * decided: `ActiveEventData` comes from *their* hub access, so the
- * admission it names is theirs. The parameter is the payload contract's,
- * not this builder's.
+ * `$user` is the second half of the lookup, not decoration. What this card
+ * renders is a **signed entrance credential**, and `ActiveEventData`
+ * carries an admission id out of a projection two modules away — a row
+ * that is wrong, stale or rebuilt from a bad replay would have this card
+ * printing somebody else's QR under this viewer's name. So the admission
+ * has to be the viewer's own as well as the brand's: no holder match, no
+ * row, and `HubPage`'s guard drops the card (D-HUB-05). A gap is the right
+ * failure here; the wrong ticket is not.
  */
 final class MyTicketCard
 {
@@ -49,7 +53,10 @@ final class MyTicketCard
 
     public function __invoke(ActiveEventData $event, Authenticatable $user): MyTicketCardData
     {
-        $admission = Admission::query()->findOrFail($event->admissionId);
+        $admission = Admission::query()
+            ->whereKey($event->admissionId)
+            ->where('holder_user_id', $user->getAuthIdentifier())
+            ->firstOrFail();
         $summary = EventSummary::query()->where('event_id', $event->eventId)->first();
         $profile = EntranceEventProfile::query()->where('event_id', $event->eventId)->first();
 

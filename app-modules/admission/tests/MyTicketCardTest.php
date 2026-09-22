@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Konventix\Admission\Data\MyTicketCardData;
@@ -52,14 +54,59 @@ it('falls back to the open-door hint when the event carries no profile', functio
     $brand = $this->withBrand();
     ticketSigningKey($brand);
     $eventId = (string) Str::ulid();
-    $admission = Admission::factory()->create(['event_id' => $eventId]);
     $user = User::factory()->create();
+    $admission = Admission::factory()->create(['event_id' => $eventId, 'holder_user_id' => $user->id]);
 
     $card = app(HubRegistry::class)->all()->first(fn ($item): bool => $item->key === 'admission.my-ticket');
     $payload = ($card->payload)(hubActiveEventFor($brand, $user, $eventId, $admission->id), $user);
 
     expect($payload->eventName)->toBeNull()
         ->and($payload->reentryHint)->toContain('jederzeit');
+});
+
+/**
+ * The card renders a signed entrance credential out of an admission id
+ * that reached it through a projection in another module. Brand scope
+ * alone is not enough: a hub-access row naming an admission of somebody
+ * else's — a bad write, a stale mirror, a botched replay — would have this
+ * card handing the viewer a stranger's QR. The lookup asks for the
+ * viewer's own admission, and a card with no row is dropped by the page's
+ * guard (D-HUB-05), which is the failure worth having.
+ */
+it('refuses to build a card from an admission the viewer does not hold', function (): void {
+    $brand = $this->withBrand();
+    ticketSigningKey($brand);
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    $stranger = User::factory()->create();
+    $admission = Admission::factory()->create(['event_id' => $eventId, 'holder_user_id' => $stranger->id]);
+    $viewer = User::factory()->create();
+
+    $card = app(HubRegistry::class)->all()->first(fn ($item): bool => $item->key === 'admission.my-ticket');
+
+    expect(fn () => ($card->payload)(hubActiveEventFor($brand, $viewer, $eventId, $admission->id), $viewer))
+        ->toThrow(ModelNotFoundException::class);
+});
+
+// And the same thing through the page: the containment drops the card and
+// the hub still renders, rather than issuing the credential.
+it('drops the ticket card instead of issuing a stranger\'s credential', function (): void {
+    $brand = $this->withBrand();
+    ticketSigningKey($brand);
+    $eventId = (string) Str::ulid();
+    ticketEventSummary($brand, $eventId);
+    $stranger = ticketPerson();
+    $admission = Admission::factory()->create(['event_id' => $eventId, 'holder_user_id' => $stranger->id]);
+    $viewer = User::factory()->create();
+
+    // A hub-access row for the viewer that names somebody else's admission.
+    event(hubAdmitted($brand->id, $viewer->id, $eventId, admissionId: $admission->id));
+
+    $this->actingAs($viewer)->get('/live')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('platform/live/Hub')
+            ->where('hub.cards', fn (Collection $cards): bool => $cards->doesntContain(fn (array $card): bool => $card['key'] === 'admission.my-ticket')));
 });
 
 // The card, through the real thing: the hub registry every provider filled
