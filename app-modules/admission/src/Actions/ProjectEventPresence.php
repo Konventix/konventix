@@ -32,6 +32,18 @@ use Konventix\Admission\Presence\PresenceWindow;
  * transition (D-HUB-01) and `ParticipantPresenceChanged` only when
  * `last_direction` actually changes (D-HUB-02): a second scan on the same
  * open window is a fact for the check-in log, not for the hub.
+ *
+ * Both of those transitions are decided from the row's *announcement*
+ * markers, never from the state itself. The handlers behind these events
+ * are not queued — Platform's `ProjectHubAccess` runs inline inside this
+ * module's queued job — so one of them throwing (a `Cache::forget` against
+ * a blipping Redis, a deadlock, anything) fails the job after the row was
+ * already saved. Reading the transition off the saved state would then let
+ * the retry conclude that nothing changed, and the event would be lost for
+ * good: a participant with no pill, or one who keeps access after a
+ * revocation, in silence. So the save goes first, the event second, and the
+ * marker only once the event is out — at-least-once on the way in, exactly
+ * once on the way through, because every consumer upserts (ADR-0004).
  */
 final class ProjectEventPresence
 {
@@ -56,12 +68,15 @@ final class ProjectEventPresence
         $presence = $this->rowFor($brandId, $eventId, $admission->holder_user_id);
 
         if ($direction === 'out') {
-            if ($presence === null || $presence->last_direction === 'out') {
-                return $presence;
+            if ($presence === null) {
+                return null;
             }
 
-            $presence->forceFill(['last_direction' => 'out', 'last_check_in_at' => $scannedAt])->save();
-            event(new ParticipantPresenceChanged($presence->user_id, $eventId, $brandId, 'out', $scannedAt->toIso8601String()));
+            if ($presence->last_direction !== 'out') {
+                $presence->forceFill(['last_direction' => 'out', 'last_check_in_at' => $scannedAt])->save();
+            }
+
+            $this->announceDirection($presence, $eventId, $brandId, 'out', $scannedAt);
 
             return $presence;
         }
@@ -71,9 +86,6 @@ final class ProjectEventPresence
         $window = $profile === null
             ? ['ends_at' => null, 'day_label' => null]
             : $this->window->for($profile, $summary?->timezone, $scannedAt);
-
-        $hadAccess = $presence?->hub_access === true;
-        $wasIn = $presence?->last_direction === 'in';
 
         $admitted = [
             'admission_id' => $admissionId,
@@ -105,12 +117,15 @@ final class ProjectEventPresence
                 // sibling job's INSERT won `unique(event_id, user_id)`. The
                 // other job's row is *the* row — re-read it and take the
                 // update path below, so this scan's instant and admission
-                // still land and the two events fire exactly once across
-                // both jobs.
+                // still land. Whether the two events fire once or twice
+                // across the pair is whatever the sibling's markers say by
+                // then: a sibling that already announced silences this job,
+                // and one that has not yet leaves both of them to emit. At
+                // least once is the guarantee on purpose — every consumer
+                // upserts (ADR-0004), and the other rounding would be the
+                // lost event this marker exists to prevent.
                 $presence = $this->rowFor($brandId, $eventId, $admission->holder_user_id)
                     ?? throw $collision;
-                $hadAccess = $presence->hub_access;
-                $wasIn = $presence->last_direction === 'in';
             }
         }
 
@@ -118,7 +133,7 @@ final class ProjectEventPresence
             $presence->forceFill($admitted)->save();
         }
 
-        if (! $hadAccess) {
+        if ($presence->announced_hub_access !== true) {
             event(new ParticipantAdmitted(
                 userId: $presence->user_id,
                 eventId: $eventId,
@@ -130,13 +145,30 @@ final class ProjectEventPresence
                 eventName: $summary?->name,
                 eventSlug: $summary?->slug,
             ));
+
+            $presence->forceFill(['announced_hub_access' => true])->save();
         }
 
-        if (! $wasIn) {
-            event(new ParticipantPresenceChanged($presence->user_id, $eventId, $brandId, 'in', $scannedAt->toIso8601String()));
-        }
+        $this->announceDirection($presence, $eventId, $brandId, 'in', $scannedAt);
 
         return $presence;
+    }
+
+    /**
+     * `ParticipantPresenceChanged` for the direction the row now carries,
+     * unless that direction has already been announced (D-HUB-02). The dot
+     * beside the pill is only a badge, but a lost event leaves it wrong for
+     * the rest of the event, so it is acknowledged like access is.
+     */
+    private function announceDirection(EventPresence $presence, string $eventId, string $brandId, string $direction, CarbonImmutable $at): void
+    {
+        if ($presence->announced_direction === $direction) {
+            return;
+        }
+
+        event(new ParticipantPresenceChanged($presence->user_id, $eventId, $brandId, $direction, $at->toIso8601String()));
+
+        $presence->forceFill(['announced_direction' => $direction])->save();
     }
 
     /**
@@ -184,27 +216,38 @@ final class ProjectEventPresence
         $rows = EventPresence::withoutBrandScope()
             ->where('brand_id', $brandId)
             ->where('admission_id', $admissionId)
-            ->where('hub_access', true)
+            ->where($this->unsettled(...))
             ->get();
 
         foreach ($rows as $presence) {
-            $survivor = Admission::withoutBrandScope()
-                ->where('brand_id', $brandId)
-                ->where('event_id', $presence->event_id)
-                ->where('holder_user_id', $presence->user_id)
-                ->whereKeyNot($admissionId)
-                ->where('state', '!=', AdmissionState::Revoked)
-                ->orderBy('id')
-                ->first();
+            // A row the query only picked up to finish an interrupted
+            // ending has no access left to carry anywhere: it goes through
+            // `endRow()`, which re-emits and settles it. Only a row that
+            // still has access looks for a survivor.
+            $survivor = $presence->hub_access
+                ? Admission::withoutBrandScope()
+                    ->where('brand_id', $brandId)
+                    ->where('event_id', $presence->event_id)
+                    ->where('holder_user_id', $presence->user_id)
+                    ->whereKeyNot($admissionId)
+                    ->where('state', '!=', AdmissionState::Revoked)
+                    ->orderBy('id')
+                    ->first()
+                : null;
 
             if ($survivor !== null) {
-                $presence->forceFill(['admission_id' => $survivor->id])->save();
-
                 // Access is untouched, but the id consumers mirror is not:
                 // Platform's `platform_hub_access` carries `admission_id`
                 // and Resources' hub link is built out of it, so a silent
                 // re-point would leave that link naming the admission that
                 // was just revoked.
+                //
+                // Emitted *before* the re-point, the other way round from
+                // the transitions above: this row is found by the revoked
+                // admission's id, so moving it first is what would hide it
+                // from the retry. A listener that throws leaves the row
+                // where it was and the retry finds it again; a redelivery
+                // costs a consumer one idempotent write.
                 event(new ParticipantAdmissionReplaced(
                     userId: $presence->user_id,
                     eventId: $presence->event_id,
@@ -213,11 +256,14 @@ final class ProjectEventPresence
                     replacedAt: $at->toIso8601String(),
                 ));
 
+                $presence->forceFill(['admission_id' => $survivor->id])->save();
+
                 continue;
             }
 
-            $this->endRow($presence, $reason, $at);
-            $ended++;
+            if ($this->endRow($presence, $reason, $at)) {
+                $ended++;
+            }
         }
 
         return $ended;
@@ -238,7 +284,25 @@ final class ProjectEventPresence
     }
 
     /**
-     * Only rows that still have access flip, so ending twice emits once.
+     * "Not settled yet": the row still has access, or it lost access
+     * without the platform ever being told. Everything else — access
+     * already gone *and* already announced — is done with.
+     *
+     * @param  Builder<EventPresence>  $query
+     */
+    private function unsettled(Builder $query): void
+    {
+        $query->where('hub_access', true)->orWhere('announced_hub_access', true);
+    }
+
+    /**
+     * Rows that still have access, plus the rows whose loss of access was
+     * never announced — a job that saved `hub_access = false` and then died
+     * before its event got out would otherwise never be picked up again,
+     * because it no longer matches "still has access". Ending twice still
+     * emits once, now by the marker rather than by the flag, and the count
+     * only counts the rows that actually lost access here.
+     *
      * Chunked by id because the loop mutates the very column the query
      * filters on — offset paging would skip every other page.
      *
@@ -248,10 +312,11 @@ final class ProjectEventPresence
     {
         $ended = 0;
 
-        $query->where('hub_access', true)->orderBy('id')->chunkById(200, function (Collection $rows) use ($reason, $at, &$ended): void {
+        $query->where($this->unsettled(...))->orderBy('id')->chunkById(200, function (Collection $rows) use ($reason, $at, &$ended): void {
             foreach ($rows as $presence) {
-                $this->endRow($presence, $reason, $at);
-                $ended++;
+                if ($this->endRow($presence, $reason, $at)) {
+                    $ended++;
+                }
             }
         });
 
@@ -259,13 +324,26 @@ final class ProjectEventPresence
     }
 
     /**
-     * One row loses access and the platform hears of it — the same two
-     * writes whichever path (event closed, window expired, admission
-     * revoked) decided it.
+     * One row loses access and the platform hears of it — the same writes
+     * whichever path (event closed, window expired, admission revoked)
+     * decided it: the state first, the event second, the acknowledgement
+     * last. Returns whether this call is what took the access away, so a
+     * pass that only finishes an interrupted one is not counted twice.
      */
-    private function endRow(EventPresence $presence, HubAccessEndReason $reason, CarbonImmutable $at): void
+    private function endRow(EventPresence $presence, HubAccessEndReason $reason, CarbonImmutable $at): bool
     {
-        $presence->forceFill(['hub_access' => false, 'access_ended_reason' => $reason])->save();
-        event(new ParticipantHubAccessEnded($presence->user_id, $presence->event_id, $presence->brand_id, $reason->value, $at->toIso8601String()));
+        $lost = $presence->hub_access;
+
+        if ($lost) {
+            $presence->forceFill(['hub_access' => false, 'access_ended_reason' => $reason])->save();
+        }
+
+        if ($presence->announced_hub_access !== false) {
+            event(new ParticipantHubAccessEnded($presence->user_id, $presence->event_id, $presence->brand_id, $reason->value, $at->toIso8601String()));
+
+            $presence->forceFill(['announced_hub_access' => false])->save();
+        }
+
+        return $lost;
     }
 }

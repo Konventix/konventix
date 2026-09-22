@@ -23,6 +23,11 @@ class EventPresenceFactory extends Factory
      * (ADR-0014); only `admission_id` is a real row, because the table
      * holds a foreign key onto `admissions`.
      *
+     * The announcement markers start out matching the state, because a row
+     * a test hands to the action stands for one the projection already
+     * finished with — the participant events for it are out. A test about
+     * an *interrupted* projection sets them back itself.
+     *
      * @return array<string, mixed>
      */
     public function definition(): array
@@ -36,6 +41,8 @@ class EventPresenceFactory extends Factory
             'last_direction' => 'in',
             'window_ends_at' => null,
             'hub_access' => true,
+            'announced_hub_access' => true,
+            'announced_direction' => 'in',
         ];
     }
 }

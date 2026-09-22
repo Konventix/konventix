@@ -22,6 +22,13 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * through `ParticipantAdmitted` and its siblings (design §4.3, ADR-0004).
  * `event_id` and `user_id` are plain ULIDs (ADR-0014).
  *
+ * `announced_hub_access` and `announced_direction` are not state, they are
+ * the acknowledgement of state: the values the participant events have
+ * actually carried out of this module. They move only after the event was
+ * dispatched, so a job that dies between the save and the dispatch re-emits
+ * on its retry instead of deciding, from the already-saved row, that
+ * nothing transitioned (D-HUB-01).
+ *
  * @property string $id
  * @property string $brand_id
  * @property string $event_id
@@ -34,6 +41,8 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property bool $hub_access
  * @property HubAccessEndReason|null $access_ended_reason
  * @property string|null $day_label
+ * @property bool|null $announced_hub_access
+ * @property string|null $announced_direction
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  */
@@ -57,6 +66,8 @@ class EventPresence extends Model
         'hub_access',
         'access_ended_reason',
         'day_label',
+        'announced_hub_access',
+        'announced_direction',
     ];
 
     /**
@@ -70,6 +81,7 @@ class EventPresence extends Model
             'window_ends_at' => 'immutable_datetime',
             'hub_access' => 'boolean',
             'access_ended_reason' => HubAccessEndReason::class,
+            'announced_hub_access' => 'boolean',
             'created_at' => 'immutable_datetime',
             'updated_at' => 'immutable_datetime',
         ];
