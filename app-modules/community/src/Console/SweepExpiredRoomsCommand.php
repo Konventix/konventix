@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Konventix\Community\Console;
 
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Konventix\Community\Models\Message;
@@ -83,7 +84,7 @@ final class SweepExpiredRoomsCommand extends Command
      *
      * @return list<string>
      */
-    private function dueRoomIds(CarbonImmutable $cutoff): array
+    private function dueRoomIds(CarbonInterface $cutoff): array
     {
         /** @var list<string> */
         return Room::withoutBrandScope()
