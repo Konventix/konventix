@@ -6,10 +6,8 @@ namespace Konventix\Competition\Models;
 
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Konventix\Competition\Database\Factories\ScoreEntryFactory;
 use Konventix\Platform\Models\Concerns\BelongsToBrand;
 
 /**
@@ -46,7 +44,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property int|null $heat
  * @property float $value
  * @property string|null $proof_media_id
- * @property string $submitted_by_user_id
+ * @property string|null $submitted_by_user_id null once the submitter was erased (GDPR)
  * @property CarbonInterface|null $verified_at
  * @property string|null $verified_by_user_id
  * @property CarbonInterface|null $rejected_at
@@ -59,9 +57,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
 class ScoreEntry extends Model
 {
     use BelongsToBrand;
-
-    /** @use HasFactory<ScoreEntryFactory> */
-    use HasFactory, HasUlids;
+    use HasUlids;
 
     protected $table = 'competition_score_entries';
 
@@ -120,10 +116,5 @@ class ScoreEntry extends Model
             'verified_at' => 'datetime',
             'rejected_at' => 'datetime',
         ];
-    }
-
-    protected static function newFactory(): ScoreEntryFactory
-    {
-        return ScoreEntryFactory::new();
     }
 }

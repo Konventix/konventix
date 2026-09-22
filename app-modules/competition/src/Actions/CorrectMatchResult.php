@@ -123,7 +123,11 @@ final class CorrectMatchResult
                 $correctedByUserId,
             );
 
-            event(new MatchResultCorrected(
+            // After the commit, never before: the cascade below can still
+            // refuse (a downstream void without a note) and roll all of this
+            // back, and a listener must not be told of a correction that was
+            // never made (.ai/rules/src.md).
+            $corrected = new MatchResultCorrected(
                 matchId: $match->id,
                 competitionId: $match->competition_id,
                 brandId: $match->brand_id,
@@ -132,7 +136,11 @@ final class CorrectMatchResult
                 scores: $scores,
                 correctedByUserId: $correctedByUserId,
                 correctedAt: now()->toIso8601String(),
-            ));
+            );
+
+            DB::afterCommit(static function () use ($corrected): void {
+                event($corrected);
+            });
 
             $routingChanged = $previousWinner !== $winnerEntrantId
                 || $previousLoser !== $this->loserOf($match);

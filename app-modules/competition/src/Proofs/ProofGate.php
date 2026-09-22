@@ -45,10 +45,17 @@ use Throwable;
  * will have to move when it lands — a media ULID is a media ULID whichever
  * door it came in through.
  *
+ * **A proof id must name one of the brand's own media items.** The id is
+ * participant-supplied, and a ULID from anywhere in the deployment — another
+ * brand's sponsor artwork, another team's proof — would otherwise be stored
+ * and shown to the opposing side and the desk as this side's evidence.
+ * `resolve()` refuses it, so the refusal rolls back the submission it came
+ * with.
+ *
  * Usage references are recorded (ADR-0035) so the library knows a proof is
- * referenced, but only for an item that actually belongs to the brand: a
- * bogus ULID is a validation problem for the upload path, not a reason to
- * roll back a result somebody played for.
+ * referenced. That write stays best effort: by the time it runs the id has
+ * already been checked, and bookkeeping for the library's future cleanup is
+ * not a reason to roll back a result somebody played for.
  */
 final class ProofGate
 {
@@ -61,15 +68,17 @@ final class ProofGate
      *
      * Three outcomes, and the policy decides which: the submitted id, `null`
      * where none was submitted and none is owed, or a refusal — a required
-     * proof that is missing, or a proof sent to a competition that takes
-     * none.
+     * proof that is missing, a proof sent to a competition that takes none,
+     * or an id that is not one of `$brandId`'s media items.
      *
+     * @param  string  $brandId  the brand the submission belongs to, from its parent row (ADR-0010)
      * @param  string  $field  the form field a refusal is attributed to
      *
-     * @throws ValidationException when a required proof is missing, or an
-     *                             unsolicited one is refused
+     * @throws ValidationException when a required proof is missing, an
+     *                             unsolicited one is refused, or the id names
+     *                             media the brand does not own
      */
-    public function resolve(?Competition $competition, ?string $proofMediaId, string $field = 'proofMediaId'): ?string
+    public function resolve(?Competition $competition, string $brandId, ?string $proofMediaId, string $field = 'proofMediaId'): ?string
     {
         // A competition that cannot be resolved is not a reason to refuse a
         // result: `Optional` is the reading that neither demands nor drops.
@@ -88,6 +97,14 @@ final class ProofGate
         if (! $policy->acceptsProof()) {
             throw ValidationException::withMessages([
                 $field => __('This competition does not take proof images.'),
+            ]);
+        }
+
+        // Unknown and foreign are one refusal: telling them apart would
+        // answer whether a ULID names another brand's media.
+        if (! $this->media->belongsToBrand($proofMediaId, $brandId)) {
+            throw ValidationException::withMessages([
+                $field => __('Dieses Beweisbild ist unbekannt. Lade es bitte erneut hoch.'),
             ]);
         }
 

@@ -8,7 +8,9 @@ use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\ValidationException;
 use Konventix\Competition\Actions\StoreProofImage;
+use Konventix\Competition\Exceptions\ResultSubmissionException;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\Entrant;
 
@@ -57,12 +59,19 @@ class ProofUploadController
         /** @var UploadedFile $file */
         $file = $validated['file'];
 
-        $proofMediaId = $storeProofImage->handle(
-            competition: $competition,
-            entrant: $entrant,
-            file: $file,
-            uploadedByUserId: (string) $request->user()?->getKey(),
-        );
+        try {
+            $proofMediaId = $storeProofImage->handle(
+                competition: $competition,
+                entrant: $entrant,
+                file: $file,
+                uploadedByUserId: (string) $request->user()?->getKey(),
+            );
+        } catch (ResultSubmissionException $e) {
+            // A refusal the participant can act on (no proofs taken here, not
+            // on this side), not a server fault: a 422 on the file, like the
+            // module's other controllers turn a named cause into a form error.
+            throw ValidationException::withMessages(['file' => $e->getMessage()]);
+        }
 
         return response()->json(['proofMediaId' => $proofMediaId], 201);
     }

@@ -14,6 +14,7 @@ use Konventix\Competition\Actions\ReportMatchResult;
 use Konventix\Competition\Actions\ResolveDispute;
 use Konventix\Competition\Actions\StoreProofImage;
 use Konventix\Competition\Data\MatchReportData;
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\MatchHistoryKind;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\ProofPolicy;
@@ -24,12 +25,18 @@ use Konventix\Competition\Events\MatchFinished;
 use Konventix\Competition\Events\MatchResultCorrected;
 use Konventix\Competition\Events\MatchResultReported;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
+use Konventix\Competition\Gdpr\CompetitionGdprHandler;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionMatch;
 use Konventix\Competition\Models\Entrant;
 use Konventix\Competition\Models\MatchHistoryEntry;
 use Konventix\Competition\Models\MatchResultReport;
 use Konventix\Competition\Models\MatchSlot;
+use Konventix\Compliance\Enums\DeletionMode;
+use Konventix\Compliance\Gdpr\SubjectRef;
+use Konventix\Identity\Models\User;
+use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\MediaItem;
 
 /**
  * Results reported by participants, confirmed by their opponents, disputed
@@ -79,10 +86,9 @@ function reportTestEntrant(string $entrantId): Entrant
  */
 function reportTestHistoryKinds(CompetitionMatch $match): array
 {
-    return MatchHistoryEntry::query()
-        ->where('competition_match_id', $match->getKey())
-        ->orderBy('created_at')
-        ->orderBy('id')
+    // Through the model's own relation, so the order asserted is the order
+    // the timeline renders in (§8.6) — not one the test imposes on top.
+    return $match->history()
         ->get()
         ->map(static fn (MatchHistoryEntry $entry): string => $entry->kind->value)
         ->all();
@@ -331,6 +337,76 @@ describe('disputes (§8.4)', function (): void {
         Event::assertNotDispatched(MatchFinished::class);
     });
 
+    it('announces no report that the dispute path rolled back', function (): void {
+        // A side re-reporting a still-contradicting score on a match that is
+        // already disputed reaches `DisputeMatchResult`, which refuses — and
+        // the whole report rolls back with it. `MatchResultReported` waits
+        // for the commit, so a report that was never filed is never
+        // announced (.ai/rules/src.md).
+        $this->withBrand();
+
+        [, $match, $sides, $members] = reportTestMatch();
+
+        app(ReportMatchResult::class)->handle(
+            $match,
+            reportTestEntrant($sides[1]),
+            new MatchReportData(scores: [1 => 16, 2 => 9]),
+            $members[$sides[1]],
+        );
+
+        app(ReportMatchResult::class)->handle(
+            $match->fresh(),
+            reportTestEntrant($sides[2]),
+            new MatchReportData(scores: [1 => 9, 2 => 16]),
+            $members[$sides[2]],
+        );
+
+        expect($match->fresh()->isDisputed())->toBeTrue();
+
+        Event::fake([MatchResultReported::class]);
+
+        expect(fn () => app(ReportMatchResult::class)->handle(
+            $match->fresh(),
+            reportTestEntrant($sides[1]),
+            new MatchReportData(scores: [1 => 16, 2 => 10]),
+            $members[$sides[1]],
+        ))->toThrow(ResultSubmissionException::class);
+
+        Event::assertNotDispatched(MatchResultReported::class);
+
+        // Rolled back: side 1's stored claim is still the first one.
+        expect(MatchResultReport::query()
+            ->where('competition_match_id', $match->getKey())
+            ->where('entrant_id', $sides[1])
+            ->sole()
+            ->normalisedScores())->toBe([1 => 16, 2 => 9]);
+    });
+
+    it('refuses a dispute once the competition is finished or cancelled', function (): void {
+        // A dispute opened on a tournament nobody runs any more would sit in
+        // the desk's queue forever, and resolving it would void results in a
+        // bracket whose standings are already published. No time window is
+        // invented — §8.4 states none — the competition's own end is the end.
+        $this->withBrand();
+
+        foreach ([CompetitionStatus::Finished, CompetitionStatus::Cancelled] as $status) {
+            [$competition, $match, $sides, $members] = reportTestMatch();
+
+            app(RecordMatchResult::class)->handle($match, [$sides[1] => 16, $sides[2] => 9], $sides[1]);
+
+            $competition->forceFill(['status' => $status])->save();
+
+            expect(fn () => app(DisputeMatchResult::class)->handle(
+                $match->fresh(),
+                reportTestEntrant($sides[2]),
+                'Das Ergebnis stimmt nicht.',
+                $members[$sides[2]],
+            ))->toThrow(ResultSubmissionException::class);
+
+            expect($match->fresh()->disputed_at)->toBeNull();
+        }
+    });
+
     it('refuses a dispute with no reason', function (): void {
         $this->withBrand();
 
@@ -491,7 +567,9 @@ describe('proofs (§8.1, §8.7)', function (): void {
             $members[$sides[1]],
         ))->toThrow(ValidationException::class);
 
-        $proofId = (string) Str::ulid();
+        // A real item of this brand's library: `ProofGate` refuses an id that
+        // names none (see the foreign-id test below).
+        $proofId = (string) MediaItem::factory()->create()->getKey();
 
         app(ReportMatchResult::class)->handle(
             $match->fresh(),
@@ -522,6 +600,31 @@ describe('proofs (§8.1, §8.7)', function (): void {
             new MatchReportData(scores: [1 => 16, 2 => 9], proofMediaId: (string) Str::ulid()),
             $members[$sides[1]],
         ))->toThrow(ValidationException::class);
+    });
+
+    it('refuses a proof id that is not one of the brand\'s own media items', function (): void {
+        // The id is participant-supplied. Another brand's image — or an id
+        // naming nothing at all — must not be stored and shown to the other
+        // side and the desk as this side's evidence.
+        $this->withBrand();
+
+        [, $match, $sides, $members] = reportTestMatch(ResultSubmissionMode::Participants, ProofPolicy::Optional);
+
+        $foreign = (string) MediaItem::factory()->create(['brand_id' => Brand::factory()->create()->getKey()])->getKey();
+        $unknown = (string) Str::ulid();
+
+        foreach ([$foreign, $unknown] as $proofMediaId) {
+            expect(fn () => app(ReportMatchResult::class)->handle(
+                $match->fresh(),
+                reportTestEntrant($sides[1]),
+                new MatchReportData(scores: [1 => 16, 2 => 9], proofMediaId: $proofMediaId),
+                $members[$sides[1]],
+            ))->toThrow(ValidationException::class);
+        }
+
+        // Refused, so rolled back: no claim filed, nothing reported.
+        expect(MatchResultReport::query()->where('competition_match_id', $match->getKey())->count())->toBe(0)
+            ->and($match->fresh()->reported_at)->toBeNull();
     });
 
     it('turns an upload away before a byte is stored when the policy is none', function (): void {
@@ -654,5 +757,132 @@ describe('match history (§8.6)', function (): void {
             ->and($payload->scores)->toBe([1 => 16, 2 => 9])
             ->and($payload->note)->toBe('GG')
             ->and($entry->actor_user_id)->toBe($members[$sides[1]]);
+    });
+});
+
+describe('GDPR erasure of the results trail', function (): void {
+    it('forgets who reported and acted, and keeps every report and history row', function (): void {
+        // A report and a timeline row are the match's history; the person
+        // who filed them is not. Erasure nulls the user ULID and the row
+        // stays — Registration's `EntryConditionAssertion` shape.
+        $this->withBrand();
+
+        [, $match, $sides, $members] = reportTestMatch();
+
+        $forgotten = $members[$sides[1]];
+        $stays = $members[$sides[2]];
+
+        // Both sides report the same score, so the second report settles
+        // the match (see 'treats a second report that says the same thing as
+        // agreement'). Rows written, by hand from `ReportMatchResult`:
+        //   reports: side 1 by $forgotten, side 2 by $stays
+        //   history: reported ($forgotten), reported ($stays),
+        //            confirmed ($stays), recorded ($stays — `settleMatch()`
+        //            passes the reporter on as the recorder)
+        foreach ([1, 2] as $position) {
+            app(ReportMatchResult::class)->handle(
+                $match->fresh(),
+                reportTestEntrant($sides[$position]),
+                new MatchReportData(scores: [1 => 16, 2 => 9]),
+                $members[$sides[$position]],
+            );
+        }
+
+        expect(reportTestHistoryKinds($match))->toBe(['reported', 'reported', 'confirmed', 'recorded'])
+            ->and(MatchHistoryEntry::query()->where('competition_match_id', $match->getKey())->where('actor_user_id', $forgotten)->count())->toBe(1)
+            ->and(MatchHistoryEntry::query()->where('competition_match_id', $match->getKey())->where('actor_user_id', $stays)->count())->toBe(3);
+
+        (new CompetitionGdprHandler)->delete(SubjectRef::forUser($forgotten), DeletionMode::Erase);
+
+        $reports = MatchResultReport::query()
+            ->where('competition_match_id', $match->getKey())
+            ->pluck('reported_by_user_id', 'entrant_id')
+            ->all();
+
+        expect($reports)->toEqual([$sides[1] => null, $sides[2] => $stays])
+            // Every row survives: the same four kinds, in the same order.
+            ->and(reportTestHistoryKinds($match))->toBe(['reported', 'reported', 'confirmed', 'recorded'])
+            ->and(MatchHistoryEntry::query()->where('competition_match_id', $match->getKey())->where('actor_user_id', $forgotten)->count())->toBe(0)
+            ->and(MatchHistoryEntry::query()->where('competition_match_id', $match->getKey())->whereNull('actor_user_id')->count())->toBe(1)
+            // Nobody else's reference moved.
+            ->and(MatchHistoryEntry::query()->where('competition_match_id', $match->getKey())->where('actor_user_id', $stays)->count())->toBe(3)
+            // And the result the reports produced is untouched.
+            ->and($match->fresh()->winner_entrant_id)->toBe($sides[1]);
+    });
+});
+
+describe('the proof upload route (§8.7)', function (): void {
+    it('refuses an unauthenticated upload', function (): void {
+        $brand = $this->withBrand();
+        $this->activateModule('competition', $brand);
+
+        Storage::fake('media');
+
+        [$competition, $field] = competitionFieldWithRosters(1, ['proof_policy' => ProofPolicy::Optional]);
+
+        $this->withHeader('Accept', 'application/json')
+            ->post('/tournaments/'.$competition->getKey().'/proofs', [
+                'entrant_id' => $field[0]->getKey(),
+                'file' => UploadedFile::fake()->image('scoreboard.png'),
+            ])
+            ->assertUnauthorized();
+
+        expect(Storage::disk('media')->allFiles())->toBe([]);
+    });
+
+    it('refuses an upload to a competition that takes no proofs before a byte is stored', function (): void {
+        $brand = $this->withBrand();
+        $this->activateModule('competition', $brand);
+
+        Storage::fake('media');
+
+        [$competition, $field] = competitionFieldWithRosters(1, ['proof_policy' => ProofPolicy::None]);
+
+        // Any signed-in account: the policy is asked before the roster is.
+        $this->actingAs(User::factory()->create())
+            ->withHeader('Accept', 'application/json')
+            ->post('/tournaments/'.$competition->getKey().'/proofs', [
+                'entrant_id' => $field[0]->getKey(),
+                'file' => UploadedFile::fake()->image('scoreboard.png'),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('file');
+
+        expect(Storage::disk('media')->allFiles())->toBe([]);
+    });
+
+    it('throttles the upload at six a minute', function (): void {
+        // `throttle:6,1`: six requests inside the minute reach the
+        // controller, the seventh is turned away by the middleware. The
+        // limiter counts a hit before the request is handled, so the six
+        // refusals below count as much as six uploads would — which is the
+        // point: nothing about the answer makes a request free.
+        $brand = $this->withBrand();
+        $this->activateModule('competition', $brand);
+
+        Storage::fake('media');
+
+        [$competition, $field] = competitionFieldWithRosters(1, ['proof_policy' => ProofPolicy::None]);
+        $user = User::factory()->create();
+
+        for ($attempt = 1; $attempt <= 6; $attempt++) {
+            $this->actingAs($user)
+                ->withHeader('Accept', 'application/json')
+                ->post('/tournaments/'.$competition->getKey().'/proofs', [
+                    'entrant_id' => $field[0]->getKey(),
+                    'file' => UploadedFile::fake()->image('scoreboard.png'),
+                ])
+                ->assertUnprocessable();
+        }
+
+        $this->actingAs($user)
+            ->withHeader('Accept', 'application/json')
+            ->post('/tournaments/'.$competition->getKey().'/proofs', [
+                'entrant_id' => $field[0]->getKey(),
+                'file' => UploadedFile::fake()->image('scoreboard.png'),
+            ])
+            ->assertTooManyRequests();
+
+        expect(Storage::disk('media')->allFiles())->toBe([]);
     });
 });

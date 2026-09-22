@@ -142,7 +142,7 @@ final class EnterCompetition
                 ->whereIn('user_id', $roster)
                 ->delete();
 
-            event(new EntrantRegistered(
+            $registered = new EntrantRegistered(
                 entrantId: $entrant->id,
                 competitionId: $competition->id,
                 competitionTeamId: $team->id,
@@ -151,7 +151,11 @@ final class EnterCompetition
                 registeredAt: now()->toIso8601String(),
                 memberUserIds: $roster,
                 state: $state->value,
-            ));
+            );
+
+            DB::afterCommit(static function () use ($registered): void {
+                event($registered);
+            });
 
             return $entrant;
         });

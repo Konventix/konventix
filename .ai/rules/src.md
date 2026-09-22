@@ -32,3 +32,21 @@ and the framing policy most are the ones outside the `web` group:
 `GET /media/{media}` (unauthenticated, brand origin), the three PSP webhooks under
 `api/`, `/up` and `/health-json`. HSTS is the one header gated on
 `$request->isSecure()`, so local HTTP development is unaffected.
+
+## Domain events raised inside a transaction are dispatched via `DB::afterCommit()`
+`event()` is not transactional. An Action that calls it inside `DB::transaction()`
+and then throws — a later guard, a nested Action refusing — rolls the rows back
+while every listener has already been told, so a contract event announces a
+result, a correction or a withdrawal that never happened. Build the event where
+the data is, and hand the dispatch to `DB::afterCommit()`: it runs at the
+outermost commit and is dropped on rollback, including a rollback of a savepoint
+the Action was nested in. The reference is Resources:
+`AssignPlacesToRegistration` (`SeatClaimPlaced`), with `HoldResourceBooking` and
+`ConfirmResourceBooking` alongside; it also captures the ambient brand and
+restores it around the deferred dispatch, which a listener that reads
+`BrandContext` needs. Outside a transaction `afterCommit()` runs the callback at
+once, so the call is safe in a concern whose callers may or may not open one.
+Under `RefreshDatabase` the callbacks fire when the Action's own transaction
+commits (tests.md), so `Event::fake()` still sees a committed dispatch and a test
+can assert `assertNotDispatched` after a refusal. The defect reached review three
+times in 0.9.0 before it was written down.

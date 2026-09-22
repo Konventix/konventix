@@ -79,7 +79,7 @@ final class SubmitScoreEntry
             $this->guardSubmissionMode($competition, $asOrganizer);
             $this->guardHeat($stage, $data);
 
-            $proofMediaId = $this->proofs->resolve($competition, $data->proofMediaId);
+            $proofMediaId = $this->proofs->resolve($competition, $stage->brand_id, $data->proofMediaId);
 
             $entry = $this->existing($stage, $entrant, $data->heat);
 

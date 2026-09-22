@@ -77,7 +77,7 @@ final class ReportMatchResult
             $scores = $data->normalisedScores();
             $this->guardScoreLineIsComplete($match, $scores, $this->entrantIdsByPosition($match));
 
-            $proofMediaId = $this->proofs->resolve($competition, $data->proofMediaId);
+            $proofMediaId = $this->proofs->resolve($competition, $match->brand_id, $data->proofMediaId);
 
             $report = $this->fileReport($match, $entrant, $scores, $proofMediaId, $reportedByUserId);
 
@@ -100,14 +100,22 @@ final class ReportMatchResult
                 $reportedByUserId,
             );
 
-            event(new MatchResultReported(
+            // After the commit: the disagreement branch below can still roll
+            // the report back (`DisputeMatchResult` refusing a match that is
+            // already disputed), and a report that was never filed must not
+            // have been announced (.ai/rules/src.md).
+            $reported = new MatchResultReported(
                 matchId: $match->id,
                 competitionId: $match->competition_id,
                 brandId: $match->brand_id,
                 entrantId: $entrant->id,
                 userId: $reportedByUserId,
                 at: now()->toIso8601String(),
-            ));
+            );
+
+            DB::afterCommit(static function () use ($reported): void {
+                event($reported);
+            });
 
             $opposing = $this->opposingReport($match, $entrant);
 
@@ -229,7 +237,7 @@ final class ReportMatchResult
             new EntrantNoticeData(
                 competitionName: $competition->name,
                 teamName: $team->name ?? '',
-                detail: __('Your opponent has reported a result. Confirm it or report your own.'),
+                detail: __('Das gegnerische Team hat ein Ergebnis gemeldet. Bestätige es oder melde dein eigenes.'),
             ),
         );
     }

@@ -92,14 +92,18 @@ final class RecordMatchResult
             );
 
             if ($owesTheEvent) {
-                event(new MatchFinished(
+                $finished = new MatchFinished(
                     matchId: $match->id,
                     competitionId: $match->competition_id,
                     brandId: $match->brand_id,
                     winnerEntrantId: $winnerEntrantId,
                     scores: $scores,
                     finishedAt: now()->toIso8601String(),
-                ));
+                );
+
+                DB::afterCommit(static function () use ($finished): void {
+                    event($finished);
+                });
             }
 
             return $match->refresh();

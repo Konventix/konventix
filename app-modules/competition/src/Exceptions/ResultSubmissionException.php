@@ -139,4 +139,18 @@ final class ResultSubmissionException extends RuntimeException
             $matchId,
         ));
     }
+
+    /**
+     * §8.4 on a competition that is over. Only the dispute path asks today:
+     * a dispute is the one thing a side may raise after a result exists, so
+     * without this it would have no end at all.
+     */
+    public static function competitionOver(string $competitionId, string $status): self
+    {
+        return new self(sprintf(
+            'Competition [%s] is `%s`; its results can no longer be disputed.',
+            $competitionId,
+            $status,
+        ));
+    }
 }

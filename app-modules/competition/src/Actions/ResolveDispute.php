@@ -98,14 +98,18 @@ final class ResolveDispute
                 $resolvedByUserId,
             );
 
-            event(new MatchDisputeResolved(
+            $resolved = new MatchDisputeResolved(
                 matchId: $match->id,
                 competitionId: $match->competition_id,
                 brandId: $match->brand_id,
                 entrantId: $winnerEntrantId,
                 userId: $resolvedByUserId,
                 at: now()->toIso8601String(),
-            ));
+            );
+
+            DB::afterCommit(static function () use ($resolved): void {
+                event($resolved);
+            });
 
             if ($match->state === MatchState::Finished) {
                 return $this->corrections->handle(

@@ -84,10 +84,19 @@ Route::middleware(['auth'])->group(function (): void {
      * checked only at submission time would accept the upload, reject the
      * whole result over the attachment, and leave the object behind.
      *
-     * `auth` and nothing else, like the rest of this file: who may attach a
-     * proof is membership in the side, which the Action checks (§11).
+     * `auth` like the rest of this file: who may attach a proof is
+     * membership in the side, which the Action checks (§11). Throttled on top,
+     * because it takes up to 8 MB per request onto the brand's media disk and
+     * nothing else bounds how often: `throttle:6,1`, the repo's tightest
+     * per-route budget for a signed-in write (Identity's `account-email.store`
+     * and `user-password.update`).
+     *
+     * Live ahead of #322: a proof stored here is readable by anyone holding
+     * its ULID until Platform's per-object read authorization lands (§8.7;
+     * recorded in this module's TODO with what the screens owe meanwhile).
      */
     Route::post('/tournaments/{competition}/proofs', [ProofUploadController::class, 'store'])
         ->whereUlid('competition')
+        ->middleware('throttle:6,1')
         ->name('competition.proofs.store');
 });

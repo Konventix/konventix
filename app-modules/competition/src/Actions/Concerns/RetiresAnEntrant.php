@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Actions\Concerns;
 
+use Illuminate\Support\Facades\DB;
 use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\EntrantState;
 use Konventix\Competition\Enums\WithdrawalReason;
@@ -64,7 +65,7 @@ trait RetiresAnEntrant
         $eventId = $competition->event_id;
         $brandId = $competition->brand_id;
 
-        event(new EntrantWithdrawn(
+        $withdrawn = new EntrantWithdrawn(
             entrantId: (string) $entrant->getKey(),
             competitionId: $entrant->competition_id,
             competitionTeamId: $entrant->competition_team_id,
@@ -74,7 +75,11 @@ trait RetiresAnEntrant
             reason: $reason->value,
             finalState: $finalState->value,
             withdrawnAt: now()->toIso8601String(),
-        ));
+        );
+
+        DB::afterCommit(static function () use ($withdrawn): void {
+            event($withdrawn);
+        });
 
         return $roster;
     }

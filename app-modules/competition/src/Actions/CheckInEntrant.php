@@ -107,7 +107,7 @@ final class CheckInEntrant
                 'checked_in_at' => $checkedInAt,
             ])->save();
 
-            event(new EntrantCheckedIn(
+            $checkedIn = new EntrantCheckedIn(
                 entrantId: (string) $entrant->getKey(),
                 competitionId: $entrant->competition_id,
                 competitionTeamId: $entrant->competition_team_id,
@@ -116,7 +116,11 @@ final class CheckInEntrant
                 memberUserIds: $roster,
                 checkedInAt: $checkedInAt->toIso8601String(),
                 viaSelfService: $selfServiceUserId !== null,
-            ));
+            );
+
+            DB::afterCommit(static function () use ($checkedIn): void {
+                event($checkedIn);
+            });
 
             return $entrant->refresh();
         });

@@ -34,7 +34,8 @@ return new class extends Migration
      *
      * **`competition_match_history`** is #116's "nachvollziehbare Historie pro
      * Match" without the chat. Append-only by construction — nothing updates
-     * a row — and read in `created_at` order, so it carries no `updated_at`.
+     * a row, except GDPR erasure nulling `actor_user_id` — and read in
+     * `created_at` order, so it carries no `updated_at`.
      * `payload` is typed per kind by `MatchHistoryPayload` (ADR-0009); the
      * column is json because thirteen kinds with different fields is what a
      * timeline *is*, not a settings blob.
@@ -72,7 +73,10 @@ return new class extends Migration
             $table->foreignUlid('competition_match_id')->constrained('competition_matches')->cascadeOnDelete();
             $table->foreignUlid('entrant_id')->constrained('entrants')->cascadeOnDelete();
 
-            $table->ulid('reported_by_user_id');
+            // Nullable because GDPR erasure nulls it and keeps the row
+            // (`CompetitionGdprHandler`): the side's claim is the match's
+            // history, the person who filed it is not.
+            $table->ulid('reported_by_user_id')->nullable();
 
             // slot position => score. See the class note above.
             $table->json('scores');
@@ -96,13 +100,14 @@ return new class extends Migration
 
             // Null for anything the system did on its own — a cascade that
             // voids a downstream match names the correcting organizer, but a
-            // scheduler tick names nobody.
+            // scheduler tick names nobody — and for an actor who has since
+            // been erased (`CompetitionGdprHandler`).
             $table->ulid('actor_user_id')->nullable();
 
             $table->json('payload');
 
             // Append-only: the one read is "this match's timeline, oldest
-            // first", and nothing ever updates a row.
+            // first", and nothing but GDPR erasure ever updates a row.
             $table->timestamp('created_at')->nullable();
 
             $table->index(['competition_match_id', 'created_at']);

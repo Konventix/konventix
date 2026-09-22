@@ -82,10 +82,9 @@ function cascadeTestPlacements(Stage $stage): array
  */
 function cascadeTestHistoryKinds(CompetitionMatch $match): array
 {
-    return MatchHistoryEntry::query()
-        ->where('competition_match_id', $match->getKey())
-        ->orderBy('created_at')
-        ->orderBy('id')
+    // Through the model's own relation, so the order asserted is the order
+    // the timeline renders in (§8.6) — not one the test imposes on top.
+    return $match->history()
         ->get()
         ->map(static fn (MatchHistoryEntry $entry): string => $entry->kind->value)
         ->all();
@@ -213,6 +212,8 @@ it('refuses a correction that would void a played match without a note', functio
     cascadeTestPlay($second);
     cascadeTestPlay($final);
 
+    Event::fake([MatchResultCorrected::class]);
+
     expect(fn () => app(CorrectMatchResult::class)->handle(
         $first->fresh(),
         [$a => 1, $b => 2],
@@ -226,6 +227,22 @@ it('refuses a correction that would void a played match without a note', functio
         ->and($final->fresh()->state)->toBe(MatchState::Finished);
 
     expect(competitionSidesOf($final->fresh())[1])->toBe($a);
+
+    // And nobody was told: the event waits for the commit, and a correction
+    // that rolled back never commits (.ai/rules/src.md).
+    Event::assertNotDispatched(MatchResultCorrected::class);
+
+    // The same correction with a note commits, and goes out exactly once —
+    // so the silence above is the rollback, not a dispatch that never fires.
+    app(CorrectMatchResult::class)->handle(
+        $first->fresh(),
+        [$a => 1, $b => 2],
+        $b,
+        correctedByUserId: (string) Str::ulid(),
+        note: 'Falscher Sieger eingetragen.',
+    );
+
+    Event::assertDispatchedTimes(MatchResultCorrected::class, 1);
 });
 
 it('voids nothing when the correction leaves the winner standing', function (): void {

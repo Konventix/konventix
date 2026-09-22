@@ -36,7 +36,7 @@ use Konventix\Platform\Models\Concerns\BelongsToBrand;
  * @property string $brand_id
  * @property string $competition_match_id
  * @property string $entrant_id
- * @property string $reported_by_user_id
+ * @property string|null $reported_by_user_id null once the reporter was erased (GDPR)
  * @property array<int|string, int|null> $scores
  * @property string|null $proof_media_id
  * @property CarbonInterface|null $created_at

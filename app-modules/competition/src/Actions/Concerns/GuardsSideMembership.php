@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Konventix\Competition\Actions\Concerns;
 
+use Konventix\Competition\Enums\CompetitionStatus;
 use Konventix\Competition\Enums\MatchState;
 use Konventix\Competition\Enums\ResultSubmissionMode;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
@@ -87,11 +88,25 @@ trait GuardsSideMembership
      * *cancelled* match and nothing else: a match that was never played has
      * no result to argue about, while one that was played and recorded is
      * exactly the case §8.4's second capability is for.
+     *
+     * It also refuses once the **competition** is over — `finished` or
+     * `cancelled`, the same pair `RetiresAnEntrant` stops at. A dispute opened
+     * on a tournament nobody is running any more would sit in the desk's open
+     * queue (and §13's open-disputes alert) indefinitely, and resolving it
+     * would cascade a void through a bracket whose standings are already
+     * published. §8.4 states no time window, so none is invented: while the
+     * competition is still running, a recorded result stays contestable.
      */
     protected function guardMatchIsDisputable(CompetitionMatch $match): void
     {
         if ($match->state === MatchState::Cancelled) {
             throw ResultSubmissionException::matchNotPlayable($match->id, $match->state->value);
+        }
+
+        $competition = $this->competitionOf($match);
+
+        if (in_array($competition->status, [CompetitionStatus::Finished, CompetitionStatus::Cancelled], true)) {
+            throw ResultSubmissionException::competitionOver($competition->id, $competition->status->value);
         }
     }
 

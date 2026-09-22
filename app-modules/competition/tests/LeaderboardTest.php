@@ -15,6 +15,7 @@ use Konventix\Competition\Enums\LeaderboardDirection;
 use Konventix\Competition\Enums\ProofPolicy;
 use Konventix\Competition\Enums\ResultSubmissionMode;
 use Konventix\Competition\Exceptions\ResultSubmissionException;
+use Konventix\Competition\Gdpr\CompetitionGdprHandler;
 use Konventix\Competition\Models\Competition;
 use Konventix\Competition\Models\CompetitionTeam;
 use Konventix\Competition\Models\Entrant;
@@ -25,6 +26,10 @@ use Konventix\Competition\Standings\LeaderboardStandingsCalculator;
 use Konventix\Competition\Standings\ScoredEntry;
 use Konventix\Competition\Standings\StandingEntry;
 use Konventix\Competition\Standings\StandingsEntrant;
+use Konventix\Compliance\Enums\DeletionMode;
+use Konventix\Compliance\Gdpr\SubjectRef;
+use Konventix\Platform\Models\Brand;
+use Konventix\Platform\Models\MediaItem;
 
 /**
  * The leaderboard format (design §7.2, §8.3).
@@ -492,14 +497,38 @@ describe('submitting and verifying (§8.3)', function (): void {
             ->handle($stage, $field[0], new ScoreEntryData(value: 1.0), (string) Str::ulid()))
             ->toThrow(ValidationException::class);
 
+        // A real item of this brand's library: `ProofGate` refuses an id that
+        // names none (see the next test).
+        $proofId = (string) MediaItem::factory()->create()->getKey();
+
         $entry = app(SubmitScoreEntry::class)->handle(
             $stage,
             $field[0],
-            new ScoreEntryData(value: 1.0, proofMediaId: (string) Str::ulid()),
+            new ScoreEntryData(value: 1.0, proofMediaId: $proofId),
             (string) Str::ulid(),
         );
 
-        expect($entry->proof_media_id)->not->toBeNull();
+        expect($entry->proof_media_id)->toBe($proofId);
+    });
+
+    it('refuses a proof id that is not one of the brand\'s own media items', function (): void {
+        $this->withBrand();
+
+        [$stage, $field] = leaderboardTestStage(new LeaderboardSettings, proofPolicy: ProofPolicy::Optional);
+
+        $foreign = (string) MediaItem::factory()->create(['brand_id' => Brand::factory()->create()->getKey()])->getKey();
+        $unknown = (string) Str::ulid();
+
+        foreach ([$foreign, $unknown] as $proofMediaId) {
+            expect(fn () => app(SubmitScoreEntry::class)->handle(
+                $stage,
+                $field[0],
+                new ScoreEntryData(value: 1.0, proofMediaId: $proofMediaId),
+                (string) Str::ulid(),
+            ))->toThrow(ValidationException::class);
+        }
+
+        expect(ScoreEntry::query()->where('stage_id', $stage->id)->count())->toBe(0);
     });
 
     it('refuses a participant score entry when the competition is desk_only', function (): void {
@@ -625,5 +654,61 @@ describe('submitting and verifying (§8.3)', function (): void {
         expect(fn () => app(SubmitScoreEntry::class)
             ->handle($stage, $entrant, new ScoreEntryData(value: 1.0), (string) Str::ulid()))
             ->toThrow(RuntimeException::class);
+    });
+});
+
+describe('GDPR erasure of the results trail', function (): void {
+    it('forgets who submitted, verified and rejected a score, and keeps every entry', function (): void {
+        // A score is competition history; the person who typed, verified or
+        // rejected it is not. Erasure nulls the user ULID and the row stays.
+        $this->withBrand();
+
+        [$stage, $field] = leaderboardTestStage(new LeaderboardSettings, entrants: 3);
+
+        $forgotten = (string) Str::ulid();
+        $stays = (string) Str::ulid();
+
+        // A: the desk's own entry, so $forgotten is both submitter and
+        //    verifier (`asOrganizer` writes `verified_by_user_id` from the
+        //    submitter) — the double role one erasure must clear twice.
+        $a = app(SubmitScoreEntry::class)
+            ->handle($stage, $field[0], new ScoreEntryData(value: 10.0), $forgotten, asOrganizer: true);
+
+        // B: submitted by $stays, rejected by $forgotten.
+        $b = app(SubmitScoreEntry::class)
+            ->handle($stage, $field[1], new ScoreEntryData(value: 20.0), $stays);
+        app(RejectScoreEntry::class)->handle($b, $forgotten, 'Screenshot fehlt.');
+
+        // C: submitted and verified by $stays; nothing of $forgotten's.
+        $c = app(SubmitScoreEntry::class)
+            ->handle($stage, $field[2], new ScoreEntryData(value: 30.0), $stays);
+        app(VerifyScoreEntry::class)->handle($c, $stays);
+
+        (new CompetitionGdprHandler)->delete(SubjectRef::forUser($forgotten), DeletionMode::Erase);
+
+        $a = $a->fresh();
+        $b = $b->fresh();
+        $c = $c->fresh();
+
+        expect(ScoreEntry::query()->where('stage_id', $stage->id)->count())->toBe(3)
+            ->and(ScoreEntry::query()
+                ->where('submitted_by_user_id', $forgotten)
+                ->orWhere('verified_by_user_id', $forgotten)
+                ->orWhere('rejected_by_user_id', $forgotten)
+                ->count())->toBe(0)
+            // A: both references gone, the verification itself stands — the
+            // score still counts.
+            ->and($a->submitted_by_user_id)->toBeNull()
+            ->and($a->verified_by_user_id)->toBeNull()
+            ->and($a->isVerified())->toBeTrue()
+            ->and($a->value)->toBe(10.0)
+            // B: the rejection and its reason stand, only the rejecter goes.
+            ->and($b->submitted_by_user_id)->toBe($stays)
+            ->and($b->rejected_by_user_id)->toBeNull()
+            ->and($b->isRejected())->toBeTrue()
+            ->and($b->rejection_note)->toBe('Screenshot fehlt.')
+            // C: somebody else's entry, untouched.
+            ->and($c->submitted_by_user_id)->toBe($stays)
+            ->and($c->verified_by_user_id)->toBe($stays);
     });
 });

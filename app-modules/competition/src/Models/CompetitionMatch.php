@@ -98,11 +98,19 @@ class CompetitionMatch extends Model
     /**
      * This match's timeline, oldest first (§8.6).
      *
+     * `id` breaks the tie, and it is not an edge case: `created_at` is a
+     * whole-second `timestamp(0)`, and every row one Action writes lands in
+     * one transaction — `reported`, `confirmed` and `recorded` share a second
+     * every time a counter-report agrees. The ids are ULIDs, which are
+     * monotonic within a millisecond, so they carry the order the rows were
+     * written in; without them Postgres may return the two sides of an
+     * argument in either order.
+     *
      * @return HasMany<MatchHistoryEntry, $this>
      */
     public function history(): HasMany
     {
-        return $this->hasMany(MatchHistoryEntry::class)->orderBy('created_at');
+        return $this->hasMany(MatchHistoryEntry::class)->orderBy('created_at')->orderBy('id');
     }
 
     /**

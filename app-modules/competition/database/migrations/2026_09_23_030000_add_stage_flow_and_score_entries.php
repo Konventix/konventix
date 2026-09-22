@@ -83,7 +83,10 @@ return new class extends Migration
             // asks for one.
             $table->ulid('proof_media_id')->nullable();
 
-            $table->ulid('submitted_by_user_id');
+            // Nullable because GDPR erasure nulls it and keeps the row
+            // (`CompetitionGdprHandler`): a score is competition history, the
+            // person who typed it is not.
+            $table->ulid('submitted_by_user_id')->nullable();
 
             $table->timestamp('verified_at')->nullable();
             $table->ulid('verified_by_user_id')->nullable();

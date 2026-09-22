@@ -57,8 +57,10 @@ ADR-0062). The build order for #32, each item its own merge request:
       Left for the slices that own them: the console dialogs and the
       participant match page that drive all of this (§9, §10 — the Actions
       and the upload endpoint are here, no screen is); the `Tournament Desk`
-      role and the capability checks at the routes (§11); GDPR export and
-      anonymisation for the two new tables plus `competition_disputes_open`,
+      role and the capability checks at the routes (§11); GDPR export for
+      the two new tables (erasure is done: `CompetitionGdprHandler` nulls
+      every user ULID on score entries, reports and history rows and keeps
+      the rows) plus `competition_disputes_open`,
       its 30-minute alert and the dashboard row (§13); `MatchCancelled` and
       `MatchRescheduled` as events — `ScheduleMatch` writes the history rows
       but emits neither, and a match cancellation has no Action at all.
@@ -72,7 +74,10 @@ ADR-0062). The build order for #32, each item its own merge request:
       unauthenticated and brand-agnostic, and there is no per-item privacy
       flag. Until Platform grows one, a proof is readable by anyone holding
       its ULID. §8.7 is explicit that this is a Platform change and not a
-      Competition workaround; recorded in the design's §14.
+      Competition workaround; recorded in the design's §14. The upload route
+      (`competition.proofs.store`) is **live ahead of it**, behind `auth` and
+      `throttle:6,1`; the participant screens must not offer an upload
+      control until the read half lands.
 - [ ] Desk and public pages (D-CMP-20..22): seed order, generate / reset,
       per-round scheduling, the ported canvas bracket with its table view,
       event tournament index, competition, match and team pages, polling

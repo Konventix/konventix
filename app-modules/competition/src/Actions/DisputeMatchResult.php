@@ -89,14 +89,18 @@ final class DisputeMatchResult
                 $disputedByUserId,
             );
 
-            event(new MatchDisputed(
+            $disputed = new MatchDisputed(
                 matchId: $match->id,
                 competitionId: $match->competition_id,
                 brandId: $match->brand_id,
                 entrantId: $entrant->id,
                 userId: $disputedByUserId,
                 at: now()->toIso8601String(),
-            ));
+            );
+
+            DB::afterCommit(static function () use ($disputed): void {
+                event($disputed);
+            });
 
             return $match->refresh();
         });

@@ -82,7 +82,7 @@ final class ScheduleMatch
                 ->pluck('entrant_id')
                 ->all();
 
-            event(new MatchScheduled(
+            $scheduled = new MatchScheduled(
                 matchId: $match->id,
                 competitionId: $competition->id,
                 eventId: $competition->event_id,
@@ -94,7 +94,11 @@ final class ScheduleMatch
                 scheduledAt: $at->toIso8601String(),
                 entrantIds: array_values(array_map(strval(...), $entrantIds)),
                 memberUserIds: $this->rostersFor(array_values($entrantIds)),
-            ));
+            );
+
+            DB::afterCommit(static function () use ($scheduled): void {
+                event($scheduled);
+            });
 
             return $match->refresh();
         });
