@@ -544,3 +544,22 @@ for (roster and Steam IDs); it is additive.
 ## 14. Deviations found during implementation
 
 *(append only)*
+
+### Unpublishing a competition tells nobody (found in Task 1, 2026-09-23)
+
+`UnpublishCompetition` emits no event, because §12 names none — correctly, since
+inventing a contract name the design never settled would be worse. The
+consequence belongs here rather than in a task report: **a consumer that
+projected the competition when it was published keeps it.** Sub-project C's
+timetable is the first such consumer — its competition half (waiting on #296)
+selects competitions into the published programme and projects
+`CompetitionPublished` / `CompetitionRescheduled` / `CompetitionCancelled`. An
+organizer who unpublishes a competition would leave its block standing in a
+programme the public can read.
+
+Closing it is additive and cheap: a `CompetitionUnpublished(competitionId,
+eventId, brandId, unpublishedAt)` event emitted by `UnpublishCompetition`, which
+C's projection removes the row on. It is recorded rather than built because the
+consumer does not exist yet and B should not invent a contract for a projection
+nobody has written — but **the competition half of the timetable must not ship
+without it.**
