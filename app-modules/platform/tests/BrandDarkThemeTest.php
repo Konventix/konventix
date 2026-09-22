@@ -96,6 +96,34 @@ it('saves a dark map alongside the light one and renders both', function (): voi
         ->and($block)->toContain('--accent: hsl(210 90% 70%);');
 });
 
+it('emits the brand block after the stylesheet, so the brand wins the cascade', function (): void {
+    // The bug this pins (0.8.1, reported on dev): the block was rendered
+    // above @vite. `resources/css/app.css` declares the very same raw tokens
+    // on `:root`, at the same specificity, so the stylesheet loaded second and
+    // won — a brand could save a palette, see it in the editor's preview, and
+    // watch its own site stay default. Nothing in the markup was missing, so
+    // asserting that the tokens are *present* never caught it; only their
+    // position relative to the stylesheet does.
+    [$admin, $brand] = operatorWithDarkThemeAdmin();
+
+    $this->actingAs($admin)
+        ->put("http://admin.darktheme.test/admin/brands/{$brand->getKey()}/theme", [
+            'tokens' => ['accent' => 'hsl(210 90% 35%)', 'on-accent' => '#ffffff'],
+            'darkTokens' => [],
+        ])
+        ->assertRedirect();
+
+    $html = $this->get('http://dark-brand.test/')->assertOk()->getContent();
+
+    preg_match_all('/<link[^>]+rel="stylesheet"[^>]*>/i', $html, $matches, PREG_OFFSET_CAPTURE);
+    $stylesheet = $matches[0] === [] ? false : (int) end($matches[0])[1];
+    $block = strpos($html, '<style id="konventix-brand-tokens">');
+
+    expect($stylesheet)->not->toBeFalse('the page has to load the application stylesheet')
+        ->and($block)->not->toBeFalse('the brand block has to be rendered')
+        ->and($block)->toBeGreaterThan($stylesheet);
+});
+
 it('leaves the dark map empty when a brand only themes the light one', function (): void {
     [$admin, $brand] = operatorWithDarkThemeAdmin();
 

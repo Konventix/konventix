@@ -30,6 +30,37 @@
             }
         </style>
 
+
+        {{--
+            The resolved brand's favicon when it has uploaded one, the bundled
+            Konventix set otherwise (konventix-brand, assets/export/web: the
+            SVG swaps Ink for Travertine under a dark colour scheme, the .ico
+            carries 16/32/48 for browsers without SVG favicon support).
+            `$brandIdentity` is shared by ResolveBrand; the null guard covers
+            responses rendered before it runs (an early error page), which
+            fall back to the bundled set. The manifest names Konventix and its
+            icons, so it goes with the bundled set only: a brand that wears its
+            own favicon is not offered a Konventix install.
+        --}}
+        @if (($brandIdentity->faviconUrl ?? null) !== null)
+            <link rel="icon" href="{{ $brandIdentity->faviconUrl }}">
+            <link rel="apple-touch-icon" href="{{ $brandIdentity->faviconUrl }}">
+        @else
+            <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+            <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+            <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+            <link rel="manifest" href="/manifest.json">
+        @endif
+
+        @fonts
+
+        {{-- Page chunk may live in the host or any module's pages dir (.ai/rules/resources.md). --}}
+        @vite(array_values(array_filter([
+            'resources/css/app.css',
+            'resources/js/app.ts',
+            \Konventix\Platform\Modules\InertiaPageChunk::path($page['component']),
+        ])))
+
         {{--
             Brand token injection.
 
@@ -40,8 +71,13 @@
             Tailwind utility is derived from it via `@theme inline`, so this
             block re-colors the whole app.
 
-            TODO(brand): implement the middleware that resolves the tenant and
-            shares `$brandTokens`. Until then this renders nothing.
+            It is emitted AFTER @vite, and that position is the whole point:
+            `resources/css/app.css` declares the same raw tokens on `:root`
+            at the same specificity, so whichever comes last wins. While this
+            block stood above the stylesheet, every brand's saved palette was
+            silently overridden by the defaults — the console preview looked
+            right because it sets the tokens on an element it owns, and the
+            page rendered a `<style>` that never applied (0.8.1).
         --}}
         @if (! empty($brandTokens ?? []) || ! empty($brandTokensDark ?? []))
             <style id="konventix-brand-tokens">
@@ -75,36 +111,6 @@
                 @endif
             </style>
         @endif
-
-        {{--
-            The resolved brand's favicon when it has uploaded one, the bundled
-            Konventix set otherwise (konventix-brand, assets/export/web: the
-            SVG swaps Ink for Travertine under a dark colour scheme, the .ico
-            carries 16/32/48 for browsers without SVG favicon support).
-            `$brandIdentity` is shared by ResolveBrand; the null guard covers
-            responses rendered before it runs (an early error page), which
-            fall back to the bundled set. The manifest names Konventix and its
-            icons, so it goes with the bundled set only: a brand that wears its
-            own favicon is not offered a Konventix install.
-        --}}
-        @if (($brandIdentity->faviconUrl ?? null) !== null)
-            <link rel="icon" href="{{ $brandIdentity->faviconUrl }}">
-            <link rel="apple-touch-icon" href="{{ $brandIdentity->faviconUrl }}">
-        @else
-            <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-            <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
-            <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-            <link rel="manifest" href="/manifest.json">
-        @endif
-
-        @fonts
-
-        {{-- Page chunk may live in the host or any module's pages dir (.ai/rules/resources.md). --}}
-        @vite(array_values(array_filter([
-            'resources/css/app.css',
-            'resources/js/app.ts',
-            \Konventix\Platform\Modules\InertiaPageChunk::path($page['component']),
-        ])))
         <x-inertia::head>
             {{-- The brand's name, not the deployment's: a visitor on a brand
                  host never sees the operator's application name (ADR-0001). --}}
